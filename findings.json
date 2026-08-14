@@ -1,8 +1,8 @@
 {
   "entries": [
     {
-      "annotatedBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.a11y.png",
-      "cleanBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
+      "annotatedBasename": "FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.a11y.png",
+      "cleanBasename": "FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
       "findings": [],
       "functionName": "FocusOverlayPreview",
       "module": "android-alpha",
@@ -12,8 +12,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step1_Next.a11y.png",
-      "cleanBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step1_Next.png",
+      "annotatedBasename": "FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step1_Next.a11y.png",
+      "cleanBasename": "FocusTraversalPreview_Focus_Traversal-d9e7cbb0_FOCUS_step1_Next.png",
       "findings": [],
       "functionName": "FocusTraversalPreview",
       "module": "android-alpha",
@@ -23,8 +23,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out_FOCUS_0.a11y.png",
-      "cleanBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out_FOCUS_0.png",
+      "annotatedBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_0.a11y.png",
+      "cleanBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out-82c4dfa5_FOCUS_0.png",
       "findings": [],
       "functionName": "InsetFocusRingFanOutPreview",
       "module": "android-alpha",
@@ -34,8 +34,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OpacityFocusPreview_Opacity_Focus.a11y.png",
-      "cleanBasename": "OpacityFocusPreview_Opacity_Focus.png",
+      "annotatedBasename": "OpacityFocusPreview_Opacity_Focus-d0086c24.a11y.png",
+      "cleanBasename": "OpacityFocusPreview_Opacity_Focus-d0086c24.png",
       "findings": [],
       "functionName": "OpacityFocusPreview",
       "module": "android-alpha",
@@ -45,8 +45,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BlueLabelPreview_BlueLabel.a11y.png",
-      "cleanBasename": "BlueLabelPreview_BlueLabel.png",
+      "annotatedBasename": "BlueLabelPreview_BlueLabel-1df22acd.a11y.png",
+      "cleanBasename": "BlueLabelPreview_BlueLabel-1df22acd.png",
       "findings": [],
       "functionName": "BlueLabelPreview",
       "module": "android-daemon-bench",
@@ -56,8 +56,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GreenButtonPreview_GreenButton.a11y.png",
-      "cleanBasename": "GreenButtonPreview_GreenButton.png",
+      "annotatedBasename": "GreenButtonPreview_GreenButton-86b6fce0.a11y.png",
+      "cleanBasename": "GreenButtonPreview_GreenButton-86b6fce0.png",
       "findings": [],
       "functionName": "GreenButtonPreview",
       "module": "android-daemon-bench",
@@ -68,7 +68,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "RedSquarePreview_RedSquare.png",
+      "cleanBasename": "RedSquarePreview_RedSquare-d4b68235.png",
       "findings": [],
       "functionName": "RedSquarePreview",
       "module": "android-daemon-bench",
@@ -79,7 +79,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "RowPreview_Row.png",
+      "cleanBasename": "RowPreview_Row-721b21da.png",
       "findings": [],
       "functionName": "RowPreview",
       "module": "android-daemon-bench",
@@ -89,8 +89,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "StackPreview_Stack.a11y.png",
-      "cleanBasename": "StackPreview_Stack.png",
+      "annotatedBasename": "StackPreview_Stack-610a3aaa.a11y.png",
+      "cleanBasename": "StackPreview_Stack-610a3aaa.png",
       "findings": [],
       "functionName": "StackPreview",
       "module": "android-daemon-bench",
@@ -100,8 +100,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "HtmlShowNotesPreview_HTML_show_notes.a11y.png",
-      "cleanBasename": "HtmlShowNotesPreview_HTML_show_notes.png",
+      "annotatedBasename": "HtmlShowNotesPreview_HTML_show_notes-981c6f3a.a11y.png",
+      "cleanBasename": "HtmlShowNotesPreview_HTML_show_notes-981c6f3a.png",
       "findings": [],
       "functionName": "HtmlShowNotesPreview",
       "module": "android-library",
@@ -111,8 +111,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LibraryBoxPreview_Library_Box.a11y.png",
-      "cleanBasename": "LibraryBoxPreview_Library_Box.png",
+      "annotatedBasename": "LibraryBoxPreview_Library_Box-618f033c.a11y.png",
+      "cleanBasename": "LibraryBoxPreview_Library_Box-618f033c.png",
       "findings": [],
       "functionName": "LibraryBoxPreview",
       "module": "android-library",
@@ -122,8 +122,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LibraryGreetingPreview_Library_Greeting.a11y.png",
-      "cleanBasename": "LibraryGreetingPreview_Library_Greeting.png",
+      "annotatedBasename": "LibraryGreetingPreview_Library_Greeting-a06571e3.a11y.png",
+      "cleanBasename": "LibraryGreetingPreview_Library_Greeting-a06571e3.png",
       "findings": [],
       "functionName": "LibraryGreetingPreview",
       "module": "android-library",
@@ -133,8 +133,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LiveLaneCard_LiveLaneCard.a11y.png",
-      "cleanBasename": "LiveLaneCard_LiveLaneCard.png",
+      "annotatedBasename": "LiveLaneCard_LiveLaneCard-3212f960.a11y.png",
+      "cleanBasename": "LiveLaneCard_LiveLaneCard-3212f960.png",
       "findings": [
         {
           "boundsInScreen": "42,159,314,285",
@@ -152,8 +152,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MainSquarePreview_main_square.a11y.png",
-      "cleanBasename": "MainSquarePreview_main_square.png",
+      "annotatedBasename": "MainSquarePreview_main_square-47ff5a45.a11y.png",
+      "cleanBasename": "MainSquarePreview_main_square-47ff5a45.png",
       "findings": [],
       "functionName": "MainSquarePreview",
       "module": "android-screenshot-test",
@@ -163,8 +163,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ActionsPreview_Actions.a11y.png",
-      "cleanBasename": "ActionsPreview_Actions.png",
+      "annotatedBasename": "ActionsPreview_Actions-5426f9c9.a11y.png",
+      "cleanBasename": "ActionsPreview_Actions-5426f9c9.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -189,8 +189,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AsyncImageArtworkPreview_Async_Image_Artwork.a11y.png",
-      "cleanBasename": "AsyncImageArtworkPreview_Async_Image_Artwork.png",
+      "annotatedBasename": "AsyncImageArtworkPreview_Async_Image_Artwork-89967208.a11y.png",
+      "cleanBasename": "AsyncImageArtworkPreview_Async_Image_Artwork-89967208.png",
       "findings": [],
       "functionName": "AsyncImageArtworkPreview",
       "module": "android",
@@ -200,8 +200,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.a11y.png",
-      "cleanBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.png",
+      "annotatedBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable-9903d4bc.a11y.png",
+      "cleanBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable-9903d4bc.png",
       "findings": [],
       "functionName": "AsyncImageUnreachablePreview",
       "module": "android",
@@ -211,8 +211,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BadButtonPreview_Bad_Button.a11y.png",
-      "cleanBasename": "BadButtonPreview_Bad_Button.png",
+      "annotatedBasename": "BadButtonPreview_Bad_Button-fb66bc8e.a11y.png",
+      "cleanBasename": "BadButtonPreview_Bad_Button-fb66bc8e.png",
       "findings": [
         {
           "boundsInScreen": "0,0,53,53",
@@ -237,8 +237,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BigPictureStylePreview_Big_picture.a11y.png",
-      "cleanBasename": "BigPictureStylePreview_Big_picture.png",
+      "annotatedBasename": "BigPictureStylePreview_Big_picture-dab3e251.a11y.png",
+      "cleanBasename": "BigPictureStylePreview_Big_picture-dab3e251.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -256,8 +256,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BigTextVariantsPreview_Arabic.a11y.png",
-      "cleanBasename": "BigTextVariantsPreview_Arabic.png",
+      "annotatedBasename": "BigTextVariantsPreview_Arabic-e0a98e02.a11y.png",
+      "cleanBasename": "BigTextVariantsPreview_Arabic-e0a98e02.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -275,8 +275,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BlueBoxPreview_Blue_Box.a11y.png",
-      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
+      "annotatedBasename": "BlueBoxPreview_Blue_Box-7fc1409b.a11y.png",
+      "cleanBasename": "BlueBoxPreview_Blue_Box-7fc1409b.png",
       "findings": [],
       "functionName": "BlueBoxPreview",
       "module": "android",
@@ -297,8 +297,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.a11y.png",
-      "cleanBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.png",
+      "annotatedBasename": "CameraPermissionDeniedPreview_Camera_permission_denied-c5977888.a11y.png",
+      "cleanBasename": "CameraPermissionDeniedPreview_Camera_permission_denied-c5977888.png",
       "findings": [],
       "functionName": "CameraPermissionDeniedPreview",
       "module": "android",
@@ -308,8 +308,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.a11y.png",
-      "cleanBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.png",
+      "annotatedBasename": "CameraPermissionGrantedPreview_Camera_permission_granted-6562539b.a11y.png",
+      "cleanBasename": "CameraPermissionGrantedPreview_Camera_permission_granted-6562539b.png",
       "findings": [],
       "functionName": "CameraPermissionGrantedPreview",
       "module": "android",
@@ -319,8 +319,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.a11y.png",
-      "cleanBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.png",
+      "annotatedBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent-1079ce79.a11y.png",
+      "cleanBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent-1079ce79.png",
       "findings": [],
       "functionName": "CircleButtonTransparentPreview",
       "module": "android",
@@ -330,8 +330,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CollapsedSurfacePreview_Surface_collapsed.a11y.png",
-      "cleanBasename": "CollapsedSurfacePreview_Surface_collapsed.png",
+      "annotatedBasename": "CollapsedSurfacePreview_Surface_collapsed-8a35ca47.a11y.png",
+      "cleanBasename": "CollapsedSurfacePreview_Surface_collapsed-8a35ca47.png",
       "findings": [
         {
           "boundsInScreen": "137,108,903,161",
@@ -349,8 +349,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.a11y.png",
-      "cleanBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png",
+      "annotatedBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.a11y.png",
+      "cleanBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.png",
       "findings": [
         {
           "boundsInScreen": "137,61,290,95",
@@ -389,8 +389,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.a11y.png",
-      "cleanBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png",
+      "annotatedBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light-ea02bc05.a11y.png",
+      "cleanBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light-ea02bc05.png",
       "findings": [
         {
           "boundsInScreen": "137,1825,290,1859",
@@ -429,8 +429,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ConfigProbePreview_Default.a11y.png",
-      "cleanBasename": "ConfigProbePreview_Default.png",
+      "annotatedBasename": "ConfigProbePreview_Default-14dd58a7.a11y.png",
+      "cleanBasename": "ConfigProbePreview_Default-14dd58a7.png",
       "findings": [],
       "functionName": "ConfigProbePreview",
       "module": "android",
@@ -440,8 +440,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "DecoratedCustomViewPreview_Decorated_custom_view.a11y.png",
-      "cleanBasename": "DecoratedCustomViewPreview_Decorated_custom_view.png",
+      "annotatedBasename": "DecoratedCustomViewPreview_Decorated_custom_view-986b3f0f.a11y.png",
+      "cleanBasename": "DecoratedCustomViewPreview_Decorated_custom_view-986b3f0f.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -459,8 +459,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.a11y.png",
-      "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
+      "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase-0d81b92c.a11y.png",
+      "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase-0d81b92c.png",
       "findings": [
         {
           "boundsInScreen": "42,231,616,294",
@@ -486,7 +486,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "DividerShowBackgroundDarkPreview_Divider_Dark.png",
+      "cleanBasename": "DividerShowBackgroundDarkPreview_Divider_Dark-7600c12d.png",
       "findings": [],
       "functionName": "DividerShowBackgroundDarkPreview",
       "module": "android",
@@ -496,8 +496,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.a11y.png",
-      "cleanBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.png",
+      "annotatedBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison-5e4b0382.a11y.png",
+      "cleanBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison-5e4b0382.png",
       "findings": [
         {
           "boundsInScreen": "42,121,1263,213",
@@ -515,8 +515,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ExpandedSurfacePreview_Surface_expanded.a11y.png",
-      "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
+      "annotatedBasename": "ExpandedSurfacePreview_Surface_expanded-9354e372.a11y.png",
+      "cleanBasename": "ExpandedSurfacePreview_Surface_expanded-9354e372.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -534,8 +534,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.a11y.png",
-      "cleanBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png",
+      "annotatedBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen-4818cd3d.a11y.png",
+      "cleanBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen-4818cd3d.png",
       "findings": [],
       "functionName": "FallbackCoverageSpecimenPreview",
       "module": "android",
@@ -545,8 +545,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FitsInBoundsPreview.a11y.png",
-      "cleanBasename": "FitsInBoundsPreview.png",
+      "annotatedBasename": "FitsInBoundsPreview-0da3b324.a11y.png",
+      "cleanBasename": "FitsInBoundsPreview-0da3b324.png",
       "findings": [],
       "functionName": "FitsInBoundsPreview",
       "module": "android",
@@ -556,8 +556,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FontFamilySpecimenPreview_FontFamily_specimen.a11y.png",
-      "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen.png",
+      "annotatedBasename": "FontFamilySpecimenPreview_FontFamily_specimen-3dd91b6d.a11y.png",
+      "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen-3dd91b6d.png",
       "findings": [
         {
           "boundsInScreen": "368,5,1102,117",
@@ -575,8 +575,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FontWrapperShowcasePreview_Dark.a11y.png",
-      "cleanBasename": "FontWrapperShowcasePreview_Dark.png",
+      "annotatedBasename": "FontWrapperShowcasePreview_Dark-f1d60a7e.a11y.png",
+      "cleanBasename": "FontWrapperShowcasePreview_Dark-f1d60a7e.png",
       "findings": [],
       "functionName": "FontWrapperShowcasePreview",
       "module": "android",
@@ -586,8 +586,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2.a11y.png",
-      "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2.png",
+      "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2-f07a8102.a11y.png",
+      "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2-f07a8102.png",
       "findings": [],
       "functionName": "GlanceWeatherWidgetPreview",
       "module": "android",
@@ -597,8 +597,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.a11y.png",
-      "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
+      "annotatedBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase-8b9d279c.a11y.png",
+      "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase-8b9d279c.png",
       "findings": [
         {
           "boundsInScreen": "42,231,629,294",
@@ -637,8 +637,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GreenBoxPreview_Green_Box.a11y.png",
-      "cleanBasename": "GreenBoxPreview_Green_Box.png",
+      "annotatedBasename": "GreenBoxPreview_Green_Box-68efb1a1.a11y.png",
+      "cleanBasename": "GreenBoxPreview_Green_Box-68efb1a1.png",
       "findings": [],
       "functionName": "GreenBoxPreview",
       "module": "android",
@@ -648,8 +648,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GreetingPreview_Default.a11y.png",
-      "cleanBasename": "GreetingPreview_Default.png",
+      "annotatedBasename": "GreetingPreview_Default-6fd24042.a11y.png",
+      "cleanBasename": "GreetingPreview_Default-6fd24042.png",
       "findings": [],
       "functionName": "GreetingPreview",
       "module": "android",
@@ -659,8 +659,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GroupedSummaryPreview_Edge_grouped_summary.a11y.png",
-      "cleanBasename": "GroupedSummaryPreview_Edge_grouped_summary.png",
+      "annotatedBasename": "GroupedSummaryPreview_Edge_grouped_summary-958c9d2b.a11y.png",
+      "cleanBasename": "GroupedSummaryPreview_Edge_grouped_summary-958c9d2b.png",
       "findings": [
         {
           "boundsInScreen": "374,52,385,95",
@@ -685,8 +685,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "HeadsUpSurfacePreview_Surface_heads_up.a11y.png",
-      "cleanBasename": "HeadsUpSurfacePreview_Surface_heads_up.png",
+      "annotatedBasename": "HeadsUpSurfacePreview_Surface_heads_up-99f3db3b.a11y.png",
+      "cleanBasename": "HeadsUpSurfacePreview_Surface_heads_up-99f3db3b.png",
       "findings": [
         {
           "boundsInScreen": "137,108,903,161",
@@ -704,8 +704,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.a11y.png",
-      "cleanBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.png",
+      "annotatedBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden-5d399422.a11y.png",
+      "cleanBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden-5d399422.png",
       "findings": [],
       "functionName": "ImeAwareListHiddenPreview",
       "module": "android",
@@ -715,8 +715,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.a11y.png",
-      "cleanBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.png",
+      "annotatedBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up-b4a9f9a4.a11y.png",
+      "cleanBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up-b4a9f9a4.png",
       "findings": [],
       "functionName": "ImeAwareListShownPreview",
       "module": "android",
@@ -726,8 +726,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "InboxStylePreview_Inbox_style.a11y.png",
-      "cleanBasename": "InboxStylePreview_Inbox_style.png",
+      "annotatedBasename": "InboxStylePreview_Inbox_style-d60bfd87.a11y.png",
+      "cleanBasename": "InboxStylePreview_Inbox_style-d60bfd87.png",
       "findings": [
         {
           "boundsInScreen": "374,52,385,95",
@@ -752,8 +752,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
-      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
+      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo-43d14b01.a11y.png",
+      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo-43d14b01.png",
       "findings": [],
       "functionName": "KeyboardDemoPreview",
       "module": "android",
@@ -763,8 +763,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.a11y.png",
-      "cleanBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png",
+      "annotatedBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen-f76fd45f.a11y.png",
+      "cleanBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen-f76fd45f.png",
       "findings": [],
       "functionName": "LauncherModeHomeScreenPreview",
       "module": "android",
@@ -774,8 +774,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.a11y.png",
-      "cleanBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png",
+      "annotatedBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen-24fd3ef0_RESIZE_1x1.a11y.png",
+      "cleanBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen-24fd3ef0_RESIZE_1x1.png",
       "findings": [],
       "functionName": "LauncherModeResizePreview",
       "module": "android",
@@ -785,8 +785,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.a11y.png",
-      "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.png",
+      "annotatedBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1-60c2e7da.a11y.png",
+      "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1-60c2e7da.png",
       "findings": [],
       "functionName": "LauncherWidget1x1Preview",
       "module": "android",
@@ -796,8 +796,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.a11y.png",
-      "cleanBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.png",
+      "annotatedBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2-ad0cd9ae.a11y.png",
+      "cleanBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2-ad0cd9ae.png",
       "findings": [],
       "functionName": "LauncherWidget4x2Preview",
       "module": "android",
@@ -807,8 +807,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.a11y.png",
-      "cleanBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
+      "annotatedBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5-c5e2f821.a11y.png",
+      "cleanBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5-c5e2f821.png",
       "findings": [],
       "functionName": "LauncherWidgetClampedPreview",
       "module": "android",
@@ -818,8 +818,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.a11y.png",
-      "cleanBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
+      "annotatedBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2-a7661ac2_RESIZE_1x1.a11y.png",
+      "cleanBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2-a7661ac2_RESIZE_1x1.png",
       "findings": [],
       "functionName": "LauncherWidgetResize1x1To4x2Preview",
       "module": "android",
@@ -829,8 +829,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LoadingPreview_Loading_Spinner.a11y.png",
-      "cleanBasename": "LoadingPreview_Loading_Spinner.png",
+      "annotatedBasename": "LoadingPreview_Loading_Spinner-fb8f5c2a.a11y.png",
+      "cleanBasename": "LoadingPreview_Loading_Spinner-fb8f5c2a.png",
       "findings": [],
       "functionName": "LoadingPreview",
       "module": "android",
@@ -840,8 +840,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LongTitlePreview_Edge_long_title.a11y.png",
-      "cleanBasename": "LongTitlePreview_Edge_long_title.png",
+      "annotatedBasename": "LongTitlePreview_Edge_long_title-c8e8a6a4.a11y.png",
+      "cleanBasename": "LongTitlePreview_Edge_long_title-c8e8a6a4.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -859,8 +859,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ManyActionsPreview_Edge_many_actions.a11y.png",
-      "cleanBasename": "ManyActionsPreview_Edge_many_actions.png",
+      "annotatedBasename": "ManyActionsPreview_Edge_many_actions-7158bb99.a11y.png",
+      "cleanBasename": "ManyActionsPreview_Edge_many_actions-7158bb99.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -886,7 +886,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour-3c7161e1.png",
       "findings": [],
       "functionName": "MatrixBackgroundColorPreview",
       "module": "android",
@@ -896,8 +896,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
-      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap-d9593309.a11y.png",
+      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap-d9593309.png",
       "findings": [],
       "functionName": "MatrixComponentWrapPreview",
       "module": "android",
@@ -907,8 +907,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
-      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec-84fc2828.a11y.png",
+      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec-84fc2828.png",
       "findings": [],
       "functionName": "MatrixDeviceSpecPreview",
       "module": "android",
@@ -918,8 +918,8 @@
       "variant": "spec:width=360dp,height=640dp,dpi=320"
     },
     {
-      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
-      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes-2314df5c.a11y.png",
+      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes-2314df5c.png",
       "findings": [],
       "functionName": "MatrixFixedBothAxesPreview",
       "module": "android",
@@ -929,8 +929,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
-      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only-44fb22a5.a11y.png",
+      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only-44fb22a5.png",
       "findings": [],
       "functionName": "MatrixFixedWidthOnlyPreview",
       "module": "android",
@@ -940,8 +940,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
-      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
+      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable-0120dfd4.a11y.png",
+      "cleanBasename": "MatrixFoldableDevicePreview_Foldable-0120dfd4.png",
       "findings": [],
       "functionName": "MatrixFoldableDevicePreview",
       "module": "android",
@@ -951,8 +951,8 @@
       "variant": "pixel_fold"
     },
     {
-      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
-      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
+      "annotatedBasename": "MatrixFontScaleMultiPreview_100-7e0be9a2.a11y.png",
+      "cleanBasename": "MatrixFontScaleMultiPreview_100-7e0be9a2.png",
       "findings": [],
       "functionName": "MatrixFontScaleMultiPreview",
       "module": "android",
@@ -962,8 +962,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
-      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x-f1e367f9.a11y.png",
+      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x-f1e367f9.png",
       "findings": [],
       "functionName": "MatrixFontScalePreview",
       "module": "android",
@@ -973,8 +973,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
-      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
+      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark-200d1e5f.a11y.png",
+      "cleanBasename": "MatrixLightDarkMultiPreview_Dark-200d1e5f.png",
       "findings": [],
       "functionName": "MatrixLightDarkMultiPreview",
       "module": "android",
@@ -984,8 +984,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
-      "cleanBasename": "MatrixLightPreview_Day.png",
+      "annotatedBasename": "MatrixLightPreview_Day-b4acd275.a11y.png",
+      "cleanBasename": "MatrixLightPreview_Day-b4acd275.png",
       "findings": [],
       "functionName": "MatrixLightPreview",
       "module": "android",
@@ -995,8 +995,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
-      "cleanBasename": "MatrixLocalePreview_German.png",
+      "annotatedBasename": "MatrixLocalePreview_German-2fdd5418.a11y.png",
+      "cleanBasename": "MatrixLocalePreview_German-2fdd5418.png",
       "findings": [],
       "functionName": "MatrixLocalePreview",
       "module": "android",
@@ -1006,8 +1006,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
-      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch-b7f0b4d7.a11y.png",
+      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch-b7f0b4d7.png",
       "findings": [],
       "functionName": "MatrixMetaAnnotationMultiPreview",
       "module": "android",
@@ -1017,8 +1017,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
-      "cleanBasename": "MatrixNightPreview_Night.png",
+      "annotatedBasename": "MatrixNightPreview_Night-30eeef1c.a11y.png",
+      "cleanBasename": "MatrixNightPreview_Night-30eeef1c.png",
       "findings": [],
       "functionName": "MatrixNightPreview",
       "module": "android",
@@ -1028,8 +1028,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec.a11y.png",
-      "cleanBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec.png",
+      "annotatedBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec-4ecf150e.a11y.png",
+      "cleanBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec-4ecf150e.png",
       "findings": [],
       "functionName": "MatrixParentDeviceSpecPreview",
       "module": "android",
@@ -1039,8 +1039,8 @@
       "variant": "spec:parent=small_phone,orientation=landscape"
     },
     {
-      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
-      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
+      "annotatedBasename": "MatrixPhoneDevicePreview_Phone-d310b075.a11y.png",
+      "cleanBasename": "MatrixPhoneDevicePreview_Phone-d310b075.png",
       "findings": [],
       "functionName": "MatrixPhoneDevicePreview",
       "module": "android",
@@ -1050,8 +1050,8 @@
       "variant": "pixel_5"
     },
     {
-      "annotatedBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec.a11y.png",
-      "cleanBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png",
+      "annotatedBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec-56955fac.a11y.png",
+      "cleanBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec-56955fac.png",
       "findings": [],
       "functionName": "MatrixRotatedDeviceSpecPreview",
       "module": "android",
@@ -1061,8 +1061,8 @@
       "variant": "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait"
     },
     {
-      "annotatedBasename": "MatrixScreenSizesMultiPreview_Desktop.a11y.png",
-      "cleanBasename": "MatrixScreenSizesMultiPreview_Desktop.png",
+      "annotatedBasename": "MatrixScreenSizesMultiPreview_Desktop-ecd5f61c.a11y.png",
+      "cleanBasename": "MatrixScreenSizesMultiPreview_Desktop-ecd5f61c.png",
       "findings": [],
       "functionName": "MatrixScreenSizesMultiPreview",
       "module": "android",
@@ -1072,8 +1072,8 @@
       "variant": "spec:width=1920dp,height=1080dp,dpi=160"
     },
     {
-      "annotatedBasename": "MatrixSystemUiPreview_System_UI.a11y.png",
-      "cleanBasename": "MatrixSystemUiPreview_System_UI.png",
+      "annotatedBasename": "MatrixSystemUiPreview_System_UI-d4ddb170.a11y.png",
+      "cleanBasename": "MatrixSystemUiPreview_System_UI-d4ddb170.png",
       "findings": [],
       "functionName": "MatrixSystemUiPreview",
       "module": "android",
@@ -1083,8 +1083,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixTvDevicePreview_TV.a11y.png",
-      "cleanBasename": "MatrixTvDevicePreview_TV.png",
+      "annotatedBasename": "MatrixTvDevicePreview_TV-deece86f.a11y.png",
+      "cleanBasename": "MatrixTvDevicePreview_TV-deece86f.png",
       "findings": [],
       "functionName": "MatrixTvDevicePreview",
       "module": "android",
@@ -1094,8 +1094,8 @@
       "variant": "tv_1080p"
     },
     {
-      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
-      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
+      "annotatedBasename": "MatrixWearDevicePreview_Wear-44916198.a11y.png",
+      "cleanBasename": "MatrixWearDevicePreview_Wear-44916198.png",
       "findings": [],
       "functionName": "MatrixWearDevicePreview",
       "module": "android",
@@ -1105,8 +1105,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "MediaStylePreview_Media_style.a11y.png",
-      "cleanBasename": "MediaStylePreview_Media_style.png",
+      "annotatedBasename": "MediaStylePreview_Media_style-3e7e955e.a11y.png",
+      "cleanBasename": "MediaStylePreview_Media_style-3e7e955e.png",
       "findings": [
         {
           "boundsInScreen": "137,204,1008,257",
@@ -1131,8 +1131,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MessagingStylePreview_Messaging_style.a11y.png",
-      "cleanBasename": "MessagingStylePreview_Messaging_style.png",
+      "annotatedBasename": "MessagingStylePreview_Messaging_style-0d4a8e1d.a11y.png",
+      "cleanBasename": "MessagingStylePreview_Messaging_style-0d4a8e1d.png",
       "findings": [
         {
           "boundsInScreen": "374,52,385,95",
@@ -1164,8 +1164,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.a11y.png",
-      "cleanBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png",
+      "annotatedBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen-e538b0c0.a11y.png",
+      "cleanBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen-e538b0c0.png",
       "findings": [],
       "functionName": "NamedColorPaletteSpecimenPreview",
       "module": "android",
@@ -1175,8 +1175,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "NavHostHomePreview_NavHost_Home.a11y.png",
-      "cleanBasename": "NavHostHomePreview_NavHost_Home.png",
+      "annotatedBasename": "NavHostHomePreview_NavHost_Home-efd6252b.a11y.png",
+      "cleanBasename": "NavHostHomePreview_NavHost_Home-efd6252b.png",
       "findings": [],
       "functionName": "NavHostHomePreview",
       "module": "android",
@@ -1186,8 +1186,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "NoLargeIconPreview_Edge_no_large_icon.a11y.png",
-      "cleanBasename": "NoLargeIconPreview_Edge_no_large_icon.png",
+      "annotatedBasename": "NoLargeIconPreview_Edge_no_large_icon-0f7ebe3d.a11y.png",
+      "cleanBasename": "NoLargeIconPreview_Edge_no_large_icon-0f7ebe3d.png",
       "findings": [
         {
           "boundsInScreen": "374,52,385,95",
@@ -1212,8 +1212,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "NoTextPreview_Edge_no_text.a11y.png",
-      "cleanBasename": "NoTextPreview_Edge_no_text.png",
+      "annotatedBasename": "NoTextPreview_Edge_no_text-5a6f37a4.a11y.png",
+      "cleanBasename": "NoTextPreview_Edge_no_text-5a6f37a4.png",
       "findings": [
         {
           "boundsInScreen": "0,0,1050,147",
@@ -1231,8 +1231,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PhoneGreetingPreview_Phone.a11y.png",
-      "cleanBasename": "PhoneGreetingPreview_Phone.png",
+      "annotatedBasename": "PhoneGreetingPreview_Phone-67ce8450.a11y.png",
+      "cleanBasename": "PhoneGreetingPreview_Phone-67ce8450.png",
       "findings": [],
       "functionName": "PhoneGreetingPreview",
       "module": "android",
@@ -1242,8 +1242,8 @@
       "variant": "spec:width=411dp,height=891dp"
     },
     {
-      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8.a11y.png",
-      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
+      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8-3a80e7f1.a11y.png",
+      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8-3a80e7f1.png",
       "findings": [],
       "functionName": "Pixel8SystemUiPreview",
       "module": "android",
@@ -1253,8 +1253,8 @@
       "variant": "pixel_8"
     },
     {
-      "annotatedBasename": "PressedButtonPreview_Pressed.a11y.png",
-      "cleanBasename": "PressedButtonPreview_Pressed.png",
+      "annotatedBasename": "PressedButtonPreview_Pressed-a17ba04d.a11y.png",
+      "cleanBasename": "PressedButtonPreview_Pressed-a17ba04d.png",
       "findings": [],
       "functionName": "PressedButtonPreview",
       "module": "android",
@@ -1275,8 +1275,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PseudoSampleAccent_accent.a11y.png",
-      "cleanBasename": "PseudoSampleAccent_accent.png",
+      "annotatedBasename": "PseudoSampleAccent_accent-e8482843.a11y.png",
+      "cleanBasename": "PseudoSampleAccent_accent-e8482843.png",
       "findings": [],
       "functionName": "PseudoSampleAccent",
       "module": "android",
@@ -1286,8 +1286,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PseudoSampleBidi_bidi.a11y.png",
-      "cleanBasename": "PseudoSampleBidi_bidi.png",
+      "annotatedBasename": "PseudoSampleBidi_bidi-12bb505e.a11y.png",
+      "cleanBasename": "PseudoSampleBidi_bidi-12bb505e.png",
       "findings": [],
       "functionName": "PseudoSampleBidi",
       "module": "android",
@@ -1297,8 +1297,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PseudoSampleDefault_default.a11y.png",
-      "cleanBasename": "PseudoSampleDefault_default.png",
+      "annotatedBasename": "PseudoSampleDefault_default-9bc0f435.a11y.png",
+      "cleanBasename": "PseudoSampleDefault_default-9bc0f435.png",
       "findings": [],
       "functionName": "PseudoSampleDefault",
       "module": "android",
@@ -1308,8 +1308,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
-      "cleanBasename": "RedBoxPreview_Red_Box.png",
+      "annotatedBasename": "RedBoxPreview_Red_Box-b39827fc.a11y.png",
+      "cleanBasename": "RedBoxPreview_Red_Box-b39827fc.png",
       "findings": [],
       "functionName": "RedBoxPreview",
       "module": "android",
@@ -1330,8 +1330,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.a11y.png",
-      "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
+      "annotatedBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.a11y.png",
+      "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.png",
       "findings": [],
       "functionName": "RemoteViewsWeatherWidgetPreview",
       "module": "android",
@@ -1342,7 +1342,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png",
+      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL-b0110a02.png",
       "findings": [],
       "functionName": "RuntimeShaderGradientBlobPreview",
       "module": "android",
@@ -1352,8 +1352,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SemanticsClickableButtonPreview.a11y.png",
-      "cleanBasename": "SemanticsClickableButtonPreview.png",
+      "annotatedBasename": "SemanticsClickableButtonPreview-aa893247.a11y.png",
+      "cleanBasename": "SemanticsClickableButtonPreview-aa893247.png",
       "findings": [],
       "functionName": "SemanticsClickableButtonPreview",
       "module": "android",
@@ -1363,8 +1363,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SemanticsContentDescriptionPreview.a11y.png",
-      "cleanBasename": "SemanticsContentDescriptionPreview.png",
+      "annotatedBasename": "SemanticsContentDescriptionPreview-adbbe31d.a11y.png",
+      "cleanBasename": "SemanticsContentDescriptionPreview-adbbe31d.png",
       "findings": [],
       "functionName": "SemanticsContentDescriptionPreview",
       "module": "android",
@@ -1374,8 +1374,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SemanticsMergeDescendantsPreview.a11y.png",
-      "cleanBasename": "SemanticsMergeDescendantsPreview.png",
+      "annotatedBasename": "SemanticsMergeDescendantsPreview-5ffa9648.a11y.png",
+      "cleanBasename": "SemanticsMergeDescendantsPreview-5ffa9648.png",
       "findings": [],
       "functionName": "SemanticsMergeDescendantsPreview",
       "module": "android",
@@ -1385,8 +1385,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SemanticsTestTagPreview.a11y.png",
-      "cleanBasename": "SemanticsTestTagPreview.png",
+      "annotatedBasename": "SemanticsTestTagPreview-b0c7249d.a11y.png",
+      "cleanBasename": "SemanticsTestTagPreview-b0c7249d.png",
       "findings": [],
       "functionName": "SemanticsTestTagPreview",
       "module": "android",
@@ -1408,7 +1408,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL.png",
+      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL-8184d875.png",
       "findings": [],
       "functionName": "ShaderFbmPreview",
       "module": "android",
@@ -1419,7 +1419,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL.png",
+      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL-55b455fe.png",
       "findings": [],
       "functionName": "ShaderJuliaPreview",
       "module": "android",
@@ -1430,7 +1430,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL.png",
+      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL-6476c142.png",
       "findings": [],
       "functionName": "ShaderRaymarchPreview",
       "module": "android",
@@ -1440,8 +1440,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.a11y.png",
-      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.png",
+      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL-2651ad06.a11y.png",
+      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL-2651ad06.png",
       "findings": [],
       "functionName": "ShaderRenderEffectPreview",
       "module": "android",
@@ -1451,8 +1451,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.a11y.png",
-      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.png",
+      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.a11y.png",
+      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
       "findings": [
         {
           "boundsInScreen": "179,132,383,185",
@@ -1470,8 +1470,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.a11y.png",
-      "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
+      "annotatedBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle-980612e7.a11y.png",
+      "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle-980612e7.png",
       "findings": [],
       "functionName": "SoftKeyboardIdlePreview",
       "module": "android",
@@ -1481,8 +1481,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.a11y.png",
-      "cleanBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png",
+      "annotatedBasename": "SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_0ms.a11y.png",
+      "cleanBasename": "SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_0ms.png",
       "findings": [],
       "functionName": "SpinnerTimelinePreview",
       "module": "android",
@@ -1492,8 +1492,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SplashDarkThemePreview_Splash_dark_theme.a11y.png",
-      "cleanBasename": "SplashDarkThemePreview_Splash_dark_theme.png",
+      "annotatedBasename": "SplashDarkThemePreview_Splash_dark_theme-3894747d.a11y.png",
+      "cleanBasename": "SplashDarkThemePreview_Splash_dark_theme-3894747d.png",
       "findings": [],
       "functionName": "SplashDarkThemePreview",
       "module": "android",
@@ -1503,8 +1503,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SplashIconOnlyPreview_Splash_icon_only.a11y.png",
-      "cleanBasename": "SplashIconOnlyPreview_Splash_icon_only.png",
+      "annotatedBasename": "SplashIconOnlyPreview_Splash_icon_only-b1361769.a11y.png",
+      "cleanBasename": "SplashIconOnlyPreview_Splash_icon_only-b1361769.png",
       "findings": [],
       "functionName": "SplashIconOnlyPreview",
       "module": "android",
@@ -1514,8 +1514,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.a11y.png",
-      "cleanBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
+      "annotatedBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring-fc62f4f0.a11y.png",
+      "cleanBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring-fc62f4f0.png",
       "findings": [],
       "functionName": "SplashIconWithBackgroundPreview",
       "module": "android",
@@ -1525,8 +1525,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.a11y.png",
-      "cleanBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.png",
+      "annotatedBasename": "SplashWithBrandingPreview_Splash_icon_with_branding-6e397f9f.a11y.png",
+      "cleanBasename": "SplashWithBrandingPreview_Splash_icon_with_branding-6e397f9f.png",
       "findings": [],
       "functionName": "SplashWithBrandingPreview",
       "module": "android",
@@ -1536,8 +1536,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TruncatedHeightClipPreview.a11y.png",
-      "cleanBasename": "TruncatedHeightClipPreview.png",
+      "annotatedBasename": "TruncatedHeightClipPreview-737a5079.a11y.png",
+      "cleanBasename": "TruncatedHeightClipPreview-737a5079.png",
       "findings": [],
       "functionName": "TruncatedHeightClipPreview",
       "module": "android",
@@ -1547,8 +1547,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TruncatedMaxLinesEllipsisPreview.a11y.png",
-      "cleanBasename": "TruncatedMaxLinesEllipsisPreview.png",
+      "annotatedBasename": "TruncatedMaxLinesEllipsisPreview-51dc714d.a11y.png",
+      "cleanBasename": "TruncatedMaxLinesEllipsisPreview-51dc714d.png",
       "findings": [],
       "functionName": "TruncatedMaxLinesEllipsisPreview",
       "module": "android",
@@ -1558,8 +1558,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TruncatedWidthNoWrapPreview.a11y.png",
-      "cleanBasename": "TruncatedWidthNoWrapPreview.png",
+      "annotatedBasename": "TruncatedWidthNoWrapPreview-797240e8.a11y.png",
+      "cleanBasename": "TruncatedWidthNoWrapPreview-797240e8.png",
       "findings": [],
       "functionName": "TruncatedWidthNoWrapPreview",
       "module": "android",
@@ -1569,8 +1569,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TypographySpecimenPreview_Typography_specimen.a11y.png",
-      "cleanBasename": "TypographySpecimenPreview_Typography_specimen.png",
+      "annotatedBasename": "TypographySpecimenPreview_Typography_specimen-97a834b3.a11y.png",
+      "cleanBasename": "TypographySpecimenPreview_Typography_specimen-97a834b3.png",
       "findings": [
         {
           "boundsInScreen": "368,5,1102,349",
@@ -1599,8 +1599,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SharedBlueBoxPreview_Blue.a11y.png",
-      "cleanBasename": "SharedBlueBoxPreview_Blue.png",
+      "annotatedBasename": "SharedBlueBoxPreview_Blue-31ffdd83.a11y.png",
+      "cleanBasename": "SharedBlueBoxPreview_Blue-31ffdd83.png",
       "findings": [],
       "functionName": "SharedBlueBoxPreview",
       "module": "cmp-shared",
@@ -1610,8 +1610,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SharedRedBoxPreview.a11y.png",
-      "cleanBasename": "SharedRedBoxPreview.png",
+      "annotatedBasename": "SharedRedBoxPreview-67810834.a11y.png",
+      "cleanBasename": "SharedRedBoxPreview-67810834.png",
       "findings": [],
       "functionName": "SharedRedBoxPreview",
       "module": "cmp-shared",
@@ -1621,8 +1621,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AppPreview.a11y.png",
-      "cleanBasename": "AppPreview.png",
+      "annotatedBasename": "AppPreview-02e12488.a11y.png",
+      "cleanBasename": "AppPreview-02e12488.png",
       "findings": [],
       "functionName": "AppPreview",
       "module": "cmp",
@@ -1632,8 +1632,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BlueBoxPreview_Blue_Box.a11y.png",
-      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
+      "annotatedBasename": "BlueBoxPreview_Blue_Box-d6bfa8c6.a11y.png",
+      "cleanBasename": "BlueBoxPreview_Blue_Box-d6bfa8c6.png",
       "findings": [],
       "functionName": "BlueBoxPreview",
       "module": "cmp",
@@ -1643,8 +1643,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CmpPseudoBidi_bidi.a11y.png",
-      "cleanBasename": "CmpPseudoBidi_bidi.png",
+      "annotatedBasename": "CmpPseudoBidi_bidi-80c4c080.a11y.png",
+      "cleanBasename": "CmpPseudoBidi_bidi-80c4c080.png",
       "findings": [],
       "functionName": "CmpPseudoBidi",
       "module": "cmp",
@@ -1654,8 +1654,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CmpPseudoDefault_default.a11y.png",
-      "cleanBasename": "CmpPseudoDefault_default.png",
+      "annotatedBasename": "CmpPseudoDefault_default-f4d924f2.a11y.png",
+      "cleanBasename": "CmpPseudoDefault_default-f4d924f2.png",
       "findings": [],
       "functionName": "CmpPseudoDefault",
       "module": "cmp",
@@ -1665,8 +1665,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FontScale100Preview_Font_scale_1_0x.a11y.png",
-      "cleanBasename": "FontScale100Preview_Font_scale_1_0x.png",
+      "annotatedBasename": "FontScale100Preview_Font_scale_1_0x-966325ac.a11y.png",
+      "cleanBasename": "FontScale100Preview_Font_scale_1_0x-966325ac.png",
       "findings": [],
       "functionName": "FontScale100Preview",
       "module": "cmp",
@@ -1676,8 +1676,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FontScale150Preview_Font_scale_1_5x.a11y.png",
-      "cleanBasename": "FontScale150Preview_Font_scale_1_5x.png",
+      "annotatedBasename": "FontScale150Preview_Font_scale_1_5x-8dbcc4ab.a11y.png",
+      "cleanBasename": "FontScale150Preview_Font_scale_1_5x-8dbcc4ab.png",
       "findings": [],
       "functionName": "FontScale150Preview",
       "module": "cmp",
@@ -1687,8 +1687,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FontScale200Preview_Font_scale_2_0x.a11y.png",
-      "cleanBasename": "FontScale200Preview_Font_scale_2_0x.png",
+      "annotatedBasename": "FontScale200Preview_Font_scale_2_0x-cb8aeba5.a11y.png",
+      "cleanBasename": "FontScale200Preview_Font_scale_2_0x-cb8aeba5.png",
       "findings": [],
       "functionName": "FontScale200Preview",
       "module": "cmp",
@@ -1698,8 +1698,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
-      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
+      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo-08ecc5ac.a11y.png",
+      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo-08ecc5ac.png",
       "findings": [],
       "functionName": "KeyboardDemoPreview",
       "module": "cmp",
@@ -1709,8 +1709,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LottieSpinQuarterPreview.a11y.png",
-      "cleanBasename": "LottieSpinQuarterPreview.png",
+      "annotatedBasename": "LottieSpinQuarterPreview-d4eed04d.a11y.png",
+      "cleanBasename": "LottieSpinQuarterPreview-d4eed04d.png",
       "findings": [],
       "functionName": "LottieSpinQuarterPreview",
       "module": "cmp",
@@ -1720,8 +1720,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "LottieSpinStartPreview.a11y.png",
-      "cleanBasename": "LottieSpinStartPreview.png",
+      "annotatedBasename": "LottieSpinStartPreview-5e829e09.a11y.png",
+      "cleanBasename": "LottieSpinStartPreview-5e829e09.png",
       "findings": [],
       "functionName": "LottieSpinStartPreview",
       "module": "cmp",
@@ -1732,7 +1732,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour-679eb30e.png",
       "findings": [],
       "functionName": "MatrixBackgroundColorPreview",
       "module": "cmp",
@@ -1742,8 +1742,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
-      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap-98afc818.a11y.png",
+      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap-98afc818.png",
       "findings": [],
       "functionName": "MatrixComponentWrapPreview",
       "module": "cmp",
@@ -1753,8 +1753,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
-      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec-d35abb50.a11y.png",
+      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec-d35abb50.png",
       "findings": [],
       "functionName": "MatrixDeviceSpecPreview",
       "module": "cmp",
@@ -1764,8 +1764,8 @@
       "variant": "spec:width=360dp,height=640dp,dpi=320"
     },
     {
-      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
-      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes-b86c4b8b.a11y.png",
+      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes-b86c4b8b.png",
       "findings": [],
       "functionName": "MatrixFixedBothAxesPreview",
       "module": "cmp",
@@ -1775,8 +1775,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
-      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only-edd77e16.a11y.png",
+      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only-edd77e16.png",
       "findings": [],
       "functionName": "MatrixFixedWidthOnlyPreview",
       "module": "cmp",
@@ -1786,8 +1786,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
-      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
+      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable-0f53b96f.a11y.png",
+      "cleanBasename": "MatrixFoldableDevicePreview_Foldable-0f53b96f.png",
       "findings": [],
       "functionName": "MatrixFoldableDevicePreview",
       "module": "cmp",
@@ -1797,8 +1797,8 @@
       "variant": "pixel_fold"
     },
     {
-      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
-      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
+      "annotatedBasename": "MatrixFontScaleMultiPreview_100-16141a6f.a11y.png",
+      "cleanBasename": "MatrixFontScaleMultiPreview_100-16141a6f.png",
       "findings": [],
       "functionName": "MatrixFontScaleMultiPreview",
       "module": "cmp",
@@ -1808,8 +1808,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
-      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x-4b1e4685.a11y.png",
+      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x-4b1e4685.png",
       "findings": [],
       "functionName": "MatrixFontScalePreview",
       "module": "cmp",
@@ -1819,8 +1819,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
-      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
+      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark-ab526303.a11y.png",
+      "cleanBasename": "MatrixLightDarkMultiPreview_Dark-ab526303.png",
       "findings": [],
       "functionName": "MatrixLightDarkMultiPreview",
       "module": "cmp",
@@ -1830,8 +1830,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
-      "cleanBasename": "MatrixLightPreview_Day.png",
+      "annotatedBasename": "MatrixLightPreview_Day-d3a8124b.a11y.png",
+      "cleanBasename": "MatrixLightPreview_Day-d3a8124b.png",
       "findings": [],
       "functionName": "MatrixLightPreview",
       "module": "cmp",
@@ -1841,8 +1841,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
-      "cleanBasename": "MatrixLocalePreview_German.png",
+      "annotatedBasename": "MatrixLocalePreview_German-ed4f8c8c.a11y.png",
+      "cleanBasename": "MatrixLocalePreview_German-ed4f8c8c.png",
       "findings": [],
       "functionName": "MatrixLocalePreview",
       "module": "cmp",
@@ -1852,8 +1852,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
-      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch-a4784758.a11y.png",
+      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch-a4784758.png",
       "findings": [],
       "functionName": "MatrixMetaAnnotationMultiPreview",
       "module": "cmp",
@@ -1863,8 +1863,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
-      "cleanBasename": "MatrixNightPreview_Night.png",
+      "annotatedBasename": "MatrixNightPreview_Night-27201657.a11y.png",
+      "cleanBasename": "MatrixNightPreview_Night-27201657.png",
       "findings": [],
       "functionName": "MatrixNightPreview",
       "module": "cmp",
@@ -1874,8 +1874,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec.a11y.png",
-      "cleanBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec.png",
+      "annotatedBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec-061402ff.a11y.png",
+      "cleanBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec-061402ff.png",
       "findings": [],
       "functionName": "MatrixParentDeviceSpecPreview",
       "module": "cmp",
@@ -1885,8 +1885,8 @@
       "variant": "spec:parent=small_phone,orientation=landscape"
     },
     {
-      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
-      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
+      "annotatedBasename": "MatrixPhoneDevicePreview_Phone-ccabbf0f.a11y.png",
+      "cleanBasename": "MatrixPhoneDevicePreview_Phone-ccabbf0f.png",
       "findings": [],
       "functionName": "MatrixPhoneDevicePreview",
       "module": "cmp",
@@ -1896,8 +1896,8 @@
       "variant": "pixel_5"
     },
     {
-      "annotatedBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec.a11y.png",
-      "cleanBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png",
+      "annotatedBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec-b8796029.a11y.png",
+      "cleanBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec-b8796029.png",
       "findings": [],
       "functionName": "MatrixRotatedDeviceSpecPreview",
       "module": "cmp",
@@ -1907,8 +1907,8 @@
       "variant": "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait"
     },
     {
-      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
-      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
+      "annotatedBasename": "MatrixWearDevicePreview_Wear-75cfb6d5.a11y.png",
+      "cleanBasename": "MatrixWearDevicePreview_Wear-75cfb6d5.png",
       "findings": [],
       "functionName": "MatrixWearDevicePreview",
       "module": "cmp",
@@ -1919,7 +1919,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "MultiTouchDrawingPreview_Multi_Touch_Drawing.png",
+      "cleanBasename": "MultiTouchDrawingPreview_Multi_Touch_Drawing-8e0044b7.png",
       "findings": [],
       "functionName": "MultiTouchDrawingPreview",
       "module": "cmp",
@@ -1930,7 +1930,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png",
+      "cleanBasename": "MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded-232bb583.png",
       "findings": [],
       "functionName": "MultiTouchDrawingSeededPreview",
       "module": "cmp",
@@ -1940,8 +1940,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OverridableListPreview_Overridable_List.a11y.png",
-      "cleanBasename": "OverridableListPreview_Overridable_List.png",
+      "annotatedBasename": "OverridableListPreview_Overridable_List-c264a81f.a11y.png",
+      "cleanBasename": "OverridableListPreview_Overridable_List-c264a81f.png",
       "findings": [],
       "functionName": "OverridableListPreview",
       "module": "cmp",
@@ -1952,7 +1952,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
+      "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom-89759e96.png",
       "findings": [],
       "functionName": "PinchToZoomPreview",
       "module": "cmp",
@@ -1962,8 +1962,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8.a11y.png",
-      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
+      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8-67f4e782.a11y.png",
+      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8-67f4e782.png",
       "findings": [],
       "functionName": "Pixel8SystemUiPreview",
       "module": "cmp",
@@ -1973,8 +1973,8 @@
       "variant": "pixel_8"
     },
     {
-      "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
-      "cleanBasename": "RedBoxPreview_Red_Box.png",
+      "annotatedBasename": "RedBoxPreview_Red_Box-6be26208.a11y.png",
+      "cleanBasename": "RedBoxPreview_Red_Box-6be26208.png",
       "findings": [],
       "functionName": "RedBoxPreview",
       "module": "cmp",
@@ -1985,7 +1985,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png",
+      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob-f06288be.png",
       "findings": [],
       "functionName": "RuntimeShaderGradientBlobPreview",
       "module": "cmp",
@@ -2007,7 +2007,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds.png",
+      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds-6c0e0f65.png",
       "findings": [],
       "functionName": "ShaderFbmPreview",
       "module": "cmp",
@@ -2018,7 +2018,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set.png",
+      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set-e92962cd.png",
       "findings": [],
       "functionName": "ShaderJuliaPreview",
       "module": "cmp",
@@ -2029,7 +2029,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF.png",
+      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF-f849e412.png",
       "findings": [],
       "functionName": "ShaderRaymarchPreview",
       "module": "cmp",
@@ -2039,8 +2039,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.a11y.png",
-      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.png",
+      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort-305ff197.a11y.png",
+      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort-305ff197.png",
       "findings": [],
       "functionName": "ShaderRenderEffectPreview",
       "module": "cmp",
@@ -2050,8 +2050,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ShowBackgroundNoSurfacePreview_Day.a11y.png",
-      "cleanBasename": "ShowBackgroundNoSurfacePreview_Day.png",
+      "annotatedBasename": "ShowBackgroundNoSurfacePreview_Day-94854e14.a11y.png",
+      "cleanBasename": "ShowBackgroundNoSurfacePreview_Day-94854e14.png",
       "findings": [],
       "functionName": "ShowBackgroundNoSurfacePreview",
       "module": "cmp",
@@ -2061,8 +2061,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SvgBadgePreview.a11y.png",
-      "cleanBasename": "SvgBadgePreview.png",
+      "annotatedBasename": "SvgBadgePreview-99906cca.a11y.png",
+      "cleanBasename": "SvgBadgePreview-99906cca.png",
       "findings": [],
       "functionName": "SvgBadgePreview",
       "module": "cmp",
@@ -2072,8 +2072,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SvgStarTintedPreview.a11y.png",
-      "cleanBasename": "SvgStarTintedPreview.png",
+      "annotatedBasename": "SvgStarTintedPreview-f7339549.a11y.png",
+      "cleanBasename": "SvgStarTintedPreview-f7339549.png",
       "findings": [],
       "functionName": "SvgStarTintedPreview",
       "module": "cmp",
@@ -2094,8 +2094,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "WallpaperDemoPreview_Wallpaper_Demo.a11y.png",
-      "cleanBasename": "WallpaperDemoPreview_Wallpaper_Demo.png",
+      "annotatedBasename": "WallpaperDemoPreview_Wallpaper_Demo-72cdb306.a11y.png",
+      "cleanBasename": "WallpaperDemoPreview_Wallpaper_Demo-72cdb306.png",
       "findings": [],
       "functionName": "WallpaperDemoPreview",
       "module": "cmp",
@@ -2105,8 +2105,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
-      "cleanBasename": "FilledButtonFocused_Dark.png",
+      "annotatedBasename": "FilledButtonFocused_Dark-ec0bd0a4.a11y.png",
+      "cleanBasename": "FilledButtonFocused_Dark-ec0bd0a4.png",
       "findings": [],
       "functionName": "FilledButtonFocused",
       "module": "design-catalog-m3-android",
@@ -2116,8 +2116,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AppScaffoldTemplate_Dark.a11y.png",
-      "cleanBasename": "AppScaffoldTemplate_Dark.png",
+      "annotatedBasename": "AppScaffoldTemplate_Dark-620c9d61.a11y.png",
+      "cleanBasename": "AppScaffoldTemplate_Dark-620c9d61.png",
       "findings": [],
       "functionName": "AppScaffoldTemplate",
       "module": "design-catalog-m3",
@@ -2127,8 +2127,8 @@
       "variant": "pixel_8"
     },
     {
-      "annotatedBasename": "AssistChipSticker_Dark.a11y.png",
-      "cleanBasename": "AssistChipSticker_Dark.png",
+      "annotatedBasename": "AssistChipSticker_Dark-c6a3982a.a11y.png",
+      "cleanBasename": "AssistChipSticker_Dark-c6a3982a.png",
       "findings": [],
       "functionName": "AssistChipSticker",
       "module": "design-catalog-m3",
@@ -2138,8 +2138,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BadgeSticker_Dark.a11y.png",
-      "cleanBasename": "BadgeSticker_Dark.png",
+      "annotatedBasename": "BadgeSticker_Dark-dc162abd.a11y.png",
+      "cleanBasename": "BadgeSticker_Dark-dc162abd.png",
       "findings": [],
       "functionName": "BadgeSticker",
       "module": "design-catalog-m3",
@@ -2149,8 +2149,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxChecked_Dark.a11y.png",
-      "cleanBasename": "CheckboxChecked_Dark.png",
+      "annotatedBasename": "CheckboxChecked_Dark-7857b1a3.a11y.png",
+      "cleanBasename": "CheckboxChecked_Dark-7857b1a3.png",
       "findings": [],
       "functionName": "CheckboxChecked",
       "module": "design-catalog-m3",
@@ -2161,7 +2161,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "CircularProgressSticker_Dark.png",
+      "cleanBasename": "CircularProgressSticker_Dark-9e6726a1.png",
       "findings": [],
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-m3",
@@ -2171,8 +2171,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ElevatedButtonSticker_Dark.a11y.png",
-      "cleanBasename": "ElevatedButtonSticker_Dark.png",
+      "annotatedBasename": "ElevatedButtonSticker_Dark-d072583a.a11y.png",
+      "cleanBasename": "ElevatedButtonSticker_Dark-d072583a.png",
       "findings": [],
       "functionName": "ElevatedButtonSticker",
       "module": "design-catalog-m3",
@@ -2182,8 +2182,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ElevatedCardSticker_Dark.a11y.png",
-      "cleanBasename": "ElevatedCardSticker_Dark.png",
+      "annotatedBasename": "ElevatedCardSticker_Dark-18954843.a11y.png",
+      "cleanBasename": "ElevatedCardSticker_Dark-18954843.png",
       "findings": [],
       "functionName": "ElevatedCardSticker",
       "module": "design-catalog-m3",
@@ -2193,8 +2193,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FabSticker_Dark.a11y.png",
-      "cleanBasename": "FabSticker_Dark.png",
+      "annotatedBasename": "FabSticker_Dark-4af5bc82.a11y.png",
+      "cleanBasename": "FabSticker_Dark-4af5bc82.png",
       "findings": [],
       "functionName": "FabSticker",
       "module": "design-catalog-m3",
@@ -2204,8 +2204,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButton_Dark.a11y.png",
-      "cleanBasename": "FilledButton_Dark.png",
+      "annotatedBasename": "FilledButton_Dark-a26a16d6.a11y.png",
+      "cleanBasename": "FilledButton_Dark-a26a16d6.png",
       "findings": [],
       "functionName": "FilledButton",
       "module": "design-catalog-m3",
@@ -2215,8 +2215,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButtonFocused_Dark.a11y.png",
-      "cleanBasename": "FilledButtonFocused_Dark.png",
+      "annotatedBasename": "FilledButtonFocused_Dark-5bb3debe.a11y.png",
+      "cleanBasename": "FilledButtonFocused_Dark-5bb3debe.png",
       "findings": [],
       "functionName": "FilledButtonFocused",
       "module": "design-catalog-m3",
@@ -2226,8 +2226,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButtonIconLabel_Dark.a11y.png",
-      "cleanBasename": "FilledButtonIconLabel_Dark.png",
+      "annotatedBasename": "FilledButtonIconLabel_Dark-2d53cb0b.a11y.png",
+      "cleanBasename": "FilledButtonIconLabel_Dark-2d53cb0b.png",
       "findings": [],
       "functionName": "FilledButtonIconLabel",
       "module": "design-catalog-m3",
@@ -2237,8 +2237,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButtonLargeFont_Dark.a11y.png",
-      "cleanBasename": "FilledButtonLargeFont_Dark.png",
+      "annotatedBasename": "FilledButtonLargeFont_Dark-57ebdee8.a11y.png",
+      "cleanBasename": "FilledButtonLargeFont_Dark-57ebdee8.png",
       "findings": [],
       "functionName": "FilledButtonLargeFont",
       "module": "design-catalog-m3",
@@ -2248,8 +2248,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButtonPressed_Dark.a11y.png",
-      "cleanBasename": "FilledButtonPressed_Dark.png",
+      "annotatedBasename": "FilledButtonPressed_Dark-c4e84918.a11y.png",
+      "cleanBasename": "FilledButtonPressed_Dark-c4e84918.png",
       "findings": [],
       "functionName": "FilledButtonPressed",
       "module": "design-catalog-m3",
@@ -2259,8 +2259,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledCardSticker_Dark.a11y.png",
-      "cleanBasename": "FilledCardSticker_Dark.png",
+      "annotatedBasename": "FilledCardSticker_Dark-a4dde0c8.a11y.png",
+      "cleanBasename": "FilledCardSticker_Dark-a4dde0c8.png",
       "findings": [],
       "functionName": "FilledCardSticker",
       "module": "design-catalog-m3",
@@ -2270,8 +2270,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledTonalButtonSticker_Dark.a11y.png",
-      "cleanBasename": "FilledTonalButtonSticker_Dark.png",
+      "annotatedBasename": "FilledTonalButtonSticker_Dark-33902564.a11y.png",
+      "cleanBasename": "FilledTonalButtonSticker_Dark-33902564.png",
       "findings": [],
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-m3",
@@ -2281,8 +2281,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilterChipSelected_Dark.a11y.png",
-      "cleanBasename": "FilterChipSelected_Dark.png",
+      "annotatedBasename": "FilterChipSelected_Dark-58750fb8.a11y.png",
+      "cleanBasename": "FilterChipSelected_Dark-58750fb8.png",
       "findings": [],
       "functionName": "FilterChipSelected",
       "module": "design-catalog-m3",
@@ -2293,7 +2293,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "LinearProgressSticker_Dark.png",
+      "cleanBasename": "LinearProgressSticker_Dark-b4131c7d.png",
       "findings": [],
       "functionName": "LinearProgressSticker",
       "module": "design-catalog-m3",
@@ -2303,8 +2303,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedButtonSticker_Dark.a11y.png",
-      "cleanBasename": "OutlinedButtonSticker_Dark.png",
+      "annotatedBasename": "OutlinedButtonSticker_Dark-d56655ef.a11y.png",
+      "cleanBasename": "OutlinedButtonSticker_Dark-d56655ef.png",
       "findings": [],
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-m3",
@@ -2314,8 +2314,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedCardSticker_Dark.a11y.png",
-      "cleanBasename": "OutlinedCardSticker_Dark.png",
+      "annotatedBasename": "OutlinedCardSticker_Dark-6c9348c5.a11y.png",
+      "cleanBasename": "OutlinedCardSticker_Dark-6c9348c5.png",
       "findings": [],
       "functionName": "OutlinedCardSticker",
       "module": "design-catalog-m3",
@@ -2325,8 +2325,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedTextFieldSticker_Dark.a11y.png",
-      "cleanBasename": "OutlinedTextFieldSticker_Dark.png",
+      "annotatedBasename": "OutlinedTextFieldSticker_Dark-0946df4b.a11y.png",
+      "cleanBasename": "OutlinedTextFieldSticker_Dark-0946df4b.png",
       "findings": [],
       "functionName": "OutlinedTextFieldSticker",
       "module": "design-catalog-m3",
@@ -2336,8 +2336,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RadioSelected_Dark.a11y.png",
-      "cleanBasename": "RadioSelected_Dark.png",
+      "annotatedBasename": "RadioSelected_Dark-831f5cf9.a11y.png",
+      "cleanBasename": "RadioSelected_Dark-831f5cf9.png",
       "findings": [],
       "functionName": "RadioSelected",
       "module": "design-catalog-m3",
@@ -2347,8 +2347,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SegmentedToggle_Dark.a11y.png",
-      "cleanBasename": "SegmentedToggle_Dark.png",
+      "annotatedBasename": "SegmentedToggle_Dark-a426966f.a11y.png",
+      "cleanBasename": "SegmentedToggle_Dark-a426966f.png",
       "findings": [],
       "functionName": "SegmentedToggle",
       "module": "design-catalog-m3",
@@ -2358,8 +2358,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SliderMid_Dark.a11y.png",
-      "cleanBasename": "SliderMid_Dark.png",
+      "annotatedBasename": "SliderMid_Dark-24bfe6c2.a11y.png",
+      "cleanBasename": "SliderMid_Dark-24bfe6c2.png",
       "findings": [],
       "functionName": "SliderMid",
       "module": "design-catalog-m3",
@@ -2369,8 +2369,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SlottedCardArabic_Dark.a11y.png",
-      "cleanBasename": "SlottedCardArabic_Dark.png",
+      "annotatedBasename": "SlottedCardArabic_Dark-809540c4.a11y.png",
+      "cleanBasename": "SlottedCardArabic_Dark-809540c4.png",
       "findings": [],
       "functionName": "SlottedCardArabic",
       "module": "design-catalog-m3",
@@ -2380,8 +2380,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SlottedCardSlotsSticker_Dark.a11y.png",
-      "cleanBasename": "SlottedCardSlotsSticker_Dark.png",
+      "annotatedBasename": "SlottedCardSlotsSticker_Dark-7d7d04df.a11y.png",
+      "cleanBasename": "SlottedCardSlotsSticker_Dark-7d7d04df.png",
       "findings": [],
       "functionName": "SlottedCardSlotsSticker",
       "module": "design-catalog-m3",
@@ -2391,8 +2391,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SlottedCardSticker_Dark.a11y.png",
-      "cleanBasename": "SlottedCardSticker_Dark.png",
+      "annotatedBasename": "SlottedCardSticker_Dark-c256794e.a11y.png",
+      "cleanBasename": "SlottedCardSticker_Dark-c256794e.png",
       "findings": [],
       "functionName": "SlottedCardSticker",
       "module": "design-catalog-m3",
@@ -2402,8 +2402,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SwitchOn_Dark.a11y.png",
-      "cleanBasename": "SwitchOn_Dark.png",
+      "annotatedBasename": "SwitchOn_Dark-d0f22b72.a11y.png",
+      "cleanBasename": "SwitchOn_Dark-d0f22b72.png",
       "findings": [],
       "functionName": "SwitchOn",
       "module": "design-catalog-m3",
@@ -2413,8 +2413,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SwitchOnLargeFont_Dark.a11y.png",
-      "cleanBasename": "SwitchOnLargeFont_Dark.png",
+      "annotatedBasename": "SwitchOnLargeFont_Dark-ee0e640f.a11y.png",
+      "cleanBasename": "SwitchOnLargeFont_Dark-ee0e640f.png",
       "findings": [],
       "functionName": "SwitchOnLargeFont",
       "module": "design-catalog-m3",
@@ -2424,8 +2424,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SwitchOnPseudo_Dark.a11y.png",
-      "cleanBasename": "SwitchOnPseudo_Dark.png",
+      "annotatedBasename": "SwitchOnPseudo_Dark-a41e3838.a11y.png",
+      "cleanBasename": "SwitchOnPseudo_Dark-a41e3838.png",
       "findings": [],
       "functionName": "SwitchOnPseudo",
       "module": "design-catalog-m3",
@@ -2435,8 +2435,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SwitchOnRtl_Dark.a11y.png",
-      "cleanBasename": "SwitchOnRtl_Dark.png",
+      "annotatedBasename": "SwitchOnRtl_Dark-32420640.a11y.png",
+      "cleanBasename": "SwitchOnRtl_Dark-32420640.png",
       "findings": [],
       "functionName": "SwitchOnRtl",
       "module": "design-catalog-m3",
@@ -2446,8 +2446,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextBrandedSpecimen_Dark.a11y.png",
-      "cleanBasename": "TextBrandedSpecimen_Dark.png",
+      "annotatedBasename": "TextBrandedSpecimen_Dark-3d96b654.a11y.png",
+      "cleanBasename": "TextBrandedSpecimen_Dark-3d96b654.png",
       "findings": [],
       "functionName": "TextBrandedSpecimen",
       "module": "design-catalog-m3",
@@ -2457,8 +2457,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextButtonSticker_Dark.a11y.png",
-      "cleanBasename": "TextButtonSticker_Dark.png",
+      "annotatedBasename": "TextButtonSticker_Dark-7129bde1.a11y.png",
+      "cleanBasename": "TextButtonSticker_Dark-7129bde1.png",
       "findings": [],
       "functionName": "TextButtonSticker",
       "module": "design-catalog-m3",
@@ -2468,8 +2468,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextFieldSticker_Dark.a11y.png",
-      "cleanBasename": "TextFieldSticker_Dark.png",
+      "annotatedBasename": "TextFieldSticker_Dark-451b6127.a11y.png",
+      "cleanBasename": "TextFieldSticker_Dark-451b6127.png",
       "findings": [],
       "functionName": "TextFieldSticker",
       "module": "design-catalog-m3",
@@ -2479,8 +2479,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextMaxLinesTruncated_Dark.a11y.png",
-      "cleanBasename": "TextMaxLinesTruncated_Dark.png",
+      "annotatedBasename": "TextMaxLinesTruncated_Dark-265c1520.a11y.png",
+      "cleanBasename": "TextMaxLinesTruncated_Dark-265c1520.png",
       "findings": [],
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-m3",
@@ -2490,8 +2490,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextMonospaceSpecimen_Dark.a11y.png",
-      "cleanBasename": "TextMonospaceSpecimen_Dark.png",
+      "annotatedBasename": "TextMonospaceSpecimen_Dark-79b62c5e.a11y.png",
+      "cleanBasename": "TextMonospaceSpecimen_Dark-79b62c5e.png",
       "findings": [],
       "functionName": "TextMonospaceSpecimen",
       "module": "design-catalog-m3",
@@ -2501,8 +2501,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextSerifSpecimen_Dark.a11y.png",
-      "cleanBasename": "TextSerifSpecimen_Dark.png",
+      "annotatedBasename": "TextSerifSpecimen_Dark-61cd052e.a11y.png",
+      "cleanBasename": "TextSerifSpecimen_Dark-61cd052e.png",
       "findings": [],
       "functionName": "TextSerifSpecimen",
       "module": "design-catalog-m3",
@@ -2512,8 +2512,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320-e2b2cd22.a11y.png",
+      "cleanBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320-e2b2cd22.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2531,8 +2531,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320-ad5756ba.a11y.png",
+      "cleanBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320-ad5756ba.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2550,8 +2550,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320-3a9a618a.a11y.png",
+      "cleanBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320-3a9a618a.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2583,8 +2583,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "CardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "CardRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "CardRemote_width_320dp_height_240dp_dpi_320-2eda8c93.a11y.png",
+      "cleanBasename": "CardRemote_width_320dp_height_240dp_dpi_320-2eda8c93.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2602,8 +2602,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320-357c38a0.a11y.png",
+      "cleanBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320-357c38a0.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2621,8 +2621,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320-4ee4c315.a11y.png",
+      "cleanBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320-4ee4c315.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2640,8 +2640,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320-7ee67fc7.a11y.png",
+      "cleanBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320-7ee67fc7.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2659,8 +2659,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320-2f5d5e12.a11y.png",
+      "cleanBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320-2f5d5e12.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2678,8 +2678,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320-6cca0df4.a11y.png",
+      "cleanBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320-6cca0df4.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2697,8 +2697,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "IconRemote_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "IconRemote_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "IconRemote_width_200dp_height_200dp_dpi_320-434ea5c6.a11y.png",
+      "cleanBasename": "IconRemote_width_200dp_height_200dp_dpi_320-434ea5c6.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2716,8 +2716,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320-f294781f.a11y.png",
+      "cleanBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320-f294781f.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2735,8 +2735,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320-623f9ce1.a11y.png",
+      "cleanBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320-623f9ce1.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2754,8 +2754,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320-a0ceded5.a11y.png",
+      "cleanBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320-a0ceded5.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2773,8 +2773,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320-4a5e18ae.a11y.png",
+      "cleanBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320-4a5e18ae.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2792,8 +2792,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320-b00e81d6.a11y.png",
+      "cleanBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320-b00e81d6.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2811,8 +2811,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320-09a8cfd4.a11y.png",
+      "cleanBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320-09a8cfd4.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2830,8 +2830,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320.png",
+      "annotatedBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.a11y.png",
+      "cleanBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.png",
       "findings": [
         {
           "boundsInScreen": "0,0,400,400",
@@ -2849,8 +2849,8 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320-ce704d0d.a11y.png",
+      "cleanBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320-ce704d0d.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2868,8 +2868,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320-263bb46f.a11y.png",
+      "cleanBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320-263bb46f.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2887,8 +2887,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320-c074d884.a11y.png",
+      "cleanBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320-c074d884.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2906,8 +2906,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320-af41f511.a11y.png",
+      "cleanBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320-af41f511.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2925,8 +2925,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320-c5297cbc.a11y.png",
+      "cleanBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320-c5297cbc.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2944,8 +2944,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.a11y.png",
-      "cleanBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.png",
+      "annotatedBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320-a9b00d46.a11y.png",
+      "cleanBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320-a9b00d46.png",
       "findings": [
         {
           "boundsInScreen": "0,0,640,480",
@@ -2963,8 +2963,8 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.a11y.png",
-      "cleanBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.png",
+      "annotatedBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320-5416f245.a11y.png",
+      "cleanBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320-5416f245.png",
       "findings": [
         {
           "boundsInScreen": "0,0,454,454",
@@ -2982,8 +2982,8 @@
       "variant": "spec:width=227dp,height=227dp,dpi=320"
     },
     {
-      "annotatedBasename": "WidgetContainerGradientRemote.a11y.png",
-      "cleanBasename": "WidgetContainerGradientRemote.png",
+      "annotatedBasename": "WidgetContainerGradientRemote-1395969e.a11y.png",
+      "cleanBasename": "WidgetContainerGradientRemote-1395969e.png",
       "findings": [
         {
           "boundsInScreen": "0,0,567,199",
@@ -3001,8 +3001,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "WidgetContainerLargeRemote.a11y.png",
-      "cleanBasename": "WidgetContainerLargeRemote.png",
+      "annotatedBasename": "WidgetContainerLargeRemote-9e05ac42.a11y.png",
+      "cleanBasename": "WidgetContainerLargeRemote-9e05ac42.png",
       "findings": [
         {
           "boundsInScreen": "0,0,567,325",
@@ -3020,8 +3020,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "WidgetContainerSmallRemote.a11y.png",
-      "cleanBasename": "WidgetContainerSmallRemote.png",
+      "annotatedBasename": "WidgetContainerSmallRemote-2a1ec00c.a11y.png",
+      "cleanBasename": "WidgetContainerSmallRemote-2a1ec00c.png",
       "findings": [
         {
           "boundsInScreen": "0,0,567,199",
@@ -3039,8 +3039,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "AppCardSticker.a11y.png",
-      "cleanBasename": "AppCardSticker.png",
+      "annotatedBasename": "AppCardSticker-0511a664.a11y.png",
+      "cleanBasename": "AppCardSticker-0511a664.png",
       "findings": [],
       "functionName": "AppCardSticker",
       "module": "design-catalog-wear-m3",
@@ -3050,8 +3050,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ButtonFocused.a11y.png",
-      "cleanBasename": "ButtonFocused.png",
+      "annotatedBasename": "ButtonFocused-88f5fd11.a11y.png",
+      "cleanBasename": "ButtonFocused-88f5fd11.png",
       "findings": [],
       "functionName": "ButtonFocused",
       "module": "design-catalog-wear-m3",
@@ -3061,8 +3061,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ButtonGroupSticker.a11y.png",
-      "cleanBasename": "ButtonGroupSticker.png",
+      "annotatedBasename": "ButtonGroupSticker-01a92ed4.a11y.png",
+      "cleanBasename": "ButtonGroupSticker-01a92ed4.png",
       "findings": [],
       "functionName": "ButtonGroupSticker",
       "module": "design-catalog-wear-m3",
@@ -3072,8 +3072,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ButtonPressed.a11y.png",
-      "cleanBasename": "ButtonPressed.png",
+      "annotatedBasename": "ButtonPressed-2ae1b0cc.a11y.png",
+      "cleanBasename": "ButtonPressed-2ae1b0cc.png",
       "findings": [],
       "functionName": "ButtonPressed",
       "module": "design-catalog-wear-m3",
@@ -3094,8 +3094,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "CardSticker.a11y.png",
-      "cleanBasename": "CardSticker.png",
+      "annotatedBasename": "CardSticker-969b9614.a11y.png",
+      "cleanBasename": "CardSticker-969b9614.png",
       "findings": [],
       "functionName": "CardSticker",
       "module": "design-catalog-wear-m3",
@@ -3105,8 +3105,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxButtonChecked.a11y.png",
-      "cleanBasename": "CheckboxButtonChecked.png",
+      "annotatedBasename": "CheckboxButtonChecked-16f1990b.a11y.png",
+      "cleanBasename": "CheckboxButtonChecked-16f1990b.png",
       "findings": [],
       "functionName": "CheckboxButtonChecked",
       "module": "design-catalog-wear-m3",
@@ -3116,8 +3116,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ChildButtonSticker.a11y.png",
-      "cleanBasename": "ChildButtonSticker.png",
+      "annotatedBasename": "ChildButtonSticker-3f85a48b.a11y.png",
+      "cleanBasename": "ChildButtonSticker-3f85a48b.png",
       "findings": [],
       "functionName": "ChildButtonSticker",
       "module": "design-catalog-wear-m3",
@@ -3128,7 +3128,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "CircularProgressSticker.png",
+      "cleanBasename": "CircularProgressSticker-7c820266.png",
       "findings": [],
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-wear-m3",
@@ -3139,7 +3139,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ColorSchemeSpecimen.png",
+      "cleanBasename": "ColorSchemeSpecimen-396e8c6b.png",
       "findings": [],
       "functionName": "ColorSchemeSpecimen",
       "module": "design-catalog-wear-m3",
@@ -3149,8 +3149,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CompactButtonSticker.a11y.png",
-      "cleanBasename": "CompactButtonSticker.png",
+      "annotatedBasename": "CompactButtonSticker-5e2b504a.a11y.png",
+      "cleanBasename": "CompactButtonSticker-5e2b504a.png",
       "findings": [],
       "functionName": "CompactButtonSticker",
       "module": "design-catalog-wear-m3",
@@ -3160,8 +3160,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledButton.a11y.png",
-      "cleanBasename": "FilledButton.png",
+      "annotatedBasename": "FilledButton-f83b812e.a11y.png",
+      "cleanBasename": "FilledButton-f83b812e.png",
       "findings": [],
       "functionName": "FilledButton",
       "module": "design-catalog-wear-m3",
@@ -3171,8 +3171,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledTonalButtonSticker.a11y.png",
-      "cleanBasename": "FilledTonalButtonSticker.png",
+      "annotatedBasename": "FilledTonalButtonSticker-4a48fe41.a11y.png",
+      "cleanBasename": "FilledTonalButtonSticker-4a48fe41.png",
       "findings": [],
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-wear-m3",
@@ -3182,8 +3182,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "IconButtonSticker.a11y.png",
-      "cleanBasename": "IconButtonSticker.png",
+      "annotatedBasename": "IconButtonSticker-6670ead5.a11y.png",
+      "cleanBasename": "IconButtonSticker-6670ead5.png",
       "findings": [],
       "functionName": "IconButtonSticker",
       "module": "design-catalog-wear-m3",
@@ -3193,8 +3193,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "IconSticker.a11y.png",
-      "cleanBasename": "IconSticker.png",
+      "annotatedBasename": "IconSticker-41c04e35.a11y.png",
+      "cleanBasename": "IconSticker-41c04e35.png",
       "findings": [],
       "functionName": "IconSticker",
       "module": "design-catalog-wear-m3",
@@ -3205,7 +3205,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "IndeterminateCircularProgressSticker.png",
+      "cleanBasename": "IndeterminateCircularProgressSticker-08fc79fa.png",
       "findings": [],
       "functionName": "IndeterminateCircularProgressSticker",
       "module": "design-catalog-wear-m3",
@@ -3215,8 +3215,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ListHeaderSticker.a11y.png",
-      "cleanBasename": "ListHeaderSticker.png",
+      "annotatedBasename": "ListHeaderSticker-7f5259a9.a11y.png",
+      "cleanBasename": "ListHeaderSticker-7f5259a9.png",
       "findings": [],
       "functionName": "ListHeaderSticker",
       "module": "design-catalog-wear-m3",
@@ -3226,8 +3226,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedButtonSticker.a11y.png",
-      "cleanBasename": "OutlinedButtonSticker.png",
+      "annotatedBasename": "OutlinedButtonSticker-8d071c35.a11y.png",
+      "cleanBasename": "OutlinedButtonSticker-8d071c35.png",
       "findings": [],
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-wear-m3",
@@ -3237,8 +3237,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "OutlinedCardSticker.a11y.png",
-      "cleanBasename": "OutlinedCardSticker.png",
+      "annotatedBasename": "OutlinedCardSticker-83b90f11.a11y.png",
+      "cleanBasename": "OutlinedCardSticker-83b90f11.png",
       "findings": [],
       "functionName": "OutlinedCardSticker",
       "module": "design-catalog-wear-m3",
@@ -3248,8 +3248,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PageIndicatorScaffoldTemplate_Large_Round.a11y.png",
-      "cleanBasename": "PageIndicatorScaffoldTemplate_Large_Round.png",
+      "annotatedBasename": "PageIndicatorScaffoldTemplate_Large_Round-809d5058.a11y.png",
+      "cleanBasename": "PageIndicatorScaffoldTemplate_Large_Round-809d5058.png",
       "findings": [],
       "functionName": "PageIndicatorScaffoldTemplate",
       "module": "design-catalog-wear-m3",
@@ -3259,8 +3259,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "ScalingListSticker_Large_Round.a11y.png",
-      "cleanBasename": "ScalingListSticker_Large_Round.png",
+      "annotatedBasename": "ScalingListSticker_Large_Round-58cc4bcc.a11y.png",
+      "cleanBasename": "ScalingListSticker_Large_Round-58cc4bcc.png",
       "findings": [],
       "functionName": "ScalingListSticker",
       "module": "design-catalog-wear-m3",
@@ -3270,8 +3270,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "SwitchButtonOn.a11y.png",
-      "cleanBasename": "SwitchButtonOn.png",
+      "annotatedBasename": "SwitchButtonOn-3f3536cc.a11y.png",
+      "cleanBasename": "SwitchButtonOn-3f3536cc.png",
       "findings": [],
       "functionName": "SwitchButtonOn",
       "module": "design-catalog-wear-m3",
@@ -3281,8 +3281,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TextMaxLinesTruncated.a11y.png",
-      "cleanBasename": "TextMaxLinesTruncated.png",
+      "annotatedBasename": "TextMaxLinesTruncated-7f494e93.a11y.png",
+      "cleanBasename": "TextMaxLinesTruncated-7f494e93.png",
       "findings": [],
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-wear-m3",
@@ -3292,8 +3292,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TimeTextScaffoldTemplate_Large_Round.a11y.png",
-      "cleanBasename": "TimeTextScaffoldTemplate_Large_Round.png",
+      "annotatedBasename": "TimeTextScaffoldTemplate_Large_Round-954aa5b2.a11y.png",
+      "cleanBasename": "TimeTextScaffoldTemplate_Large_Round-954aa5b2.png",
       "findings": [],
       "functionName": "TimeTextScaffoldTemplate",
       "module": "design-catalog-wear-m3",
@@ -3303,8 +3303,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "TitleCardSticker.a11y.png",
-      "cleanBasename": "TitleCardSticker.png",
+      "annotatedBasename": "TitleCardSticker-cbc914a7.a11y.png",
+      "cleanBasename": "TitleCardSticker-cbc914a7.png",
       "findings": [],
       "functionName": "TitleCardSticker",
       "module": "design-catalog-wear-m3",
@@ -3314,8 +3314,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "TypographySpecimen.a11y.png",
-      "cleanBasename": "TypographySpecimen.png",
+      "annotatedBasename": "TypographySpecimen-51bfdfc6.a11y.png",
+      "cleanBasename": "TypographySpecimen-51bfdfc6.png",
       "findings": [],
       "functionName": "TypographySpecimen",
       "module": "design-catalog-wear-m3",
@@ -3325,8 +3325,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BlueLabelPreview_BlueLabel.a11y.png",
-      "cleanBasename": "BlueLabelPreview_BlueLabel.png",
+      "annotatedBasename": "BlueLabelPreview_BlueLabel-46b6b7b2.a11y.png",
+      "cleanBasename": "BlueLabelPreview_BlueLabel-46b6b7b2.png",
       "findings": [],
       "functionName": "BlueLabelPreview",
       "module": "desktop-daemon-bench",
@@ -3336,8 +3336,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GreenButtonPreview_GreenButton.a11y.png",
-      "cleanBasename": "GreenButtonPreview_GreenButton.png",
+      "annotatedBasename": "GreenButtonPreview_GreenButton-2c07f0f5.a11y.png",
+      "cleanBasename": "GreenButtonPreview_GreenButton-2c07f0f5.png",
       "findings": [],
       "functionName": "GreenButtonPreview",
       "module": "desktop-daemon-bench",
@@ -3348,7 +3348,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "RedSquarePreview_RedSquare.png",
+      "cleanBasename": "RedSquarePreview_RedSquare-9b024b4b.png",
       "findings": [],
       "functionName": "RedSquarePreview",
       "module": "desktop-daemon-bench",
@@ -3359,7 +3359,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "RowPreview_Row.png",
+      "cleanBasename": "RowPreview_Row-c8bd7b16.png",
       "findings": [],
       "functionName": "RowPreview",
       "module": "desktop-daemon-bench",
@@ -3369,8 +3369,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "StackPreview_Stack.a11y.png",
-      "cleanBasename": "StackPreview_Stack.png",
+      "annotatedBasename": "StackPreview_Stack-8cf5ab32.a11y.png",
+      "cleanBasename": "StackPreview_Stack-8cf5ab32.png",
       "findings": [],
       "functionName": "StackPreview",
       "module": "desktop-daemon-bench",
@@ -3380,8 +3380,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview.a11y.png",
-      "cleanBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview.png",
+      "annotatedBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.a11y.png",
+      "cleanBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
       "findings": [
         {
           "boundsInScreen": "168,168,357,357",
@@ -3399,8 +3399,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview.a11y.png",
-      "cleanBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview.png",
+      "annotatedBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.a11y.png",
+      "cleanBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -3418,8 +3418,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteButtonEnabledPreview.a11y.png",
-      "cleanBasename": "RemoteButtonEnabledPreview.png",
+      "annotatedBasename": "RemoteButtonEnabledPreview-23dedf54.a11y.png",
+      "cleanBasename": "RemoteButtonEnabledPreview-23dedf54.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -3437,8 +3437,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteButtonWithBorderPreview.a11y.png",
-      "cleanBasename": "RemoteButtonWithBorderPreview.png",
+      "annotatedBasename": "RemoteButtonWithBorderPreview-298b3408.a11y.png",
+      "cleanBasename": "RemoteButtonWithBorderPreview-298b3408.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -3456,8 +3456,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteButtonWithNamedLabelPreview.a11y.png",
-      "cleanBasename": "RemoteButtonWithNamedLabelPreview.png",
+      "annotatedBasename": "RemoteButtonWithNamedLabelPreview-f3014b8f.a11y.png",
+      "cleanBasename": "RemoteButtonWithNamedLabelPreview-f3014b8f.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -3475,8 +3475,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteButtonWithShapePreview.a11y.png",
-      "cleanBasename": "RemoteButtonWithShapePreview.png",
+      "annotatedBasename": "RemoteButtonWithShapePreview-3935d3f3.a11y.png",
+      "cleanBasename": "RemoteButtonWithShapePreview-3935d3f3.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -3494,8 +3494,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteShaderGradientPreview.a11y.png",
-      "cleanBasename": "RemoteShaderGradientPreview.png",
+      "annotatedBasename": "RemoteShaderGradientPreview-6739688f.a11y.png",
+      "cleanBasename": "RemoteShaderGradientPreview-6739688f.png",
       "findings": [
         {
           "boundsInScreen": "0,0,525,525",
@@ -3513,8 +3513,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle.a11y.png",
-      "cleanBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle.png",
+      "annotatedBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.a11y.png",
+      "cleanBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png",
       "findings": [
         {
           "boundsInScreen": "0,0,504,504",
@@ -3532,8 +3532,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview.a11y.png",
-      "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview.png",
+      "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.a11y.png",
+      "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.png",
       "findings": [],
       "functionName": "SdkMatrixPreview",
       "module": "sdk-matrix",
@@ -3543,8 +3543,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.a11y.png",
-      "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.png",
+      "annotatedBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.a11y.png",
+      "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed-a795d081.png",
       "findings": [
         {
           "boundsInScreen": "0,0,567,199",
@@ -3600,8 +3600,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.a11y.png",
-      "cleanBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.png",
+      "annotatedBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x-56fd4ccb.a11y.png",
+      "cleanBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x-56fd4ccb.png",
       "findings": [],
       "functionName": "ActivityListDeviceMatrixPreview",
       "module": "wear",
@@ -3611,8 +3611,8 @@
       "variant": "spec:width=385dp,height=385dp,dpi=360,isRound=true"
     },
     {
-      "annotatedBasename": "ActivityListFontScalesPreview_Fonts_Large.a11y.png",
-      "cleanBasename": "ActivityListFontScalesPreview_Fonts_Large.png",
+      "annotatedBasename": "ActivityListFontScalesPreview_Fonts_Large-11543d6b.a11y.png",
+      "cleanBasename": "ActivityListFontScalesPreview_Fonts_Large-11543d6b.png",
       "findings": [],
       "functionName": "ActivityListFontScalesPreview",
       "module": "wear",
@@ -3655,8 +3655,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "ActivityListPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ActivityListPreview_Devices_Large_Round.png",
+      "annotatedBasename": "ActivityListPreview_Devices_Large_Round-e1600e4b.a11y.png",
+      "cleanBasename": "ActivityListPreview_Devices_Large_Round-e1600e4b.png",
       "findings": [],
       "functionName": "ActivityListPreview",
       "module": "wear",
@@ -3666,8 +3666,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.a11y.png",
-      "cleanBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.png",
+      "annotatedBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-934d83d6.a11y.png",
+      "cleanBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-934d83d6.png",
       "findings": [],
       "functionName": "ActivityListRealDeviceMatrixPreview",
       "module": "wear",
@@ -3677,8 +3677,8 @@
       "variant": "spec:width=211dp,height=211dp,dpi=340,isRound=true"
     },
     {
-      "annotatedBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
-      "cleanBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient.png",
+      "annotatedBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient-47248174.a11y.png",
+      "cleanBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient-47248174.png",
       "findings": [],
       "functionName": "AmbientStatusAmbientPreview",
       "module": "wear",
@@ -3688,8 +3688,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png",
-      "cleanBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive.png",
+      "annotatedBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive-e608dece.a11y.png",
+      "cleanBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive-e608dece.png",
       "findings": [],
       "functionName": "AmbientStatusInteractivePreview",
       "module": "wear",
@@ -3699,8 +3699,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "BadWearButtonPreview_Devices_Small_Round.a11y.png",
-      "cleanBasename": "BadWearButtonPreview_Devices_Small_Round.png",
+      "annotatedBasename": "BadWearButtonPreview_Devices_Small_Round-f602a4bd.a11y.png",
+      "cleanBasename": "BadWearButtonPreview_Devices_Small_Round-f602a4bd.png",
       "findings": [
         {
           "boundsInScreen": "144,144,240,240",
@@ -3718,8 +3718,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "ButtonHintScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png",
-      "cleanBasename": "ButtonHintScreenPreview_Devices_Large_Round_TIME_800ms.png",
+      "annotatedBasename": "ButtonHintScreenPreview_Devices_Large_Round-760620e6_TIME_800ms.a11y.png",
+      "cleanBasename": "ButtonHintScreenPreview_Devices_Large_Round-760620e6_TIME_800ms.png",
       "findings": [],
       "functionName": "ButtonHintScreenPreview",
       "module": "wear",
@@ -3729,8 +3729,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "ButtonPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ButtonPreview_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonPreview_Devices_Large_Round-d94d0c3c.a11y.png",
+      "cleanBasename": "ButtonPreview_Devices_Large_Round-d94d0c3c.png",
       "findings": [],
       "functionName": "ButtonPreview",
       "module": "wear",
@@ -3741,7 +3741,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "CircularProgressIndicatorPreview_Devices_Large_Round.png",
+      "cleanBasename": "CircularProgressIndicatorPreview_Devices_Large_Round-7c93b36b.png",
       "findings": [],
       "functionName": "CircularProgressIndicatorPreview",
       "module": "wear",
@@ -3751,8 +3751,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "DisabledGestureScreenPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "DisabledGestureScreenPreview_Devices_Large_Round.png",
+      "annotatedBasename": "DisabledGestureScreenPreview_Devices_Large_Round-0db487e4.a11y.png",
+      "cleanBasename": "DisabledGestureScreenPreview_Devices_Large_Round-0db487e4.png",
       "findings": [],
       "functionName": "DisabledGestureScreenPreview",
       "module": "wear",
@@ -3762,8 +3762,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "DismissActionScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png",
-      "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round_TIME_800ms.png",
+      "annotatedBasename": "DismissActionScreenPreview_Devices_Large_Round-288e3df3_TIME_800ms.a11y.png",
+      "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round-288e3df3_TIME_800ms.png",
       "findings": [],
       "functionName": "DismissActionScreenPreview",
       "module": "wear",
@@ -3773,8 +3773,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "GestureGalleryPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "GestureGalleryPreview_Devices_Large_Round.png",
+      "annotatedBasename": "GestureGalleryPreview_Devices_Large_Round-67656b37.a11y.png",
+      "cleanBasename": "GestureGalleryPreview_Devices_Large_Round-67656b37.png",
       "findings": [
         {
           "boundsInScreen": "74,169,380,247",
@@ -3799,8 +3799,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.a11y.png",
-      "cleanBasename": "MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.png",
+      "annotatedBasename": "MediaGestureScreenHintPreview_Media_hints_on-35de4e0d_TIME_800ms.a11y.png",
+      "cleanBasename": "MediaGestureScreenHintPreview_Media_hints_on-35de4e0d_TIME_800ms.png",
       "findings": [],
       "functionName": "MediaGestureScreenHintPreview",
       "module": "wear",
@@ -3810,8 +3810,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "MediaGestureScreenPreview_Media_hints_off.a11y.png",
-      "cleanBasename": "MediaGestureScreenPreview_Media_hints_off.png",
+      "annotatedBasename": "MediaGestureScreenPreview_Media_hints_off-e089b6a3.a11y.png",
+      "cleanBasename": "MediaGestureScreenPreview_Media_hints_off-e089b6a3.png",
       "findings": [],
       "functionName": "MediaGestureScreenPreview",
       "module": "wear",
@@ -3821,8 +3821,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PageGestureScreenPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
+      "annotatedBasename": "PageGestureScreenPreview_Devices_Large_Round-c9dbc2c3.a11y.png",
+      "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round-c9dbc2c3.png",
       "findings": [],
       "functionName": "PageGestureScreenPreview",
       "module": "wear",
@@ -3833,7 +3833,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PageIndicatorStickerPreview.png",
+      "cleanBasename": "PageIndicatorStickerPreview-77a9301c.png",
       "findings": [],
       "functionName": "PageIndicatorStickerPreview",
       "module": "wear",
@@ -3843,8 +3843,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PlaceholderCardLoaded_wearos_small_round.a11y.png",
-      "cleanBasename": "PlaceholderCardLoaded_wearos_small_round.png",
+      "annotatedBasename": "PlaceholderCardLoaded_wearos_small_round-19b1296d.a11y.png",
+      "cleanBasename": "PlaceholderCardLoaded_wearos_small_round-19b1296d.png",
       "findings": [],
       "functionName": "PlaceholderCardLoaded",
       "module": "wear",
@@ -3854,8 +3854,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PlaceholderCardLoading_wearos_small_round.a11y.png",
-      "cleanBasename": "PlaceholderCardLoading_wearos_small_round.png",
+      "annotatedBasename": "PlaceholderCardLoading_wearos_small_round-636c01fa.a11y.png",
+      "cleanBasename": "PlaceholderCardLoading_wearos_small_round-636c01fa.png",
       "findings": [
         {
           "boundsInScreen": "32,128,352,256",
@@ -3873,8 +3873,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PlaceholderCardOverrideDriven_wearos_small_round.a11y.png",
-      "cleanBasename": "PlaceholderCardOverrideDriven_wearos_small_round.png",
+      "annotatedBasename": "PlaceholderCardOverrideDriven_wearos_small_round-c95be631.a11y.png",
+      "cleanBasename": "PlaceholderCardOverrideDriven_wearos_small_round-c95be631.png",
       "findings": [],
       "functionName": "PlaceholderCardOverrideDriven",
       "module": "wear",
@@ -3884,8 +3884,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PrimaryActionScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png",
-      "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round_TIME_800ms.png",
+      "annotatedBasename": "PrimaryActionScreenPreview_Devices_Large_Round-454385ac_TIME_800ms.a11y.png",
+      "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round-454385ac_TIME_800ms.png",
       "findings": [],
       "functionName": "PrimaryActionScreenPreview",
       "module": "wear",
@@ -3895,8 +3895,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PrimaryActionStickerPreview_TIME_800ms.a11y.png",
-      "cleanBasename": "PrimaryActionStickerPreview_TIME_800ms.png",
+      "annotatedBasename": "PrimaryActionStickerPreview-bde44328_TIME_800ms.a11y.png",
+      "cleanBasename": "PrimaryActionStickerPreview-bde44328_TIME_800ms.png",
       "findings": [],
       "functionName": "PrimaryActionStickerPreview",
       "module": "wear",
@@ -3906,8 +3906,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ScrollGestureScreenPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
+      "annotatedBasename": "ScrollGestureScreenPreview_Devices_Large_Round-940cb46d.a11y.png",
+      "cleanBasename": "ScrollGestureScreenPreview_Devices_Large_Round-940cb46d.png",
       "findings": [],
       "functionName": "ScrollGestureScreenPreview",
       "module": "wear",
@@ -3918,7 +3918,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ScrollIndicatorStickerPreview.png",
+      "cleanBasename": "ScrollIndicatorStickerPreview-836176d6.png",
       "findings": [],
       "functionName": "ScrollIndicatorStickerPreview",
       "module": "wear",
@@ -3939,8 +3939,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "WearAppSystemClockPreview_Devices_Large_Round.a11y.png",
-      "cleanBasename": "WearAppSystemClockPreview_Devices_Large_Round.png",
+      "annotatedBasename": "WearAppSystemClockPreview_Devices_Large_Round-ec8363cf.a11y.png",
+      "cleanBasename": "WearAppSystemClockPreview_Devices_Large_Round-ec8363cf.png",
       "findings": [],
       "functionName": "WearAppSystemClockPreview",
       "module": "wear",
@@ -3950,8 +3950,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "WearDeviceMatrixPreview_Large_Round_227dp.a11y.png",
-      "cleanBasename": "WearDeviceMatrixPreview_Large_Round_227dp.png",
+      "annotatedBasename": "WearDeviceMatrixPreview_Large_Round_227dp-6e431ca7.a11y.png",
+      "cleanBasename": "WearDeviceMatrixPreview_Large_Round_227dp-6e431ca7.png",
       "findings": [],
       "functionName": "WearDeviceMatrixPreview",
       "module": "wear",
@@ -3961,8 +3961,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.a11y.png",
-      "cleanBasename": "WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.png",
+      "annotatedBasename": "WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-c506752b.a11y.png",
+      "cleanBasename": "WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-c506752b.png",
       "findings": [],
       "functionName": "WearRealDeviceMatrixPreview",
       "module": "wear",
@@ -3972,8 +3972,8 @@
       "variant": "spec:width=211dp,height=211dp,dpi=340,isRound=true"
     },
     {
-      "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",
-      "cleanBasename": "FocusableMenu_Glimmer_Input.png",
+      "annotatedBasename": "FocusableMenu_Glimmer_Input-255da5a0.a11y.png",
+      "cleanBasename": "FocusableMenu_Glimmer_Input-255da5a0.png",
       "findings": [],
       "functionName": "FocusableMenu",
       "module": "xr-glimmer",
@@ -3983,8 +3983,8 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default.a11y.png",
-      "cleanBasename": "GlimmerListItemDefault_Glimmer_Default.png",
+      "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default-15e249f5.a11y.png",
+      "cleanBasename": "GlimmerListItemDefault_Glimmer_Default-15e249f5.png",
       "findings": [],
       "functionName": "GlimmerListItemDefault",
       "module": "xr-glimmer",
@@ -3994,8 +3994,8 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused.a11y.png",
-      "cleanBasename": "GlimmerListItemFocused_Glimmer_Focused.png",
+      "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused-0677c8d3.a11y.png",
+      "cleanBasename": "GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png",
       "findings": [],
       "functionName": "GlimmerListItemFocused",
       "module": "xr-glimmer",
@@ -4005,8 +4005,8 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "GlimmerListItemPressed_Glimmer_Pressed.a11y.png",
-      "cleanBasename": "GlimmerListItemPressed_Glimmer_Pressed.png",
+      "annotatedBasename": "GlimmerListItemPressed_Glimmer_Pressed-2221a813.a11y.png",
+      "cleanBasename": "GlimmerListItemPressed_Glimmer_Pressed-2221a813.png",
       "findings": [],
       "functionName": "GlimmerListItemPressed",
       "module": "xr-glimmer",
@@ -4016,8 +4016,8 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png",
-      "cleanBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.png",
+      "annotatedBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.a11y.png",
+      "cleanBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
       "findings": [],
       "functionName": "GlimmerListPressedWalk",
       "module": "xr-glimmer",
@@ -4027,8 +4027,8 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
-      "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
+      "annotatedBasename": "NowPlayingCard_Glimmer_Busy-46226e1d.a11y.png",
+      "cleanBasename": "NowPlayingCard_Glimmer_Busy-46226e1d.png",
       "findings": [],
       "functionName": "NowPlayingCard",
       "module": "xr-glimmer",
@@ -4038,8 +4038,8 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "NowPlayingPanelPreview_Panel_Content.a11y.png",
-      "cleanBasename": "NowPlayingPanelPreview_Panel_Content.png",
+      "annotatedBasename": "NowPlayingPanelPreview_Panel_Content-bbdf56ea.a11y.png",
+      "cleanBasename": "NowPlayingPanelPreview_Panel_Content-bbdf56ea.png",
       "findings": [],
       "functionName": "NowPlayingPanelPreview",
       "module": "xr-spatial",
@@ -4050,7 +4050,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "OrbiterControlsPreview_Orbiter_TopControls.png",
+      "cleanBasename": "OrbiterControlsPreview_Orbiter_TopControls-a7f9ee4b.png",
       "findings": [],
       "functionName": "OrbiterControlsPreview",
       "module": "xr-spatial",
@@ -4060,8 +4060,8 @@
       "variant": "spec:width=1280,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "SpatialElevationPreview_SpatialElevation_Panel.a11y.png",
-      "cleanBasename": "SpatialElevationPreview_SpatialElevation_Panel.png",
+      "annotatedBasename": "SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.a11y.png",
+      "cleanBasename": "SpatialElevationPreview_SpatialElevation_Panel-6bcca19d.png",
       "findings": [],
       "functionName": "SpatialElevationPreview",
       "module": "xr-spatial",
