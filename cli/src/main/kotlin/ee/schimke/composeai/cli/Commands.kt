@@ -1141,33 +1141,28 @@ internal fun previewIdMatchesRequest(
 }
 
 /**
- * Does any preview in [manifests] satisfy the request **directly** — i.e. without appealing to the
- * unknowable `@PreviewParameter` rows below?
+ * Is [exactId] a preview that actually exists in [manifests]?
  *
  * The gate on [previewMatchesRequestIncludingRows]'s row lane, and the reason a precise selector
  * stays precise. Two modules can declare a parameterized `Foo` and an ordinary `Foo_Dark`; without
  * this, `--id Foo_Dark` would keep both — the second on its own name, the first because `Foo_Dark`
  * *could* be a row of `Foo` — and `serve` aborts on more than one module before its row-level
- * filtering ever runs. So a real match anywhere wins outright, mirroring the daemon's own
+ * filtering ever runs. So a real hit wins outright, mirroring the daemon's own
  * exact-hit-before-row-split rule (`PreviewRowAddress.split` is only consulted on a miss).
+ *
+ * **`--id` only, deliberately.** Extending this precedence to `--filter` / `--preview` looks
+ * symmetrical and is wrong: those are substring rules, so matching several previews at once is
+ * their normal mode, not a conflict to resolve. A parameterized `Foo` yielding `Foo_Crimson`
+ * alongside an ordinary `CrimsonButton` means `--filter Crimson` legitimately names both, and
+ * letting the concrete one suppress the row owner would drop a preview that satisfies the
+ * documented predicate. Only `--id` is single-target, and only `--id` has a caller who breaks when
+ * a second module tags along.
  */
-internal fun requestHasDirectMatch(
+internal fun manifestsDeclareExactId(
   manifests: List<Pair<PreviewModule, PreviewManifest>>,
   exactId: String?,
-  filter: String?,
-  previewRef: String? = null,
-): Boolean = manifests.any { (_, manifest) ->
-  manifest.previews.any {
-    previewIdMatchesRequest(
-      it.id,
-      exactId = exactId,
-      filter = filter,
-      previewRef = previewRef,
-      className = it.className,
-      functionName = it.functionName,
-    )
-  }
-}
+): Boolean =
+  exactId != null && manifests.any { (_, manifest) -> manifest.previews.any { it.id == exactId } }
 
 /**
  * Like [previewIdMatchesRequest], but a **`@PreviewParameter` preview** whose rows might satisfy
@@ -1191,8 +1186,9 @@ internal fun requestHasDirectMatch(
  * hard error the caller cannot work around, a wrong keep costs only build time.
  *
  * Two things stop that from becoming "keep everything":
- * 1. [requestHasDirectMatch] — when the request matches a real preview anywhere, the row lane is
- *    off entirely, so precise selection stays precise.
+ * 1. [manifestsDeclareExactId] — when `--id` names a preview that really exists, the row lane is
+ *    off entirely, so precise selection stays precise. Scoped to `--id`, because only it is
+ *    single-target; see that function for why the substring selectors must not inherit it.
  * 2. A preview with **no** provider has no rows, so it is still matched exactly as before. That is
  *    what preserves the "no previews discovered" diagnostic for a typo.
  *
@@ -1204,7 +1200,7 @@ internal fun previewMatchesRequestIncludingRows(
   exactId: String?,
   filter: String?,
   previewRef: String? = null,
-  requestMatchedDirectly: Boolean,
+  exactIdExists: Boolean,
 ): Boolean {
   if (
     previewIdMatchesRequest(
@@ -1218,7 +1214,7 @@ internal fun previewMatchesRequestIncludingRows(
   ) {
     return true
   }
-  if (requestMatchedDirectly) return false
+  if (exactIdExists) return false
   if (preview.params.previewParameterProviderClassName.isNullOrBlank()) return false
   // `--id` is exact by contract, so it pins the candidate row id outright: it must be spelled
   // `<base>_<row>`, and once it is, the other selectors can be tested against that concrete id
@@ -1298,9 +1294,9 @@ internal fun modulesMatchingPreviewRequest(
   if (exactId == null && filter == null && previewRef == null) return modules
   // Row-aware (issue #3786): a module whose only match is `Foo_PARAM_1` must survive, because the
   // row ids don't exist until `serve` reads the rendered fan-out back off disk — long after this
-  // narrowing ran. Resolved across ALL manifests first so a request that matches a real preview
-  // somewhere never also drags in the parameterized previews it could hypothetically be a row of.
-  val matchedDirectly = requestHasDirectMatch(manifests, exactId, filter, previewRef)
+  // narrowing ran. Resolved across ALL manifests first so an `--id` that names a real preview never
+  // also drags in the parameterized previews it could hypothetically be a row of.
+  val exactIdExists = manifestsDeclareExactId(manifests, exactId)
   val matchingPaths =
     manifests
       .filter { (_, manifest) ->
@@ -1310,7 +1306,7 @@ internal fun modulesMatchingPreviewRequest(
             exactId = exactId,
             filter = filter,
             previewRef = previewRef,
-            requestMatchedDirectly = matchedDirectly,
+            exactIdExists = exactIdExists,
           )
         }
       }
