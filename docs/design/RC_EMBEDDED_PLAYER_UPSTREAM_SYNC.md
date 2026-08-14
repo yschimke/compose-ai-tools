@@ -274,9 +274,22 @@ rather than re-extracted — and they are the two most easily lost in a mechanic
 nothing in a `diff -r` points at them:
 
 - **`RemoteImageSupport.kt`** — retain. Without it, a document carrying a URL- or file-encoded
-  bitmap throws inside `inflateFromBuffer` and fails to parse *entirely*. Re-check its call sites
-  after the refresh too: it has to run before the bytes are parsed, and two of the parse sites are
-  constructors.
+  bitmap throws inside `inflateFromBuffer` and fails to parse *entirely*.
+
+  **This is already unwired in the two daemon paths, today — it is not a refresh concern.**
+  `enableEncodedImageReferences()` is reached only from the `RcPlayer(CapturedDocument)` overload
+  (`RcPlayer.kt:472`), the module's test harnesses, and the jvm renderer's own private copy
+  (`RcJvmRenderer.kt:174`). The production paths parse the bytes themselves and never call it:
+  `RemoteComposeIrReplay.kt:39` (`remember(bytes) { RemoteDocument(bytes) }`) and
+  `RemoteOverridablePreview.kt:210,212` (`remoteDocumentForPreview`, both branches). Both
+  constructors parse on the spot, while `Limits.ENABLE_IMAGE_URLS` / `ENABLE_IMAGE_FILES` still
+  hold their shipped `false`, so a document carrying such a bitmap fails to parse there and the
+  preview renders nothing at all.
+
+  It has stayed invisible because it only bites documents that actually carry an encoded image
+  reference, which the captured catalogs do not — so no lane has exercised it. Wiring the helper
+  ahead of those two constructors is a **fix to make now**, independent of any refresh; it is out
+  of scope for this docs change.
 - **`GmsFontProviderCertificates.kt`** — retain or replace, per §3.6; upstream's new
   `HasFontCerts`/`fontCertsResId` route changes the shape but not the need.
 
@@ -334,8 +347,8 @@ vendoring is expiring:
   single change; there is no intermediate state where we take the new alpha *and* keep the patched
   sources. (Renaming the vendored package would also break the collision, at the cost of the
   verbatim-snapshot property that makes a refresh a plain `diff -r`. Not worth it.)
-- **Migrating the Android lane to the artifact is gated on eight items.** A binary
-  cannot be patched, and keeping the patches in the jvm snapshot does nothing for Android — so
+- **Migrating the Android lane to the artifact is gated on eight items, plus a deliberate call on
+  a ninth.** A binary cannot be patched, and keeping the patches in the jvm snapshot does nothing for Android — so
   switching while any of these is still ours regresses the Android lane to upstream's pixels. The
   first six must land upstream; they are also the filing list (§3.1, §3.2, §3.8):
   1. rounded-clip radius normalisation (§3.1)
@@ -354,12 +367,19 @@ vendoring is expiring:
      new `typefaceResolver` parameter, every downloadable-font document silently falls back to
      Roboto after the switch — a regression that renders *successfully* and so will not announce
      itself.
-  8. **`RemoteImageSupport`'s parse flags** must still be set by the host before parsing (§3.7);
-     they live outside the player, so this survives the migration but must be re-verified at the
-     new call sites.
+  8. **`RemoteImageSupport`'s parse flags** must be set by the host before parsing. This one is
+     already outstanding today, in `RemoteComposeIrReplay` and `RemoteOverridablePreview` (§3.7) —
+     worth fixing now rather than at migration time.
 
-  The six `CoreText` reflection fields are a *feature* addition rather than a fix; they can ride
-  along or stay ours, and they do not gate the migration.
+  **The six `CoreText` reflection fields cannot "ride along".** They are a feature addition rather
+  than a fix, but that does not exempt them: they live in the vendored `CoreDataAccessors.kt` /
+  `CoreDataModel.kt` and are consumed by the vendored `RcPlayerTextLayout.kt`, all of which have to
+  leave the classpath at migration or collide with the artifact's identically-named classes. So the
+  behaviours they carry — autosize, justification, line break, hyphenation, the two extra ellipsis
+  modes, and the `StaticLayout` maxLines parity — go with them. Either those land upstream too (a
+  ninth gate item, and the one most likely to be waved through because it reads as a feature), or
+  the migration explicitly records that the Android lane drops them. Pick deliberately; do not
+  discover it from a render diff.
 - **The jvm/CMP lane still needs sources**, so `rc-embedded-player-jvm` keeps a vendored snapshot
   alive regardless — the seams cannot be applied to a binary. A plausible end state is: Android lane
   on the artifact, jvm lane on a snapshot carrying only the seams.
