@@ -1,6 +1,8 @@
 package com.example.designcatalogm3.shared
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
@@ -8,6 +10,7 @@ import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -172,5 +175,28 @@ class CatalogInteractivityTest {
 
     onNodeWithText("Z", substring = true).assertDoesNotExist()
     onNodeWithText("Filled").assertExists()
+  }
+
+  @Test
+  fun `the shape morph slider moves only on the interactive lane`() {
+    runComposeUiTest {
+      setContent { CatalogComponent("shape-morph", interactive = true) }
+      onNodeWithText("50%", substring = true).assertExists()
+      onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).performSemanticsAction(
+        SemanticsActions.SetProgress
+      ) {
+        it(1f)
+      }
+      onNodeWithText("100%", substring = true).assertExists()
+    }
+    runComposeUiTest {
+      setContent { CatalogComponent("shape-morph", interactive = false) }
+      onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).performSemanticsAction(
+        SemanticsActions.SetProgress
+      ) {
+        it(1f)
+      }
+      onNodeWithText("50%", substring = true).assertExists()
+    }
   }
 }
