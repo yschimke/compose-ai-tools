@@ -144,6 +144,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-design-page-nodes-open/dark](renders/serve-design-page-nodes-open.dark.png) |
 | `light` | ![serve-design-page-nodes-open/light](renders/serve-design-page-nodes-open.light.png) |
 
+## serve-design-page-render-failed
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-render-failed/dark](renders/serve-design-page-render-failed.dark.png) |
+| `light` | ![serve-design-page-render-failed/light](renders/serve-design-page-render-failed.light.png) |
+
 ## serve-design-page-selected
 
 | Theme | Capture |
