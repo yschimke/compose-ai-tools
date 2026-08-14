@@ -11,9 +11,33 @@ To keep a specific render across runs, copy the file somewhere outside `build/`.
 
 ## Filename normalization
 
-`renderOutput` paths use `[A-Za-z0-9._-]` only. Any other character (spaces, parens, commas, Unicode dashes, emoji) collapses to `_`. A whitelist is deliberate: enumerating a blacklist of shell-hostile characters is a losing game across shells and CI systems.
+A render stem is **`<readable>-<digest>`**:
 
-The common dotted package prefix across all previews in a module is stripped too, so `ee.schimke.ha.previews.CardPreviewsKt.Foo.png` lands as `CardPreviewsKt.Foo.png`. `PreviewInfo.id` keeps the full FQN — consumers keying by id (CLI state, JUnit test names) are unaffected.
+```
+ActivityListPreview_Devices_Large_Round-4f9c2a17.png
+└──────────── readable ──────────────┘ └ digest ┘
+```
+
+- **`<readable>`** — the function name plus any `@Preview(name = …)` variant suffix, sanitised. The charset is `[A-Za-z0-9_]`; any other character (spaces, parens, commas, Unicode dashes, emoji) collapses to a single `_`, and runs collapse together, so `Devices - Large Round` becomes `Devices_Large_Round`. A whitelist is deliberate: enumerating a blacklist of shell-hostile characters is a losing game across shells and CI systems. Capped at 80 chars so a stem plus its structural suffixes stays inside the 255-byte `NAME_MAX` that ext4, APFS and NTFS all enforce.
+- **`-<digest>`** — 8 hex chars of `sha256(preview.id)`, over the id verbatim. `-` is unambiguous here because sanitisation can never emit one inside `<readable>`.
+
+The package and class never appear. `PreviewInfo.id` keeps the full FQN — consumers keying by id (CLI state, JUnit test names) are unaffected.
+
+### Why the digest is unconditional
+
+It makes a stem a **pure function of one preview's own id**, and that single property carries every guarantee the filenames need:
+
+| Property | What it buys |
+|---|---|
+| Stable | Adding, removing or renaming any *other* preview in the module cannot change this preview's filename. Commit-pinned render URLs keep resolving, and base-vs-head visual diffing sees a diff rather than a delete + add. |
+| Collision-free | Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get distinct digests. |
+| Case-safe | `Foo_Dark` and `Foo_dark` stay distinct files on case-insensitive filesystems (APFS, NTFS), where the readable parts alone are one file. |
+| Suffix-safe | The digest sits between the readable part and the structural suffixes below, so a preview genuinely named `Logo_animated` (`Logo_animated-<digestA>.png`) cannot collide with `Logo`'s Lottie sidecar (`Logo-<digestB>_animated.png`). |
+| Reserved-name-safe | A preview named `CON` or `NUL` becomes `CON-<digest>`, which is not a Windows reserved device name. |
+
+This replaced a shortest-unique-suffix walk that read every sibling preview to decide how much of the package/class path to prepend, with a positional `_<idx>` tiebreaker on top. That scheme renamed existing PNGs whenever an unrelated preview was added, renumbered on manifest reordering, and could mint a `_<idx>` name that silently overwrote a preview genuinely named that way.
+
+If two ids ever agree on *both* readable part and truncated digest, only the tied previews are re-stemmed with a full-length sha256 — still a pure function of the id, so the rest of the module is untouched and the result stays stable under reordering.
 
 ## `@PreviewParameter` fan-out labels
 

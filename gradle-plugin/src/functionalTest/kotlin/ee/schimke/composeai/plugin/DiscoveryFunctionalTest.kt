@@ -2095,7 +2095,9 @@ class DiscoveryFunctionalTest {
     // DeviceDimensions used the Pixel 6 Pro height here.)
     assertThat(phone.params.heightDp).isEqualTo(914)
     assertThat(phone.id).endsWith("_pixel_6")
-    assertThat(phone.captures.single().renderOutput).endsWith("_pixel_6.png")
+    // `renderOutput` is `<readable>-<digest>.png`, so the device variant is the tail of the
+    // readable part rather than of the whole leaf.
+    assertThat(phone.captures.single().renderOutput).matches("renders/.*_pixel_6-[0-9a-f]{8}\\.png")
 
     val tablet = manifest.previews.single { it.params.device == "id:pixel_tablet" }
     assertThat(tablet.params.widthDp).isEqualTo(1280)
@@ -2341,7 +2343,7 @@ class DiscoveryFunctionalTest {
       )
     assertThat(longPreview.dataProducts.single().kind).isEqualTo("render/scroll/long")
     assertThat(longPreview.dataProducts.single().output)
-      .isEqualTo("data/render-scroll-long/LongScrollPreview.png")
+      .matches("data/render-scroll-long/LongScrollPreview-[0-9a-f]{8}\\.png")
 
     val plain = manifest.previews.single { it.functionName == "PlainPreview" }
     assertThat(plain.captures.single().scroll).isNull()
@@ -2355,16 +2357,14 @@ class DiscoveryFunctionalTest {
     assertThat(topAndEnd.captures.map { it.scroll?.mode })
       .containsExactly(ScrollMode.TOP, ScrollMode.END)
       .inOrder()
-    // renderOutput strips the common `test.` package prefix from every
-    // preview id — the full FQN is retained on `preview.id` itself (and
-    // also stays addressable in `renderOutput`'s basename), but the
-    // on-disk filename drops the shared prefix.
-    assertThat(topAndEnd.captures.map { it.renderOutput })
-      .containsExactly(
-        "renders/TopAndEndScrollPreview_Scroll_SCROLL_top.png",
-        "renders/TopAndEndScrollPreview_Scroll_SCROLL_end.png",
-      )
-      .inOrder()
+    // renderOutput drops the package-and-class prefix from every preview id — the full FQN is
+    // retained on `preview.id` itself. The id digest sits between the readable part and the
+    // structural `_SCROLL_<mode>` suffix, which is what keeps the two namespaces from colliding.
+    val scrollOutputs = topAndEnd.captures.map { it.renderOutput }
+    assertThat(scrollOutputs[0])
+      .matches("renders/TopAndEndScrollPreview_Scroll-[0-9a-f]{8}_SCROLL_top\\.png")
+    assertThat(scrollOutputs[1])
+      .matches("renders/TopAndEndScrollPreview_Scroll-[0-9a-f]{8}_SCROLL_end\\.png")
 
     // Single-mode GIF: moves to the scroll data-product path (no
     // `_SCROLL_gif` suffix) and round-trips `frameIntervalMs` onto the
@@ -2384,19 +2384,20 @@ class DiscoveryFunctionalTest {
       )
     assertThat(gifOnly.dataProducts.single().kind).isEqualTo("render/scroll/gif")
     assertThat(gifOnly.dataProducts.single().output)
-      .isEqualTo("data/render-scroll-gif/GifScrollPreview_Gif.gif")
+      .matches("data/render-scroll-gif/GifScrollPreview_Gif-[0-9a-f]{8}\\.gif")
 
     // Multi-mode with GIF sibling: END remains a normal capture; GIF moves
     // to a data product with its own `_SCROLL_gif` output path.
     val endAndGif = manifest.previews.single { it.functionName == "EndAndGifScrollPreview" }
     assertThat(endAndGif.captures).hasSize(1)
     assertThat(endAndGif.captures.map { it.scroll?.mode }).containsExactly(ScrollMode.END).inOrder()
-    assertThat(endAndGif.captures.map { it.renderOutput })
-      .containsExactly("renders/EndAndGifScrollPreview_EndAndGif.png")
-      .inOrder()
+    assertThat(endAndGif.captures.single().renderOutput)
+      .matches("renders/EndAndGifScrollPreview_EndAndGif-[0-9a-f]{8}\\.png")
     assertThat(endAndGif.dataProducts.single().scroll?.mode).isEqualTo(ScrollMode.GIF)
     assertThat(endAndGif.dataProducts.single().output)
-      .isEqualTo("data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif_SCROLL_gif.gif")
+      .matches(
+        "data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif-[0-9a-f]{8}_SCROLL_gif\\.gif"
+      )
   }
 
   @Test
@@ -2786,15 +2787,16 @@ class DiscoveryFunctionalTest {
     // Kotlin functions land on the synthetic `<File>Kt` class, so
     // the id is `test.PreviewsKt.TileLightStates_tile light (light)`.
     assertThat(light.id).isEqualTo("test.PreviewsKt.TileLightStates_tile light (light)")
-    // `renderOutput` drops the shared `test.PreviewsKt.` dotted
-    // prefix and sanitises the awkward `tile light (light)` variant
-    // suffix down to shell-safe `tile_light_light`.
+    // `renderOutput` drops the `test.PreviewsKt.` package-and-class
+    // prefix, sanitises the awkward `tile light (light)` variant suffix
+    // down to shell-safe `tile_light_light`, and appends the id digest
+    // that keeps the filename unique and stable.
     assertThat(light.captures.single().renderOutput)
-      .isEqualTo("renders/TileLightStates_tile_light_light.png")
+      .matches("renders/TileLightStates_tile_light_light-[0-9a-f]{8}\\.png")
 
     val dark = manifest.previews.single { it.functionName == "TileDarkStates" }
     assertThat(dark.captures.single().renderOutput)
-      .isEqualTo("renders/TileDarkStates_plain_with_slash.png")
+      .matches("renders/TileDarkStates_plain_with_slash-[0-9a-f]{8}\\.png")
   }
 
   @Test
