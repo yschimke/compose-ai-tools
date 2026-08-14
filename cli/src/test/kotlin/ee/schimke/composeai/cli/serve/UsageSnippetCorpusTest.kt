@@ -45,6 +45,11 @@ class UsageSnippetCorpusTest {
     // turns a wrong invocation into a successful no-op, which is the failure this whole loop is
     // built to stop reporting as a pass.
     val spec = System.getProperty("composeai.usageCorpus.repos") ?: return emptyList()
+    // `-Dcomposeai.usageCorpus.repos=` — present and empty — is a wrong invocation too, and
+    // dropping through to the empty list would make it the same silent no-op as not setting it.
+    require(spec.isNotBlank() && spec.any { it != ',' && !it.isWhitespace() }) {
+      "composeai.usageCorpus.repos is set but empty; omit it, or pass <name>=<path>,…"
+    }
     return spec
       .split(',')
       .filter { it.isNotBlank() }
@@ -75,15 +80,17 @@ class UsageSnippetCorpusTest {
    * Matched at the source-set name's **boundary**, not as a substring: `src/latestMain` and
    * `src/contestMain` contain `test` and are production, and excluding them would drop real
    * previews just as quietly in the other direction. A test source set's name ends in `Test`
-   * (`commonTest`, `jvmTest`, `androidUnitTest`) or is `test` / `testFixtures` outright.
+   * (`commonTest`, `jvmTest`, `androidUnitTest`) or `TestFixtures` (`commonTestFixtures`,
+   * `androidTestFixtures`), or is `test` / `testFixtures` outright.
    */
   private fun sources(root: File): List<File> {
-    val testSourceSet = Regex("""/src/(test|testFixtures|[A-Za-z0-9]*Test)/""")
+    val testSourceSet =
+      Regex("""/src/(test|testFixtures|[A-Za-z0-9]*Test|[A-Za-z0-9]*TestFixtures)/""")
     return root
       .walkTopDown()
       .onEnter { it.name !in setOf("build", ".git", ".gradle") }
       .filter { it.isFile && it.extension == "kt" }
-      .filterNot { testSourceSet.containsMatchIn(it.path) || it.path.contains("/testFixtures/") }
+      .filterNot { testSourceSet.containsMatchIn(it.path) }
       .toList()
   }
 
