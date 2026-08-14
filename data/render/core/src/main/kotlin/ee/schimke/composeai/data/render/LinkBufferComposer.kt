@@ -15,8 +15,13 @@ package ee.schimke.composeai.data.render
  * Compose output — flipping one flag and re-rendering turns that corpus into a regression suite for
  * the rewrite, which is exactly the feedback the runtime team asked for.
  *
- * Off by default. This is a testing knob, not a behaviour change: nothing renders differently until
- * a run asks for it.
+ * Off by default *in the published plugin* — a testing knob, not a behaviour change: nothing
+ * renders differently in a consumer's project until it asks for it. This repo is the exception and
+ * sets `composePreview.linkBufferComposer=true` in its own `gradle.properties`, so every catalog we
+ * render exercises the new composer (see `docs/LINK_BUFFER_COMPOSER.md`). Keep the two straight
+ * when reasoning about a render here: an unqualified `./gradlew …composePreviewRenderAll` in THIS
+ * repo is a new-composer run, and the old composer is what needs the explicit
+ * `-PcomposePreview.linkBufferComposer=false`.
  *
  * ## Why reflection
  *

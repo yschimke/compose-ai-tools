@@ -31,13 +31,11 @@ project below 1.11. Flipping it for consumers therefore needs a semantics change
 keeps failing loudly. We are on runtime 1.11.4 (Android) / 1.11.2 (desktop), so both of our lanes
 have it.
 
-Turn it off for one run with `-PcomposePreview.linkBufferComposer=false`.
-
-| Where | Form |
-| --- | --- |
-| One run, command line | `./gradlew :samples:cmp:composePreviewRenderAll -PcomposePreview.linkBufferComposer=true` |
-| One run, render JVM directly | `-Dcomposeai.render.linkBufferComposer=true` |
-| Durable, per module | `composePreview { linkBufferComposer = true }` |
+| Where | Form | Note |
+| --- | --- | --- |
+| One run, command line | `-PcomposePreview.linkBufferComposer=<bool>` | **In this repo pass `false`** — `true` is already the default |
+| One run, render JVM directly | `-Dcomposeai.render.linkBufferComposer=<bool>` | Highest precedence |
+| Durable, per module | `composePreview { linkBufferComposer = true }` | How a *consumer* project turns it on |
 
 Precedence is the usual one: system property, then Gradle property, then the DSL value — the same
 chain `hostTheme` and `fixedTime` use, resolved by `composeAiLinkBufferComposer`.
