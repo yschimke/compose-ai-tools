@@ -348,6 +348,40 @@ class PlaygroundSeedResolverTest {
     assertEquals(1, reads.get(), "the source file was read once per caller instead of once")
   }
 
+  /**
+   * The two outcomes that never reach the cache — a failed fetch, and a success dropped because the
+   * cache is full — must still be shared with the callers waiting on the same flight. Signalling
+   * only through the cache left each of them repeating the same round trip, sequentially, which is
+   * the pile-up the coalescing exists to prevent.
+   */
+  @Test
+  fun `a failed fetch is shared with waiters rather than retried by each`() {
+    val reads = java.util.concurrent.atomic.AtomicInteger()
+    val start = java.util.concurrent.CountDownLatch(1)
+    val resolver =
+      resolver(
+        locate = { _, _ -> anchored },
+        body = { url ->
+          if (url.endsWith(".kt")) {
+            reads.incrementAndGet()
+            Thread.sleep(150)
+            null // the source could not be read: never cached, so nothing to wake waiters with
+          } else null
+        },
+      )
+    val threads =
+      (1..6).map {
+        Thread {
+          start.await()
+          assertNull(resolver.seed("m3-catalog", "sections.FilledButton"))
+        }
+      }
+    threads.forEach { it.start() }
+    start.countDown()
+    threads.forEach { it.join(10_000) }
+    assertEquals(1, reads.get(), "each waiter repeated the failed fetch instead of sharing it")
+  }
+
   /** One rules file per catalog, not per card: browsing a group must not re-ask GitHub for it. */
   @Test
   fun `the rules file is fetched once per catalog ref`() {

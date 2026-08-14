@@ -154,7 +154,22 @@ class PlaygroundSeedResolver(
    * GitHub GET for the same file — a burst of duplicate work holding IO threads, for a result they
    * will all share a moment later.
    */
-  private val inFlight = ConcurrentHashMap<CacheKey, Any>()
+  private val inFlight = ConcurrentHashMap<CacheKey, Flight>()
+
+  /**
+   * One resolution attempt, carrying its **outcome** and not merely acting as a monitor.
+   *
+   * Signalling completion through the cache alone was not enough, because two ordinary outcomes
+   * never reach it: a fetch that fails (a 404, a timeout, an oversized file) is deliberately not
+   * cached, and a successful one is dropped when the cache is at [maxEntries]. In both cases every
+   * waiter woke to another miss and repeated the same GitHub round trip — sequentially, each behind
+   * the previous one's 10 s connect and 10 s read, which is the exact pile-up the coalescing was
+   * added to prevent, in the two situations where it hurts most.
+   */
+  private class Flight {
+    var done = false
+    var seed: PlaygroundSeed? = null
+  }
 
   fun seed(system: String, previewId: String): PlaygroundSeed? {
     // Resolve FIRST, then consult the cache. The location is an in-memory registry read, and keying
@@ -173,16 +188,22 @@ class PlaygroundSeedResolver(
     // Single-flight: the first caller for a key fetches, the rest wait on its monitor and then find
     // the answer in the cache. Re-checked inside the lock because that is the whole point — every
     // waiter arrives after the fetch it was waiting for has already stored its result.
-    val lock = inFlight.computeIfAbsent(key) { Any() }
+    val flight = inFlight.computeIfAbsent(key) { Flight() }
     try {
-      synchronized(lock) {
-        cachedSeed(key)?.let {
-          return it
-        }
-        return fetchSeed(system, previewId, where, key)
+      synchronized(flight) {
+        // The leader's answer, whatever it was — including "no seed", which is a result and not a
+        // reason to try again.
+        if (flight.done) return flight.seed
+        val seed = cachedSeed(key) ?: fetchSeed(system, previewId, where, key)
+        flight.seed = seed
+        flight.done = true
+        return seed
       }
     } finally {
-      inFlight.remove(key, lock)
+      // Removed by whoever leaves first; the waiters still behind it hold the same object and read
+      // its recorded outcome. A caller arriving after the removal starts a fresh flight, which is
+      // correct — that is a new request, not one this attempt was ever going to answer.
+      inFlight.remove(key, flight)
     }
   }
 
