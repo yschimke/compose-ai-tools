@@ -80,10 +80,10 @@ fun MyNotifPreview() = NotificationContent { ctx ->
 ```
 
 `NotificationContent` ships in the `:notification-preview-runtime` artifact.
-The reference implementation that artifact is promoted from lives at
-[samples/android/src/main/kotlin/com/example/sampleandroid/NotificationContent.kt](../samples/android/src/main/kotlin/com/example/sampleandroid/NotificationContent.kt) —
-the sample copy stays in-tree as a working end-to-end reference, but consumer
-code should depend on the published artifact.
+Its source lives at
+[runtimes/notification/src/main/kotlin/ee/schimke/composeai/preview/notification/NotificationContent.kt](../runtimes/notification/src/main/kotlin/ee/schimke/composeai/preview/notification/NotificationContent.kt);
+consumer code should depend on the published artifact rather than copying it.
+[samples/android](../samples/android) exercises it end to end.
 
 ### Which one should I use?
 
@@ -301,7 +301,7 @@ up as a PR comment the same way UI preview diffs do.
 ## Related
 
 - [Issue #1249](https://github.com/yschimke/compose-ai-tools/issues/1249) — design discussion and rollout plan.
-- [`api/preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt`](../api/preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt) — annotation source.
+- [`api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt`](../api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt) — annotation source.
 - [`renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt`](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt) — renderer entry point.
 - [`renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt`](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt) — sidecar schema and writer.
 - [`samples/android/src/main/kotlin/com/example/sampleandroid/`](../samples/android/src/main/kotlin/com/example/sampleandroid/) — end-to-end working samples.
