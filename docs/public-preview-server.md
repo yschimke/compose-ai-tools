@@ -1327,9 +1327,30 @@ the design's pixel *in this slot*, at this size, in the layout the designer drew
 is `ComposePreviewCompare` — the same normalise-then-count the viewer's spec lane and the format
 wall use — so a number here means what a number there means.
 
+The number is **drift** — `scoreImages` answers with a *match* percentage, where identical images
+score 100, so the lane inverts it. Getting that backwards prints `100.0%` in red for a perfect match
+and green for a total mismatch, which is a readout that lies rather than one that is merely wrong;
+it shipped that way once, and `contract · the scorer answers match` now scores an image against
+itself so the direction cannot silently flip again.
+
 Three bands rather than a gradient, because the reader is triaging and *does this need looking at*
 is a decision, not a measurement: green under 2%, amber under 10%, red beyond. A node with no render
 gets no badge at all — printing `100%` for *absent* is the one wrong thing this readout could say.
+
+Proportion difference is held out of the match number by the scorer, which normalises both content
+boxes onto one size before comparing. It cannot hide here: a node whose render is the wrong shape
+gets a `⇲` on its badge, the figure in its tooltip, and the worse of the two decides its band. It
+does **not** become the headline number, which stays the pixel drift — folding them together made
+every badge on the fixture read the same 52.4%, an aspect difference wearing the label of a pixel
+difference.
+
+The sheet is rasterised **once** and every node is a crop out of that raster, taken from the node's
+measured rect so a `transform` on it or any ancestor is already applied. The first cut cloned and
+serialised the whole export per node, which on this catalog's own Shape page is 858 KB × 35 nodes —
+over 100 MB of transient markup before a single comparison settled. The crop is of the sheet, so
+whatever the design drew behind a node is in its reference; on a definition sheet that is a
+near-uniform ground against the scorer's own white, and both sides are composited onto white before
+comparing.
 
 **A number and not a diff map**, deliberately: thirty-eight magenta thumbnails at slot size is the
 annotated sheet this surface was just rescued from. The map is one click away instead — in this lane

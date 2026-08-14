@@ -392,6 +392,12 @@ const FIXTURE_STATES = [
             const badges = await page.locator(".cp-page-score").count();
             const renders = await page.locator(".cp-page-render").count();
             expect(badges).toBe(renders);
+            // A control that navigates must not announce itself as a pressed toggle.
+            const semantics = await page.evaluate(() => {
+                const spot = document.querySelector(".cp-page-node[data-cp-leaves]");
+                return spot && { role: spot.getAttribute("role"), pressed: spot.hasAttribute("aria-pressed") };
+            });
+            expect(semantics).toEqual({ role: "link", pressed: false });
             // Where the lane leads. Asserted on the anchor rather than by clicking it, so this
             // stays a capture rather than a navigation — but it still fails if the deep link stops
             // naming the viewer's Figma comparison.
@@ -401,6 +407,25 @@ const FIXTURE_STATES = [
                 .getAttribute("href");
             expect(href).toContain("mode=spec");
             expect(href).toContain("specView=diff");
+            // THE DIRECTION OF THE NUMBER. `scoreImages` answers with a MATCH percentage —
+            // identical images score 100 — and this lane reports DRIFT, so it inverts. Shipping
+            // that backwards printed "100.0%" in red for a perfect match and green for a total
+            // mismatch, and no screenshot caught it because the fixture's numbers looked plausible
+            // either way. Scoring an image against ITSELF is the assertion that cannot be fooled:
+            // if the scorer's convention ever flips, this fails instead of the badge lying.
+            const selfMatch = await page.evaluate(async () => {
+                const img = document.querySelector(".cp-page-render");
+                const result = await window.ComposePreviewCompare.scoreImages(img, img);
+                return result.percent;
+            });
+            expect(selfMatch).toBeGreaterThan(99);
+            // …and the badge for that same node must therefore read near zero drift, not near 100.
+            const worst = await page.evaluate(() => {
+                const values = Array.from(document.querySelectorAll(".cp-page-score"))
+                    .map((b) => parseFloat(b.textContent));
+                return Math.max(...values);
+            });
+            expect(worst).toBeLessThanOrEqual(100);
         },
     },
     {
