@@ -280,6 +280,13 @@ class RenderEngine(
     trace: PerfettoTraceDataProducer.Recorder =
       PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop"),
   ): SceneState {
+    // Also here, not just in [render]: a daemon whose FIRST request is `interactive/start` or
+    // `recording/start` reaches a held composition through `DesktopHost.acquireInteractiveSession`
+    // /
+    // `acquireRecordingSession` → `setUp`, never through `render`. The runtime latches the composer
+    // at the first composition, so applying it only in `render` would leave those sessions on the
+    // old composer and make a later one-shot render's application too late to matter.
+    LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
 

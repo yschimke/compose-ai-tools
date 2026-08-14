@@ -43,6 +43,12 @@ compose anything:
 - `RobolectricRenderTestBase.renderPreview` — inside the sandbox, because each Robolectric sandbox
   classloader holds its own copy of `ComposeRuntimeFlags`.
 - both daemons' `RenderEngine.render`, against the classloader that render composes on.
+- both daemons' **held-composition** entry points, which never reach `render` at all: desktop's
+  `RenderEngine.setUp` (what `DesktopHost.acquireInteractiveSession` / `acquireRecordingSession`
+  call) and Android's `RobolectricHost.runHeldInteractiveSession` (which `acquireRecordingSession`
+  also delegates to). A daemon whose *first* request is `interactive/start` or `recording/start`
+  composes through those and would otherwise stay on the old composer for the life of the session,
+  with a later one-shot render applying the flag too late to matter.
 
 Two properties of that design are load-bearing:
 
