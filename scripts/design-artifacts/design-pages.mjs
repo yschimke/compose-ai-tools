@@ -242,6 +242,15 @@ export function planDesignPages({ manifest, spec, catalog }) {
         // one node would hide every page the catalog publishes. Dropping the field costs only a
         // styling hint.
         ...(CONFIDENCE_VALUES.has(node?.confidence) ? { confidence: node.confidence } : {}),
+        // A grouping whose contents are listed below it — a COMPONENT_SET, whose children are the
+        // variants. Nothing implements a set (a reference names one of its variants), so the
+        // consumer draws it as structure and leaves it out of the coverage count. Dropping it here
+        // is not cosmetic: the set comes back as a component nobody implemented, and a page whose
+        // every component is done reports missing work that no code could ever clear.
+        //
+        // Literal `true` only, in the same spirit as `confidence` above — this decodes into a
+        // Kotlin Boolean, and a truthy string is a parse failure for the whole manifest.
+        ...(node?.container === true ? { container: true } : {}),
       });
     }
     if (unresolved > 0) {

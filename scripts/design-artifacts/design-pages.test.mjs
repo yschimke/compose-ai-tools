@@ -295,6 +295,26 @@ test("a dot-segment page id is refused — a browser would normalise it away", (
   );
 });
 
+test("a container flag survives publishing", () => {
+  // The projection rebuilds every node from an allowlist, so a field that is not named here is
+  // silently dropped on the way to the delivery branch. When that field is `container`, the
+  // COMPONENT_SET comes back as a component nobody implemented and a fully-implemented page
+  // reports missing work — the exact regression the consumer-side fix was for.
+  const set = { ...appBar, nodeId: "1:8", name: "Shape Set", container: true };
+  const plan = planDesignPages({ manifest: manifest([page([set])]), spec, catalog });
+  const node = plan.manifest.pages[0].nodes.find((n) => n.nodeId === "1:8");
+  assert.equal(node.container, true);
+});
+
+test("a truthy non-boolean container is dropped rather than republished", () => {
+  // It decodes into a Kotlin Boolean; a string there fails the parse for the WHOLE manifest and
+  // hides every page, which is a far worse outcome than counting one set as a gap.
+  const set = { ...appBar, nodeId: "1:8", name: "Shape Set", container: "yes" };
+  const plan = planDesignPages({ manifest: manifest([page([set])]), spec, catalog });
+  const node = plan.manifest.pages[0].nodes.find((n) => n.nodeId === "1:8");
+  assert.equal(node.container, undefined);
+});
+
 test("an unsupported confidence is dropped, not republished", () => {
   // The consumer decodes this into a strict enum, so republishing an unknown value would fail the
   // parse for the WHOLE manifest — one bad string hiding every page the catalog publishes.
