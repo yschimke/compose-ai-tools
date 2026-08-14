@@ -124,14 +124,16 @@ public data class PageNode(
   /** Null when unlinked. Stated by the producer so we don't hardcode which methods are weak. */
   val confidence: PageNodeConfidence? = null,
   /**
-   * The node's type in the design file — `COMPONENT`, `COMPONENT_SET`, `INSTANCE`.
+   * This node is a GROUPING whose contents are listed below it — a Figma `COMPONENT_SET`, whose
+   * children are the variants a definition sheet is a grid of.
    *
-   * A fact, not a judgement: it is what tells a container apart from the components inside it,
-   * which is the difference between "35 shapes, all implemented" and "36 things, one missing". Kept
-   * as free text rather than an enum so a design tool can grow a type without this refusing to
-   * parse; a producer that emits none is handled by [DesignPage.coverageGaps].
+   * Stated by the producer rather than worked out here, because only the import has the real tree.
+   * A manifest lists components and nothing else, so an unlisted frame between two of them lets a
+   * shallower node be followed by a deeper one that is NOT inside it — and depth ordering alone
+   * would call the shallower one a grouping. Nothing implements a component set (a reference names
+   * one of its variants), so it is drawn as structure and left out of the coverage count.
    */
-  val type: String? = null,
+  val container: Boolean = false,
 ) {
   /**
    * A component the design file marks as **private** — Figma's leading-dot convention, used for the
@@ -218,27 +220,20 @@ public data class DesignPage(
    * Two kinds of unlinked node are not gaps, and on a real specimen sheet they are most of them:
    *
    * 1. **Private components** ([PageNode.isPrivate]) — the sheet's own furniture, never published.
-   * 2. **Containers.** A `COMPONENT_SET`'s variants are the components; the set is the box they
-   *    came in. Its variants are listed here in their own right, so counting the set as well
-   *    reports one missing component for a family that is fully implemented.
+   * 2. **Containers** ([PageNode.container]) — a `COMPONENT_SET`'s variants are the components; the
+   *    set is the box they came in. Its variants are listed here in their own right, so counting
+   *    the set as well reports one missing component for a family that is fully implemented.
    *
-   * Container-ness is read from [PageNode.type] when the producer states it, and otherwise inferred
-   * from the walk: nodes are emitted depth-first in document order, so a node immediately followed
-   * by a DEEPER one has component children on this page and is therefore a box rather than a leaf.
-   * The inference exists so that a manifest imported before `type` was recorded still reads
-   * correctly — a published page should not have to wait for a re-import to stop miscounting.
+   * Both are read off the node, never inferred. An earlier cut worked container-ness out from the
+   * walk's depth ordering — a node immediately followed by a deeper one — so a manifest published
+   * before the producer stated it would still read correctly. That inference is unsound in the
+   * direction that matters: a manifest lists components only, so an unlisted frame between two of
+   * them lets a shallower node be followed by a deeper one that is not inside it, and a genuinely
+   * missing component would then be swallowed as "structure". A stale manifest over-counting a
+   * container is visible and harmless; a gap that quietly disappears is neither.
    */
   public val coverageGaps: List<PageNode>
-    get() = nodes.filterIndexed { index, node ->
-      val hasNestedChildren = nodes.getOrNull(index + 1)?.let { it.depth > node.depth } ?: false
-      val isContainer =
-        when (node.type?.uppercase()) {
-          "COMPONENT_SET" -> true
-          null -> hasNestedChildren
-          else -> false
-        }
-      node.isUnlinked && !node.isPrivate && !isContainer
-    }
+    get() = nodes.filter { it.isUnlinked && !it.isPrivate && !it.container }
 
   /**
    * How many components on this page a catalog could implement — the denominator behind "N of M

@@ -66,7 +66,7 @@ class ServeDesignPageRoutingTest {
        "frame":{"width":1200,"height":800},
        "image":{"uri":"shape.svg","format":"svg"},
        "nodes":[
-         {"nodeId":"1:8","name":"Shape Set","depth":2,
+         {"nodeId":"1:8","name":"Shape Set","depth":2,"container":true,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:8","link":"unlinked"},
          {"nodeId":"1:1","name":"Shape=Circle","depth":3,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:1","link":"manifest",
@@ -118,7 +118,8 @@ class ServeDesignPageRoutingTest {
     assertTrue(type.startsWith("text/html"))
     assertTrue(body.contains("Shape"))
     // FIVE nodes on the sheet, but only THREE are components a catalog could implement, and the
-    // count says so. `Shape Set` is the variant-set container the two linked shapes came out of,
+    // count says so. `Shape Set` says `container` on the wire — the variant set the two linked
+    // shapes came out of,
     // and `.Header` is a private component (Figma's leading-dot convention) — furniture, not work.
     // Counting every node instead reported `2 of 5` and told a reader three components were
     // missing when one was.

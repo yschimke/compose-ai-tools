@@ -1311,10 +1311,13 @@ filter on "unlinked" therefore made the kit's Shape page — all 35 shapes imple
 while the count read `35 of 38`. It now reads `35 of 35`, those nodes take a neutral grey, and the
 red is only ever the answer to *what is left to build*.
 
-Container-ness is read from the node's `type` where the producer records it, and otherwise inferred
-from the walk — nodes arrive depth-first in document order, so a node immediately followed by a
-deeper one has component children on this page and is a box rather than a leaf. The inference is
-what lets an already-published page stop miscounting without waiting for a re-import.
+Both are read off the node, never inferred. Container-ness arrives as `container` on the wire,
+stated by the import, because only the import has the real tree. An earlier cut worked it out from
+the walk's depth ordering — a node immediately followed by a deeper one — and that is unsound in the
+direction that matters: a manifest lists components and nothing else, so an unlisted frame between
+two of them lets a shallower node be followed by a deeper one that is not inside it, and a genuinely
+missing component would be swallowed as structure. A stale manifest over-counting a container is
+visible and harmless; a gap that quietly disappears is neither.
 
 Every node, linked or not, is still listed — behind a disclosure that says what it holds
 (`35 of 38 components implemented`). It is an inventory to go and check rather than the first thing
