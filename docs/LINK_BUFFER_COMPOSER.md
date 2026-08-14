@@ -87,24 +87,32 @@ than report UP-TO-DATE against PNGs the other one drew.
 
 ## Running the A/B
 
-```bash
-./gradlew :samples:cmp:composePreviewRenderAll
-cp -r samples/cmp/build/compose-previews/renders /tmp/renders-baseline
+Since the repo default is now **on**, the *baseline* is the flag-off side. Render that one
+explicitly and compare it against the default:
 
-./gradlew :samples:cmp:composePreviewRenderAll -PcomposePreview.linkBufferComposer=true
+```bash
+# baseline: the OLD composer, which now needs the explicit opt-out
+./gradlew :samples:cmp:composePreviewRenderAll -PcomposePreview.linkBufferComposer=false
+cp -r samples/cmp/build/compose-previews/renders /tmp/renders-old-composer
+
+# experiment: the repo default, i.e. the new composer
+./gradlew :samples:cmp:composePreviewRenderAll
 # byte-compare; any difference is a rendered-output change attributable to the composer
-diff -rq /tmp/renders-baseline samples/cmp/build/compose-previews/renders
+diff -rq /tmp/renders-old-composer samples/cmp/build/compose-previews/renders
 ```
+
+Getting that round the wrong way is the one mistake worth guarding against: pass `true` to the
+second run (as you would have before the default flipped) and **both** runs render on the new
+composer, the diff is empty by construction, and it looks like a clean A/B result when nothing was
+compared at all.
 
 The same shape works for `:samples:android` (Robolectric lane) and for any of the
 `samples/design-catalog-*` modules, which are the largest corpora in the repo.
 
-Note that with the repo default now on, the *baseline* is the flag-off side: pass
-`-PcomposePreview.linkBufferComposer=false` for the comparison render rather than passing `true` for
-the experiment. `RenderPreviewsTask.linkBufferComposer` is an `@Input`, so flipping it genuinely
-re-runs `composePreviewRender` instead of reporting UP-TO-DATE against the other composer's PNGs —
-confirmed in practice: the flag-off re-render of `:samples:design-catalog-m3` executed the task and
-redrew all 84 captures rather than short-circuiting.
+`RenderPreviewsTask.linkBufferComposer` is an `@Input`, so flipping it genuinely re-runs
+`composePreviewRender` instead of reporting UP-TO-DATE against the other composer's PNGs — confirmed
+in practice: the flag-off re-render of `:samples:design-catalog-m3` executed the task and redrew all
+84 captures rather than short-circuiting. That is what makes the two-run recipe above trustworthy.
 
 ## What the first A/B found
 
