@@ -1,14 +1,22 @@
 name: Design Artifacts
 
-# Weekly job: render each design-catalog module and publish its importable
-# sticker-sheet bundle (catalog.json + DTCG tokens + Figma variables + PNGs +
-# per-sticker editable figma-svg vectors) to a clean `design-artifacts/<system>`
-# branch a designer can pull into Figma / Stitch / Claude Design. The render is
-# the source of truth — these branches are regenerated from the committed
-# @Preview catalogs every Monday.
+# Render each design-catalog module and publish its importable sticker-sheet
+# bundle (catalog.json + DTCG tokens + Figma variables + PNGs + per-sticker
+# editable figma-svg vectors) to a `design-artifacts/<system>` branch a designer
+# can pull into Figma / Stitch / Claude Design. The render is the source of
+# truth — these branches are regenerated from the committed @Preview catalogs.
+#
+# Runs on four triggers (see each `on:` entry below): the Monday cron, a manual
+# dispatch, a push to `main` that touches a catalog or the export driver, and
+# the tail of a published release.
 #
 # Pipeline: compose-preview bundle pack  →  @design-parity/catalog-export driver
-#           →  force-push out/ to design-artifacts/<system>.
+#           →  publish out/ to design-artifacts/<system>.
+#
+# The publish APPENDS a commit on the branch tip rather than force-pushing a
+# fresh orphan, so each delivery branch carries a per-regeneration history and a
+# sticker that moved can be traced to the source commit that moved it. See
+# docs/design/DESIGN_CATALOGS.md#delivery-branch-history.
 
 on:
   schedule:
