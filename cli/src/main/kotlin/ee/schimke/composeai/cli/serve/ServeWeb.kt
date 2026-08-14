@@ -4000,7 +4000,23 @@ object ServeWeb {
         // Which of the three it is matters to a reader, and they promise different things. A
         // cleaned seed is usage code — the catalog's annotations, sticker frame, click tally and
         // knobs resolved away — so it may say "ready to Run"; the other two may not.
-        if (seed.cleaned) {
+        if (seed.cleaned && !seed.scaffoldsDeclared) {
+          // Cleaned, but by the generic rules alone: this catalog has not said what its own helpers
+          // mean, so only the shared annotations came off and its `Sticker`/`counted`/knob calls
+          // are
+          // still in the buffer. Claiming "the sticker frame and knobs are gone, press Run" here
+          // would be describing a different seed than the one on screen.
+          """
+
+          <p id="pg-seed" class="cp-sub">Opened from $where — <code>${
+              WebEscaping.htmlEscape(seed.previewId)
+            }</code> in <code>${WebEscaping.htmlEscape(seed.catalog)}</code>, with the catalog
+            annotations removed. <code>${
+              WebEscaping.htmlEscape(seed.catalog)
+            }</code> has not declared what its own helpers mean in plain Compose, so the ones this
+            preview uses are still here and will not resolve against the published catalog — delete
+            them or replace them with your own values.</p>"""
+        } else if (seed.cleaned) {
           val caveat =
             if (seed.residue.isEmpty()) ""
             else {
