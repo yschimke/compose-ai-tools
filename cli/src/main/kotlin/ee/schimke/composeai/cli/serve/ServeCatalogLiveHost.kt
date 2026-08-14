@@ -180,6 +180,9 @@ class ServeCatalogLiveHost(
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     baked.annotationsForReference(referenceId)
 
+  override fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
+    baked.tagIndexForPreview(previewId)
+
   // The catalog's published player comparison rides the baked staging dir, so it stays reachable
   // when a live daemon fronts this session.
   override fun rcCompare(): RcCompareManifest? = baked.rcCompare()

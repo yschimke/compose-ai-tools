@@ -522,3 +522,43 @@ export function stampPreviewDensities(manifest, spec, bundles) {
   }
   return stamped;
 }
+
+/**
+ * `image.path → daemon preview id` for every image, **ignoring live-alias eligibility**.
+ *
+ * The sibling of [stampPreviewDensities] and there for the same reason it is: that function already
+ * documents why a second, unfiltered pass exists — "static catalogs and intentionally unbridged
+ * supplement images still need the density". Carried semantics are the same kind of fact.
+ *
+ * [bridgeLivePreviewIds] withholds `previewId` from an image whose function the Android-only
+ * supplement overrode, because those baked pixels are not what the *primary desktop daemon* would
+ * draw, so routing a live request there would serve the wrong thing. That is a statement about
+ * which daemon may re-render the image — not about whether a semantics tree for those exact pixels
+ * exists. It does: the supplement's own bundle carries it. Reusing the live alias to find semantics
+ * therefore silently drops the tag index for precisely those variants (compose-m3's inset
+ * focus-ring stickers among them), and an element gate could never run on them.
+ *
+ * So this resolves the id from the render bundles directly, with no `overriddenFunctions` filter and
+ * no mutation of the manifest. Callers that need the *live* alias must keep using `image.previewId`.
+ */
+export function resolveSemanticsIds(manifest, spec, bundles) {
+  const previewForState = previewForStateOf(spec);
+  // Extra renders replace primary renders on a function clash, so their tree wins just as their
+  // baked pixels do — the same ordering [stampPreviewDensities] uses.
+  const orderedBundles = (Array.isArray(bundles) ? bundles : [bundles])
+    .filter(Boolean)
+    .reverse();
+  const previewsByFn = previewsByFunction(orderedBundles);
+  const breakpointForSize = breakpointForSizeOf(spec);
+  const out = new Map();
+  for (const component of manifest?.components ?? []) {
+    for (const image of component?.images ?? []) {
+      if (typeof image?.path !== "string") continue;
+      const state = image.state ?? "default";
+      const fn = resolveFunction(previewForState, component.componentId, image, state);
+      const daemonId = pickVariantId(previewsByFn.get(fn) ?? [], image, breakpointForSize);
+      if (daemonId) out.set(image.path, daemonId);
+    }
+  }
+  return out;
+}

@@ -213,3 +213,43 @@ test("an empty or absent manifest yields an empty index rather than throwing", (
   assert.deepEqual(Object.keys(catalogTagIndex(undefined, []).previews), []);
   assert.deepEqual(Object.keys(catalogTagIndex({}, undefined).previews), []);
 });
+
+// `bridgeLivePreviewIds` withholds a live alias from an image whose function the Android-only
+// supplement overrode — a statement about which daemon may re-render it, not about whether a
+// semantics tree exists. It does, in the supplement's bundle. Skipping those would silently deny
+// an element gate to exactly the compose-m3 inset-focus-ring variants.
+test("an image with no live alias still indexes from the unfiltered id map", () => {
+  const out = catalogTagIndex(
+    manifestWith([
+      { path: "images/button-filled/ideal__focus.png" }, // overridden by the supplement: no previewId
+    ]),
+    [bundleWith({ Filled_Focus: { root: node("0,0,100,40", undefined, [node("4,4,20,20", "ring")]) } })],
+    new Map([["images/button-filled/ideal__focus.png", "Filled_Focus"]]),
+  );
+  assert.deepEqual(Object.keys(out.previews), ["button-filled__ideal__focus"]);
+  assert.equal(out.previews["button-filled__ideal__focus"].ring.count, 1);
+});
+
+test("the live alias wins over the unfiltered map when both resolve", () => {
+  const out = catalogTagIndex(
+    manifestWith([
+      { path: "images/button-filled/ideal__default.png", previewId: "From_Alias" },
+    ]),
+    [
+      bundleWith({
+        From_Alias: { root: node("0,0,10,10", "via-alias") },
+        From_Map: { root: node("0,0,10,10", "via-map") },
+      }),
+    ],
+    new Map([["images/button-filled/ideal__default.png", "From_Map"]]),
+  );
+  assert.deepEqual(Object.keys(out.previews["button-filled__ideal__default"]), ["via-alias"]);
+});
+
+test("with no id map at all, behaviour is unchanged", () => {
+  const out = catalogTagIndex(
+    manifestWith([{ path: "images/button-filled/ideal__focus.png" }]),
+    [bundleWith({ Filled_Focus: { root: node("0,0,10,10", "ring") } })],
+  );
+  assert.deepEqual(Object.keys(out.previews), []);
+});

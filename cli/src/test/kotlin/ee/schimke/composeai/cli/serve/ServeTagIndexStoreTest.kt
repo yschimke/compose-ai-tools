@@ -27,7 +27,7 @@ class ServeTagIndexStoreTest {
     {"schema":"compose-preview-tags/v1","previews":{
       "button-filled__ideal__default__light":{
         "glyph":{"count":1,"bounds":{"x":8,"y":8,"width":32,"height":32},"space":"render-pixels"},
-        "row":{"count":3}
+        "row":{"count":3,"space":"render-pixels"}
       }}}
     """
 
@@ -78,14 +78,16 @@ class ServeTagIndexStoreTest {
   fun `a zero-area box is dropped, and a preview left with nothing drops with it`() {
     val json =
       """{"schema":"compose-preview-tags/v1","previews":{"p":{
-         "flat":{"count":1,"bounds":{"x":0,"y":0,"width":0,"height":10}}}}}"""
+         "flat":{"count":1,"bounds":{"x":0,"y":0,"width":0,"height":10},"space":"render-pixels"}}}}"""
     assertTrue(store(json).isEmpty, "a preview whose only entry is unusable should not be listed")
   }
 
   @Test
   fun `an oversized index is refused wholesale`() {
     val previews =
-      (0..ServeTagIndexStore.MAX_PREVIEWS).joinToString(",") { """"p$it":{"t":{"count":1}}""" }
+      (0..ServeTagIndexStore.MAX_PREVIEWS).joinToString(",") {
+        """"p$it":{"t":{"count":1,"space":"render-pixels"}}"""
+      }
     assertTrue(store("""{"schema":"compose-preview-tags/v1","previews":{$previews}}""").isEmpty)
   }
 
@@ -93,7 +95,39 @@ class ServeTagIndexStoreTest {
   fun `unknown keys are tolerated so a newer producer does not break an older host`() {
     val json =
       """{"schema":"compose-preview-tags/v1","generatedAt":"2026-01-01","previews":{"p":{
-         "t":{"count":2,"somethingNew":true}}}}"""
+         "t":{"count":2,"space":"render-pixels","somethingNew":true}}}}"""
     assertEquals(2, store(json).forPreview("p").getValue("t").count)
+  }
+
+  /**
+   * The discriminator has to be *declared*, not inferred. Defaulting a missing `space` would make
+   * an index that stated no coordinate space indistinguishable from one that stated render pixels,
+   * and a later element gate would compare bounds in a plane nobody declared.
+   */
+  @Test
+  fun `an entry with no declared space is refused`() {
+    val json =
+      """{"schema":"compose-preview-tags/v1","previews":{"p":{
+         "t":{"count":1,"bounds":{"x":0,"y":0,"width":8,"height":8}}}}}"""
+    assertTrue(store(json).isEmpty, "a missing space must not default to render-pixels")
+  }
+
+  /**
+   * An unknown space is refused too — a future canonical producer must not read as render-pixel.
+   */
+  @Test
+  fun `an entry with an unrecognised space is refused`() {
+    val json =
+      """{"schema":"compose-preview-tags/v1","previews":{"p":{
+         "t":{"count":1,"space":"canonical-plane"}}}}"""
+    assertTrue(store(json).isEmpty)
+  }
+
+  @Test
+  fun `a non-positive count is refused`() {
+    val json =
+      """{"schema":"compose-preview-tags/v1","previews":{"p":{
+         "t":{"count":0,"space":"render-pixels"}}}}"""
+    assertTrue(store(json).isEmpty)
   }
 }
