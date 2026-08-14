@@ -32,9 +32,15 @@ if [ ${#repos[@]} -eq 0 ]; then
   exit 2
 fi
 
-props=()
+# One property carrying every checkout, rather than one key per catalog: a fixed key list on the
+# Gradle side silently ignores any checkout not named in it, so a third catalog would have produced
+# an empty corpus and a passing run.
+spec=""
 for repo in "${repos[@]}"; do
-  props+=("-Dcomposeai.usageCorpus.$(basename "$repo")=$repo")
+  case "$repo" in
+    *,*) echo "usage-corpus: checkout path may not contain a comma: $repo" >&2; exit 2 ;;
+  esac
+  spec="${spec:+$spec,}$(basename "$repo")=$repo"
 done
 
 rm -rf "$out"
@@ -42,7 +48,8 @@ mkdir -p "$out"
 
 echo "==> generating snippets into $out"
 (cd "$here" && ./gradlew --quiet :cli:test --tests '*UsageSnippetCorpusTest*' \
-  "${props[@]}" -Dcomposeai.usageCorpus.out="$out" -Dcomposeai.usageCorpus.samples="$samples" \
+  "-Dcomposeai.usageCorpus.repos=$spec" \
+  -Dcomposeai.usageCorpus.out="$out" -Dcomposeai.usageCorpus.samples="$samples" \
   --rerun-tasks >/dev/null)
 
 cat "$out/REPORT.md"
@@ -54,8 +61,22 @@ summary="$out/COMPILE.md"
 for repo in "${repos[@]}"; do
   system="$(basename "$repo")"
   dir="$out/$system"
-  [ -d "$dir" ] || continue
-  total=$(find "$dir" -name '*.kt' | wc -l | tr -d ' ')
+  total=0
+  [ -d "$dir" ] && total=$(find "$dir" -name '*.kt' | wc -l | tr -d ' ')
+  # A checkout that produced nothing is a failure, not a catalog to skip. The generator only asserts
+  # that *some* snippet was written, so a silent skip here lets one good catalog carry a run in
+  # which the other was never sampled at all — the report then reads as a pass for both.
+  if [ "$total" -eq 0 ]; then
+    {
+      echo "## $system — NO SNIPPETS GENERATED"
+      echo
+      echo "Nothing was written to \`$dir\`. See its section in REPORT.md: every sample was"
+      echo "\`SOURCE NOT FOUND\` / \`DECLINED\`, or the checkout was never sampled."
+      echo
+    } >>"$summary"
+    status=1
+    continue
+  fi
   echo "==> compiling $total snippets from $system"
 
   # A failing compile is an expected outcome here, not a script error: the diagnostics ARE the
@@ -95,7 +116,12 @@ for repo in "${repos[@]}"; do
       while read -r file; do
         [ -z "$file" ] && continue
         # The first distinct reason per file: enough to classify without pasting a wall of Kotlin.
-        reason=$(grep -F "$file:" "$log" | grep -oE "(Unresolved reference '[^']+'|[A-Z][a-z].*)" | head -1)
+        # Both greps may legitimately match nothing (a diagnostic worded some other way), and under
+        # `set -euo pipefail` an unmatched grep in a command substitution would abort the whole run
+        # mid-report — so tolerate it and fall back to the raw diagnostic line.
+        first=$(grep -F "$file:" "$log" | head -1 || true)
+        reason=$(printf '%s' "$first" | grep -oE "(Unresolved reference '[^']+'|[A-Z][a-z].*)" | head -1 || true)
+        [ -n "$reason" ] || reason="${first:-no diagnostic captured}"
         echo "- \`$file\` — $reason"
       done <<<"$failed"
     fi
