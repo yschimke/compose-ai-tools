@@ -853,6 +853,34 @@ private fun jsonString(s: String): String {
 private val NO_PARAM = Any()
 
 /**
+ * Suffixes a renderer appends to a render output's own file name to make a companion that lives
+ * beside it — `renders/Foo.png` → `renders/Foo.png.error.json`. The stale-fan-out sweeps must treat
+ * a companion as belonging to the output it names, or a removed provider value leaves its sidecar
+ * behind forever (see [deleteStaleFanoutFiles]).
+ *
+ * `.error.json` is written by [writeErrorSidecar] here and by `RenderErrorSidecar` on the Android
+ * side; `.warnings.json` (`RenderWarningsSidecar`) only has an Android writer today, but the sweep
+ * covers it on both backends so the cleanup contract doesn't depend on which renderer produced the
+ * directory. Kept in sync with `PreviewManifestLoader.RENDER_COMPANION_SUFFIXES`.
+ */
+internal val RENDER_COMPANION_SUFFIXES = listOf(".error.json", ".warnings.json")
+
+/**
+ * The render output [name] belongs to: [name] itself when it is an `[ext]` output, the output it
+ * names when it is one of that output's [RENDER_COMPANION_SUFFIXES] companions, and `null`
+ * otherwise.
+ *
+ * Companions are matched before the plain extension so an output whose own extension is `.json` (a
+ * data product) resolves `Foo_Alice.json.error.json` to `Foo_Alice.json` rather than to itself.
+ */
+internal fun fanoutOutputNameOf(name: String, ext: String): String? {
+  RENDER_COMPANION_SUFFIXES.forEach { companion ->
+    if (name.endsWith(ext + companion)) return name.removeSuffix(companion)
+  }
+  return name.takeIf { it.endsWith(ext) }
+}
+
+/**
  * Deletes `<stem>_*<ext>` files from prior runs that this render won't rewrite — stale fan-out left
  * behind by provider renames ("loading" → "busy") and the `_PARAM_<idx>` → `_<label>` migration.
  *
@@ -862,6 +890,13 @@ private val NO_PARAM = Any()
  * `Foo_*` while belonging to a different subprocess. The plugin — which has the manifest this
  * subprocess doesn't — passes those stems in [protectedSiblingStems]; any file that is
  * `<sibling>.<ext>` or `<sibling>_*` is theirs, not stale.
+ *
+ * A stale row's companions go with it. A failed row writes `<stem>_<label><ext>.error.json` and no
+ * output, so an extension-only filter never matched the one file the row actually left behind, and
+ * the orphan outlived every subsequent run — the CLI's missing-render report then rediscovers it by
+ * directory glob and can present an obsolete exception as a failure of the current run (PR #3815).
+ * The companion is classified by the output it names, so it is kept exactly when that output is
+ * expected and swept exactly when that output is stale.
  */
 internal fun deleteStaleFanoutFiles(
   template: File,
@@ -876,9 +911,10 @@ internal fun deleteStaleFanoutFiles(
   dir
     .listFiles()
     ?.filter { f ->
+      val output = fanoutOutputNameOf(f.name, ext)
       f.name.startsWith(prefix) &&
-        f.name.endsWith(ext) &&
-        f.name !in expectedNames &&
+        output != null &&
+        output !in expectedNames &&
         protectedSiblingStems.none { sib ->
           f.name.startsWith("$sib.") || f.name.startsWith("${sib}_")
         }

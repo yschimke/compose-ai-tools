@@ -83,4 +83,79 @@ class DeleteStaleFanoutFilesTest {
     assertTrue(File(tmp.root, "Foo_x.gif").exists())
     assertTrue(File(tmp.root, "Bar_x.png").exists())
   }
+
+  /**
+   * The orphan PR #3815 hit: a row that FAILED leaves only `<row>.png.error.json`, never a PNG, so
+   * the sweep's extension filter matched nothing and the sidecar survived the provider rename that
+   * retired the row. The CLI then rediscovers it by glob and can print a dead exception as a
+   * current failure.
+   */
+  @Test
+  fun `deletes the error sidecar of a stale row`() {
+    val template = File(tmp.root, "Foo.png")
+    touch("Foo_renamed.png.error.json")
+
+    deleteStaleFanoutFiles(template, expectedNames = setOf("Foo_Alice.png"))
+
+    assertFalse(File(tmp.root, "Foo_renamed.png.error.json").exists())
+  }
+
+  @Test
+  fun `keeps the companions of an expected row`() {
+    val template = File(tmp.root, "Foo.png")
+    touch("Foo_Alice.png")
+    touch("Foo_Alice.png.error.json")
+    touch("Foo_Alice.png.warnings.json")
+
+    deleteStaleFanoutFiles(template, expectedNames = setOf("Foo_Alice.png"))
+
+    assertTrue(File(tmp.root, "Foo_Alice.png").exists())
+    assertTrue(File(tmp.root, "Foo_Alice.png.error.json").exists())
+    assertTrue(File(tmp.root, "Foo_Alice.png.warnings.json").exists())
+  }
+
+  @Test
+  fun `deletes the warnings sidecar of a stale row`() {
+    val template = File(tmp.root, "Foo.png")
+    touch("Foo_renamed.png")
+    touch("Foo_renamed.png.warnings.json")
+
+    deleteStaleFanoutFiles(template, expectedNames = emptySet())
+
+    assertFalse(File(tmp.root, "Foo_renamed.png").exists())
+    assertFalse(File(tmp.root, "Foo_renamed.png.warnings.json").exists())
+  }
+
+  /**
+   * A companion belongs to the output it names, so it is scoped by that output's extension exactly
+   * as the output itself is — the renderer forks per output and a GIF template's subprocess must
+   * not sweep the PNG template's rows (or their sidecars).
+   */
+  @Test
+  fun `companions are scoped to the template extension`() {
+    val gifTemplate = File(tmp.root, "Foo.gif")
+    touch("Foo_stale.gif.error.json")
+    touch("Foo_stale.png.error.json")
+
+    deleteStaleFanoutFiles(gifTemplate, expectedNames = emptySet())
+
+    assertFalse(File(tmp.root, "Foo_stale.gif.error.json").exists())
+    assertTrue(File(tmp.root, "Foo_stale.png.error.json").exists())
+  }
+
+  @Test
+  fun `sibling protection covers the sibling's companions (issue 2193)`() {
+    val template = File(tmp.root, "Foo.png")
+    touch("Foo_Dark_Alice.png.error.json")
+    touch("Foo_stale.png.error.json")
+
+    deleteStaleFanoutFiles(
+      template,
+      expectedNames = setOf("Foo_Alice.png"),
+      protectedSiblingStems = listOf("Foo_Dark"),
+    )
+
+    assertTrue(File(tmp.root, "Foo_Dark_Alice.png.error.json").exists())
+    assertFalse(File(tmp.root, "Foo_stale.png.error.json").exists())
+  }
 }
