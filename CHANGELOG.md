@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.5.0](https://github.com/yschimke/compose-ai-tools/compare/v1.4.0...v1.5.0) (2026-08-14)
+
+
+### Features
+
+* **render:** opt renders into the rewritten Compose SlotTable ([#3840](https://github.com/yschimke/compose-ai-tools/issues/3840)) ([02881ce](https://github.com/yschimke/compose-ai-tools/commit/02881cedd3bb001d4fb882077e50092d339a57a9))
+* **render:** render this repo's own catalogs with the rewritten SlotTable ([#3845](https://github.com/yschimke/compose-ai-tools/issues/3845)) ([aed817b](https://github.com/yschimke/compose-ai-tools/commit/aed817b2979e69f235d4314e887f2d8ba37f3c49))
+
+
+### Bug Fixes
+
+* **discovery:** case-fold the render stem tie test ([#3843](https://github.com/yschimke/compose-ai-tools/issues/3843)) ([9c2cac2](https://github.com/yschimke/compose-ai-tools/commit/9c2cac200714d5a7a92510fe52bfa57833ebcb8f))
+* **discovery:** guarantee render output paths are unique manifest-wide ([#3847](https://github.com/yschimke/compose-ai-tools/issues/3847)) ([01609fc](https://github.com/yschimke/compose-ai-tools/commit/01609fc49c4cabc9d6ab8c11acd5db083b0bc8b3))
+* **harness:** make the serve page captures deterministic ([#3848](https://github.com/yschimke/compose-ai-tools/issues/3848)) ([adc2e9a](https://github.com/yschimke/compose-ai-tools/commit/adc2e9a587443ece74bdc85a823d587f94a9b070))
+* **samples:** restore the Remote Compose doc-capture guard, unstale an xr-glimmer comment ([#3846](https://github.com/yschimke/compose-ai-tools/issues/3846)) ([979d472](https://github.com/yschimke/compose-ai-tools/commit/979d4722b3937795c31e3b2bd3d56ec65363af46))
+* **serve:** capture session snapshots as part of the registry's transitions ([#3842](https://github.com/yschimke/compose-ai-tools/issues/3842)) ([a8200ed](https://github.com/yschimke/compose-ai-tools/commit/a8200edb46d600613836031800668015af321748))
+* **serve:** compare corpus paths with invariant separators ([#3855](https://github.com/yschimke/compose-ai-tools/issues/3855)) ([5e93198](https://github.com/yschimke/compose-ai-tools/commit/5e93198e23a743d8db3519deaa0961d8cc798ca8))
+* **serve:** open the query when pinning a token-free link, and make revisions a menu ([#3858](https://github.com/yschimke/compose-ai-tools/issues/3858)) ([b31c1e4](https://github.com/yschimke/compose-ai-tools/commit/b31c1e45ab8dc194d8b1ada79242f84c0d7cb8c6))
+* **serve:** rewrite fully qualified knob calls, and make the corpus fail loudly ([#3851](https://github.com/yschimke/compose-ai-tools/issues/3851)) ([822dfcd](https://github.com/yschimke/compose-ai-tools/commit/822dfcd2219769bdaec732d496dd00ff7cd1a09b))
+* **serve:** unqualify only declared scaffold packages, not package-shaped receivers ([#3853](https://github.com/yschimke/compose-ai-tools/issues/3853)) ([520b613](https://github.com/yschimke/compose-ai-tools/commit/520b61323bbd08bcecc6b66f5f1b413820ddc972))
+
 ## [1.4.0](https://github.com/yschimke/compose-ai-tools/compare/v1.3.0...v1.4.0) (2026-08-14)
 
 
