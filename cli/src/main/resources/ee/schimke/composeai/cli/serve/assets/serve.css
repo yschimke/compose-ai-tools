@@ -1649,17 +1649,28 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 0.6rem;
   font-weight: 700; line-height: 1; color: #fff; }
 .cp-annotation .cp-annotation-badge { position: absolute; top: -7px; left: -7px; }
-.cp-annotation--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
-.cp-annotation--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+/* The badge is coloured by kind wherever it appears — on the overlay box AND in the legend row.
+   Only the box was covered before, so a legend ordinal was `color: #fff` over no background: the
+   number was invisible and the row could not be matched back to its box, which is the legend's one
+   job. Fixed for all three kinds rather than only the new one, since layout and typography had it
+   too. */
+.cp-annotation--layout .cp-annotation-badge,
+.cp-annotation-entry--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
+.cp-annotation--typography .cp-annotation-badge,
+.cp-annotation-entry--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+.cp-annotation--theme .cp-annotation-badge,
+.cp-annotation-entry--theme .cp-annotation-badge { background: rgba(13, 148, 136, 0.95); }
 .cp-annotation-legend { display: none; margin: 8px 0 0; padding: 0; list-style: none;
   font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-annotation-entry { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .cp-annotation-role { font-weight: 650; color: var(--cp-fg); }
 .cp-annotation-spec { font-variant-numeric: tabular-nums; }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation-legend,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation-legend,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation-legend { display: block; }
 .cp-annotation-entry { display: none; }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation-entry--layout,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation-entry--theme,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation-entry--typography
   { display: flex; }
 /* Layout is the redline layer, typography the type spec — distinct hues so both can be on at once
@@ -1668,12 +1679,24 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-annotation--layout .cp-annotation-label { background: rgba(214, 51, 108, 0.92); }
 .cp-annotation--typography { border: 1px dashed rgba(37, 99, 235, 0.9); }
 .cp-annotation--typography .cp-annotation-label { background: rgba(37, 99, 235, 0.92); }
+/* Theme is the resolved-container layer — fill, border, radius. A third hue AND a third border
+   style, because hue alone is not enough here: a container's redline and its resolved tokens
+   describe the SAME box in the ordinary case, so with Layout and Theme both on, the later-appended
+   theme box sits exactly on the layout box. Dotted against layout's solid and typography's dashed
+   keeps two coincident boxes legible. */
+.cp-annotation--theme { border: 1px dotted rgba(13, 148, 136, 0.9); }
+.cp-annotation--theme .cp-annotation-label { background: rgba(13, 148, 136, 0.92); }
+/* Same collision, worse: every box badge is pinned to the top-left corner, so a theme badge over a
+   layout box hid the layout ordinal completely and the legend's ① pointed at nothing visible. Park
+   the theme badge on the opposite corner — the two can then never occupy one spot. */
+.cp-annotation--theme .cp-annotation-badge { left: auto; right: -7px; }
 .cp-annotation--typography-hit { border: 0; background: transparent; }
 .cp-annotation--typography-cluster.cp-annotation-active { border-width: 2px;
   background: rgba(37, 99, 235, 0.08); }
 .cp-annotation--typography-hit.cp-annotation-active { background: rgba(37, 99, 235, 0.28);
   outline: 1px solid rgba(37, 99, 235, 0.95); }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation--layout,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation--theme,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation--typography { display: block; }
 .cp-typography-summary { display: none; margin: 14px 0 0; }
 #cp-reference-compare[data-annotate-typography="on"] .cp-typography-summary { display: block; }

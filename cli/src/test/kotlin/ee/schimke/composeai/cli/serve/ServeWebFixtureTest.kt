@@ -1530,6 +1530,22 @@ class ServeWebFixtureTest {
                   "unit" to "sp",
                 ),
             ),
+            // The resolved-container layer. Before the THEME toggle existed this annotation loaded,
+            // got a box and a legend row built for it, and was then hidden by CSS with no control
+            // able to reveal it — so the fixture carries one to keep that reachable.
+            DesignAnnotation(
+              kind = AnnotationKind.THEME,
+              bounds = AnnotationBounds(x = 12, y = 12, width = 196, height = 48),
+              label = "fill #FF6750A4 · radius 20.0dp · border 1.0dp #FF79747E",
+              role = "Button",
+              detail =
+                mapOf(
+                  "background" to "#FF6750A4",
+                  "cornerRadius" to "20.0dp",
+                  "borderColor" to "#FF79747E",
+                  "borderWidth" to "1.0dp",
+                ),
+            ),
           ),
       )
     // The same comparison, PINNED to an older publish (issue #3723) — the state a shared permalink

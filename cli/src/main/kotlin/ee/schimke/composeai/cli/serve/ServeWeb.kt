@@ -6474,8 +6474,16 @@ $rows
     val annotationControls =
       if (annotated.isEmpty()) ""
       else {
+        // Every kind [AnnotationKind.KNOWN] admits needs an entry here. A kind that loads and gets
+        // a box built for it but has no toggle is drawn into a layer CSS keeps permanently hidden —
+        // which is what happened to THEME: `ServeAnnotationStore` accepts it, `format-compare.js`
+        // builds its box and legend row, and nothing could ever reveal either.
         val toggles =
-          listOf(AnnotationKind.LAYOUT to "Layout", AnnotationKind.TYPOGRAPHY to "Typography")
+          listOf(
+              AnnotationKind.LAYOUT to "Layout",
+              AnnotationKind.TYPOGRAPHY to "Typography",
+              AnnotationKind.THEME to "Theme",
+            )
             .filter { (kind, _) -> annotated.any { it.kind == kind } }
             .joinToString("\n") { (kind, label) ->
               "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +

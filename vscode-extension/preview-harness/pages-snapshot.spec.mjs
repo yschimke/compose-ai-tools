@@ -1170,9 +1170,16 @@ const FIXTURE_STATES = [
         fixture: "serve-reference-compare",
         suffix: "annotated",
         apply: async (page) => {
-            for (const kind of ["layout", "typography"]) {
+            for (const kind of ["layout", "typography", "theme"]) {
                 await page.check(`[data-cp-annotation-kind="${kind}"]`);
             }
+            // The theme layer had a box and a legend row built for it and no control able to reveal
+            // either — CSS hid it unconditionally. Assert the drawn state, not just the checkbox, so
+            // a future toggle added without its display rule fails here instead of shipping invisible.
+            await expect(page.locator(".cp-annotation--theme")).toHaveCount(1);
+            await expect(
+                page.locator(".cp-annotation-entry--theme"),
+            ).toHaveCount(1);
             // The boxes are positioned from the image's rendered size, so hold until the panels
             // have actually laid out rather than racing the placeholder's load.
             await page.waitForFunction(() => {
