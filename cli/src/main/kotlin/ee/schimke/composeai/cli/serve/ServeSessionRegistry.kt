@@ -165,6 +165,39 @@ class ServeSessionRegistry(
     unregisterListeners += listener
   }
 
+  /**
+   * A projection of a session's host that has to outlive its residency, captured and discarded as
+   * part of the registry's **own** transitions rather than alongside them.
+   *
+   * [addSuspendListener] cannot provide this, and the difference is the whole point. A suspend
+   * listener runs *after* the lock is released, so a reader can observe the moment in between:
+   * `peekHost` already null, [isKnownSession] still true, and no snapshot yet. And because a
+   * listener writes to storage the registry does not own, a retirement can be overtaken by a slower
+   * writer still holding the removed host, which resurrects the entry it just evicted.
+   *
+   * Both disappear when the capture and the transition are the same act. [capture] runs under the
+   * lock immediately before the host is detached, so "resident" and "snapshotted" are the only two
+   * states a reader can see; [discard] runs under the same lock as the removal, so nothing can be
+   * written back afterwards.
+   *
+   * The cost of that guarantee is the contract: both run **with the registry lock held**, so an
+   * implementation must do no I/O, must not block, and must never re-enter the registry.
+   */
+  interface SessionSnapshots {
+    /** Under the lock, immediately before [host] is detached from [sessionId]. */
+    fun capture(sessionId: String, host: ServeHost)
+
+    /** Under the lock, as [sessionId] is retired. */
+    fun discard(sessionId: String)
+  }
+
+  @Volatile private var snapshots: SessionSnapshots? = null
+
+  /** Install the [SessionSnapshots] hook. See its KDoc for the contract it must honour. */
+  fun setSessionSnapshots(snapshots: SessionSnapshots?) {
+    this.snapshots = snapshots
+  }
+
   // Wall-clock of the most recent acquire/lease/release across all sessions — the basis for the
   // server-level idle check ([idleMillis]) that the ephemeral exit-when-idle watchdog reads.
   @Volatile private var lastActivity: Long = clock()
@@ -263,7 +296,15 @@ class ServeSessionRegistry(
    * under that id.
    */
   fun unregister(sessionId: String): Boolean {
-    val removed = lock.withLock { sessions.remove(sessionId) }
+    val removed = lock.withLock {
+      val removed = sessions.remove(sessionId)
+      // Discarded under the SAME lock as the removal, so a concurrent detach either captured
+      // before this and is discarded here, or finds no entry to capture from at all. Outside the
+      // lock the two can interleave, and the slower writer resurrects what the retirement just
+      // evicted.
+      if (removed != null) snapshots?.let { runCatching { it.discard(sessionId) } }
+      removed
+    }
     removed?.host?.let { runCatching { it.close() } }
     // Outside the lock and guarded, exactly like the suspend notification: a listener may re-enter
     // the registry, and one that throws must not leave the session half-retired.
@@ -376,6 +417,9 @@ class ServeSessionRegistry(
             !host.backgroundWorkActive &&
             now - entry.lastAccess >= idleTimeoutMillis
         ) {
+          // Under the lock, BEFORE the detach: this and `entry.host = null` are one transition,
+          // so no reader can catch the session detached with its snapshot not yet published.
+          snapshots?.let { runCatching { it.capture(id, host) } }
           entry.host = null
           entry.startedAt = null
           entry.closing = true
@@ -443,6 +487,12 @@ class ServeSessionRegistry(
     }
     for ((id, entry) in stale) {
       sessions.remove(id)
+      // The second removal path, and it has to discard too. Every suspended session is captured —
+      // a forked revision host included, which contributes an empty map since it is no catalog —
+      // so a GC that removed the entry without the snapshot would leak one per reclaimed revision
+      // and defeat exactly the bound this function exists to enforce. Under the same lock as the
+      // removal, like [unregister].
+      snapshots?.let { runCatching { it.discard(id) } }
       runCatching { entry.state?.reclaim?.invoke() }
     }
     stale.size

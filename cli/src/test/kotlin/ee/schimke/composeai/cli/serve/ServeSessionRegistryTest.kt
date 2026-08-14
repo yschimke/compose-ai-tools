@@ -259,6 +259,87 @@ class ServeSessionRegistryTest {
     }
   }
 
+  /**
+   * The guarantee a suspend listener cannot give: no reader can observe a session detached from its
+   * host with its snapshot not yet published.
+   *
+   * `capture` runs under the registry lock immediately before the detach, so the two are one
+   * transition. This asserts it from inside the callback — at the moment `capture` runs the host is
+   * still attached, which is exactly what makes "resident" and "snapshotted" the only two states
+   * visible from outside.
+   */
+  @Test
+  fun `a snapshot is captured as part of the detach, not after it`() {
+    val clock = AtomicLong(0)
+    val captured = mutableListOf<String>()
+    var attachedAtCapture: Boolean? = null
+    ServeSessionRegistry(
+        open = Opener(),
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { reg ->
+        reg.setSessionSnapshots(
+          object : ServeSessionRegistry.SessionSnapshots {
+            override fun capture(sessionId: String, host: ServeHost) {
+              captured += sessionId
+              // Read through the registry's own accessor: still resident here, because the detach
+              // has not happened yet. If capture ever moves after it, this flips and the window
+              // this test exists to deny is back.
+              attachedAtCapture = reg.peekHost(sessionId) != null
+            }
+
+            override fun discard(sessionId: String) {
+              captured -= sessionId
+            }
+          }
+        )
+        reg.register("compose-m3", stateFor("compose-m3"))
+        assertNotNull(reg.acquire("compose-m3"), "resident before the idle window")
+
+        clock.set(1_000)
+        assertEquals(1, reg.suspendIdle(), "the idle session was suspended")
+        assertEquals(listOf("compose-m3"), captured, "its snapshot was captured")
+        assertEquals(true, attachedAtCapture, "capture ran BEFORE the host was detached")
+        assertNull(reg.peekHost("compose-m3"), "and the session is suspended afterwards")
+      }
+  }
+
+  /** Retirement discards under the same lock, so nothing survives the catalog it belonged to. */
+  @Test
+  fun `retiring a suspended catalog discards its snapshot`() {
+    val clock = AtomicLong(0)
+    val held = mutableSetOf<String>()
+    ServeSessionRegistry(
+        open = Opener(),
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { reg ->
+        reg.setSessionSnapshots(
+          object : ServeSessionRegistry.SessionSnapshots {
+            override fun capture(sessionId: String, host: ServeHost) {
+              held += sessionId
+            }
+
+            override fun discard(sessionId: String) {
+              held -= sessionId
+            }
+          }
+        )
+        reg.register("compose-m3", stateFor("compose-m3"))
+        reg.acquire("compose-m3")
+        clock.set(1_000)
+        reg.suspendIdle()
+        assertEquals(setOf("compose-m3"), held, "suspended, so its snapshot is held")
+
+        assertTrue(reg.unregister("compose-m3"), "the catalog was retired")
+        assertEquals(emptySet(), held, "and its snapshot went with it")
+      }
+  }
+
   @Test
   fun `liveSeatWeight surfaces the session state's weight, defaulting to 1`() {
     ServeSessionRegistry(open = Opener()).use { reg ->
@@ -443,6 +524,49 @@ class ServeSessionRegistryTest {
         lease.close() // records activity at t=5_000
         clock.set(8_500)
         assertEquals(3_500L, reg.idleMillis(), "idle counts from the last activity once unleased")
+      }
+  }
+
+  /**
+   * The GC is the *second* removal path, and it has to discard too.
+   *
+   * Every suspended session is captured, a forked revision host included, so a reclaim that removed
+   * the entry without its snapshot would leak one per reclaimed revision — defeating the bound this
+   * GC exists to enforce, on the surface with the most churn.
+   */
+  @Test
+  fun `reclaiming a forked session discards its snapshot`() {
+    val clock = AtomicLong(0)
+    val held = mutableSetOf<String>()
+    val factory = ServeSessionFactory { id -> stateFor(id) }
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = factory,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        suspendedGcTimeoutMillis = 1_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        reg.setSessionSnapshots(
+          object : ServeSessionRegistry.SessionSnapshots {
+            override fun capture(sessionId: String, host: ServeHost) {
+              held += sessionId
+            }
+
+            override fun discard(sessionId: String) {
+              held -= sessionId
+            }
+          }
+        )
+        assertNotNull(reg.acquire("rev1"))
+        clock.set(200)
+        assertEquals(1, reg.suspendIdle())
+        assertEquals(setOf("rev1"), held, "suspended, so a snapshot is held for it")
+
+        clock.set(1_500)
+        assertEquals(1, reg.reclaimIdleForked(), "past the GC window → reclaimed")
+        assertEquals(emptySet(), held, "and the GC discarded its snapshot with it")
       }
   }
 
