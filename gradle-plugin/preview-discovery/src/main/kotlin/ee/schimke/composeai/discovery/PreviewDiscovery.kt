@@ -1583,16 +1583,24 @@ object PreviewDiscovery {
    * rationale. Exposed `internal` so the unit tests can assert the charset, the stability of a stem
    * under unrelated additions, and the collision paths directly without a full discovery pipeline.
    */
-  internal fun resolveRenderStems(previews: List<PreviewInfo>): List<String> {
+  internal fun resolveRenderStems(
+    previews: List<PreviewInfo>,
+    // Narrowed only by tests: a real 8-hex tie needs ~2^32 work to construct, so the backstop and
+    // its case-folding are exercised at a width where a collision is reachable.
+    digestChars: Int = RENDER_STEM_DIGEST_CHARS,
+  ): List<String> {
     if (previews.isEmpty()) return emptyList()
-    return disambiguateDigestTies(previews.map { renderStem(it) }, previews)
+    return disambiguateDigestTies(previews.map { renderStem(it, digestChars) }, previews)
   }
 
   /**
    * The stem for a single preview, computed from that preview alone. Deliberately takes no view of
    * the rest of the module — see [normalizeRenderOutputs] for why that independence is the point.
    */
-  internal fun renderStem(preview: PreviewInfo): String {
+  internal fun renderStem(
+    preview: PreviewInfo,
+    digestChars: Int = RENDER_STEM_DIGEST_CHARS,
+  ): String {
     val readable =
       sanitiseSegments(preview)
         .lastOrNull()
@@ -1601,7 +1609,7 @@ object PreviewDiscovery {
         .take(MAX_READABLE_STEM)
         .trim('_', '-')
         .ifEmpty { "preview" }
-    return "$readable-${idDigest(preview.id, RENDER_STEM_DIGEST_CHARS)}"
+    return "$readable-${idDigest(preview.id, digestChars)}"
   }
 
   /** Lowercase hex of `sha256(id)`, truncated to [chars]. */
@@ -1626,10 +1634,15 @@ object PreviewDiscovery {
     stems: List<String>,
     previews: List<PreviewInfo>,
   ): List<String> {
-    val tied = stems.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+    // Case-folded, because the question is "do these address the same file", and on APFS/NTFS
+    // `Foo_Dark-<d>.png` and `Foo_dark-<d>.png` do. Grouping case-sensitively here would let a
+    // case-only pair that also tied on the digest slip through the backstop and overwrite. The
+    // stems themselves keep their original casing — only the tie test folds.
+    val tied =
+      stems.groupingBy { it.lowercase() }.eachCount().filterValues { it > 1 }.keys
     if (tied.isEmpty()) return stems
     return stems.mapIndexed { i, stem ->
-      if (stem !in tied) stem
+      if (stem.lowercase() !in tied) stem
       else stem.substringBeforeLast('-') + "-" + idDigest(previews[i].id, FULL_DIGEST_CHARS)
     }
   }
