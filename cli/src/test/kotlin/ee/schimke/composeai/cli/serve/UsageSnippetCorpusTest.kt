@@ -81,11 +81,15 @@ class UsageSnippetCorpusTest {
    * `src/contestMain` contain `test` and are production, and excluding them would drop real
    * previews just as quietly in the other direction. A test source set's name ends in `Test`
    * (`commonTest`, `jvmTest`, `androidUnitTest`) or `TestFixtures` (`commonTestFixtures`,
-   * `androidTestFixtures`), or is `test` / `testFixtures` outright.
+   * `androidTestFixtures`), or is `test` / `testFixtures` outright — optionally with an Android
+   * build-variant suffix (`testDebug`, `androidTestDebug`, `screenshotTestDebug`). The suffix must
+   * start with a capital, which is what keeps `latestMain` out of it.
    */
   private fun sources(root: File): List<File> {
     val testSourceSet =
-      Regex("""/src/(test|testFixtures|[A-Za-z0-9]*Test|[A-Za-z0-9]*TestFixtures)/""")
+      Regex(
+        """/src/(test|testFixtures|[A-Za-z0-9]*Test|[A-Za-z0-9]*TestFixtures)([A-Z][A-Za-z0-9]*)?/"""
+      )
     return root
       .walkTopDown()
       .onEnter { it.name !in setOf("build", ".git", ".gradle") }
@@ -227,6 +231,38 @@ class UsageSnippetCorpusTest {
 
   private val perKind =
     System.getProperty("composeai.usageCorpus.samples")?.toIntOrNull()?.coerceAtLeast(1) ?: 5
+
+  /**
+   * The source-set filter has now been wrong in both directions — leaking KMP test sources when it
+   * only looked for `/test/`, then excluding production `latestMain` when it matched `test` as a
+   * substring, then dropping `commonTestFixtures` when it was narrowed to boundaries. Each of those
+   * moves the reported ratio silently, which is the one thing this corpus must not do, so the rule
+   * gets pinned rather than re-derived.
+   */
+  @Test
+  fun `test source sets are excluded and production ones are not`() {
+    val root = File(outDir, "source-set-fixture").also { it.deleteRecursively() }
+    val excluded =
+      listOf(
+        "test", // single-platform
+        "testFixtures",
+        "commonTest", // Kotlin Multiplatform
+        "jvmTest",
+        "androidUnitTest",
+        "commonTestFixtures",
+        "androidTestFixtures",
+        "testDebug", // Android build-variant suffixes
+        "androidTestDebug",
+        "screenshotTestDebug",
+      )
+    val kept = listOf("main", "commonMain", "androidMain", "latestMain", "contestMain")
+    for (name in excluded + kept) {
+      File(root, "module/src/$name/kotlin").mkdirs()
+      File(root, "module/src/$name/kotlin/Previews.kt").writeText("// $name\n")
+    }
+    val found = sources(root).map { it.parentFile.parentFile.name }.toSet()
+    assertTrue(found == kept.toSet(), "kept ${found.sorted()}, wanted ${kept.sorted()}")
+  }
 
   @Test
   fun `generate usage snippets from the catalog checkouts`() {
