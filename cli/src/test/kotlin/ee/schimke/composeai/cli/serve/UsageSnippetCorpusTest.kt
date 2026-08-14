@@ -17,36 +17,59 @@ import kotlin.test.assertTrue
  *
  * ### Opt-in, and silent without checkouts
  *
- * Driven by `-Dcomposeai.usageCorpus.<system>=<path>`, so it is a no-op in a normal build and on
- * any machine without the catalogs. `scripts/usage-corpus.sh` supplies the paths and then compiles
- * what this writes; see `docs/design/USAGE_SNIPPET_CORPUS.md` for the whole loop.
+ * Driven by `-Dcomposeai.usageCorpus.repos=<name>=<path>,…`, so it is a no-op in a normal build and
+ * on any machine without the catalogs. `scripts/usage-corpus.sh` supplies the paths and then
+ * compiles what this writes; see `docs/design/USAGE_SNIPPET_CORPUS.md` for the whole loop.
  *
- * The catalogs are deliberately unalike, which is the point of testing both:
- * - **m3-catalog** is annotation-first (`@CatalogComponent` / `@CatalogVariant`) and ships a
+ * The catalogs are deliberately unalike, which is the point of testing both, and which sampler runs
+ * is decided by the checkout's *shape* rather than its name:
+ * - **annotation-first** (m3-catalog): `@CatalogComponent` / `@CatalogVariant`, plus a
  *   `compose-usage.json`, so its snippets are expected to come out as usage code.
- * - **meshcore-mobile** is spec-driven (`catalog.spec.json` names plain `@Preview` functions) and
- *   ships no rules at all, so it exercises the generic path — annotation stripping only.
+ * - **spec-driven** (meshcore-mobile): a `catalog.spec.json` naming plain `@Preview` functions, and
+ *   no rules at all, so it exercises the generic path — annotation stripping only.
  */
 class UsageSnippetCorpusTest {
 
   private data class Sample(val system: String, val kind: String, val function: String)
 
-  private fun repo(system: String): File? =
-    System.getProperty("composeai.usageCorpus.$system")?.takeIf { it.isNotBlank() }?.let(::File)
+  /**
+   * The checkouts to sample, as `name=path,name=path` in `composeai.usageCorpus.repos`.
+   *
+   * One property rather than one per catalog on purpose: a fixed set of forwarded keys silently
+   * ignores any checkout whose name is not in it, which would have produced an empty corpus and a
+   * passing run for a catalog nobody sampled.
+   */
+  private fun repos(): List<Pair<String, File>> =
+    System.getProperty("composeai.usageCorpus.repos").orEmpty().split(',').mapNotNull { entry ->
+      val at = entry.indexOf('=').takeIf { it > 0 } ?: return@mapNotNull null
+      val name = entry.substring(0, at).trim()
+      val path = entry.substring(at + 1).trim()
+      if (name.isEmpty() || path.isEmpty()) null else name to File(path)
+    }
 
   private val outDir =
     File(System.getProperty("composeai.usageCorpus.out") ?: "build/usage-corpus").also {
       it.mkdirs()
     }
 
-  /** Every `.kt` under a checkout, excluding build output and tests. */
-  private fun sources(root: File): List<File> =
-    root
+  /**
+   * Every `.kt` under a checkout, excluding build output and test sources.
+   *
+   * The source-set names matter here: `/test/` alone misses every Kotlin Multiplatform layout —
+   * `src/commonTest`, `src/jvmTest`, `src/desktopTest`, `src/androidUnitTest` — and both catalogs
+   * sampled are multiplatform. A test fixture picked up as a production preview would quietly move
+   * the reported ratio, so the filter matches any `src/<name>Test…` segment as well as the
+   * single-platform spellings.
+   */
+  private fun sources(root: File): List<File> {
+    val testSourceSet = Regex("""/src/[A-Za-z0-9]*([Tt]est|TestFixtures)[A-Za-z0-9]*/""")
+    return root
       .walkTopDown()
       .onEnter { it.name !in setOf("build", ".git", ".gradle") }
       .filter { it.isFile && it.extension == "kt" }
-      .filterNot { it.path.contains("/test/") || it.path.contains("/androidTest/") }
+      .filterNot { testSourceSet.containsMatchIn(it.path) || it.path.contains("/testFixtures/") }
       .toList()
+  }
 
   /**
    * A 1-based line inside [function]'s declaration — the anchor the cleaner walks outwards from.
@@ -97,8 +120,8 @@ class UsageSnippetCorpusTest {
       }
   }
 
-  /** m3-catalog: annotation-first, so the samples come from the annotations themselves. */
-  private fun m3Samples(root: File, perKind: Int): List<Sample> {
+  /** Annotation-first (m3-catalog): the samples come from the annotations themselves. */
+  private fun annotationSamples(system: String, root: File, perKind: Int): List<Sample> {
     val out = mutableListOf<Sample>()
     for (file in sources(root).sortedBy { it.path }) {
       val lines = runCatching { file.readText().lines() }.getOrNull() ?: continue
@@ -114,7 +137,7 @@ class UsageSnippetCorpusTest {
           lines.drop(i).firstNotNullOfOrNull {
             Regex("""^fun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""").find(it)?.groupValues?.get(1)
           } ?: continue
-        if (out.none { it.function == fn }) out += Sample("m3-catalog", kind, fn)
+        if (out.none { it.function == fn }) out += Sample(system, kind, fn)
       }
     }
     // Spread across the alphabet rather than taking the first N, which would be one section file.
@@ -127,8 +150,8 @@ class UsageSnippetCorpusTest {
     }
   }
 
-  /** meshcore-mobile: spec-driven, so the samples come from `catalog.spec.json`. */
-  private fun meshcoreSamples(root: File, perKind: Int): List<Sample> {
+  /** Spec-driven (meshcore-mobile): the samples come from `catalog.spec.json`. */
+  private fun specSamples(system: String, root: File, perKind: Int): List<Sample> {
     val spec = File(root, "catalog.spec.json").takeIf { it.isFile } ?: return emptyList()
     val text = spec.readText()
     // Deliberately regex rather than a JSON parser: this test has no JSON dependency and the shape
@@ -151,7 +174,7 @@ class UsageSnippetCorpusTest {
         .toList()
     fun spread(all: List<String>, kind: String) =
       (if (all.size <= perKind) all else (0 until perKind).map { all[it * all.size / perKind] })
-        .map { Sample("meshcore-mobile", kind, it) }
+        .map { Sample(system, kind, it) }
     return spread(components, "component") + spread(variants, "variant")
   }
 
@@ -184,22 +207,26 @@ class UsageSnippetCorpusTest {
 
   @Test
   fun `generate usage snippets from the catalog checkouts`() {
-    val m3 = repo("m3-catalog")
-    val meshcore = repo("meshcore-mobile")
-    if (m3 == null && meshcore == null) return // no checkouts wired: nothing to do
+    val repos = repos()
+    if (repos.isEmpty()) return // no checkouts wired: nothing to do
 
     val report = StringBuilder()
     var written = 0
 
-    for (root in listOfNotNull(m3, meshcore)) {
-      val system = if (root == m3) "m3-catalog" else "meshcore-mobile"
+    for ((system, root) in repos) {
       val files = sources(root)
       val (rules, declared) = rulesFor(root)
       val strings = stringsFor(root, rules)
+      // Which sampler by the catalog's *shape*, not its name — keying on the name would silently
+      // mis-sample the next catalog somebody points this at. Annotations first, spec as the
+      // fallback, rather than branching on the spec file's presence: m3-catalog ships **both**, so
+      // "has a spec ⇒ spec-driven" sampled it as the wrong shape and produced nothing.
       val samples =
-        if (system == "m3-catalog") m3Samples(root, perKind) else meshcoreSamples(root, perKind)
+        annotationSamples(system, root, perKind).ifEmpty { specSamples(system, root, perKind) }
       report.appendLine(
-        "## $system — ${samples.size} samples, rules: ${if (declared) "declared (${rules.scaffolds.size} scaffolds)" else "GENERIC (none declared)"}"
+        // The catalog's *own* scaffolds, not the merged map — counting the inherited generic rules
+        // would credit every catalog with rules it never wrote.
+        "## $system — ${samples.size} samples, rules: ${if (declared) "declared (${rules.scaffolds.keys.count { it !in UsageRules.GENERIC.scaffolds }} scaffolds)" else "GENERIC (none declared)"}"
       )
       for (sample in samples) {
         val found = findFunction(files, sample.function)

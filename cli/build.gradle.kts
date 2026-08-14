@@ -446,10 +446,12 @@ tasks.withType<Test>().configureEach {
   // Catalog checkouts for the usage-snippet corpus (UsageSnippetCorpusTest). Absent by default, so
   // the corpus is a no-op in a normal build; `scripts/usage-corpus.sh` supplies them. Forwarded
   // rather than read from the environment so the paths show up in the build's own inputs.
+  // `repos` is one property carrying every checkout as `name=path,name=path`, rather than one
+  // forwarded key per catalog: a fixed key list silently ignores any checkout not named in it, so
+  // adding a third catalog would have produced an empty corpus and a passing run.
   for (key in
     listOf(
-      "composeai.usageCorpus.m3-catalog",
-      "composeai.usageCorpus.meshcore-mobile",
+      "composeai.usageCorpus.repos",
       "composeai.usageCorpus.out",
       "composeai.usageCorpus.samples",
     )) {

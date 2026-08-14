@@ -450,6 +450,53 @@ class PlaygroundSourceCleanerTest {
     assertTrue(cleaned.text.contains("""Text("Shopping")"""), cleaned.text)
   }
 
+  /**
+   * A package-qualified call is the same call. It was invisible in both directions before: no rule
+   * fired (an occurrence after `.` is rejected, correctly) and no residue was reported (the call
+   * needs no import), so the seed came out marked cleaned with a repo-internal call still in it.
+   */
+  @Test
+  fun `a fully qualified knob call is rewritten like a bare one`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Title() =
+        Text(ee.schimke.composeai.overrides.previewOverrideString("title", "Shopping"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("Shopping")"""), cleaned.text)
+    assertFalse(cleaned.text.contains("previewOverrideString"), cleaned.text)
+  }
+
+  /** A single-segment receiver is not a package, and must not be unqualified on a guess. */
+  @Test
+  fun `a member call that shares a scaffold name is left alone`() {
+    val rules =
+      UsageRules(scaffolds = mapOf("counted" to UsageRules.Scaffold(kind = UsageRules.Kind.UNWRAP)))
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Tally() = stats.counted { }
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Tally"), rules))
+    assertTrue(cleaned.text.contains("stats.counted"), cleaned.text)
+  }
+
   /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */
   @Test
   fun `a knob with reordered named arguments still resolves its default`() {

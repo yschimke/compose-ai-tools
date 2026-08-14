@@ -315,6 +315,8 @@ object PlaygroundSourceCleaner {
   ): String {
     var out = stripScaffoldAnnotations(text, imports, rules)
     out = inlineStringResources(out, strings)
+    // Before anything matches on a helper name: a call written fully qualified is the same call.
+    out = unqualifyScaffoldCalls(out, rules)
     // Order matters. UNWRAP first, so a wrapper takes its own arguments away with it before DROP
     // starts reasoning about which arguments mention a dropped binding. INLINE next, so a member
     // substitution lands before DROP inspects the argument it sits in. DROP, then RENAME last —
@@ -327,6 +329,36 @@ object PlaygroundSourceCleaner {
     if (isEntry) out = stampPreview(out, rules, addedImports)
     for (name in rules.scaffolds.keys) if (mentionsWord(out, name)) residue.add(name)
     return out.trimEnd()
+  }
+
+  /**
+   * A **package-qualified** call to a declared helper —
+   * `ee.schimke.composeai.overrides.previewOverrideString("k", "v")` — reduced to the bare name, so
+   * every pass below sees the call it already knows how to rewrite.
+   *
+   * Without this, such a call is invisible in both directions: [wordOccurrences] rejects an
+   * occurrence preceded by `.` (correctly — `foo.counted` is not the scaffold `counted`), so no
+   * rule fires, *and* the call needs no import, so the residue pass has nothing to report. The seed
+   * comes out marked cleaned with a repository-internal call still in it, which is the one outcome
+   * this whole design is built to avoid.
+   *
+   * The prefix must be **two or more** lowercase-initial segments — a package path, never a
+   * receiver. `overrides.previewOverrideString` (one segment, possibly a local val) is left alone;
+   * guessing there could rewrite a call on somebody's object.
+   */
+  private fun unqualifyScaffoldCalls(text: String, rules: UsageRules): String {
+    if (rules.scaffolds.isEmpty()) return text
+    val names = rules.scaffolds.keys.joinToString("|") { Regex.escape(it) }
+    val qualified = Regex("""(?<![A-Za-z0-9_.])(?:[a-z][A-Za-z0-9_]*\.){2,}($names)(?=\s*\()""")
+    val mask = codeMask(text)
+    val out = StringBuilder(text.length)
+    var at = 0
+    for (m in qualified.findAll(text)) {
+      if (!mask[m.range.first]) continue
+      out.append(text, at, m.range.first).append(m.groupValues[1])
+      at = m.range.last + 1
+    }
+    return if (at == 0) text else out.append(text, at, text.length).toString()
   }
 
   private fun isScaffoldPackage(fqn: String, rules: UsageRules): Boolean =
