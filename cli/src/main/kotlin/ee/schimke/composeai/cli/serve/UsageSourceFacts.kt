@@ -22,6 +22,14 @@ data class UsageSourceFacts(
   @SerialName("calls") val calls: List<Call> = emptyList(),
   @SerialName("destructurings") val destructurings: List<Destructuring> = emptyList(),
   /**
+   * Every name **reference**, excluding argument labels.
+   *
+   * The exclusion is the point. `Switch(onCheckedChange = onCheckedChange)` writes that name twice
+   * and only the second is a reference; rebinding the first turns a label into an expression. PSI
+   * knows which is which, and a word scan does not.
+   */
+  @SerialName("references") val references: List<Reference> = emptyList(),
+  /**
    * Set when the analyzer could not parse at all; the caller then behaves as if it had no facts.
    */
   @SerialName("error") val error: String? = null,
@@ -66,6 +74,13 @@ data class UsageSourceFacts(
     /** The `name` of `name = value`, or null for a positional argument. */
     @SerialName("name") val name: String? = null,
     @SerialName("text") val text: String = "",
+    @SerialName("start") val start: Int = -1,
+    @SerialName("end") val end: Int = -1,
+  )
+
+  @Serializable
+  data class Reference(
+    @SerialName("name") val name: String = "",
     @SerialName("start") val start: Int = -1,
     @SerialName("end") val end: Int = -1,
   )
