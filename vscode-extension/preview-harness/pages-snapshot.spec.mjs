@@ -529,6 +529,11 @@ const FIXTURE_STATES = [
         // variant rows would never appear in a baseline at all.
         fixture: "serve-landing-tree-depth",
         suffix: "component-open",
+        // The click that expands the component leaves the pointer on that row,
+        // and the variant rows it reveals slide out from under it — so which
+        // element ends up hovered was a coin flip per run (issue #3837). The
+        // hover is incidental here; the claim is the revealed variant rows.
+        parkPointer: true,
         apply: async (page) => {
             await page.click(
                 '.cp-tree-component[data-group="cp-card-button-filled__ideal__default__light"]',
@@ -1430,6 +1435,26 @@ for (const fixture of listPageFixtures()) {
             // Extra runtime states of this same fixture, shot from the already-loaded page.
             for (const state of FIXTURE_STATES.filter((s) => s.fixture === fixture)) {
                 await state.apply(page);
+                // Opt-IN pointer parking (issue #3837). `page.click()` leaves
+                // the mouse where it clicked, and an `apply` that expands
+                // something moves fresh rows UNDER that resting pointer — so
+                // `serve-landing-tree-depth-component-open` shot whichever of
+                // the component row or the revealed "Default" link happened to
+                // land there, a ~5,800px difference between two runs of the
+                // same code.
+                //
+                // Opt-in, not opt-out, and that is load-bearing. Parking by
+                // default was tried and moved 53 of 196 captures, because a
+                // large minority of these states are ABOUT the resting pointer
+                // — `serve-home-index-card-hover`, `serve-design-page-hover`,
+                // `serve-landing-public-card-hover`, both `serve-landing-live`
+                // long-press states. Defaulting to park silently guts those:
+                // they keep passing while capturing the un-hovered page the
+                // baseline already had. So a state declares `parkPointer` only
+                // when its pointer position is incidental.
+                if (state.parkPointer) {
+                    await page.mouse.move(0, 0);
+                }
                 await page.screenshot({
                     path: resolve(
                         outDir,
