@@ -7,9 +7,13 @@ order given, and do not batch them into one CL.
 Every fix here is one we already carry as a local delta in
 `third_party/rc-embedded-player`, verified against real documents. The companion doc
 [RC_EMBEDDED_PLAYER_UPSTREAM_SYNC.md](RC_EMBEDDED_PLAYER_UPSTREAM_SYNC.md) explains how they were
-found and what our snapshot looks like; this one is the outbound half. Landing these is what lets
-us eventually drop the vendored Android sources and consume the published artifact — see that doc's
-§4 migration gate, which is literally this list.
+found and what our snapshot looks like; this one is the outbound half.
+
+Landing these is **necessary but not sufficient** for dropping the vendored Android sources. They
+are the *upstream portion* of that doc's §4 migration gate; the gate also has host-side items that
+no upstream CL can satisfy — wiring a `typefaceResolver`, preserving (or explicitly dropping)
+variable-axis layout fonts, and enabling image parsing ahead of the two existing `RemoteDocument`
+constructors. Finishing this list does not by itself clear the gate.
 
 ---
 
@@ -258,7 +262,12 @@ test clock and assert the outer value changes.
 
 **Severity: medium — a documented time variable never ticks.**
 
-**Where:** `…/embedded/state/RcPlayerState.kt`, `rememberRemoteFloatAsState(id: Int)`.
+**Where — two files, both required:** `…/embedded/state/RcPlayerState.kt`
+(`rememberRemoteFloatAsState(id: Int)`) **and** `…/embedded/GraphContext.kt` (`getFloat`, whose own
+time branch at line 133 handles `ID_TIME_IN_SEC`/`MIN`/`HR` and likewise omits continuous seconds).
+A direct read goes through the resolver; a read *inside a computed expression* goes through the
+graph. Fixing only the resolver leaves smooth time wrong wherever it is consumed by an expression,
+which is the common case for a sweep animation.
 
 **The bug:** `RcPlayer.kt` already lists `RemoteContext.ID_CONTINUOUS_SEC` among the time ids that
 keep the frame loop alive, but the resolver's time branch handles only `ID_TIME_IN_SEC`,
@@ -280,7 +289,9 @@ which is why the aliasing survived. Take the clock snapshot instead.
 **Test:** `RcPlayerExpressionTest.kt`. Assert the **value**, not merely that it moves: pin the clock
 to a known instant and check the resolved value carries the expected within-hour phase and
 fractional part, and that it differs from `ID_TIME_IN_SEC` at the same instant. An "it advances"
-assertion passes on the aliased implementation and so cannot detect this.
+assertion passes on the aliased implementation and so cannot detect this. Cover **both** read paths
+— a direct read (resolver) and one consumed by a `FloatExpression` (graph) — since they are separate
+implementations of the same branch.
 
 **Ours:** `state/RcPlayerState.kt`, `GraphContext.kt` — both carrying the aliasing bug described
 above, which this item should fix rather than propagate.
@@ -306,8 +317,25 @@ ignores properties the Java/View player honours, so the same document renders di
 
 **The fix:** read the four (six with the autosize bounds) through the same reflection pattern the
 file already uses, add them to `CoreTextData`, and apply them in `RcPlayerText`:
-`TextAutoSize.StepBased(min, max, 0.5f)` for autosize; `LineBreak.Paragraph`/`Heading` for the
-strategy; `Hyphens.Auto` when the frequency is non-zero.
+`TextAutoSize.StepBased(…)` for autosize; `LineBreak.Paragraph`/`Heading` for the strategy;
+`Hyphens.Auto` when the frequency is non-zero.
+
+**Units matter in the autosize call.** `mMinFontSize`/`mMaxFontSize` are Remote Compose **pixels**,
+and `TextAutoSize.StepBased` takes `TextUnit` — so all three arguments must be converted through the
+current `Density`, not written as `sp` literals:
+
+```kotlin
+with(LocalDensity.current) {
+    TextAutoSize.StepBased(
+        minFontSize = resolvedMinFontSize.toSp(),
+        maxFontSize = resolvedMaxFontSize.toSp(),
+        stepSize = 0.5f.toSp(),
+    )
+}
+```
+
+Writing `0.5.sp` (and untouched min/max) compiles and looks right, and renders a different size range
+at any density other than 1.
 
 **Two traps worth carrying into the CL description**, both of which cost us a debugging round:
 
@@ -404,8 +432,11 @@ op, keep parsing, and surface it as a warning. Enabling the *parse* is not enabl
 reference is only resolved if the host supplies a loader, which is exactly how the JS and CMP
 players already behave with the same bytes.
 
-**Test:** parse a document containing a URL-encoded bitmap with both flags `false`; assert the
-document inflates and the other operations survive.
+**Test:** parse a document containing an encoded image reference with both flags `false`; assert the
+document inflates and the other operations survive. **Parameterize over both encodings** — the
+failure has two independently gated inputs (`ENABLE_IMAGE_URLS` / `ENCODING_URL` and
+`ENABLE_IMAGE_FILES` / the file encoding), so a URL-only test passes while file-encoded bitmaps
+still abort the document.
 
 **Ours:** `RemoteImageSupport.kt` works around this by flipping both flags before parse — a
 workaround for the throw, not a fix for the abort-everything behaviour.
@@ -445,14 +476,24 @@ $G "Modifier.clip(shape).then\|clip(shape).then(this)" -- $NEW/modifier/ClipModi
 $G "roundedRectRadiusScale"                            -- $NEW/modifier/ClipModifier.kt  # item 2
 $G "isFloatOverridden"                                 -- $NEW                           # item 3
 $G "expressionDependsOnAnimation"                      -- $NEW                           # item 4
-$G "ID_CONTINUOUS_SEC"                     -- $NEW/state/RcPlayerState.kt                 # item 5
+# item 5 — BOTH must hit; the resolver and the graph carry separate copies of the time branch
+$G "ID_CONTINUOUS_SEC"                     -- $NEW/state/RcPlayerState.kt
+$G "ID_CONTINUOUS_SEC"                     -- $NEW/GraphContext.kt
 
 # item 6 is done only when EVERY one of these hits — check them one at a time, not as an alternation
 for f in mAutosize mMinFontSize mMaxFontSize mJustificationMode mLineBreakStrategy \
          mHyphenationFrequency StartEllipsis MiddleEllipsis; do
-  printf '%-24s ' "$f"; $G -c "$f" -- $NEW | head -1 || echo "MISSING"
+  if git -C <androidx> grep -q "$f" -- $NEW; then
+    printf '%-24s present\n' "$f"
+  else
+    printf '%-24s MISSING\n' "$f"
+  fi
 done
 ```
+
+(Use `grep -q` in an `if`, not `grep -c … | head -1 || echo MISSING`: in a pipeline Bash reports
+`head`'s status, so the `||` branch never runs and an absent field prints a blank line that reads as
+a pass. Verified — that was the first version of this loop.)
 
 A hit means upstream has taken that item and it can be dropped. **A partial hit means the item is
 still open**, with the landed part removed from its scope: items 1 and 2 are independent fixes in
