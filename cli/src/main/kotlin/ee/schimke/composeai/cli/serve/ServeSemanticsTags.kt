@@ -56,7 +56,12 @@ object ServeSemanticsTags {
   fun index(payload: ComposeSemanticsPayload): Map<String, TagEntry> {
     val out = LinkedHashMap<String, TagEntry>()
     fun walk(node: ComposeSemanticsNode) {
-      val tag = node.testTag?.trim()?.takeIf { it.isNotEmpty() }
+      // Blank-or-absent decides *omission*; the key is then the tag VERBATIM. Trimming it would be
+      // a second identity rule, and Compose (and `SemanticsTargets.Tag`) match the exact string —
+      // so normalising here collapses `"item"` and `" item "` into one entry reporting `count = 2`
+      // (false ambiguity) while an acceptance recording `" item "` finds no key at all (false
+      // disappearance). Two wrong verdicts for two tags each unique in the tree.
+      val tag = node.testTag?.takeIf { it.isNotBlank() }
       if (tag != null) {
         val box = SlotBounds.parse(node.boundsInRoot)?.takeIf { it.hasArea() }
         val existing = out[tag]

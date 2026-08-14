@@ -1615,9 +1615,17 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 0.6rem;
   font-weight: 700; line-height: 1; color: #fff; }
 .cp-annotation .cp-annotation-badge { position: absolute; top: -7px; left: -7px; }
-.cp-annotation--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
-.cp-annotation--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
-.cp-annotation--theme .cp-annotation-badge { background: rgba(13, 148, 136, 0.95); }
+/* The badge is coloured by kind wherever it appears — on the overlay box AND in the legend row.
+   Only the box was covered before, so a legend ordinal was `color: #fff` over no background: the
+   number was invisible and the row could not be matched back to its box, which is the legend's one
+   job. Fixed for all three kinds rather than only the new one, since layout and typography had it
+   too. */
+.cp-annotation--layout .cp-annotation-badge,
+.cp-annotation-entry--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
+.cp-annotation--typography .cp-annotation-badge,
+.cp-annotation-entry--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+.cp-annotation--theme .cp-annotation-badge,
+.cp-annotation-entry--theme .cp-annotation-badge { background: rgba(13, 148, 136, 0.95); }
 .cp-annotation-legend { display: none; margin: 8px 0 0; padding: 0; list-style: none;
   font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-annotation-entry { display: flex; align-items: center; gap: 6px; padding: 2px 0; }

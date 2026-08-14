@@ -1182,9 +1182,18 @@ internal constructor(
    * border / corner radius per container.
    *
    * The response also carries [ServeSemanticsTags]' tag index for that same tree. Both projections
-   * read one payload under one lock, which is the property the parity element gates need: a tag's
-   * recorded bounds and the scored pixels have to come from the same render or the gate measures
-   * movement that never happened.
+   * read one payload under one lock, so the index and the annotations always agree with each other.
+   *
+   * **That is not yet the coupling the parity element gates need**, and the difference matters.
+   * `/render/<id>.png` and `/render/<id>.annotations` are separate requests, and this method
+   * deliberately evicts the PNG cache entry and re-renders before reading semantics — so a client
+   * that already displayed the PNG holds pixels from the *previous* render while these bounds
+   * describe the new one. Identical for a deterministic preview; not for one that animates or
+   * composes conditionally, where an element gate could then validate a region the scored frame
+   * never contained. Closing it needs the two responses to share a render generation the client can
+   * match (or the index to travel with the pixels), which the design doc assigns to Phase 2's
+   * transport work — see the "same render" requirement in
+   * [COMPONENT_PARITY_WORKFLOW.md](../../../../../../../../docs/design/COMPONENT_PARITY_WORKFLOW.md).
    */
   override fun renderAnnotations(
     previewId: String,
@@ -1234,9 +1243,9 @@ internal constructor(
                 ),
               )
               // The tag index rides ALONG with the annotations rather than in an endpoint of its
-              // own, because its bounds are only meaningful for the frame they were captured from:
-              // a second endpoint would force a second render under this same lock and report boxes
-              // from a frame nobody looked at. One render, one payload, one coordinate space.
+              // own: a second endpoint would force a second render and report boxes from a frame
+              // the annotations never described. That buys agreement between these two projections,
+              // NOT agreement with the PNG the client is holding — see the KDoc above.
               put(
                 "tags",
                 dataJson.encodeToJsonElement(

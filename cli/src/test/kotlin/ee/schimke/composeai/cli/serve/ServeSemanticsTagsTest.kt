@@ -111,6 +111,26 @@ class ServeSemanticsTagsTest {
     )
   }
 
+  /**
+   * A tag is matched by Compose as the exact string, so the index must not normalise it. Trimming
+   * would merge these two distinct tags into one `count = 2` entry — false ambiguity for `"pad"`,
+   * and no key at all for an acceptance recording `" pad "`.
+   */
+  @Test
+  fun `a tag is keyed verbatim, not trimmed`() {
+    val tags =
+      index(
+        node(
+          "0",
+          "0,0,100,100",
+          children = listOf(node("1", "0,0,10,10", "pad"), node("2", "20,20,30,30", " pad ")),
+        )
+      )
+    assertEquals(setOf("pad", " pad "), tags.keys)
+    assertEquals(1, tags.getValue("pad").count)
+    assertEquals(1, tags.getValue(" pad ").count)
+  }
+
   @Test
   fun `blank and absent tags are not keys`() {
     val tags =

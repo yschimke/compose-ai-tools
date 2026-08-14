@@ -548,9 +548,11 @@ interface ServeHost : AutoCloseable {
    * (`{previewId, annotations, tags}`), or [AnnotationsOutcome.NotFound] when this host has no
    * daemon. See [ServeRenderHost.renderAnnotations].
    *
-   * `tags` is [ServeSemanticsTags]' `testTag → {count, bounds}` index over the *same* render — the
-   * element identity a scoped parity acceptance targets. It shares this response rather than having
-   * one of its own precisely so it cannot describe a different frame than the annotations do.
+   * `tags` is [ServeSemanticsTags]' `testTag → {count, bounds}` index over the same semantics
+   * payload the annotations are projected from — the element identity a scoped parity acceptance
+   * targets. Sharing this response is what keeps the two projections describing one frame; it does
+   * *not* couple either of them to the PNG a client already fetched. See
+   * [ServeRenderHost.renderAnnotations] for what that still owes.
    */
   fun renderAnnotations(previewId: String, overrides: PreviewOverrides): AnnotationsOutcome =
     AnnotationsOutcome.NotFound

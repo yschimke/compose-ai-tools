@@ -15,6 +15,13 @@ on, captured by the preview-harness's `serve-reference-compare` **`annotated`** 
   panel, and the resolved-container spec as a second legend row: `fill #FF6750A4 · radius 20.0dp ·
   border 1.0dp #FF79747E`.
 
+  **The legend ordinals are also newly visible** — `①` pink, `⑤` teal. The badge colour rule only
+  ever matched the badge nested in the overlay box (`.cp-annotation--<kind>`), not the one in the
+  legend row (`.cp-annotation-entry--<kind>`), so every legend ordinal was `color: #fff` over no
+  background: invisible, and the row could not be matched back to its numbered box, which is the
+  legend's one job. That was true of layout and typography before this change, so the fix covers all
+  three kinds rather than only the new one — which is why the pink `①` moves in this pair too.
+
 Both are the `light` and `dark` captures, since the new hue has to hold in both.
 
 The pair is committed rather than left to the CI visual-diff bot because the fixture gained an
