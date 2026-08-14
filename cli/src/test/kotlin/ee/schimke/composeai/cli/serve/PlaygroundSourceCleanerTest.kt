@@ -535,6 +535,42 @@ class PlaygroundSourceCleanerTest {
     assertTrue(cleaned.residue.contains("counted"), "${cleaned.residue}")
   }
 
+  /**
+   * A matching callee *name* is not a matching call.
+   *
+   * The parsed substitution pass replaces the whole qualified expression, so selecting on the name
+   * alone would delete somebody's receiver along with their call — `state.previewOverrideString(…)`
+   * is an application's own member function that happens to share a name with a scaffold. Only a
+   * bare call, or one qualified by a package the rules name, is the scaffold.
+   */
+  @Test
+  fun `a member call sharing a substitute rule's name keeps its receiver`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Title() {
+        Text(state.previewOverrideString("title", "Shopping"))
+        Text(ee.schimke.composeai.overrides.previewOverrideString("subtitle", "Basket"))
+      }
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(
+      cleaned.text.contains("state.previewOverrideString(\"title\", \"Shopping\")"),
+      "an unrelated member call was rewritten: ${cleaned.text}",
+    )
+    // The package-qualified one is the scaffold, and is substituted.
+    assertTrue(cleaned.text.contains("Text(\"Basket\")"), cleaned.text)
+  }
+
   /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */
   @Test
   fun `a knob with reordered named arguments still resolves its default`() {
