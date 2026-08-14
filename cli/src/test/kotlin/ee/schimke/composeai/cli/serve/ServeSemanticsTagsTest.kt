@@ -6,6 +6,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The tag index is the element identity a scoped parity acceptance resolves against, so the
@@ -159,6 +164,36 @@ class ServeSemanticsTagsTest {
   fun `every entry names its coordinate space`() {
     val tags = index(node("0", "0,0,64,64", "tagged"))
     assertEquals(ServeSemanticsTags.RENDER_PIXELS, tags.getValue("tagged").space)
+  }
+
+  /**
+   * Asserted on the **raw JSON**, not on a decoded [ServeSemanticsTags.TagEntry]. Decoding restores
+   * the Kotlin default, so a round-trip test passes even when the field never reached the wire —
+   * which is exactly what happened: the host serialises with `encodeDefaults = false`, and without
+   * `@EncodeDefault` the discriminator was dropped while every Kotlin-side assertion still saw it.
+   * A browser reading the response is the consumer that matters here.
+   */
+  @Test
+  fun `the coordinate space survives serialisation under encodeDefaults false`() {
+    val json = Json { ignoreUnknownKeys = true } // the host's config: encodeDefaults defaults false
+    val encoded =
+      json.encodeToString(
+        MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
+        index(node("0", "0,0,64,64", "tagged")),
+      )
+    val space =
+      json
+        .parseToJsonElement(encoded)
+        .jsonObject
+        .getValue("tagged")
+        .jsonObject["space"]
+        ?.jsonPrimitive
+        ?.content
+    assertEquals(
+      ServeSemanticsTags.RENDER_PIXELS,
+      space,
+      "the space discriminator must be present in the encoded JSON, not just in the Kotlin default",
+    )
   }
 
   @Test

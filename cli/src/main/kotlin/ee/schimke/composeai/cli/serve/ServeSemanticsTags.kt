@@ -3,6 +3,8 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.SlotBounds
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -63,12 +65,18 @@ object ServeSemanticsTags {
    * consumer's reading of the spec, which currently disagrees with this producer. It is always
    * [RENDER_PIXELS] today; the field exists so that a consumer cannot assume otherwise, and so a
    * later canonical-plane producer is distinguishable on the wire instead of by version guessing.
+   *
+   * `@EncodeDefault` because the host serialises with `encodeDefaults = false`, which would drop a
+   * default-valued property from the JSON entirely — a discriminator that never reaches the wire is
+   * worse than none, since it reads as present in Kotlin and is absent to the browser. Same
+   * treatment, for the same reason, as the schema discriminators on `HistoryDataDelta`.
    */
+  @OptIn(ExperimentalSerializationApi::class)
   @Serializable
   data class TagEntry(
     val count: Int,
     val bounds: AnnotationBounds? = null,
-    val space: String = RENDER_PIXELS,
+    @EncodeDefault val space: String = RENDER_PIXELS,
   )
 
   /**
