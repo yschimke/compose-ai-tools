@@ -16,6 +16,11 @@ current `androidx-main` cost.
 Everything below was derived from a real tree diff, not from reading `PROVENANCE.md`;
 [Reproducing this comparison](#reproducing-this-comparison) has the exact commands.
 
+**Sending the fixes the other way** — the outbound half of this audit, written as an implementable
+work order against an androidx checkout — is
+[RC_EMBEDDED_PLAYER_UPSTREAM_FIXES.md](RC_EMBEDDED_PLAYER_UPSTREAM_FIXES.md). Landing those is what
+opens the migration gate in §4.
+
 ---
 
 ## 0. The headline: upstream moved the player into a published library
