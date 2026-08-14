@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.PreviewInfo
+import ee.schimke.composeai.cli.PreviewParameterFanout
 import ee.schimke.composeai.io.SystemFileSystem
 import okio.FileSystem
 import okio.Path
@@ -18,12 +19,12 @@ import okio.Path.Companion.toPath
  * exactly those `<baseId>_<row>` ids. Reading them back is what turns "the daemon *can* render row
  * 3" into "the viewer lists row 3", with no new protocol surface.
  *
- * **Why not just glob `<stem>_*`.** Preview ids are `_`-joined, so a *different* preview can own a
- * filename that looks like a row of this one — `Foo` and `Foo_Dark` are both real previews when a
- * multi-preview annotation is in play, and `renders/Foo_Dark.png` belongs to the latter. Any file
- * another preview in the manifest claims as its own capture output is therefore excluded, which is
- * the same "longest base wins" hazard `PreviewRowAddress` handles on the daemon side, resolved here
- * with the stronger evidence available: the manifest says who owns what.
+ * **Which files, and what each row is called, is not decided here** — [PreviewParameterFanout] owns
+ * that rule, and `PreviewResultBuilder` reads the same fan-out through it for `show` / `list` /
+ * `render` (issue #3819). This class contributes the manifest evidence (who claims which output)
+ * and the directory listing; sharing the rest is what stops `serve` and the result-shaped commands
+ * from disagreeing about what row `Foo_Dark_Alice` is — a disagreement that doesn't merely
+ * misreport, it hands you a different row than the one you selected.
  *
  * A preview with no provider, or one whose fan-out isn't on disk (a `serve` run that didn't render
  * — a bundle-backed session, or a render that failed), expands to nothing and keeps its bare id, so
@@ -53,11 +54,6 @@ object ServeParameterRows {
       preview.captures.firstOrNull { it.renderOutput.isNotBlank() } ?: return emptyList()
     val rel = template.renderOutput
     val dirPart = rel.substringBeforeLast('/', "")
-    val leaf = rel.substringAfterLast('/')
-    val dot = leaf.lastIndexOf('.')
-    if (dot <= 0) return emptyList()
-    val stem = leaf.substring(0, dot)
-    val ext = leaf.substring(dot)
 
     val root = moduleDir / "build" / "compose-previews"
     val dir = if (dirPart.isEmpty()) root else dirPart.split('/').fold(root) { acc, p -> acc / p }
@@ -67,20 +63,13 @@ object ServeParameterRows {
           return emptyList()
         }
 
-    val prefix = "${stem}_"
-    return entries
-      .mapNotNull { path ->
-        val name = path.name
-        if (!name.startsWith(prefix) || !name.endsWith(ext)) return@mapNotNull null
-        // Another preview's own render, not a row of this one.
-        val asOutput = if (dirPart.isEmpty()) name else "$dirPart/$name"
-        if (asOutput in siblingOutputs) return@mapNotNull null
-        val token = name.substring(prefix.length, name.length - ext.length)
-        token.takeIf { it.isNotEmpty() }
-      }
-      .distinct()
-      .sortedWith(rowOrder())
-      .map { Row(id = "${preview.id}_$it", label = it) }
+    return PreviewParameterFanout.rowsOf(
+        baseId = preview.id,
+        templateOutput = rel,
+        fileNames = entries.map { it.name },
+        siblingOutputs = siblingOutputs,
+      )
+      .map { Row(id = it.id, label = it.token) }
   }
 
   /**
@@ -91,25 +80,6 @@ object ServeParameterRows {
     previews.flatMapTo(mutableSetOf()) { p ->
       p.captures.map { it.renderOutput }.filter { it.isNotBlank() }
     }
-
-  /**
-   * Numeric `PARAM_<idx>` rows first, ordered by index so `PARAM_10` follows `PARAM_2` rather than
-   * preceding it as lexicographic order would; labelled rows after, alphabetically. Provider order
-   * isn't recoverable from a filename, so alphabetical is the stable, readable choice — the same
-   * rule `PreviewResultBuilder` applies to the static fan-out.
-   */
-  private fun rowOrder(): Comparator<String> = Comparator { a, b ->
-    val ia = a.removePrefix(INDEX_PREFIX).toIntOrNull()?.takeIf { a.startsWith(INDEX_PREFIX) }
-    val ib = b.removePrefix(INDEX_PREFIX).toIntOrNull()?.takeIf { b.startsWith(INDEX_PREFIX) }
-    when {
-      ia != null && ib != null -> ia.compareTo(ib)
-      ia != null -> -1
-      ib != null -> 1
-      else -> a.compareTo(b)
-    }
-  }
-
-  private const val INDEX_PREFIX = "PARAM_"
 
   /** Convenience for callers holding a `java.io.File` project dir (the Tooling API's shape). */
   fun rowsFor(
