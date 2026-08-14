@@ -25,20 +25,20 @@ Auto-rendered by the integration matrix from [`android/wear-os-samples@main`](ht
 | Preview | Image |
 |---------|-------|
 | `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/activity__MainActivity.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Devices_Large_Round.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Devices_Small_Round.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Large.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Larger.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Largest.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Medium.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Normal.png" width="150" /> |
-| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Small.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Devices_Large_Round.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Devices_Small_Round.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Large.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Larger.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Largest.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Medium.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Normal.png" width="150" /> |
-| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Small.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Devices_Large_Round-9a18e797.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Devices_Small_Round-f252ea82.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Large-617795ea.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Larger-03875738.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Largest-8a48596a.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Medium-7eaead98.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Normal-bb568c66.png" width="150" /> |
+| `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Small-aff577f2.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Devices_Large_Round-a2cea868.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Devices_Small_Round-098d05af.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Large-48b7ef6f.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Larger-641b3ff3.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Largest-122a19f9.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Medium-3a151642.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Normal-93c561e0.png" width="150" /> |
+| `ListScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/ListScreenPreview_Fonts_Small-8ac30c9d.png" width="150" /> |
 
