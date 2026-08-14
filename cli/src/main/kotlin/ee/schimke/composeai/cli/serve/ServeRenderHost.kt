@@ -28,6 +28,8 @@ import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -1178,6 +1180,11 @@ internal constructor(
    * per-preview file it overwrote. The layers themselves are pure projection
    * ([ServeDesignAnnotations]): resolved type size / face / weight per text node, resolved fill /
    * border / corner radius per container.
+   *
+   * The response also carries [ServeSemanticsTags]' tag index for that same tree. Both projections
+   * read one payload under one lock, which is the property the parity element gates need: a tag's
+   * recorded bounds and the scored pixels have to come from the same render or the gate measures
+   * movement that never happened.
    */
   override fun renderAnnotations(
     previewId: String,
@@ -1224,6 +1231,17 @@ internal constructor(
                 dataJson.encodeToJsonElement(
                   ListSerializer(DesignAnnotation.serializer()),
                   ServeDesignAnnotations.annotations(payload),
+                ),
+              )
+              // The tag index rides ALONG with the annotations rather than in an endpoint of its
+              // own, because its bounds are only meaningful for the frame they were captured from:
+              // a second endpoint would force a second render under this same lock and report boxes
+              // from a frame nobody looked at. One render, one payload, one coordinate space.
+              put(
+                "tags",
+                dataJson.encodeToJsonElement(
+                  MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
+                  ServeSemanticsTags.index(payload),
                 ),
               )
             },

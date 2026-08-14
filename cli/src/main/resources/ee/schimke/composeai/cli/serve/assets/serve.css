@@ -1617,15 +1617,18 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation .cp-annotation-badge { position: absolute; top: -7px; left: -7px; }
 .cp-annotation--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
 .cp-annotation--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+.cp-annotation--theme .cp-annotation-badge { background: rgba(13, 148, 136, 0.95); }
 .cp-annotation-legend { display: none; margin: 8px 0 0; padding: 0; list-style: none;
   font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-annotation-entry { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .cp-annotation-role { font-weight: 650; color: var(--cp-fg); }
 .cp-annotation-spec { font-variant-numeric: tabular-nums; }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation-legend,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation-legend,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation-legend { display: block; }
 .cp-annotation-entry { display: none; }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation-entry--layout,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation-entry--theme,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation-entry--typography
   { display: flex; }
 /* Layout is the redline layer, typography the type spec — distinct hues so both can be on at once
@@ -1634,12 +1637,17 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation--layout .cp-annotation-label { background: rgba(214, 51, 108, 0.92); }
 .cp-annotation--typography { border: 1px dashed rgba(37, 99, 235, 0.9); }
 .cp-annotation--typography .cp-annotation-label { background: rgba(37, 99, 235, 0.92); }
+/* Theme is the resolved-container layer — fill, border, radius. A third hue so it reads apart from
+   the layout redline and the type spec when more than one layer is on. */
+.cp-annotation--theme { border: 1px solid rgba(13, 148, 136, 0.9); }
+.cp-annotation--theme .cp-annotation-label { background: rgba(13, 148, 136, 0.92); }
 .cp-annotation--typography-hit { border: 0; background: transparent; }
 .cp-annotation--typography-cluster.cp-annotation-active { border-width: 2px;
   background: rgba(37, 99, 235, 0.08); }
 .cp-annotation--typography-hit.cp-annotation-active { background: rgba(37, 99, 235, 0.28);
   outline: 1px solid rgba(37, 99, 235, 0.95); }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation--layout,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation--theme,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation--typography { display: block; }
 .cp-typography-summary { display: none; margin: 14px 0 0; }
 #cp-reference-compare[data-annotate-typography="on"] .cp-typography-summary { display: block; }

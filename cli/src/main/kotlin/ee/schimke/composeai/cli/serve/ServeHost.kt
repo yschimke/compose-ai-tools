@@ -545,8 +545,12 @@ interface ServeHost : AutoCloseable {
 
   /**
    * Render [previewId] at [overrides] and return its typography + theme inspection layers as JSON
-   * (`{previewId, annotations}`), or [AnnotationsOutcome.NotFound] when this host has no daemon.
-   * See [ServeRenderHost.renderAnnotations].
+   * (`{previewId, annotations, tags}`), or [AnnotationsOutcome.NotFound] when this host has no
+   * daemon. See [ServeRenderHost.renderAnnotations].
+   *
+   * `tags` is [ServeSemanticsTags]' `testTag → {count, bounds}` index over the *same* render — the
+   * element identity a scoped parity acceptance targets. It shares this response rather than having
+   * one of its own precisely so it cannot describe a different frame than the annotations do.
    */
   fun renderAnnotations(previewId: String, overrides: PreviewOverrides): AnnotationsOutcome =
     AnnotationsOutcome.NotFound
