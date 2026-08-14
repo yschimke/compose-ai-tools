@@ -149,6 +149,18 @@ class ServeSemanticsTagsTest {
     assertTrue(tags.isEmpty(), "expected no keys, got ${tags.keys}")
   }
 
+  /**
+   * The space is on the wire because the design doc and this producer currently disagree about
+   * whether the index is canonical-plane or render-pixel. A consumer must be able to tell without
+   * guessing, since treating render pixels as canonical is exactly what produces a wrong
+   * `element-moved` verdict.
+   */
+  @Test
+  fun `every entry names its coordinate space`() {
+    val tags = index(node("0", "0,0,64,64", "tagged"))
+    assertEquals(ServeSemanticsTags.RENDER_PIXELS, tags.getValue("tagged").space)
+  }
+
   @Test
   fun `a tagged root is indexed like any other node`() {
     val tags = index(node("0", "0,0,64,64", "root-tag"))

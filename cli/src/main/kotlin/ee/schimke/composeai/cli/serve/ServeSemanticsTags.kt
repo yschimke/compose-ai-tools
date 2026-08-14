@@ -30,22 +30,46 @@ import kotlinx.serialization.Serializable
  * [TagEntry.bounds] is the first *usable* box in depth-first order, and is null when no node
  * carrying the tag has one.
  *
- * ## Coordinates
+ * ## Coordinates, and an open contract question
  *
- * `boundsInRoot` — absolute-to-root **render pixels**, the same space [ServeDesignAnnotations]
- * reports and the same space the served PNG is in. A consumer scales one number and is done. This
- * index must be built from the *same render transaction* as the PNG it describes, which is why it
- * travels inside the annotations response rather than as an endpoint of its own: a second endpoint
- * would be a second render, and the bounds would describe a frame nobody scored.
+ * Bounds are `boundsInRoot` — absolute-to-root **render pixels**, the same space
+ * [ServeDesignAnnotations] reports and the same space the served PNG is in.
+ *
+ * The design doc says the *index* publishes bounds already transformed into an acceptance's
+ * **canonical plane**, and that the server does that transform once so no consumer repeats it. This
+ * projection cannot: the canonical plane is resolved per comparison from the reference raster and
+ * the acceptance's recorded plane, and this is a per-preview endpoint with neither in scope. So one
+ * of the two has to move — either the transform belongs to the comparison (and the doc's placement
+ * is wrong), or the index must be produced by a comparison-scoped projection that has the plane.
+ *
+ * Until that is settled, every entry states its own space on the wire ([TagEntry.space]). A
+ * consumer that reads `render-pixels` cannot silently treat these as canonical, which is the one
+ * failure mode a mismatch here produces — a wrong `element-moved` verdict from bounds nobody
+ * converted.
  */
 object ServeSemanticsTags {
+
+  /**
+   * The coordinate space [TagEntry.bounds] is in. See the class KDoc for why this is on the wire.
+   */
+  const val RENDER_PIXELS = "render-pixels"
 
   /**
    * One tag's occupancy of the tree. [count] is every node carrying the tag; [bounds] is the first
    * usable box among them, absent when none of them has one (a tag on a zero-area or malformed node
    * is still worth reporting, because `count` is what a uniqueness check reads).
+   *
+   * [space] names the coordinate space of [bounds] explicitly rather than leaving it to a
+   * consumer's reading of the spec, which currently disagrees with this producer. It is always
+   * [RENDER_PIXELS] today; the field exists so that a consumer cannot assume otherwise, and so a
+   * later canonical-plane producer is distinguishable on the wire instead of by version guessing.
    */
-  @Serializable data class TagEntry(val count: Int, val bounds: AnnotationBounds? = null)
+  @Serializable
+  data class TagEntry(
+    val count: Int,
+    val bounds: AnnotationBounds? = null,
+    val space: String = RENDER_PIXELS,
+  )
 
   /**
    * [payload]'s tag index, in depth-first encounter order.
