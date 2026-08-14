@@ -18,6 +18,9 @@ import org.junit.Test
 class ScrollPreviewPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
+  // A GIF scroll capture is a data product, not a `renders/` sibling — see the
+  // `render/scroll/gif` kind in the manifest.
+  private val scrollGifDir = File("build/compose-previews/data/render-scroll-gif")
   private val baseName = "RedToBlueScrollPreview_Scroll"
 
   private data class Avg(val r: Double, val g: Double, val b: Double) {
@@ -48,7 +51,7 @@ class ScrollPreviewPixelTest {
 
   @Test
   fun `TOP capture is red-dominant`() {
-    val file = File(rendersDir, "${baseName}_SCROLL_top.png")
+    val file = renderFile(rendersDir, baseName, "_SCROLL_top")
     assertThat(file.exists()).isTrue()
     val avg = averageColor(file)
     assertThat(avg.dominant()).isEqualTo('R')
@@ -58,7 +61,7 @@ class ScrollPreviewPixelTest {
 
   @Test
   fun `END capture is blue-dominant`() {
-    val file = File(rendersDir, "${baseName}_SCROLL_end.png")
+    val file = renderFile(rendersDir, baseName, "_SCROLL_end")
     assertThat(file.exists()).isTrue()
     val avg = averageColor(file)
     // If scroll-to-end silently fails, the image is red-dominant — this
@@ -79,8 +82,7 @@ class ScrollPreviewPixelTest {
    */
   @Test
   fun `GIF capture animates red to blue`() {
-    val gifName = "RedToBlueScrollGifPreview_ScrollGif.gif"
-    val file = File(rendersDir, gifName)
+    val file = renderFile(scrollGifDir, "RedToBlueScrollGifPreview_ScrollGif", ext = "gif")
     assertThat(file.exists()).isTrue()
 
     val frames = readGifFrames(file)
@@ -109,8 +111,10 @@ class ScrollPreviewPixelTest {
   @Test
   fun `GIF capture following END resets scroll and still animates`() {
     val base = "RedToBlueEndThenGifPreview_EndThenGif"
-    val endPng = File(rendersDir, "${base}_SCROLL_end.png")
-    val gif = File(rendersDir, "${base}_SCROLL_gif.gif")
+    // END is the only `renders/` capture here, so it carries no `_SCROLL_end` suffix; the GIF
+    // sibling moves to the scroll data-product directory.
+    val endPng = renderFile(rendersDir, base)
+    val gif = renderFile(scrollGifDir, base, "_SCROLL_gif", ext = "gif")
     assertThat(endPng.exists()).isTrue()
     assertThat(gif.exists()).isTrue()
 

@@ -19,11 +19,11 @@ import org.junit.Test
 class TransparentBackgroundPreviewPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
-  private val pngName = "CircleButtonTransparentPreview_Circle_Button_Transparent.png"
+  private val pngStem = "CircleButtonTransparentPreview_Circle_Button_Transparent"
 
   @Test
   fun `circle button preview keeps alpha=0 in the corners outside the circle`() {
-    val file = File(rendersDir, pngName)
+    val file = renderFile(rendersDir, pngStem)
     assertThat(file.exists()).isTrue()
     val img = ImageIO.read(file)
 

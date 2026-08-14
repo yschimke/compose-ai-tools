@@ -25,7 +25,7 @@ class RemoteWidgetDocCaptureTest {
 
   @Test
   fun `shape-wrapped remote widget still captures the encoded rcdoc`() {
-    val rcdoc = File(rendersDir, "$stem.rcdoc")
+    val rcdoc = renderFile(rendersDir, stem, ext = "rcdoc")
     assertThat(rcdoc.exists()).isTrue()
     // A real encoded RemoteCompose document, not an empty placeholder.
     assertThat(rcdoc.length()).isGreaterThan(0L)
@@ -33,7 +33,7 @@ class RemoteWidgetDocCaptureTest {
 
   @Test
   fun `shape-wrapped remote widget renders clipped to its ideal shape`() {
-    val png = File(rendersDir, "$stem.png")
+    val png = renderFile(rendersDir, stem)
     assertThat(png.exists()).isTrue()
     val img = ImageIO.read(png)
 

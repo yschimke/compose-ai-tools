@@ -18,10 +18,10 @@ class GestureHintPreviewPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
 
-  private val hintOffPng = File(rendersDir, "MediaGestureScreenPreview_Media_hints_off.png")
+  private val hintOffPng = renderFile(rendersDir, "MediaGestureScreenPreview_Media_hints_off")
 
   private val hintOnPng =
-    File(rendersDir, "MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.png")
+    renderFile(rendersDir, "MediaGestureScreenHintPreview_Media_hints_on", "_TIME_800ms")
 
   @Test
   fun `hint-off and hint-on renders differ`() {
