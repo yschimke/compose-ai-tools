@@ -20,14 +20,14 @@ import org.junit.Test
 class DividerShowBackgroundPreviewPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
-  private val pngName = "DividerShowBackgroundDarkPreview_Divider_Dark.png"
+  private val pngStem = "DividerShowBackgroundDarkPreview_Divider_Dark"
 
   /** `PreviewBackground.NIGHT_ARGB` (`#1C1B1F`) — Material 3's dark surface. */
   private val nightRgb = 0x1C1B1F
 
   @Test
   fun `dark showBackground divider preview fills the whole crop with the dark surface`() {
-    val file = File(rendersDir, pngName)
+    val file = renderFile(rendersDir, pngStem)
     assertThat(file.exists()).isTrue()
     val img = ImageIO.read(file)
 

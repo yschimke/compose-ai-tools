@@ -64,7 +64,7 @@ class PreviewModeMatrixTest {
   @Test
   fun `every preview mode renders at the size Android Studio resolves`() {
     val mismatches = expectedSizes.mapNotNull { (stem, expected) ->
-      val file = File(rendersDir, "$stem.png")
+      val file = renderFile(rendersDir, stem)
       if (!file.exists()) return@mapNotNull "$stem: no PNG rendered"
       val img = ImageIO.read(file) ?: return@mapNotNull "$stem: unreadable PNG"
       val actual = img.width to img.height
@@ -104,7 +104,7 @@ class PreviewModeMatrixTest {
       )
     fanOut.forEach { (function, expected) ->
       val renders = rendersFor(function)
-      assertThat(renders.map { it.name.removePrefix("${function}_").removeSuffix(".png") })
+      assertThat(renders.map { readableStem(it.name).removePrefix("${function}_") })
         .containsExactlyElementsIn(expected)
         .inOrder()
       renders.forEach { file ->
@@ -149,10 +149,10 @@ class PreviewModeMatrixTest {
   private fun rendersFor(functionName: String): List<File> =
     (rendersDir.listFiles() ?: emptyArray())
       .filter { it.name.startsWith("${functionName}_") && it.name.endsWith(".png") }
-      .sortedBy { it.name }
+      .sortedBy { readableStem(it.name) }
 
   private fun readRender(stem: String): BufferedImage {
-    val file = File(rendersDir, "$stem.png")
+    val file = renderFile(rendersDir, stem)
     assertThat(file.exists()).isTrue()
     return ImageIO.read(file)
   }

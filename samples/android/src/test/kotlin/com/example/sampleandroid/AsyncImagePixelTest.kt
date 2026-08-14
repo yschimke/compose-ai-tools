@@ -26,9 +26,9 @@ import org.junit.Test
 class AsyncImagePixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
-  private val artworkPng = File(rendersDir, "AsyncImageArtworkPreview_Async_Image_Artwork.png")
+  private val artworkPng = renderFile(rendersDir, "AsyncImageArtworkPreview_Async_Image_Artwork")
   private val unreachablePng =
-    File(rendersDir, "AsyncImageUnreachablePreview_Async_Image_Unreachable.png")
+    renderFile(rendersDir, "AsyncImageUnreachablePreview_Async_Image_Unreachable")
 
   @Test
   fun `AsyncImage fed a ByteArray resolves and paints real artwork`() {

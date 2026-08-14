@@ -45,7 +45,7 @@ class GlimmerInteractiveMenuTest {
   @Test
   fun `every env variant lands as a non-empty GIF`() {
     envGifBasenames.forEach { base ->
-      val gif = File(rendersDir, "$base.gif")
+      val gif = renderFile(rendersDir, base, ext = "gif")
       assertThat(gif.exists()).isTrue()
       assertThat(gif.length()).isGreaterThan(0L)
       val header = gif.inputStream().use { it.readNBytes(6).toString(Charsets.US_ASCII) }
@@ -59,7 +59,7 @@ class GlimmerInteractiveMenuTest {
     // GIF. None of them should leak out as standalone PNGs, for any env.
     envGifBasenames.forEach { base ->
       (0..3).forEach { i ->
-        val sibling = File(rendersDir, "${base}_FOCUS_$i.png")
+        val sibling = renderFile(rendersDir, base, "_FOCUS_$i")
         assertThat(sibling.exists()).isFalse()
       }
     }
@@ -76,7 +76,7 @@ class GlimmerInteractiveMenuTest {
    */
   @Test
   fun `four env GIFs render visually distinct backdrops`() {
-    val files = envGifBasenames.map { File(rendersDir, "$it.gif") }
+    val files = envGifBasenames.map { renderFile(rendersDir, it, ext = "gif") }
     files.forEach { assertThat(it.exists()).isTrue() }
     val hashes = files.map { it.readBytes().contentHashCode() }.toSet()
     assertThat(hashes).hasSize(files.size)

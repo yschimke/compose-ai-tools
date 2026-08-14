@@ -9,6 +9,7 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
 import java.io.File
+import java.security.MessageDigest
 import java.util.zip.ZipFile
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
@@ -31,6 +32,26 @@ import kotlinx.serialization.json.floatOrNull
  * `previews.json`.
  */
 object PreviewDiscovery {
+
+  /**
+   * Longest readable prefix a render stem may carry, before its `-<digest>` and before the
+   * structural suffixes renderers append (`_PARAM_<label>`, `_SCROLL_<mode>`, `_animated`, …).
+   * Chosen so a stem plus the longest suffix chain stays well inside the 255-byte `NAME_MAX` that
+   * ext4, APFS and NTFS all enforce. Preview names this long are already unreadable as filenames;
+   * the digest keeps them unique after the cut.
+   */
+  internal const val MAX_READABLE_STEM: Int = 80
+
+  /**
+   * Hex chars of `sha256(preview.id)` appended to every render stem. 8 chars (32 bits) makes a tie
+   * vanishingly unlikely even in a catalog module with thousands of previews — and a tie needs the
+   * readable parts to match too, since the digest only disambiguates within one readable name.
+   * [MAX_READABLE_STEM] leaves room for it regardless.
+   */
+  internal const val RENDER_STEM_DIGEST_CHARS: Int = 8
+
+  /** Digest width used by the tie backstop. Full sha256 hex — cannot collide for distinct ids. */
+  internal const val FULL_DIGEST_CHARS: Int = 64
 
   /** Inputs the scan needs from the calling build system. All paths are absolute. */
   data class Input(
@@ -1503,26 +1524,42 @@ object PreviewDiscovery {
 
   /**
    * Rewrite each capture's `renderOutput` (and each `dataProduct.output`) to a shorter, shell-safe
-   * filename. Two passes shape the result:
+   * filename of the form `<readable>-<digest>`:
    *
-   * 1. **Sanitisation per dotted segment.** Within a segment (the chunks between `.`s of the
-   *    preview id) any run of non-alphanumeric characters collapses to a single `_`. So `Devices -
-   *    Large Round` becomes `Devices_Large_Round`, `tile light (light)` becomes `tile_light_light`,
-   *    etc. Dots stay as segment separators.
-   * 2. **Shortest unique suffix per preview.** Each preview takes the rightmost segments needed to
-   *    disambiguate it from every other preview in the module — the function-name-plus-variant
-   *    segment alone for unique names, prepending the class only when another preview shares the
-   *    same function name, prepending package parts only when classes collide too. So
-   *    `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round` becomes
-   *    `ActivityListPreview_Devices_Large_Round` in most modules.
+   * 1. **`<readable>`** — the last dotted segment of the preview id (function name plus any
+   *    `@Preview(name = …)` variant suffix), with every run of non-alphanumeric characters collapsed
+   *    to a single `_`. So `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round`
+   *    contributes `ActivityListPreview_Devices_Large_Round`. Capped at [MAX_READABLE_STEM] chars so
+   *    a stem plus its structural suffixes stays inside the 255-byte `NAME_MAX` every mainstream
+   *    filesystem enforces.
+   * 2. **`-<digest>`** — [RENDER_STEM_DIGEST_CHARS] hex chars of `sha256(preview.id)`, taken over
+   *    the id verbatim. `-` is an unambiguous delimiter here: [sanitiseSegment] collapses it inside
+   *    a segment, so it can never occur in `<readable>`.
    *
    * `preview.id` itself stays untouched — it's the stable identity consumers key by (history
-   * folders, CLI state, JUnit test names). Only the on-disk filename benefits from the prettier
-   * form.
+   * folders, CLI state, JUnit test names). Only the on-disk filename takes this form.
    *
-   * If sanitisation forces a true collision (two distinct ids whose fully-sanitised forms are
-   * byte-identical — e.g. `Foo_bar` vs `Foo-bar` after collapsing), a `_<idx>` suffix
-   * disambiguates. The renders directory has to stay collision-free even when input names couldn't.
+   * **Why the digest is unconditional.** It is what makes a stem a pure function of one preview's
+   * own id, and that single property carries every guarantee the filenames need:
+   * - *Stable.* Adding, removing or renaming any other preview in the module cannot change this
+   *   preview's filename — the sole exception being [disambiguateDigestTies] below. The previous
+   *   shortest-unique-suffix walk read every sibling, so an unrelated addition silently renamed
+   *   existing PNGs — which breaks commit-pinned render URLs and makes base-vs-head visual diffing
+   *   see a rename as delete + add.
+   * - *Collision-free.* Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get distinct
+   *   digests. The old positional `_<idx>` tiebreaker minted names without checking them against
+   *   real stems, so a preview genuinely named `Foo_bar_1` could be silently overwritten.
+   * - *Case-safe.* `Foo_Dark` and `Foo_dark` are distinct ids, so they get distinct digests and stay
+   *   distinct files on the case-insensitive filesystems (APFS, NTFS) where the readable parts alone
+   *   would collide.
+   * - *Suffix-safe.* Structural suffixes are appended after the whole stem, so a preview named
+   *   `Logo_animated` lands on `Logo_animated-<digestA>.png` while `Logo`'s Lottie sidecar lands on
+   *   `Logo-<digestB>_animated.png`. The digest separates the two namespaces that used to share `_`.
+   * - *Reserved-name-safe.* A preview named `CON` or `NUL` becomes `CON-<digest>`, which is not a
+   *   Windows reserved device name.
+   *
+   * [disambiguateDigestTies] is the backstop for a truncated-digest collision, which needs two ids
+   * that agree on both readable part and digest prefix.
    */
   private fun normalizeRenderOutputs(previews: List<PreviewInfo>): List<PreviewInfo> {
     if (previews.isEmpty()) return previews
@@ -1542,45 +1579,59 @@ object PreviewDiscovery {
   }
 
   /**
-   * Pick one shell-safe stem per preview. Each stem is the shortest sanitised suffix that uniquely
-   * identifies its preview against the others — see [normalizeRenderOutputs] for the algorithm and
-   * rationale. Exposed `internal` so the unit tests can assert "no spaces ever", "no `class.`
-   * prefix when the function name is unique", and the collision-disambiguator paths directly
-   * without a full discovery pipeline.
+   * Pick one shell-safe stem per preview — see [normalizeRenderOutputs] for the format and
+   * rationale. Exposed `internal` so the unit tests can assert the charset, the stability of a stem
+   * under unrelated additions, and the collision paths directly without a full discovery pipeline.
    */
   internal fun resolveRenderStems(previews: List<PreviewInfo>): List<String> {
     if (previews.isEmpty()) return emptyList()
-    val sanitisedSegmentsByPreview = previews.map { sanitiseSegments(it) }
-    val stems = sanitisedSegmentsByPreview.mapIndexed { i, mySegs ->
-      shortestUniqueSuffix(i, mySegs, sanitisedSegmentsByPreview)
-    }
-    return disambiguateExactCollisions(stems)
+    return disambiguateDigestTies(previews.map { renderStem(it) }, previews)
   }
 
   /**
-   * Returns the joined stem (segments joined with `.`) made from the rightmost segments of [mySegs]
-   * that aren't matched, at the same depth, by any other preview's sanitised segments.
-   *
-   * If no proper suffix is unique (two distinct ids whose sanitised segment lists are
-   * byte-identical — the only way every depth matches), return JUST the last segment. The user
-   * wants short on-disk names; the resulting duplicate is then disambiguated with a `_<idx>` suffix
-   * by [disambiguateExactCollisions] rather than padded with the full package path.
+   * The stem for a single preview, computed from that preview alone. Deliberately takes no view of
+   * the rest of the module — see [normalizeRenderOutputs] for why that independence is the point.
    */
-  private fun shortestUniqueSuffix(
-    myIndex: Int,
-    mySegs: List<String>,
-    allSegs: List<List<String>>,
-  ): String {
-    if (mySegs.isEmpty()) return ""
-    for (depth in 1..mySegs.size) {
-      val mySuffix = mySegs.takeLast(depth)
-      val collides =
-        allSegs.withIndex().any { (otherIndex, otherSegs) ->
-          otherIndex != myIndex && otherSegs.takeLast(depth) == mySuffix
-        }
-      if (!collides) return mySuffix.joinToString(".")
+  internal fun renderStem(preview: PreviewInfo): String {
+    val readable =
+      sanitiseSegments(preview)
+        .lastOrNull()
+        .orEmpty()
+        // Truncate before trimming: a cut can land mid-run and leave a trailing `_`.
+        .take(MAX_READABLE_STEM)
+        .trim('_', '-')
+        .ifEmpty { "preview" }
+    return "$readable-${idDigest(preview.id, RENDER_STEM_DIGEST_CHARS)}"
+  }
+
+  /** Lowercase hex of `sha256(id)`, truncated to [chars]. */
+  private fun idDigest(id: String, chars: Int): String =
+    MessageDigest.getInstance("SHA-256")
+      .digest(id.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+      .take(chars)
+
+  /**
+   * Backstop for the astronomically unlikely case where two distinct ids agree on both readable
+   * part and truncated digest. Every tied preview is re-stemmed with a full-length digest, which
+   * cannot tie unless the ids are equal (and ids are distinct by manifest construction).
+   *
+   * Only the tied previews are touched, so one freak pair cannot lengthen an unrelated preview's
+   * filename — and because the replacement is still a pure function of the id, the result stays
+   * stable under reordering. That is the property the old positional `_<idx>` tiebreaker lacked:
+   * it indexed into the manifest, so it both churned on reordering and could mint a name that
+   * collided with a real preview's.
+   */
+  private fun disambiguateDigestTies(
+    stems: List<String>,
+    previews: List<PreviewInfo>,
+  ): List<String> {
+    val tied = stems.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+    if (tied.isEmpty()) return stems
+    return stems.mapIndexed { i, stem ->
+      if (stem !in tied) stem
+      else stem.substringBeforeLast('-') + "-" + idDigest(previews[i].id, FULL_DIGEST_CHARS)
     }
-    return mySegs.last()
   }
 
   /**
@@ -1592,9 +1643,9 @@ object PreviewDiscovery {
    * trailing variant suffix (from `@Preview(name = ...)` / `group`) is folded into the
    * function-name segment first, because a name like `"Font scale 1.5x"` carries dots that are NOT
    * structural id separators: splitting the whole id would inject a spurious trailing segment ("1"
-   * | "5x") and the shortest-unique-suffix walk could collapse the entire stem down to it
-   * (`5x.png`). Keeping the id itself lossless preserves manifest dedup (`distinctBy { it.id }`);
-   * any stem collision two distinct ids still produce is handled by [disambiguateExactCollisions].
+   * | "5x"), and [renderStem] takes the *last* segment — so the whole readable stem would collapse
+   * to `5x`. Keeping the id itself lossless preserves manifest dedup (`distinctBy { it.id }`); any
+   * stem collision two distinct ids still produce is handled by [disambiguateDigestTies].
    *
    * Empty segments (e.g. from a leading or trailing `.`, or from a segment that was all-punctuation
    * pre-sanitisation) are dropped so they don't introduce `..` in the resulting stem.
@@ -1618,23 +1669,6 @@ object PreviewDiscovery {
    */
   private fun sanitiseSegment(segment: String): String =
     segment.replace(Regex("[^A-Za-z0-9]+"), "_").trim('_', '-')
-
-  /**
-   * Last-ditch tiebreaker when two distinct preview ids sanitise to exactly the same stem (e.g.
-   * `Foo_bar` and `Foo-bar` both become `Foo_bar`). Appends `_<idx>` to the second-and-later
-   * occurrences in the manifest order; the first occurrence keeps its clean form so the common case
-   * still gets the pretty filename.
-   */
-  private fun disambiguateExactCollisions(stems: List<String>): List<String> {
-    if (stems.toSet().size == stems.size && stems.none { it.isEmpty() }) return stems
-    val counts = mutableMapOf<String, Int>()
-    return stems.mapIndexed { i, raw ->
-      val base = if (raw.isEmpty()) "preview" else raw
-      val seen = counts.getOrDefault(base, 0)
-      counts[base] = seen + 1
-      if (seen == 0 && raw.isNotEmpty()) base else "${base}_${i}"
-    }
-  }
 
   /** `renders/<oldStem><tail>.<ext>` → `renders/<newStem><tail>.<ext>`. */
   private fun rewriteRenderStem(renderOutput: String, oldStem: String, newStem: String): String {
