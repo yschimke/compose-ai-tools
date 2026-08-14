@@ -808,14 +808,14 @@
     "serve-reference-compare-annotated.dark.png": {
       "fixture": "serve-reference-compare-annotated",
       "theme": "dark",
-      "sha256": "991608a16e3a4784e13bf72c94a0a4751e113646b07c7e9b9d984bcc2583d470",
-      "size": 106497
+      "sha256": "5c6b144fb5cac1c07c2ed4c4a42bf369d6d9f51532ccb48b9fcbf40d6ad88230",
+      "size": 113311
     },
     "serve-reference-compare-annotated.light.png": {
       "fixture": "serve-reference-compare-annotated",
       "theme": "light",
-      "sha256": "bb38b4f3db8a4397bf012a09bd14c039572ad06737467ab557f87697eab8e84d",
-      "size": 104673
+      "sha256": "f30100280bb65eaece44903dc8170443f9d8d32d497e265552cf3e78d62288fc",
+      "size": 111447
     },
     "serve-reference-compare-pinned.dark.png": {
       "fixture": "serve-reference-compare-pinned",
@@ -832,14 +832,14 @@
     "serve-reference-compare.dark.png": {
       "fixture": "serve-reference-compare",
       "theme": "dark",
-      "sha256": "40c8c8a9367c0e897eecafb7cf2c3233cdc64b2a7cd2e55e1259e1c5d882a9e0",
-      "size": 73933
+      "sha256": "ff2253967edd5ca061e2c6d0e6b0bbf98857d11b89d60275f772507b27c2b347",
+      "size": 74496
     },
     "serve-reference-compare.light.png": {
       "fixture": "serve-reference-compare",
       "theme": "light",
-      "sha256": "aeb68134822cd571aac2fa63b7ebf7fce688a8bc674657c6a632a9f8a04246b4",
-      "size": 73059
+      "sha256": "5ab1f391d95510da34d1c97b516b0e7b92f5c0569d79731dcc14384130b35638",
+      "size": 73595
     },
     "serve-social-card.dark.png": {
       "fixture": "serve-social-card",
@@ -976,8 +976,8 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "730b11f42fe41167201a41249c209f7041e11391b4eb854ba32c2c3e2e94f7a6",
-      "size": 101089
+      "sha256": "7ffafdc883c395074261c7318cb7ce027aa71e69c65a0ca25bbd6f4017f6a479",
+      "size": 100919
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
