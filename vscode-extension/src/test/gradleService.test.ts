@@ -902,6 +902,43 @@ describe("GradleService", () => {
         );
 
         it(
+            "forces task execution without build cache when daemon discovery found an addition",
+            withTempDir(async (dir, api) => {
+                fs.mkdirSync(path.join(dir, "mod"));
+                const manifestDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
+                );
+
+                const service = new GradleService(dir, api);
+                const module = { projectDir: "mod", modulePath: ":mod" };
+                await service.composePreviewDiscover(module);
+                await service.composePreviewDiscover(module, undefined, true);
+
+                assert.strictEqual(api.runCalls.length, 2);
+                assert.deepStrictEqual(api.runCalls[1].args, [
+                    "--rerun-tasks",
+                    "--no-build-cache",
+                ]);
+            }),
+        );
+
+        it(
             "translates nested module path to colon-separated Gradle task name",
             withTempDir(async (dir, api) => {
                 fs.mkdirSync(path.join(dir, "samples", "wear"), {
