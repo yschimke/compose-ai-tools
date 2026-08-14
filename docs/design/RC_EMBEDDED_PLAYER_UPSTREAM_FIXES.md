@@ -93,9 +93,16 @@ return Modifier.clip(shape).then(this)
 ```
 
 **Test:** an instrumented/screenshot case in `src/androidTest/.../RcPlayerPixelTest.kt` (or a new
-one beside it) over a component carrying both a `DrawContent` background and a rounded clip —
-assert the corner pixels are background-coloured, not fill-coloured. A unit test cannot see this;
-it is a draw-order property.
+one beside it) over a component carrying both a `DrawContent` background and a rounded clip. Give
+the component's chrome and the surface behind it clearly different colours, then sample a pixel
+just *outside* the corner arc but inside the component's bounding box:
+
+- **correct:** that pixel shows the **surrounding surface** colour — the chrome was clipped away
+- **the bug:** it shows the **component's chrome** colour, painted square past the arc
+
+Get the direction right; asserted the other way round the test passes on the broken build and fails
+on the fix. A unit test cannot see this at all — it is a draw-order property, not a geometry one
+(item 2 is the geometry one, and `RemoteRoundedClipShapeTest` is where that belongs).
 
 **Ours:** `third_party/rc-embedded-player/src/main/kotlin/…/modifier/ClipModifier.kt`.
 
@@ -172,10 +179,22 @@ fun isFloatOverridden(id: Int): Boolean = overriddenFloats[id] == true
 realState.isFloatOverridden(id) -> super.getFloat(id)
 ```
 
+**Known limitation — fix it as part of this item rather than inheriting it.** The `GraphContext`
+check above only covers ids whose value *reaches* the graph. In `rememberRemoteFloatAsState` the
+expression branches return earlier: an authored expression with `mFloatAnimation` goes straight to
+`rememberAnimatedRemoteFloat`, and (with item 4) an animated *chain* goes to
+`rememberRemoteExpression`. Neither consults the override, so a host write against an id whose
+expression is animated is still ignored. **Our own delta has this hole** — it was found reviewing
+this document, not in the field, so treat it as unverified in behaviour but plain in the code. The
+override test should read the id's value *before* the expression branches, i.e. check
+`isFloatOverridden` at the top of the resolver rather than only in the graph's leaf read.
+
 **Test:** `…/src/test/java/…/RcPlayerExpressionTest.kt` — compose a document whose id carries an
 expression, write an override through `StateUpdaterImpl`, assert the read returns the override.
+Cover **both** shapes: a plain expression (passes with the `GraphContext` check alone) and an
+animated one (needs the resolver-level check).
 
-**Ours:** `SnapshotRemoteComposeState.kt`, `GraphContext.kt`.
+**Ours:** `SnapshotRemoteComposeState.kt`, `GraphContext.kt` — including the limitation above.
 
 ---
 
@@ -397,9 +416,13 @@ NEW=compose/remote/remote-player-compose/src/main/java/androidx/compose/remote/p
 git -C <androidx> grep -n "roundedRectRadiusScale\|Modifier.clip(shape).then" -- $NEW   # items 1, 2
 git -C <androidx> grep -n "isFloatOverridden"                                -- $NEW   # item 3
 git -C <androidx> grep -n "expressionDependsOnAnimation"                     -- $NEW   # item 4
-git -C <androidx> grep -n "ID_CONTINUOUS_SEC"                                -- $NEW   # item 5 (expect a hit in RcPlayer.kt only)
+git -C <androidx> grep -n "ID_CONTINUOUS_SEC" -- $NEW/state/RcPlayerState.kt           # item 5
 git -C <androidx> grep -n "mAutosize\|mJustificationMode\|mLineBreakStrategy" -- $NEW   # item 6
 ```
 
 A hit means upstream has taken it and the item is done. All of the above were absent at
 `2f88db18` (2026-08-14).
+
+Note item 5's search is scoped to `state/RcPlayerState.kt` deliberately: `ID_CONTINUOUS_SEC` already
+appears in `RcPlayer.kt`'s frame-loop scan and always will, so an unscoped grep answers "done" for a
+fix that has not landed. That is the bug being fixed — the loop runs, the value doesn't move.

@@ -319,7 +319,10 @@ Of the nine, three landing zones moved under them:
 `rememberRemoteFloatAsState` have **no** upstream counterpart (upstream added `ID_CONTINUOUS_SEC`
 only to `RcPlayer`'s time-dependence *scan*, at `RcPlayer.kt:315`, not to the value resolver). Same
 for the six `CoreText` reflection fields and everything they feed. All re-apply. The first three are
-filing candidates and appear in the consolidated migration gate in §4. The `CoreText` fields are a
+filing candidates and appear in the consolidated migration gate in §4 — though note
+`isFloatOverridden` has a known hole: the check lives in `GraphContext`'s leaf read, which an id
+with an *animated* expression never reaches, so a host write against one is still ignored. Close
+that when filing (see the work order's item 3). The `CoreText` fields are a
 feature addition rather than a fix, but that does **not** make them non-blocking: they cannot
 survive an artifact migration either, so §4's ninth item requires a deliberate call — land the
 behaviours upstream, or record that the Android lane drops them.
@@ -374,6 +377,15 @@ against the fact that the reason for vendoring is expiring:
      new `typefaceResolver` parameter, every downloadable-font document silently falls back to
      Roboto after the switch — a regression that renders *successfully* and so will not announce
      itself.
+
+     **And a `typefaceResolver` alone is not sufficient**, which is the trap in this item: it feeds
+     the *canvas* text ops through `AndroidRemoteContext`, while the layout-text composables build
+     a Compose `FontFamily` in `resolveFontFamily`. Our variable-axis handling lives on that second
+     path — `GoogleVariableFontFamilies.Default.composeFontFamily(…)` returns before the
+     `GoogleFontFactory` fallback (`RcPlayerTextLayout.kt:331`), which resolves a `google:` family
+     but cannot vary it. Wiring the resolver and stopping there keeps downloadable fonts working
+     while silently losing `wght`/`wdth` axis rendering for layout text. Both paths need an answer,
+     or the axis loss needs recording as accepted.
   8. **`RemoteImageSupport`'s parse flags** must be set by the host before parsing. This one is
      already outstanding today, in `RemoteComposeIrReplay` and `RemoteOverridablePreview` (§3.7) —
      worth fixing now rather than at migration time.
