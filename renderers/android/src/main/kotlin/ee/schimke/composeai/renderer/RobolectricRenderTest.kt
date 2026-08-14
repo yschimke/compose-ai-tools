@@ -49,6 +49,7 @@ import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewAnimationContext
 import ee.schimke.composeai.data.render.PreviewFilter
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
@@ -603,6 +604,12 @@ abstract class RobolectricRenderTestBase(
   @OptIn(ExperimentalRoborazziApi::class)
   @Test
   fun renderPreview() {
+    // Before this preview's first composition, and inside the Robolectric sandbox — each sandbox
+    // classloader holds its own copy of `ComposeRuntimeFlags`, so the opt-in has to be applied from
+    // in here rather than once per JVM. Idempotent, so a shard that reuses its sandbox across
+    // previews pays a `getProperty` per capture and nothing more. Unset (the default) is silent.
+    LinkBufferComposer.applyAndDescribe(javaClass.classLoader)?.let(System.err::println)
+
     val outputDir =
       File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
     outputDir.mkdirs()

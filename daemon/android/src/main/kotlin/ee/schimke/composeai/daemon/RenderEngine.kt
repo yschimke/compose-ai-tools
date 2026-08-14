@@ -37,6 +37,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -208,6 +209,11 @@ class RenderEngine(
      */
     runAccessibility: Boolean? = null,
   ): RenderResult {
+    // The rewritten Compose SlotTable opt-in, applied against the classloader this render composes
+    // on — before its first composition, which is what the runtime latches. The daemon renders many
+    // previews per JVM, so the flag is a whole-session property here rather than a per-request one;
+    // re-applying it per render is idempotent and costs a `getProperty`. Unset (default) is silent.
+    LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
     // Issue #1528 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
     // queues `mode=scroll-long` / `scroll-gif`, route into the renderer's scroll handlers
     // (`renderer.handleLongCapture` / `renderer.handleGifCapture`) instead of the default

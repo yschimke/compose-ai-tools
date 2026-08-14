@@ -37,6 +37,7 @@ import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.data.render.PreviewContext
@@ -187,6 +188,11 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
+    // The rewritten Compose SlotTable opt-in, applied against the classloader this render composes
+    // on — before its first composition, which is what the runtime latches. The daemon renders many
+    // previews per JVM, so the flag is a whole-session property here rather than a per-request one;
+    // re-applying it per render is idempotent and costs a `getProperty`. Unset (default) is silent.
+    LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
     // Issue #1604 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
     // queues `mode=scroll-long` / `scroll-gif` (because the `ScrollDataProductRegistry` advertised
     // the kind as `requiresRerender = true` and the artefact was missing), leave the single-frame
@@ -274,6 +280,13 @@ class RenderEngine(
     trace: PerfettoTraceDataProducer.Recorder =
       PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop"),
   ): SceneState {
+    // Also here, not just in [render]: a daemon whose FIRST request is `interactive/start` or
+    // `recording/start` reaches a held composition through `DesktopHost.acquireInteractiveSession`
+    // /
+    // `acquireRecordingSession` → `setUp`, never through `render`. The runtime latches the composer
+    // at the first composition, so applying it only in `render` would leave those sessions on the
+    // old composer and make a later one-shot render's application too late to matter.
+    LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
 

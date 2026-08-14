@@ -34,6 +34,7 @@ import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -2775,6 +2776,12 @@ open class RobolectricHost(
         slot.childLoaderRef.get()
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
+      // The rewritten-SlotTable opt-in, against the sandbox's own child loader. A daemon whose
+      // FIRST request is `interactive/start` (or `recording/start`, which delegates here through
+      // `acquireInteractiveSession`) composes in the held `setContent` below without ever calling
+      // `RenderEngine.render`, and the runtime latches the composer at that first composition — so
+      // hooking only `render` would silently leave live sessions on the old composer.
+      LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
       // Branch on the preview flavour exactly like `RenderEngine.render` (see `RenderEngine.kt`
       // around the `isTile` / `isNotification` / `isGlanceAppWidget` checks). Tile, notification,
       // and Glance previews are non-composable top-level functions returning `TilePreviewData` /

@@ -75,6 +75,38 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val fixedTime: Property<String> = objects.property(String::class.java)
 
+  /**
+   * Renders this module's previews with the Compose runtime's rewritten `SlotTable` — the "link
+   * buffer" composer the Compose Runtime team shipped in 1.12.0 behind
+   * `ComposeRuntimeFlags.isLinkBufferComposerEnabled` (the flag exists on the 1.11.x line too). It
+   * is a performance rewrite of composition's random-write path, slated to become the default and
+   * then to lose its flag, and the team asked for correctness and performance feedback ahead of
+   * that.
+   *
+   * `false` (default) leaves the runtime on whatever it ships as its own default, so nothing
+   * changes until a build asks for it.
+   *
+   * What makes this worth a knob rather than a one-off patch: a module's rendered PNGs are a
+   * committed corpus of Compose output, so rendering the same previews twice — once with the flag,
+   * once without — turns any catalog here into a pixel-level regression suite for the rewrite. Both
+   * lanes honour it (Android/Robolectric and Desktop/CMP), because it is a runtime-level flag with
+   * no platform-specific interception, unlike [fixedTime].
+   *
+   * **Whole-run, not per-preview.** The runtime latches the flag at the first composition in a
+   * JVM (on Android, in a Robolectric sandbox), and the lanes here render many previews per JVM —
+   * so this selects a composer for the whole render, which is also how the runtime team frames it
+   * ("set the flag before you compose any content").
+   *
+   * Requesting it against a Compose runtime that has no such flag — an older one, or a future one
+   * that has completed the migration and removed it — fails the render with a message naming the
+   * flag, rather than quietly rendering the old composer and reporting a clean run that tested
+   * nothing.
+   *
+   * Override for a single run with `-PcomposePreview.linkBufferComposer=true` (or
+   * `-Dcomposeai.render.linkBufferComposer=true`), which takes precedence over this value.
+   */
+  val linkBufferComposer: Property<Boolean> = objects.property(Boolean::class.java)
+
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
