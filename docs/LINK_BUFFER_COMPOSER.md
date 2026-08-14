@@ -77,3 +77,46 @@ diff -rq /tmp/renders-baseline samples/cmp/build/compose-previews/renders
 
 The same shape works for `:samples:android` (Robolectric lane) and for any of the
 `samples/design-catalog-*` modules, which are the largest corpora in the repo.
+
+## What the first A/B found
+
+Run 2026-08-14 on Compose runtime 1.11.4 (Android) / runtime-desktop 1.11.2 (CMP), in the cloud
+sandbox, against both sample modules.
+
+**No rendered-output differences attributable to the new composer, in either lane.**
+
+| Lane | Artifacts | Result |
+| --- | --- | --- |
+| `:samples:cmp` (Desktop / Skiko) | 70 | 70/70 byte-identical, flag-on vs flag-off |
+| `:samples:android` (Robolectric) | 171 | 170/171 byte-identical; the one exception explained below |
+
+The CMP corpus is not just static captures — it includes `@ScrollingPreview` LONG (a 31-slice
+stitch), `@ScrollingPreview` GIF (130 frames), paused-clock `@AnimatedPreview` GIFs and the shader
+gallery. Those are the paths where recomposition happens repeatedly under a driven clock, i.e. where
+a composer rewrite would be most likely to show up, and they are bit-for-bit unchanged.
+
+### The one file that differed, and why it isn't the composer
+
+`SharedElementDebugMatchedAnimatedPreview_Shared_Element_Debug_Matched.gif` (a `SharedTransitionLayout`
++ `AnimatedContent` under `LookaheadAnimationVisualDebugging`, swept into a 23-frame GIF) differed
+between the flag-off baseline and the flag-on run — all 23 frames, ~490k changed pixels.
+
+It is **not** attributable to the flag. Re-rendering with the flag still off reproduced exactly the
+same difference against the baseline, and the flag-on and second flag-off GIFs are byte-identical to
+each other (`bbd3a3bd…`); the outlier is the *first* run (`1ee1f65e…`), which was the cold one. So
+this preview renders one way on a cold build and another way on every warm build after it,
+regardless of composer.
+
+Worth its own issue rather than a fix here: a preview that diffs cold-vs-warm is noise for the CI
+visual-diff bot on every PR that happens to run it cold. Nothing else in either module shows it.
+
+### Performance
+
+Not measured, deliberately. Warm flag-off was 5m04s and flag-on 5m09s on `:samples:cmp`, but this
+pipeline's wall clock is JVM boot, Skia rasterization and GIF encoding — not composition throughput
+— so it cannot resolve a composition-level performance change and those numbers should not be read
+as evidence either way. The runtime team's own benchmarks are the right instrument for the
+performance half; what this repo can contribute is the correctness half above.
+
+(Do not compare against the 9m59s cold baseline in the logs — that run paid dependency resolution
+and compilation.)
