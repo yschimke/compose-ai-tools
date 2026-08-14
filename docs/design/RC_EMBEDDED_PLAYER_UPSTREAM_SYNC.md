@@ -319,8 +319,10 @@ Of the nine, three landing zones moved under them:
 `rememberRemoteFloatAsState` have **no** upstream counterpart (upstream added `ID_CONTINUOUS_SEC`
 only to `RcPlayer`'s time-dependence *scan*, at `RcPlayer.kt:315`, not to the value resolver). Same
 for the six `CoreText` reflection fields and everything they feed. All re-apply. The first three are
-filing candidates and appear in the consolidated migration gate in §4; the `CoreText` fields are a
-feature addition rather than a fix and do not gate anything.
+filing candidates and appear in the consolidated migration gate in §4. The `CoreText` fields are a
+feature addition rather than a fix, but that does **not** make them non-blocking: they cannot
+survive an artifact migration either, so §4's ninth item requires a deliberate call — land the
+behaviours upstream, or record that the Android lane drops them.
 
 ### 3.9 Watch the reflection surface
 
@@ -335,9 +337,9 @@ would delete the file we carry a +36 delta on. Upstream guards these names with 
 
 ## 4. The strategic call
 
-The refresh cost above is real (a rendering-affecting text change, a three-way clip merge, 11 files
-of seams to re-extract, two new build gaps). Weigh it against the fact that the reason for
-vendoring is expiring:
+The refresh cost above is real (a rendering-affecting text change, a three-way clip merge, nine
+seam files to re-extract plus two handwritten workarounds to retain, two new build gaps). Weigh it
+against the fact that the reason for vendoring is expiring:
 
 - **Do not refresh onto `androidx-main` right now** unless something specific is needed from it.
   The tree is mid-promotion — API files unregenerated, and two of its new code paths cannot be
