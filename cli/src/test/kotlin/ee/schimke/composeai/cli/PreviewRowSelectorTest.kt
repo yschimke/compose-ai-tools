@@ -197,6 +197,57 @@ class PreviewRowSelectorTest {
     }
   }
 
+  /**
+   * Review follow-up (#3798). The exact-hit precedence must NOT extend to the substring selectors.
+   * A parameterized `Foo` yielding `Foo_Crimson` and an ordinary `CrimsonButton` are *both*
+   * legitimately named by `--filter Crimson` — matching several previews at once is what a
+   * substring rule is for, not a conflict to resolve — so letting the concrete one suppress the row
+   * owner would drop a preview that satisfies the documented predicate. Only `--id` is
+   * single-target, and only `--id` has a caller (`serve`) that breaks when a second module tags
+   * along.
+   */
+  @Test
+  fun `a direct filter hit does not suppress other modules' row owners`() {
+    val app = module(":app")
+    val ui = module(":ui")
+
+    val selected =
+      modulesMatchingPreviewRequest(
+        modules = listOf(app, ui),
+        manifests =
+          listOf(
+            manifest(app, preview("Foo", parameterized = true)),
+            manifest(ui, preview("CrimsonButton")),
+          ),
+        exactId = null,
+        filter = "Crimson",
+      )
+
+    assertEquals(listOf(":app", ":ui"), selected.map { it.gradlePath })
+  }
+
+  /** Same for the loose `--preview` form, which is a substring rule too. */
+  @Test
+  fun `a direct preview-ref hit does not suppress other modules' row owners`() {
+    val app = module(":app")
+    val ui = module(":ui")
+
+    val selected =
+      modulesMatchingPreviewRequest(
+        modules = listOf(app, ui),
+        manifests =
+          listOf(
+            manifest(app, preview("Foo", parameterized = true)),
+            manifest(ui, preview("CrimsonButton")),
+          ),
+        exactId = null,
+        filter = null,
+        previewRef = "Crimson",
+      )
+
+    assertEquals(listOf(":app", ":ui"), selected.map { it.gradlePath })
+  }
+
   /** The same undecidability applies to `--preview`, whose loose form is also a substring rule. */
   @Test
   fun `preview ref keeps a parameterized preview for a row label`() {

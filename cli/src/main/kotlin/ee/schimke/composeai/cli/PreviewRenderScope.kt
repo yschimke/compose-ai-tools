@@ -89,9 +89,9 @@ internal object PreviewRenderScope {
     // like `Crimson`) picks out an id that only exists once the fan-out is on disk, so it can never
     // match a manifest entry here. Selecting the parameterized previews it *might* name keeps the
     // #3730 narrowing working for row requests instead of falling through to
-    // `selected.isEmpty() -> FULL` and rendering the whole module. Gated on there being no direct
-    // match anywhere, so a request that names a real preview still narrows to exactly that one.
-    val matchedDirectly = requestHasDirectMatch(manifests, exactId, filter, previewRef)
+    // `selected.isEmpty() -> FULL` and rendering the whole module. Gated on `--id` not naming a
+    // preview that really exists, so an exact request still narrows to exactly that one.
+    val exactIdExists = manifestsDeclareExactId(manifests, exactId)
     for ((_, manifest) in manifests) {
       for (preview in manifest.previews) {
         discovered++
@@ -102,7 +102,7 @@ internal object PreviewRenderScope {
             exactId = exactId,
             filter = filter,
             previewRef = previewRef,
-            requestMatchedDirectly = matchedDirectly,
+            exactIdExists = exactIdExists,
           )
         if (
           !mayOwnRequestedRow &&
