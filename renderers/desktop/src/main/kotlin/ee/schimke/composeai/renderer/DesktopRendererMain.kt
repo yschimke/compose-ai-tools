@@ -868,14 +868,19 @@ internal val RENDER_COMPANION_SUFFIXES = listOf(".error.json", ".warnings.json")
 /**
  * The render output [name] belongs to: [name] itself when it is an `[ext]` output, the output it
  * names when it is one of that output's [RENDER_COMPANION_SUFFIXES] companions, and `null`
- * otherwise.
+ * otherwise — `null` meaning "not this template's business", which on a delete path is the answer
+ * that keeps a file.
  *
- * Companions are matched before the plain extension so an output whose own extension is `.json` (a
- * data product) resolves `Foo_Alice.json.error.json` to `Foo_Alice.json` rather than to itself.
+ * A companion is recognised by its suffix **before** the plain-extension fallback is reached, and
+ * is then held to the same per-extension scoping as any other candidate: it belongs to this sweep
+ * only if the output it names carries [ext]. Deciding in the other order breaks down as soon as
+ * [ext] is itself `.json` — a data product — because then every `.error.json` in the directory ends
+ * with [ext], and the fallback claims image companions like `Foo_Alice.png.error.json` as JSON
+ * outputs of its own, deleting another output's *current* diagnostics.
  */
 internal fun fanoutOutputNameOf(name: String, ext: String): String? {
   RENDER_COMPANION_SUFFIXES.forEach { companion ->
-    if (name.endsWith(ext + companion)) return name.removeSuffix(companion)
+    if (name.endsWith(companion)) return name.removeSuffix(companion).takeIf { it.endsWith(ext) }
   }
   return name.takeIf { it.endsWith(ext) }
 }
