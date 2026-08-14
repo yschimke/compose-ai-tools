@@ -208,8 +208,8 @@ object PreviewManifestLoader {
     // from prior runs that today's manifest doesn't account for. Guards
     // against provider renames ("loading" → "busy") and the
     // `_PARAM_<idx>` → `_<label>` migration leaving a mix of old-shape
-    // and new-shape PNGs on disk. Runs at shard-load time, before any
-    // test body writes to the directory.
+    // and new-shape captures or rendered data products on disk. Runs at shard-load time, before
+    // any test body writes to the directory.
     deleteStaleFanoutFiles(
       outDir = System.getProperty("composeai.render.outputDir")?.let(::File),
       allEntries = allEntries,
@@ -354,8 +354,9 @@ object PreviewManifestLoader {
   }
 
   /**
-   * Deletes stale `<stem>_*<ext>` fan-out files for the parameterized previews in
-   * [expandedByEntry].
+   * Deletes stale `<stem>_*<ext>` capture and rendered-data-product fan-out files for the
+   * parameterized previews in [expandedByEntry]. Both output classes use the same path-aware sweep
+   * rule so their cleanup cannot drift independently.
    *
    * Three guards keep the prefix match from destroying correct sibling output (issue #2193):
    * - **Manifest-wide expected set.** `@Preview(name = …)` / `@Preview(group = …)` variant suffixes
@@ -393,45 +394,35 @@ object PreviewManifestLoader {
     ownedIds: Set<String>,
   ) {
     if (outDir == null || !outDir.isDirectory) return
-    val expectedNames = buildSet {
-      allEntries.flatMap { it.captures }.mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
-      expandedByEntry
-        .flatMap { it.second }
-        .flatMap { it.entry.captures }
-        .mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
+    val productRoot = outDir.parentFile ?: outDir
+    val expectedFiles = buildSet {
+      allEntries.forEach { entry ->
+        entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+        entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+      }
+      expandedByEntry.flatMap { it.second }.forEach { row ->
+        row.entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+        row.entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+      }
     }
-    val declaredOutputFiles =
-      allEntries
-        .flatMap { it.captures }
-        .map { it.renderOutput }
-        .filter { it.isNotEmpty() }
-        .map { File(outDir, it.substringAfter("renders/")) }
+    val declaredOutputFiles = buildList {
+      allEntries.forEach { entry ->
+        entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+        entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+      }
+    }
     for ((entry, rows) in expandedByEntry) {
       if (entry.params.previewParameterProviderClassName == null) continue
       if (rows.none { it.entry.id in ownedIds }) continue
       for (template in entry.captures) {
-        val templateFile = File(outDir, template.renderOutput.substringAfter("renders/"))
-        val dir = templateFile.parentFile ?: continue
-        val stem = templateFile.nameWithoutExtension
-        val ext = ".${templateFile.extension}"
-        val prefix = stem + "_"
-        val siblingStems = fanoutSiblingStems(declaredOutputFiles, templateFile)
-        dir
-          .listFiles()
-          ?.filter { f ->
-            val output = fanoutOutputNameOf(f.name, ext)
-            f.name.startsWith(prefix) &&
-              output != null &&
-              output !in expectedNames &&
-              siblingStems.none { sib ->
-                f.name.startsWith("$sib.") || f.name.startsWith("${sib}_")
-              }
-          }
-          ?.forEach { f ->
-            if (!f.delete()) {
-              System.err.println("Failed to delete stale fan-out file: ${f.absolutePath}")
-            }
-          }
+        captureOutputFile(outDir, template.renderOutput)?.let { templateFile ->
+          deleteStaleFanoutFiles(templateFile, expectedFiles, declaredOutputFiles)
+        }
+      }
+      for (template in entry.dataProducts) {
+        productOutputFile(productRoot, template.output)?.let { templateFile ->
+          deleteStaleFanoutFiles(templateFile, expectedFiles, declaredOutputFiles)
+        }
       }
     }
   }
@@ -502,9 +493,42 @@ object PreviewManifestLoader {
       .distinct()
   }
 
-  private fun fanoutLeaf(renderOutput: String): String? {
+  private fun captureOutputFile(outDir: File, renderOutput: String): File? {
     if (renderOutput.isEmpty()) return null
-    return renderOutput.substringAfterLast('/').ifEmpty { renderOutput }
+    return File(outDir, renderOutput.substringAfterLast('/'))
+  }
+
+  private fun productOutputFile(productRoot: File, output: String): File? {
+    if (output.isEmpty()) return null
+    return File(productRoot, output)
+  }
+
+  private fun deleteStaleFanoutFiles(
+    templateFile: File,
+    expectedFiles: Set<File>,
+    declaredOutputFiles: List<File>,
+  ) {
+    val dir = templateFile.parentFile ?: return
+    val stem = templateFile.nameWithoutExtension
+    val ext = ".${templateFile.extension}"
+    val prefix = stem + "_"
+    val siblingStems = fanoutSiblingStems(declaredOutputFiles, templateFile)
+    dir
+      .listFiles()
+      ?.filter { file ->
+        val output = fanoutOutputNameOf(file.name, ext)
+        file.name.startsWith(prefix) &&
+          output != null &&
+          File(dir, output) !in expectedFiles &&
+          siblingStems.none { sibling ->
+            file.name.startsWith("$sibling.") || file.name.startsWith("${sibling}_")
+          }
+      }
+      ?.forEach { file ->
+        if (!file.delete()) {
+          System.err.println("Failed to delete stale fan-out file: ${file.absolutePath}")
+        }
+      }
   }
 
   /**
