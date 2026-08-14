@@ -743,7 +743,7 @@ object PreviewDiscovery {
           )
       }
 
-    val allPreviews = normalized + appPreviews
+    val allPreviews = enforceOutputUniqueness(normalized + appPreviews)
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -1576,6 +1576,106 @@ object PreviewDiscovery {
         }
       preview.copy(captures = rewritten, dataProducts = rewrittenProducts)
     }
+  }
+
+  /**
+   * Final guarantee that no two previews in the manifest write to the same path.
+   *
+   * [normalizeRenderOutputs] only resolves stems among the *annotation-derived* previews. Several
+   * other sources are appended afterwards with literal, already-shell-safe stems — Lottie and SVG
+   * assets, the colour/typography/shape/theme catalogs, activities and app tours — and by default
+   * several of them land in the same `renders/` directory. No per-source resolver can see the
+   * others, so nothing previously checked the combined result: an annotation preview whose stem
+   * happened to equal an asset's (e.g. a composable literally named `lottie__Foo` beside a Lottie
+   * asset resolving to the same leaf) produced two manifest entries claiming one file, and one
+   * render silently overwrote the other.
+   *
+   * Rather than teach each source about the others — which fails again the next time a source is
+   * added — this validates the invariant on the assembled list. Comparison is **case-folded**,
+   * because the question is "do these address the same file" and on APFS/NTFS they do.
+   *
+   * On a collision *every* entry in the colliding group is re-stemmed with a digest of its own
+   * preview id, so the outcome stays a pure function of the ids rather than of manifest order.
+   * Entries that collide with nothing are untouched, so this cannot churn filenames in the
+   * overwhelmingly normal case where the invariant already holds.
+   *
+   * Scope note: this makes the *declared* output paths unique. It does not reason about
+   * `@PreviewParameter` fan-out siblings, which the renderer names `<stem>_<label>` at render time
+   * — a stem that is a strict prefix of another could in principle still overlap there. That needs
+   * the provider's values, which discovery cannot enumerate.
+   */
+  internal fun enforceOutputUniqueness(previews: List<PreviewInfo>): List<PreviewInfo> {
+    if (previews.size < 2) return previews
+    val contested = contestedIndices(previews)
+    if (contested.isEmpty()) return previews
+
+    // Retagging can itself land on a path some *untouched* preview already owns — the same trap
+    // the old positional `_<idx>` tiebreaker fell into. So re-check the result, and if anything is
+    // still contested, redo it from the original list at full digest width, widening the tagged set
+    // to include whatever the first attempt disturbed. Re-tagging from the original (rather than
+    // from the first attempt) is what keeps a digest from being appended twice.
+    val short = retagOutputs(previews, contested, RENDER_STEM_DIGEST_CHARS)
+    val stillContested = contestedIndices(short)
+    if (stillContested.isEmpty()) return short
+    return retagOutputs(previews, contested + stillContested, FULL_DIGEST_CHARS)
+  }
+
+  /**
+   * Indices of previews holding at least one output path that another preview also claims.
+   * Case-folded, since that is how APFS and NTFS decide whether two names are one file. Previews
+   * declaring no outputs at all are ignored rather than all colliding on the empty path.
+   */
+  private fun contestedIndices(previews: List<PreviewInfo>): Set<Int> {
+    val pathsPerPreview = previews.map { outputPaths(it).map(String::lowercase).distinct() }
+    val counts = mutableMapOf<String, Int>()
+    for (paths in pathsPerPreview) {
+      for (path in paths) counts[path] = counts.getOrDefault(path, 0) + 1
+    }
+    val duplicated = counts.filterValues { it > 1 }.keys
+    if (duplicated.isEmpty()) return emptySet()
+    return pathsPerPreview
+      .withIndex()
+      .filter { (_, paths) -> paths.any { it in duplicated } }
+      .map { it.index }
+      .toSet()
+  }
+
+  private fun outputPaths(preview: PreviewInfo): List<String> =
+    (preview.captures.map { it.renderOutput } + preview.dataProducts.map { it.output }).filter {
+      it.isNotEmpty()
+    }
+
+  /** Re-stem every output of the previews at [indices] with a digest of that preview's own id. */
+  private fun retagOutputs(
+    previews: List<PreviewInfo>,
+    indices: Set<Int>,
+    digestChars: Int,
+  ): List<PreviewInfo> =
+    previews.mapIndexed { i, preview ->
+      if (i !in indices) preview
+      else {
+        val suffix = "-${idDigest(preview.id, digestChars)}"
+        preview.copy(
+          captures =
+            preview.captures.map { it.copy(renderOutput = tagLeaf(it.renderOutput, suffix)) },
+          dataProducts = preview.dataProducts.map { it.copy(output = tagLeaf(it.output, suffix)) },
+        )
+      }
+    }
+
+  /**
+   * `dir/stem.ext` → `dir/stem<suffix>.ext`, leaving the directory and the full extension alone.
+   * Splits on the *first* dot so multi-dot sidecars (`.raw.png`, `.warnings.json`) keep their whole
+   * suffix rather than having the tag wedged into the middle of it.
+   */
+  private fun tagLeaf(path: String, suffix: String): String {
+    if (path.isEmpty()) return path
+    val dir = path.substringBeforeLast('/', missingDelimiterValue = "")
+    val leaf = path.substringAfterLast('/')
+    val dot = leaf.indexOf('.')
+    val tagged =
+      if (dot < 0) leaf + suffix else leaf.substring(0, dot) + suffix + leaf.substring(dot)
+    return if (dir.isEmpty()) tagged else "$dir/$tagged"
   }
 
   /**
