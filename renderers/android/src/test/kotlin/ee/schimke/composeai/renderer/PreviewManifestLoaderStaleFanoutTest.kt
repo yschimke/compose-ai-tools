@@ -9,8 +9,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the stale fan-out cleanup in [PreviewManifestLoader.deleteStaleFanoutFiles], in particular
- * the two issue #2193 guards:
+ * Pins the stale fan-out cleanup in [PreviewManifestLoader.deleteStaleFanoutFiles], including
+ * rendered data products (issue #3823) and the two issue #2193 guards:
  * - the expected set spans the whole manifest, so a sibling preview whose stem underscore-extends
  *   the swept one's (`Foo` vs the `@Preview(name = "Dark")` variant `Foo_Dark`) never has its base
  *   render or fan-out classified as stale;
@@ -49,8 +49,23 @@ class PreviewManifestLoaderStaleFanoutTest {
               renderOutput = PreviewManifestLoader.insertBeforeExtension(it.renderOutput, suffix)
             )
           },
+        dataProducts =
+          base.dataProducts.map {
+            it.copy(output = PreviewManifestLoader.insertBeforeExtension(it.output, suffix))
+          },
       ),
       listOf(Any()),
+    )
+
+  private fun productEntry(id: String, output: String): RenderPreviewEntry =
+    RenderPreviewEntry(
+      id = id,
+      functionName = id,
+      className = "com.example.PreviewsKt",
+      params =
+        RenderPreviewParams(previewParameterProviderClassName = "com.example.UserProvider"),
+      captures = emptyList(),
+      dataProducts = listOf(RenderPreviewArtifact(kind = "render/scroll/long", output = output)),
     )
 
   @Test
@@ -260,6 +275,39 @@ class PreviewManifestLoaderStaleFanoutTest {
 
     assertFalse(File(tmp.root, "Foo_Dark.png").exists())
     assertTrue(File(tmp.root, "Foo_Dark.gif").exists())
+  }
+
+  @Test
+  fun `deletes stale data-product fan-out without cross-directory name collisions`() {
+    val previewRoot = tmp.newFolder("previews")
+    val rendersDir = File(previewRoot, "renders").also { it.mkdirs() }
+    val foo = productEntry("Foo", "data/scroll-long/Foo.png")
+    val other = productEntry("Other", "data/other/Foo_stale.png")
+    val expandedByEntry =
+      listOf(
+        foo to listOf(fanoutRow(foo, "_Alice")),
+        other to listOf(fanoutRow(other, "_stale")),
+      )
+    val fooDir = File(previewRoot, "data/scroll-long").also { it.mkdirs() }
+    val otherDir = File(previewRoot, "data/other").also { it.mkdirs() }
+    File(fooDir, "Foo_Alice.png").createNewFile()
+    File(fooDir, "Foo_Alice.png.error.json").createNewFile()
+    File(fooDir, "Foo_stale.png").createNewFile()
+    File(fooDir, "Foo_stale.png.error.json").createNewFile()
+    File(otherDir, "Foo_stale.png").createNewFile()
+
+    PreviewManifestLoader.deleteStaleFanoutFiles(
+      outDir = rendersDir,
+      allEntries = listOf(foo, other),
+      expandedByEntry = expandedByEntry,
+      ownedIds = setOf("Foo_Alice"),
+    )
+
+    assertTrue(File(fooDir, "Foo_Alice.png").exists())
+    assertTrue(File(fooDir, "Foo_Alice.png.error.json").exists())
+    assertFalse(File(fooDir, "Foo_stale.png").exists())
+    assertFalse(File(fooDir, "Foo_stale.png.error.json").exists())
+    assertTrue(File(otherDir, "Foo_stale.png").exists())
   }
 
   @Test
