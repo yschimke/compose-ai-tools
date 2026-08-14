@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.4.0](https://github.com/yschimke/compose-ai-tools/compare/v1.3.0...v1.4.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** select @PreviewParameter rows on show, list and render ([#3825](https://github.com/yschimke/compose-ai-tools/issues/3825)) ([6131db9](https://github.com/yschimke/compose-ai-tools/commit/6131db95448ac3e78d98edc389389e92a43678e5))
+* **serve:** add a Source lane to the viewer ([#3827](https://github.com/yschimke/compose-ai-tools/issues/3827)) ([eeb2953](https://github.com/yschimke/compose-ai-tools/commit/eeb2953ca3c04ca304d3cc415ccd236d09cf1c11))
+* **serve:** point to describe, click to go, and only call a real gap a gap ([#3828](https://github.com/yschimke/compose-ai-tools/issues/3828)) ([399a355](https://github.com/yschimke/compose-ai-tools/commit/399a355d2fe2a74e66d74bb64c810aa488f2c5fd))
+* **serve:** project a tag index off the scored render, and let the theme layer be seen ([#3830](https://github.com/yschimke/compose-ai-tools/issues/3830)) ([74e7678](https://github.com/yschimke/compose-ai-tools/commit/74e7678bd5c058b96572da4b371c15a3321b7c31))
+* **serve:** score a design page's drift per node, and open the full diff from it ([#3818](https://github.com/yschimke/compose-ai-tools/issues/3818)) ([37c7452](https://github.com/yschimke/compose-ai-tools/commit/37c74520cb7133fb22838a2fd184af264a4a3c65))
+* **serve:** seed the playground with usage code, not sticker source ([#3816](https://github.com/yschimke/compose-ai-tools/issues/3816)) ([222369f](https://github.com/yschimke/compose-ai-tools/commit/222369fe1488746d79648588c72a4d1cbee34bc8))
+
+
+### Bug Fixes
+
+* **design-artifacts:** republish a page node's type, so containers are exact ([#3831](https://github.com/yschimke/compose-ai-tools/issues/3831)) ([634bfbd](https://github.com/yschimke/compose-ai-tools/commit/634bfbd9f310bc82bc81ce59d11c9c0471457455))
+* **discovery:** make render filenames collision-free and stable ([#3839](https://github.com/yschimke/compose-ai-tools/issues/3839)) ([c97d558](https://github.com/yschimke/compose-ai-tools/commit/c97d558951d4609b193aa0cf188ca058ce920347))
+* **pages:** read the container flag the import states, not one inferred from depth ([#3834](https://github.com/yschimke/compose-ai-tools/issues/3834)) ([b3cdcf9](https://github.com/yschimke/compose-ai-tools/commit/b3cdcf985307385122018020f1d9215d2ec39faf))
+* **renderer:** scope fan-out companions to their own output's extension ([#3829](https://github.com/yschimke/compose-ai-tools/issues/3829)) ([3ca8fa1](https://github.com/yschimke/compose-ai-tools/commit/3ca8fa12ea5aede89f20dd75e2a5f36ce8e02d04))
+* **renderer:** sweep .error.json companions with stale fan-out rows ([#3822](https://github.com/yschimke/compose-ai-tools/issues/3822)) ([3dcc3a8](https://github.com/yschimke/compose-ai-tools/commit/3dcc3a8093470aaa96f40f1b0e5f6407209dd112))
+* **serve:** evict catalog snapshots on retirement, and close the suspend race ([#3841](https://github.com/yschimke/compose-ai-tools/issues/3841)) ([174bf91](https://github.com/yschimke/compose-ai-tools/commit/174bf91699925c08448914a97779a62fa560ce08))
+* **serve:** keep the design's drawing when a render never arrives ([#3814](https://github.com/yschimke/compose-ai-tools/issues/3814)) ([c96f34e](https://github.com/yschimke/compose-ai-tools/commit/c96f34e4061f6bc4a7f4929eab431f1ee7365eec))
+* **serve:** make /usage answer for suspended catalogs and escaped ids ([#3833](https://github.com/yschimke/compose-ai-tools/issues/3833)) ([c828a4a](https://github.com/yschimke/compose-ai-tools/commit/c828a4a425b334f8a2c08de8e9823f3d3705bd9b))
+* **serve:** make a resident catalog authoritative for /usage locations ([#3835](https://github.com/yschimke/compose-ai-tools/issues/3835)) ([ac04205](https://github.com/yschimke/compose-ai-tools/commit/ac042051c62d368145c587c96ae65eed4a9efef4))
+* **serve:** report drift, not match, in the design page's diff lane ([#3821](https://github.com/yschimke/compose-ai-tools/issues/3821)) ([3fda2fe](https://github.com/yschimke/compose-ai-tools/commit/3fda2fe8df843669e69edc4750506083ce42be49))
+* **serve:** stop the usage cleaner emitting seeds that do not compile ([#3820](https://github.com/yschimke/compose-ai-tools/issues/3820)) ([a078979](https://github.com/yschimke/compose-ai-tools/commit/a078979243db7a67758e3187a71a3e29122cc9b6))
+
 ## [1.3.0](https://github.com/yschimke/compose-ai-tools/compare/v1.2.0...v1.3.0) (2026-08-14)
 
 
