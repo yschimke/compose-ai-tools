@@ -215,7 +215,28 @@
     stage.classList.toggle("cp-page-swap-on", ours);
     stage.classList.toggle("cp-page-hide-design", ours);
     stage.classList.toggle("cp-page-diff-on", which === "diff");
+    syncNodeSemantics(which === "diff");
     if (which === "diff") score();
+  }
+
+  // What a node SAYS it does has to match what it does. Outside the diff lane an overlay is a
+  // toggle — it selects, and `aria-pressed` is the truth. Inside it, activating leaves the page, so
+  // announcing a pressed state would tell a screen-reader user they are changing a selection when
+  // they are actually navigating. Swap to link semantics, and name the destination.
+  function syncNodeSemantics(diff) {
+    for (var n = 0; n < overlays.length; n++) {
+      var spot = overlays[n];
+      var leaves = diff && !!spot.querySelector(".cp-page-diff-link");
+      if (leaves) {
+        spot.setAttribute("role", "link");
+        spot.removeAttribute("aria-pressed");
+        spot.setAttribute("data-cp-leaves", "");
+      } else {
+        spot.removeAttribute("role");
+        spot.removeAttribute("data-cp-leaves");
+        spot.setAttribute("aria-pressed", spot.classList.contains("cp-page-selected") ? "true" : "false");
+      }
+    }
   }
 
   // ---- the diff lane -------------------------------------------------------------------------
@@ -234,26 +255,39 @@
   var compare = window.ComposePreviewCompare;
   var scored = false;
 
-  // The node's own drawing, as an image, at the size we draw our render. Serialised from a CLONE of
-  // the export with the viewBox narrowed to the node's box: the browser then rasterises exactly the
-  // region the slot covers, at whatever resolution we ask for, with no manual transform maths and
-  // no second copy of the geometry to keep in step with `measure()`.
-  function sheetImage(target, width, height) {
-    var box = target.getBBox();
-    if (!(box.width > 0 && box.height > 0)) return Promise.resolve(null);
+  // ONE raster of the sheet, cropped per node — not one clone of the sheet per node.
+  //
+  // The first cut cloned, serialised and URI-encoded the whole export for every scoreable node. On
+  // this catalog's own Shape page that is 858 KB x 35 nodes, so entering the lane built well over
+  // 100 MB of transient markup before a single comparison settled. One raster costs one
+  // serialisation and one decode, and every crop is a `drawImage` out of it.
+  //
+  // Capped by TOTAL pixels rather than by side: the scorer downsamples to 192px on the longest side
+  // anyway (`MAX_SIDE`), so resolution beyond "the smallest node still lands around 192px" buys
+  // nothing and costs 4 bytes a pixel.
+  var MAX_SHEET_PIXELS = 4e6;
+  var sheetRaster = null;
+
+  function rasteriseSheet() {
+    if (sheetRaster) return sheetRaster;
+    var view = svg.viewBox && svg.viewBox.baseVal;
+    var units = view && view.width > 0 && view.height > 0
+      ? { x: view.x, y: view.y, width: view.width, height: view.height }
+      : null;
+    if (!units) return (sheetRaster = Promise.resolve(null));
+    var scale = Math.min(1, Math.sqrt(MAX_SHEET_PIXELS / (units.width * units.height)));
     var clone = svg.cloneNode(true);
-    clone.setAttribute("viewBox", box.x + " " + box.y + " " + box.width + " " + box.height);
-    clone.setAttribute("width", String(Math.max(1, Math.round(width))));
-    clone.setAttribute("height", String(Math.max(1, Math.round(height))));
+    clone.setAttribute("width", String(Math.max(1, Math.round(units.width * scale))));
+    clone.setAttribute("height", String(Math.max(1, Math.round(units.height * scale))));
     clone.removeAttribute("style");
     var markup = new XMLSerializer().serializeToString(clone);
     // A `data:` URL rather than a blob: nothing is allocated to leak, and the string is one this
     // script just built out of the page's own markup rather than anything a URL could be read from.
     var url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup);
-    return new Promise(function (resolve) {
+    sheetRaster = new Promise(function (resolve) {
       var image = new Image();
       image.onload = function () {
-        resolve(image);
+        resolve({ image: image, units: units, scale: scale });
       };
       // A sheet that cannot be rasterised (a font it cannot reach, markup a browser refuses) scores
       // nothing rather than scoring wrongly.
@@ -261,6 +295,78 @@
         resolve(null);
       };
       image.src = url;
+    });
+    return sheetRaster;
+  }
+
+  // The node's own drawing, cut out of that raster.
+  //
+  // The box is MEASURED — the node's client rect mapped through the root's — rather than read from
+  // `getBBox()`. `getBBox()` answers in the element's own user space, so a `transform` on the node
+  // or on any ancestor puts the crop somewhere else entirely; a measured rect has every transform
+  // already applied, and it is the same mapping `measure()` uses to place the overlay, so the crop
+  // and the slot cannot drift apart.
+  //
+  // KNOWN LIMIT: the crop is of the sheet, so whatever the design drew BEHIND or across the node —
+  // a page backdrop, an overlapping neighbour — is in the reference while our render carries only
+  // the component. On a definition sheet (a grid of component sets on a flat ground) that is a
+  // near-uniform background against the scorer's own white, which is small; on a composed screen it
+  // would not be. Isolating the node would mean a clone per node, which is the cost this function
+  // exists to avoid.
+  function cropFor(sheet, target) {
+    var rootRect = svg.getBoundingClientRect();
+    var rect = target.getBoundingClientRect();
+    if (!(rootRect.width > 0 && rootRect.height > 0)) return null;
+    if (!(rect.width > 0 && rect.height > 0)) return null;
+    var perUnitX = (sheet.image.naturalWidth || sheet.image.width) / rootRect.width;
+    var perUnitY = (sheet.image.naturalHeight || sheet.image.height) / rootRect.height;
+    return {
+      x: (rect.left - rootRect.left) * perUnitX,
+      y: (rect.top - rootRect.top) * perUnitY,
+      width: Math.max(1, rect.width * perUnitX),
+      height: Math.max(1, rect.height * perUnitY),
+    };
+  }
+
+  function sheetImage(target) {
+    return rasteriseSheet().then(function (sheet) {
+      if (!sheet) return null;
+      var crop = cropFor(sheet, target);
+      if (!crop) return null;
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(crop.width));
+      canvas.height = Math.max(1, Math.round(crop.height));
+      var context = canvas.getContext("2d");
+      // White, to match what the scorer composites OUR render onto. Without it a transparent design
+      // node would be compared as black and every score would be wrong in the same direction.
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(
+        sheet.image,
+        crop.x, crop.y, crop.width, crop.height,
+        0, 0, canvas.width, canvas.height,
+      );
+      return canvas;
+    });
+  }
+
+  // A render is `loading="lazy"`, so on a tall sheet most of them have not been fetched — let alone
+  // decoded — when the lane is entered. Scoring an undecoded image measures a blank, so each
+  // comparison waits for its own image and a failure is left RETRYABLE rather than burned into a
+  // permanent dash.
+  function decoded(image) {
+    if (image.complete && image.naturalWidth > 0) return Promise.resolve(image);
+    return new Promise(function (resolve, reject) {
+      image.addEventListener("load", function () {
+        resolve(image);
+      });
+      image.addEventListener("error", function () {
+        reject(new Error("render unavailable"));
+      });
+      // `loading="lazy"` only fetches on approach, and a node far below the fold may never be
+      // approached. Asking for it explicitly is what makes the lane answer for the whole sheet
+      // rather than only the part that has been scrolled past.
+      if (image.loading === "lazy") image.loading = "eager";
     });
   }
 
@@ -276,46 +382,71 @@
 
   // Scored once per page. The numbers cannot move without the renders moving, and re-scoring on
   // every flip back would redo dozens of rasterise-and-count passes for an answer already on
-  // screen.
+  // screen. A node that FAILED is not counted as scored, so re-entering the lane retries it.
+  var scoredNodes = Object.create(null);
+
   function score() {
-    if (scored || !compare) return;
-    scored = true;
+    if (!compare) return;
     for (var s = 0; s < nodes.length; s++) {
       (function (entry) {
+        var id = entry.overlay.getAttribute("data-cp-node") || "";
+        if (scoredNodes[id]) return;
         var render = entry.overlay.querySelector(".cp-page-render");
         // No render, or one the server could not produce: there is nothing to compare the design
-        // against, and saying so beats printing a 100% that means "absent" rather than "different".
+        // against, and saying so beats printing a number that means "absent" rather than "apart".
         if (!render || render.hidden) return;
+        scoredNodes[id] = true;
         var badge = badgeFor(entry.overlay);
         badge.textContent = "…";
-        var rect = render.getBoundingClientRect();
-        sheetImage(entry.target, rect.width || 240, rect.height || 240)
-          .then(function (reference) {
+        Promise.all([sheetImage(entry.target), decoded(render)])
+          .then(function (pair) {
             // The badge is the whole readout, deliberately. A per-node diff MAP was the obvious
             // next thing and is the wrong thing here: thirty-eight magenta thumbnails at slot size
             // is the annotated sheet this page was just rescued from. The number triages; the map
             // is one click away, at a size where it can be read.
-            return reference ? compare.scoreImages(reference, render) : null;
+            return pair[0] ? compare.scoreImages(pair[0], pair[1]) : null;
           })
           .then(function (result) {
-            if (!result) {
-              badge.textContent = "—";
-              badge.setAttribute("data-cp-score", "none");
-              return;
-            }
-            var percent = result.percent;
-            badge.textContent = percent.toFixed(1) + "%";
+            if (!result) throw new Error("not scoreable");
+            // `scoreImages` answers with a MATCH percentage — identical images score 100. This lane
+            // reports DRIFT, so it is inverted here. Getting that backwards prints "100.0%" in red
+            // for a perfect match and green for a total mismatch, which is a readout that lies
+            // rather than one that is merely wrong; `contract · the scorer answers match` pins the
+            // direction so it cannot silently flip again.
+            var drift = Math.max(0, 100 - result.percent);
+            // Proportion difference is deliberately held OUT of the match number by the scorer,
+            // which normalises both content boxes onto one size first. Ignoring it would report a
+            // component rendered at the wrong aspect as a near-perfect match, so the larger of the
+            // two is what the badge shows and the geometry is named in the tooltip.
+            var geometry = Math.max(0, result.geometry || 0);
+            // The NUMBER is the drift and only the drift, so it keeps meaning "how different does
+            // this look". Taking `max(drift, geometry)` as the headline — the first attempt — made
+            // every badge on this fixture read 52.4%, which was the aspect difference wearing the
+            // label of a pixel difference: two measures conflated into one lie.
+            //
+            // Geometry still cannot hide. It marks the badge, it is spelled out in the tooltip, and
+            // it counts for the BAND, so a component rendered at the wrong shape still triages red
+            // however well its pixels line up once the scorer has normalised the two boxes.
+            var stretched = geometry > 2;
+            badge.textContent = drift.toFixed(1) + "%" + (stretched ? " ⇲" : "");
+            badge.title =
+              drift.toFixed(1) + "% different" +
+              (geometry > 0.05 ? " · " + geometry.toFixed(1) + "% proportion difference" : "");
+            var worst = Math.max(drift, geometry);
             // Three bands rather than a gradient: the reader is triaging, and "which of these needs
             // looking at" is a decision, not a measurement.
             badge.setAttribute(
               "data-cp-score",
-              percent < 2 ? "close" : percent < 10 ? "drifting" : "far",
+              worst < 2 ? "close" : worst < 10 ? "drifting" : "far",
             );
-            entry.overlay.setAttribute("data-cp-score-value", percent.toFixed(1));
+            entry.overlay.setAttribute("data-cp-score-value", worst.toFixed(1));
           })
           .catch(function () {
             badge.textContent = "—";
             badge.setAttribute("data-cp-score", "none");
+            badge.title = "not scoreable";
+            // Retryable: a render that had not arrived yet is the likeliest reason to be here.
+            scoredNodes[id] = false;
           });
       })(nodes[s]);
     }
@@ -363,7 +494,11 @@
     for (var s = 0; s < overlays.length; s++) {
       var on = overlays[s].getAttribute("data-cp-node") === nodeId;
       overlays[s].classList.toggle("cp-page-selected", on);
-      overlays[s].setAttribute("aria-pressed", on ? "true" : "false");
+      // Only while the overlay IS a toggle. In the diff lane it is a link, and a link with
+      // `aria-pressed` announces a state it does not have.
+      if (!overlays[s].hasAttribute("data-cp-leaves")) {
+        overlays[s].setAttribute("aria-pressed", on ? "true" : "false");
+      }
     }
     if (!selection) return;
     selection.textContent = "";
