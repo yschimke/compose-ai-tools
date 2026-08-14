@@ -315,6 +315,22 @@ async function openThemeBar(page) {
 
 const FIXTURE_STATES = [
     {
+        // A component under the POINTER. The sheet carries no resting marks, so this is the whole
+        // discovery story: the outline appears where you point, and it appears whether or not the
+        // opt-in layer is on (this shot is taken with it off, which is the default). A hover state
+        // exists only under a pointer, so it is invisible to every other shot here — exactly the
+        // kind of affordance that reaches production unreviewed. Shot before `selected` below so
+        // the page under it is the untouched default.
+        fixture: "serve-design-page",
+        suffix: "hover",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            await page.hover('.cp-page-node[data-link="manifest"]');
+        },
+    },
+    {
         // A component SELECTED on the sheet. This is the page's primary affordance — the sheet
         // carries no resting marks, so pointing at a node is how it is interrogated — and it is
         // invisible to the default shot twice over: the ring is drawn only on the selected node,

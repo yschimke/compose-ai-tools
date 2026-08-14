@@ -1267,10 +1267,16 @@ is the content, so annotation is something the reader asks for rather than the p
 statement. An earlier cut opened with an outline over all thirty-eight nodes, a four-colour legend
 above them and every node's code path listed below, and the sheet lost to its own annotation.
 
-Pointing at a component is how the sheet is interrogated instead. Clicking one **selects it in
-place**: a ring on that node, and its name and code path directly under the sheet, with the link
-out. The reader stays on the page, which is what makes checking several components in a row
-possible; Escape clears it, and clicking the selected node again does too.
+Pointing at a component is how the sheet is interrogated instead. **The outline appears under the
+pointer** — one node at a time, whether or not the opt-in layer is on — which is what keeps an
+unmarked sheet discoverable rather than inert:
+
+![A component under the pointer, outlined, on a sheet carrying no other marks](design/evidence/serve-design-page/serve-design-page-hover.light.png)
+
+Keyboard focus draws the same mark, so tabbing the sheet reads the same way as sweeping it. Clicking
+one **selects it in place**: a ring on that node, and its name and code path directly under the
+sheet, with the link out. The reader stays on the page, which is what makes checking several
+components in a row possible; Escape clears it, and clicking the selected node again does too.
 
 ![One component selected: a ring on the node, its code path under the sheet](design/evidence/serve-design-page/serve-design-page-selected.light.png)
 
