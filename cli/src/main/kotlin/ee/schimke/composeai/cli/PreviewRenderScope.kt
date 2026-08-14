@@ -78,6 +78,7 @@ internal object PreviewRenderScope {
     filter: String?,
     previewRef: String? = null,
     permutations: List<String> = emptyList(),
+    rowAware: Boolean = true,
   ): Scope {
     if (exactId == null && filter == null && previewRef == null) return FULL
     if (manifests.isEmpty()) return FULL
@@ -103,6 +104,7 @@ internal object PreviewRenderScope {
             filter = filter,
             previewRef = previewRef,
             exactIdExists = exactIdExists,
+            rowAware = rowAware,
           )
         if (
           !mayOwnRequestedRow &&

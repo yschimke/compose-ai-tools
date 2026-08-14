@@ -144,6 +144,22 @@ abstract class Command(
    * intersects them, as `--id` + `--filter` already did.
    */
   protected val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
+
+  /**
+   * Whether this command can turn a `@PreviewParameter` fan-out into addressable **row ids**, and
+   * so wants module selection to keep previews whose (unknowable) rows might satisfy the request —
+   * issue #3786's conservative lane, see [previewMatchesRequestIncludingRows].
+   *
+   * Only `serve` can: it expands the fan-out off disk via `ServeParameterRows` after the render,
+   * and then re-filters, so a module kept on a "maybe" is proven or discarded before anything is
+   * shown. Every other command filters its output by base id (`PreviewResultBuilder` carries a row
+   * as a capture's `parameterLabel`, not as an id), so for them a speculative keep could only ever
+   * render a module and then print nothing from it. Opt-in rather than global, so the conservatism
+   * costs build time exactly where it buys a correct answer.
+   */
+  protected open val rowAwareSelection: Boolean
+    get() = false
+
   protected val verbose: Boolean = "--verbose" in args || "-v" in args
   protected val progress: Boolean = verbose || "--progress" in args
   protected val timeoutSeconds: Long =
@@ -601,6 +617,7 @@ abstract class Command(
         filter = filter,
         previewRef = previewRef,
         permutations = permutations,
+        rowAware = rowAwareSelection,
       )
     scope.note?.let { System.err.println("compose-preview: $flag $it; rendering the full module.") }
     if (verbose && scope.narrowed) {
@@ -964,6 +981,7 @@ abstract class Command(
       filter = filter,
       previewRef = previewRef,
       discoverySucceeded = discoverySucceeded,
+      rowAware = rowAwareSelection,
     )
 
   private fun stateFile(module: PreviewModule): File =
@@ -1201,6 +1219,7 @@ internal fun previewMatchesRequestIncludingRows(
   filter: String?,
   previewRef: String? = null,
   exactIdExists: Boolean,
+  rowAware: Boolean = true,
 ): Boolean {
   if (
     previewIdMatchesRequest(
@@ -1214,6 +1233,7 @@ internal fun previewMatchesRequestIncludingRows(
   ) {
     return true
   }
+  if (!rowAware) return false
   if (exactIdExists) return false
   if (preview.params.previewParameterProviderClassName.isNullOrBlank()) return false
   // `--id` is exact by contract, so it pins the candidate row id outright: it must be spelled
@@ -1287,6 +1307,7 @@ internal fun modulesMatchingPreviewRequest(
   filter: String?,
   previewRef: String? = null,
   discoverySucceeded: Boolean = true,
+  rowAware: Boolean = true,
 ): List<PreviewModule> {
   // The render task depends on discovery and is the authoritative retry. Do not let missing or
   // stale discovery manifests suppress that retry after the separate optimization pass fails.
@@ -1307,6 +1328,7 @@ internal fun modulesMatchingPreviewRequest(
             filter = filter,
             previewRef = previewRef,
             exactIdExists = exactIdExists,
+            rowAware = rowAware,
           )
         }
       }
@@ -1645,6 +1667,7 @@ class RenderCommand(args: List<String>) : Command(args) {
             filter = filter,
             previewRef = previewRef,
             discoverySucceeded = discoverySucceeded,
+            rowAware = rowAwareSelection,
           )
       if (modules.isEmpty()) {
         System.err.println("No previews matched.")

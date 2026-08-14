@@ -95,6 +95,16 @@ import okio.Path.Companion.toPath
  */
 class ServeCommand(args: List<String>) : Command(args) {
 
+  /**
+   * `serve` is the one command that turns a `@PreviewParameter` fan-out into addressable row ids
+   * (issue #3786), so it is the one that wants module selection to keep previews whose rows *might*
+   * match. It can afford to: the render below produces the fan-out, `ServeParameterRows` expands
+   * it, and [modulesWithMatchingPreviews] then discards any module whose "maybe" didn't pan out —
+   * before the one-module check that would otherwise choke on it.
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val lan: Boolean = "--lan" in args
   private val host: String =
     when {
@@ -835,57 +845,32 @@ class ServeCommand(args: List<String>) : Command(args) {
       System.err.println("serve: no previews discovered.")
       exitProcess(3)
     }
-    if (outcome.manifests.size > 1) {
-      System.err.println(
-        "serve: ${outcome.manifests.size} modules discovered; a server hosts one module. " +
-          "Narrow with --module <path>:"
-      )
-      outcome.manifests.forEach { (m, _) -> System.err.println("  ${m.gradlePath}") }
-      exitProcess(1)
-    }
-
-    val (module, manifest) = outcome.manifests.single()
-    // `@PreviewParameter` fan-out (issue #3749). Discovery emits ONE entry per parameterized
-    // function, so the manifest alone would list a screen whose states come from a provider as a
-    // single card showing value 0 — the symptom the issue was filed about. The render pass above
-    // already wrote one file per value, and the daemon now accepts those `<baseId>_<row>` ids, so
-    // each on-disk row becomes its own servable preview. A preview with no provider, or whose
-    // fan-out isn't on disk, keeps exactly its old single entry.
-    val claimedOutputs = ServeParameterRows.claimedOutputs(manifest.previews)
-    val previews =
-      manifest.previews.flatMap { info ->
-        val (focus, gestures) = detectedFeaturesOf(info)
-        fun serve(id: String, label: String) =
-          ServePreview(
-            id = id,
-            label = label,
-            uiMode = info.params.uiMode,
-            supportsFocus = focus,
-            supportsGestures = gestures,
-            fixedTheme = info.fixedTheme,
-          )
-        val baseLabel = info.functionName.ifBlank { info.id }
-        val rows = ServeParameterRows.rowsFor(info, module.projectDir, claimedOutputs)
-        // `--id` / `--filter` / `--preview` match the declared preview (so `--id Foo` serves all of
-        // Foo's rows, which is what asking for a parameterized preview means) OR a row id directly,
-        // so a caller can narrow to one state. The declared preview is matched as a *row of the
-        // manifest*, not as a bare id, because `--preview` also accepts `<Class>.<function>` and
-        // the
-        // bare function name — forms only the manifest row can answer. A synthetic row id has no
-        // manifest row of its own, so it is matched by id.
-        when {
-          rows.isEmpty() -> if (matches(info)) listOf(serve(info.id, baseLabel)) else emptyList()
-          matches(info) -> rows.map { serve(it.id, "$baseLabel · ${it.label}") }
-          else -> rows.filter { matches(it.id) }.map { serve(it.id, "$baseLabel · ${it.label}") }
-        }
-      }
-    // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
-    // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
-    val declaredThemes = declaredThemesFromPreviews(manifest.previews)
-    if (previews.isEmpty()) {
+    // Expand each module's `@PreviewParameter` fan-out BEFORE deciding how many modules are in play
+    // (issue #3786 review follow-up). Module selection has to keep a parameterized preview whose
+    // rows *might* match — the row ids don't exist until the render above wrote the fan-out — so
+    // `--filter Crimson` can retain a module whose provider turns out to yield only Light/Dark.
+    // That
+    // module contributes nothing servable, and counting it here would abort a request that has
+    // exactly one real answer. Resolving first turns the speculative keep back into a fact.
+    val servable = modulesWithMatchingPreviews(outcome.manifests)
+    if (servable.isEmpty()) {
       System.err.println("serve: no previews matched (--id/--filter excluded them all).")
       exitProcess(3)
     }
+    if (servable.size > 1) {
+      System.err.println(
+        "serve: ${servable.size} modules discovered; a server hosts one module. " +
+          "Narrow with --module <path>:"
+      )
+      servable.forEach { (m, _) -> System.err.println("  ${m.gradlePath}") }
+      exitProcess(1)
+    }
+
+    val (module, previews) = servable.single()
+    val manifest = outcome.manifests.first { (m, _) -> m.gradlePath == module.gradlePath }.second
+    // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
+    // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
+    val declaredThemes = declaredThemesFromPreviews(manifest.previews)
 
     if (!runDaemonStart(module)) {
       System.err.println("serve: composePreviewDaemonStart failed for ${module.gradlePath}.")
@@ -2963,6 +2948,64 @@ class ServeCommand(args: List<String>) : Command(args) {
    * dropped every module by the time this runs. The ladder's only reachable outcome was to disagree
    * with the pass that had already decided.
    */
+  /**
+   * Each discovered module paired with the previews it can actually serve for this request, with
+   * the modules that can serve none dropped (issue #3786 review follow-up).
+   *
+   * This is where a `@PreviewParameter` "maybe" from module selection becomes a fact. Module
+   * selection cannot know a provider's rows — they don't exist until the render writes the fan-out
+   * — so it keeps any parameterized preview that *might* match. By the time this runs the fan-out
+   * is on disk and [ServeParameterRows] can enumerate it, so a module retained for a row that
+   * turned out not to exist contributes an empty list and drops out before the one-module check.
+   */
+  private fun modulesWithMatchingPreviews(
+    manifests: List<Pair<PreviewModule, PreviewManifest>>
+  ): List<Pair<PreviewModule, List<ServePreview>>> =
+    manifests
+      .map { (module, manifest) -> module to servablePreviewsOf(module, manifest) }
+      .filter { (_, previews) -> previews.isNotEmpty() }
+
+  /**
+   * The `@PreviewParameter` fan-out expansion (issue #3749). Discovery emits ONE entry per
+   * parameterized function, so the manifest alone would list a screen whose states come from a
+   * provider as a single card showing value 0 — the symptom that issue was filed about. The render
+   * pass already wrote one file per value, and the daemon accepts those `<baseId>_<row>` ids, so
+   * each on-disk row becomes its own servable preview. A preview with no provider, or whose fan-out
+   * isn't on disk, keeps exactly its old single entry.
+   */
+  private fun servablePreviewsOf(
+    module: PreviewModule,
+    manifest: PreviewManifest,
+  ): List<ServePreview> {
+    val claimedOutputs = ServeParameterRows.claimedOutputs(manifest.previews)
+    return manifest.previews.flatMap { info ->
+      val (focus, gestures) = detectedFeaturesOf(info)
+      fun serve(id: String, label: String) =
+        ServePreview(
+          id = id,
+          label = label,
+          uiMode = info.params.uiMode,
+          supportsFocus = focus,
+          supportsGestures = gestures,
+          fixedTheme = info.fixedTheme,
+        )
+      val baseLabel = info.functionName.ifBlank { info.id }
+      val rows = ServeParameterRows.rowsFor(info, module.projectDir, claimedOutputs)
+      // `--id` / `--filter` / `--preview` match the declared preview (so `--id Foo` serves all of
+      // Foo's rows, which is what asking for a parameterized preview means) OR a row id directly,
+      // so
+      // a caller can narrow to one state. The declared preview is matched as a *row of the
+      // manifest*, not as a bare id, because `--preview` also accepts `<Class>.<function>` and the
+      // bare function name — forms only the manifest row can answer. A synthetic row id has no
+      // manifest row of its own, so it is matched by id.
+      when {
+        rows.isEmpty() -> if (matches(info)) listOf(serve(info.id, baseLabel)) else emptyList()
+        matches(info) -> rows.map { serve(it.id, "$baseLabel · ${it.label}") }
+        else -> rows.filter { matches(it.id) }.map { serve(it.id, "$baseLabel · ${it.label}") }
+      }
+    }
+  }
+
   private fun matches(preview: PreviewInfo): Boolean =
     previewIdMatchesRequest(
       preview.id,
