@@ -136,7 +136,8 @@ class PreviewManifestRowEnumerationTest {
   fun `an unknown previewId is rejected as an argument error`() {
     val failure = runCatching {
       router(entry("Screen", null)).previewParameterRows("Nope")
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
     assertTrue(
       "expected IllegalArgumentException naming the id, got $failure",
       failure is IllegalArgumentException && failure.message?.contains("Nope") == true,

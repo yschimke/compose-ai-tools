@@ -1842,7 +1842,8 @@ class RenderEngine(
           rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
           val root = runCatching {
             rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
-          }.getOrNull()
+          }
+            .getOrNull()
           if (root != null)
             measure = ee.schimke.composeai.renderer.ScrollContentMeasure.measureVerticalScroll(root)
         }
@@ -2400,7 +2401,8 @@ private fun resolveRenderedCaptureRoot(
   val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
   val semanticsRoots = runCatching {
     rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false)
-  }.getOrDefault(emptyList())
+  }
+    .getOrDefault(emptyList())
   if (semanticsRoots.size <= 1) {
     return RenderedCaptureRoot(rule.onRoot(), semanticsRoots.firstOrNull())
   }
@@ -2438,11 +2440,13 @@ internal fun SemanticsNode.shownDialogWindow(): android.view.Window? = runCatchi
 
 private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean = runCatching {
   (root as? ViewRootForTest)?.view?.rootView === decorView.rootView
-}.getOrDefault(false)
+}
+  .getOrDefault(false)
 
 private fun SemanticsNode.descendantCount(): Int = runCatching {
   1 + children.sumOf { it.descendantCount() }
-}.getOrDefault(1)
+}
+  .getOrDefault(1)
 
 /**
  * Tiny @Composable trampoline that invokes [composableMethod] reflectively against the current
@@ -2630,7 +2634,8 @@ private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, A
  */
 internal fun material3OnClasspath(loader: ClassLoader): Boolean = runCatching {
   Class.forName("androidx.compose.material3.MaterialTheme", false, loader)
-}.isSuccess
+}
+  .isSuccess
 
 @Composable
 private fun CaptureMaterialTheme(

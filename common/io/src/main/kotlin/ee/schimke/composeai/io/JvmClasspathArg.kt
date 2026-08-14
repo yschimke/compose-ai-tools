@@ -12,7 +12,8 @@ import java.nio.charset.Charset
  */
 private val ARGFILE_CHARSET: Charset = runCatching {
   Charset.forName(System.getProperty("sun.jnu.encoding"))
-}.getOrDefault(Charset.defaultCharset())
+}
+  .getOrDefault(Charset.defaultCharset())
 
 /**
  * Build the `-classpath` portion of a `java …` command in a form that cannot overflow the OS

@@ -53,7 +53,8 @@ class SubspaceSceneRecorderDuplicateTagTest {
 
     val error = runCatching {
       SubspaceSceneRecorder.recordAll(rule, previewId = "dup-test")
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
     assertThat(error).isInstanceOf(IllegalStateException::class.java)
     assertThat(error).hasMessageThat().contains("dup")
   }

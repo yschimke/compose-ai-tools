@@ -79,7 +79,8 @@ internal object ServeStartupBundles {
   /** True when [source] is an `http`/`https` URL (vs. a local filesystem path). */
   fun isUrl(source: String): Boolean = runCatching {
     URI(source).scheme?.lowercase() in setOf("http", "https")
-  }.getOrDefault(false)
+  }
+    .getOrDefault(false)
 
   /**
    * Candidate branch [BundleVerifier.Origin]s for a

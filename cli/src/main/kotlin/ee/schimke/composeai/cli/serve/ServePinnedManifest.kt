@@ -114,7 +114,8 @@ class ServePinnedManifest(
   /** Null when the manifest could not be read at all — distinct from "read, and it lists none". */
   private fun <T> read(commit: String, file: String, parse: (String) -> T?): T? = runCatching {
     fetch(commit, file)?.toString(Charsets.UTF_8)?.let(parse)
-  }.getOrNull()
+  }
+    .getOrNull()
 
   companion object {
 
@@ -166,7 +167,9 @@ class ServePinnedManifest(
         val obj = runCatching { component.jsonObject }.getOrNull() ?: continue
         val componentId = runCatching {
           obj["componentId"]?.jsonPrimitive?.content
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
+          .getOrNull()
+          ?.takeIf { it.isNotBlank() }
         val images = runCatching { obj["images"]?.jsonArray }.getOrNull() ?: continue
         for (image in images) {
           val path =

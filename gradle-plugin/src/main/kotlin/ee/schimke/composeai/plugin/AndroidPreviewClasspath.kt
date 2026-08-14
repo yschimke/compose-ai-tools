@@ -335,7 +335,8 @@ internal object AndroidPreviewClasspath {
 
   private fun jarContainsEntry(jar: File, entryPath: String): Boolean = runCatching {
     ZipFile(jar).use { it.getEntry(entryPath) != null }
-  }.getOrDefault(false)
+  }
+    .getOrDefault(false)
 
   /**
    * Static JVM open flags that the composePreviewRender test JVM needs. Pure data — no Gradle DSL

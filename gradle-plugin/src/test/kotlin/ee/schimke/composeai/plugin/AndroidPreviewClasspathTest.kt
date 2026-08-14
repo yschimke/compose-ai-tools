@@ -64,7 +64,8 @@ class AndroidPreviewClasspathTest {
 
     val thrown = runCatching {
       AndroidPreviewClasspath.validateApplicationOnClasspath(listOf(noisy))
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
 
     assertThat(thrown).isInstanceOf(IllegalStateException::class.java)
     assertThat(thrown!!.message).contains("issue #1243")

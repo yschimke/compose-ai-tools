@@ -218,7 +218,8 @@ private constructor(
           .onEach { it.isAccessible = true }
       val getTrackedUnsupported = runCatching {
         clockClass.getMethod("getTrackedUnsupportedAnimations")
-      }.getOrNull()
+      }
+        .getOrNull()
 
       val labelMethod = animatedPropertyClass.getMethod("getLabel")
       val valueMethod = animatedPropertyClass.getMethod("getValue")
@@ -456,7 +457,8 @@ private fun offsetMagnitude(value: Any, cls: Class<*>): Double? {
 
 private fun readLongMethod(receiver: Any, cls: Class<*>, name: String): Long? = runCatching {
   (cls.getMethod(name).invoke(receiver) as? Long)
-}.getOrNull()
+}
+  .getOrNull()
 
 private fun invokeStaticImpl(cls: Class<*>, name: String, packed: Long): Double? = runCatching {
   val m = cls.getDeclaredMethod(name, java.lang.Long.TYPE)

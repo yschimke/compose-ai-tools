@@ -1539,7 +1539,8 @@ class AndroidxWireCompatibilityTest {
       val expected = AnimatedFloatExpression().eval(access, expression, expression.size)
       val actual = RcFloatExpressionEvaluator {
         values[it]
-      }.evaluate(expression.map { RcFloatWord(it.toRawBits()) })
+      }
+        .evaluate(expression.map { RcFloatWord(it.toRawBits()) })
       assertFloatCompatible(expected, actual, "collection expression case $index")
     }
   }

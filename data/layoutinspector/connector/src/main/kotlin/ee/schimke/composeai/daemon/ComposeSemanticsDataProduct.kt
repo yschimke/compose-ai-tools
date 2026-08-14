@@ -250,7 +250,8 @@ object ComposeSemanticsDataProducer {
       }
     val measurePolicy = runCatching {
       layoutInfo.javaClass.getMethod("getMeasurePolicy").invoke(layoutInfo)
-    }.getOrNull()
+    }
+      .getOrNull()
     return ModifierTokenResolver.resolve(
       modifierInfo = modifiers,
       measurePolicy = measurePolicy,
@@ -1508,7 +1509,8 @@ internal object ComposeLayoutInspector {
 
   private fun androidSdkInt(): Int? = runCatching {
     Class.forName("android.os.Build\$VERSION").getField("SDK_INT").getInt(null)
-  }.getOrNull()
+  }
+    .getOrNull()
 
   private fun roundLayoutTextPx(value: Double): Double = (value * 100.0).roundToInt() / 100.0
 
@@ -1680,7 +1682,8 @@ internal object ComposeLayoutInspector {
 
     private fun call(o: Any, method: String): Any? = runCatching {
       o.javaClass.getMethod(method).invoke(o)
-    }.getOrNull()
+    }
+      .getOrNull()
 
     private fun floatCall(o: Any, method: String): Float? = call(o, method) as? Float
 
@@ -1689,7 +1692,8 @@ internal object ComposeLayoutInspector {
 
     private fun floatField(o: Any, name: String): Double? = runCatching {
       (field(o, name) as? Float)?.toDouble()
-    }.getOrNull()
+    }
+      .getOrNull()
   }
 
   /**
@@ -1718,7 +1722,8 @@ internal object ComposeLayoutInspector {
   private object VectorGraphicExtractor {
     fun extract(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? = runCatching {
       extractOrNull(node)
-    }.getOrNull()
+    }
+      .getOrNull()
 
     private fun extractOrNull(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? {
       // The `VectorPainter` an `Icon`/`Image` paints with rides in the node's draw modifier — as a
@@ -1760,7 +1765,9 @@ internal object ComposeLayoutInspector {
       // everything else here: an unreadable name just leaves the graphic unannotated.
       val name = runCatching {
         field(vector, "name") as? String
-      }.getOrNull()?.takeIf { it.isNotBlank() }
+      }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() }
       return LayoutInspectorVectorGraphic(vw, vh, painted, vectorName = name)
     }
 
@@ -2069,11 +2076,13 @@ internal object ComposeLayoutInspector {
 
     private fun floatField(o: Any, name: String): Double? = runCatching {
       (field(o, name) as? Float)?.toDouble()
-    }.getOrNull()
+    }
+      .getOrNull()
 
     private fun longField(o: Any, name: String): Long? = runCatching {
       findField(o.javaClass, name)?.getLong(o)
-    }.getOrNull()
+    }
+      .getOrNull()
 
     private fun findField(cls: Class<*>, name: String): java.lang.reflect.Field? {
       var c: Class<*>? = cls

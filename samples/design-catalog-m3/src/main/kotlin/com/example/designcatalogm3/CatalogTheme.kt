@@ -261,7 +261,8 @@ val CatalogDefaultFont: FontFamily = RobotoFlex
  */
 private fun optionalGoogleFontFamily(name: String, file: String): FontFamily? = runCatching {
   FontFamily(googleFontFace(name, file, FontWeight.Normal))
-}.getOrNull()
+}
+  .getOrNull()
 
 /**
  * Generic-family substitutes keyed by the name `genericFontFamily(...)` looks up — the same files

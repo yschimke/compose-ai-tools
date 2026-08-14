@@ -88,7 +88,8 @@ internal object UiAutomatorEvidence {
     val selector = decodeSelectorJson(selectorJson)
     val parsedSelector = runCatching {
       WireJson.decodeFromString(SelectorJson.serializer(), selectorJson)
-    }.getOrNull()
+    }
+      .getOrNull()
     val matches = UiAutomator.findObjects(rule, selector, useUnmergedTree = useUnmergedTree)
     if (matches.size >= 2) {
       val firstMatched = matches.first().node

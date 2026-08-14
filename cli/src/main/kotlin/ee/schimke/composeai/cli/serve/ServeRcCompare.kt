@@ -229,7 +229,9 @@ internal object ServeRcCompare {
 
   fun parseSummary(bytes: ByteArray): RcSummary? = runCatching {
     JSON.decodeFromString<RcSummary>(bytes.decodeToString())
-  }.getOrNull()?.takeIf { it.rows.isNotEmpty() }
+  }
+    .getOrNull()
+    ?.takeIf { it.rows.isNotEmpty() }
 
   /**
    * Turn a published summary + the catalog's `catalog-id → daemon-id` alias into the manifest to

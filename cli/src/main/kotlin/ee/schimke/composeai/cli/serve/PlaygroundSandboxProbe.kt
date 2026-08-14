@@ -250,7 +250,8 @@ object PlaygroundSandboxProbeMain {
 
   private fun canReadCanary(canary: File): Boolean = runCatching {
     canary.readText().isNotEmpty()
-  }.getOrDefault(false)
+  }
+    .getOrDefault(false)
 
   private fun workDirWritable(workDir: File): Boolean = runCatching {
     val probeFile = File(workDir, "writable.probe")

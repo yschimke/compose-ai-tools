@@ -3363,7 +3363,8 @@ open class RobolectricHost(
                     // the sandbox boundary as a JSON string (do-not-acquire); the host re-parses.
                     val root = runCatching {
                       rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
-                    }.getOrNull()
+                    }
+                      .getOrNull()
                     cmd.replyNodesJson.set(
                       root?.let { ComposeSemanticsDataProducer.probeNodesJson(it) }
                     )
@@ -3829,7 +3830,8 @@ open class RobolectricHost(
         semanticsTargetOf(cmd) ?: return Offset(cmd.pixelX.toFloat(), cmd.pixelY.toFloat())
       val root = runCatching {
         rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
-      }.getOrNull()
+      }
+        .getOrNull()
       if (root == null) {
         // Nothing rendered yet — no tree to resolve against. Mirror the desktop NO_SEMANTICS_ROOT
         // diagnostic (issue #1784) so the recording path surfaces a structured reason.
@@ -4578,7 +4580,8 @@ private fun heldSurfaceRoot(
   val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
   val roots = runCatching {
     rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false)
-  }.getOrDefault(emptyList())
+  }
+    .getOrDefault(emptyList())
   if (roots.size <= 1) return rule.onRoot()
   val resolved =
     selectRenderedSurfaceSemanticsRoot(

@@ -63,7 +63,8 @@ internal object DialogWindowCapture {
     val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
     val nodes = runCatching {
       interactions.fetchSemanticsNodes(atLeastOneRootRequired = false)
-    }.getOrDefault(emptyList())
+    }
+      .getOrDefault(emptyList())
     if (nodes.size <= 1) return CaptureRoot(rule.onRoot(), nodes.firstOrNull())
     val resolved =
       selectCaptureRoot(nodes, rule.activity.window.decorView)
@@ -110,11 +111,13 @@ internal object DialogWindowCapture {
 
   private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean = runCatching {
     (root as? ViewRootForTest)?.view?.rootView === decorView.rootView
-  }.getOrDefault(false)
+  }
+    .getOrDefault(false)
 
   private fun SemanticsNode.descendantCount(): Int = runCatching {
     1 + children.sumOf { it.descendantCount() }
-  }.getOrDefault(1)
+  }
+    .getOrDefault(1)
 
   /**
    * The window of the currently-shown dialog [root] composes into, or `null` when it is not inside

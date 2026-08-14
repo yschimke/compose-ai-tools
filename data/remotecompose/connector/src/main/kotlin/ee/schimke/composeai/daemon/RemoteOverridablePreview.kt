@@ -146,7 +146,8 @@ fun RemoteOverridablePreview(
           // idempotent — never fail the render over it.
           val stamped = runCatching {
             stampGenerationDensity(bytes, displayMetrics.density)
-          }.getOrDefault(bytes)
+          }
+            .getOrDefault(bytes)
           // Offer the captured RC doc so a bundle can carry + replay it without this composable's
           // bytecode; the render harness drains it into the `renders/<stem>.rc` sidecar that
           // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no

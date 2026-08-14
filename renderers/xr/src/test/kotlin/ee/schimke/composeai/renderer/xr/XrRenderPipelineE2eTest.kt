@@ -106,7 +106,8 @@ class XrRenderPipelineE2eTest {
     assertThat(sceneFile.exists()).isTrue()
     val scene = Json {
       ignoreUnknownKeys = true
-    }.decodeFromString(SpatialScene.serializer(), sceneFile.readText())
+    }
+      .decodeFromString(SpatialScene.serializer(), sceneFile.readText())
     assertThat(scene.previewId).isEqualTo("media-room")
     assertThat(scene.panels.map { it.id }).containsExactly("hero", "dock")
     // hero (above) stacks over dock.

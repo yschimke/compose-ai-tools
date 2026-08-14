@@ -159,5 +159,6 @@ internal object RenderNativeEnv {
   /** Best effort: an unresolvable path is judged as written rather than assumed store-free. */
   private fun canonicalPathOf(path: String): String = runCatching {
     File(path).canonicalPath
-  }.getOrDefault(path)
+  }
+    .getOrDefault(path)
 }

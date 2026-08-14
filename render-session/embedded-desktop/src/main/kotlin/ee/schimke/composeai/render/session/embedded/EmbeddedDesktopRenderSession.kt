@@ -91,7 +91,8 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
     val workspaceRoot = config.workspaceRoot
     val canonicalRoot = runCatching {
       workspaceRoot.canonicalFile
-    }.getOrDefault(workspaceRoot.absoluteFile)
+    }
+      .getOrDefault(workspaceRoot.absoluteFile)
 
     // Two piped pairs: client→server (request channel) and server→client (response channel).
     // We don't share a single pipe because reads + writes from the same thread would deadlock
@@ -190,7 +191,8 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
    */
   fun isAvailable(): Boolean = runCatching {
     Class.forName("ee.schimke.composeai.daemon.DaemonMain")
-  }.isSuccess
+  }
+    .isSuccess
 
   private const val SHUTDOWN_JOIN_TIMEOUT_MS: Long = 30_000L
 }

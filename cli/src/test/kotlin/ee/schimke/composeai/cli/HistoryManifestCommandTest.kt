@@ -187,7 +187,8 @@ class HistoryManifestCommandTest {
 
     val error = runCatching {
       run(repo, "--output", output.path, "--baselines", "/nope/missing.json")
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
 
     assertEquals(1, assertIs<CommandExit>(error).code)
     assertFalse(output.exists(), "must not write a manifest it could not join")
@@ -204,7 +205,8 @@ class HistoryManifestCommandTest {
 
     val error = runCatching {
       run(repo, "--output", output.path, "--baselines", empty.path)
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
 
     assertEquals(1, assertIs<CommandExit>(error).code)
     assertFalse(output.exists())

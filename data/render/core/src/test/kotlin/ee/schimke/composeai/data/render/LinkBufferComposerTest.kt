@@ -91,7 +91,8 @@ class LinkBufferComposerTest {
     // A Compose old enough to predate the opt-in, or new enough to have finished the migration.
     val failure = runCatching {
       LinkBufferComposer.applyIfRequested(object : ClassLoader(null) {}, "true")
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
 
     assertTrue(failure is IllegalStateException)
     assertTrue(failure!!.message!!.contains(LinkBufferComposer.FLAG_FIELD))

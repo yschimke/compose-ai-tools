@@ -87,7 +87,8 @@ class XrSubspaceRendererTest {
 
     val scene = Json {
       ignoreUnknownKeys = true
-    }.decodeFromString(SpatialScene.serializer(), sceneFile.readText())
+    }
+      .decodeFromString(SpatialScene.serializer(), sceneFile.readText())
     assertThat(scene.previewId).isEqualTo("sample-preview")
     assertThat(scene.panels.map { it.id }).containsExactly("now-playing", "controls")
     val byId = scene.panels.associateBy { it.id }
@@ -119,7 +120,8 @@ class XrSubspaceRendererTest {
     assertThat(treeFile.exists()).isTrue()
     val tree = Json {
       ignoreUnknownKeys = true
-    }.decodeFromString(SpatialSemanticsTree.serializer(), treeFile.readText())
+    }
+      .decodeFromString(SpatialSemanticsTree.serializer(), treeFile.readText())
     assertThat(tree.version).isEqualTo(1)
     assertThat(tree.previewId).isEqualTo("sample-preview")
     assertThat(tree.root.kind).isEqualTo(SpatialSemanticsKind.SUBSPACE_ROOT)

@@ -2746,7 +2746,8 @@ class ServeHttpServer(
    */
   private fun decodeSegment(raw: String): String = runCatching {
     java.net.URLDecoder.decode(raw, Charsets.UTF_8)
-  }.getOrDefault(raw)
+  }
+    .getOrDefault(raw)
 
   /**
    * `/playground?from=<system>/<previewId>` for a preview, or null when this host would not honour

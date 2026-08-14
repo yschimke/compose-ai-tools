@@ -1425,7 +1425,8 @@ private fun renderBundleWithOverrides(
 private fun resolveExternalResources(bundleFile: File, pool: File?, destDir: File): File? {
   val resources = runCatching {
     BundleReader.readMetadata(bundleFile).manifest.externalResources
-  }.getOrDefault(emptyList())
+  }
+    .getOrDefault(emptyList())
   return materializeExternalResources(resources, pool, destDir)
 }
 

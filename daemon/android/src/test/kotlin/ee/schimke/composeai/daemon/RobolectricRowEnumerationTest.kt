@@ -106,7 +106,8 @@ class RobolectricRowEnumerationTest {
   fun `an unknown previewId is rejected before any sandbox work`() {
     val failure = runCatching {
       router(entry("Screen", null)).previewParameterRows("Nope")
-    }.exceptionOrNull()
+    }
+      .exceptionOrNull()
 
     assertTrue(
       "expected IllegalArgumentException naming the id, got $failure",

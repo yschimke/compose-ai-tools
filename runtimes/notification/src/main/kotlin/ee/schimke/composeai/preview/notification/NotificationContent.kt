@@ -356,7 +356,8 @@ private object NotificationSidecar {
     if (person != null) {
       val name = runCatching {
         person.javaClass.getMethod("getName").invoke(person) as? CharSequence
-      }.getOrNull()
+      }
+        .getOrNull()
       if (name != null) return name.toString()
     }
     return bundle.getCharSequence("sender")?.toString()

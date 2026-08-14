@@ -165,7 +165,8 @@ private suspend fun loadCatalogFonts(): FontsState.Ready {
     } ?: "./fonts/"
   val entries = runCatching {
     parseFontsManifest(fetchText(base + "fonts.json"))
-  }.getOrDefault(emptyList())
+  }
+    .getOrDefault(emptyList())
   suspend fun load(e: ManifestFont) =
     Font(
       identity = e.file,

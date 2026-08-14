@@ -291,7 +291,8 @@ internal class GoogleVariableFiles(private val fonts: GoogleFontSource) {
 private fun loadTypefaceFromFile(file: File, weight: Int, italic: Boolean): Typeface? =
   runCatching {
     Typeface.create(Typeface.createFromFile(file), weight, italic)
-  }.getOrNull()
+  }
+  .getOrNull()
 
 /**
  * The shared machine-local Google font cache, or null when this render was not given one.

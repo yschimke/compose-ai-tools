@@ -763,7 +763,8 @@ class DaemonMcpServer(
               )
             val fired = runCatching {
               ensureSourceFreshBeforeRender(uri, daemon)
-            }.getOrDefault(false)
+            }
+              .getOrDefault(false)
             if (fired) freshnessMetrics.pollingChangesDetected.incrementAndGet()
           }
         }

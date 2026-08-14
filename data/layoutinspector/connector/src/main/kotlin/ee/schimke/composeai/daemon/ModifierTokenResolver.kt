@@ -1313,7 +1313,8 @@ internal object ModifierTokenResolver {
     while (cls != null && cls != Any::class.java) {
       val value = runCatching {
         cls.getDeclaredField(name).apply { isAccessible = true }.get(target)
-      }.getOrNull()
+      }
+        .getOrNull()
       if (value != null) return value
       cls = cls.superclass
     }
@@ -1698,7 +1699,8 @@ internal object ModifierTokenResolver {
 
   private fun Any.invokeNoArg(name: String): Any? = runCatching {
     javaClass.getMethod(name).invoke(this)
-  }.getOrNull()
+  }
+    .getOrNull()
 
   private fun Dp.toWireDp(): String = "${value}dp"
 

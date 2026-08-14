@@ -120,7 +120,8 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
       } ?: false
     val libraryMinSdks = runCatching {
       LibraryMinSdkCollector.collect(testManifestArtifacts.getOrElse(emptySet()))
-    }.getOrElse { emptyList() }
+    }
+      .getOrElse { emptyList() }
     val findings =
       CompatRules.evaluate(
         main,
@@ -160,7 +161,8 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
 
   private fun decodeInjectedDependencys(raw: String): List<InjectedDependency> = runCatching {
     JSON.decodeFromString<List<InjectedDependency>>(raw)
-  }.getOrElse { emptyList() }
+  }
+    .getOrElse { emptyList() }
 
   /**
    * Mirror the CLI's `emitText` shape at module scope: header, one marker line per finding,

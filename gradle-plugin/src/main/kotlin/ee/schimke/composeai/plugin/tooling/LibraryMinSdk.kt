@@ -34,12 +34,14 @@ internal object AarManifestReader {
 
   fun parse(manifest: File): Parsed = runCatching {
     manifest.inputStream().use { parseDocument(it) }
-  }.getOrElse { Parsed(null, null) }
+  }
+    .getOrElse { Parsed(null, null) }
 
   /** String overload for tests; production reads from the resolved manifest file. */
   internal fun parse(xml: String): Parsed = runCatching {
     xml.byteInputStream().use { parseDocument(it) }
-  }.getOrElse { Parsed(null, null) }
+  }
+    .getOrElse { Parsed(null, null) }
 
   private fun parseDocument(input: java.io.InputStream): Parsed {
     val factory =
