@@ -85,11 +85,40 @@ data class RendererTask(
     get() = kind == RendererTaskKind.MAIN
 }
 
+/**
+ * How this run learned that an output exists, which bounds what may be said about its sidecar.
+ *
+ * The distinction is load-bearing for `@PreviewParameter` fan-outs. A declared output is one the
+ * manifest names, so the renderer targeted it this invocation. A scanned one was found by globbing
+ * the renders directory, and the row it belongs to may not exist any more: a provider value that is
+ * renamed or removed leaves its `.error.json` behind, because both renderers'
+ * `deleteStaleFanoutFiles` match the template's `png` / `gif` extension and never the sidecar
+ * companion.
+ */
+enum class OutputDiscovery {
+  /** Named by the manifest — the owning renderer targeted it this run. */
+  DECLARED,
+  /** Found by scanning for fan-out files; this run may not have attempted that row. */
+  SCANNED,
+}
+
+/** How confidently this invocation can date a finding — see [PreviewDiagnosis.dating]. */
+enum class SidecarDating {
+  /** The owning renderer ran and targeted this output, so the failure is this run's. */
+  THIS_RUN,
+  /** The owning renderer was skipped, so everything beside its outputs predates this run. */
+  EARLIER_RUN,
+  /** Nothing observed, or a scanned row this run may not have attempted. */
+  UNDATED,
+}
+
 /** One `.error.json` found beside one of a preview's would-be outputs. */
 data class SidecarFinding(
   /** Module-relative path of the output it sits beside, e.g. `renders/Foo_500ms.png`. */
   val output: String,
   val sidecar: RenderErrorSidecar,
+  /** Whether the manifest named this output or it was found by scanning. */
+  val discovery: OutputDiscovery = OutputDiscovery.DECLARED,
 )
 
 /**
@@ -124,17 +153,33 @@ data class PreviewDiagnosis(
   val ownerRan: Boolean?
     get() = ownerRun.valueOrNull()?.let { it != GradleTaskDisposition.SKIPPED }
 
+  /**
+   * How confidently this run can date [finding].
+   *
+   * Two independent things have to hold before a sidecar is this invocation's work: the owning
+   * renderer has to have run, **and** it has to have targeted that output. A scanned fan-out row
+   * fails the second even when the first holds — nothing deletes a fan-out `.error.json` when its
+   * provider value goes away, so the file may describe a row this run never attempted.
+   */
+  fun dating(finding: SidecarFinding): SidecarDating =
+    when {
+      ownerRan == false -> SidecarDating.EARLIER_RUN
+      ownerRan == null -> SidecarDating.UNDATED
+      finding.discovery == OutputDiscovery.SCANNED -> SidecarDating.UNDATED
+      else -> SidecarDating.THIS_RUN
+    }
+
   /** Sidecars this run is entitled to present as its own findings. */
   val threwThisRun: Boolean
-    get() = sidecars.isNotEmpty() && ownerRan == true
+    get() = sidecars.any { dating(it) == SidecarDating.THIS_RUN }
 
   /** Sidecars that survive from an earlier run because the owning renderer never ran this time. */
   val staleSidecars: Boolean
-    get() = sidecars.isNotEmpty() && ownerRan == false
+    get() = sidecars.isNotEmpty() && sidecars.all { dating(it) == SidecarDating.EARLIER_RUN }
 
-  /** Sidecars whose run we cannot date, because nothing was observed about the owning task. */
+  /** Sidecars this run cannot date — nothing observed, or a row it may not have attempted. */
   val threwUndated: Boolean
-    get() = sidecars.isNotEmpty() && ownerRan == null
+    get() = sidecars.any { dating(it) == SidecarDating.UNDATED }
 
   /**
    * Whether the render task's own behaviour — rather than the composable's — still has to explain
@@ -249,9 +294,9 @@ internal fun diagnose(
   val outputs = refreshableOutputs(result, preview, module, siblingOutputs, fileSystem)
   val sidecars =
     module?.let { m ->
-      outputs.mapNotNull { rel ->
+      outputs.mapNotNull { (rel, discovery) ->
         readRenderErrorSidecar(m.projectDir.resolve("build/compose-previews/$rel"), fileSystem)
-          ?.let { SidecarFinding(output = rel, sidecar = it) }
+          ?.let { SidecarFinding(output = rel, sidecar = it, discovery = discovery) }
       }
     } ?: emptyList()
   return PreviewDiagnosis(
@@ -307,46 +352,60 @@ private fun refreshableOutputs(
   module: PreviewModule?,
   siblingOutputs: Set<String>,
   fileSystem: FileSystem,
-): List<String> {
+): List<Pair<String, OutputDiscovery>> {
   val declared =
     buildList {
         preview?.captures?.forEach { if (it.renderOutput.isNotEmpty()) add(it.renderOutput) }
         preview?.dataProducts?.forEach { if (it.output.isNotEmpty()) add(it.output) }
       }
       .distinct()
+  val defaultStem = "renders/${result.id}.png"
   val defaultStemIsLive =
     preview == null ||
       declared.isEmpty() ||
       preview.captures.firstOrNull()?.renderOutput?.isEmpty() == true
+  // Every template the renderer inserts a parameter suffix into: each declared capture, each
+  // declared data product (`RenderPreviewsTask` forks the renderer per product with the product's
+  // own path, and the renderer suffixes whatever path it is handed), and the effective default for
+  // a blank capture (the plugin resolves it to `renders/<id>.png` *before* the suffix goes in).
+  val fanoutTemplates =
+    if (preview?.params?.previewParameterProviderClassName == null) emptyList()
+    else
+      buildList {
+          preview.captures.forEach { add(it.renderOutput.ifEmpty { defaultStem }) }
+          preview.dataProducts.forEach { if (it.output.isNotEmpty()) add(it.output) }
+        }
+        .distinct()
   val fanout =
-    if (module == null || preview?.params?.previewParameterProviderClassName == null) emptyList()
-    else paramFanoutOutputs(preview, module, siblingOutputs, fileSystem)
+    if (module == null) emptyList()
+    else paramFanoutOutputs(fanoutTemplates, module, siblingOutputs, fileSystem)
   return buildList {
-      addAll(declared)
-      if (defaultStemIsLive) add("renders/${result.id}.png")
-      addAll(fanout)
+      declared.forEach { add(it to OutputDiscovery.DECLARED) }
+      if (defaultStemIsLive) add(defaultStem to OutputDiscovery.DECLARED)
+      fanout.forEach { add(it to OutputDiscovery.SCANNED) }
     }
-    .distinct()
+    .distinctBy { it.first }
 }
 
 /**
  * The `<stem>_<label>.<ext>` fan-out outputs of a `@PreviewParameter` preview that currently have a
- * sidecar on disk, found by listing the template's directory.
+ * sidecar on disk, found by listing each of [templates]' directories.
  *
  * A glob rather than a computed list because only the provider knows its values — the same reason
- * `PreviewResultBuilder.expandParamCaptures` globs for the PNGs. Any name another preview in the
- * module declares as its own output is excluded, so a sibling's file is never adopted into this
- * preview's fan-out.
+ * `PreviewResultBuilder.expandParamCaptures` globs for the PNGs. Two exclusions, both about not
+ * attributing one preview's failure to another: a name another preview declares as its own output,
+ * and a name a *more specific sibling template* owns — with `Foo.png` and `Foo_Dark.png` in one
+ * directory, `Foo_Dark_Alice.png` is `Foo_Dark`'s row even though it matches `Foo_`. That second
+ * rule is [parameterFanoutOwnedBySibling], shared with the builder that expands the same glob for
+ * files that exist, because two copies of it would drift.
  */
 private fun paramFanoutOutputs(
-  preview: PreviewInfo,
+  templates: List<String>,
   module: PreviewModule,
   siblingOutputs: Set<String>,
   fileSystem: FileSystem,
 ): List<String> =
-  preview.captures
-    .map { it.renderOutput }
-    .filter { it.isNotEmpty() }
+  templates
     .flatMap { template ->
       val dir = template.substringBeforeLast('/', "")
       val leaf = template.substringAfterLast('/')
@@ -363,7 +422,16 @@ private fun paramFanoutOutputs(
         .map { it.name }
         .filter { it.startsWith(stemPrefix) && it.endsWith(suffix) }
         .map { dirPrefix + it.removeSuffix(RENDER_ERROR_SIDECAR_SUFFIX) }
-        .filter { it !in siblingOutputs }
+        .filter { candidate ->
+          candidate !in siblingOutputs &&
+            siblingOutputs.none { sibling ->
+              parameterFanoutOwnedBySibling(
+                templateOutput = template,
+                siblingOutput = sibling,
+                candidateOutput = candidate,
+              )
+            }
+        }
         .sorted()
     }
     .distinct()

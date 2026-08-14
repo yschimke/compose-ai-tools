@@ -17,10 +17,11 @@ import kotlin.test.assertTrue
  * - owner: the main renderer, the Lottie renderer, the SVG renderer,
  * - module: `:app`, `:feature` (so multi-module grouping is exercised),
  * - run evidence: [Evidence.Unobserved] and each [GradleTaskDisposition],
- * - sidecars: none, one, two distinct.
+ * - sidecars: none, one, two distinct, a scanned `@PreviewParameter` row, and declared + scanned
+ *   together.
  *
- * Enumerated rather than randomised: the same 108 single-entry cases and 400+ multi-entry
- * combinations run identically on every machine, so a failure is always reproducible.
+ * Enumerated rather than randomised: the same 180 single-entry cases and their combinations run
+ * identically on every machine, so a failure is always reproducible.
  */
 class MissingRenderMessageInvariantTest {
 
@@ -44,6 +45,26 @@ class MissingRenderMessageInvariantTest {
         listOf(
           SidecarFinding("renders/A_500ms.png", sidecar("java.lang.IllegalStateException")),
           SidecarFinding("renders/A_1000ms.png", sidecar("java.lang.NullPointerException")),
+        ),
+      // A `@PreviewParameter` row found by scanning: the renderer may never have attempted it this
+      // run, because nothing deletes a fan-out sidecar when its provider value goes away.
+      "scanned" to
+        listOf(
+          SidecarFinding(
+            "renders/A_Alice.png",
+            sidecar("java.lang.IllegalStateException"),
+            OutputDiscovery.SCANNED,
+          )
+        ),
+      // The mixed shape: one output the manifest names, one row only a scan found.
+      "declared+scanned" to
+        listOf(
+          SidecarFinding("renders/A.png", sidecar("java.lang.IllegalStateException")),
+          SidecarFinding(
+            "renders/A_Alice.png",
+            sidecar("java.lang.NullPointerException"),
+            OutputDiscovery.SCANNED,
+          ),
         ),
     )
 
@@ -125,11 +146,17 @@ class MissingRenderMessageInvariantTest {
 
   @Test
   fun `the build-wiring verdict requires an observed run that reached the preview`() {
-    // Round #3789's bug, as a property: the sentence is licensed by a sidecar *and* an observed
-    // non-skip, and by nothing else.
+    // Round #3789's bug, as a property — and the #3815 fan-out finding too. Stated in *primitive*
+    // terms (the raw evidence on the diagnosis), never via a derived flag: an invariant phrased in
+    // terms of `threwThisRun` would move with any change to `threwThisRun` and so could never
+    // contradict it. Two independent things license the sentence — the renderer was observed
+    // running, and it targeted an output the manifest names. A scanned fan-out row satisfies only
+    // the first, because nothing deletes a fan-out sidecar when its provider value goes away.
     for (report in reports()) {
       val message = formatMissingRenderReport(report, total = report.size)
-      val licensed = report.count { it.threwThisRun }
+      val licensed = report.count { d ->
+        d.ownerRan == true && d.sidecars.any { it.discovery == OutputDiscovery.DECLARED }
+      }
       assertEquals(
         licensed > 0,
         message.contains("the build wiring is fine"),
@@ -140,14 +167,38 @@ class MissingRenderMessageInvariantTest {
           message.contains(
             "$licensed preview(s) rendered and then threw — the build wiring is fine"
           ),
-          "verdict counted ${licensed} entries but said otherwise:\n$message",
+          "verdict counted $licensed entries but said otherwise:\n$message",
         )
       }
-      // ...and every entry it speaks for really was observed running.
-      assertTrue(
-        report.filter { it.threwThisRun }.all { it.ownerRan == true },
-        "threwThisRun without an observed run",
+    }
+  }
+
+  @Test
+  fun `a scanned parameter row is never dated to this run`() {
+    // The #3815 fan-out finding as a property: a sidecar found by scanning is reported — the file
+    // is real — but this run may not have attempted that row, so it is marked undated and the
+    // caution explaining why is printed exactly when one is reported.
+    for (report in reports()) {
+      val message = formatMissingRenderReport(report, total = report.size)
+      val scannedUndated = report.count { d ->
+        d.sidecars.any {
+          it.discovery == OutputDiscovery.SCANNED && d.dating(it) == SidecarDating.UNDATED
+        }
+      }
+      assertEquals(
+        scannedUndated > 0,
+        message.contains("this run may not have attempted that row"),
+        "scanned-row caution vs. $scannedUndated scanned entr(ies):\n$message",
       )
+      // No scanned finding may ever be dated to this invocation, whatever the renderer did.
+      for (d in report) {
+        for (finding in d.sidecars.filter { it.discovery == OutputDiscovery.SCANNED }) {
+          assertTrue(
+            d.dating(finding) != SidecarDating.THIS_RUN,
+            "dated a scanned row to this run: ${finding.output}",
+          )
+        }
+      }
     }
   }
 

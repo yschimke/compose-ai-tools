@@ -944,6 +944,186 @@ class MissingRenderReportTest {
     assertFalse(message.contains("NO-SOURCE"), message)
   }
 
+  /** A parameterised preview whose template is [template], plus any [siblings] in the manifest. */
+  private fun parameterisedManifests(
+    template: String,
+    vararg siblings: Pair<String, String>,
+    dataProducts: List<PreviewDataProduct> = emptyList(),
+  ) =
+    listOf(
+      PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+        PreviewManifest(
+          module = ":app",
+          variant = "debug",
+          previews =
+            listOf(
+              PreviewInfo(
+                id = previewId,
+                functionName = "WearAppPreview",
+                className = "com.example.wear.WearAppKt",
+                params =
+                  PreviewParams(previewParameterProviderClassName = "com.example.wear.Names"),
+                captures = listOf(Capture(renderOutput = template)),
+                dataProducts = dataProducts,
+              )
+            ) +
+              siblings.map { (id, output) ->
+                PreviewInfo(
+                  id = id,
+                  functionName = id.substringAfterLast('.'),
+                  className = "com.example.wear.WearAppKt",
+                  params =
+                    PreviewParams(previewParameterProviderClassName = "com.example.wear.Names"),
+                  captures = listOf(Capture(renderOutput = output)),
+                )
+              },
+        )
+    )
+
+  @Test
+  fun `a more specific sibling template owns its own fan-out rows`() {
+    // `Foo.png` and `Foo_Dark.png` in one directory: `Foo_Dark_Alice.png` matches `Foo_` but is
+    // `Foo_Dark`'s row. Attributing it to `Foo` shows one preview's exception under another's name
+    // — the same ambiguity `PreviewResultBuilder` already solves, so the rule is shared rather than
+    // written twice.
+    writeSidecar(
+      "renders/Wear_Alice.png",
+      simpleSidecarJson(
+        "java.lang.IllegalStateException",
+        "Alice has no avatar",
+        "java.lang.IllegalStateException: Alice has no avatar\n\tat com.example.wear.W.f(W.kt:1)",
+      ),
+    )
+    writeSidecar(
+      "renders/Wear_Dark_Alice.png",
+      simpleSidecarJson(
+        "java.lang.NoSuchMethodError",
+        "the dark sibling's row",
+        "java.lang.NoSuchMethodError: the dark sibling's row\n\tat com.example.wear.W.g(W.kt:2)",
+      ),
+    )
+
+    val entry =
+      diagnoseMissingRenders(
+          listOf(missingResult()),
+          parameterisedManifests(
+            "renders/Wear.png",
+            "com.example.wear.WearAppKt.WearDark" to "renders/Wear_Dark.png",
+          ),
+        )
+        .single()
+
+    assertEquals(listOf("renders/Wear_Alice.png"), entry.sidecars.map { it.output })
+    val message = formatMissingRenderReport(listOf(entry), total = 1)
+    assertContains(message, "Alice has no avatar")
+    assertFalse(message.contains("the dark sibling's row"), message)
+  }
+
+  @Test
+  fun `fan-out sidecars are found for data products and for a blank capture`() {
+    // The renderer suffixes whatever output path it is handed: `RenderPreviewsTask` forks it once
+    // per data product with the product's own path, and resolves a blank capture to
+    // `renders/<id>.png` before the suffix goes in. Enumerating only non-empty capture templates
+    // missed both, and the report fell back to unrelated wiring guidance.
+    writeSidecar(
+      "renders/$previewId" + "_Alice.png",
+      simpleSidecarJson(
+        "java.lang.IllegalStateException",
+        "blank-capture row failed",
+        "java.lang.IllegalStateException: blank-capture row failed\n\tat com.example.W.f(W.kt:1)",
+      ),
+    )
+    writeSidecar(
+      "data/render-scroll-long/Wear_Bob.png",
+      simpleSidecarJson(
+        "java.lang.NullPointerException",
+        "scroll product row failed",
+        "java.lang.NullPointerException: scroll product row failed\n\tat com.example.W.g(W.kt:2)",
+      ),
+    )
+
+    val entry =
+      diagnoseMissingRenders(
+          listOf(missingResult()),
+          parameterisedManifests(
+            "",
+            dataProducts =
+              listOf(
+                PreviewDataProduct(
+                  kind = "render-scroll-long",
+                  output = "data/render-scroll-long/Wear.png",
+                )
+              ),
+          ),
+        )
+        .single()
+
+    assertEquals(
+      listOf("data/render-scroll-long/Wear_Bob.png", "renders/$previewId" + "_Alice.png"),
+      entry.sidecars.map { it.output }.sorted(),
+    )
+    val message = formatMissingRenderReport(listOf(entry), total = 1)
+    assertContains(message, "blank-capture row failed")
+    assertContains(message, "scroll product row failed")
+    assertFalse(message.contains("NO-SOURCE"), message)
+  }
+
+  @Test
+  fun `a scanned parameter row is reported but never dated to this run`() {
+    // Neither renderer's `deleteStaleFanoutFiles` removes a fan-out `.error.json` — both match the
+    // template's png/gif extension — so a provider value that was renamed or removed leaves its
+    // sidecar behind. Presenting that as this invocation's failure is exactly the stale-sidecar
+    // claim this diagnostic exists to stop making, so a scanned row is reported *undated* even when
+    // the renderer demonstrably ran.
+    writeSidecar(
+      "renders/Wear_Alice.png",
+      simpleSidecarJson(
+        "java.lang.IllegalStateException",
+        "Alice has no avatar",
+        "java.lang.IllegalStateException: Alice has no avatar\n\tat com.example.wear.W.f(W.kt:1)",
+      ),
+    )
+
+    val entry =
+      diagnoseMissingRenders(
+          listOf(missingResult()),
+          parameterisedManifests("renders/Wear.png"),
+          outcomes("composePreviewRender" to GradleTaskDisposition.SUCCESS),
+        )
+        .single()
+
+    assertEquals(OutputDiscovery.SCANNED, entry.sidecars.single().discovery)
+    assertEquals(SidecarDating.UNDATED, entry.dating(entry.sidecars.single()))
+    assertEquals(false, entry.threwThisRun)
+
+    val message = formatMissingRenderReport(listOf(entry), total = 1)
+    assertContains(message, "Alice has no avatar")
+    assertContains(message, "undated parameter row")
+    assertContains(message, "this run may not have attempted that row")
+    assertFalse(message.contains("the build wiring is fine"), message)
+  }
+
+  @Test
+  fun `a declared output's sidecar is still dated to this run`() {
+    // The counterpart: a declared output is one the manifest names, so the renderer targeted it —
+    // the scanned-row caution must not leak onto ordinary findings.
+    writeSidecar("renders/WearAppPreview.png")
+
+    val entry =
+      diagnoseMissingRenders(
+          listOf(missingResult()),
+          manifests(),
+          outcomes("composePreviewRender" to GradleTaskDisposition.SUCCESS),
+        )
+        .single()
+
+    assertEquals(OutputDiscovery.DECLARED, entry.sidecars.single().discovery)
+    assertEquals(SidecarDating.THIS_RUN, entry.dating(entry.sidecars.single()))
+    val message = formatMissingRenderReport(listOf(entry), total = 1)
+    assertContains(message, "the build wiring is fine")
+    assertFalse(message.contains("undated parameter row"), message)
+  }
+
   @Test
   fun `the single-preview report render --output prints carries the sidecar`() {
     // `render --output` exits as soon as the one matched preview has no PNG. It goes through the

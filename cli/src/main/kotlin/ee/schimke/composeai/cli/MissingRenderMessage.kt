@@ -52,6 +52,12 @@ fun formatMissingRenderReport(
     // A sidecar proves a renderer wrote it; nothing here proves *when*, so the run isn't described.
     sb.append("\n").append(threwSentence(threwUndated.size, wiringIsFine = false))
   }
+  val scannedRows = diagnoses.count { d ->
+    d.sidecars.any {
+      it.discovery == OutputDiscovery.SCANNED && d.dating(it) == SidecarDating.UNDATED
+    }
+  }
+  if (scannedRows > 0) sb.append("\n").append(scannedRowSentence(scannedRows))
   // Grouped by module and owner: one task *name* is many tasks in a multi-module render, with
   // independently different outcomes, and each sentence quotes the skip it was given.
   for ((key, entries) in diagnoses.filter { it.staleSidecars }.groupBy { it.module to it.owner }) {
@@ -85,16 +91,20 @@ private fun offenderLines(entry: PreviewDiagnosis): String {
   // beside every one of its outputs, and printing it once per capture buries the run's real shape.
   // Distinct ones are labelled with the output they came from, because that is the only thing that
   // ties an exception to the coordinate that produced it.
-  val groups = entry.sidecars.groupBy({ it.sidecar }, { it.output })
-  for ((sidecar, outputs) in groups) {
+  val groups = entry.sidecars.groupBy({ it.sidecar to entry.dating(it) }, { it.output })
+  for ((key, outputs) in groups) {
+    val (sidecar, dating) = key
     sb.append(
       sidecarDetail(
         sidecar = sidecar,
         className = entry.className,
         // A single failure needs no output label; the entry line above already names the preview.
         outputs = if (groups.size > 1) outputs else emptyList(),
-        // "earlier run" is a claim about this invocation, so it is licensed by the observed skip.
-        earlierRun = entry.staleSidecars,
+        // Each marker is licensed by the finding's own dating — the observed skip for "earlier
+        // run", the scan for a fan-out row this invocation may never have attempted.
+        dating = dating,
+        scanned =
+          entry.sidecars.any { it.output in outputs && it.discovery == OutputDiscovery.SCANNED },
       )
     )
   }
@@ -117,6 +127,20 @@ private fun threwSentence(count: Int, wiringIsFine: Boolean): String = buildStri
   append(RENDER_ERROR_SIDECAR_SUFFIX)
   append("` sidecar beside each preview's would-be output.")
 }
+
+/**
+ * Why a `@PreviewParameter` row's exception is reported without being dated.
+ *
+ * The fan-out is found by scanning — only the provider knows its values — and nothing removes a
+ * fan-out `.error.json` when a value is renamed or removed: both renderers'
+ * `deleteStaleFanoutFiles` match the template's `png` / `gif` extension, never the sidecar
+ * companion. So the file may describe a row this invocation never attempted, and saying otherwise
+ * would be the stale-sidecar claim this whole diagnostic exists to stop making.
+ */
+private fun scannedRowSentence(count: Int): String =
+  "$count preview(s) are reported from a `@PreviewParameter` fan-out sidecar found by scanning. " +
+    "Nothing deletes a fan-out `<render>.png$RENDER_ERROR_SIDECAR_SUFFIX` when its provider value " +
+    "is renamed or removed, so this run may not have attempted that row."
 
 /**
  * "N preview(s) have a sidecar on disk, but `<task>` did not run …".
@@ -216,8 +240,11 @@ private fun sidecarDetail(
   sidecar: RenderErrorSidecar,
   className: String,
   outputs: List<String> = emptyList(),
-  earlierRun: Boolean = false,
+  dating: SidecarDating = SidecarDating.THIS_RUN,
+  scanned: Boolean = false,
 ): String {
+  val earlierRun = dating == SidecarDating.EARLIER_RUN
+  val undatedRow = dating == SidecarDating.UNDATED && scanned
   val sb = StringBuilder()
   val chain = causeChainOf(sidecar.stackTrace)
   val root = chain.lastOrNull()
@@ -227,6 +254,7 @@ private fun sidecarDetail(
   sb.append("\n      ")
   if (outputs.isNotEmpty()) sb.append(outputs.joinToString(", ")).append(" — ")
   if (earlierRun) sb.append("earlier run — ")
+  if (undatedRow) sb.append("undated parameter row — ")
   sb.append("threw ").append(exception.substringAfterLast('.'))
   if (message.isNotBlank()) sb.append(": ").append(message)
   if (frame != null && frame.file.isNotBlank()) {
