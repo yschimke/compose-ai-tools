@@ -99,6 +99,23 @@ class ServeViewerSourceLaneTest {
   }
 
   /**
+   * `/usage/<id>` is a built-in route, so it has to be reserved.
+   *
+   * A top-level site host serves one catalog rooted at `/`, and its interceptor only lets a rooted
+   * path through when its first segment is a known built-in. Registering the route without adding
+   * it here meant every Source panel 404'd on a custom catalog domain — which is how the public
+   * deployment serves its catalogs — while working perfectly on the canonical path. It also stops a
+   * catalog literally named `usage` from shadowing the route.
+   */
+  @Test
+  fun `the usage route is reserved against site hosts`() {
+    assertTrue(
+      ServeSites.RESERVED_SYSTEMS.contains("usage"),
+      "a rooted /usage/<id> must be reserved or site hosts answer it with 404",
+    )
+  }
+
+  /**
    * The chip sits beside the design-spec chip on the control row, not inside the renderer combo.
    * That combo is headed "Switch renderer" and source is not a renderer — the same reasoning that
    * put the spec lane on the row in the first place.

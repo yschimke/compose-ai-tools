@@ -1416,12 +1416,35 @@
         copy.textContent = "Copied";
         setTimeout(function () { copy.textContent = "Copy"; }, 1500);
       };
+      // The Clipboard API needs a secure context, which a serve host reached over plain HTTP on a
+      // LAN address is not. The fallback SELECTS the code rather than only telling the visitor to
+      // press a shortcut: an instruction to press ⌘C with nothing selected copies whatever else
+      // happened to be, and names the wrong key on every non-Mac platform besides.
+      var fallback = function () {
+        try {
+          var range = document.createRange();
+          range.selectNodeContents(code);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          // Deprecated, and still the only synchronous copy an insecure context has. When it
+          // works the visitor needs no shortcut at all; when it does not, the text is at least
+          // selected and ready for one.
+          if (document.execCommand && document.execCommand("copy")) {
+            sel.removeAllRanges();
+            done();
+            return;
+          }
+        } catch (e) { /* fall through to the prompt */ }
+        copy.textContent = /Mac|iP(hone|ad|od)/.test(navigator.platform)
+          ? "Selected \u2014 press \u2318C"
+          : "Selected \u2014 press Ctrl+C";
+        setTimeout(function () { copy.textContent = "Copy"; }, 3000);
+      };
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () {
-          copy.textContent = "Press \u2318C";
-        });
+        navigator.clipboard.writeText(text).then(done, fallback);
       } else {
-        copy.textContent = "Press \u2318C";
+        fallback();
       }
     });
     actions.appendChild(copy);
@@ -1905,7 +1928,12 @@
       // the copied/downloaded SVG stayed exploded while the stage showed something else — three
       // controls describing a frame that is no longer on screen.
       if (!turnOn) clearExploded();
-      if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive())) {
+      // `sourceActive()` belongs in this list for exactly the reason the others do: openSource()
+      // takes the snapshot <img> out of flow, and only closeSource() puts it back. Flipping
+      // `data-mode` straight to "svg" hid the panel (its CSS is mode-scoped) without restoring the
+      // image — a blank stage under a still-checked Source radio.
+      if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive()
+          || sourceActive())) {
         setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
       } else {
         snapshotExt = turnOn ? ".svg" : ".png";

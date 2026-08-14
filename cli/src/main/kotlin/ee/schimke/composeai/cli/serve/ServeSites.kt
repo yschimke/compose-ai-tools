@@ -226,6 +226,8 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "api",
         "ws",
         "p",
+        // `GET /usage/<previewId>` — the viewer's Source panel.
+        "usage",
         "render",
         "history",
         "compare",

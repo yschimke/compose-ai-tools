@@ -307,6 +307,47 @@ class PlaygroundSeedResolverTest {
     )
   }
 
+  /**
+   * One cold key, many callers, one GitHub read.
+   *
+   * The panel is one click on a page anyone browsing a catalog is already on, so a popular preview
+   * after a restart or a TTL expiry can have a dozen viewers arrive together — each otherwise
+   * performing its own 10 s-connect / 10 s-read GET for the same file.
+   */
+  @Test
+  fun `concurrent first reads of one preview fetch it once`() {
+    val reads = java.util.concurrent.atomic.AtomicInteger()
+    val start = java.util.concurrent.CountDownLatch(1)
+    val resolver =
+      resolver(
+        locate = { _, _ -> anchored },
+        body = { url ->
+          if (url.endsWith(".kt")) {
+            reads.incrementAndGet()
+            // Hold the fetch open so every other caller is definitely inside seed() while it runs;
+            // without this the test could pass by the threads simply not overlapping.
+            Thread.sleep(150)
+          }
+          when {
+            url.endsWith(PlaygroundSeedResolver.USAGE_RULES_FILE) -> usageRules.toByteArray()
+            url.endsWith("strings.xml") -> stringsXml.toByteArray()
+            else -> stickerFile.toByteArray()
+          }
+        },
+      )
+    val threads =
+      (1..8).map {
+        Thread {
+          start.await()
+          resolver.seed("m3-catalog", "sections.FilledButton")
+        }
+      }
+    threads.forEach { it.start() }
+    start.countDown()
+    threads.forEach { it.join(10_000) }
+    assertEquals(1, reads.get(), "the source file was read once per caller instead of once")
+  }
+
   /** One rules file per catalog, not per card: browsing a group must not re-ask GitHub for it. */
   @Test
   fun `the rules file is fetched once per catalog ref`() {
