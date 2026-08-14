@@ -20,6 +20,37 @@ class CliRouterTest {
   }
 
   @Test
+  fun `every routed command has a flag allowlist`() {
+    assertEquals(CliRouter.KNOWN_FLAT, CliFlagValidation.BY_COMMAND.keys)
+  }
+
+  @Test
+  fun `unknown flag validation is command specific and supports attached values`() {
+    assertEquals(
+      listOf("--fitler", "--fail-on"),
+      CliFlagValidation.unknownFlags(
+        "render",
+        listOf("--module", ":app", "--fitler=Button", "--fail-on", "warnings"),
+      ),
+    )
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags(
+        "a11y",
+        listOf("--module=:app", "--filter", "Button", "--fail-on=warnings"),
+      ),
+    )
+  }
+
+  @Test
+  fun `a recognised value may look like a flag without becoming an unknown option`() {
+    assertEquals(
+      emptyList(),
+      CliFlagValidation.unknownFlags("render", listOf("--filter", "--literal-preview-name")),
+    )
+  }
+
+  @Test
   fun `groups are disjoint and don't collide with core, meta, or group names`() {
     val grouped = CliRouter.GROUPS.values.flatten()
     assertEquals(grouped.size, grouped.toSet().size, "a command appears in two groups")
@@ -54,6 +85,31 @@ class CliRouterTest {
     assertEquals(
       CliRouter.Route.Run("render", listOf("--output", "out.png")),
       CliRouter.route(arrayOf("render", "--output", "out.png")),
+    )
+  }
+
+  @Test
+  fun `unknown valued flag before a command still routes to that command for validation`() {
+    assertEquals(
+      CliRouter.Route.Run("render", listOf("--fitler", "Button")),
+      CliRouter.route(arrayOf("--fitler", "Button", "render")),
+    )
+    assertEquals(
+      CliRouter.Route.Run("a11y", listOf("--fitler", "Button")),
+      CliRouter.route(arrayOf("inspect", "--fitler", "Button", "a11y")),
+    )
+    // A value belonging to a known flag must not be recovered as the command.
+    assertEquals(
+      CliRouter.Route.Run("list", listOf("--fitler", "Button", "--filter", "render")),
+      CliRouter.route(arrayOf("--fitler", "Button", "--filter", "render", "list")),
+    )
+  }
+
+  @Test
+  fun `ordinary unknown first positional stays an unknown command`() {
+    assertEquals(
+      CliRouter.Route.Unknown("frobnicate"),
+      CliRouter.route(arrayOf("frobnicate", "render")),
     )
   }
 

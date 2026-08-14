@@ -126,6 +126,7 @@ internal object CliFlags {
       "--agent",
       "--antigravity-config",
       "--baseline-dir",
+      "--baselines",
       "--codex-config",
       "--commit",
       "--cursor",
@@ -134,6 +135,8 @@ internal object CliFlags {
       "--mode",
       "--project",
       "--ref",
+      "--repo",
+      "--replicas-per-daemon",
       "--since",
       "--source",
       "--title",
@@ -162,7 +165,8 @@ internal object CliFlags {
    * the following token. Listed only so `CliFlagsRegistryTest` can tell them apart from a missing
    * [VALUE_FLAGS] entry — they are intentionally excluded from command-detection skipping.
    */
-  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images", "--exit-when-idle")
+  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> =
+    setOf("--images", "--exit-when-idle", "--contact-sheet", "--cells-dir")
 
   /**
    * The first positional token in [args] — the bare token that isn't the value of a value-consuming
