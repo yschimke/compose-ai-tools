@@ -1542,9 +1542,10 @@ object PreviewDiscovery {
    * **Why the digest is unconditional.** It is what makes a stem a pure function of one preview's
    * own id, and that single property carries every guarantee the filenames need:
    * - *Stable.* Adding, removing or renaming any other preview in the module cannot change this
-   *   preview's filename. The previous shortest-unique-suffix walk read every sibling, so an
-   *   unrelated addition silently renamed existing PNGs — which breaks commit-pinned render URLs and
-   *   makes base-vs-head visual diffing see a rename as delete + add.
+   *   preview's filename — the sole exception being [disambiguateDigestTies] below. The previous
+   *   shortest-unique-suffix walk read every sibling, so an unrelated addition silently renamed
+   *   existing PNGs — which breaks commit-pinned render URLs and makes base-vs-head visual diffing
+   *   see a rename as delete + add.
    * - *Collision-free.* Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get distinct
    *   digests. The old positional `_<idx>` tiebreaker minted names without checking them against
    *   real stems, so a preview genuinely named `Foo_bar_1` could be silently overwritten.

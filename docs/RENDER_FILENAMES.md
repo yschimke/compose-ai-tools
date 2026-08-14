@@ -29,7 +29,7 @@ It makes a stem a **pure function of one preview's own id**, and that single pro
 
 | Property | What it buys |
 |---|---|
-| Stable | Adding, removing or renaming any *other* preview in the module cannot change this preview's filename. Commit-pinned render URLs keep resolving, and base-vs-head visual diffing sees a diff rather than a delete + add. |
+| Stable | Adding, removing or renaming any *other* preview in the module cannot change this preview's filename — the [tie backstop](#the-tie-backstop) below is the sole exception. Commit-pinned render URLs keep resolving, and base-vs-head visual diffing sees a diff rather than a delete + add. |
 | Collision-free | Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get distinct digests. |
 | Case-safe | `Foo_Dark` and `Foo_dark` stay distinct files on case-insensitive filesystems (APFS, NTFS), where the readable parts alone are one file. |
 | Suffix-safe | The digest sits between the readable part and the structural suffixes below, so a preview genuinely named `Logo_animated` (`Logo_animated-<digestA>.png`) cannot collide with `Logo`'s Lottie sidecar (`Logo-<digestB>_animated.png`). |
@@ -37,7 +37,13 @@ It makes a stem a **pure function of one preview's own id**, and that single pro
 
 This replaced a shortest-unique-suffix walk that read every sibling preview to decide how much of the package/class path to prepend, with a positional `_<idx>` tiebreaker on top. That scheme renamed existing PNGs whenever an unrelated preview was added, renumbered on manifest reordering, and could mint a `_<idx>` name that silently overwrote a preview genuinely named that way.
 
+### The tie backstop
+
 If two ids ever agree on *both* readable part and truncated digest, only the tied previews are re-stemmed with a full-length sha256 — still a pure function of the id, so the rest of the module is untouched and the result stays stable under reordering.
+
+This is the one case where a preview's filename can change because of a *sibling*, and it is a deliberate trade. Resolving a collision inherently requires knowing about the collision — that fact lives in the pair, not in either id — so no per-id-only rule can both keep names stable and keep them unique. Dropping the backstop in favour of an unconditional wider digest would turn a tie back into a **silent overwrite**, which is the bug this scheme exists to prevent. A rename is loud and recoverable; an overwrite loses a render while the manifest still reports success.
+
+The trigger needs two previews to collide on the readable part *and* on 32 bits of digest. Since the readable part is function-plus-variant, a match already means two identically-named functions in different classes within one module; for 20 such previews the probability is around 5 × 10⁻⁸. The ordering the scheme commits to is **correctness > stability > brevity**.
 
 ## `@PreviewParameter` fan-out labels
 
