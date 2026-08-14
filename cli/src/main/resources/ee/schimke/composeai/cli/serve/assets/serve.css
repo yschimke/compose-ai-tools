@@ -1645,10 +1645,17 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation--layout .cp-annotation-label { background: rgba(214, 51, 108, 0.92); }
 .cp-annotation--typography { border: 1px dashed rgba(37, 99, 235, 0.9); }
 .cp-annotation--typography .cp-annotation-label { background: rgba(37, 99, 235, 0.92); }
-/* Theme is the resolved-container layer — fill, border, radius. A third hue so it reads apart from
-   the layout redline and the type spec when more than one layer is on. */
-.cp-annotation--theme { border: 1px solid rgba(13, 148, 136, 0.9); }
+/* Theme is the resolved-container layer — fill, border, radius. A third hue AND a third border
+   style, because hue alone is not enough here: a container's redline and its resolved tokens
+   describe the SAME box in the ordinary case, so with Layout and Theme both on, the later-appended
+   theme box sits exactly on the layout box. Dotted against layout's solid and typography's dashed
+   keeps two coincident boxes legible. */
+.cp-annotation--theme { border: 1px dotted rgba(13, 148, 136, 0.9); }
 .cp-annotation--theme .cp-annotation-label { background: rgba(13, 148, 136, 0.92); }
+/* Same collision, worse: every box badge is pinned to the top-left corner, so a theme badge over a
+   layout box hid the layout ordinal completely and the legend's ① pointed at nothing visible. Park
+   the theme badge on the opposite corner — the two can then never occupy one spot. */
+.cp-annotation--theme .cp-annotation-badge { left: auto; right: -7px; }
 .cp-annotation--typography-hit { border: 0; background: transparent; }
 .cp-annotation--typography-cluster.cp-annotation-active { border-width: 2px;
   background: rgba(37, 99, 235, 0.08); }

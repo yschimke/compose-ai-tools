@@ -15,6 +15,13 @@ on, captured by the preview-harness's `serve-reference-compare` **`annotated`** 
   panel, and the resolved-container spec as a second legend row: `fill #FF6750A4 · radius 20.0dp ·
   border 1.0dp #FF79747E`.
 
+  **Both ordinals are visible on the ACTUAL panel at once** — pink `①` top-left, teal `⑤`
+  top-right. A container's layout redline and its resolved tokens describe the *same* box in the
+  ordinary case, so with both layers on, the later-appended theme box landed exactly on the layout
+  box and its badge — pinned to the same top-left corner — hid the layout ordinal entirely, leaving
+  the legend's `①` pointing at nothing visible. Theme now draws dotted (against layout's solid and
+  typography's dashed) and parks its badge on the opposite corner.
+
   **The legend ordinals are also newly visible** — `①` pink, `⑤` teal. The badge colour rule only
   ever matched the badge nested in the overlay box (`.cp-annotation--<kind>`), not the one in the
   legend row (`.cp-annotation-entry--<kind>`), so every legend ordinal was `color: #fff` over no
