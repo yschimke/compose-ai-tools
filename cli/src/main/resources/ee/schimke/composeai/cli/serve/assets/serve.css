@@ -2036,34 +2036,57 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    `visibility` rather than `display`: a hidden SVG element keeps its box, so the measurement that
    positioned our render stays valid while it is hidden, and toggling back is free. */
 .cp-page-hide-design .cp-page-replaced { visibility: hidden; }
+/* A hit area, drawn as nothing. The sheet is the content, so the resting state of every node is
+   invisible — a mark appears where the reader is pointing, or across the board once they ask for
+   the layer. `transparent` rather than no border at all keeps the box the same size in both
+   states, so turning outlines on doesn't nudge thirty-eight rectangles by a pixel. */
 .cp-page-node {
   position: absolute;
   display: block;
-  border: 2px solid var(--cp-page-node-color, #2da44e);
+  padding: 0;
+  border: 2px solid transparent;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 10%, transparent);
+  background: transparent;
   text-decoration: none;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 /* Colour by *how* the placement was linked, so the weak links read as weak at a glance. An
-   unlinked rectangle — a part of the screen no code implements — is the dashed red one, and is the
-   single most interesting mark on the page. */
+   unlinked rectangle — a part of the sheet no code implements — is the dashed red one, and is the
+   single most interesting mark on the page once the layer is on. */
 .cp-page-node[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
 .cp-page-node[data-link="manifest"] { --cp-page-node-color: #0969da; }
 .cp-page-node[data-link="convention"] { --cp-page-node-color: #bf8700; }
-.cp-page-node[data-link="unlinked"] {
-  --cp-page-node-color: #cf222e;
+.cp-page-node[data-link="unlinked"] { --cp-page-node-color: #cf222e; }
+/* The opt-in layer: every node marked at once, which is the coverage read rather than the reading
+   view. */
+.cp-page-outlines-on .cp-page-node {
+  border-color: var(--cp-page-node-color, #2da44e);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 10%, transparent);
+}
+.cp-page-outlines-on .cp-page-node[data-link="unlinked"] {
   border-style: dashed;
   background: color-mix(in srgb, #cf222e 8%, transparent);
 }
+/* Pointing, keyboard focus, and selection all mark ONE node — and do it whether or not the resting
+   layer is on. This is the page's primary affordance now: an unmarked sheet that answers where you
+   point. Selection is the loudest of the three because it persists after the pointer leaves, and
+   it must stay legible against both a light sheet and our own render sitting in the slot. */
 .cp-page-node:hover,
 .cp-page-node:focus-visible,
 .cp-page-node.cp-page-active {
-  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 26%, transparent);
+  border-color: var(--cp-page-node-color, #2da44e);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 18%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-page-node-color, #2da44e) 45%, transparent);
   outline: none;
 }
-.cp-page-no-outlines .cp-page-node { opacity: 0; pointer-events: none; }
+.cp-page-node.cp-page-selected {
+  border-color: var(--cp-page-node-color, #2da44e);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 12%, transparent);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--cp-page-node-color, #2da44e);
+}
 /* "Only what we don't implement" — keeps the unlinked rectangles and mutes the rest, which is the
    fastest read of a screen's coverage. */
 .cp-page-unlinked-only .cp-page-node:not([data-link="unlinked"]) {
@@ -2082,8 +2105,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   display: none;
   width: 100%;
   height: 100%;
-  opacity: var(--cp-page-render-opacity, 1);
-  mix-blend-mode: var(--cp-page-render-blend, normal);
   object-fit: contain;
   pointer-events: none;
 }
@@ -2101,6 +2122,40 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-size: var(--md-sys-typescale-body-small-size, 0.82rem);
 }
 .cp-page-controls label { display: inline-flex; align-items: center; gap: 0.35rem; }
+/* The flip, as a segmented pair rather than two loose radios: the two lanes are one question with
+   one answer, and it is the control the page is built around, so it reads as a switch you throw
+   rather than a preference you set. The radios stay real (and stay reachable) — they are visually
+   removed, not `display: none`, so arrow keys still move between the lanes. */
+.cp-page-lane {
+  display: inline-flex;
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.cp-page-lane label { gap: 0; }
+.cp-page-lane input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.cp-page-lane span {
+  display: block;
+  padding: 0.32rem 0.85rem;
+  color: var(--cp-fg-muted);
+  cursor: pointer;
+}
+.cp-page-lane input:checked + span {
+  background: var(--cp-accent, #6750a4);
+  color: #fff;
+  font-weight: 600;
+}
+.cp-page-lane input:focus-visible + span {
+  outline: 2px solid var(--cp-accent, #6750a4);
+  outline-offset: -2px;
+}
+.cp-page-opt { color: var(--cp-fg-muted); }
 .cp-page-legend {
   display: flex;
   flex-wrap: wrap;
@@ -2110,12 +2165,52 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-size: 0.75rem;
 }
 .cp-page-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+/* `display: flex` above beats the `hidden` attribute on its own, so the legend has to be told to
+   respect it — otherwise it stands over an unmarked sheet naming four colours nothing is wearing,
+   which is most of the noise this page was carrying. */
+.cp-page-legend[hidden] { display: none; }
 .cp-page-swatch {
   width: 0.75rem;
   height: 0.75rem;
   border: 2px solid currentColor;
   border-radius: 2px;
 }
+/* What the selected node is, directly under the sheet it was picked on. Reserves its height in the
+   hint state so selecting doesn't shove the page down — the sheet must not move under a reader who
+   is pointing at it. */
+.cp-page-selection {
+  display: flex;
+  align-items: center;
+  min-height: 3rem;
+  padding: 0.15rem;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  background: var(--cp-surface);
+}
+.cp-page-selection-hint {
+  margin: 0;
+  padding: 0 0.7rem;
+  color: var(--cp-fg-muted);
+  font-size: 0.82rem;
+}
+/* The clone of the node's row. Larger than it is in the list, because here it is the answer to a
+   question rather than one line of an inventory. */
+.cp-page-selection-card {
+  flex: 1;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.92rem;
+}
+.cp-page-selection-card .cp-page-row-code { font-size: 0.78rem; }
+/* The audit list, collapsed. It is a coverage inventory — every node, linked or not — which is a
+   thing to go and check rather than the first thing to read, so it ships closed and says what it
+   holds. */
+.cp-page-nodes > summary {
+  cursor: pointer;
+  padding: 0.35rem 0;
+  color: var(--cp-fg-muted);
+  font-size: 0.82rem;
+}
+.cp-page-nodes[open] > summary { margin-bottom: 0.4rem; }
 /* A definition sheet carries tens of nodes where a screen carried a dozen, so the list wraps into
    columns instead of running off the bottom of the page. */
 .cp-page-list {
