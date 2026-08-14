@@ -286,6 +286,66 @@ class PreviewDiscoveryRenderStemTest {
     assertThat(stems.single()).startsWith("preview-")
   }
 
+  /**
+   * The backstop expands both sides of a genuine digest tie. Exercised at a 2-char digest because
+   * constructing an 8-char tie needs ~2^32 work; the logic under test is width-independent.
+   */
+  @Test
+  fun `a genuine digest tie expands both tied stems`() {
+    // These two ids collide on the first 2 hex chars of sha256 (verified pair).
+    val previews =
+      listOf(
+        preview("com.example.PreviewsKt.Foo_Dark50"),
+        preview("com.example.PreviewsKt.Foo_dark50"),
+      )
+
+    val stems = PreviewDiscovery.resolveRenderStems(previews, digestChars = 2)
+
+    assertThat(stems.toSet()).hasSize(2)
+    // Both sides carry the full-length digest, not just the second one.
+    for (stem in stems) {
+      assertThat(stem.substringAfterLast('-')).hasLength(PreviewDiscovery.FULL_DIGEST_CHARS)
+    }
+  }
+
+  /**
+   * Regression: the tie test groups case-folded. Two stems differing only by case address the same
+   * file on APFS/NTFS, so a case-only pair that *also* ties on the digest must still be expanded —
+   * a case-sensitive grouping would call them distinct and let one overwrite the other.
+   */
+  @Test
+  fun `a case-only pair that also ties on the digest is still expanded`() {
+    val previews =
+      listOf(
+        preview("com.example.PreviewsKt.Foo_Dark50"),
+        preview("com.example.PreviewsKt.Foo_dark50"),
+      )
+
+    val stems = PreviewDiscovery.resolveRenderStems(previews, digestChars = 2)
+
+    // The point: distinct *case-insensitively*, which is what the filesystem compares.
+    assertThat(stems.map { it.lowercase() }.toSet()).hasSize(2)
+  }
+
+  /** A tie must not drag unrelated previews into the long form. */
+  @Test
+  fun `a digest tie leaves untied stems untouched`() {
+    val bystander = preview("com.example.PreviewsKt.Unrelated_Preview")
+    val alone = PreviewDiscovery.resolveRenderStems(listOf(bystander), digestChars = 2).single()
+
+    val withTie =
+      PreviewDiscovery.resolveRenderStems(
+        listOf(
+          preview("com.example.PreviewsKt.Foo_Dark50"),
+          preview("com.example.PreviewsKt.Foo_dark50"),
+          bystander,
+        ),
+        digestChars = 2,
+      )
+
+    assertThat(withTie[2]).isEqualTo(alone)
+  }
+
   @Test
   fun `empty input returns empty stems list`() {
     assertThat(PreviewDiscovery.resolveRenderStems(emptyList())).isEmpty()
