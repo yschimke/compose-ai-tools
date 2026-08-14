@@ -16,7 +16,22 @@ Gradle invocation.
 
 ## The knob
 
-Off by default. Nothing renders differently until a run asks for it.
+**On for this repo's own renders, off for consumers of the published plugin.** The plugin's default
+is off — nothing renders differently in a downstream project until it asks — while this repo sets
+`composePreview.linkBufferComposer=true` in [gradle.properties](../gradle.properties), so every
+catalog we render goes through the new composer. Same shape as the neighbouring
+`composePreview.classpathDuplicates=fail`: we hold our own renders to the stricter setting.
+
+That asymmetry is not timidity, it is a version floor. `isLinkBufferComposerEnabled` **only exists
+from Compose 1.11.0** — 1.9.5 and 1.10.x ship the `ComposeRuntimeFlags` class *without* the field —
+and the published renderer's compat floor is `compose-bom-compat`. Since an opt-in the runtime
+cannot honour is a hard render failure by design, a consumer-facing default-on would break every
+project below 1.11. Flipping it for consumers therefore needs a semantics change first: an
+*implicit* default that degrades silently on an old runtime, while an *explicit* `-P` / `-D` request
+keeps failing loudly. We are on runtime 1.11.4 (Android) / 1.11.2 (desktop), so both of our lanes
+have it.
+
+Turn it off for one run with `-PcomposePreview.linkBufferComposer=false`.
 
 | Where | Form |
 | --- | --- |
@@ -84,6 +99,13 @@ diff -rq /tmp/renders-baseline samples/cmp/build/compose-previews/renders
 The same shape works for `:samples:android` (Robolectric lane) and for any of the
 `samples/design-catalog-*` modules, which are the largest corpora in the repo.
 
+Note that with the repo default now on, the *baseline* is the flag-off side: pass
+`-PcomposePreview.linkBufferComposer=false` for the comparison render rather than passing `true` for
+the experiment. `RenderPreviewsTask.linkBufferComposer` is an `@Input`, so flipping it genuinely
+re-runs `composePreviewRender` instead of reporting UP-TO-DATE against the other composer's PNGs —
+confirmed in practice: the flag-off re-render of `:samples:design-catalog-m3` executed the task and
+redrew all 84 captures rather than short-circuiting.
+
 ## What the first A/B found
 
 Run 2026-08-14 on Compose runtime 1.11.4 (Android) / runtime-desktop 1.11.2 (CMP), in the cloud
@@ -95,6 +117,7 @@ sandbox, against both sample modules.
 | --- | --- | --- |
 | `:samples:cmp` (Desktop / Skiko) | 70 | 70/70 byte-identical, flag-on vs flag-off |
 | `:samples:android` (Robolectric) | 171 | 170/171 byte-identical; the one exception explained below |
+| `:samples:design-catalog-m3` | 168 | 168/168 byte-identical (added when the repo default was flipped on) |
 
 The CMP corpus is not just static captures — it includes `@ScrollingPreview` LONG (a 31-slice
 stitch), `@ScrollingPreview` GIF (130 frames), paused-clock `@AnimatedPreview` GIFs and the shader
