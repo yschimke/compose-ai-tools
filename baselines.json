@@ -652,14 +652,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "5c1b778130753d17b4d83092dc04966e3ee537504d8f5366f4f45d4b881bd62c",
-      "size": 92599
+      "sha256": "bcae4411b2ceb8469d8c91f4e6cd3e8e4201a4481809b0e19d28e363c2edd152",
+      "size": 92566
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "ba5f0d50bb93c110fec879e76d9ca4ecddac7691a21ddbdc85395fe9a23b947d",
-      "size": 91559
+      "sha256": "91e4246aa08352e05777fe2bf59537f8e472f1d4fa985a353ae22456e66dbef6",
+      "size": 91537
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
