@@ -7,11 +7,13 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.ClasspathNormalizer
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
+import org.gradle.process.CommandLineArgumentProvider
 
 plugins {
   id("composeai.base-conventions")
@@ -468,6 +470,25 @@ tasks.withType<Test>().configureEach {
     )) {
     providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
   }
+
+  // The BTA jars, handed to `PsiParseSpikeTest` so its isolated-classloader check runs in an
+  // ordinary `:cli:test`. It used to look for the *installed* `lib-bta/`, which `test` does not
+  // stage — so on a clean checkout the one test of the proposed deployment route skipped silently,
+  // and a broken reflective signature would have passed CI. Same artifacts the install stages,
+  // taken straight from the configuration.
+  //
+  // Through a `CommandLineArgumentProvider` (resolved at execution time, declared as an input) so
+  // the configuration cache stays valid rather than resolving a configuration at configuration
+  // time.
+  val btaJars = composePreviewBta.incoming.files
+  inputs.files(btaJars).withPropertyName("libBtaJars").withNormalizer(ClasspathNormalizer::class)
+  jvmArgumentProviders.add(
+    CommandLineArgumentProvider {
+      listOf(
+        "-Dcomposeai.libBtaJars=" + btaJars.joinToString(File.pathSeparator) { it.absolutePath }
+      )
+    }
+  )
 }
 
 abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {

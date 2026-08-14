@@ -34,13 +34,17 @@ Measured over the 20 snippets `scripts/usage-corpus.sh` generates:
 
 ```
 corpus            : <repo>/build/usage-corpus
-environment setup : ~540 ms   (once per process)
-parsed            : 20 files, 42,707 chars, in ~74 ms
-per file          : ~3.7 ms
+environment setup : ~520 ms   (once per process)
+parsed            : 20 files, 42,707 chars, in ~65 ms
+per file          : ~3.2 ms
 ```
 
-Against a seed path that already does a network fetch from GitHub raw, ~4 ms per file is free, and
-the ~540 ms setup is one-off and lazy — it need not happen until the first seed is cleaned.
+Against a seed path that already does a network fetch from GitHub raw, ~3 ms per file is free, and
+the ~520 ms setup is one-off and lazy — it need not happen until the first seed is cleaned.
+
+The warm-up run before the timed one has to *walk* each file, not merely create it: PSI is lazy, so
+a discarded `KtFile` never builds a tree and the parser's initialisation would land inside the
+measurement instead of before it.
 
 ### 3. Does the tree carry what the rewrites need?
 
@@ -64,7 +68,9 @@ On a fixture holding every shape the review rounds broke on, the tree separates 
 
 ## The frontend never has to reach the CLI classpath
 
-The spike also loads the parser from the **staged `lib-bta/`** through a `URLClassLoader` whose
+The spike also loads the parser from the BTA jars — the same artifacts the install stages into
+`lib-bta/`, forwarded from the `composePreviewBta` configuration so the check runs in an ordinary
+`:cli:test` rather than only after `installDist` — through a `URLClassLoader` whose
 parent is the platform loader — the same isolation `PlaygroundBtaCompiler` already uses for the
 compiler. Load + parse through that route: **~0.5–5 s** depending on page cache (13 jars, 70 MB), no
 dependency on the CLI's own classpath. Warm, it sits near the in-process figure.
@@ -95,7 +101,7 @@ parsing. Worth knowing before anyone bets a redesign on it.
 
 The argument for parsing rests on the other four shapes, which it settles outright.
 
-## Two caveats, both mine
+## Three caveats, all mine
 
 **The reflection was order-dependent.** The isolated-loader test first failed only when `PlaygroundBtaCompilerTest` ran before it, which
 looked exactly like a prior in-process compile leaving global frontend state — a serious finding, had
@@ -113,6 +119,13 @@ which was 20 stale snippets plus 15 fixture files another test had written besid
 reported as "35 snippets the corpus generates". The spike now honours `composeai.usageCorpus.out`,
 falls back to the repository root, skips the fixture tree, and **prints the path it measured** so the
 number can be checked rather than trusted.
+
+**Two assertions could not fail, and one of them twice.** The destructuring check read `ktFile.text`
+— the input echoed back — so it would have passed with PSI exposing nothing, which was the very
+thing it existed to show. Fixed. Then the isolated-loader check was found doing the *same* thing:
+stopping at `getText()`, which returns the view-provider buffer without a tree ever being built. So
+the pattern outlived its first fix. Both now walk the tree and assert what they find. The rule this
+file should have started with: an assertion over `text` proves nothing about a *parse*.
 
 ## What this does and does not buy
 

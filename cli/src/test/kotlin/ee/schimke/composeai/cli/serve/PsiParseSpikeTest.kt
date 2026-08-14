@@ -112,10 +112,14 @@ class PsiParseSpikeTest {
       var qualified = 0
       var bytes = 0L
 
-      // Parse everything once to warm up, then measure — otherwise the first file carries the
-      // parser's own class loading and the per-file number is nonsense.
+      // Warm up by parsing *and walking*, then measure. `createFileFromText` alone does not do it:
+      // PSI is lazy, so a discarded file never builds a tree and the first
+      // `collectDescendantsOfType`
+      // inside the timed block would still be paying for the parser's initialisation — exactly the
+      // cost this loop exists to move outside the measurement.
       for ((name, text) in sources) {
-        factory.createFileFromText(name, KotlinFileType.INSTANCE, text)
+        (factory.createFileFromText(name, KotlinFileType.INSTANCE, text) as? KtFile)
+          ?.collectDescendantsOfType<KtCallExpression>()
       }
       val parsing = measureTime {
         for ((name, text) in sources) {
@@ -292,17 +296,23 @@ class PsiParseSpikeTest {
    * to reach the CLI's own runtime classpath, which is the constraint the text passes exist to
    * respect.
    *
-   * Skipped when `lib-bta/` has not been staged (`./gradlew :cli:installDist`), like the compiler
-   * route it mirrors.
+   * The jars come from the `composePreviewBta` configuration, forwarded by the build, so this runs
+   * in an ordinary `:cli:test` rather than only after `:cli:installDist`.
    */
   @Test
   fun `the parser loads from the isolated lib-bta classloader`() {
-    val libBta = File("build/install/compose-preview/lib-bta")
-    val jars = libBta.listFiles()?.filter { it.extension == "jar" }.orEmpty()
-    if (jars.isEmpty()) {
-      println("lib-bta not staged; skipping (run :cli:installDist to exercise this)")
-      return
-    }
+    // From the `composePreviewBta` configuration, forwarded by the build — the same artifacts the
+    // install stages into `lib-bta/`. Looking at the *installed* directory instead meant this test
+    // skipped on any checkout that had not run `:cli:installDist`, which is every clean CI run, so
+    // the only check of the proposed deployment route never actually ran.
+    val jars =
+      System.getProperty("composeai.libBtaJars")
+        .orEmpty()
+        .split(File.pathSeparator)
+        .filter { it.endsWith(".jar") }
+        .map(::File)
+        .filter { it.isFile }
+    assertTrue(jars.isNotEmpty(), "composeai.libBtaJars was not forwarded by the build")
 
     // Platform parent, so nothing resolves against the CLI's own classpath: if this works, the
     // frontend is reachable without ever being a dependency of the serve host.
