@@ -296,34 +296,37 @@ class ServeHttpServer(
    * a preview id, and everything that forms the fetch URL comes from the catalog metadata behind
    * them. Null when no fetcher was supplied, or the lane isn't wired at all.
    */
-  private val playgroundSeeds: PlaygroundSeedResolver? =
-    playgroundSourceFetch
-      ?.takeIf { playgroundService != null }
-      ?.let { fetch ->
-        PlaygroundSeedResolver(
-          locate = { system, previewId ->
-            // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up
-            // just to answer where a file lives.
-            val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
-            val source = bundleHost?.catalogSource
-            val preview = bundleHost?.previews?.firstOrNull { it.id == previewId }
-            val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
-            if (source != null && sourceFile != null)
-              PlaygroundSeedResolver.Location(
-                repo = source.repo,
-                ref = source.ref,
-                module = source.module,
-                sourceFile = sourceFile,
-                // Absent on a catalog published before discovery recorded it, which is exactly the
-                // case the resolver falls back to whole-file seeding for.
-                bodyLine = preview.bodyLine,
-              )
-            else null
-          },
-          fetch = fetch,
-          onLog = { System.err.println("serve: playground seed: $it") },
-        )
-      }
+  private val playgroundSeeds: PlaygroundSeedResolver? = playgroundSourceFetch
+  // Deliberately NOT gated on `playgroundService`. The resolver reads and cleans a preview's
+  // source, which the viewer's Source panel wants on every host that can browse a catalog —
+  // including the many that cannot compile it (a pin-only host, or one with no Robolectric
+  // sidecar, which is every Android and Wear catalog on the public deployment). Only the
+  // *handoff* needs a compiler, and `playgroundLinkFor` checks for one itself.
+  ?.let { fetch ->
+    PlaygroundSeedResolver(
+      locate = { system, previewId ->
+        // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up
+        // just to answer where a file lives.
+        val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
+        val source = bundleHost?.catalogSource
+        val preview = bundleHost?.previews?.firstOrNull { it.id == previewId }
+        val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
+        if (source != null && sourceFile != null)
+          PlaygroundSeedResolver.Location(
+            repo = source.repo,
+            ref = source.ref,
+            module = source.module,
+            sourceFile = sourceFile,
+            // Absent on a catalog published before discovery recorded it, which is exactly the
+            // case the resolver falls back to whole-file seeding for.
+            bodyLine = preview.bodyLine,
+          )
+        else null
+      },
+      fetch = fetch,
+      onLog = { System.err.println("serve: playground seed: $it") },
+    )
+  }
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
 
@@ -974,6 +977,9 @@ class ServeHttpServer(
 
         get("/p/{name}") { handleViewer(sessionInPath = false) }
         get("/{system}/p/{name}") { handleViewer(sessionInPath = true) }
+
+        get("/usage/{name}") { handleUsage(sessionInPath = false) }
+        get("/{system}/usage/{name}") { handleUsage(sessionInPath = true) }
 
         get("/render/{name}") { handleRender(sessionInPath = false) }
         get("/{system}/render/{name}") { handleRender(sessionInPath = true) }
@@ -4123,6 +4129,92 @@ class ServeHttpServer(
     }
   }
 
+  /**
+   * `GET /usage/{name}` and `GET /{system}/usage/{name}`: the plain-Compose usage code behind one
+   * preview, as JSON, for the viewer's **Source** panel.
+   *
+   * Its own resource rather than a field on the viewer page, because producing it costs a GitHub
+   * read on a cold cache and most visitors never open the panel — the panel fetches on first entry,
+   * so a page load pays nothing.
+   *
+   * **No session lease.** This is a metadata read served entirely from the catalog registry and the
+   * resolver's cache; leasing would stand a render daemon up to answer a question about source
+   * text. Same reasoning as the resolver's own `locate`, which peeks rather than leases.
+   *
+   * 404 covers every "there is nothing to show" case — no resolver, an unknown preview, a catalog
+   * with no recorded source, or source the cleaner declined — so the panel has exactly one branch
+   * to handle and never renders a half-answer.
+   */
+  /**
+   * `/usage/<previewId>` for a preview, or null when this host has nothing to serve there — no
+   * source fetcher, a preview whose catalog never recorded a source path, or a session with no
+   * catalog source to resolve against. Checked here so the Source chip is never rendered dead.
+   *
+   * Unlike [playgroundLinkFor] this does **not** require a playground: reading the usage code is
+   * useful on any host that can browse the catalog, and only running it needs a compiler.
+   */
+  private fun RoutingContext.usageLinkFor(
+    system: String,
+    previewId: String,
+    sourceFile: String?,
+    basePath: String,
+  ): String? {
+    if (playgroundSeeds == null) return null
+    if (sourceFile.isNullOrBlank()) return null
+    // The same condition the resolver applies rather than a proxy for it: a plain daemon session or
+    // an uploaded bundle can carry a `sourceFile` from its own `previews.json` while having no
+    // catalog source to resolve it against, and the chip would then open on an error.
+    if (sessions.peekHost(system)?.let { catalogBundleHost(it) }?.catalogSource == null) return null
+    return "$basePath/usage/${WebEscaping.urlEncodeSegment(previewId)}${requestQuerySuffix()}"
+  }
+
+  private suspend fun RoutingContext.respondNoUsage() {
+    markGeneration("usage-snippet", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      "{\"status\":\"no-usage\"}",
+      ContentType.Application.Json,
+      HttpStatusCode.NotFound,
+    )
+  }
+
+  private suspend fun RoutingContext.handleUsage(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val previewId = call.parameters["name"]?.let { decodeSegment(it) }
+    val seeds = playgroundSeeds
+    if (seeds == null || previewId.isNullOrBlank()) {
+      respondNoUsage()
+      return
+    }
+    // Off the request dispatcher: an uncached seed is a synchronous GitHub GET with 10 s connect +
+    // 10 s read, and holding Ktor's request threads through that would stall unrelated routes.
+    val seed = withContext(Dispatchers.IO) { seeds.seed(sessionId, previewId) }
+    // `cleaned` and not merely non-null: a verbatim slice is the preview's own source, which is
+    // what the `source` link already offers. This panel claims to show usage code, so when the
+    // cleaner declined there is nothing here to serve.
+    if (seed == null || !seed.cleaned) {
+      respondNoUsage()
+      return
+    }
+    val host = sessions.peekHost(sessionId)
+    val sourceFile = host?.previews?.firstOrNull { it.id == previewId }?.sourceFile
+    markGeneration("usage-snippet", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(
+        UsageSnippetResponse.serializer(),
+        UsageSnippetResponse(
+          text = seed.text,
+          entryFunction = seed.previewId.substringAfterLast('.').takeIf { it.isNotBlank() },
+          scaffoldsDeclared = seed.scaffoldsDeclared,
+          residue = seed.residue,
+          blobUrl = seed.blobUrl,
+          playgroundHref = host?.let { playgroundLinkFor(it, sessionId, previewId, sourceFile) },
+        ),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
   /** `GET /p/{name}` (query) and `GET /{system}/p/{name}` (path): one preview's viewer page. */
   private suspend fun RoutingContext.handleViewer(sessionInPath: Boolean) {
     if (rejectBadToken() || rejectMalformedPin()) return
@@ -4361,6 +4453,7 @@ class ServeHttpServer(
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.
           playgroundHref = playgroundLinkFor(renderHost, sessionId, preview.id, preview.sourceFile),
+          usageHref = usageLinkFor(sessionId, preview.id, preview.sourceFile, basePath),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a

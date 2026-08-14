@@ -267,6 +267,11 @@ const STYLED_FIXTURES = new Set([
     // Deliberately only this fixture and not `serve-playground`: adding the stylesheet there would
     // rewrite an unrelated baseline wholesale for no claim this change makes.
     "serve-playground-uncompilable",
+    // The Source lane. The chip is styled by `serve.css` and the panel is drawn entirely at
+    // runtime by `viewer.js` from a fetched snippet, so captured bare this page is an unstyled
+    // button over a placeholder and its whole claim — code on the stage where the render was —
+    // moves no baseline at all. The `source-panel` state below is the shot that matters.
+    "serve-viewer-source",
     // The design page is nothing BUT layout: this catalog's renders measured into the slots the
     // design left for them, on the sheet's own geometry. Captured bare it is a list of links under
     // a picture and the entire claim moves no baseline. The page opens on the render lane, so the
@@ -686,6 +691,50 @@ const FIXTURE_STATES = [
             await page.check("#cp-inspect-theme");
             await page.waitForFunction(
                 () => document.querySelectorAll(".cp-inspect-box").length > 0,
+            );
+        },
+    },
+    {
+        // The Source panel open: the usage code on the stage, with its note, Copy button and the
+        // links onward to the playground and the whole sticker. The committed HTML cannot hold any
+        // of it — the panel is server-rendered EMPTY on purpose, and filled only once the chip is
+        // pressed and `/usage/<id>` answers — so without this shot the entire feature would move no
+        // baseline. The response is stubbed here for the same reason the inspect layers' data
+        // products are: the harness serves pages, not a catalog.
+        fixture: "serve-viewer-source",
+        suffix: "source-panel",
+        apply: async (page) => {
+            await page.route("**/usage/**", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        text: [
+                            "import androidx.compose.material3.Button",
+                            "import androidx.compose.material3.MaterialTheme",
+                            "import androidx.compose.material3.Text",
+                            "import androidx.compose.runtime.Composable",
+                            "import androidx.compose.ui.tooling.preview.Preview",
+                            "",
+                            "@Preview",
+                            "@Composable",
+                            "fun FilledButton() = MaterialTheme {",
+                            "  Button(onClick = {}) {",
+                            '    Text("Filled")',
+                            "  }",
+                            "}",
+                        ].join("\n"),
+                        entryFunction: "FilledButton",
+                        scaffoldsDeclared: true,
+                        residue: [],
+                        blobUrl: "https://github.com/example/catalog/blob/main/Buttons.kt",
+                        playgroundHref: "/playground?from=compose-m3/com.example.ProfileCardPreview",
+                    }),
+                }),
+            );
+            await page.click("#cp-source-chip");
+            await page.waitForFunction(
+                () => !!document.querySelector("#cp-source-panel pre code"),
             );
         },
     },

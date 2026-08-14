@@ -1,0 +1,292 @@
+    <!doctype html>
+    <html lang="en" data-cp-theme-key="cp-theme:compose-m3">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Profile card — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?token=demo-token-fixture&amp;session=compose-m3">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
+  </div>
+  <div class="cp-site-status">
+    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/?token=demo-token-fixture">Catalogs</a>
+    <a href="/status?token=demo-token-fixture">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+  </nav>
+</header>
+        <main class="cp-main">
+              <div class="cp-preview-head">
+        <h1 class="cp-head cp-preview-title">Profile card</h1>
+        <code class="cp-preview-id" title="com.example.ProfileCardPreview">com.example.ProfileCardPreview</code>
+
+        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+      </div>
+
+
+      <div class="cp-preview-primary" aria-label="Preview renderer">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — click for the live, interactive preview">
+            <span class="cp-live-dot" aria-hidden="true"></span>
+            <span id="cp-live-toggle-label">Live preview</span>
+          </button>
+<button type="button" id="cp-source-chip" class="cp-spec-chip cp-source-chip" aria-pressed="false" aria-controls="cp-source-panel" data-source-chip-tip="Show the plain Compose that produces this render" data-usage-src="/usage/com.example.ProfileCardPreview" title="Show the plain Compose that produces this render">Source</button>
+        <span class="cp-mode-hint" id="cp-mode-hint"></span>
+        <span class="cp-modes-inputs" aria-hidden="true">
+      <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
+<input type="radio" name="cp-mode" value="source" id="cp-source-toggle" tabindex="-1">
+        </span>
+      </div>
+      <div class="cp-viewer-bar">
+        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+        </span>
+        <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
+        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
+      </div>
+
+      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileCardPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
+
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile card"><canvas id="cp-canvas" hidden></canvas><div class="cp-source-panel" id="cp-source-panel" role="region" aria-label="Usage source" hidden></div><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+
+        <div class="cp-controls" id="cp-controls">
+          <!-- No "Appearance" group. Its only ever-visible control was a Background select
+               offering "(default) / Clear (crisp outline)" — which read as a duplicate of the
+               viewer bar's **Transparent** toggle: same word, same apparent job, two places, one
+               of them buried behind a drawer. With that gone the group held nothing but the
+               visually-hidden Theme state below, so an empty collapsible card would have sat at
+               the top of every viewer's panel; the group goes with the control.
+
+               Neither affordance is lost. Transparent still shows a preview's real alpha on the
+               bar, and stripping a preview's *authored* background is still `background=clear` on
+               /render (and the VS Code extension's own override) — the authoring lane, which is
+               where it belongs, rather than the reading one.
+
+               The Theme select stays in the panel, outside any group: it is `aria-hidden` and out
+               of the tab order, but it is the Theme axis's single state holder — viewer.js reads
+               it on every render and Back/Forward hydration writes to it — so it has to remain in
+               the DOM. The visible Theme control is the chip row on the viewer bar. -->
+          <span class="cp-modes-inputs" aria-hidden="true">
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1">
+    <option value="light" selected>Day (Default)</option>
+    <option value="dark">Night (Default)</option>
+  </select>
+</span>
+          <details class="cp-group" data-cp-group="size">
+            <summary>Size</summary>
+            <div class="cp-group-body">
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode">
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details class="cp-group" data-cp-group="locale">
+            <summary>Locale &amp; text</summary>
+            <div class="cp-group-body">
+              <label>Locale
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off">
+                <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
+                     tags) drop down for quick picking, but any valid BCP-47 tag the server
+                     accepts can still be typed in — so this is the OPEN form of the same value
+                     set an author declares with `previewOverrideChoice`, rendered through the
+                     same helper rather than hand-written twice. -->
+                <datalist id="cp-localeTag-list">
+                  <option value="en-XA" label="Accented (pseudo)"></option>
+                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
+                  <option value="ar" label="Arabic (RTL)"></option>
+                  <option value="he" label="Hebrew (RTL)"></option>
+                  <option value="fa" label="Persian (RTL)"></option>
+                  <option value="en-US"></option>
+                  <option value="en-GB"></option>
+                  <option value="de-DE"></option>
+                  <option value="fr-FR"></option>
+                  <option value="es-ES"></option>
+                  <option value="pt-BR"></option>
+                  <option value="ru-RU"></option>
+                  <option value="ja-JP"></option>
+                  <option value="ko-KR"></option>
+                  <option value="zh-CN"></option>
+                  <option value="zh-Hant-TW"></option>
+                  <option value="hi-IN"></option>
+                  <option value="th-TH"></option>
+                </datalist>
+              </label>
+              <label>Font scale: <span id="cp-fontScale-val">default</span>
+                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+              </label>
+            </div>
+          </details>
+                  <details class="cp-group" data-cp-group="overlays">
+          <summary>Overlays</summary>
+          <div class="cp-group-body">
+
+            <div class="cp-overlays">
+  <div class="cp-overlays-head">Overlays (Live Compose)</div>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"> Show touches</label>
+</div>
+          </div>
+        </details>
+
+
+
+          <div class="cp-status" id="cp-status"></div>
+        </div>
+      </div>
+      <!-- Export remains below the workspace; renderer selection is kept beside the preview
+           heading so it is visible before a tall stage. The export bar is a SIBLING of the note
+           column rather than a child: the note is prose and reads better at `.cp-below`'s measure,
+           while the bar has to run the full content width to stay on one line. -->
+      <div class="cp-below">
+
+      </div>
+            <div class="cp-export" aria-label="Export the current view">
+        <span class="cp-export-head" id="cp-export-head">Export</span>
+        <span class="cp-link-group">
+  <span class="cp-link-kind">PNG</span>
+  <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-png"
+    title="Copy the PNG URL of the current view (overrides applied)">Copy link</button>
+  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-png"
+    data-copyimg-ext=".png" title="Copy the PNG itself to the clipboard">Copy PNG</button>
+  <a id="cp-dl-png" class="cp-dl" download title="Save the PNG to a file">Download</a>
+  <input id="cp-url-png" class="cp-url" type="text" readonly tabindex="-1"
+    aria-label="PNG URL">
+</span>
+      </div>
+      <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
+           tapping it dismisses the sheet. Inert on desktop. -->
+      <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <script src="/assets/serve/fixture/url-state.js"></script>
+      <script src="/assets/serve/fixture/bg-toggle.js"></script>
+      <script src="/assets/serve/fixture/viewer-groups.js"></script>
+      <script src="/assets/serve/fixture/viewer-drawers.js"></script>
+      <script src="/assets/serve/fixture/viewer-history.js"></script>
+      <script>(function () {
+  var el = document.getElementById("cp-theme");
+  if (!el) return;
+  // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
+  // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
+  // catalog's Theme choice is the active override the visitor asked to keep while navigating.
+  var root = document.querySelector(".cp-viewer");
+  var pid = (root && root.getAttribute("data-preview-id")) || "";
+  var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
+  // The page's own URL outranks the remembered choice: `?themeProvider=` / `?uiMode=` is there
+  // because someone picked it (or was handed the link), so a bookmarked viewer opens on the
+  // theme it was bookmarked in — including on an explicit __light/__dark preview.
+  var params = new URLSearchParams(location.search);
+  var provider = params.get("themeProvider");
+  var uiMode = params.get("uiMode");
+  var urlChoice = provider ? "theme:" + provider
+    : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
+  var urlOption = null;
+  Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+  if (urlOption) {
+    el.value = urlChoice;
+    el.setAttribute("data-theme-active", "1");
+  }
+  try {
+    var stored = localStorage.getItem("cp-theme:compose-m3");
+    var declared = stored && stored.indexOf("theme:") === 0;
+    var option = null;
+    Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
+    if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+      el.value = stored;
+      el.setAttribute("data-theme-active", "1");
+    }
+  } catch (e) {}
+  // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
+  // uiMode never lands a transparent sticker on a clashing surface. The server seeds
+  // data-bg-theme from the baked variant (or the dark-first default); a light/dark Theme choice
+  // overrides it, and clearing it reverts to that default.
+  var bgDefault = (root && root.getAttribute("data-bg-theme")) || "";
+  function syncBg() {
+    if (!root) return;
+    // Only let the Theme choice drive the stage backing when the control can actually re-render
+    // (daemon or Wasm). On a static bundle the select is disabled but the seeding above may still
+    // have copied a remembered localStorage value into el.value — honoring it would tint the
+    // stage while ServeBundleHost keeps returning the UNCHANGED baked PNG. Keep bgDefault there.
+    var selectedOption = el.options[el.selectedIndex];
+    var chosen = !el.disabled && selectedOption
+      ? selectedOption.getAttribute("data-theme-mode") ||
+        (el.value === "light" || el.value === "dark" ? el.value : "") : "";
+    var m = chosen || bgDefault;
+    if (m) root.setAttribute("data-bg-theme", m);
+    else root.removeAttribute("data-bg-theme");
+  }
+  // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
+  el.addEventListener("change", function () {
+    el.setAttribute("data-theme-active", "1");
+    try { localStorage.setItem("cp-theme:compose-m3", el.value); } catch (e) {}
+    syncBg();
+    // …and the page around the stage, when the Page theme setting says to follow the choice.
+    if (window.cpPageTheme) window.cpPageTheme.follow(el.value);
+  });
+  syncBg();
+})();</script>
+      <script src="/assets/serve/fixture/viewer.js"></script>
+      <script src="/assets/serve/fixture/backend-badge.js"></script>
+        </main>
+        <footer class="cp-site-footer">
+          <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+          <a href="/version">/version</a>
+        </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
+      </body>
+    </html>

@@ -143,6 +143,19 @@ class PlaygroundSeedResolver(
 
   private val cache = ConcurrentHashMap<CacheKey, Entry>()
 
+  /**
+   * One monitor per in-flight key, so a cold key is fetched **once** however many callers ask for
+   * it at the same moment.
+   *
+   * This mattered little while the only caller was the playground page, which one visitor opens
+   * deliberately. The viewer's Source panel changed that: it is one click on a page anyone browsing
+   * a catalog is already on, so a popular preview after a restart or a TTL expiry can have a dozen
+   * viewers arrive together. Without coalescing each one performs its own 10 s-connect / 10 s-read
+   * GitHub GET for the same file — a burst of duplicate work holding IO threads, for a result they
+   * will all share a moment later.
+   */
+  private val inFlight = ConcurrentHashMap<CacheKey, Any>()
+
   fun seed(system: String, previewId: String): PlaygroundSeed? {
     // Resolve FIRST, then consult the cache. The location is an in-memory registry read, and keying
     // on it is what makes a refreshed or republished catalog miss by construction instead of
@@ -154,12 +167,37 @@ class PlaygroundSeedResolver(
           return null
         }
     val key = CacheKey(system, previewId, where)
-    val now = clock()
-    cache[key]
-      ?.takeIf { now - it.readAtMillis < ttlSeconds * 1000 }
-      ?.let {
-        return it.seed
+    cachedSeed(key)?.let {
+      return it
+    }
+    // Single-flight: the first caller for a key fetches, the rest wait on its monitor and then find
+    // the answer in the cache. Re-checked inside the lock because that is the whole point — every
+    // waiter arrives after the fetch it was waiting for has already stored its result.
+    val lock = inFlight.computeIfAbsent(key) { Any() }
+    try {
+      synchronized(lock) {
+        cachedSeed(key)?.let {
+          return it
+        }
+        return fetchSeed(system, previewId, where, key)
       }
+    } finally {
+      inFlight.remove(key, lock)
+    }
+  }
+
+  private fun cachedSeed(key: CacheKey): PlaygroundSeed? {
+    val now = clock()
+    return cache[key]?.takeIf { now - it.readAtMillis < ttlSeconds * 1000 }?.seed
+  }
+
+  private fun fetchSeed(
+    system: String,
+    previewId: String,
+    where: Location,
+    key: CacheKey,
+  ): PlaygroundSeed? {
+    val now = clock()
     val rawUrl =
       ServeUrls.githubRawUrl(where.repo, where.ref, where.module, where.sourceFile)
         ?: run {

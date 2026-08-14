@@ -2107,11 +2107,16 @@ class ServeCommand(args: List<String>) : Command(args) {
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
         playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
-        // Lets `/playground?from=<system>/<previewId>` open a served preview's own Kotlin. Only
-        // wired alongside the lane — with no playground there is nothing to open it in, and the
-        // viewer then renders no link rather than one that leads nowhere.
-        playgroundSourceFetch =
-          playgroundLane?.let { { url: String -> PlaygroundSeedResolver.httpFetch(url) } },
+        // Reads a served preview's Kotlin, for two consumers with different requirements:
+        // `/playground?from=<system>/<previewId>` (needs a playground to open it in) and the
+        // viewer's Source panel (does not — it only shows the code).
+        //
+        // So this is wired unconditionally. It used to hang off `playgroundLane`, which was right
+        // while the playground was the only consumer and became wrong the moment the Source panel
+        // arrived: on a host with no playground the fetcher was null, the resolver with it, and
+        // every viewer silently dropped the Source chip. Whether a *link* to the editor is offered
+        // is decided separately, by `playgroundLinkFor`.
+        playgroundSourceFetch = { url: String -> PlaygroundSeedResolver.httpFetch(url) },
         trustForwardedFor = trustForwardedFor,
         engagementStore = ServeEngagementStore(engagementFile),
         projectHistory = projectHistory,

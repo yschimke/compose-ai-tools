@@ -7600,6 +7600,19 @@ $rows
      * catalog never recorded; the affordance is then omitted rather than offered dead.
      */
     playgroundHref: String? = null,
+    /**
+     * `/usage/<id>` for this preview — the plain-Compose usage code the **Source** chip shows, or
+     * null when this host cannot derive one and the chip is omitted rather than offered dead.
+     *
+     * A URL, not the snippet: the panel fetches it on first press, so a visitor who never opens the
+     * panel costs the host nothing (deriving a snippet is a GitHub read on a cold cache).
+     *
+     * Deliberately independent of [playgroundHref]. Reading the code is useful wherever a catalog
+     * can be browsed; only *running* it needs a host that can compile that catalog, which most of
+     * the public deployment's catalogs have none. So a preview commonly offers Source without
+     * offering the playground, and the panel links onward to the editor only when there is one.
+     */
+    usageHref: String? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
@@ -7931,6 +7944,27 @@ $rows
           "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
       }
+    val usageAvailable = !usageHref.isNullOrBlank()
+    // The **Source chip** — the usage code behind this card, on the same row and for the same
+    // reason the design-spec chip is there rather than inside the renderer combo: that combo is
+    // headed "Switch renderer", and source is not a renderer. It answers a third question again,
+    // beside "which engine drew this?" (the combo) and "what was it specified as?" (the spec chip):
+    // *what do I type to get this?*
+    //
+    // Offered whenever this host can resolve a preview's source at all. It is deliberately NOT
+    // gated on the playground being able to compile the catalog — reading the code is useful on
+    // every host that can browse one, and most of the public deployment's catalogs cannot be
+    // compiled here.
+    val sourceChipHtml =
+      if (!usageAvailable) ""
+      else {
+        val tip = "Show the plain Compose that produces this render"
+        "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip\" " +
+          "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
+          "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\" " +
+          "title=\"${WebEscaping.htmlEscape(tip)}\">Source</button>"
+      }
     val defaultLane = if (enabledRcPlayers.isEmpty()) "png" else "rc:$defaultRcBackend"
     // Rendered only when there is genuinely something to switch *to*: a single-lane preview keeps
     // the chip on its own rather than growing a combo box with one entry in it.
@@ -7987,6 +8021,19 @@ $rows
       }
     // The stage image the Spec lane paints into: a sibling of the snapshot `<img>`, left `hidden`
     // (and src-less) until the lane is entered, so a viewer that never opens it costs no request.
+    // The Source panel: a sibling of the snapshot `<img>` on the stage, left empty and `hidden`
+    // until the chip is pressed. The code is fetched then, from `/usage/<id>` — a preview most
+    // visitors look at without ever opening this, and the snippet costs a GitHub read on a cold
+    // cache, so a page load must not pay for one.
+    //
+    // Server-rendered empty (rather than created by the script) so the panel has a stable place in
+    // the stage and the layout does not jump the first time it is opened — the same reason the
+    // inspection legend is rendered empty.
+    val sourcePanelHtml =
+      if (!usageAvailable) ""
+      else
+        "<div class=\"cp-source-panel\" id=\"cp-source-panel\" role=\"region\" " +
+          "aria-label=\"Usage source\" hidden></div>"
     val specImg =
       if (specRasterUrl == null) ""
       else
@@ -8020,6 +8067,15 @@ $rows
           "<span>Render</span></label></div>" +
           "</div>"
       }
+    // The Source lane's hidden mode radio. It is not a render lane, but it joins the same radio
+    // group as the rest so it inherits every mechanism they get for free: `?mode=source` in the
+    // URL, restore on load, and Back/Forward through the lane. Without it `currentMode()` — which
+    // reads the checked radio — would keep reporting the snapshot while the panel was on the stage.
+    val sourceModeInput =
+      if (!usageAvailable) ""
+      else
+        "<input type=\"radio\" name=\"cp-mode\" value=\"source\" id=\"cp-source-toggle\" " +
+          "tabindex=\"-1\">"
     val specModeInput =
       if (specRasterUrl == null) ""
       else
@@ -8576,6 +8632,7 @@ $rows
           liveToggleHtml,
           laneSelectHtml,
           specChipHtml,
+          sourceChipHtml,
           comparePlayersLink,
           specSelector,
           svgFmtToggle,
@@ -8624,6 +8681,7 @@ $rows
           rcModeInput,
           rcWasmModeInput,
           specModeInput,
+          sourceModeInput,
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
@@ -8690,7 +8748,7 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
