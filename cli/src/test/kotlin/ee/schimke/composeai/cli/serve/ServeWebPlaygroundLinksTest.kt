@@ -60,14 +60,18 @@ class ServeWebPlaygroundLinksTest {
   }
 
   @Test
-  fun `the catalog landing offers a subtle try-in-playground on its summary line`() {
+  fun `the catalog landing offers a try-in-playground action above the catalog`() {
     val html = landing("/playground?catalog=compose-m3&token=t")
     assertTrue(html.contains("try in playground</a>"))
     assertTrue(html.contains("/playground?catalog=compose-m3&amp;token=t"))
-    // Placed in the run of catalog-level actions next to the zip download, not as a button
-    // competing with the grid.
-    val summary = html.substringAfter("download all (.zip)").substringBefore("</p>")
-    assertTrue(summary.contains("try in playground"), "it joins the summary line: $summary")
+    assertTrue(
+      html.indexOf("try in playground") < html.indexOf("id=\"cp-grid\""),
+      "the playground handoff remains in the primary action row",
+    )
+    assertTrue(
+      html.indexOf("download all (.zip)") > html.indexOf("id=\"cp-grid\""),
+      "the bundle download follows the catalog content",
+    )
   }
 
   @Test

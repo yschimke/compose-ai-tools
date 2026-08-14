@@ -3572,7 +3572,18 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       landingThemed.contains("id=\"cp-search\""),
-      "the search box shows alongside the theme toggle on a themed catalog",
+      "the search box shows on a themed catalog",
+    )
+    assertTrue(
+      landingThemed
+        .substringAfter("class=\"cp-catalog-menu\"")
+        .substringBefore("</aside>")
+        .contains("id=\"cp-search\""),
+      "a catalog menu leads with its filter",
+    )
+    assertFalse(
+      landingThemed.contains("id=\"cp-count\""),
+      "the menu filter does not repeat the preview count",
     )
     // The combined filter composes search with theme: on a themed catalog the script still persists
     // the theme choice, so search didn't displace the theme half.
@@ -4364,6 +4375,10 @@ class ServeWebFixtureTest {
         refreshUrl = "/compose-m3/refresh",
       )
     assertTrue(landing.contains("class=\"cp-prov cp-disclosure\""), "the provenance details render")
+    assertTrue(
+      landing.indexOf("class=\"cp-prov cp-disclosure\"") > landing.indexOf("id=\"cp-grid\""),
+      "catalog details follow the catalog content",
+    )
     // Links to the delivery branch and the regenerating workflow.
     assertTrue(
       landing.contains(
