@@ -391,6 +391,7 @@ internal object AndroidPreviewClasspath {
     fontsFailOnFallback: String = "true",
     hostTheme: String = "",
     fixedTime: String = "",
+    linkBufferComposer: String = "false",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -467,6 +468,12 @@ internal object AndroidPreviewClasspath {
       // activity hero showing `TimeText` from producing a different PNG every minute (issue #3239).
       // Forwarded here because the property has to reach the JVM that renders, not the Gradle one.
       "composeai.render.fixedTime" to fixedTime,
+      // Whether this render opts into the Compose runtime's rewritten `SlotTable` (the "link
+      // buffer" composer, `ComposeRuntimeFlags.isLinkBufferComposerEnabled`). Read in the forked
+      // render / daemon JVM by `LinkBufferComposer`, which has to set the flag before the first
+      // composition — so it has to arrive as a launch property, not as something the Gradle JVM
+      // reads. `"false"` by default: an opt-in stays opt-in.
+      "composeai.render.linkBufferComposer" to linkBufferComposer,
     )
 }
 
@@ -676,3 +683,29 @@ internal fun composeAiFixedTime(
     .orElse(project.providers.gradleProperty("composePreview.fixedTime"))
     .let { if (extension != null) it.orElse(extension.fixedTime) else it }
     .orElse("")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.render.linkBufferComposer`
+ * — whether the render opts into the Compose runtime's rewritten `SlotTable` (see
+ * `ee.schimke.composeai.data.render.LinkBufferComposer`). `"true"` or `"false"`.
+ *
+ * Sourced from `-Dcomposeai.render.linkBufferComposer` first (the documented flag, matching the
+ * renderer), then `-PcomposePreview.linkBufferComposer`, then the module's
+ * `composePreview.linkBufferComposer` DSL value (the durable declaration — the two command-line
+ * forms are per-run overrides), else `"false"`: an opt-in stays opt-in. Mirrors
+ * [composeAiFixedTime] / [composeAiHostTheme], except that this one **is** forwarded to the Desktop
+ * lane as well — the flag lives in the Compose runtime both backends share, so unlike the
+ * Robolectric-shadowed clock there is nothing platform-specific for it to depend on.
+ */
+internal fun composeAiLinkBufferComposer(
+  project: Project,
+  extension: PreviewExtension? = null,
+): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.render.linkBufferComposer")
+    .orElse(project.providers.gradleProperty("composePreview.linkBufferComposer"))
+    .let { provider ->
+      if (extension != null) provider.orElse(extension.linkBufferComposer.map { it.toString() })
+      else provider
+    }
+    .orElse("false")

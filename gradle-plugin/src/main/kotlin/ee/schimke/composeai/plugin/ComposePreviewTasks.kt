@@ -448,6 +448,7 @@ internal object ComposePreviewTasks {
         previewRowExcludes.convention(previewRowExcludeProperty(project))
         permutations.convention(previewPermutationsProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
+        linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
@@ -786,6 +787,11 @@ internal object ComposePreviewTasks {
     // unless the consumer names one; only a library module (no `<application android:theme>` to
     // inherit) needs to.
     val daemonHostTheme = composeAiHostTheme(project, extension)
+    // Unlike `fixedTime` below, this one IS forwarded to the Desktop lane: the rewritten
+    // `SlotTable`
+    // is a flag on the Compose runtime both backends share, with no Robolectric-shaped interception
+    // point for it to depend on.
+    val daemonLinkBufferComposer = composeAiLinkBufferComposer(project, extension)
     val daemonCheapSignalFiles =
       collectDesktopCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) {
         it.absolutePath
@@ -913,6 +919,7 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
       systemProperties.put("composeai.svg.background", daemonSvgBackground)
       systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
+      systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
       // NOT forwarded here: `composeai.render.fixedTime` is Android-only. The pinned clock works by
       // shadowing Wear's `currentTimeMillis()` under Robolectric, and this is the Desktop / CMP
       // daemon — no Robolectric, no instrumentation, no interception point for a plain-JVM

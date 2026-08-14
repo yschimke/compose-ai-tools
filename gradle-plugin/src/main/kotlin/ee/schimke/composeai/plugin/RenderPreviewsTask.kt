@@ -221,6 +221,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val deviceFrameDevice: Property<String>
 
+  /**
+   * `"true"` to render with the Compose runtime's rewritten `SlotTable` (the "link buffer"
+   * composer), forwarded to the desktop renderer JVM as `composeai.render.linkBufferComposer`. See
+   * [composeAiLinkBufferComposer] for the resolver shared with the Android Test task and both
+   * daemons, and `ee.schimke.composeai.data.render.LinkBufferComposer` for what the renderer does
+   * with it. `@Input` so flipping the composer re-renders instead of reporting UP-TO-DATE against
+   * PNGs drawn by the other one — which is the entire point of the flag.
+   */
+  @get:Input abstract val linkBufferComposer: Property<String>
+
   @get:Classpath abstract val renderClasspath: ConfigurableFileCollection
 
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
@@ -653,6 +663,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // composite the render into a device-art bezel (reading the cache the task action filled).
       // Empty string disables it (DeviceFrameConfig treats blank as "off").
       systemProperty("composeai.deviceframe.device", deviceFrameDevice.get())
+      // The rewritten-SlotTable opt-in. Has to reach the renderer as a launch property because the
+      // runtime latches the flag at the first composition — see `LinkBufferComposer`.
+      systemProperty("composeai.render.linkBufferComposer", linkBufferComposer.get())
       // Forward the `@PreviewParameter` row exclusions so `PreviewRowFilter` can drop fan-out
       // members
       // by label — the rows don't exist until the subprocess has enumerated the provider, so this
@@ -797,6 +810,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     add("-Dapple.awt.UIElement=true")
     add("-Dcomposeai.displayfilter.filters=${displayFilterFilters.get()}")
     add("-Dcomposeai.deviceframe.device=${deviceFrameDevice.get()}")
+    // A pooled worker composes on a warm JVM, so the opt-in has to be on its command line: by the
+    // time a render request arrives the worker may already have latched the runtime's default.
+    add("-Dcomposeai.render.linkBufferComposer=${linkBufferComposer.get()}")
     if (deviceFrameDevice.get().isNotBlank()) {
       add("-Dcomposeai.deviceframe.cacheDir=${DeviceArtPrefetch.defaultCacheDir().absolutePath}")
     }

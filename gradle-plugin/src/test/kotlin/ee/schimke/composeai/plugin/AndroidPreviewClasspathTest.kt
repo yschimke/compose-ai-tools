@@ -244,6 +244,35 @@ class AndroidPreviewClasspathTest {
       .containsEntry("composeai.render.fixedTime", "")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the rewritten SlotTable opt-in into the render jvm`() {
+    // `LinkBufferComposer` reads `composeai.render.linkBufferComposer` inside the render /
+    // Robolectric sandbox and has to set the runtime flag before the first composition. If this map
+    // doesn't carry it, `-PcomposePreview.linkBufferComposer=true` renders a full catalog on the
+    // OLD composer while reporting that it tested the new one — the one failure mode a testing
+    // knob must not have.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          linkBufferComposer = "true",
+        )
+      )
+      .containsEntry("composeai.render.linkBufferComposer", "true")
+    // An opt-in stays opt-in: nothing asked for, the runtime keeps its own default.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.render.linkBufferComposer", "false")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }

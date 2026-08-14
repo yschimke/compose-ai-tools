@@ -22,6 +22,7 @@ import ee.schimke.composeai.daemon.DeviceFrameConfig
 import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.preview.svg.SvgPreview
@@ -104,6 +105,12 @@ import org.jetbrains.skia.EncodedImageFormat
  * default).
  */
 fun main(args: Array<String>) {
+  // Before anything composes — including before the pooled worker's *first* request draws a frame,
+  // since a worker calls this same `main()` per capture and the runtime latches the flag at the
+  // first composition. Idempotent, so every subsequent pooled capture re-applies the same value for
+  // free. Unset (the default) makes this a single `getProperty` and no notice at all.
+  LinkBufferComposer.applyAndDescribe()?.let(System.err::println)
+
   if (args.size < 8) {
     System.err.println(
       "Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit] [localeTag] [scrollMode] [scrollAxis] [scrollMaxScrollPx] [scrollFrameIntervalMs]"
