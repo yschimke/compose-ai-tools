@@ -296,33 +296,6 @@ class ServeHttpServer(
    * a preview id, and everything that forms the fetch URL comes from the catalog metadata behind
    * them. Null when no fetcher was supplied, or the lane isn't wired at all.
    */
-  /**
-   * The last source location resolved for a `(system, previewId)`, so a **suspended** catalog can
-   * still answer for a preview someone has already opened.
-   *
-   * A session's metadata lives on its `ServeHost`, and `peekHost` returns null once the daemon has
-   * idled out — deliberately, since peeking must not resume anything. But the viewer page takes a
-   * lease, so it resumes the session and renders the Source chip; the panel's fetch arrives later
-   * and unleased, and found nothing. The chip worked and its panel 404'd, on exactly the catalogs
-   * that idle out — which is every quiet one on a shared host.
-   *
-   * Three rules keep it from becoming a second, disagreeing source of truth:
-   * - **A resident host is authoritative, both ways.** Its answer is recorded; its *refusal* drops
-   *   the entry, so a catalog refreshed with a preview removed 404s rather than serving the
-   *   publication before it.
-   * - **It is primed from the leased viewer render**, not lazily on first use — that is what makes
-   *   the first Source click after an idle-out work, and it re-primes on every page load, so the
-   *   window in which a republished catalog could be answered from a stale entry is one that nobody
-   *   can click through.
-   * - **A retired session drops its entries**, so a withdrawn catalog stops answering here as it
-   *   already has everywhere else.
-   *
-   * Remembering only what has actually been resolved keeps it small and self-targeting: an entry
-   * exists precisely because somebody opened that preview, which is who asks again.
-   */
-  private val lastKnownSourceLocation =
-    ConcurrentHashMap<Pair<String, String>, PlaygroundSeedResolver.Location>()
-
   private val playgroundSeeds: PlaygroundSeedResolver? = playgroundSourceFetch
   // Deliberately NOT gated on `playgroundService`. The resolver reads and cleans a preview's
   // source, which the viewer's Source panel wants on every host that can browse a catalog —
@@ -341,23 +314,17 @@ class ServeHttpServer(
           // metadata cleared — has to answer "no". Falling through to a remembered location there
           // would serve the previous publication's source instead of a 404, so its negative
           // answer drops the stale entry too.
-          host != null ->
-            sourceLocationOf(host, previewId).also {
-              if (it != null) rememberSourceLocation(system, previewId, it)
-              else lastKnownSourceLocation.remove(system to previewId)
-            }
-          // Suspended, but still a session this server serves: answer from what a live host last
-          // said. Primed by the viewer render (see handleViewer), so the FIRST Source click after
-          // an idle-out is covered too — the panel cannot be reached without loading the viewer
-          // page that primes it.
-          sessions.isKnownSession(system) -> lastKnownSourceLocation[system to previewId]
+          host != null -> sourceLocationOf(host, previewId)
+          // Suspended, but still a session this server serves: answer from the snapshot taken as
+          // it was suspended. Taken from the host being suspended, so a catalog refreshed and then
+          // idled out snapshots the REPLACEMENT — the case a lazily-primed map got wrong, since a
+          // stale entry could answer a tab that loaded before the refresh.
+          sessions.isKnownSession(system) ->
+            catalogMetaSeen[system]?.sourceLocations?.get(previewId)
           // Retired: the catalog is gone and every other session-backed route for it 404s. A
           // remembered location would keep answering — and keep re-fetching the old repository
           // once the seed's TTL lapsed — long after the catalog was withdrawn.
-          else -> {
-            lastKnownSourceLocation.remove(system to previewId)
-            null
-          }
+          else -> null
         }
       },
       fetch = fetch,
@@ -383,23 +350,6 @@ class ServeHttpServer(
       // resolver falls back to whole-file seeding for.
       bodyLine = preview.bodyLine,
     )
-  }
-
-  private fun rememberSourceLocation(
-    system: String,
-    previewId: String,
-    location: PlaygroundSeedResolver.Location,
-  ) {
-    val key = system to previewId
-    // An existing key is refreshed even at the cap. The cap bounds how MANY previews are
-    // remembered, not how fresh each one is — refusing to overwrite is how a republished catalog
-    // keeps answering with its previous ref once it suspends.
-    if (
-      lastKnownSourceLocation.containsKey(key) ||
-        lastKnownSourceLocation.size < MAX_REMEMBERED_SOURCE_LOCATIONS
-    ) {
-      lastKnownSourceLocation[key] = location
-    }
   }
 
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
@@ -3357,6 +3307,17 @@ class ServeHttpServer(
 
   /** A resident-time snapshot of one catalog's status facts. See [catalogMetaSeen]. */
   private data class CatalogMeta(
+    /**
+     * Where each preview's source lives, so `/usage/<id>` can answer for a **suspended** catalog.
+     *
+     * Carried in this snapshot rather than in a map of its own precisely because that map turned
+     * out to need every property this one already has: written on suspension, refreshed on every
+     * resident read, replaced wholesale when a refresh re-registers the system, and dropped with
+     * the session. `peekHost` says as much in its own KDoc — a caller that needs a session's facts
+     * keeps a last-known snapshot via the suspend listener rather than reading absence as a
+     * verdict.
+     */
+    val sourceLocations: Map<String, PlaygroundSeedResolver.Location>,
     val title: String?,
     val subtitle: String?,
     val trust: String?,
@@ -3422,8 +3383,25 @@ class ServeHttpServer(
     val bundle = catalogBundleHost(host) ?: return
     val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     val heroCrop = heroId?.let { bundle.contentCrop(it) }
+    val catalogSource = bundle.catalogSource
     catalogMetaSeen[id] =
       CatalogMeta(
+        sourceLocations =
+          if (catalogSource == null) emptyMap()
+          else
+            host.previews
+              .mapNotNull { preview ->
+                val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                preview.id to
+                  PlaygroundSeedResolver.Location(
+                    repo = catalogSource.repo,
+                    ref = catalogSource.ref,
+                    module = catalogSource.module,
+                    sourceFile = file,
+                    bodyLine = preview.bodyLine,
+                  )
+              }
+              .toMap(),
         title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
         subtitle = bundle.subtitle,
         trust = BundleVerifier.summary(bundle.trust),
@@ -4335,16 +4313,6 @@ class ServeHttpServer(
       if (preview == null) {
         respondNotFoundHtml("That preview does not exist in this catalog.")
         return@withLeasedSession
-      }
-      // Prime the remembered source location while a LEASED host is in hand.
-      //
-      // This is the page that renders the Source chip, and it is the only way to reach the panel —
-      // so priming here is what makes the *first* click work after the catalog has idled out.
-      // Recording it lazily inside the resolver only covered the second click: a viewer rendered
-      // and then left in a background tab past the idle timeout would suspend the session, and the
-      // first `/usage` request would find neither a live host nor an entry.
-      sourceLocationOf(renderHost, preview.id)?.let {
-        rememberSourceLocation(sessionId, preview.id, it)
       }
       // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.
       // ServeUrls.wasmAppSrc strips the variant to the component slug the Wasm registry keys by,
@@ -5973,13 +5941,6 @@ class ServeHttpServer(
      */
     internal fun prebakedImageCacheControl(isPublic: Boolean): String =
       if (isPublic) HERO_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
-
-    /**
-     * Cap on [lastKnownSourceLocation]. Entries are a handful of short strings and only exist for
-     * previews somebody has actually opened, so this is far above any real browsing session while
-     * still bounding a long-running public host.
-     */
-    private const val MAX_REMEMBERED_SOURCE_LOCATIONS = 4096
 
     private val JSON = Json { encodeDefaults = true }
 
