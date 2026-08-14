@@ -30,7 +30,8 @@ import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
  * classloader only for an actual compile). That decision has a measurable cost: nearly every defect
  * found by the snippet corpus's review rounds was *parser-shaped* — named-argument binding, a
  * receiver chain mistaken for a package qualifier, a trailing-lambda call with no parentheses, a
- * qualified call that no pass could see. A parse gets all four right for nothing.
+ * qualified call that no pass could see. A parse settles those outright — and, as the argument-
+ * binding case below shows, *narrows* rather than removes the rules a catalog still has to declare.
  *
  * Three questions, and this answers all three before anything is committed to:
  * 1. Does **parse-only** PSI work with no analysis, no classpath, no resolution?
@@ -178,12 +179,16 @@ class PsiParseSpikeTest {
       val calls = ktFile.collectDescendantsOfType<KtCallExpression>()
       val byName = calls.groupBy { it.calleeExpression?.text }
 
-      // 1. A **named** argument binds by its own label, in any order, with no rule declaring the
-      //    callee's parameters. A **positional** one does not, and cannot: parse-only PSI has no
-      //    resolution, so nothing in `previewOverrideString("subtitle", "Basket")` says which
-      //    position is `default`. That still needs the callee's signature — the rule's `params`
-      //    list, or a resolved call. Asserting both halves, because the first version of this
-      //    spike checked only the labelled call and concluded `params` was unnecessary.
+      // 1. What a parse gives is the argument's own **label**, and nothing more.
+      //
+      //    That is not the same as retiring `UsageRules.Scaffold.params`, which this spike claimed
+      //    twice before getting it right. Two separate reasons it survives:
+      //      - a *positional* call carries no label at all, so only the callee's signature says
+      //        which slot is `default` — parse-only PSI has no resolution to supply it;
+      //      - a *labelled* call still has to reach an indexed template (`plain = "$1"`), and the
+      //        label `default` does not say it is index 1. `params` is that name→index map.
+      //    A parse only retires `params` if the rule vocabulary also moves from `$1` to a named
+      //    placeholder like `${default}`. Worth knowing before anyone bets a redesign on it.
       val overrides = byName["previewOverrideString"].orEmpty()
       val labelled = overrides.filter { call ->
         call.valueArguments.any { (it as? KtValueArgument)?.getArgumentName() != null }
@@ -234,21 +239,29 @@ class PsiParseSpikeTest {
         "qualified trailing-lambda: ${qualifiedTrailing.size}",
       )
 
-      // 3. A qualified call knows its own receiver text, so package vs receiver chain is a
-      //    structural question rather than a regex guess.
+      // 3. A qualified call yields its receiver as a whole expression, so the package allow-list
+      //    becomes a lookup on an exact receiver rather than a regex over the surrounding text.
+      //
+      //    The classification is run here, not just the extraction: proving the receiver *text* is
+      //    reachable would pass even for a cleaner that went on to make the same wrong call, since
+      //    both forms are the same `KtDotQualifiedExpression` shape. What distinguishes them is the
+      //    allow-list, and the point is that PSI hands it a clean key to look up.
+      val scaffoldPackages = setOf("ee.schimke.composeai.overrides")
       val qualifiers =
         ktFile.collectDescendantsOfType<KtDotQualifiedExpression>().mapNotNull { dq ->
           val callee = (dq.selectorExpression as? KtCallExpression)?.calleeExpression?.text
           if (callee == null) null else dq.receiverExpression.text to callee
         }
-      println("qualified calls (receiver → callee): $qualifiers")
+      val (packageQualified, receiverChains) = qualifiers.partition { it.first in scaffoldPackages }
+      println("package-qualified (unqualify): $packageQualified")
+      println("receiver chains (leave alone): $receiverChains")
       assertTrue(
-        qualifiers.any { it.first == "ee.schimke.composeai.overrides" },
-        "package-qualified call not distinguishable: $qualifiers",
+        packageQualified.map { it.second } == listOf("previewOverrideString"),
+        "allow-list did not classify the package-qualified call: $packageQualified",
       )
       assertTrue(
-        qualifiers.any { it.first == "state.metrics" },
-        "receiver chain not distinguishable: $qualifiers",
+        receiverChains.map { it.first } == listOf("state.metrics"),
+        "allow-list wrongly classified a receiver chain: $receiverChains",
       )
 
       // 4. Destructuring — the `toggleable` / `editable` gap the rules file still records as open.
@@ -298,7 +311,7 @@ class PsiParseSpikeTest {
         jars.map { it.toURI().toURL() }.toTypedArray(),
         ClassLoader.getPlatformClassLoader(),
       )
-    var text = ""
+    var callees = emptyList<String>()
     val elapsed = measureTime {
       val disposer = loader.loadClass("org.jetbrains.kotlin.com.intellij.openapi.util.Disposer")
       val disposable =
@@ -347,7 +360,26 @@ class PsiParseSpikeTest {
           CharSequence::class.java,
         )
       val psi = createFile.invoke(factory, "Shapes.kt", fileType, FIXTURE)
-      text = psi.javaClass.getMethod("getText").invoke(psi) as String
+
+      // Walk the tree, don't read `getText()`. PSI is lazy and `getText()` can hand back the
+      // original view-provider buffer without a tree ever being built — so a text assertion here
+      // would pass while proving nothing about structural PSI through this loader, and would not
+      // have measured a parse either. Exactly the vacuous-check shape this spike already had to
+      // fix once, in the destructuring assertion.
+      val treeUtil = loader.loadClass("org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil")
+      val findChildren =
+        treeUtil.getMethod(
+          "findChildrenOfType",
+          loader.loadClass("org.jetbrains.kotlin.com.intellij.psi.PsiElement"),
+          Class::class.java,
+        )
+      val callClass = loader.loadClass("org.jetbrains.kotlin.psi.KtCallExpression")
+      @Suppress("UNCHECKED_CAST")
+      val callNodes = findChildren.invoke(null, psi, callClass) as Collection<Any>
+      callees = callNodes.map { call ->
+        val callee = callClass.getMethod("getCalleeExpression").invoke(call)
+        callee?.javaClass?.getMethod("getText")?.invoke(callee) as? String ?: "?"
+      }
 
       disposer
         .getMethod(
@@ -357,8 +389,14 @@ class PsiParseSpikeTest {
         .invoke(null, disposable)
     }
 
-    println("lib-bta isolated load + parse: $elapsed over ${jars.size} jars")
-    assertTrue(text.contains("previewOverrideString"), "parsed nothing through the isolated loader")
+    println(
+      "lib-bta isolated load + parse: $elapsed over ${jars.size} jars; " +
+        "${callees.size} call nodes walked: ${callees.distinct()}"
+    )
+    assertTrue(
+      callees.containsAll(listOf("previewOverrideString", "counted", "toggleable")),
+      "no Kotlin AST through the isolated loader; callees were $callees",
+    )
   }
 
   private companion object {

@@ -54,9 +54,11 @@ On a fixture holding every shape the review rounds broke on, the tree separates 
   its own label, in any order. **A positional call still needs the callee's parameter list** — see
   the correction below.
 - `counted { }` and `counted("label")` are both call expressions.
-- `ee.schimke.composeai.overrides.previewOverrideString(…)` and `state.metrics.counted { }` are both
-  `KtDotQualifiedExpression`, and each knows its own receiver text — so package vs receiver chain
-  stops being a regex guess and becomes a lookup.
+- `ee.schimke.composeai.overrides.previewOverrideString(…)` and `state.metrics.counted { }` are the
+  *same* `KtDotQualifiedExpression` shape — so the parse does not classify them, and the spike runs
+  the `scaffoldPackages` allow-list over the extracted receivers to show which one it unqualifies
+  and which it leaves alone. What the parse buys is a clean whole-expression key to look up, in
+  place of a regex over surrounding text that guessed from the shape and got it wrong.
 - `val (checked, onCheckedChange) = toggleable(…)` is a destructuring declaration, which is what the
   `$known-gaps` entry in `compose-usage.json` needs.
 
@@ -77,15 +79,21 @@ than the reflection sprawl this spike uses to prove the route.
 
 ## Correction: a parse does not remove the `params` list
 
-The first version of this note claimed named-argument binding worked "with no `params` list to
-declare". That is only true of arguments that *carry* a label. Parse-only PSI has no resolution, so
-in `previewOverrideString("subtitle", "Basket")` nothing in the syntax says which position is
-`default` — that still requires the callee's signature, which is exactly what a rule's `params` list
-supplies. The spike now asserts both halves: one labelled call binding by name, and two positional
-calls carrying no labels at all.
+This note got the same claim wrong twice, so here it is stated carefully.
 
-So a parse **narrows** what `params` is for (labels stop needing it) without retiring it. The
-argument for parsing rests on the other four shapes, which it settles outright.
+What a parse gives is the argument's own **label** — nothing more. `params` survives for two
+independent reasons:
+
+- A **positional** call carries no label at all, so only the callee's signature says which slot is
+  `default`. Parse-only PSI has no resolution to supply it.
+- A **labelled** call still has to reach an *indexed* template (`plain = "$1"`), and the label
+  `default` does not say it is index 1. `params` is precisely that name→index map.
+
+So a parse retires `params` only if the rule vocabulary *also* moves from `$1` to a named
+placeholder like `${default}` — a separate change to the rules format, not a free consequence of
+parsing. Worth knowing before anyone bets a redesign on it.
+
+The argument for parsing rests on the other four shapes, which it settles outright.
 
 ## Two caveats, both mine
 
