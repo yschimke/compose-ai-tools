@@ -217,23 +217,7 @@ object PreviewResultBuilder {
     templateOutput: String,
     siblingOutput: String,
     candidateOutput: String,
-  ): Boolean {
-    if (siblingOutput.isEmpty()) return false
-    val siblingDir = siblingOutput.substringBeforeLast('/', "")
-    val candidateDir = candidateOutput.substringBeforeLast('/', "")
-    if (siblingDir != candidateDir) return false
-    val templateStem = templateOutput.substringAfterLast('/').substringBeforeLast('.', "")
-    val siblingLeaf = siblingOutput.substringAfterLast('/')
-    val candidateLeaf = candidateOutput.substringAfterLast('/')
-    val siblingDot = siblingLeaf.lastIndexOf('.')
-    val candidateDot = candidateLeaf.lastIndexOf('.')
-    if (siblingDot <= 0 || candidateDot <= 0) return false
-    val siblingStem = siblingLeaf.substring(0, siblingDot)
-    if (siblingStem.length <= templateStem.length) return false
-    val siblingExt = siblingLeaf.substring(siblingDot)
-    if (candidateLeaf.substring(candidateDot) != siblingExt) return false
-    return candidateLeaf.startsWith(siblingStem + "_")
-  }
+  ): Boolean = parameterFanoutOwnedBySibling(templateOutput, siblingOutput, candidateOutput)
 
   private data class ExpandedCapture(val capture: Capture, val parameterLabel: String? = null)
 
@@ -266,4 +250,45 @@ object PreviewResultBuilder {
       else -> sa.compareTo(sb)
     }
   }
+}
+
+/**
+ * Whether a `@PreviewParameter` fan-out candidate belongs to a **more specific sibling** template
+ * rather than to [templateOutput].
+ *
+ * Fan-out files are found by globbing `<stem>_*` beside the template, because only the provider
+ * knows its values — and that glob is ambiguous whenever one preview's template is a prefix of
+ * another's. With templates `Foo.png` and `Foo_Dark.png` in one directory, `Foo_Dark_Alice.png` is
+ * `Foo_Dark`'s row, not `Foo`'s, even though it matches `Foo_`. Attributing it to `Foo` would show
+ * one preview's exception under another preview's name.
+ *
+ * The rule: a sibling owns the candidate when it lives in the same directory, shares its extension,
+ * has a *longer* stem than the template (so it is the more specific match), and the candidate's
+ * leaf begins with that sibling's stem plus `_`.
+ *
+ * Shared rather than duplicated: [PreviewResultBuilder] applies it when expanding fan-out captures
+ * from files that exist, and the CLI's missing-render resolver applies it when attributing fan-out
+ * `.error.json` sidecars. Two copies of this rule would drift, and a drift means one preview's
+ * failure reported under another's name.
+ */
+fun parameterFanoutOwnedBySibling(
+  templateOutput: String,
+  siblingOutput: String,
+  candidateOutput: String,
+): Boolean {
+  if (siblingOutput.isEmpty()) return false
+  val siblingDir = siblingOutput.substringBeforeLast('/', "")
+  val candidateDir = candidateOutput.substringBeforeLast('/', "")
+  if (siblingDir != candidateDir) return false
+  val templateStem = templateOutput.substringAfterLast('/').substringBeforeLast('.', "")
+  val siblingLeaf = siblingOutput.substringAfterLast('/')
+  val candidateLeaf = candidateOutput.substringAfterLast('/')
+  val siblingDot = siblingLeaf.lastIndexOf('.')
+  val candidateDot = candidateLeaf.lastIndexOf('.')
+  if (siblingDot <= 0 || candidateDot <= 0) return false
+  val siblingStem = siblingLeaf.substring(0, siblingDot)
+  if (siblingStem.length <= templateStem.length) return false
+  val siblingExt = siblingLeaf.substring(siblingDot)
+  if (candidateLeaf.substring(candidateDot) != siblingExt) return false
+  return candidateLeaf.startsWith(siblingStem + "_")
 }
