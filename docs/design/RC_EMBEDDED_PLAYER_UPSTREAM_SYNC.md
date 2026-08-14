@@ -189,9 +189,17 @@ stay `Unspecified` while everything else rides the ambient style (#3667 — a fr
 re-measured every string in every document and moved the AppCard fixture by 3 px). Upstream's
 `BasicText` rewrite constructs a fresh `TextStyle` and has no ambient style at all. Options:
 
-- re-apply our delta on top of `BasicText` by seeding the style from `LocalTextStyle.current`
-  (keeps our behaviour, keeps upstream's material3 decoupling); or
-- keep material3 `Text` as a local delta (a bigger, more annoying divergence).
+- re-apply our delta on top of `BasicText`, seeding the style from `LocalTextStyle.current` — but
+  note this does **not** buy upstream's material3 decoupling: the symbol we read is
+  `androidx.compose.material3.LocalTextStyle` (`RcPlayerTextLayout.kt:21`), foundation has no
+  ambient text style, and `BasicText`'s `style` parameter defaults to `TextStyle.Default`. So this
+  option keeps `implementation(libs.compose.material3)` (`build.gradle.kts:137`) and differs from
+  today only in which composable draws;
+- give the player its own style input — a composition local owned by this module, which the host
+  seeds from whatever it uses — which is the only option that actually drops material3 while
+  keeping ambient-style behaviour; or
+- keep material3 `Text` as a local delta (a bigger, more annoying divergence); or
+- accept losing the ambient style, which is upstream's behaviour and re-opens #3667.
 
 Either way this is **rendering-affecting on every document with text** — it needs an `rc-compare`
 render and before/after evidence, not a compile.
@@ -260,7 +268,19 @@ in place. It does not help the jvm lane, whose text seam
 
 ### 3.7 Re-apply the seams — expect real conflicts in three files
 
-The 11 added files are mechanical to re-extract, but three landing zones moved under them:
+**Nine** of the 11 added files are splits or ports with an upstream body to re-extract. The other
+two are handwritten and have no upstream counterpart at all, so they are retained (or replaced)
+rather than re-extracted — and they are the two most easily lost in a mechanical refresh, because
+nothing in a `diff -r` points at them:
+
+- **`RemoteImageSupport.kt`** — retain. Without it, a document carrying a URL- or file-encoded
+  bitmap throws inside `inflateFromBuffer` and fails to parse *entirely*. Re-check its call sites
+  after the refresh too: it has to run before the bytes are parsed, and two of the parse sites are
+  constructors.
+- **`GmsFontProviderCertificates.kt`** — retain or replace, per §3.6; upstream's new
+  `HasFontCerts`/`fontCertsResId` route changes the shape but not the need.
+
+Of the nine, three landing zones moved under them:
 
 - **`RcPlayerDispatch.kt`** — our extraction of the component dispatch collides head-on with
   upstream's `RcPlayerComponent` rewrite (the `drawWithContent` block is gone from there and now
@@ -314,10 +334,10 @@ vendoring is expiring:
   single change; there is no intermediate state where we take the new alpha *and* keep the patched
   sources. (Renaming the vendored package would also break the collision, at the cost of the
   verbatim-snapshot property that makes a refresh a plain `diff -r`. Not worth it.)
-- **Migrating the Android lane to the artifact is gated on six fixes landing upstream.** A binary
+- **Migrating the Android lane to the artifact is gated on eight items.** A binary
   cannot be patched, and keeping the patches in the jvm snapshot does nothing for Android — so
   switching while any of these is still ours regresses the Android lane to upstream's pixels. The
-  complete list, which is also the filing list (§3.1, §3.2, §3.8):
+  first six must land upstream; they are also the filing list (§3.1, §3.2, §3.8):
   1. rounded-clip radius normalisation (§3.1)
   2. rounded-clip ordering vs. `DrawContent` (§3.1)
   3. the ambient-`LocalTextStyle` text behaviour (§3.2) — *the one most easily forgotten, because
@@ -326,12 +346,25 @@ vendoring is expiring:
   5. animated-expression-chain routing (§3.8)
   6. `ID_CONTINUOUS_SEC` in the float resolver (§3.8)
 
+  Two further gate items are **our** work rather than upstream's, and are just as blocking:
+
+  7. **A host-supplied `typefaceResolver`.** Upstream's default resolver no longer handles
+     `google:` at all and `resolveFontFamily` no-ops the downloadable path at `fontCertsResId == 0`
+     (§3.6). The patched resolver cannot ride along in a binary, so without wiring one through the
+     new `typefaceResolver` parameter, every downloadable-font document silently falls back to
+     Roboto after the switch — a regression that renders *successfully* and so will not announce
+     itself.
+  8. **`RemoteImageSupport`'s parse flags** must still be set by the host before parsing (§3.7);
+     they live outside the player, so this survives the migration but must be re-verified at the
+     new call sites.
+
   The six `CoreText` reflection fields are a *feature* addition rather than a fix; they can ride
   along or stay ours, and they do not gate the migration.
 - **The jvm/CMP lane still needs sources**, so `rc-embedded-player-jvm` keeps a vendored snapshot
   alive regardless — the seams cannot be applied to a binary. A plausible end state is: Android lane
   on the artifact, jvm lane on a snapshot carrying only the seams.
-- **File all six now**, so the gate opens by itself rather than on our schedule.
+- **File the six upstream ones now**, so that half of the gate opens by itself rather than on our
+  schedule. Items 7 and 8 are ours whenever we choose to do them.
 
 ---
 
