@@ -2358,6 +2358,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ShapeMorph_Dark-bbb7ab23.a11y.png",
+      "cleanBasename": "ShapeMorph_Dark-bbb7ab23.png",
+      "findings": [],
+      "functionName": "ShapeMorph",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Dark",
+      "rendersDir": "design-catalog-m3",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogShapes.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SliderMid_Dark-24bfe6c2.a11y.png",
       "cleanBasename": "SliderMid_Dark-24bfe6c2.png",
       "findings": [],

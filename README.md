@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 309 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 310 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1186,6 +1186,12 @@ _No findings._
 ### `SegmentedToggle`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SegmentedToggle_Dark-a426966f.a11y.png" width="400" />
+
+_No findings._
+
+### `ShapeMorph`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/ShapeMorph_Dark-bbb7ab23.a11y.png" width="400" />
 
 _No findings._
 
