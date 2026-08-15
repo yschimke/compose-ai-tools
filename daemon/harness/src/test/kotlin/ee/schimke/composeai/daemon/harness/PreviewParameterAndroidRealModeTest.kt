@@ -119,6 +119,108 @@ class PreviewParameterAndroidRealModeTest {
   }
 
   /**
+   * Issue #3749 — `preview/rows` end to end on Android, where the answer can only come from
+   * **inside** the Robolectric sandbox: the provider class lives on the slot's child classloader,
+   * and provider values routinely touch Android APIs that are only real in there. So unlike the
+   * desktop twin, this exercises a real request/reply round-trip across the sandbox boundary
+   * (`RenderRequest.ParameterRows` out, a `java.util.List<String>` of labels back — the only shape
+   * that crosses that boundary intact).
+   *
+   * Deliberately the **first** call after the handshake, with no warm-up render: `start()` boots
+   * slot 0 eagerly, so a client that enumerates before it renders anything — which is what a viewer
+   * listing rows would do — must not hang waiting for a sandbox that only wakes on a render.
+   *
+   * The row ids are then fed straight back into `renderNow` and checked at the pixel level, so a
+   * disagreement between the enumerating side and the rendering side about how a row is spelled
+   * fails here rather than shipping as "the viewer lists four states and shows one".
+   */
+  @Test
+  fun `preview rows enumerates inside the sandbox and the ids it returns render`() {
+    Assume.assumeTrue(
+      "Skipping PreviewParameterAndroidRealModeTest — set -Pharness.host=real to enable.",
+      HarnessTestSupport.harnessHost() == "real",
+    )
+    Assume.assumeTrue(
+      "Skipping PreviewParameterAndroidRealModeTest — android variant; set -Ptarget=android.",
+      HarnessTestSupport.harnessTarget() == "android",
+    )
+
+    val paths =
+      realAndroidModeScenario(
+        name = "preview-parameter-rows-android",
+        previews =
+          listOf(
+            RealModePreview(
+              id = "tinted-square",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "ThemedTintedSquare",
+              previewParameterProvider = "ee.schimke.composeai.daemon.SquareTintProvider",
+            ),
+            RealModePreview(
+              id = "plain-square",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+            ),
+          ),
+      )
+
+    val client = HarnessClient.start(paths.launcher)
+    try {
+      assertEquals(2, client.initialize().protocolVersion)
+      client.sendInitialized()
+
+      val rows = client.previewRows("tinted-square")
+      assertEquals("tinted-square", rows.previewId)
+      assertEquals(
+        "SquareTintProvider yields exactly two values; got ${rows.rows}",
+        2,
+        rows.rows.size,
+      )
+      assertEquals(listOf(0, 1), rows.rows.map { it.index })
+      assertEquals(rows.rows.map { "tinted-square_${it.label}" }, rows.rows.map { it.id })
+
+      // The gate: no provider, so the host answers from discovery metadata and never wakes the
+      // sandbox at all.
+      assertTrue(
+        "a preview with no provider must enumerate to nothing",
+        client.previewRows("plain-square").rows.isEmpty(),
+      )
+
+      val rowId = rows.rows[1].id
+      val renderNowResult = client.renderNow(previews = listOf(rowId), tier = RenderTier.FAST)
+      assertEquals(listOf(rowId), renderNowResult.queued)
+      client.pollRenderStartedFor(rowId, timeout = 180.seconds)
+      val finished = client.pollRenderFinishedFor(rowId, timeout = 180.seconds)
+      val reportedPath =
+        finished["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
+      assertNotNull("an enumerated row id must render", reportedPath)
+      val img = ImageIO.read(File(reportedPath!!))
+      assertNotNull("rendered PNG must decode", img)
+      // Row 1 is SquareTintProvider's blue (#1E88E5); row 0 is green.
+      val green = dominantGreenFraction(img!!)
+      assertTrue(
+        "row 1 must render the provider's SECOND value (blue #1E88E5) — dominantGreen=$green",
+        green < 0.1,
+      )
+
+      assertEquals(
+        "Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}",
+        0,
+        client.shutdownAndExit(timeout = 60.seconds),
+      )
+    } catch (t: Throwable) {
+      System.err.println(
+        "PreviewParameterAndroidRealModeTest failed; stderr from daemon:\n" + client.dumpStderr()
+      )
+      throw t
+    } finally {
+      try {
+        client.close()
+      } catch (_: Throwable) {}
+    }
+  }
+
+  /**
    * Fraction of pixels whose green channel is dominant — the shape of
    * [S1LifecycleAndroidRealModeTest.dominantRedFraction], keyed on green so it separates the
    * provider's first value (`0xFF43A047`) from its second (`0xFF1E88E5`, blue-dominant).

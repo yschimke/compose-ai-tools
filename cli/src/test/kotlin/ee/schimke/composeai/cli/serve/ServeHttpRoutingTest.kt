@@ -22,6 +22,8 @@ import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -261,8 +263,22 @@ class ServeHttpRoutingTest {
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/$previewId.png").writeBytes(png())
     val figma = File(dir, "figma").apply { mkdirs() }
+    // Layered the way a real `compose/figma-svg` export is — a `<g id="…">` per composable, nested
+    // as the composables nest — because that structure is what the `?exploded=1` lane splits on.
     File(figma, "$previewId.svg")
-      .writeText("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"></svg>")
+      .writeText(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="60" viewBox="0 0 40 60">
+        <g transform="translate(0, 0)">
+          <g id="Card">
+            <rect x="0" y="0" width="40" height="60" fill="#FFFFFF"/>
+            <g id="Text"><text x="4" y="20">hi</text></g>
+          </g>
+        </g>
+        </svg>
+        """
+          .trimIndent()
+      )
     return ServeBundleHost(dir, label = label, figmaDir = figma)
   }
 
@@ -329,6 +345,14 @@ class ServeHttpRoutingTest {
     }
   }
 
+  /** A `HEAD` for [path]: status plus the headers, which are the entire point of the method. */
+  private fun head(path: String): Pair<Int, okhttp3.Headers> {
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").head().build()
+    client.newCall(req).execute().use { r ->
+      return r.code to r.headers
+    }
+  }
+
   /** [get], keeping the response headers — the baked-fallback signals ride there. */
   private fun getFull(path: String): Triple<Int, String, okhttp3.Headers> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
@@ -369,6 +393,84 @@ class ServeHttpRoutingTest {
     val (code, body) = get("/version")
     assertEquals(200, code)
     assertTrue(body.contains("compose-preview-serve/version/v1"), "version json: $body")
+  }
+
+  /**
+   * The site icons, at the three well-known paths. `/favicon.ico` in particular is what a link
+   * unfurler probes when a page declares no icon it understands — it answered 404 with an HTML body
+   * before these routes existed, which is why an unfurled link showed a generic globe.
+   *
+   * Constant first segments, so like `/healthz` they have to outscore the `/{system}` catch-all:
+   * without that, `/favicon.ico` resolves as a request for a design system of that name.
+   */
+  @Test
+  fun `the site icon routes are served and outscore the system catch-all`() {
+    listOf(
+        ServeSiteIcon.SVG_PATH to "image/svg+xml",
+        ServeSiteIcon.ICO_PATH to "image/vnd.microsoft.icon",
+        ServeSiteIcon.APPLE_TOUCH_PATH to "image/png",
+      )
+      .forEach { (path, contentType) ->
+        val (code, _, headers) = getFull(path)
+        assertEquals(200, code, "$path should be served")
+        assertTrue(
+          headers["Content-Type"].orEmpty().startsWith(contentType),
+          "$path content type: ${headers["Content-Type"]}",
+        )
+        assertTrue(headers["ETag"].orEmpty().isNotEmpty(), "$path carries an ETag")
+      }
+  }
+
+  /**
+   * The unfurl card lane. A card is resolved purely by the content hash in its name, so a name this
+   * server never drew is a 404 rather than a lookup against anything a caller controls.
+   */
+  @Test
+  fun `the social card lane serves a drawn card and refuses an unknown one`() {
+    val home = get("/")
+    assertEquals(200, home.first)
+    val cardPath =
+      Regex("<meta property=\"og:image\" content=\"[^\"]*(/social/[0-9a-f]+\\.png)\">")
+        .find(home.second)
+        ?.groupValues
+        ?.get(1)
+    assertTrue(
+      cardPath != null,
+      "the front door advertises a drawn card: ${home.second.take(2000)}",
+    )
+
+    val (code, _, headers) = getFull(cardPath!!)
+    assertEquals(200, code)
+    assertTrue(
+      headers["Content-Type"].orEmpty().startsWith("image/png"),
+      "${headers["Content-Type"]}",
+    )
+
+    assertEquals(404, get("/social/0000000000000000.png").first)
+  }
+
+  /**
+   * …and the front door declares that card's real size, at the aspect a large-image unfurl is laid
+   * out at. Before this it advertised the featured catalog's own 1078×2399 phone render, which
+   * every consumer cropped to a horizontal band.
+   */
+  @Test
+  fun `the front door declares a card shaped like a large-image unfurl`() {
+    val (code, body) = get("/")
+
+    assertEquals(200, code)
+    assertTrue(
+      body.contains("<meta property=\"og:image:width\" content=\"1200\">"),
+      body.take(2000),
+    )
+    assertTrue(
+      body.contains("<meta property=\"og:image:height\" content=\"630\">"),
+      body.take(2000),
+    )
+    assertTrue(
+      body.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"),
+      body.take(2000),
+    )
   }
 
   @Test
@@ -458,6 +560,59 @@ class ServeHttpRoutingTest {
       "the fallback vector says it is one",
     )
     assertEquals("fontScale", okHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+  }
+
+  /**
+   * `?exploded=1` is a *presentation* of the vector export, not a render override — so it must work
+   * on a fully static catalog serving a baked `figma/<slug>.svg` (no daemon anywhere), and it must
+   * not be reported as a dropped override the way `fontScale` above is.
+   */
+  @Test
+  fun `the svg lane serves an exploded view of the baked vector`() {
+    val (flatCode, flat, _) = getFull("/svg-catalog/render/$previewId.svg")
+    assertEquals(200, flatCode)
+    assertFalse(flat.contains("cp-exploded-plane"), "the default lane is unchanged")
+
+    val (code, body, headers) = getFull("/svg-catalog/render/$previewId.svg?exploded=1")
+    assertEquals(200, code)
+    assertEquals(
+      null,
+      headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER],
+      "a view axis is not an override the baked lane has to refuse",
+    )
+    assertTrue(body.contains("data-exploded=\"true\""), "served exploded: $body")
+    // Frame, Card, Text — one plane per level of composable nesting in the baked export.
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(body).count())
+    assertTrue(body.contains("data-layers=\"Card\""))
+
+    // The knobs reshape the same bytes without a re-render. `explodeDepth=1` folds everything below
+    // the first level together, so the stack loses a plane.
+    val (_, shallow, _) = getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeDepth=1")
+    assertEquals(2, Regex("class=\"cp-exploded-plane\"").findAll(shallow).count())
+    // An out-of-range or unparseable knob falls back to the default rather than 400ing a link.
+    val (bogusCode, bogus, _) =
+      getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeTilt=nope&explodeDepth=999")
+    assertEquals(200, bogusCode)
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(bogus).count())
+
+    // A hand-typed separation far past anything the slider offers is bounded, not obeyed: past
+    // ~2.1e6 the canvas numbers stop surviving formatting and the picture collapses instead of
+    // merely spreading out.
+    val (hugeCode, huge, _) =
+      getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeGap=3000000")
+    assertEquals(200, hugeCode)
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(huge).count())
+    val height = Regex("<svg[^>]*\\bheight=\"([\\d.]+)\"").find(huge)!!.groupValues[1].toDouble()
+    assertTrue(height < 10_000, "the stack is bounded, not 3 million units tall: $height")
+  }
+
+  /** `?exploded=0` is the explicit off state a bookmarked URL can carry; it changes nothing. */
+  @Test
+  fun `the svg lane leaves an explicitly disabled exploded view flat`() {
+    val (_, flat, _) = getFull("/svg-catalog/render/$previewId.svg")
+    val (code, body, _) = getFull("/svg-catalog/render/$previewId.svg?exploded=0")
+    assertEquals(200, code)
+    assertEquals(flat, body)
   }
 
   /**
@@ -887,25 +1042,28 @@ class ServeHttpRoutingTest {
       }
     }
 
+    // Both the index and a catalog landing advertise a DRAWN card ([ServeSocialCard]) on the
+    // `/social/` lane, at the origin the proxy presents. Neither points at a render any more: those
+    // are portrait phone screenshots, and a large-image card crops one to a horizontal band.
+    val cardImage =
+      Regex(
+        """<meta property="og:image" content="(https://preview\.coo\.ee/social/[a-f0-9]+\.png)">"""
+      )
+
     val (homeCode, home) = proxied("/")
     assertEquals(200, homeCode)
-    assertTrue(
-      Regex(
-          """<meta property="og:image" content="https://preview\.coo\.ee/""" +
-            """(?:hero/compose-m3/[a-f0-9]+\.png|compose-m3/render/[^"]+\.png)">"""
-        )
-        .containsMatchIn(home),
-      "the server index uses its first published catalog hero: $home",
-    )
+    assertTrue(cardImage.containsMatchIn(home), "the server index advertises a drawn card: $home")
 
     val (catalogCode, catalog) = proxied("/compose-m3/")
     assertEquals(200, catalogCode)
     assertTrue(
-      catalog.contains(
-        "<meta property=\"og:image\" content=\"https://preview.coo.ee/compose-m3/render/" +
-          "$previewId.png\">"
-      ),
-      "a catalog landing uses its representative preview: $catalog",
+      cardImage.containsMatchIn(catalog),
+      "a catalog landing advertises its own drawn card: $catalog",
+    )
+    assertNotEquals(
+      cardImage.find(home)!!.groupValues[1],
+      cardImage.find(catalog)!!.groupValues[1],
+      "…and it is a different card from the index's — different heading, different picture",
     )
 
     val (statusCode, status) = proxied("/status")
@@ -1238,12 +1396,265 @@ class ServeHttpRoutingTest {
       heroSrc(body)?.startsWith("/hero/compose-m3/") == true,
       "index card shows a prebaked hero: $body",
     )
+    // Nothing the BROWSER fetches may point at the render lane. Scoped to the attributes that
+    // actually issue a request (`src`, `href`) rather than the whole body, because the `og:image`
+    // below deliberately does name the render — a meta tag is inert until a link unfurler reads it,
+    // and one baked PNG per shared link is not the per-visitor render load this guards against.
     assertTrue(
-      !body.contains("/compose-m3/render/$previewId.png"),
+      !Regex("""(src|href)="[^"]*/compose-m3/render/""").containsMatchIn(body),
       "the front door does not put a render request on the server: $body",
     )
+    // The unfurl image is a DRAWN card off the `/social/` lane — neither the downscaled `/hero/`
+    // thumbnail the page lays out (too small for a link-preview card) nor the full render behind it
+    // (a portrait phone screenshot, which every consumer crops to a horizontal band). See
+    // [ServeSocialCard].
+    assertTrue(
+      body.contains("""<meta property="og:image" content="http://"""),
+      "the front door advertises an unfurl image: $body",
+    )
+    assertTrue(
+      Regex("""<meta property="og:image" content="[^"]*/social/[0-9a-f]+\.png"""")
+        .containsMatchIn(body),
+      "the unfurl image is a drawn card: $body",
+    )
+    assertTrue(
+      !Regex("""<meta property="og:image" content="[^"]*/compose-m3/render/""")
+        .containsMatchIn(body),
+      "…and no longer a catalog render: $body",
+    )
+    // …and it carries the card's size, so a fetcher lays the card out without downloading the
+    // image first.
+    assertTrue(body.contains("<meta property=\"og:image:width\""), "declares its width: $body")
+    assertTrue(body.contains("<meta property=\"og:image:height\""), "declares its height: $body")
     // It is NOT the default module's own preview grid.
     assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
+  }
+
+  /**
+   * Every route answers HEAD, because that is the probe a link unfurler sends before it commits to
+   * downloading a page or its `og:image`. Before [io.ktor.server.plugins.autohead.AutoHeadResponse]
+   * was installed these were 405 where a constant segment matched (`/`, `/status`) and 404 where
+   * routing needed a `{system}` (every catalog page and every render), so the entire site read as
+   * dead to anything that probes before fetching.
+   */
+  @Test
+  fun `HEAD answers wherever GET does, with the same headers`() {
+    val paths =
+      listOf(
+        "/",
+        "/status",
+        "/version",
+        "/compose-m3/",
+        "/compose-m3/p/$previewId",
+        "/compose-m3/render/$previewId.png",
+        "/robots.txt",
+        "/sitemap.xml",
+      )
+    for (path in paths) {
+      val (headCode, headHeaders) = head(path)
+      val (getCode, _, getHeaders) = getFull(path)
+      assertEquals(getCode, headCode, "HEAD and GET disagree on status for $path")
+      assertEquals(200, headCode, "HEAD $path")
+      // The headers are what the probe is asking about: a HEAD that reported a different content
+      // type than the GET would be worse than no HEAD at all.
+      assertEquals(
+        getHeaders["Content-Type"],
+        headHeaders["Content-Type"],
+        "HEAD and GET disagree on content type for $path",
+      )
+      assertEquals(
+        getHeaders["Cache-Control"],
+        headHeaders["Cache-Control"],
+        "HEAD and GET disagree on cache-control for $path",
+      )
+    }
+  }
+
+  /**
+   * `AutoHeadResponse` answers a HEAD by running the whole GET handler and discarding the body,
+   * which is right for a page or a baked PNG and badly wrong for the work lanes: `HEAD /bundle.zip`
+   * would render every preview and pack a zip only to throw it away, so an anonymous `curl -I` on a
+   * public host could burn a catalog's render capacity while downloading nothing. Those refuse the
+   * probe with `405` + `Allow: GET` instead.
+   */
+  @Test
+  fun `HEAD is refused on the lanes whose GET does real work`() {
+    for (path in listOf("/compose-m3/bundle.zip", "/compose-m3/bundle/$previewId")) {
+      val (code, headers) = head(path)
+      assertEquals(405, code, "HEAD $path must not run the GET handler")
+      assertEquals("GET", headers["Allow"], "refusal names the method that works: $path")
+    }
+    // An override-bearing render is a daemon render; the bare path is the baked file an unfurler
+    // probes for og:image and must keep answering.
+    assertEquals(
+      405,
+      head("/compose-m3/render/$previewId.png?fontScale=1.5").first,
+      "an override render must not be triggered by a bodyless probe",
+    )
+    // The non-PNG products are made on demand whether or not a query is present, so the suffix
+    // alone has to refuse — an override-free `HEAD …/render/<id>.svg` would otherwise take the
+    // render semaphore just to have its body discarded.
+    for (suffix in listOf(".svg", ".slots", ".a11y", ".annotations", ".rc")) {
+      assertEquals(
+        405,
+        head("/compose-m3/render/$previewId$suffix").first,
+        "a bodyless probe must not produce $suffix",
+      )
+    }
+    // A chrome-less story frame has no baked lane at all.
+    assertEquals(405, head("/compose-m3/iframe.html?id=$previewId").first)
+    assertEquals(200, head("/compose-m3/render/$previewId.png").first, "the bake still answers")
+  }
+
+  /**
+   * The token gate has to run before the HEAD refusal. `rejectBadToken` answers 404 to conceal that
+   * a route exists at all, so refusing first with `405` + `Allow: GET` would tell an
+   * unauthenticated scanner the opposite — and `/history/render` is only registered when the
+   * repository-backed surface is enabled, making the difference a probe for optional configuration.
+   */
+  @Test
+  fun `an unauthenticated HEAD on a gated lane is concealed, not refused`() {
+    val gated =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "the-secret",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = false,
+        )
+        .also { it.start() }
+    try {
+      fun headOn(path: String): Pair<Int, okhttp3.Headers> {
+        val req = Request.Builder().url("http://127.0.0.1:${gated.port}$path").head().build()
+        client.newCall(req).execute().use { r ->
+          return r.code to r.headers
+        }
+      }
+      for (path in listOf("/bundle.zip", "/bundle/$previewId", "/render/$previewId.svg")) {
+        val (code, headers) = headOn(path)
+        assertEquals(404, code, "HEAD $path must conceal the route, not advertise it")
+        assertEquals(null, headers["Allow"], "a concealed route names no methods: $path")
+      }
+      // With the token, the refusal is the one the work-lane guard exists to give.
+      assertEquals(405, headOn("/bundle.zip?token=the-secret").first)
+    } finally {
+      gated.stop()
+    }
+  }
+
+  /**
+   * A HEAD is a probe, not a visit. `AutoHeadResponse` answers it by running the GET pipeline and
+   * dropping the body, so the view tallies would otherwise count the probe an unfurler sends *and*
+   * the fetch that follows it — double-counting every link shared into a chat.
+   */
+  @Test
+  fun `a HEAD probe does not count as a view`() {
+    val path = "/compose-m3/p/$previewId"
+    // Establish a baseline, then probe repeatedly: the tally must not move.
+    get(path)
+    val (_, afterGet) = get(path)
+    val baseline = viewCount(afterGet)
+    repeat(3) { head(path) }
+    val (_, afterHeads) = get(path)
+    // One more than the baseline: the GET that read the tally back, and none of the three HEADs.
+    assertEquals(
+      baseline + 1,
+      viewCount(afterHeads),
+      "HEAD probes were counted as views: $afterHeads",
+    )
+  }
+
+  /** The viewer's rendered view tally, or 0 when the page shows none. */
+  private fun viewCount(html: String): Int =
+    Regex("""cp-viewer-engage[^>]*>([\d,]+)""")
+      .find(html)
+      ?.groupValues
+      ?.get(1)
+      ?.replace(",", "")
+      ?.toIntOrNull() ?: 0
+
+  /**
+   * A viewer's `og:image` inherits the page's query suffix, so a link shared from an overridden
+   * view points at a re-render whose pixel size is not the baked one. Declaring the baked
+   * dimensions there would have the card lay out against a size the image doesn't have — omit them
+   * and let the fetcher measure.
+   */
+  @Test
+  fun `an overridden viewer link declares no image dimensions`() {
+    val (_, plain) = get("/compose-m3/p/$previewId")
+    assertTrue(
+      plain.contains("<meta property=\"og:image:width\""),
+      "baked view is measured: $plain",
+    )
+
+    val (_, overridden) = get("/compose-m3/p/$previewId?fontScale=1.5")
+    assertTrue(
+      overridden.contains("fontScale=1.5\">"),
+      "the card still points at the overridden render: $overridden",
+    )
+    assertFalse(
+      overridden.contains("og:image:width"),
+      "baked dimensions must not describe an overridden render: $overridden",
+    )
+  }
+
+  /**
+   * `robots.txt` opens the browsing surface and closes the lanes that cost the box something. The
+   * assertions name the failure modes rather than the file's exact text: the browsing pages must
+   * stay crawlable (that is the whole point of publishing a sitemap), and the render-with-overrides
+   * lane must not be, since a crawler walking the grid's theme links would re-render every preview.
+   */
+  @Test
+  fun `robots txt opens the browse surface and closes the render and code lanes`() {
+    val (code, body) = get("/robots.txt")
+    assertEquals(200, code)
+    assertTrue(body.startsWith("# compose-preview"), "robots.txt is the real file: $body")
+    // The expensive lanes.
+    for (closed in listOf("/playground", "/bundle.zip", "/wasm/", "/*/render/*?", "/*/compare")) {
+      assertTrue(body.contains("Disallow: $closed"), "closes $closed: $body")
+    }
+    // The browsing surface is never disallowed — no rule may match a catalog landing, a viewer, or
+    // the baked PNG an unfurl card points at. Compared line-exactly, because the legitimate
+    // `/*/render/*?` rule has the open form as a prefix and a substring test would read it as a
+    // violation of itself.
+    val rules = body.lines().map { it.trim() }
+    for (open in
+      listOf(
+        "Disallow: /",
+        "Disallow: /$",
+        "Disallow: /*/p/",
+        "Disallow: /*/render/",
+        "Disallow: /*?",
+      )) {
+      assertFalse(rules.contains(open), "must not close the browse surface ($open): $body")
+    }
+    // Link unfurlers get their own group, without the crawl delay and without wildcard rules their
+    // simple prefix parsers would misread.
+    assertTrue(body.contains("User-agent: Slackbot-LinkExpanding"), "names Slackbot: $body")
+    assertTrue(body.contains("User-agent: Slack-ImgProxy"), "names Slack's image fetcher: $body")
+    assertTrue(body.contains("Sitemap: http://"), "advertises the sitemap: $body")
+  }
+
+  /**
+   * The sitemap lists the pages worth landing on — catalog landings and viewers — built from the
+   * remembered catalog metadata rather than from live hosts, so a suspended catalog still appears.
+   */
+  @Test
+  fun `sitemap lists catalog landings and their preview viewers`() {
+    val (code, body) = get("/sitemap.xml")
+    assertEquals(200, code)
+    assertTrue(body.startsWith("<?xml"), "sitemap is XML: $body")
+    assertTrue(body.contains("<loc>http://127.0.0.1:${server.port}/</loc>"), "front door: $body")
+    assertTrue(body.contains("/compose-m3/</loc>"), "catalog landing: $body")
+    assertTrue(body.contains("/compose-m3/p/$previewId</loc>"), "preview viewer: $body")
+    // Not the images, and not the lanes robots.txt just closed — a sitemap that advertises what
+    // robots.txt forbids is a contradiction a crawler reports as an error.
+    assertFalse(body.contains("/render/"), "sitemap lists pages, not images: $body")
+    assertFalse(body.contains("/compare"), "sitemap does not list the closed lanes: $body")
+    // Unlisted catalogs are served but not published; they stay off the sitemap like they stay off
+    // the front door.
+    assertFalse(body.contains("/baked-only/"), "unlisted catalogs are not in the sitemap: $body")
   }
 
   /** The `src` of the first hero `<img>` on the home index, or null when there is none. */
@@ -1339,9 +1750,18 @@ class ServeHttpRoutingTest {
       queryBody.contains("data-rc-neutral=\"/render/$previewId.rc?session=compose-m3\""),
       "the legacy page keeps its session query on the RC document URL: $queryBody",
     )
+    // The landing links each comparison it can actually offer, by name: this catalog carries RC
+    // documents and design references but no SVG export, so it gets the RC action and the
+    // design-tool one, and no "compare SVG" leading to a dead tab.
+    val landing = get("/compose-m3/").second
     assertTrue(
-      get("/compose-m3/").second.contains("href=\"/compose-m3/compare\""),
-      "the catalog landing links to the native comparison page",
+      landing.contains("href=\"/compose-m3/compare?format=rc\">compare RC players</a>") &&
+        !landing.contains("compare SVG"),
+      "the catalog landing links the comparison formats it carries: $landing",
+    )
+    assertTrue(
+      landing.contains("href=\"/compose-m3/parity\">compare to Figma</a>"),
+      "the catalog landing names the design tool its references come from: $landing",
     )
   }
 

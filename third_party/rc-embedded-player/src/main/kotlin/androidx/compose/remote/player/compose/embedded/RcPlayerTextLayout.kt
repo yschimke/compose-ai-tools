@@ -18,6 +18,7 @@
 
 package androidx.compose.remote.player.compose.embedded
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.remote.core.RemoteContext
@@ -38,7 +39,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.googlefonts.Font as GoogleFontFactory
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import ee.schimke.composeai.rcembedded.GoogleVariableFontFamilies
@@ -49,7 +49,6 @@ import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
-import androidx.compose.ui.unit.sp
 
 @Composable
 internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
@@ -64,6 +63,9 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
     val fontSize = if (paintState.isTextSizeSet) paintState.textSize else data.fontSizeValue
     val density = LocalDensity.current
     val fontSizeSp = with(density) { fontSize.toSp() }
+    val resolvedMaxFontSize = if (data.maxFontSize > 0f) data.maxFontSize else 400f
+    val resolvedMinFontSize =
+        minOf(if (data.minFontSize > 0f) data.minFontSize else 4f, resolvedMaxFontSize)
 
     val remoteContext = LocalRemoteContext.current
     val fontVariationSettings =
@@ -108,6 +110,8 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
             LocalRemoteContext.current,
         )
 
+    val baseStyle = LocalTextStyle.current
+
     val textDecoration =
         when {
             data.underline && data.strikethrough ->
@@ -126,7 +130,7 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
         fontFamily = fontFamily,
         fontStyle = fontStyle,
         textAlign =
-            if (data.justificationMode > 0) TextAlign.Justify else when (data.textAlignValue) {
+            if (data.justificationMode == 1) TextAlign.Justify else when (data.textAlignValue) {
                 CoreText.TEXT_ALIGN_LEFT -> TextAlign.Left
                 CoreText.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 CoreText.TEXT_ALIGN_CENTER -> TextAlign.Center
@@ -140,9 +144,9 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
         autoSize =
             if (data.autosize) {
                 TextAutoSize.StepBased(
-                    minFontSize = ((if (data.minFontSize > 0f) data.minFontSize else 4f) / density.density).sp,
-                    maxFontSize = ((if (data.maxFontSize > 0f) data.maxFontSize else 400f) / density.density).sp,
-                    stepSize = (0.5f / density.density).sp,
+                    minFontSize = with(density) { resolvedMinFontSize.toSp() },
+                    maxFontSize = with(density) { resolvedMaxFontSize.toSp() },
+                    stepSize = with(density) { 0.5f.toSp() },
                 )
             } else {
                 null
@@ -160,22 +164,35 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
         letterSpacing = data.letterSpacing.em,
         lineHeight =
             if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
-                with(LocalDensity.current) {
-                    (data.fontSizeValue * data.lineHeightMultiplier + data.lineHeightAdd).toSp()
+                if (data.autosize) {
+                    (data.lineHeightMultiplier + data.lineHeightAdd / fontSize.coerceAtLeast(0.0001f)).em
+                } else {
+                    with(density) { (fontSize * data.lineHeightMultiplier + data.lineHeightAdd).toSp() }
                 }
             } else {
                 TextUnit.Unspecified
             },
         textDecoration = textDecoration,
+        // Only the properties the document actually sets are overridden. Building a fresh
+        // `TextStyle` here instead — and in particular pinning `LineBreak.Simple` for the default
+        // strategy rather than leaving it unspecified — remeasured every text in every document,
+        // not just the ones using these properties: it grew the AppCard fixture's card by 3px and
+        // moved its clip rect (#3667).
+        //
+        // Unset means `Unspecified`, not "inherit": a document that says nothing about line
+        // breaking must not pick up a host's `LineBreak.Heading` (Material3 sets one per type role)
+        // just because the player happens to be composed inside a slot that provides a text style.
+        // Every other property still rides on the ambient style.
         style =
-            TextStyle(
+            baseStyle.copy(
                 lineBreak =
                     when (data.lineBreakStrategy) {
                         1 -> LineBreak.Paragraph
                         2 -> LineBreak.Heading
-                        else -> LineBreak.Simple
+                        else -> LineBreak.Unspecified
                     },
-                hyphens = if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.None,
+                hyphens =
+                    if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.Unspecified,
             ),
     )
 }

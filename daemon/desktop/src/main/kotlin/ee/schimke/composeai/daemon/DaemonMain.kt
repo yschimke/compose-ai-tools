@@ -483,7 +483,19 @@ private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
  * without held-state semantics.
  */
 private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String) -> RenderSpec?)? {
-  return { previewId -> previewIndex.byId(previewId)?.let { renderSpecFromInfo(it) } }
+  // A row-addressed id (issue #3749) resolves to its base entry plus the row token. Both halves
+  // have to reach the spec: the token, or the held session composes value 0 under the row's id
+  // (silently the wrong state, worse than the "unknown previewId" a caller used to get here); and
+  // `outputBaseName`, which `renderSpecFromInfo` takes from the BASE entry — leaving it would make
+  // a row render overwrite `<base>.png` and the data products keyed off it, the same clobber the
+  // router lane avoids by suffixing the stem.
+  return { previewId ->
+    previewIndex.rowResolved(previewId)?.let {
+      val base = renderSpecFromInfo(it.info)
+      if (it.row == null) base
+      else base.copy(previewParameterRow = it.row, outputBaseName = previewId)
+    }
+  }
 }
 
 /**

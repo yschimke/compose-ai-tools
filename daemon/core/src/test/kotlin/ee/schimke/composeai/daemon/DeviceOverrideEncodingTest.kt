@@ -314,6 +314,9 @@ private class PayloadCapturingHost : RenderHost {
                   RenderResult(id = req.id, classLoaderHashCode = 0, classLoaderName = "fake")
                 )
               }
+              // Never enqueued here: `submit` only accepts a Render. Present so the `when` stays
+              // exhaustive over `RenderRequest` (issue #3749 added ParameterRows).
+              is RenderRequest.ParameterRows -> {}
               RenderRequest.Shutdown -> return@Thread
             }
           }

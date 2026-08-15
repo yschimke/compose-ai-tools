@@ -11,10 +11,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * Pins the **component-state toggle** wiring in [ServeWeb]: baked non-default states
+ * Pins the **component-state** wiring in [ServeWeb]: baked non-default states
  * (`unchecked`/`pressed`/…) are folded out of the landing grid so a component shows ONE card, and
- * the viewer grows a `<nav class="cp-states">` switcher of plain links to the component's other
- * states *in the same theme*. Stateless previews (a plain uploaded bundle) are untouched.
+ * the viewer grows a `.cp-axes-tree` subtree — the catalog tree filtered to this component — of
+ * plain links to its other renders *in the same theme*. Stateless previews (a plain uploaded
+ * bundle) are untouched.
  */
 class ServeWebTest {
 
@@ -99,10 +100,10 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/compose-m3", siblings = checkbox)
 
-    assertTrue(html.contains("class=\"cp-states\""), "state switcher rendered")
-    // Isolate the switcher nav — other page chrome (the component nav drawer) also links siblings,
-    // so the theme-scoping assertion must look only inside `<nav class="cp-states">…</nav>`.
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "component subtree rendered")
+    // Isolate the subtree — other page chrome (the component nav drawer) also links siblings, so
+    // the theme-scoping assertion must look only inside the `.cp-axes-tree` nav.
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     // Links to the SAME-THEME (light) unchecked sibling…
     assertTrue(
       nav.contains("/compose-m3/p/checkbox__ideal__unchecked__light"),
@@ -115,8 +116,8 @@ class ServeWebTest {
     )
     // The current (default) state is marked active with a human label.
     assertTrue(
-      nav.contains("aria-current=\"page\">Default</a>"),
-      "the current state is marked active",
+      nav.contains("aria-current=\"page\">checkbox"),
+      "the default render IS the component row, and it is marked active",
     )
   }
 
@@ -125,8 +126,152 @@ class ServeWebTest {
     val button = listOf(preview("button", "default", "light"), preview("button", "default", "dark"))
     val html =
       ServeWeb.viewerPage(button[0], token = "t", basePath = "/compose-m3", siblings = button)
-    // The `.cp-states` CSS rule ships on every page; assert the absence of the nav *element*.
-    assertFalse(html.contains("class=\"cp-states\""), "no switcher for a one-state component")
+    // The tree CSS ships on every page; assert the absence of the nav *element*.
+    assertFalse(
+      html.contains("class=\"cp-tree cp-axes-tree\""),
+      "no subtree for a one-render component",
+    )
+  }
+
+  // A component whose non-default states are published UNTAGGED on the primary (light) lane while
+  // their dark twins carry the theme — the shape an `@OverrideVariant` matrix exports, because the
+  // synthetic capture inherits the base `@Preview`'s `uiMode` param (dark) but not its `name`
+  // ("Light"). m3-catalog publishes 446 renders like this; the whole size x shape matrix used to be
+  // unreachable from the light lane, which is the one the grid links to.
+  private val mixedTagging =
+    listOf(
+      ServePreview(
+        "button-filled__ideal__default__light",
+        "Filled",
+        state = "default",
+        theme = "light",
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark",
+        "Filled",
+        state = "default",
+        theme = "dark",
+      ),
+      ServePreview("button-filled__ideal__xs", "Filled", state = "xs"),
+      ServePreview("button-filled__ideal__xs__dark", "Filled", state = "xs", theme = "dark"),
+      ServePreview("button-filled__ideal__xl-square", "Filled", state = "xl-square"),
+      ServePreview(
+        "button-filled__ideal__xl-square__dark",
+        "Filled",
+        state = "xl-square",
+        theme = "dark",
+      ),
+    )
+
+  @Test
+  fun `the state switcher reaches untagged siblings from the primary-lane default`() {
+    val current = mixedTagging[0] // default, light
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
+
+    assertTrue(
+      html.contains("class=\"cp-tree cp-axes-tree\""),
+      "subtree rendered on the light lane",
+    )
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/m3-catalog/p/button-filled__ideal__xs") &&
+        nav.contains("/m3-catalog/p/button-filled__ideal__xl-square"),
+      "an untagged sibling is reachable from the light default",
+    )
+    assertFalse(nav.contains("__xs__dark"), "the dark twin stays out of the light lane")
+  }
+
+  @Test
+  fun `an untagged render links back to the primary-lane default`() {
+    val current = mixedTagging[2] // xs, untagged
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
+
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/m3-catalog/p/button-filled__ideal__default__light"),
+      "the light default is reachable back from an untagged state",
+    )
+    assertTrue(nav.contains("aria-current=\"page\">Xs</a>"), "the current state is marked active")
+    assertFalse(nav.contains("__dark"), "an untagged render stays on the primary lane")
+  }
+
+  @Test
+  fun `the dark lane of a mixed-tagging component keeps only its dark siblings`() {
+    val current = mixedTagging[1] // default, dark
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
+
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(nav.contains("/m3-catalog/p/button-filled__ideal__xs__dark"), "dark siblings link")
+    assertFalse(
+      nav.contains("/m3-catalog/p/button-filled__ideal__xs\"") ||
+        nav.contains("/m3-catalog/p/button-filled__ideal__xs?"),
+      "the untagged (light) render does not leak into the dark lane",
+    )
+  }
+
+  @Test
+  fun `a state named dark is not mistaken for a theme`() {
+    // An unthemed component may legitimately call a STATE `dark` (or `light`). Reading the lane off
+    // the raw id would find that token and file the state in the dark lane while its own default
+    // sits in the light one — the grid folds the state out, so it would then be unreachable.
+    val toggle =
+      listOf(
+        ServePreview("toggle__ideal__default", "Toggle", state = "default"),
+        ServePreview("toggle__ideal__dark", "Toggle", state = "dark"),
+      )
+    val html = ServeWeb.viewerPage(toggle[0], token = "t", basePath = "/catalog", siblings = toggle)
+
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "the component subtree is rendered")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/catalog/p/toggle__ideal__dark"),
+      "a state named `dark` stays in its component's lane rather than being read as a theme",
+    )
+  }
+
+  @Test
+  fun `the variant switcher pairs a themed default with an untagged props sibling`() {
+    // The props-family key needs the same theme normalisation as the state key: the family check
+    // runs before the lane comparison, so without it the lanes agreeing never gets to matter.
+    val mixed =
+      listOf(
+        ServePreview("button__ideal__default__light", "Button", state = "default", theme = "light"),
+        ServePreview(
+          "button__ideal__default__content-icon-label",
+          "Button · Icon+label",
+          state = "default",
+          props = jsonProps("content" to "icon+label"),
+        ),
+      )
+    val html = ServeWeb.viewerPage(mixed[0], token = "t", basePath = "/catalog", siblings = mixed)
+
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "component subtree rendered")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/catalog/p/button__ideal__default__content-icon-label"),
+      "an untagged props sibling is reachable from the themed default",
+    )
+  }
+
+  @Test
+  fun `on a dark-first system an untagged render lanes with dark`() {
+    // Wear catalogs draw for a black watch face, so their untagged renders are the DARK lane — the
+    // same rule the stage backing already uses (`bgTheme`), applied to switcher grouping.
+    val wear =
+      listOf(
+        ServePreview("edgebutton__ideal__default__dark", "Edge", state = "default", theme = "dark"),
+        ServePreview("edgebutton__ideal__pressed", "Edge", state = "pressed"),
+      )
+    val html = ServeWeb.viewerPage(wear[0], token = "t", basePath = "/wear-m3", siblings = wear)
+
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/wear-m3/p/edgebutton__ideal__pressed"),
+      "an untagged Wear render joins the dark lane rather than stranding alone",
+    )
   }
 
   @Test
@@ -161,21 +306,34 @@ class ServeWebTest {
     // the icon+label render (a different variant axis).
     val labelHtml =
       ServeWeb.viewerPage(labelDefault, token = "t", basePath = "/compose-m3", siblings = all)
-    val labelNav = labelHtml.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
-    assertTrue(labelNav.contains("aria-current=\"page\">Default</a>"), "current state active")
+    val labelNav =
+      labelHtml.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(labelNav.contains("aria-current=\"page\">Filled"), "current state active")
     assertTrue(
       labelNav.contains("/p/button-filled__ideal__pressed__light"),
       "links its own pressed state",
     )
     assertFalse(labelNav.contains("content-icon-label"), "does not cross into the content axis")
 
-    // The icon+label render has no sibling state of its own, so it shows no switcher (rather than a
-    // switcher that navigates back to the label-only button).
+    // The icon+label render has no sibling STATE of its own. The old chip switcher, keyed to the
+    // current render's axes, therefore showed it nothing at all — a dead end you could navigate
+    // into and not back out of. A subtree roots at the COMPONENT, so arriving on a props variant
+    // shows the same tree every other render of that component shows, with this one marked: the
+    // component's renders are a property of the component, not of where you happened to enter.
     val iconHtml =
       ServeWeb.viewerPage(iconLabel, token = "t", basePath = "/compose-m3", siblings = all)
-    assertFalse(
-      iconHtml.contains("class=\"cp-states\""),
-      "the content variant with no state siblings shows no switcher",
+    val iconNav =
+      iconHtml.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      iconNav.contains(
+        "/p/button-filled__ideal__default__light__content-icon-label?token=t\" aria-current=\"page\""
+      ),
+      "the render on screen is a row of its own component's tree, and marked: $iconNav",
+    )
+    assertTrue(
+      iconNav.contains("/p/button-filled__ideal__default__light?token=t\"") &&
+        iconNav.contains("/p/button-filled__ideal__pressed__light"),
+      "…and can reach the component's default and its states: $iconNav",
     )
   }
 
@@ -191,7 +349,10 @@ class ServeWebTest {
     assertEquals(2, Regex("class=\"cp-card\"").findAll(grid).count(), "both stateless cards shown")
 
     val viewer = ServeWeb.viewerPage(plain[0], token = "t", basePath = "/bundle", siblings = plain)
-    assertFalse(viewer.contains("class=\"cp-states\""), "no switcher without state metadata")
+    assertFalse(
+      viewer.contains("class=\"cp-tree cp-axes-tree\""),
+      "no subtree without state metadata",
+    )
   }
 
   // Button/Filled with its default render plus two props-axis variants (an RTL render and an ar-XB
@@ -258,8 +419,8 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/compose-m3", siblings = buttonVariants)
 
-    assertTrue(html.contains("aria-label=\"Component variant\""), "variant switcher rendered")
-    val nav = html.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "component subtree rendered")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     // Links the SAME-THEME (light) RTL + locale variants…
     assertTrue(
       nav.contains("/compose-m3/p/button-filled__ideal__default__light__direction-rtl"),
@@ -268,7 +429,7 @@ class ServeWebTest {
     // …and never the dark render (that would jump the visitor's theme).
     assertFalse(nav.contains("__dark__direction-rtl"), "switcher stays within the current theme")
     // The default is marked active, and the variants carry human labels.
-    assertTrue(nav.contains("aria-current=\"page\">Default</a>"), "the default is marked active")
+    assertTrue(nav.contains("aria-current=\"page\">Filled"), "the default is marked active")
     assertTrue(
       nav.contains(">RTL</a>") && nav.contains(">Locale ar-XB</a>"),
       "props variants render human labels",
@@ -329,6 +490,128 @@ class ServeWebTest {
       html.contains("<title>Red &amp; &quot;Blue&quot; — compose-preview</title>"),
       "document title is escaped exactly once",
     )
+  }
+
+  /**
+   * Declared dimensions let an unfurler lay the card out without downloading and measuring the
+   * image first — the step both Slack and Google skip (dropping the image) when it is slow.
+   */
+  @Test
+  fun `a known image size is declared, and sizes the card honestly`() {
+    fun viewerWith(w: Int?, h: Int?): String =
+      ServeWeb.viewerPage(
+        preview = ServePreview("red", "Red"),
+        token = "unused",
+        unfurl =
+          ServeWeb.UnfurlMetadata(
+            pageUrl = "https://preview.example/p/red",
+            imageUrl = "https://preview.example/render/red.png",
+            imageWidth = w,
+            imageHeight = h,
+          ),
+      )
+
+    val big = viewerWith(1024, 768)
+    assertTrue(big.contains("<meta property=\"og:image:width\" content=\"1024\">"), big)
+    assertTrue(big.contains("<meta property=\"og:image:height\" content=\"768\">"), big)
+    assertTrue(big.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"), big)
+
+    // A single component render is a thumbnail. Asking for the large card and getting the small one
+    // anyway is worse than asking for the small one: the fetcher was told something untrue.
+    val small = viewerWith(300, 210)
+    assertTrue(small.contains("<meta property=\"og:image:width\" content=\"300\">"), small)
+    assertTrue(small.contains("<meta name=\"twitter:card\" content=\"summary\">"), small)
+
+    // Unknown size is not evidence of a small image — the fetcher measures it itself, and the
+    // dimensions are omitted rather than guessed.
+    val unknown = viewerWith(null, null)
+    assertFalse(unknown.contains("og:image:width"), unknown)
+    assertTrue(
+      unknown.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"),
+      unknown,
+    )
+
+    // Half a size is no size: a fetcher can't sanity-check one axis against the pixels.
+    val partial = viewerWith(1024, null)
+    assertFalse(partial.contains("og:image:width"), partial)
+  }
+
+  /**
+   * Being big enough was never sufficient. A large-image card is laid out at ~1.91:1 and the image
+   * is cropped to fill it, so what a portrait render actually shows is a horizontal band through
+   * its middle. The front door's own hero — 1078×2399 — cleared the min-edge test comfortably and
+   * unfurled as a strip of the empty half of an app scaffold.
+   */
+  @Test
+  fun `a large card is claimed only for a shape that can fill one`() {
+    fun cardFor(w: Int, h: Int): String {
+      val html =
+        ServeWeb.viewerPage(
+          preview = ServePreview("red", "Red"),
+          token = "unused",
+          unfurl =
+            ServeWeb.UnfurlMetadata(
+              pageUrl = "https://preview.example/p/red",
+              imageUrl = "https://preview.example/render/red.png",
+              imageWidth = w,
+              imageHeight = h,
+            ),
+        )
+      return Regex("<meta name=\"twitter:card\" content=\"([a-z_]+)\">").find(html)!!.groupValues[1]
+    }
+
+    // The drawn unfurl card, and ordinary landscape renders down to 4:3 — the crop still leaves
+    // about two thirds of those.
+    assertEquals("summary_large_image", cardFor(1200, 630), "the card's own 1.90 aspect")
+    assertEquals("summary_large_image", cardFor(1024, 640))
+    assertEquals("summary_large_image", cardFor(1024, 768), "4:3 survives the crop")
+
+    // The regression this exists for: a phone screenshot, and the front door's real hero.
+    assertEquals("summary", cardFor(1078, 2399), "a portrait render can't fill a banner")
+    assertEquals("summary", cardFor(945, 1376))
+    // A square watch face is closer to the slot than a phone is, and still loses a third of itself.
+    assertEquals("summary", cardFor(454, 454))
+    // Too wide is only trimmed at the sides, so the band is generous — but not unbounded.
+    assertEquals("summary_large_image", cardFor(1200, 520))
+    assertEquals("summary", cardFor(3000, 600), "a panorama is not a card either")
+  }
+
+  /**
+   * Every page carries the site icon links. Without them an unfurl card shows a generic globe
+   * beside itself, whatever the picture on it is.
+   */
+  @Test
+  fun `every page advertises the site icon`() {
+    val html = ServeWeb.viewerPage(preview = ServePreview("red", "Red"), token = "unused")
+
+    assertTrue(
+      html.contains("<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"),
+      html,
+    )
+    assertTrue(
+      html.contains("<link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">"),
+      html,
+    )
+  }
+
+  /**
+   * The front door used to call itself two different things — "Design systems" in the tab and
+   * "Compose previews" in the Open Graph block — so a link's name depended on which one the
+   * consumer preferred.
+   */
+  @Test
+  fun `the front door's tab and card agree on its name`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        systems = emptyList(),
+        token = "unused",
+        isPublic = true,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = "https://preview.example/"),
+      )
+
+    assertTrue(html.contains("<title>Design systems — compose-preview</title>"), html)
+    assertTrue(html.contains("<meta property=\"og:title\" content=\"Design systems\">"), html)
+    assertTrue(html.contains("<meta name=\"twitter:title\" content=\"Design systems\">"), html)
   }
 
   @Test
@@ -613,11 +896,16 @@ class ServeWebTest {
           ),
       )
     assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane carrier is rendered")
-    // The lane is one option in the renderer combo, named for the provider it imported from, and
-    // the raster is served from THIS server's reference route — nothing points at figma.com.
+    // The lane is a top-level chip named after the design tool it imported from — NOT an option
+    // inside the renderer combo, which is where it used to sit behind five player names. The raster
+    // is served from THIS server's reference route; nothing points at figma.com.
     assertTrue(
-      html.contains("<option value=\"spec\">Figma spec</option>"),
-      "the spec is offered as a renderer option",
+      html.contains("id=\"cp-spec-chip\"") && html.contains(">Figma</button>"),
+      "the spec lane has its own chip, named after the design tool: $html",
+    )
+    assertFalse(
+      html.contains("<option value=\"spec\""),
+      "the spec lane is no longer hidden inside the renderer combo: $html",
     )
     assertTrue(
       html.contains("data-spec-src=\"/meshcore-mobile/reference/contact-chat-figma.png?token=t\""),
@@ -740,8 +1028,8 @@ class ServeWebTest {
       )
     assertTrue(html.contains("id=\"cp-spec-lane\""), "the lane is offered for any provider")
     assertTrue(
-      html.contains("<option value=\"spec\">Design spec</option>"),
-      "a non-Figma provider reads as a plain design spec",
+      html.contains("id=\"cp-spec-chip\"") && html.contains(">Design spec</button>"),
+      "a non-Figma provider reads as a plain design spec: $html",
     )
   }
 

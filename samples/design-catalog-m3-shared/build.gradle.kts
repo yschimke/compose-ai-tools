@@ -11,9 +11,9 @@
 //
 // Before this module the two surfaces re-authored the M3 component set twice
 // (the Android catalog's `@Preview` stickers vs. the wasm module's id→composable
-// map). They now call one authoritative `CatalogComponent(id, interactive)` here,
-// so the component list, the theme wrapper, the generic-font plumbing, and the
-// stateful/interaction helpers live in exactly one place.
+// map). They now call one authoritative `CatalogComponent(id)` here, so the
+// component list, the theme wrapper, the generic-font plumbing, and the stateful
+// helpers live in exactly one place.
 //
 // Deliberately thin — only the multiplatform compose runtime + `material3` — and
 // applies NO `ee.schimke.composeai.preview` plugin: it's a plain library. The
@@ -92,7 +92,7 @@ kotlin {
         implementation(kotlin("test"))
         // `runComposeUiTest` — drives a real composition and dispatches real clicks, so
         // `CatalogInteractivityTest` can assert the thing a static render can never show: that a
-        // click on the interactive lane actually moves the UI, and that the baked lane stays inert.
+        // click actually moves the UI, and that it does so identically on both render lanes.
         implementation(libs.jetbrains.compose.ui.test)
         @Suppress("DEPRECATION") implementation(compose.desktop.currentOs)
       }

@@ -1,6 +1,6 @@
 # Preview daemon — IPC protocol
 
-> **Status:** v2 contract. Pre-1.0 — wire shape may break across minor versions in a coordinated daemon + client release. v2 made `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` opt-in via `extensions/enable` (see § 3a); v1 clients fail the `protocolVersion` check.
+> **Status:** v2 contract. The wire shape may still break across artifact minor versions, in a coordinated daemon + client release — `protocolVersion` is decoupled from the artifact semver ([VERSIONING.md § 8](../VERSIONING.md#8-release-coordination)), and range negotiation is deferred past 1.0.0 ([§ 10](../VERSIONING.md#10-what-is-and-is-not-enforced)), so a bump means old clients fail the handshake rather than being served the old version. v2 made `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` opt-in via `extensions/enable` (see § 3a); v1 clients fail the `protocolVersion` check.
 
 This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md).
 
@@ -311,7 +311,10 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
 ```ts
 // params
 {
-  previews: string[];                // preview IDs; empty = render all visible-and-stale
+  previews: string[];                // preview IDs; empty = render all visible-and-stale.
+                                     // A `@PreviewParameter` **row** is addressed as
+                                     // `<baseId>_<label>` / `<baseId>_PARAM_<idx>` — see
+                                     // "Addressing @PreviewParameter rows" below.
   tier: "fast" | "full";             // "fast" = single best-effort frame; "full" = full advanceTimeBy loop
   reason?: string;                   // free-form, surfaces in logs (e.g. "user clicked refresh")
   overrides?: PreviewOverrides;      // optional per-call display-property overrides
@@ -380,11 +383,57 @@ The result resolves as soon as the request is queued, **not** when rendering com
 
 `permissions` drives the runtime-permissions surface (`compose/permissions`). Android-only — the desktop backend ignores it. The around-composable seeds Robolectric's `ShadowApplication.grantPermissions/denyPermissions` from `grants` **before composition starts**, so a screen reading `ContextCompat.checkSelfPermission(...)`, `Activity.checkSelfPermission(...)`, `PackageManager.checkPermission(...)`, accompanist's `rememberPermissionState`, or any standard Android check API observes the requested value on the very first composition — no connector-specific Compose API for the consumer to opt into. A subsequent `renderNow.overrides.permissions` re-renders with the new map (full replacement: permissions absent from the new map fall back to Robolectric's manifest baseline, not "previous grant"); to keep a previous grant on a follow-up render, send it again. The companion shadow on `ContextWrapper.checkPermission(...)` records every queried permission for the panel's "queried but no grant pinned" surface; that list is served back through `data/fetch?kind=compose/permissions`.
 
+**Addressing `@PreviewParameter` rows** (issue #3749). Discovery emits ONE manifest entry per parameterized preview function — it reads bytecode and cannot instantiate a `PreviewParameterProvider` — so `previews.json` carries base ids only and the daemon historically rendered value 0 under the bare id, with rows 1..n unreachable from `renderNow`, `serve` or `render_preview`. The daemon *can* enumerate (it holds the consumer classpath), so a row id is resolved at routing time:
+
+| previewId | renders |
+| --- | --- |
+| `MyScreenPreview_Light` | the provider's value 0 (unchanged) |
+| `MyScreenPreview_Light_Dark` | the row whose derived fan-out label is `Dark` (exact first; case-insensitive only when unambiguous) |
+| `MyScreenPreview_Light_PARAM_4` | value 4, positionally |
+
+The row token is exactly the `<stem>_<suffix>` spelling the fan-out renderer writes to disk (see [RENDER_FILENAMES.md](../RENDER_FILENAMES.md#previewparameter-fan-out-labels)), so what a caller reads off a rendered directory is what they can address. Both `PreviewManifestRouter`s split `<baseId>_<row>` against the manifest entries that **declare a provider** — a preview with none has no rows, so nothing can be read as a row token of it — taking the longest such prefix, which is what keeps a multi-preview annotation's own `_Light` suffix part of the base. The row render reports the requested id and writes its own `<stem>_<row>.png`, so it never clobbers the base render's artifact or data products. `interactive/start`, `recording/start` and `stream/start` accept the same ids.
+
+An unknown row fails the render rather than silently falling back to value 0, and the failure lists the provider's actual rows. To *discover* the rows rather than probe for them, call [`preview/rows`](#previewrows) below. Cost is bounded: an unaddressed render still enumerates with `take(1)`, an index request stops at `n + 1`, and both addressed lanes are capped by `PreviewParameterSupport.MAX_ROW_SCAN` (256) — which is also the highest addressable index, rejected *before* enumeration, so neither an infinite `generateSequence` provider nor an arbitrarily large `PARAM_<n>` in a caller-supplied previewId can wedge the renderer.
+
 **Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 
 Errors:
 - `ClasspathDirty` (-32002) — daemon will not render until restarted.
 - `SandboxRecycling` (-32003) — retry after the next `daemonReady` notification.
+
+### `preview/rows`
+
+Enumerates a preview's `@PreviewParameter` rows — the ids `renderNow` (and `interactive/start`, `recording/start`, `stream/start`) can then address. Issue #3749.
+
+```ts
+// params
+{ previewId: string }              // base id, or a row id — a row id answers with its siblings
+
+// result
+{
+  previewId: string;               // echoed as requested
+  rows: {
+    index: number;                 // 0-based position in the provider's value sequence
+    label: string;                 // the row token: a derived label ("Dark") or "PARAM_<index>"
+    id: string;                    // `<baseId>_<label>` — hand straight back to renderNow
+  }[];
+}
+```
+
+Only the daemon can answer this: `previews.json` carries base ids only, because discovery reads bytecode and cannot instantiate a `PreviewParameterProvider`. The daemon holds the consumer classpath, so it can.
+
+**`rows: []` is a normal answer, not an error** — it means the preview declares no provider, so a client renders the bare id. That case is also the reason this method is cheap enough to call on everything a client lists: the host resolves the discovery metadata **first** and returns empty without touching a classloader, and on Android without a Robolectric sandbox round-trip. Only a preview that actually declares a provider pays for enumeration.
+
+Where enumeration runs differs by backend, and it has to. Desktop enumerates in-process on the same disposable child classloader a render would use, so a provider edited since the daemon started is read fresh. Android enumerates *inside* the sandbox — the provider class lives on the slot's child classloader and provider values routinely touch Android APIs that are only real under Robolectric — as a `RenderRequest.ParameterRows` on the same queue renders ride, replying with a `java.util.List<String>` of labels (the only shape that crosses the sandbox classloader boundary intact). Either way the enumeration is capped at `PreviewParameterSupport.MAX_ROW_SCAN` (256), so an infinite `generateSequence` provider yields a truncated list rather than hanging the daemon.
+
+`serve` does not use this method — its Gradle path renders before it starts the server, so `ServeParameterRows` reads the fan-out back off disk, which is stronger evidence (the manifest says who owns which file) and needs no daemon.
+
+**Android caveat — a held interactive session blocks enumeration.** `INTERACTIVE_SLOT_INDEX` is slot 0, the same in-process sandbox enumeration needs, and slots 1..N-1 are worker JVMs with no enumeration lane. While a session is held, that slot's loop drains `interactiveCommands` and never polls the render queue, so `preview/rows` fails fast with an `Internal` error naming the holding stream rather than blocking — this call is synchronous on the reader thread, so waiting it out would also stop the `interactive/stop` that releases the slot from being read. Enumerate before starting a session, or stop the session first.
+
+Errors:
+- `InvalidParams` (-32602) — unknown `previewId`.
+- `MethodNotFound` (-32601) — the host can't enumerate at all (no `previewSpecResolver` wired). Clients should fall back to the bare id.
+- `Internal` (-32603) — enumeration was possible but failed or was unavailable right now: a provider that throws, a missing provider class, or the Android held-session case above. Retryable, unlike `MethodNotFound`.
 
 ### `history/list` (phase H2)
 

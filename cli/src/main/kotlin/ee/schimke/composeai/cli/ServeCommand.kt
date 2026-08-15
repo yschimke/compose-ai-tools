@@ -49,6 +49,7 @@ import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
+import ee.schimke.composeai.cli.serve.ServeParameterRows
 import ee.schimke.composeai.cli.serve.ServePerPreviewDaemonPool
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeProjectHistory
@@ -59,6 +60,7 @@ import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeSharedDaemonPool
+import ee.schimke.composeai.cli.serve.ServeSites
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeTrustAdmin
 import ee.schimke.composeai.cli.serve.ServeTrustStoreFile
@@ -92,6 +94,16 @@ import okio.Path.Companion.toPath
  * serves the module's whole preview set, so switching previews is just navigation.
  */
 class ServeCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `serve` is the one command that turns a `@PreviewParameter` fan-out into addressable row ids
+   * (issue #3786), so it is the one that wants module selection to keep previews whose rows *might*
+   * match. It can afford to: the render below produces the fan-out, `ServeParameterRows` expands
+   * it, and [modulesWithMatchingPreviews] then discards any module whose "maybe" didn't pan out —
+   * before the one-module check that would otherwise choke on it.
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
 
   private val lan: Boolean = "--lan" in args
   private val host: String =
@@ -519,6 +531,14 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val catalogsUnlistedRaw: String? = args.flagValue("--catalogs-unlisted")
 
   /**
+   * **Top-level sites** (`--sites m3.preview.coo.ee=m3-catalog,…`; also `catalogs.json`'s `sites`):
+   * host names on which one already-served catalog is presented as the whole server — its landing
+   * at `/`, its links inside the custom domain, no front door and no neighbours. See [ServeSites];
+   * it adds no catalog and no work, only a different reading of the same request.
+   */
+  private val sitesRaw: String? = args.flagValue("--sites")
+
+  /**
    * The **catalog set as config** (`--catalogs-file <path>`; env `SERVE_CATALOGS_FILE` in the
    * container profiles): a `catalogs.json` ([ServeCatalogsConfig]) listing every catalog to serve,
    * where its delivery branch lives, whether it's on the front door, and which front-page section
@@ -790,6 +810,27 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogSourceRoot != null ||
         revisions
     if (!needsGradle) {
+      // `--id` / `--filter` / `--preview` select from a *discovered module's* manifest, and this
+      // path never discovers one — the sessions come from bundles, catalogs and uploads. Ignoring
+      // them silently is the exact shape issue #3744 was filed about: the user believes they
+      // narrowed what is exposed and the server publishes everything. Say so instead.
+      val selectors =
+        listOfNotNull(
+          exactId?.let { "--id" },
+          filter?.let { "--filter" },
+          previewRef?.let { "--preview" },
+        )
+      if (selectors.isNotEmpty()) {
+        System.err.println(
+          "serve: ${selectors.joinToString(" / ")} select previews from a discovered module, but " +
+            "this server is bundle-backed — it hosts what --bundle / --bundles / --catalogs and " +
+            "uploads provide, and no manifest to select against exists."
+        )
+        System.err.println(
+          "  Drop the selector, or pass --module <path> / --discover to serve from a module."
+        )
+        exitProcess(64)
+      }
       runBundleServer()
       return
     }
@@ -804,37 +845,32 @@ class ServeCommand(args: List<String>) : Command(args) {
       System.err.println("serve: no previews discovered.")
       exitProcess(3)
     }
-    if (outcome.manifests.size > 1) {
-      System.err.println(
-        "serve: ${outcome.manifests.size} modules discovered; a server hosts one module. " +
-          "Narrow with --module <path>:"
-      )
-      outcome.manifests.forEach { (m, _) -> System.err.println("  ${m.gradlePath}") }
-      exitProcess(1)
-    }
-
-    val (module, manifest) = outcome.manifests.single()
-    val previews =
-      manifest.previews
-        .filter { matches(it.id) }
-        .map {
-          val (focus, gestures) = detectedFeaturesOf(it)
-          ServePreview(
-            id = it.id,
-            label = it.functionName.ifBlank { it.id },
-            uiMode = it.params.uiMode,
-            supportsFocus = focus,
-            supportsGestures = gestures,
-            fixedTheme = it.fixedTheme,
-          )
-        }
-    // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
-    // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
-    val declaredThemes = declaredThemesFromPreviews(manifest.previews)
-    if (previews.isEmpty()) {
+    // Expand each module's `@PreviewParameter` fan-out BEFORE deciding how many modules are in play
+    // (issue #3786 review follow-up). Module selection has to keep a parameterized preview whose
+    // rows *might* match — the row ids don't exist until the render above wrote the fan-out — so
+    // `--filter Crimson` can retain a module whose provider turns out to yield only Light/Dark.
+    // That
+    // module contributes nothing servable, and counting it here would abort a request that has
+    // exactly one real answer. Resolving first turns the speculative keep back into a fact.
+    val servable = modulesWithMatchingPreviews(outcome.manifests)
+    if (servable.isEmpty()) {
       System.err.println("serve: no previews matched (--id/--filter excluded them all).")
       exitProcess(3)
     }
+    if (servable.size > 1) {
+      System.err.println(
+        "serve: ${servable.size} modules discovered; a server hosts one module. " +
+          "Narrow with --module <path>:"
+      )
+      servable.forEach { (m, _) -> System.err.println("  ${m.gradlePath}") }
+      exitProcess(1)
+    }
+
+    val (module, previews) = servable.single()
+    val manifest = outcome.manifests.first { (m, _) -> m.gradlePath == module.gradlePath }.second
+    // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
+    // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
+    val declaredThemes = declaredThemesFromPreviews(manifest.previews)
 
     if (!runDaemonStart(module)) {
       System.err.println("serve: composePreviewDaemonStart failed for ${module.gradlePath}.")
@@ -1986,12 +2022,26 @@ class ServeCommand(args: List<String>) : Command(args) {
     val configuredApps =
       catalogLoads?.snapshot()?.filter { !it.config.listed }?.map { it.config.system }
         ?: registeredUnlistedCatalogs.toList()
+    // Top-level sites: `catalogs.json`'s `sites` first (the operator config that lives beside the
+    // catalog set), then any `--sites` flag entries for a host the file didn't already claim — the
+    // same compose-don't-replace rule `--catalogs` follows. A site naming a system this server does
+    // not serve is dropped with a startup warning rather than 404ing a whole hostname silently.
+    val sites =
+      ServeSites.of(
+        catalogsConfig.sites.map { it.host to it.system } +
+          ServeSites.parse(sitesRaw, onProblem = { System.err.println("serve: $it") }).let {
+            flagSites ->
+            flagSites.hosts.map { it to flagSites.systemFor(it)!! }
+          },
+        knownSystems = (configuredCatalogs + configuredApps).toSet(),
+        onProblem = { System.err.println("serve: $it") },
+      )
     // Runtime catalog administration: only when the operator supplied an admin token AND there's a
     // catalog store to fetch through. Both halves are opt-in, so a plain `serve` has no admin
     // surface at all.
     val catalogAdmin =
       if (adminToken != null && catalogStore != null && catalogLoads != null) {
-        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs)
+        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs, sites)
       } else {
         null
       }
@@ -2038,6 +2088,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         // /status, and a catalog recovered by the refresher appears on the home index immediately.
         catalogSessions = configuredCatalogs,
         appCatalogSessions = configuredApps,
+        sites = sites,
         catalogLoads = catalogLoads,
         catalogRefresh = catalogRefresh,
         maxLiveSeats = liveSeats,
@@ -2056,11 +2107,16 @@ class ServeCommand(args: List<String>) : Command(args) {
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
         playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
-        // Lets `/playground?from=<system>/<previewId>` open a served preview's own Kotlin. Only
-        // wired alongside the lane — with no playground there is nothing to open it in, and the
-        // viewer then renders no link rather than one that leads nowhere.
-        playgroundSourceFetch =
-          playgroundLane?.let { { url: String -> PlaygroundSeedResolver.httpFetch(url) } },
+        // Reads a served preview's Kotlin, for two consumers with different requirements:
+        // `/playground?from=<system>/<previewId>` (needs a playground to open it in) and the
+        // viewer's Source panel (does not — it only shows the code).
+        //
+        // So this is wired unconditionally. It used to hang off `playgroundLane`, which was right
+        // while the playground was the only consumer and became wrong the moment the Source panel
+        // arrived: on a host with no playground the fetcher was null, the resolver with it, and
+        // every viewer silently dropped the Source chip. Whether a *link* to the editor is offered
+        // is decided separately, by `playgroundLinkFor`.
+        playgroundSourceFetch = { url: String -> PlaygroundSeedResolver.httpFetch(url) },
         trustForwardedFor = trustForwardedFor,
         engagementStore = ServeEngagementStore(engagementFile),
         projectHistory = projectHistory,
@@ -2542,9 +2598,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     store: ServeCatalogStore,
     loads: CatalogLoadTracker,
     wasmCatalogs: MutableMap<String, File>,
+    /** So retiring a catalog a hostname is published as is refused rather than stranding it. */
+    sites: ServeSites,
   ): ServeCatalogAdmin =
     ServeCatalogAdmin(
       tracker = loads,
+      sites = sites,
       defaultRepo = catalogRepo,
       branchPrefix = catalogBranchPrefix,
       configFile = catalogsFile,
@@ -2884,14 +2943,91 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Match a preview id against `--id` (exact) / `--filter` (substring); all when neither is set.
+   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference)
+   * — the shared [previewIdMatchesRequest] rule, so every selector passed must hold; all previews
+   * when none is set.
+   *
+   * This used to be a `--id` beats `--filter` precedence ladder, which read as the safer choice but
+   * could never actually take effect: `renderAllModules` narrows the build through
+   * `modulesMatchingPreviewRequest`, which intersects, so contradictory selectors have already
+   * dropped every module by the time this runs. The ladder's only reachable outcome was to disagree
+   * with the pass that had already decided.
+   */
+  /**
+   * Each discovered module paired with the previews it can actually serve for this request, with
+   * the modules that can serve none dropped (issue #3786 review follow-up).
+   *
+   * This is where a `@PreviewParameter` "maybe" from module selection becomes a fact. Module
+   * selection cannot know a provider's rows — they don't exist until the render writes the fan-out
+   * — so it keeps any parameterized preview that *might* match. By the time this runs the fan-out
+   * is on disk and [ServeParameterRows] can enumerate it, so a module retained for a row that
+   * turned out not to exist contributes an empty list and drops out before the one-module check.
+   */
+  private fun modulesWithMatchingPreviews(
+    manifests: List<Pair<PreviewModule, PreviewManifest>>
+  ): List<Pair<PreviewModule, List<ServePreview>>> =
+    manifests
+      .map { (module, manifest) -> module to servablePreviewsOf(module, manifest) }
+      .filter { (_, previews) -> previews.isNotEmpty() }
+
+  /**
+   * The `@PreviewParameter` fan-out expansion (issue #3749). Discovery emits ONE entry per
+   * parameterized function, so the manifest alone would list a screen whose states come from a
+   * provider as a single card showing value 0 — the symptom that issue was filed about. The render
+   * pass already wrote one file per value, and the daemon accepts those `<baseId>_<row>` ids, so
+   * each on-disk row becomes its own servable preview. A preview with no provider, or whose fan-out
+   * isn't on disk, keeps exactly its old single entry.
+   */
+  private fun servablePreviewsOf(
+    module: PreviewModule,
+    manifest: PreviewManifest,
+  ): List<ServePreview> {
+    val claimedOutputs = ServeParameterRows.claimedOutputs(manifest.previews)
+    return manifest.previews.flatMap { info ->
+      val (focus, gestures) = detectedFeaturesOf(info)
+      fun serve(id: String, label: String) =
+        ServePreview(
+          id = id,
+          label = label,
+          uiMode = info.params.uiMode,
+          supportsFocus = focus,
+          supportsGestures = gestures,
+          fixedTheme = info.fixedTheme,
+        )
+      val baseLabel = info.functionName.ifBlank { info.id }
+      val rows = ServeParameterRows.rowsFor(info, module.projectDir, claimedOutputs)
+      // `--id` / `--filter` / `--preview` match the declared preview (so `--id Foo` serves all of
+      // Foo's rows, which is what asking for a parameterized preview means) OR a row id directly,
+      // so
+      // a caller can narrow to one state. The declared preview is matched as a *row of the
+      // manifest*, not as a bare id, because `--preview` also accepts `<Class>.<function>` and the
+      // bare function name — forms only the manifest row can answer. A synthetic row id has no
+      // manifest row of its own, so it is matched by id.
+      when {
+        rows.isEmpty() -> if (matches(info)) listOf(serve(info.id, baseLabel)) else emptyList()
+        matches(info) -> rows.map { serve(it.id, "$baseLabel · ${it.label}") }
+        else -> rows.filter { matches(it.id) }.map { serve(it.id, "$baseLabel · ${it.label}") }
+      }
+    }
+  }
+
+  private fun matches(preview: PreviewInfo): Boolean =
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
+
+  /**
+   * The same rule for something that has an id but no manifest row — a `@PreviewParameter` row id
+   * (`<baseId>_<row>`), which discovery never declared. Only the id-shaped forms can apply, so
+   * `--preview` degrades to the exact-or-substring half of [previewMatchesReference].
    */
   private fun matches(id: String): Boolean =
-    when {
-      exactId != null -> id == exactId
-      filter != null -> id.contains(filter, ignoreCase = true)
-      else -> true
-    }
+    previewIdMatchesRequest(id, exactId = exactId, filter = filter, previewRef = previewRef)
 
   private fun runDaemonStart(module: PreviewModule): Boolean {
     var ok = true
@@ -3040,6 +3176,11 @@ class ServeCommand(args: List<String>) : Command(args) {
                           (desktop bundles); otherwise read-only as its baked PNGs. Repeatable.
         --id <exact>      Only serve this exact preview id.
         --filter <substr> Only serve previews whose id contains this substring.
+        --preview <ref>   Only serve previews the reference selects: an id, a
+                          `Class.function`, a bare function name, or a case-insensitive
+                          substring of an id. Combined with --id / --filter it intersects:
+                          every selector you pass has to match. Selecting needs a module
+                          (--module / --discover) — a bundle-backed server has no manifest.
         --host <addr>     Bind address (default 127.0.0.1 — loopback only).
         --lan             Bind all interfaces (0.0.0.0) so other devices on your network can
                           connect. Prints the token-gated network URL and a security warning.
@@ -3166,7 +3307,19 @@ class ServeCommand(args: List<String>) : Command(args) {
                           "group" names a front-page section from "groups" — a claim honoured only
                           when the catalog's bytes really came from the entry's repo (or one of its
                           "attributionRepos"), so an id like compose-m3 can't buy a section. Entries
-                          here come first; --catalogs / --catalogs-unlisted add to them.
+                          here come first; --catalogs / --catalogs-unlisted add to them. May also
+                          carry "sites" (see --sites).
+        --sites <host>=<system>[,…]
+                          Top-level sites: serve an already-published catalog on a hostname of its
+                          own, where it looks like the whole server (e.g.
+                          m3.preview.coo.ee=m3-catalog serves what /m3-catalog/ serves). On that
+                          host the catalog's landing is /, every link stays inside the domain, the
+                          front-door index and the "all design systems" back link are gone, /status
+                          + /sitemap.xml cover that app only, and /<other-system>/ 404s while
+                          /<this-system>/… 301s to the rooted URL. Same sessions, same baked pixels,
+                          same daemons — a site is a view of the box, not a second one. The system
+                          must be one this server already serves; catalogs.json's "sites" says the
+                          same thing as config.
         --admin-token <value>
                           Enable the runtime admin API and gate it with this secret. Two surfaces:
                           the catalog set — GET /admin/catalogs, POST /admin/catalogs (a

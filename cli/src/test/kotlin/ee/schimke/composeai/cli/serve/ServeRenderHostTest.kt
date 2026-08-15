@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.PreviewSlots
 import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
 import ee.schimke.composeai.data.layoutinspector.SlotBounds
 import ee.schimke.composeai.render.session.RenderSession
@@ -19,6 +20,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -487,6 +490,27 @@ class ServeRenderHostTest {
       assertEquals("fill #FF6750A4 · radius 12.0dp · border 1.0dp #FF79747E", theme.label)
       assertEquals(AnnotationBounds(x = 8, y = 8, width = 32, height = 32), theme.bounds)
       assertEquals("#FF6750A4", theme.detail["background"])
+
+      // The tag index rides the SAME response, off the SAME semantics payload, under the same
+      // render lock. That co-location is the contract: a parity element gate compares a recorded
+      // tag box against a current one, so an index built by a second render would report movement
+      // that never happened.
+      val tags =
+        Json.decodeFromJsonElement(
+          MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
+          payload.getValue("tags"),
+        )
+      assertEquals(
+        setOf(
+          "${PreviewSlots.SLOT_TAG_PREFIX}leadingIcon",
+          "${PreviewSlots.SLOT_TAG_PREFIX}supporting",
+        ),
+        tags.keys,
+      )
+      val icon = tags.getValue("${PreviewSlots.SLOT_TAG_PREFIX}leadingIcon")
+      assertEquals(1, icon.count)
+      // Same box the theme annotation reports for that node — one coordinate space, not two.
+      assertEquals(theme.bounds, icon.bounds)
     }
   }
 

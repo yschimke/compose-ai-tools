@@ -73,23 +73,359 @@
    Every catalog's branch (whatever repo) must be in the `--trust-store` to badge `Trusted(Branch)`;
    otherwise it serves `Unverified` (the data tiers serve either way).
 
-## Tabbed catalog pages
+## Top-level sites: one catalog on a hostname of its own
+
+A published catalog can additionally be served on **its own hostname**, where it presents as the
+only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves:
+
+```
+--sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3
+```
+
+or, durably, beside the catalog set in `catalogs.json` (the form the deployment uses):
+
+```json
+{
+  "catalogs": [{ "system": "m3-catalog", "repo": "yschimke/m3-catalog" }],
+  "sites": [{ "host": "m3.preview.coo.ee", "system": "m3-catalog" }]
+}
+```
+
+On that hostname:
+
+- **`/` is the catalog's landing.** Not the front-door index of every system this box publishes —
+  a site opening on a list of its neighbours would defeat the point.
+- **Links stay inside the domain.** Same-session URLs are built with an empty base path and no
+  `?session=`, so a card is `/p/button-filled`, not `/m3-catalog/p/button-filled` and not a link
+  back to `preview.coo.ee`. The "← All design systems" back button is gone; there is nowhere on
+  this hostname for it to go.
+- **`/status` reports on this app only** — its catalog row, its daemons, its startup failures. A
+  monitor pointed at the site alerts on the site, and a visitor learns nothing about what else the
+  box runs. `/sitemap.xml` is scoped the same way, with the catalog rooted at `/`.
+- **The canonical path redirects.** `m3.preview.coo.ee/m3-catalog/p/<id>` → `308` to
+  `/p/<id>`, so the two spellings don't compete as duplicate URLs in a crawler's index. `308` and
+  not `301` because that prefix also carries POST routes (`/refresh`, `/api/presence`, the
+  theme-lease pair) and most clients re-issue a `301` as a GET.
+- **A neighbour is not reachable.** `m3.preview.coo.ee/wear-m3/` is a `404`, not a second door onto
+  another catalog through the wrong domain — and the host **outranks `?session=`**, so the older
+  query spelling can't reach past it either.
+
+One surface is **withheld** on a site rather than broken: when the box pins an OAuth callback origin
+(`--github-auth-callback-base-url`, which this deployment sets), a GitHub sign-in started on a site
+host cannot come back to it — the `cp_gh_state` cookie is host-only and GitHub returns to the pinned
+origin. The sign-in affordance is therefore not offered on a site host, and its live/playground
+surfaces stay snapshot-only, instead of advertising a button that 401s. A box with no pinned
+callback derives it from the request and is unaffected. Carrying the originating host through the
+OAuth dance is the real fix and isn't done yet.
+
+The same catalog, served both ways. The visible difference is the header: the canonical path keeps
+the "← All design systems" button back to the front door, and the site has no front door to return
+to. Both name the catalog in the bar (see below). The rest of the difference is in the hrefs —
+`/p/<id>` rather than `/meshcore-mobile/p/<id>`.
+
+| On the canonical path (`preview.coo.ee/meshcore-mobile/`) | As a top-level site (`meshcore.example/`) |
+| --- | --- |
+| ![Catalog landing served under its canonical path, with the back button to the front door](images/serve-site-canonical-path.png) | ![The same catalog as a top-level site — no back button, links rooted](images/serve-site-top-level.png) |
+
+Both are committed fixtures (`serve-landing-path`, `serve-landing-site`), so the CI visual-diff bot
+renders and diffs the site presentation on every subsequent PR.
+
+What it deliberately is **not** is a second server. There is no extra session, daemon, catalog
+fetch, hero bake or render behind a site: it is a lookup on the request's `Host` that changes which
+session the already-existing root-mounted routes resolve to, and what the pages say about
+themselves. Serving a catalog on ten hostnames costs what serving it on one does. A site can only
+name a catalog the server already serves — one that names anything else is dropped at startup with a
+warning rather than 404ing a whole hostname silently.
+
+Two prerequisites live outside the app's own config. DNS for the name has to point at the box, and
+the reverse proxy has to match it and hold a certificate for it: on the `deploy/vps` profile that is
+`SITE_DOMAINS`, which lands on the Caddyfile's site-address line beside `{$DOMAIN}` (Caddy preserves
+`Host` and sets `X-Forwarded-Host`, both of which the site lookup reads). Keep `SITE_DOMAINS` and
+the app's `sites` in step — a name in one and not the other is either a site nothing routes to or a
+hostname the app doesn't recognise. Sites are read at startup, so a `catalogs.json` edit needs a
+restart; the additive `/admin/catalogs` reconcile doesn't carry them.
+
+## The header bar names the catalog you are in
+
+The site header carries the catalog's name beside the product mark — `◇ compose-preview │
+meshcore-mobile` — on every page that belongs to a catalog: its landing, its viewers, the compare
+and parity views, its design pages. Pages that belong to no catalog (the front door, a shared
+document) keep the bare brand.
+
+It used to say only "compose-preview" everywhere, so the one fact a visitor most needs — *which
+design system am I looking at* — lived solely in the page's own `<h1>` and scrolled away with it.
+The bar is pinned, so the name stays legible while you are deep in a grid or a viewer, and it tells
+two tabs open on two catalogs apart, which the mark alone never could. It is drawn in the catalog's
+own primary colour, so a themed system's bar picks up the palette its page already wears.
+
+On a **top-level site** the name is doing double duty: the hostname publishes one design system, so
+the bar is that system's masthead rather than a breadcrumb.
+
+## The whole site wears one skin
+
+A [top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) publishes one design
+system, so every page on that hostname is that system's page — including the ones that belong to no
+catalog on the main host. `/status` and the 404 therefore carry the site catalog's **palette** and
+its **theme storage key**, which means:
+
+- the whole hostname is one skin, rather than a themed catalog with unthemed chrome beside it;
+- the light/dark choice a visitor makes on the grid follows them to `/status` and back, because
+  every page on the host remembers it under the same `cp-theme:<system>` key rather than each
+  page keeping its own.
+
+Both are read without resuming a suspended daemon — a 404 must not wake a render process to find
+out what colour to be.
+
+## Catalog pages navigate as a tree
 
 A catalog whose components declare a **`section`** (set per group in the catalog spec — `Themes`,
-`Components`, `Screens`, `Animations`, …) is served with its previews grouped into **tabs**, one per
-section, and the component `group` shown as a sub-heading inside a tab. Sections, their groups, and
-the cards within follow the catalog's **authored order**, so the tabs read Themes → Components →
-Screens rather than alphabetically (the served preview list is otherwise id-sorted). Empty sections
-are omitted and the set is open-ended — tag a group with any section name to grow a new tab.
+`Components`, `Screens`, `Animations`, …) is served with a **navigation tree** beside its grid: one
+row per section, each opening onto that section's named `group`s, which are also the sub-headings
+the grid draws over each cluster of cards. Sections, their groups, and the cards within follow the
+catalog's **authored order**, so the tree reads Themes → Components → Screens rather than
+alphabetically (the served preview list is otherwise id-sorted). Empty sections are omitted and the
+set is open-ended — tag a group with any section name to grow a new branch.
 
-Tabs are progressive enhancement: with scripting off every section shows under its own heading and
-the tabs are in-page anchor links; with scripting on, selecting a tab shows just that section while
-the **search box still spans every tab**. A catalog whose previews carry no section (the published
-design systems today) keeps the single flat grid, unchanged.
+This used to be a row of tabs, which published only the top level of a structure that is two deep:
+a section's groups existed solely as headings, so the only way to learn what a section *contained*
+was to open it and scroll. The tree publishes both levels at once, and a group row is a destination
+— it selects the section and scrolls to that group's cards.
 
-![Tabbed catalog page — meshcore-mobile (light)](images/serve-tabs-sections-light.png)
+A section is expanded exactly when it is selected, which is the same statement the grid beside it
+makes. The exception is a live **search**, which spans every section: every branch that still holds
+a match opens, and a group row disappears with the cluster the filter emptied, so a row never
+survives the destination it points at.
 
-![Tabbed catalog page — meshcore-mobile (dark)](images/serve-tabs-sections-dark.png)
+Below a group the tree keeps going: one row per **component**, and under a component the
+**variants** the grid folds out from under it. A component row scrolls to that component's card; a
+variant row is the one row that leaves the page, because those renders have no card of their own —
+it opens the viewer on that variant.
+
+Which variants get a row is the primary/secondary split. **Primary** is `state` (disabled, pressed,
+checked) and `props` (with icon, RTL, large font) — axes where the variant is a different thing to
+look at. **Secondary** is theme, breakpoint, fontScale and locale — a different rendering of the
+same thing — and those stay out of the tree, theme because the card already swaps it in place, the
+rest because they would multiply every component by a matrix nobody navigates by.
+
+Depth is paid for by the same rule at every level: a group is open exactly when it is the current
+one, and so is a component. Otherwise a catalog of eighty components would put all of them, and
+their variants, in the sidebar at once — the wall the grid already is.
+
+A catalog that declares **no section at all** — the shape most published design systems are in,
+where the inventory comes from `@CatalogComponent(group = …)` and nothing names a section — now gets
+an **outline** tree, whose top level is those groups. It used to get no tree whatever: the landing
+fell back to a flat grid and the structure the catalog did have stayed invisible. There are no
+panels to switch there, so every row is purely a jump.
+
+The tree carries the keyboard pattern its role names — Down/Up walk the visible rows, Right opens a
+collapsed row or steps into an open one, Left closes it or climbs to the parent — and marks the
+group you are actually scrolled to. It is progressive enhancement throughout: with scripting off
+nothing collapses at all, every section shows under its own heading, and every row is a working
+in-page anchor.
+
+A component opened onto its variants, and the outline tree a section-less catalog now gets:
+
+![A component row opened onto its primary-axis variants](images/serve-catalog-tree-variants.png)
+
+![The outline tree over a section-less catalog](images/serve-catalog-tree-outline.png)
+
+![Catalog navigation tree — meshcore-mobile (light)](images/serve-catalog-tree-light.png)
+
+![Catalog navigation tree — meshcore-mobile (dark)](images/serve-catalog-tree-dark.png)
+
+Opening another branch, and the search that spans them all:
+
+![The Components branch open, its Device group marked](images/serve-catalog-tree-section-open.png)
+
+![A search for "device", every matching branch open](images/serve-catalog-tree-filtered.png)
+
+## The switchers: how a folded render stays reachable
+
+The grid shows **one card per component**. A component's non-default states (`disabled`, `pressed`,
+an `@OverrideVariant` size/shape cell) and its props-axis variants (RTL, a pseudo-locale, a large
+font, `content=icon+label`) are folded into that card, and the viewer's two `<nav>` rows — **State**
+and **Variant** — are what keep them reachable. Both are plain links to a sibling `/p/<id>`, so they
+work with scripting off.
+
+Each row stays within the visitor's current **theme lane**, and a lane resolves before it is
+compared: a render's declared `theme`, else the `__light` / `__dark` token in its id, else the
+system's primary lane (dark for a dark-first Wear catalog, light otherwise). That last fallback is
+load-bearing, because **a catalog does not necessarily tag both modes.** An `@OverrideVariant`
+matrix publishes its dark cells as `…__xs__dark` — the synthetic capture inherits the base
+`@Preview`'s `uiMode` param — but its light cells as a bare `…__xs`, while the component's default
+render still carries the full `…__default__light`. Comparing the raw nullable `theme` put those two
+in different lanes, so the light viewer offered **no State row at all** — and the light lane is the
+one the grid links to, which left m3-catalog's entire size × shape matrix (446 renders across the
+catalog) reachable only by hand-typing an id.
+
+| Before — no State row on the light lane | After — the folded cells are reachable |
+| --- | --- |
+| ![Button Filled viewer, light: only a Variant row](images/serve-state-switcher-untagged-before.png) | ![Button Filled viewer, light: a State row listing the size and shape cells](images/serve-state-switcher-untagged-after.png) |
+
+The dark lane is unchanged, and an untagged render now links back to the primary-lane default as
+well as forward to its siblings — the relation is symmetric because both sides resolve to a lane
+string rather than one of them being `null`.
+
+## Value sets: a knob that says what it may be
+
+A `previewOverride*` knob publishes its current value, and until it also publishes its **value set**
+that is all a visitor gets. A size axis rendered as a text field reading `s`: correct, and useless
+for finding out that `xs` / `m` / `l` / `xl` are the alternatives — you had to read the source, or
+guess the spelling and watch the render refuse to move.
+
+[`previewOverrideChoice`](../data/preview-overrides/runtime/src/main/kotlin/ee/schimke/composeai/overrides/PreviewOverrideHost.kt)
+declares the set alongside the value. Each entry may carry a label, so the picker can read
+"Extra small" while the wire value stays the `xs` the composable reads — seeding and
+`@OverrideVariant` are untouched:
+
+```kotlin
+val size = previewOverrideChoice(
+  "size",
+  default = "s",
+  options = listOf(PreviewOverrideOption("xs", "Extra small"), PreviewOverrideOption("s", "Small")),
+)
+```
+
+| Before — the value, not the alternatives | After — the set is the control |
+| --- | --- |
+| ![A density knob as a text field reading cosy](images/serve-knob-value-set-before.png) | ![The same knob as a picker reading Cosy](images/serve-knob-value-set-after.png) |
+
+The set travels in the declaration (`options`, plus `optionsExhaustive` for whether it is the
+complete list), so it reaches the viewer through the same `previews/<id>.overrides.json` sidecar the
+rest of the knob does — no new lane, and an older reader that doesn't know the fields renders the
+input it always did.
+
+**Two forms, one helper.** An *exhaustive* set becomes a `<select>`: nothing outside it is
+expressible, and every value is on screen without interacting. A *non-exhaustive* one stays a
+free-text `<input list>` over a `<datalist>` — the options are worth offering but must not be the
+only thing accepted. The **locale field is the standing instance of the second form**: its presets
+(pseudolocales first, then RTL languages, then common tags) render through the same helper, while
+any valid BCP-47 tag stays typeable and the control keeps the id and raw-value contract the viewer
+script already drives it by.
+
+A value the control is *currently* showing but the author never declared — a hand-written
+`knob.size=xxl`, a link from before a value was renamed — is added to the picker rather than
+dropped, so the control cannot quietly disagree with the pixels beside it. That holds for a value
+baked into the sidecar and for one that only ever existed in the page URL, which is where a stale
+link actually arrives.
+
+> **Consumer docs live elsewhere.** The above is the contributor view — how the server renders a
+> declared value set. `previewOverrideChoice` is part of the *published* authoring surface, so the
+> guidance for someone applying the plugin to their own project belongs in the
+> [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview),
+> not here. See [AGENTS.md](AGENTS.md) on the two doc trees.
+
+## Historical permalinks: `?at=<sha>`
+
+Every URL above names a *preview*, not a version of one. The catalogs are regenerated whenever their
+source changes, so `…/m3-catalog/compare/navigationbar-short__ideal__default__light__compact` shows
+whatever that comparison happens to be when the link is **opened** — which is the one thing a link
+someone pasted into an issue, a review or a design doc was supposed to defend against (issue #3723).
+
+Nothing new has to be published to fix it, because **the versions already exist**: the
+`design-artifacts/<system>` branch is regenerated by appending a commit per publish rather than by
+force-pushing an orphan ([Delivery-branch history](design/DESIGN_CATALOGS.md#delivery-branch-history)),
+and `raw.githubusercontent.com` serves any commit, not just a branch name. A delivery-branch sha plus
+the asset's path on that branch addresses the published bytes exactly. So a permalink is the page URL
+plus **`?at=<sha>`**, and the asset lanes answer it out of the branch at that commit instead of out
+of the catalog on disk.
+
+| Live — the pixels move under the URL | Pinned to a publish — they cannot |
+| --- | --- |
+| ![The comparison page at the branch tip](images/serve-revision-unpinned.png) | ![The same page pinned to an older revision, with the pin banner and the revision list](images/serve-revision-pinned.png) |
+
+**Where the shas come from is the branch itself.** Each catalog load reads its delivery branch's
+commit feed (`github.com/<repo>/commits/<branch>.atom` — unauthenticated and unmetered, unlike
+`api.github.com`, whose 60 calls an hour a box serving twenty catalogs would spend before lunch).
+Its head is the revision being served; the rest become the **Revisions** control on every viewer and
+comparison page, one row per publish, dated and labelled by the *source* commit the catalog was
+regenerated from. Opening one pins the page. On an ordinary page view the control is a single folded
+line:
+
+![The viewer's folded Revisions disclosure](images/serve-revision-viewer.png)
+
+The rules the lane holds to, each of which exists because its opposite would make a permalink a lie:
+
+- **A pinned request is never answered with current bytes.** A pin the branch can't satisfy — a
+  preview that didn't exist then, a fetch that failed — is a `404`, not a fall-through. Silently
+  serving today's render would look like success to whoever followed the link.
+- **`at=` must be a sha, not a ref.** `?at=main` is a `400`. A branch name resolves perfectly well on
+  the raw host, which is exactly the problem: it is the moving target a permalink replaces, and
+  accepting one would also let a request choose which tree the server reads.
+- **A comparison pins both panels.** The reference raster is republished with everything else, so
+  pinning only the render would score one moment against another rather than two sides against each
+  other.
+- **A pinned page offers nothing that is made on demand.** The line is *published bytes* vs.
+  *produced per request*, not static vs. interactive. Knobs, declared themes, the live stream, the
+  in-browser Wasm tier, the SVG export, the Remote Compose players, the inspection layers, a
+  full-page scroll capture and the downloadable bundle all run the catalog's **current** code, so a
+  pin takes them off the page — an SVG looks as static as a PNG and is not. The baked render and a
+  published **design reference** are files on the branch at that commit, so both stay and both take
+  the pin; the spec lane is therefore still there, comparing that publish's render against that
+  publish's spec.
+
+  | Live — every lane on offer | Pinned — only what the branch published |
+  | --- | --- |
+  | ![The viewer with its renderer combo, SVG toggle and Remote Compose players](images/serve-revision-live-lanes.png) | ![The same viewer pinned: the produced-on-demand lanes are gone](images/serve-revision-pinned-lanes.png) |
+
+  The lanes that have no historical answer refuse rather than fall through: `/render/<id>.svg?at=…`
+  (and the `.slots` / `.a11y` / `.annotations` / `.rc` products) is a `404` naming the reason, so a
+  hand-typed URL cannot get today's export under an old sha either. A product selected by **query**
+  goes the same way with a `400` — `?at=<sha>&scroll=long`, `&rcPlayer=cmp-jvm`, or any override
+  (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order, and answering with the plain
+  baked PNG would be a 200 that silently ignores half the URL. The comparison page's **annotation
+  layers** are suppressed under a pin for the same reason: they are published per catalog load, not
+  per revision, so drawing them would label today's bounds as that revision's spec.
+- **A revision resolves its paths from its own manifests.** The `catalog.json` and
+  `references/index.json` *at the pinned commit* decide where an asset lived, not the tip's map. The
+  two lanes need it for opposite reasons: a render's id is derived from its path, so a rename
+  retires the id a permalink names and today's map cannot resolve it under any path; a reference's
+  id survives a path change, so today's map resolves it confidently to a path that commit never had.
+  Both manifests are memoised per commit (one fetch even when a page's images race in together),
+  and each lane resolves a duplicate id the way its own loader does — last-wins for renders,
+  first-wins for references — so a pin can never disagree with what that commit served while it was
+  current.
+
+  A manifest that **was read** is authoritative about its own revision: an id it doesn't list was
+  not published then, and the answer is a 404 rather than whatever happens to sit at today's path in
+  that commit. The tip's map is the fallback only for a manifest that could not be read at all.
+
+  That revision's catalog also answers for the **page**, not just the pixels. A permalink outlives
+  the id it names: when a preview is renamed or reorganised away, every link made before that names
+  an id the session's list — built from the tip — no longer contains, and `/p/<id>?at=<sha>` used to
+  404 even though the pinned revision published it and the server could serve its render. Under a
+  pin, a preview the revision's own catalog lists is paged from there, named by the component it
+  belonged to. Unpinned it stays gone: a retired preview is not resurrected onto the live catalog.
+- **A load reads one commit, not a branch.** The feed is resolved first and every asset of that load
+  is fetched through the sha it returned, so a publish landing mid-load can't leave the pages
+  advertising one revision while serving a mixture of two. It also means the live catalog and a pin
+  to that same revision read identical URLs. A branch whose feed can't be read falls back to
+  fetching by name, exactly as before permalinks existed.
+- **The pinned lane is bounded, and says which kind of "no" it means.** It is the only lane whose
+  target a *request* chooses (`?at=<any valid sha>` names a fetch), so branch reads run behind a
+  small permit pool, a URL the branch already refused is remembered rather than re-asked, and a
+  shed request answers `503` + `Retry-After` — never `404`, because "busy" and "that revision
+  published no such asset" are different facts and a link checker must not confuse them. Being
+  bounded is also what lets the lane answer **HEAD**: an unfurler probes an `og:image` before
+  fetching it, so refusing dropped the preview card on precisely the historical links this feature
+  exists to share.
+- **The response is `immutable`** (on a public box — a token-gated one keeps `no-store` like every
+  other private response), because `(commit, path)` is immutable by construction.
+
+The catalog landing's provenance strip names the revision it is currently serving, so the version on
+screen is citable without opening a preview first.
+
+Revision rows are `rel="nofollow"`, and a pinned render URL is already closed to crawlers by the
+`robots.txt` rule against query-bearing render URLs ([below](#robotstxt-and-sitemapxml)). Both say
+the same thing: a dozen pinned near-duplicates of every preview page is not what anyone wants
+indexed, while a link a person opens — or a chat client unfurls — is unaffected.
+
+**What is not pinned:** the catalog *grid*. Its thumbnails are prebaked from the loaded catalog, and
+a pin there would mean re-fetching a page's worth of historical images per visit; pinning is
+per-preview and per-comparison, which is the granularity the links people share have anyway. A
+revision list is also a tail, not an archive — about the last dozen publishes — but a pin **outside**
+that window still resolves, because what decides it is whether the branch still answers, not whether
+the sha is still on the page.
 
 ## Every selection is in the URL
 
@@ -138,6 +474,95 @@ and its safety model, with a link to the machine-readable [`/version`](#endpoint
 ![Public landing "about" intro (light)](images/serve-about-public-light.png)
 
 ![Public landing "about" intro (dark)](images/serve-about-public-dark.png)
+
+## Pasting a link into Slack or Google Chat
+
+Every browser-facing page carries an Open Graph / Twitter card block — title, description, canonical
+`og:url`, and the image the page is *about* (a drawn card on the front door and on each catalog
+landing, the exact render on a viewer). Utility and error pages advertise no image and get an honest
+text-only card.
+
+Five things beyond the meta tags decide whether the card actually appears — and whether what appears
+is worth looking at. All five used to be missing:
+
+- **HEAD answers GET, everywhere.** An unfurler probes a URL and its `og:image` with `HEAD` before
+  committing to a download. Every route here is registered with Ktor's `get`, so before
+  [`AutoHeadResponse`](https://ktor.io/docs/server-autoheadresponse.html) was installed a probe got
+  `405` on the constant paths and `404` on everything under `/{system}` — the whole site read as
+  dead to anything that checks before fetching. Link checkers and `curl -I` were being told the same
+  thing.
+- **The image declares its size.** `og:image:width` / `og:image:height` come from the render's PNG
+  header (`ServeHost.bakedRenderSize` — 8 bytes of the IHDR, no decode, no fetch), so a fetcher can
+  lay the card out without downloading the image to measure it. That measurement is the step Slack
+  and Google skip — dropping the image — when it is slow. The size also picks the card honestly: a
+  300×210 component render asks for `summary`, not the `summary_large_image` it could never fill.
+- **…and its shape, not just its size.** A large card is laid out at roughly 1.91:1 and the image is
+  *cropped* to fill it, so a picture far from that aspect is mostly thrown away. `ServeWeb` claims a
+  large card only inside 1.25–2.4 (the band where the crop still leaves about two thirds of the
+  image); a portrait phone render and a square watch face both fall outside it and get `summary`,
+  which shows the whole picture beside the text instead of a slice through its middle.
+- **The front door and each catalog advertise a *drawn* card** (`ServeSocialCard`, served immutable
+  off `/social/<hash>.png`), not one of their own renders. No render is the right shape: the front
+  door used to point at whichever hero sat in its first card — `compose-m3`'s 1078×2399 phone
+  screenshot — so a shared link unfurled as a horizontal band through the empty half of an app
+  scaffold, carrying no product name and nothing about the other twenty catalogs. The card is
+  1200×630 with the mark, the page's heading, a count, and the catalogs' own hero thumbnails set
+  into it. It is composed from the thumbnails `/hero/` already baked, so it costs no render, and it
+  is memoised by its inputs and content-addressed like they are — which matters more here, because
+  unfurlers cache by URL and several never revalidate.
+- **The site has an icon.** `/favicon.svg`, `/favicon.ico` and `/apple-touch-icon.png`
+  (`ServeSiteIcon`, drawn from the same mark and palette) plus the `<link rel="icon">` tags that
+  name them. Every surface that shows a card puts the site's icon beside it, resolved from those
+  tags or by probing `/favicon.ico` — which answered `404` with an HTML body before these existed,
+  so an unfurled link showed a generic globe. Three forms because no single one is accepted
+  everywhere: SVG for browser tabs, a PNG for the chat clients that read `apple-touch-icon`, and a
+  real ICO for the fetchers that only ever guess the well-known path.
+- **An anonymous page is storable.** On a server with `--github-auth-*`, every page used to be
+  `private, no-store` because it renders the visitor's sign-in chip. An *anonymous* request gets the
+  signed-out rendering everyone else gets, so it is now `public, max-age=0, s-maxage=300,
+  must-revalidate` with `Vary: Cookie`. The browser still revalidates every visit (so the sign-in
+  chip can never be replayed stale — that is why there is no `stale-while-revalidate`), while shared
+  and preview caches may keep it. A signed-in request, and any token-gated host, stays `no-store`.
+
+### `/robots.txt` and `/sitemap.xml`
+
+Both are served for real (they used to fall through to the styled HTML 404) and are generated by
+[`ServeSiteIndex`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeSiteIndex.kt).
+
+`robots.txt` splits on **cheap published bytes vs. work**. Catalog landings, preview viewers and
+their baked PNGs stay open — they are a map lookup, and they are what a shared link points at.
+Closed: the playground (it compiles Kotlin), `/bundle.zip` and the wasm tier (megabytes per fetch),
+`/history/render` (reads the git object store), the compare/parity/reference lanes (they decode and
+diff), the machine lanes, and — the rule that actually protects the render daemons — **a render URL
+carrying a query string**, since `/…/render/<id>.png` is a baked file but the same path with
+`?theme=` is a live re-render, and the grid links the override forms. Scoped to the render lane on
+purpose: a blanket "no query strings" would also have closed `…/compose-m3/?tab=components&theme=…`,
+which is exactly the link someone pastes into a chat after picking a theme, and Googlebot obeys this
+group.
+
+HEAD is refused (`405` + `Allow: GET`) on the same work lanes. `AutoHeadResponse` answers a HEAD by
+running the whole GET handler and discarding the body, so `HEAD /bundle.zip` would otherwise render
+every preview and pack a zip only to throw it away — an anonymous `curl -I` could burn a catalog's
+render capacity while downloading nothing. Pages and baked PNGs, the things an unfurler probes, keep
+answering.
+
+Link unfurlers get their own group with only the private lanes closed and no `Crawl-delay`: their
+robots parsers are the simple prefix kind, so the general group's wildcard rules would be misread,
+and a delayed unfurl is a missing unfurl. `Googlebot` is deliberately **not** in that group —
+robots groups are winner-takes-all, so naming it there would exempt Google's whole crawl fleet from
+every rule above. It doesn't need the exemption: nothing in the general group blocks a page or its
+`og:image`.
+
+`sitemap.xml` lists the pages worth landing on — the front door, each listed catalog's landing, and
+one URL per preview viewer — each stamped with `<lastmod>` from the catalog's own `generatedAt`
+provenance rather than the server's refresh clock. That distinction is the point: the refresh poller
+touches every catalog on a timer whether or not the bytes changed, so a refresh-timestamped sitemap
+would claim everything changed every hour and teach crawlers to ignore the field. It is built from
+the remembered catalog metadata (`peekHost`, never a lease), so a suspended catalog still appears and
+a sitemap fetch never wakes a daemon.
+
+A token-gated host disallows everything and serves no sitemap — its URLs need a token the crawler
+doesn't have, so every crawl would be a 404 and every indexed URL a dead one.
 
 ## Catalog theme selector
 
@@ -511,9 +936,11 @@ no equivalent there.
 ### Putting the spec on the stage beside the players
 
 The link above sends you to Figma. The **Spec lane** keeps you here: when the catalog publishes a
-design reference for a preview, the viewer's renderer row grows a `SPEC:` group beside the
-Remote Compose player chips, so the same control strip that chooses *which player draws the code*
-also offers *what the design says*.
+design reference for a preview, the viewer's renderer row grows a chip named after the design tool
+("Figma"), beside the renderer combo rather than inside it — the combo chooses *which player draws
+the code*, and this chip offers *what the design says*, which is a different question and gets its
+own top-level control. It is a toggle like the Live chip: pressed while the spec is on the stage,
+one click back to the render.
 
 | Before | After |
 | --- | --- |
@@ -587,9 +1014,10 @@ opacity overlay are what you want.
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
-landing links to **compare formats**; its **PNG ↔ Design reference** lane scores the canonical mock
-against Compose, and the focused comparison shows **Reference / Diff / Actual** plus an opacity
-overlay and source provenance.
+landing links to **compare to Figma** (named after the tool the references came from — see
+[the design-parity view](#the-design-parity-view-systemparity)); the comparison page's **PNG ↔
+Figma** lane scores the canonical mock against Compose, and the focused comparison shows
+**Reference / Diff / Actual** plus an opacity overlay and source provenance.
 
 References use a provider-neutral `compose-preview-references/v1` manifest at
 `references/index.json`. Published catalogs fetch this manifest from their delivery branch;
@@ -663,6 +1091,52 @@ gets filename-sanitized on its way into a bundle, while the function name is the
 files already agree on. A design-map entry that maps to no published sticker is a warning, not an
 error — a repo may map more components for its own parity run than it publishes.
 
+#### Primary and secondary references
+
+design-parity lets one code component bind an **array** of refs — the untagged default plus one per
+authored `state` / `size` / `theme`. Those bindings are not peers, and the manifest says which is
+which via `tier`:
+
+- The **primary** is the untagged binding: the component's default render, the picture a reader
+  forms of the component, and the one a divergence is least excusable in. Exactly one is required
+  — an ambiguous or all-tagged array is refused rather than guessed at — and it is what `--strict`
+  gates on.
+- A **secondary** is a tagged binding (`{"size": "l"}`), carrying its `slot` so a report can name
+  the cell. It documents one square of the variant matrix. Worth *checking* and worth *reporting*,
+  but a size cell that drifts is not the component being wrong — so **everything a secondary has to
+  say is a coverage note**, never a warning: whether it maps to no sticker, cannot be paired to a
+  `previewId`, or fails to rasterize (a Figma node the run's token can't reach). One unrenderable
+  size cell must not cost the catalog every reference it did resolve.
+
+`tier` is load-bearing beyond the export, too: the parity feed derives its `UNRENDERED_REFERENCE`
+gap from the reference manifest, and every record of one entry — the default and each of its cells
+— carries the same code handle. Only a **primary** answers "does this component have its
+reference?", or a surviving `size=l` cell would report the component as covered while its default
+render had no spec at all.
+
+A binding that is dropped is always *named*. The two arrays are authored independently, so drift is
+reported from both sides — a tagged `ref` with no `previewId` in the same slot, and a tagged
+`previewId` no `ref` claims. Skipping one silently would let the run report complete secondary
+coverage while omitting cells the author wrote down, which is the failure the per-lane tally exists
+to prevent.
+
+A secondary joins on its own `previewId`, not on the function name the primary uses — an
+`@OverrideVariant` cell shares its base's `@Preview` function, so the function index cannot tell
+`xs` from the default render and would bind every cell to the same sticker.
+
+Before this split the driver published the primary and dropped the rest, so m3-catalog's variant
+renders had nothing to diff against even though `design-map.json` had bound every one of them to
+its kit node: **78 references for 78 components, and none for the 345 variant bindings beside
+them**. The Figma rasterizer batches 50 node ids per request, so publishing those costs single-digit
+extra REST calls rather than one per reference.
+
+The export reports the two lanes separately:
+
+```
+design-references: published 423/423 reference(s) to references/ — 78/78 primary,
+  345/345 secondary (0 warning(s), 0 coverage note(s))
+```
+
 Pixels come from, in precedence order: a pre-rendered PNG under `--reference-images` (for a repo
 that already rasterizes references in an earlier job), a committed `.html` mock rasterized with
 Playwright's Chromium against the fonts the workflow already staged, a committed `.png`, or a
@@ -703,6 +1177,54 @@ and selecting it scores each mock against the sticker it is mapped to:
 
 ![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
 
+## Exploded 3D — the screen pulled apart by composable (`?exploded=1`)
+
+The viewer's **3D** chip, beside **SVG**, answers a question a flat render can't: *what is this
+screen made of?* It tilts the vector export back and pulls it apart into one floating sheet per
+level of composable nesting — the frame, then the root composable's own drawing, then its
+children's, and so on — with a leader line naming the composables on each sheet.
+
+![The exploded 3D view of a screen, one sheet per level of composable nesting](../renders/exploded-view/inbox-screen.exploded.png)
+
+It reuses the [`compose/figma-svg`](daemon/DATA-PRODUCTS.md) export and nothing else. That export
+already emits **every composable as a `<g id="…">`, nested exactly as the composables nest**, so the
+structure this needs is sitting in bytes the SVG lane already serves: the view is a pure SVG→SVG
+rewrite ([`ExplodedSvg`](../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)),
+not a second capture, a new data product, or a daemon capability to negotiate. Each drawing element
+is assigned to the plane matching its named-group depth; each plane is re-emitted as a structural
+copy of the original tree with only that plane's elements kept, so the enclosing
+`transform` / `clip-path` chain still places everything exactly where it was.
+
+Two consequences worth stating plainly, because they are why this is a server-side SVG rewrite
+rather than a WebGL scene in the page:
+
+- **Any host that can answer `.svg` can answer this**, including a fully static catalog serving a
+  baked `figma/<slug>.svg` off its delivery branch. There is no daemon anywhere in the path.
+- **The result is still one static SVG.** It embeds in a PR body, opens in a browser, `curl`s from
+  an agent, rasterizes in the visual-diff bot and pastes into Figma with its layers intact — none of
+  which a canvas does. The viewer's **Copy link** / **Download** for SVG hand over the exploded view
+  whenever the chip is pressed, because it is the same URL.
+
+A plane is flat, so the camera reduces to one affine `matrix(…)` per sheet. Lean is measured from
+face-on (`0` leaves a portrait preview reading as a portrait preview) and the separation is a
+screen-space offset rather than a distance along the plane normal — a deliberate exaggeration,
+since a physically-honest camera can only separate the sheets by first laying the screen flat, which
+is the one thing this view must not do. The axes live in the overrides drawer:
+
+![The Exploded 3D group in the overrides drawer](../renders/exploded-view/viewer-exploded-controls.png)
+
+Every axis is in the URL, which is the point of projecting server-side: `?exploded=1` is a shareable
+link, and `&explodeTilt=` / `&explodeSpin=` / `&explodeGap=` / `&explodeDepth=` carry a tuned angle
+with it. Untouched axes are omitted, so the common link stays `?exploded=1`. `explodeDepth` caps the
+sheet count — a real screen is fifteen levels deep, and composables nested past the cap fold into the
+last sheet rather than building a tower nobody can read. Out-of-range or unparseable values fall back
+to the default instead of 400ing: this is a view axis on an export URL, not a render override, so a
+stale bookmark still produces a picture.
+
+It composes with the other rewrites of the same bytes — `?mode=web` (external Google Fonts `@import`
+instead of embedded faces) and `?scroll=long` (the full-page export of a scrolling preview) — because
+all three are post-processing steps over one render.
+
 ## Remote Compose players (`/<system>/compare?format=rc`)
 
 A catalog that ships Remote Compose documents gets a **Remote Compose players** lane on the same
@@ -722,10 +1244,223 @@ keeps the older in-browser lane (baked PNG ↔ the JS player, rendered live), an
 
 ![Every Remote Compose player side by side](design/evidence/serve-rc-player-wall/serve-rc-players-default.png)
 
+## Design pages (`/<system>/pages`)
+
+Everything above is per component. A catalog that publishes **design pages** also answers the
+sheet-level question: *here is the kit's own Shape page — which of these 35 shapes do we implement,
+and does our render sit exactly where the design drew it?*
+
+The landing lists them **in its navigation tree**, at the foot: one always-open `Pages` branch with
+a row per page, named. That is where this catalog's other places already are, and a name is what you
+actually choose between — the header chip it replaces could only say how many there were. A catalog
+too small to have a tree at all (no authored sections, too few previews to synthesize families from)
+keeps that chip, or its pages would be published and unreachable. A catalog that publishes none is
+unchanged either way, and the route 404s rather than serving an empty stage.
+
+![The Pages branch at the foot of the navigation tree, beside the chip it replaces](design/evidence/serve-catalog-tree-pages/compare.png)
+
+![A design page: the sheet with this catalog's renders in it, carrying no annotation at all](design/evidence/serve-design-page/serve-design-page.light.png)
+
+Each page is a whole page of the design file **inlined as SVG**, opening on **this catalog's
+renders** standing in the slots the design left for them — and carrying no marks at all. The sheet
+is the content, so annotation is something the reader asks for rather than the page's opening
+statement. An earlier cut opened with an outline over all thirty-eight nodes, a four-colour legend
+above them and every node's code path listed below, and the sheet lost to its own annotation.
+
+Pointing at a component is how the sheet is interrogated instead, and **pointing and going are
+split**: the pointer *describes*, a click *goes*. The outline appears under the pointer — one node
+at a time, whether or not the opt-in layer is on — together with a tooltip at the cursor naming the
+component and the code behind it:
+
+![A component under the pointer, outlined, on a sheet carrying no other marks](design/evidence/serve-design-page/serve-design-page-hover.light.png)
+
+Keyboard focus draws the same mark and parks the same tooltip at the node, so tabbing the sheet
+reads the same way as sweeping it. Clicking **goes** to that component — its preview, or the design
+file for a node with no code behind it.
+
+The tooltip follows the cursor because the answer has to be where the eye is. It began as a strip
+under the sheet, which on a specimen sheet taller than the fold put the answer somewhere the reader
+could not see while pointing at the question. Each overlay is a real `<a>`, which is what makes the
+middle click, the modifier click and the status-bar preview work, and what keeps the sheet navigable
+with no script at all.
+
+![One component selected: a ring on the node, its code path under the sheet](design/evidence/serve-design-page/serve-design-page-selected.light.png)
+
+The coverage read is still one checkbox away. *Outline every component* turns the whole layer on —
+green Code Connect, blue `design-map.json`, amber name match, dashed red for a **gap** — and the
+legend appears with it, since a legend over an unmarked sheet names four colours nothing is wearing.
+*Only what we don't implement* mutes the rest and turns the marks on by itself, because a filter over
+an unmarked sheet would show nothing:
+
+![Only the unlinked outlines, with everything this catalog implements muted](design/evidence/serve-design-page/serve-design-page-unlinked-only.light.png)
+
+### A gap is a component, not everything unlinked
+
+Red is reserved for something a catalog could actually implement and hasn't. Two kinds of unlinked
+node are **not** gaps, and on a real specimen sheet they are most of them:
+
+- **Private components** — Figma's leading-dot convention (`.Header`), the sheet's own furniture,
+  never published to a design system's consumers.
+- **Containers** — a `COMPONENT_SET`'s variants are the components; the set is the box they came in.
+  Its variants are listed in their own right, so counting the set as well reports one missing
+  component for a family that is completely implemented.
+
+Both pass the importer's filter, because both genuinely *are* Figma components. Keying the coverage
+filter on "unlinked" therefore made the kit's Shape page — all 35 shapes implemented — light up
+`.Header`, `.Header` and `Shape Set` in dashed red, three marks no amount of code would ever clear,
+while the count read `35 of 38`. It now reads `35 of 35`, those nodes take a neutral grey, and the
+red is only ever the answer to *what is left to build*.
+
+Both are read off the node, never inferred. Container-ness arrives as `container` on the wire,
+stated by the import, because only the import has the real tree. An earlier cut worked it out from
+the walk's depth ordering — a node immediately followed by a deeper one — and that is unsound in the
+direction that matters: a manifest lists components and nothing else, so an unlisted frame between
+two of them lets a shallower node be followed by a deeper one that is not inside it, and a genuinely
+missing component would be swallowed as structure. A stale manifest over-counting a container is
+visible and harmless; a gap that quietly disappears is neither.
+
+Every node, linked or not, is still listed — behind a disclosure that says what it holds
+(`35 of 38 components implemented`). It is an inventory to go and check rather than the first thing
+to read, and it is also where the selection strip gets its text: the strip is that row, cloned, so
+there is one description of a node instead of two that can disagree.
+
+### The swap is the reason this is an SVG and not a screenshot
+
+An `<img>` is a picture; an inlined SVG is a document. Because the export carries `data-node-id` on
+every element, the page can find the design's own drawing of `Shape=Circle`, **hide it**, and put
+this catalog's `Shape/Circle` render in the hole it leaves — same sheet, same layout, our pixels.
+Nothing can reach inside an `<img>`, so a raster surface could only ever lay a translucent overlay
+on top and hope the eye separates them.
+
+That swap is a **flip**, not a composite. One control, two lanes — *Our renders* and *Design spec*
+— drawing the same sheet in the same layout, so the eye compares two clean frames instead of one
+muddy one:
+
+![The same page flipped to the design's own drawing](design/evidence/serve-design-page/serve-design-page-design-lane.light.png)
+
+The opacity slider and `difference` blend that used to stack the two drawings on top of each other
+are gone with it. Stacking answered *how close are these two pictures* by making the reader squint;
+a selection survives the flip instead, so a component can be held while both of its answers are
+shown — and the third lane answers the same question with a number.
+
+### `Diff %` — the drift, per node, on the sheet
+
+The third lane scores each slot: how far our render is from **the design's own drawing of that same
+node**, as one number per component.
+
+![The diff lane: each slot carrying a percentage, banded by how far it has drifted](design/evidence/serve-design-page/serve-design-page-diff-lane.light.png)
+
+The reference is this page's own SVG, cropped to the node — not the component's imported reference
+raster. Both are defensible; only one is already on the page. Cropping the export needs no round
+trip and no manifest field, it covers every node that has a render rather than only those with an
+imported reference, and it answers the question the page actually poses: how far is our pixel from
+the design's pixel *in this slot*, at this size, in the layout the designer drew. The scoring itself
+is `ComposePreviewCompare` — the same normalise-then-count the viewer's spec lane and the format
+wall use — so a number here means what a number there means.
+
+The number is **drift** — `scoreImages` answers with a *match* percentage, where identical images
+score 100, so the lane inverts it. Getting that backwards prints `100.0%` in red for a perfect match
+and green for a total mismatch, which is a readout that lies rather than one that is merely wrong;
+it shipped that way once, and `contract · the scorer answers match` now scores an image against
+itself so the direction cannot silently flip again.
+
+Three bands rather than a gradient, because the reader is triaging and *does this need looking at*
+is a decision, not a measurement: green under 2%, amber under 10%, red beyond. A node with no render
+gets no badge at all — printing `100%` for *absent* is the one wrong thing this readout could say.
+
+Proportion difference is held out of the match number by the scorer, which normalises both content
+boxes onto one size before comparing. It cannot hide here: a node whose render is the wrong shape
+gets a `⇲` on its badge, the figure in its tooltip, and the worse of the two decides its band. It
+does **not** become the headline number, which stays the pixel drift — folding them together made
+every badge on the fixture read the same 52.4%, an aspect difference wearing the label of a pixel
+difference.
+
+The sheet is rasterised **once** and every node is a crop out of that raster, taken from the node's
+measured rect so a `transform` on it or any ancestor is already applied. The first cut cloned and
+serialised the whole export per node, which on this catalog's own Shape page is 858 KB × 35 nodes —
+over 100 MB of transient markup before a single comparison settled. The crop is of the sheet, so
+whatever the design drew behind a node is in its reference; on a definition sheet that is a
+near-uniform ground against the scorer's own white, and both sides are composited onto white before
+comparing.
+
+**A number and not a diff map**, deliberately: thirty-eight magenta thumbnails at slot size is the
+annotated sheet this surface was just rescued from. The map is one click away instead — in this lane
+a click leaves for that component's full comparison (`?mode=spec&specView=diff`), where the diff,
+the triptych and the wipe are at a size that can actually be read. The number on the sheet is the
+invitation; the comparison is the destination.
+
+The render half stays live, too. The server already renders every preview in the catalog on demand,
+so standing in for a node is `<img src="/render/<previewId>.png">` and inherits everything that lane
+does — the live daemon on a live catalog, the theme the visitor picked, a re-render after a refresh.
+
+A node's own drawing is hidden **only once ours has arrived**, and comes back if it never does. A
+preview that throws, a daemon that falls over, a 404: the slot falls back to the design's drawing
+rather than becoming a hole. That matters more than it did while the swap was opt-in — the page
+opens on this lane now, and there is no *untick to get the sheet back* control to recover with.
+
+The renders still ride an inert `<template>`, adopted when the lane that draws them is entered.
+That is now the lane the page opens on, so they are `loading="lazy"`: a sheet can hold dozens of
+nodes and on a live catalog each one is a daemon render, so the box is asked only for the part of
+the sheet actually on screen — and a reader who flips to the spec and never flips back still pays
+for nothing.
+
+### There is no geometry in the manifest, and that is deliberate
+
+The SVG knows where its own nodes are. `design-page.js` measures each `[data-node-id]` element and
+places that node's hit area over it, re-measuring on resize; the manifest carries a node id, a name and a
+code handle, and no rectangle at all. Recording one would be a second answer to the same question
+and a worse one — a Figma export box is the *render* box, effect bleed included, so it and the drawn
+shape disagree by a few pixels on anything with a shadow. A node the manifest names that the export
+doesn't carry (a layer the design tool flattened) keeps its row in the list and gets no outline,
+which is the honest state rather than a rectangle over nothing.
+
+### Where a published catalog's pages come from
+
+The **repo** imports them, the pipeline re-keys them, the server draws them.
+
+A catalog repo commits `design-pages.json` (which pages, from which file) and runs its own importer
+— m3-catalog's [`scripts/import-figma-pages.mjs`](https://github.com/yschimke/m3-catalog/blob/main/scripts/import-figma-pages.mjs)
+is the reference implementation — which asks Figma for the page's node tree and for one SVG export
+with `svg_include_node_id=true`, and commits the result under `design/pages/`. That runs on the
+*design file's* cadence, manually, and is the only step that talks to Figma at all.
+
+The publish job then runs [`emit-design-pages.mjs`](../scripts/design-artifacts/emit-design-pages.mjs),
+which re-keys each node onto the catalog's **serve** preview ids and writes `pages/index.json` plus
+one SVG per page onto `design-artifacts/<system>`. It needs no credential, so a fork, a token-less
+run and an offline republish all produce the same pages. The server stages those like any other
+catalog asset and re-paths each export to a server-owned location.
+
+That re-keying is the load-bearing step, and it is the same id problem
+[`design-references.mjs`](../scripts/design-artifacts/design-references.mjs) exists to solve: a node
+carries the *repo's* discovery preview id, and a published catalog keys everything on the route-safe
+serve id. Handing the manifest over unchanged would give the server ids that render nothing.
+
+### Inlining third-party markup is a trust boundary, and it is enforced here
+
+A catalog branch is third-party data, and this is the one place the server puts its markup into the
+document tree. Every export is run through `SvgSanitizer` **at catalog load** — an allowlist of
+elements and attributes, `on*` handlers dropped before the allowlist is even consulted, no
+`<script>` / `<foreignObject>` / `<a>` / `<animate>`, URL-bearing attributes judged by *value* so
+`url(#clip0)` survives and an `http:` beacon does not, DOCTYPEs refused so an export cannot read a
+file off the host. A page whose export doesn't survive that is dropped, not served unsafely. The
+`/pages/<id>.svg` asset route answers the **same sanitized markup**, because two different answers
+for one URL is how a check gets bypassed.
+
+The server still holds **no Figma credential and never talks to Figma** — the deep link on an
+outline is reassembled from a validated file key and node id against a literal origin, exactly like
+the per-preview spec link.
+
+**Opt-in.** Nothing appears unless the catalog's repo commits an import; a repo that has never heard
+of the feature publishes exactly what it did before.
+
 ## The design-parity view (`/<system>/parity`)
 
-A catalog landing links **design parity** beside "compare formats". That page answers one question
-the grid can't: *has this catalog's code drifted from the design file it is specified by?*
+A catalog landing links this page beside its comparison actions, named after the design tool the
+catalog is specified by — **compare to Figma** when its references carry `source.provider: figma`
+(or its parity feed names a Figma file), falling back to **design parity** when no tool can be
+named. That page answers one question the grid can't: *has this catalog's code drifted from the
+design file it is specified by?* Its subheading links back out to the whole-catalog **PNG ↔ Figma**
+table (`/<system>/compare?format=reference`) for every mapped component at once.
 
 ![The design-parity view](images/serve-parity-light.png)
 
@@ -1599,6 +2334,11 @@ up **right now** (backend, active streams, how long each has been up), the effec
 reason that was previously only logged to stderr). The status snapshot never wakes an idle daemon: a
 catalog's liveness is read from the resident-session snapshot, not by resuming it, so a monitor can
 poll it freely.
+
+On a [top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) the same page reports on
+**that app only** — its catalog row, its daemons, the startup failures naming it. It is one filter
+over the snapshot the main host already builds, not a second collection pass, so a per-site monitor
+costs the box nothing extra.
 
 ![The /status page — catalogs and their trust/liveness, the render daemons running now, the effective config, and recent daemon startup failures](images/serve-status.png)
 

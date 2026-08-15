@@ -47,7 +47,27 @@ const serveAssetsDir = resolve(
 // a realistic size instead of collapsing on broken images.
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
 const renderSvgPlaceholder = resolve(pagesDir, "_render-placeholder.svg");
-const IMAGE_LANES = ["**/render/**", "**/hero/**", "**/reference/**", "**/rc-compare/**"];
+// The `?exploded=1` lane's stub. Unlike the flat placeholders above this one is NOT hand-drawn:
+// `ExplodedSvgFixtureTest` generates it from `_render-placeholder-layered.svg` through the
+// production `ExplodedSvg` renderer and commits the result, so the picture the diff bot posts for
+// the exploded viewer is the real projection — every change to the camera, the sheet split, or the
+// labels moves this baseline on its own.
+const renderExplodedPlaceholder = resolve(pagesDir, "_render-placeholder-exploded.svg");
+// Fixtures navigated with a query string, because the state they capture lives in the URL rather
+// than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
+// what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
+const FIXTURE_QUERY = { "serve-viewer-exploded": "?exploded=1" };
+const IMAGE_LANES = [
+    "**/render/**",
+    "**/hero/**",
+    "**/reference/**",
+    "**/rc-compare/**",
+    // The design-page lane, which now feeds only the index card's thumbnail: the page VIEW inlines
+    // its export, so there is no request to intercept there at all. It still needs its own stand-in
+    // rather than the component placeholder, because a specimen sheet is wider than it is tall and
+    // the card crops to the top of it.
+    "**/pages/*.svg**",
+];
 const REFERENCE_PLACEHOLDER = `
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="420" viewBox="0 0 200 420">
   <rect width="200" height="420" rx="20" fill="#f4efff"/>
@@ -56,6 +76,21 @@ const REFERENCE_PLACEHOLDER = `
   <rect x="20" y="132" width="160" height="104" rx="18" fill="#dfd2f5"/>
   <rect x="20" y="258" width="160" height="64" rx="18" fill="#ffffff"/>
   <circle cx="100" cy="378" r="18" fill="#7657b5"/>
+</svg>`;
+// A specimen sheet standing in for the exported design page, at the fixture's own 1200×800 user
+// units and with the same shapes in the same places — the index card crops to the top of it, so a
+// stand-in with no recognisable content would make that card's baseline meaningless. The page VIEW
+// does not use this: it inlines the export the fixture HTML already carries.
+const PAGE_PLACEHOLDER = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#F7F2FA"/>
+  <rect x="40" y="32" width="1120" height="64" rx="16" fill="#EADDFF"/>
+  <circle cx="180" cy="300" r="90" fill="#6750A4"/>
+  <rect x="330" y="210" width="180" height="180" rx="36" fill="#6750A4"/>
+  <path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/>
+  <rect x="840" y="255" width="240" height="90" rx="45" fill="#6750A4"/>
+  <rect x="330" y="500" width="180" height="180" rx="90" fill="#6750A4"/>
+  <rect x="600" y="500" width="180" height="180" fill="#6750A4"/>
 </svg>`;
 // The viewer's inspection lanes (`/render/<id>.a11y`, `/render/<id>.annotations`) are daemon data
 // products, so like the image lanes they have no backend here. These stand in for them, shaped
@@ -160,9 +195,27 @@ const STYLED_FIXTURES = new Set([
     // shot an unstyled column of links, so a change to any of that moved no baseline at all —
     // which is exactly how the section spacing and the card hover reached production unreviewed.
     "serve-home-index",
-    // The catalog landing is the same claim one level down: the tab bar, the group headings and
+    // The catalog landing is the same claim one level down: the navigation, the group headings and
     // the preview-card grid ARE the page, and its cards share the front door's hover treatment.
     "serve-landing-public",
+    // The sectioned catalog, and the only fixture that renders the navigation TREE. Every claim it
+    // makes is painted: the sidebar standing beside the grid at all (a CSS grid above 960px), the
+    // selected section's pill, the twisty that says a branch is open, the guide line down its
+    // sub-groups, and the `aria-current` rule the scroll-spy moves. Captured bare — which is how it
+    // was captured while it was a tab bar — the whole surface is a nested list of unstyled links
+    // and none of that would move a baseline. Its two states below are the ones the tree exists
+    // for.
+    "serve-landing-sections",
+    // The tree at full depth, and the only fixture that reaches its lower two levels: a group
+    // opening onto its components, and a component onto the primary-axis variants the grid folds
+    // out. Every claim it makes is painted — the nesting rails, the twisty on a component row, the
+    // lighter treatment that separates a variant (which leaves the page) from a component (which
+    // scrolls the grid). Captured bare it is a nested list of unstyled links.
+    "serve-landing-tree-depth",
+    // The section-less catalog, which is the shape most published design systems are in. Its whole
+    // change is navigational and therefore visual — it went from a bare wall of cards with no
+    // navigation at all to an outline tree beside them — so captured bare it would move nothing.
+    "serve-landing-grouped",
     // The Wear viewer exists for ONE claim: the Size panel offers watch shapes and no Orientation
     // row. That claim lives entirely inside the override drawer, so it has to be painted by the
     // real stylesheet — captured bare it is a column of unstyled labels where a panel regression
@@ -194,6 +247,12 @@ const STYLED_FIXTURES = new Set([
     // painted at runtime by `inspect.js` — boxes over the stage, a legend beside it — so captured
     // bare there is nothing to see at all. Its `layers` state below is what actually draws them.
     "serve-viewer-inspect",
+    // The exploded 3D view. Everything it claims is produced at runtime: `viewer.js` reads
+    // `?exploded=1`, presses the 3D chip, switches the stage to the vector lane and fetches the
+    // exploded SVG, and the camera sliders in the drawer are laid out by `serve.css`. Captured
+    // bare, the page shows an unpressed button over a flat placeholder and neither the projection
+    // nor the controls would move a baseline.
+    "serve-viewer-exploded",
     // The Remote Compose viewer, and the page the renderer picker exists for: five players for one
     // captured document. The picker's whole claim is visual — one chip naming the current renderer
     // beside one combo of alternatives, where a row of six pressed-state chips used to be — so
@@ -208,13 +267,24 @@ const STYLED_FIXTURES = new Set([
     // Deliberately only this fixture and not `serve-playground`: adding the stylesheet there would
     // rewrite an unrelated baseline wholesale for no claim this change makes.
     "serve-playground-uncompilable",
+    // The Source lane. The chip is styled by `serve.css` and the panel is drawn entirely at
+    // runtime by `viewer.js` from a fetched snippet, so captured bare this page is an unstyled
+    // button over a placeholder and its whole claim — code on the stage where the render was —
+    // moves no baseline at all. The `source-panel` state below is the shot that matters.
+    "serve-viewer-source",
+    // The design page is nothing BUT layout: this catalog's renders measured into the slots the
+    // design left for them, on the sheet's own geometry. Captured bare it is a list of links under
+    // a picture and the entire claim moves no baseline. The page opens on the render lane, so the
+    // default shot IS the swap; its `design-lane` and `selected` states below are the flip it
+    // exists to support and the affordance that replaced the resting outlines.
+    "serve-design-page",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["playground.css", "text/css"],
     ["url-state.js", "text/javascript"],
     ["page-theme.js", "text/javascript"],
-    ["bg-toggle.js", "text/javascript"],
+    ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
     ["viewer-drawers.js", "text/javascript"],
@@ -224,6 +294,7 @@ const SERVE_ASSETS = [
     ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
+    ["design-page.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -235,7 +306,315 @@ const SERVE_ASSETS = [
 // instead of the lane label. There's no daemon in the harness, so we set the attribute the same way
 // the viewer JS does and let the page's own `MutationObserver` paint the badge — the badge text and
 // accent under test are produced by the real `backendBadgeScript`, not faked here.
+// The viewer's theme bar FOLDS behind its title-bar toggle once a catalog declares more themes
+// than the single-row bar can show, so a chip on such a page is behind one click before it is
+// clickable. Drive it the way a visitor does — open the disclosure, then press the chip — rather
+// than reaching past the fold with a forced click, which would keep passing if the toggle stopped
+// opening anything. A no-op on a viewer whose bar is already inline, and on the landing grid,
+// whose theme picker is a wrapping row that never folds.
+async function openThemeBar(page) {
+    const bar = page.locator("#cp-theme-bar");
+    if ((await bar.count()) && (await bar.isHidden()))
+        await page.click("#cp-theme-toggle");
+}
+
 const FIXTURE_STATES = [
+    {
+        // A component under the POINTER. The sheet carries no resting marks, so this is the whole
+        // discovery story: the outline appears where you point, and it appears whether or not the
+        // opt-in layer is on (this shot is taken with it off, which is the default). A hover state
+        // exists only under a pointer, so it is invisible to every other shot here — exactly the
+        // kind of affordance that reaches production unreviewed. Shot before `selected` below so
+        // the page under it is the untouched default.
+        fixture: "serve-design-page",
+        suffix: "hover",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            await page.hover('.cp-page-node[data-link="manifest"]');
+        },
+    },
+    {
+        // A component under the pointer, DESCRIBED. The sheet carries no resting marks, so
+        // pointing is how it is interrogated, and the answer is a tooltip at the cursor rather than
+        // a strip under a sheet that is taller than the fold. Invisible to every other shot: the
+        // tip only exists under a pointer, and it is built by cloning that node's audit row.
+        fixture: "serve-design-page",
+        suffix: "selected",
+        apply: async (page) => {
+            // HOVERED, not clicked: pointing is what describes a node now, and clicking navigates.
+            // A linked node, deliberately: its strip carries a code path and a link out, which is
+            // the full state. An unlinked one would shoot the degenerate half of the same card.
+            await page.hover('.cp-page-node[data-link="manifest"]');
+            await page.waitForSelector(".cp-page-tip:not([hidden]) .cp-page-tip-card");
+            // The overlay is a real link now — that is what makes clicking it GO, and what makes a
+            // middle click, a modifier click and the status-bar preview work. A `<button>` here
+            // would pass every pixel assertion and none of that.
+            const tag = await page.locator('.cp-page-node[data-link="manifest"]').first().evaluate(
+                (el) => el.tagName.toLowerCase() + "|" + (el.getAttribute("href") || ""),
+            );
+            expect(tag.startsWith("a|")).toBe(true);
+            expect(tag).toContain("/p/");
+        },
+    },
+    {
+        // The flip, thrown to the design's own drawing. The page OPENS on our renders, so the spec
+        // lane is the half no ordinary shot holds — and the two lanes are the same sheet in the
+        // same layout, which is exactly the pair a pixel diff is good at telling apart.
+        fixture: "serve-design-page",
+        suffix: "design-lane",
+        apply: async (page) => {
+            // Clicked by its LABEL, not `check()` on the input: the lane radios are visually
+            // removed (the segmented pill is the control a reader sees), so the input itself is
+            // not an actionable target. Driving the label is both what a person does and what
+            // keeps this honest — a pill that stopped forwarding its click would fail here.
+            await page.click('.cp-page-lane label:has([data-cp-page-lane][value="design"])');
+            // The design's own drawing must come BACK, not just our renders go away: a lane that
+            // hid both would read as a blank slot rather than a flip.
+            await page.waitForFunction(
+                () => document.querySelectorAll("svg .cp-page-replaced").length > 0,
+            );
+            await page.waitForFunction(
+                () => !document.querySelector(".cp-page-stage").classList.contains("cp-page-hide-design"),
+            );
+        },
+    },
+    {
+        // The diff lane: one number per slot, saying how far our render is from the design's own
+        // drawing of that node. Every part of it is produced at runtime — the sheet is cropped per
+        // node, rasterised and scored in the browser — so the committed HTML holds none of it and
+        // a change to the scoring, the bands or the badge would move no baseline without this.
+        fixture: "serve-design-page",
+        suffix: "diff-lane",
+        apply: async (page) => {
+            await page.click('.cp-page-lane label:has([data-cp-page-lane][value="diff"])');
+            // Hold for the settled numbers rather than the "…" placeholders, and require at least
+            // one: `every()` over an empty list is true, so without the length check this would go
+            // green if the scoring never ran at all.
+            await page.waitForFunction(() => {
+                const badges = Array.from(document.querySelectorAll(".cp-page-score"));
+                return (
+                    badges.length > 0 &&
+                    badges.every((b) => b.textContent !== "…" && b.textContent !== "")
+                );
+            });
+            // Only nodes we can actually draw get a number. A badge on a node with no render would
+            // be reporting "absent" as "100% different", which is the one wrong thing this readout
+            // could say.
+            const badges = await page.locator(".cp-page-score").count();
+            const renders = await page.locator(".cp-page-render").count();
+            expect(badges).toBe(renders);
+            // A control that navigates must not announce itself as a pressed toggle. It is a real
+            // anchor in every lane now, so this is checked on the element itself rather than on a
+            // role swapped in for one lane — and `aria-pressed` must be gone everywhere, since a
+            // link that claims a pressed state is describing something it does not have.
+            const semantics = await page.evaluate(() => {
+                const spots = Array.from(document.querySelectorAll(".cp-page-node"));
+                return {
+                    anchors: spots.filter((s) => s.tagName.toLowerCase() === "a").length,
+                    pressed: spots.filter((s) => s.hasAttribute("aria-pressed")).length,
+                };
+            });
+            expect(semantics.pressed).toBe(0);
+            expect(semantics.anchors).toBeGreaterThan(0);
+            // Where the lane leads. Asserted on the anchor rather than by clicking it, so this
+            // stays a capture rather than a navigation — but it still fails if the deep link stops
+            // naming the viewer's Figma comparison.
+            const href = await page
+                .locator(".cp-page-diff-link")
+                .first()
+                .getAttribute("href");
+            expect(href).toContain("mode=spec");
+            expect(href).toContain("specView=diff");
+            // THE DIRECTION OF THE NUMBER. `scoreImages` answers with a MATCH percentage —
+            // identical images score 100 — and this lane reports DRIFT, so it inverts. Shipping
+            // that backwards printed "100.0%" in red for a perfect match and green for a total
+            // mismatch, and no screenshot caught it because the fixture's numbers looked plausible
+            // either way. Scoring an image against ITSELF is the assertion that cannot be fooled:
+            // if the scorer's convention ever flips, this fails instead of the badge lying.
+            const selfMatch = await page.evaluate(async () => {
+                const img = document.querySelector(".cp-page-render");
+                const result = await window.ComposePreviewCompare.scoreImages(img, img);
+                return result.percent;
+            });
+            expect(selfMatch).toBeGreaterThan(99);
+            // …and the badge for that same node must therefore read near zero drift, not near 100.
+            const worst = await page.evaluate(() => {
+                const values = Array.from(document.querySelectorAll(".cp-page-score"))
+                    .map((b) => parseFloat(b.textContent));
+                return Math.max(...values);
+            });
+            expect(worst).toBeLessThanOrEqual(100);
+        },
+    },
+    {
+        // "Only what we don't implement": the coverage read. Everything this catalog implements is
+        // muted and the dashed-red outlines — the components on the sheet with no code behind them
+        // — are what's left. Asking for the filter turns the outline layer on by itself, since a
+        // filter over an unmarked sheet would show the reader nothing at all; that coupling is part
+        // of what this shot pins.
+        fixture: "serve-design-page",
+        suffix: "unlinked-only",
+        apply: async (page) => {
+            // States compose on the already-loaded page: put the flip back on our renders so this
+            // shot is about the filter alone.
+            await page.click('.cp-page-lane label:has([data-cp-page-lane][value="code"])');
+            await page.check("[data-cp-page-unlinked]");
+            await page.waitForFunction(
+                () => document.querySelector(".cp-page-stage").classList.contains("cp-page-outlines-on"),
+            );
+        },
+    },
+    {
+        // The audit list, opened. It ships collapsed now, so the inventory every row of which used
+        // to be the bottom half of this page would otherwise be diffed by nothing at all.
+        fixture: "serve-design-page",
+        suffix: "nodes-open",
+        apply: async (page) => {
+            await page.uncheck("[data-cp-page-unlinked]");
+            await page.click(".cp-page-nodes > summary");
+            await page.waitForSelector(".cp-page-nodes[open]");
+        },
+    },
+    {
+        // A render the server could not produce — a preview that throws, a daemon that fell over, a
+        // 404. The page opens on the render lane, so the design's own drawing must come BACK in
+        // that slot rather than leaving a hole where the whole claim is that something stands in
+        // it. Driven by dispatching the same `error` event the browser fires, on an image that has
+        // already loaded, so this exercises the production handler rather than a stub of it.
+        fixture: "serve-design-page",
+        suffix: "render-failed",
+        apply: async (page) => {
+            await page.click(".cp-page-nodes > summary");
+            const failed = await page.evaluate(() => {
+                const img = document.querySelector(".cp-page-render");
+                if (!img) return null;
+                img.dispatchEvent(new Event("error"));
+                return img.getAttribute("data-cp-node");
+            });
+            // The node's own drawing is showing again and the broken image is out of the way.
+            // Compared against THAT node rather than "any node", so a handler that restored the
+            // wrong target — or every target — would fail here instead of passing on a count.
+            await page.waitForFunction(
+                (id) => {
+                    const target = Array.from(document.querySelectorAll("svg [data-node-id]")).find(
+                        (el) =>
+                            el.getAttribute("data-node-id") === id ||
+                            el.getAttribute("data-node-id") === String(id).replace(/:/g, "-"),
+                    );
+                    const img = document.querySelector(`.cp-page-render[data-cp-node="${id}"]`);
+                    return (
+                        !!target &&
+                        !target.classList.contains("cp-page-replaced") &&
+                        !!img &&
+                        // COMPUTED display, not the `hidden` property. The property was true while
+                        // the image was still painted on top of the restored drawing: the swap
+                        // lane's `display: block` is a two-class selector and outranked the UA
+                        // stylesheet's `[hidden]`. Asserting the property passed that bug straight
+                        // through; asserting what the browser actually draws does not.
+                        getComputedStyle(img).display === "none" &&
+                        // The rest of the sheet must be untouched — this is one slot falling back,
+                        // not the lane collapsing.
+                        document.querySelectorAll("svg .cp-page-replaced").length > 0
+                    );
+                },
+                failed,
+            );
+        },
+    },
+    {
+        // A component opened onto its variants — the state the two deepest levels exist for, and
+        // one the committed HTML cannot hold: components ship collapsed, so without this the
+        // variant rows would never appear in a baseline at all.
+        fixture: "serve-landing-tree-depth",
+        suffix: "component-open",
+        // The click that expands the component leaves the pointer on that row,
+        // and the variant rows it reveals slide out from under it — so which
+        // element ends up hovered was a coin flip per run (issue #3837). The
+        // hover is incidental here; the claim is the revealed variant rows.
+        parkPointer: true,
+        apply: async (page) => {
+            await page.click(
+                '.cp-tree-component[data-group="cp-card-button-filled__ideal__default__light"]',
+            );
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector(
+                            '.cp-tree-component[data-group="cp-card-button-filled__ideal__default__light"]',
+                        )
+                        ?.getAttribute("aria-expanded") === "true",
+            );
+        },
+    },
+    {
+        // Switching branches. The committed HTML can only ever hold ONE arrangement — the first
+        // section selected and open, the rest collapsed — so the thing the tree is for (open
+        // another branch, its sub-groups appear, the grid under it changes) is invisible to a
+        // baseline without this. It also pins the two halves moving together: the pill and twisty
+        // on the row, and the panel the section switching swapped in beside it.
+        fixture: "serve-landing-sections",
+        suffix: "section-open",
+        apply: async (page) => {
+            await page.click('.cp-tab[data-tab="components"]');
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="components"]')
+                        ?.getAttribute("aria-expanded") === "true",
+            );
+        },
+    },
+    {
+        // Searching. A query spans every section, so the tree opens every branch that still holds a
+        // match and drops the group rows whose sub-group the filter emptied — "device" here matches
+        // in Components and Screens and nothing under Themes. That is the one state where the tree
+        // shows more than one branch at once, and the rule that a row never survives the
+        // destination it points at is exactly the kind of thing that regresses silently.
+        fixture: "serve-landing-sections",
+        suffix: "filtered",
+        apply: async (page) => {
+            // States are applied cumulatively to the SAME loaded page, so this one inherits
+            // `section-open`'s Components selection. That matters: "device" matches inside
+            // Components, so the selected row would survive the filter and the tab-stop assertion
+            // below would hold whether or not the fallback it exists for is there at all. Put the
+            // page back on Themes first, which the query matches nothing in — the only arrangement
+            // in which the selected section is actually hidden.
+            await page.click('.cp-tab[data-tab="themes"]');
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="themes"]')
+                        ?.getAttribute("aria-selected") === "true",
+            );
+            await page.fill("#cp-search", "device");
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="screens"]')
+                        ?.getAttribute("aria-expanded") === "true",
+            );
+            // The filter now hides the SELECTED section. The tree's single roving tab stop has to
+            // move to a branch still on screen, or Tab skips the whole navigation. Not a pixel
+            // claim, so it rides this capture as a wait rather than earning its own shot.
+            await page.waitForFunction(() => {
+                const themes = document.querySelector(
+                    '.cp-tab[data-tab="themes"]',
+                );
+                // Guards the guard: if the selected section were somehow still visible, this
+                // assertion would be trivially true and would pin nothing.
+                if (!themes?.closest(".cp-tree-node")?.hidden) return false;
+                const reachable = Array.from(
+                    document.querySelectorAll(".cp-tab"),
+                ).filter((r) => !r.closest(".cp-tree-node")?.hidden);
+                return (
+                    reachable.length > 0 &&
+                    reachable.some((r) => r.tabIndex === 0)
+                );
+            });
+        },
+    },
     {
         // The playground editor's multi-file strip (#3017): a snippet is a list of files compiled
         // as one module, and the second file only exists after a click — the committed HTML always
@@ -336,6 +715,50 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The Source panel open: the usage code on the stage, with its note, Copy button and the
+        // links onward to the playground and the whole sticker. The committed HTML cannot hold any
+        // of it — the panel is server-rendered EMPTY on purpose, and filled only once the chip is
+        // pressed and `/usage/<id>` answers — so without this shot the entire feature would move no
+        // baseline. The response is stubbed here for the same reason the inspect layers' data
+        // products are: the harness serves pages, not a catalog.
+        fixture: "serve-viewer-source",
+        suffix: "source-panel",
+        apply: async (page) => {
+            await page.route("**/usage/**", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        text: [
+                            "import androidx.compose.material3.Button",
+                            "import androidx.compose.material3.MaterialTheme",
+                            "import androidx.compose.material3.Text",
+                            "import androidx.compose.runtime.Composable",
+                            "import androidx.compose.ui.tooling.preview.Preview",
+                            "",
+                            "@Preview",
+                            "@Composable",
+                            "fun FilledButton() = MaterialTheme {",
+                            "  Button(onClick = {}) {",
+                            '    Text("Filled")',
+                            "  }",
+                            "}",
+                        ].join("\n"),
+                        entryFunction: "FilledButton",
+                        scaffoldsDeclared: true,
+                        residue: [],
+                        blobUrl: "https://github.com/example/catalog/blob/main/Buttons.kt",
+                        playgroundHref: "/playground?from=compose-m3/com.example.ProfileCardPreview",
+                    }),
+                }),
+            );
+            await page.click("#cp-source-chip");
+            await page.waitForFunction(
+                () => !!document.querySelector("#cp-source-panel pre code"),
+            );
+        },
+    },
+    {
         // Going BACK to a history entry on which no theme was ever picked. The viewer opens showing
         // the preview's baked theme with `data-theme-active="0"` — displayed, not chosen — so the
         // chrome follows the OS. Picking a theme pins it; returning to that first entry has to
@@ -350,6 +773,7 @@ const FIXTURE_STATES = [
         apply: async (page) => {
             // Light, because this fixture's baked default is already dark: picking dark is a no-op
             // the bar handler drops, and would shoot the page that was there anyway.
+            await openThemeBar(page);
             await page.click('[data-theme-choice="light"]');
             await page.waitForFunction(() =>
                 document.documentElement.classList.contains("cp-scheme-light"),
@@ -441,15 +865,16 @@ const FIXTURE_STATES = [
     },
     {
         // The design-spec lane with the spec actually on the stage. The committed HTML always
-        // opens on the render — the imported reference is only fetched once the lane is selected —
-        // so this is the only way the lane's *end state* is diffed: the combo naming the spec, the
+        // opens on the render — the imported reference is only fetched once the lane is entered —
+        // so this is the only way the lane's *end state* is diffed: the lit Figma chip, the
         // "imported design spec — not a render" hint, the ◇ badge, and the reference filling the
-        // stage where the render was. The raster comes from the harness's existing
-        // `**/reference/**` stub, so no design tool is contacted here either.
+        // stage where the render was. Entered through `#cp-spec-chip`, the lane's own top-level
+        // control (it used to be an `<option>` in the renderer combo). The raster comes from the
+        // harness's existing `**/reference/**` stub, so no design tool is contacted here either.
         fixture: "serve-viewer-path",
         suffix: "spec-lane",
         apply: async (page) => {
-            await page.selectOption("#cp-lane-select", "spec");
+            await page.click("#cp-spec-chip");
             await page.waitForFunction(
                 () => document.getElementById("cp-spec-img")?.hidden === false,
             );
@@ -750,9 +1175,16 @@ const FIXTURE_STATES = [
         fixture: "serve-reference-compare",
         suffix: "annotated",
         apply: async (page) => {
-            for (const kind of ["layout", "typography"]) {
+            for (const kind of ["layout", "typography", "theme"]) {
                 await page.check(`[data-cp-annotation-kind="${kind}"]`);
             }
+            // The theme layer had a box and a legend row built for it and no control able to reveal
+            // either — CSS hid it unconditionally. Assert the drawn state, not just the checkbox, so
+            // a future toggle added without its display rule fails here instead of shipping invisible.
+            await expect(page.locator(".cp-annotation--theme")).toHaveCount(1);
+            await expect(
+                page.locator(".cp-annotation-entry--theme"),
+            ).toHaveCount(1);
             // The boxes are positioned from the image's rendered size, so hold until the panels
             // have actually laid out rather than racing the placeholder's load.
             await page.waitForFunction(() => {
@@ -789,6 +1221,26 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The exploded view's camera controls. The default shot proves the projection lands on the
+        // stage; the sliders that shape it sit inside a closed `<details>`, so their layout — a
+        // range and a live readout on one 240px row — is invisible to it and a regression there
+        // would move no baseline. Open the group and nudge the lean off its default so the readout
+        // is shown holding a value rather than its initial text.
+        fixture: "serve-viewer-exploded",
+        suffix: "controls",
+        apply: async (page) => {
+            await page.click('[data-cp-group="explode"] > summary');
+            await page.locator("#cp-explode-tilt").fill("46");
+            await page.locator("#cp-explode-tilt").dispatchEvent("input");
+            await expect(page.locator("#cp-explode-tilt-value")).toHaveText("46°");
+            // The knob re-fetches the re-projected SVG (debounced). Hold until that has landed, or
+            // the shot catches a spinner over the stage and the baseline flickers per run.
+            await page.waitForFunction(
+                () => !document.querySelector('.cp-stage[aria-busy="true"]'),
+            );
+        },
+    },
+    {
         // The player wall's other half. It opens as a plain side-by-side of every player — nothing
         // is diffed until a column is picked as the reference — so the diff layout (the badge on
         // the reference column, the mismatch chips, a diff growing inside each other column) is
@@ -801,6 +1253,50 @@ const FIXTURE_STATES = [
             await page.waitForFunction(
                 () => document.querySelector(".cp-rc-row .cp-rc-score") !== null,
             );
+        },
+    },
+    {
+        // The viewer's two in-page folds OPENED. The committed fixture captures the resting state
+        // — a wide state axis and a crowded theme bar both folded behind the title bar — so the
+        // rows themselves, which are what the toggles exist to reveal, would be diffed by nothing.
+        // This is also the only shot in which the toggles carry their expanded (tonal) treatment.
+        fixture: "serve-viewer-axes-folded",
+        suffix: "disclosures-open",
+        apply: async (page) => {
+            await page.click("#cp-axes-toggle");
+            await page.click("#cp-theme-toggle");
+            await page.waitForSelector("#cp-axes:not([hidden])");
+            await page.waitForSelector("#cp-theme-bar:not([hidden])");
+        },
+    },
+    {
+        // The cross-product subtree OPENED. Its whole claim is the row LABELS: with both axes in
+        // play, the row that resets the state and the row that resets the props are both "Default"
+        // unless each names both coordinates, and the render on screen is labelled by whichever
+        // axis reached it first. That is invisible while the subtree is folded — and it arrives
+        // folded, being six rows — so without this shot the naming rule is diffed by nothing.
+        fixture: "serve-viewer-cross-product",
+        suffix: "subtree-open",
+        apply: async (page) => {
+            await page.click("#cp-axes-toggle");
+            await page.waitForSelector("#cp-axes:not([hidden])");
+        },
+    },
+    {
+        // …and the component list CLOSED, which is new: above 1100px the list used to be nailed
+        // open by CSS with its toggle hidden, so "the stage with the 240px column given back" is a
+        // layout no baseline has ever held. Widened past that breakpoint first — the harness runs
+        // at 1024 by default, where the list is already hidden and closing it would prove nothing.
+        // States run in order against the SAME page, so this one re-folds what the state above
+        // opened; otherwise it would shoot two changes at once and diff neither cleanly.
+        fixture: "serve-viewer-axes-folded",
+        suffix: "nav-closed",
+        apply: async (page) => {
+            await page.click("#cp-axes-toggle");
+            await page.click("#cp-theme-toggle");
+            await page.setViewportSize({ width: 1280, height: 900 });
+            await page.click("#cp-nav-toggle");
+            await page.waitForSelector(".cp-viewer.cp-nav-closed");
         },
     },
 ];
@@ -837,9 +1333,21 @@ for (const fixture of listPageFixtures()) {
                             contentType: "image/svg+xml",
                         });
                     }
-                    const svg = new URL(route.request().url()).pathname.endsWith(".svg");
+                    if (lane.includes("pages")) {
+                        return route.fulfill({
+                            body: PAGE_PLACEHOLDER,
+                            contentType: "image/svg+xml",
+                        });
+                    }
+                    const url = new URL(route.request().url());
+                    const svg = url.pathname.endsWith(".svg");
+                    const exploded = svg && url.searchParams.get("exploded") === "1";
                     return route.fulfill({
-                        path: svg ? renderSvgPlaceholder : renderPlaceholder,
+                        path: exploded
+                            ? renderExplodedPlaceholder
+                            : svg
+                              ? renderSvgPlaceholder
+                              : renderPlaceholder,
                         contentType: svg ? "image/svg+xml" : "image/png",
                     });
                 });
@@ -860,7 +1368,25 @@ for (const fixture of listPageFixtures()) {
                 }),
             );
             await page.emulateMedia({ colorScheme: theme });
-            await page.goto(`/preview-harness/fixtures/pages/${fixture}.html`);
+            await page.goto(
+                `/preview-harness/fixtures/pages/${fixture}.html${FIXTURE_QUERY[fixture] || ""}`,
+            );
+
+            // The design page's renders are `loading="lazy"` — a live catalog serves one daemon
+            // render per node and the sheet is taller than the fold, so the production page must
+            // not ask for all of them at once. A full-page screenshot does not itself scroll, so
+            // without a pass down the page the below-fold slots would shoot empty and the generic
+            // image wait below would burn its whole timeout on images that never started.
+            if (fixture === "serve-design-page") {
+                await page.evaluate(async () => {
+                    const step = window.innerHeight;
+                    for (let y = 0; y < document.body.scrollHeight; y += step) {
+                        window.scrollTo(0, y);
+                        await new Promise((r) => requestAnimationFrame(r));
+                    }
+                    window.scrollTo(0, 0);
+                });
+            }
 
             // Wait until every (placeholder-stubbed) image has decoded so the
             // shot isn't a pre-image-load frame. Tolerant: pages with no
@@ -909,6 +1435,26 @@ for (const fixture of listPageFixtures()) {
             // Extra runtime states of this same fixture, shot from the already-loaded page.
             for (const state of FIXTURE_STATES.filter((s) => s.fixture === fixture)) {
                 await state.apply(page);
+                // Opt-IN pointer parking (issue #3837). `page.click()` leaves
+                // the mouse where it clicked, and an `apply` that expands
+                // something moves fresh rows UNDER that resting pointer — so
+                // `serve-landing-tree-depth-component-open` shot whichever of
+                // the component row or the revealed "Default" link happened to
+                // land there, a ~5,800px difference between two runs of the
+                // same code.
+                //
+                // Opt-in, not opt-out, and that is load-bearing. Parking by
+                // default was tried and moved 53 of 196 captures, because a
+                // large minority of these states are ABOUT the resting pointer
+                // — `serve-home-index-card-hover`, `serve-design-page-hover`,
+                // `serve-landing-public-card-hover`, both `serve-landing-live`
+                // long-press states. Defaulting to park silently guts those:
+                // they keep passing while capturing the un-hovered page the
+                // baseline already had. So a state declares `parkPointer` only
+                // when its pointer position is incidental.
+                if (state.parkPointer) {
+                    await page.mouse.move(0, 0);
+                }
                 await page.screenshot({
                     path: resolve(
                         outDir,
@@ -1041,7 +1587,9 @@ test("contract · snapshot overrides stay composed with a declared theme", async
 
     // Through the viewer bar's theme chip, which is the visible control now — `#cp-theme` is still
     // the state it writes, but a test that drives the hidden select would pass even if the chips
-    // were wired to nothing.
+    // were wired to nothing. This fixture declares enough themes that the bar arrives folded, so
+    // the chip is one disclosure click away.
+    await openThemeBar(page);
     await change(
         () =>
             page
@@ -1180,8 +1728,10 @@ test("contract · the spec lane compares the frame that was on the stage", async
             .catch(() => {});
 
     // From the static raster lane: the blob is the frame, so comparing costs nothing extra.
+    // The lane is entered through its own chip — `#cp-spec-chip`, beside the renderer combo rather
+    // than inside it.
     const beforeSnapshot = requests.length;
-    await page.selectOption("#cp-lane-select", "spec");
+    await page.click("#cp-spec-chip");
     await page.click('[data-cp-spec-view="triptych"]');
     await settled();
     await page.waitForTimeout(100);
@@ -1195,13 +1745,13 @@ test("contract · the spec lane compares the frame that was on the stage", async
     // exercises exactly the path a real Live/Wasm/RC lane takes, without needing a daemon or a
     // Wasm app in the harness. The stale blob must NOT be reused: the lane has to ask the server
     // for the current controls instead.
-    await page.selectOption("#cp-lane-select", "png");
+    await page.click("#cp-spec-chip");
     await page.waitForTimeout(100);
     await page
         .locator(".cp-viewer")
         .evaluate((root) => root.setAttribute("data-mode", "live"));
     const beforeLive = requests.length;
-    await page.selectOption("#cp-lane-select", "spec");
+    await page.click("#cp-spec-chip");
     await settled();
     await expect.poll(() => requests.length).toBe(beforeLive + 1);
     expect(requests.at(-1).pathname.endsWith(".png")).toBe(true);
@@ -1243,6 +1793,7 @@ test("contract · Back to an unthemed entry hands the chrome back to the OS", as
     // no-op the handler drops. It pushes a history entry and pins the chrome, the working half.
     // Driven through the visible chip rather than `#cp-theme`: the select is in the DOM but
     // visually removed (the bar is its face), so it is the chip a visitor can actually click.
+    await openThemeBar(page);
     await page.click('[data-theme-choice="light"]');
     await expect.poll(scheme).toBe("cp-scheme-light");
 

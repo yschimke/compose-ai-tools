@@ -128,6 +128,13 @@
   // trusted-catalog live session: its carried daemon re-renders author-declared knob edits on
   // demand). When true, a knob edit re-points the snapshot /render URL rather than sitting dead.
   var canRenderOverrides = root.getAttribute("data-can-render-overrides") === "true";
+  // The delivery-branch commit this page is pinned to, when it is a historical permalink
+  // (`?at=<sha>`). Every render URL built here carries it, so the stage, the export links and Copy
+  // PNG all read the same publish — a page where only some of those were pinned would be worse
+  // than one that wasn't pinned at all. Validated rather than trusted: it is DOM text that ends up
+  // in a request URL, and only a sha shape can reach one.
+  var pinnedAt = (root.getAttribute("data-pinned-at") || "").toLowerCase();
+  if (!/^[0-9a-f]{7,40}$/.test(pinnedAt)) pinnedAt = "";
   var previewId = root.getAttribute("data-preview-id");
   // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
   // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
@@ -349,6 +356,9 @@
   // Compose player pick and `rcPlayerPicked` gates whether it rides the render URL — so page load
   // stays on the instant default snapshot until the visitor actually chooses a server-side player.
   var laneSelect = document.getElementById("cp-lane-select");
+  // The design-spec lane's own chip, beside the combo rather than inside it (see ServeWeb's
+  // specChipHtml). Present only when this preview carries an imported reference.
+  var specChip = document.getElementById("cp-spec-chip");
   var rcDefaultBackend = laneSelect ? (laneSelect.getAttribute("data-rc-default") || "") : "";
   var rcPlayerBackend = rcDefaultBackend;
   var rcPlayerPicked = false;
@@ -365,6 +375,11 @@
     var parts = [];
     if (token) parts.push("token=" + encodeURIComponent(token));
     if (session) parts.push("session=" + encodeURIComponent(session));
+    // The pin rides with the request rather than being applied per route server-side, because the
+    // server cannot tell the viewer's own snapshot request from any other /render call. A pinned
+    // page has every re-rendering control disabled, so the overrides below are empty in practice —
+    // the pin is what this URL is for.
+    if (pinnedAt) parts.push("at=" + encodeURIComponent(pinnedAt));
     Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
     // Author-declared knobs: knob.<key>=<value>. The server infers the type from the preview's
     // declaration, so no <kind>: prefix. A knob still at its declared default is omitted — that
@@ -431,6 +446,71 @@
     }
     return qs;
   }
+  // The exploded 3D view (`?exploded=1` on the SVG lane): the layered figma-svg tilted back and
+  // pulled apart into one sheet per level of composable nesting. It is a *presentation* of the
+  // vector export, so it rides only the `.svg` extension — appending it to the raster PNG lane
+  // would silently do nothing, and the toggle turns SVG on rather than offering the combination.
+  //
+  // Every knob lands in the URL, which is the whole reason the projection is server-side: the
+  // angle someone tuned is part of the link they copy, the SVG they download, and the picture a
+  // reviewer sees in a PR — not client state that dies with the tab.
+  var explodeToggle = document.getElementById("cp-explode-toggle");
+  var EXPLODE_KNOBS = [
+    ["cp-explode-tilt", "explodeTilt"],
+    ["cp-explode-spin", "explodeSpin"],
+    ["cp-explode-gap", "explodeGap"],
+    ["cp-explode-depth", "explodeDepth"],
+  ];
+  function explodeOn() {
+    return !!(explodeToggle && explodeToggle.getAttribute("aria-pressed") === "true");
+  }
+  // The same boolean forms `ServeExplodedSvg.enabled` accepts, so a hand-typed or bookmarked
+  // `?exploded=on` opens the view the render endpoint would serve for that URL — rather than
+  // showing the flat PNG and then dropping the parameter on the next sync, which is what a
+  // stricter reading here produced.
+  function explodeParamOn(raw) {
+    if (raw === null || raw === undefined) return false;
+    if (raw === "") return true; // a bare `?exploded`
+    return ["1", "true", "on", "yes"].indexOf(String(raw).toLowerCase()) >= 0;
+  }
+  // A server-side Remote Compose player pick cannot survive the exploded view, so entering it
+  // releases the pick rather than hiding it. `rcPlayer=cmp-jvm` is a renderer choice, not a mode,
+  // so it outlives a return to the static lane — and the server routes it to the desktop player's
+  // own subprocess *before* it ever looks at `exploded=`, leaving the chip pressed over an
+  // untouched flat SVG. There is nothing to explode there either way: that lane renders a Remote
+  // Compose document, which carries none of the `<g id="…">` composable nesting this view splits
+  // on.
+  //
+  // Resetting the STATE rather than filtering `rcPlayer` out of the request string is the whole
+  // point: the string is copied into the page URL by syncUrl() and read back by the lane picker's
+  // label, so a filtered request left the address bar and the "current renderer" chip both naming
+  // a player that is no longer drawing anything.
+  function dropRcPlayerPick() {
+    if (!rcPlayerPicked) return;
+    rcPlayerPicked = false;
+    rcPlayerBackend = rcDefaultBackend;
+    if (typeof syncLaneSelect === "function") syncLaneSelect();
+  }
+  // Whether pressing 3D is what turned the vector lane on. Leaving 3D then hands the lane back
+  // rather than stranding the visitor on a flat SVG they never asked for — but only in that case:
+  // someone who was already reading the SVG and exploded it should get their SVG back, not a PNG.
+  var explodeEnabledSvg = false;
+  function withExplode(ext, qs) {
+    if (ext !== ".svg" || !explodeOn()) return qs;
+    var parts = ["exploded=1"];
+    EXPLODE_KNOBS.forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      // A knob left at its authored default is omitted, so the common URL stays `?exploded=1`
+      // rather than five parameters restating the server's own defaults.
+      if (el && el.value !== "" && el.value !== el.getAttribute("data-cp-default")) {
+        parts.push(pair[1] + "=" + encodeURIComponent(el.value));
+      }
+    });
+    return qs ? qs + "&" + parts.join("&") : parts.join("&");
+  }
+  function withSnapshotFormat(ext, qs) {
+    return withExplode(ext, withScroll(ext, qs));
+  }
   // Called once the snapshot request has SETTLED, whichever way it went — pixels decoded, or a
   // failure that leaves the stage without them. The bookmarked-mode bootstrap waits on this: it
   // used to wait on the <img>'s own load/error, which a failed render never fires (no src is ever
@@ -445,7 +525,7 @@
     status.textContent = "rendering…";
     var gen = ++snapshotGen;
     setSnapshotLoading(true);
-    var qs = withScroll(snapshotExt, query());
+    var qs = withSnapshotFormat(snapshotExt, query());
     var url =
       base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
     var requestedExt = snapshotExt;
@@ -526,18 +606,22 @@
   // on location.origin so the link is absolute (curl-able / shareable), and kept in sync on
   // every control or knob change — even the ones that don't re-render the snapshot themselves.
   function renderUrl(ext) {
-    var qs = withScroll(ext, query());
+    var qs = withSnapshotFormat(ext, query());
     return location.origin + base + "/render/" + encodeURIComponent(previewId) + ext +
       (qs ? "?" + qs : "");
   }
   function withMode(url, mode) {
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "mode=" + mode;
   }
-  function refreshLinks() {
+  // [skipUrlSync] refreshes the copyable links WITHOUT touching history. Only one caller wants it:
+  // a path that is about to hand the URL to a lane transition, where syncing first would replace
+  // the entry the visitor came from moments before that transition pushes a new one — spending the
+  // previous state to write an intermediate nobody asked for. See `onKnobEdited`.
+  function refreshLinks(skipUrlSync) {
     // The page's own URL is kept in step with the controls for the same reason the direct links
     // are: what's on screen should be something you can bookmark or hand to someone. Every path
     // that changes viewer state already refreshes the links, so this one call covers all of them.
-    syncUrl();
+    if (!skipUrlSync) syncUrl();
     [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
       var field = document.getElementById("cp-url-" + pair[0]);
       if (!field) return;
@@ -1218,6 +1302,171 @@
     img.style.removeProperty("display");
     img.hidden = false;
   }
+  // ---- The Source lane -------------------------------------------------------------------------
+  // The usage code behind this card, on the stage in place of the render.
+  //
+  // Not a renderer, so not an option in the renderer combo — a chip of its own, exactly like the
+  // design-spec chip beside it and for the same reason. The snippet is fetched from `/usage/<id>`
+  // on FIRST ENTRY, never at page load: deriving it costs the server a GitHub read on a cold cache,
+  // and most visitors to a preview never open this.
+  var sourceChip = document.getElementById("cp-source-chip");
+  var sourcePanel = document.getElementById("cp-source-panel");
+  var sourceToggle = document.getElementById("cp-source-toggle");
+  var sourceLoaded = false;
+  function sourceAvailable() { return !!(sourceChip && sourcePanel && usageSrc()); }
+  // The radio, not `data-mode` — exactly as specActive() does. On a URL restore the radio is
+  // checked before the transition paints, so reading the stage attribute here would report the
+  // lane as inactive while the page was in the middle of entering it.
+  function sourceActive() { return !!(sourceToggle && sourceToggle.checked); }
+  // Same origin check the spec raster and the Wasm frame get: the URL arrives on a server-set
+  // data- attribute, and is refused unless it resolves onto our own origin.
+  function usageSrc() {
+    var raw = sourceChip ? (sourceChip.getAttribute("data-usage-src") || "") : "";
+    if (!raw) return "";
+    var u;
+    try { u = new URL(raw, location.origin); } catch (e) { return ""; }
+    if (u.origin !== location.origin) return "";
+    return u.href;
+  }
+  function openSource() {
+    if (!sourceAvailable()) return;
+    root.setAttribute("data-mode", "source");
+    // Out of flow rather than merely hidden, like the spec lane: the stage sizes to the panel
+    // instead of reserving the render's box underneath it.
+    img.style.display = "none";
+    canvas.hidden = true;
+    sourcePanel.hidden = false;
+    if (status) status.textContent = "";
+    if (!sourceLoaded) {
+      sourceLoaded = true;
+      renderSourceMessage("Loading…");
+      fetch(usageSrc(), { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(renderSource)
+        .catch(function () {
+          // A cleaner that declined, or a catalog whose source moved, answers 404 — which is a
+          // real answer and not an error to shout about. The `source` link in the provenance row
+          // still reaches the preview's own Kotlin, so say that rather than leaving a blank panel.
+          sourceLoaded = false;
+          renderSourceMessage(
+            "The usage source for this preview could not be derived. The \u201csource\u201d link "
+            + "above opens the preview\u2019s own Kotlin on GitHub.");
+        });
+    }
+  }
+  function closeSource() {
+    if (!sourcePanel) return;
+    // `data-mode`, not sourceActive(): by the time a transition calls this the radio for the lane
+    // being entered is already checked, so the flag would say we are not on Source and the stage
+    // would keep its attribute. Same split the spec lane makes for the same reason.
+    if (root.getAttribute("data-mode") === "source") root.setAttribute("data-mode", "snapshot");
+    sourcePanel.hidden = true;
+    img.style.removeProperty("display");
+    img.hidden = false;
+  }
+  function renderSourceMessage(text) {
+    if (!sourcePanel) return;
+    sourcePanel.textContent = "";
+    var p = document.createElement("p");
+    p.className = "cp-source-note";
+    p.textContent = text;
+    sourcePanel.appendChild(p);
+  }
+  /**
+   * Paints the fetched snippet.
+   *
+   * Every node here is created and filled through `textContent`, never through innerHTML: the
+   * payload is Kotlin source read from a catalog's repository, so it is exactly the kind of content
+   * that must never be parsed as markup.
+   */
+  function renderSource(data) {
+    if (!sourcePanel) return;
+    sourcePanel.textContent = "";
+    // Says what this is, and — when the catalog has not declared what its own helpers mean — is
+    // honest that what follows still carries them. The playground's seed note makes the same
+    // distinction; the two must not disagree about the same snippet.
+    var note = document.createElement("p");
+    note.className = "cp-source-note";
+    if (data && data.scaffoldsDeclared === false) {
+      note.className += " cp-source-note--warn";
+      note.textContent = "This catalog has not declared what its own helpers mean in plain "
+        + "Compose, so some of the code below is catalog machinery rather than usage.";
+    } else if (data && data.residue && data.residue.length) {
+      note.className += " cp-source-note--warn";
+      note.textContent = "Usage code, with " + data.residue.join(", ")
+        + " left as the catalog wrote them \u2014 those will not resolve outside it.";
+    } else {
+      note.textContent = "The plain Compose that produces this render.";
+    }
+    sourcePanel.appendChild(note);
+    var pre = document.createElement("pre");
+    var code = document.createElement("code");
+    code.textContent = (data && data.text) || "";
+    pre.appendChild(code);
+    sourcePanel.appendChild(pre);
+    var actions = document.createElement("div");
+    actions.className = "cp-source-actions";
+    var copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "cp-fmt-toggle";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", function () {
+      var text = (data && data.text) || "";
+      var done = function () {
+        copy.textContent = "Copied";
+        setTimeout(function () { copy.textContent = "Copy"; }, 1500);
+      };
+      // The Clipboard API needs a secure context, which a serve host reached over plain HTTP on a
+      // LAN address is not. The fallback SELECTS the code rather than only telling the visitor to
+      // press a shortcut: an instruction to press ⌘C with nothing selected copies whatever else
+      // happened to be, and names the wrong key on every non-Mac platform besides.
+      var fallback = function () {
+        try {
+          var range = document.createRange();
+          range.selectNodeContents(code);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          // Deprecated, and still the only synchronous copy an insecure context has. When it
+          // works the visitor needs no shortcut at all; when it does not, the text is at least
+          // selected and ready for one.
+          if (document.execCommand && document.execCommand("copy")) {
+            sel.removeAllRanges();
+            done();
+            return;
+          }
+        } catch (e) { /* fall through to the prompt */ }
+        copy.textContent = /Mac|iP(hone|ad|od)/.test(navigator.platform)
+          ? "Selected \u2014 press \u2318C"
+          : "Selected \u2014 press Ctrl+C";
+        setTimeout(function () { copy.textContent = "Copy"; }, 3000);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+    });
+    actions.appendChild(copy);
+    // Onward to the editor, but only where this host can actually compile the catalog — the
+    // server decides that and sends a href or nothing, so the panel never offers a dead run.
+    if (data && data.playgroundHref) {
+      var run = document.createElement("a");
+      run.className = "cp-format-link";
+      run.href = data.playgroundHref;
+      run.textContent = "open in playground \u2192";
+      actions.appendChild(run);
+    }
+    if (data && data.blobUrl) {
+      var whole = document.createElement("a");
+      whole.className = "cp-format-link";
+      whole.href = data.blobUrl;
+      whole.rel = "noopener";
+      whole.textContent = "the whole sticker \u2192";
+      actions.appendChild(whole);
+    }
+    sourcePanel.appendChild(actions);
+  }
   /**
    * The render the spec is compared against: the exact bytes that were on the stage when we can
    * name them, and a fresh `/render` URL when we cannot.
@@ -1534,6 +1783,24 @@
   function svgOn() {
     return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
   }
+  // Leaving the static lane drops BOTH vector affordances together: a live stream / Wasm app /
+  // Remote Compose canvas produces raster frames, and an exploded view of a frame that no longer
+  // exists is a pressed chip describing nothing. Kept as one call so a future lane can't clear the
+  // SVG chip and forget this one.
+  function dropVectorModes() {
+    if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+    clearExploded();
+  }
+  // Un-press the 3D chip and re-sync its controls. Shared by every path that leaves the vector
+  // lane — the interactive lanes above, and the SVG chip being switched off — so a future lane
+  // can't drop one and forget the other.
+  function clearExploded() {
+    if (!explodeToggle || !explodeOn()) return;
+    explodeToggle.setAttribute("aria-pressed", "false");
+    if (root) root.setAttribute("data-exploded", "0");
+    syncExplodeControls();
+    explodeEnabledSvg = false;
+  }
   // The stage lane the current transition is leaving, latched by enterMode before it tears that
   // lane down. Read by specActualUrl, which cannot otherwise tell whether the snapshot <img> holds
   // the frame the visitor was looking at. Starts on the snapshot, which is what the page opens on.
@@ -1553,10 +1820,13 @@
     // The spec lane is closed by EVERY other transition (it has no per-branch close call below),
     // so leaving it always restores the snapshot <img> to the stage.
     if (m !== "spec") closeSpec();
+    // Closed by EVERY other transition, exactly as the spec lane is: leaving Source always puts the
+    // render back on the stage, whichever control the visitor left by.
+    if (m !== "source") closeSource();
     if (m === "live") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
-      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      dropVectorModes();
       closeWasm();
       closeRc();
       closeRcWasm();
@@ -1564,7 +1834,7 @@
     } else if (m === "wasm") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
-      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      dropVectorModes();
       closeStream();
       closeRc();
       closeRcWasm();
@@ -1572,7 +1842,7 @@
     } else if (m === "rc") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
-      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      dropVectorModes();
       closeStream();
       closeWasm();
       closeRcWasm();
@@ -1580,17 +1850,31 @@
     } else if (m === "rc-wasm") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
-      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      dropVectorModes();
       closeStream();
       closeWasm();
       closeRc();
       openRcWasm();
+    } else if (m === "source") {
+      // Reading the code is not a render either: same treatment as the spec lane — cancel any
+      // in-flight snapshot, leave every interactive lane, and put the panel on the stage. Going
+      // through the branch rather than returning early keeps the transition in the one path that
+      // reconciles the picker, the chips and the URL, so `?mode=source` is bookmarkable and Back
+      // returns to the lane the visitor came from.
+      cancelSnapshotLoading();
+      snapshotExt = ".png";
+      dropVectorModes();
+      closeStream();
+      closeWasm();
+      closeRc();
+      closeRcWasm();
+      openSource();
     } else if (m === "spec") {
       // Looking at the spec is not a render: cancel any in-flight snapshot, drop every interactive
       // lane, and paint the imported reference instead. Nothing is re-requested on the way in.
       cancelSnapshotLoading();
       snapshotExt = ".png";
-      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      dropVectorModes();
       closeStream();
       closeWasm();
       closeRc();
@@ -1617,7 +1901,8 @@
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
-    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm" && m !== "spec")
+    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm" && m !== "spec"
+        && m !== "source")
       refreshSnapshot();
     // The interactive lanes drive their own render and never reach refreshLinks, so the URL would
     // still describe the snapshot the visitor just left — the chosen lane unbookmarkable until
@@ -1638,7 +1923,17 @@
       // iframe / spec image that is still on screen, with its chip still pressed. The daemon and
       // Wasm lanes were already routed this way; the RC canvas, the RC/Wasm frame and the spec
       // lane are the same case.
-      if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive())) {
+      // The exploded view is a view OF the vector export, so leaving the vector lane leaves it
+      // too. Without this the 3D chip stayed pressed over a flat PNG, its sliders stayed live, and
+      // the copied/downloaded SVG stayed exploded while the stage showed something else — three
+      // controls describing a frame that is no longer on screen.
+      if (!turnOn) clearExploded();
+      // `sourceActive()` belongs in this list for exactly the reason the others do: openSource()
+      // takes the snapshot <img> out of flow, and only closeSource() puts it back. Flipping
+      // `data-mode` straight to "svg" hid the panel (its CSS is mode-scoped) without restoring the
+      // image — a blank stage under a still-checked Source radio.
+      if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive()
+          || sourceActive())) {
         setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
       } else {
         snapshotExt = turnOn ? ".svg" : ".png";
@@ -1646,6 +1941,64 @@
         refreshSnapshot();
       }
     });
+  }
+  // The exploded 3D toggle. It is a *view of the vector export*, so pressing it implies the SVG
+  // lane: from anywhere else the viewer switches to the static vector snapshot on the way in,
+  // exactly as the SVG toggle does, rather than presenting a control that quietly does nothing on
+  // a raster frame.
+  if (explodeToggle) {
+    explodeToggle.addEventListener("click", function () {
+      var turnOn = !explodeOn();
+      explodeToggle.setAttribute("aria-pressed", turnOn ? "true" : "false");
+      if (root) root.setAttribute("data-exploded", turnOn ? "1" : "0");
+      syncExplodeControls();
+      urlPush = true;
+      if (turnOn) dropRcPlayerPick();
+      if (turnOn && svgToggle && !svgOn()) {
+        // Turning SVG on is itself a lane change; let its handler drive the render so there is
+        // exactly one request, with `exploded=1` already folded in by withSnapshotFormat.
+        // Remembered so leaving 3D can hand the lane back (see explodeEnabledSvg).
+        explodeEnabledSvg = true;
+        svgToggle.click();
+        return;
+      }
+      if (!turnOn) explodeEnabledSvg = false;
+      refreshSnapshot();
+    });
+  }
+  // The angle / separation / depth knobs. Continuous drags leave `urlPush` false, so tuning the
+  // view replaces one history entry instead of burying the page under fifty.
+  EXPLODE_KNOBS.forEach(function (pair) {
+    var el = document.getElementById(pair[0]);
+    if (!el) return;
+    el.addEventListener("input", function () {
+      updateExplodeReadout(el);
+      if (explodeOn()) scheduleExplodeRender();
+    });
+  });
+  // The knobs only mean anything while the view is on, and a slider that renders nothing reads as
+  // broken; grey them out instead.
+  function syncExplodeControls() {
+    var on = explodeOn();
+    EXPLODE_KNOBS.forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (el) el.disabled = !on;
+    });
+  }
+  function updateExplodeReadout(el) {
+    var out = document.getElementById(el.id + "-value");
+    if (out) out.textContent = el.value + (el.getAttribute("data-cp-unit") || "");
+  }
+  // Dragging a slider fires `input` per pixel of travel. Each one is a fetch of a re-projected
+  // SVG — cheap on the server (no re-render, just a rewrite of cached bytes) but not free on the
+  // wire, so coalesce a drag into one request per frame-ish.
+  var explodeTimer = null;
+  function scheduleExplodeRender() {
+    if (explodeTimer) clearTimeout(explodeTimer);
+    explodeTimer = setTimeout(function () {
+      explodeTimer = null;
+      refreshSnapshot();
+    }, 120);
   }
   // "Full page (scroll)" re-renders the active snapshot format and reshapes both export URLs.
   if (scrollLong) {
@@ -1820,12 +2173,14 @@
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
   // hidden mode radio so its state is consistent, then run the transition.
   function setMode(m) {
-    var r = document.getElementById(
+    var radioId = (
       m === "live" ? "cp-live" :
       m === "wasm" ? "cp-wasm-toggle" :
       m === "rc-wasm" ? "cp-rc-wasm-toggle" :
       m === "spec" ? "cp-spec-toggle" :
+      m === "source" ? "cp-source-toggle" :
       m === "rc" ? "cp-rc-toggle" : "cp-mode-png");
+    var r = radioId ? document.getElementById(radioId) : null;
     if (r) r.checked = true;
     enterMode(m);
   }
@@ -1876,15 +2231,25 @@
   // wise the matching option's own label, so the chip and the combo can never name a lane two
   // different things. With no combo at all the chip is the only control on the row, and the
   // generic invitation reads better than "Snapshot".
+  // The renderer the chip returns to when the current lane isn't one of the combo's own — today
+  // that means the design spec, which is a chip of its own. Server-rendered from the same
+  // `primaryLaneLabel` the chip opens on, so a preview with no combo to read has a name too.
+  function defaultLaneLabel() {
+    return (liveToggle && liveToggle.getAttribute("data-default-lane-label")) || "Live preview";
+  }
   function laneLabelText() {
     if (live && live.checked) return "Live";
-    if (!laneSelect) return "Live preview";
+    if (!laneSelect) return defaultLaneLabel();
     var wanted = currentLaneValue();
     var label = "";
     Array.prototype.forEach.call(laneSelect.options, function (o) {
       if (o.value === wanted) label = o.textContent;
     });
-    return label || "Live preview";
+    // On the spec lane there is no matching option — the spec chip beside this one is lit and
+    // already names it, and two adjacent chips both reading "Figma" would be two controls arguing
+    // about the same fact. So this one keeps naming the render lane, which is exactly where
+    // clicking it goes back to.
+    return label || defaultLaneLabel();
   }
   function updateLiveToggle() {
     var interactive = anyInteractive();
@@ -1895,6 +2260,27 @@
       liveToggle.disabled = !liveTransportAvailable() && !interactive;
     }
     if (liveToggleLabel) liveToggleLabel.textContent = laneLabelText();
+    // The spec chip is a toggle, so it reports the lane's state the same way the Live chip does.
+    // Driven from here rather than from its own click handler so every route out of the lane (the
+    // Live chip, a combo pick, an SVG swap, Back/Forward) un-presses it too.
+    if (specChip) {
+      var onSpecLane = specActive();
+      specChip.setAttribute("aria-pressed", onSpecLane ? "true" : "false");
+      specChip.disabled = !specAvailable() && !onSpecLane;
+      specChip.title = onSpecLane
+        ? "Showing the imported design spec — click to return to the render"
+        : specChip.getAttribute("data-spec-chip-tip") || specChip.title;
+    }
+    // The Source chip reports its lane the same way, and from the same place, so every route out
+    // of it (the Live chip, a combo pick, the spec chip, Back/Forward) un-presses it too.
+    if (sourceChip) {
+      var onSourceLane = sourceActive();
+      sourceChip.setAttribute("aria-pressed", onSourceLane ? "true" : "false");
+      sourceChip.disabled = !sourceAvailable() && !onSourceLane;
+      sourceChip.title = onSourceLane
+        ? "Showing the usage source \u2014 click to return to the render"
+        : sourceChip.getAttribute("data-source-chip-tip") || sourceChip.title;
+    }
     // …and the tooltip, from the same state. The chip's meaning inverts as the visitor moves
     // through the lanes — on the static snapshot a click enters Live, on an interactive lane it
     // exits back to the snapshot — so a fixed `title` would end up describing the opposite of what
@@ -1908,7 +2294,8 @@
           : "Static snapshot — this session has no live lane to switch to");
     }
     if (modeHint) {
-      modeHint.textContent = specActive() ? "imported design spec — not a render"
+      modeHint.textContent = sourceActive() ? "usage source — not a render"
+        : specActive() ? "imported design spec — not a render"
         : interactive ? "interactive — click / scroll the preview"
         // "no live lane" is only true when there is genuinely nothing to switch to. When the lane
         // exists and is merely behind sign-in, the transport radio is (correctly) disabled, so
@@ -1926,6 +2313,25 @@
       // server-side player the combo will show — there is no static form of the JS canvas lane.
       if (anyInteractive()) { setMode("png"); }
       else { var m = bestLiveMode(); if (m) setMode(m); }
+    });
+  }
+  // The design-spec chip: in and straight back out of the spec lane, no menu in between. Leaving
+  // returns to the static snapshot — the same place the Live chip returns to — rather than to
+  // whichever interactive lane was up before, because the spec is entered to compare against the
+  // *render*, and that is the lane the comparison views (Diff / Triptych / Slider) draw from.
+  if (specChip) {
+    specChip.addEventListener("click", function () {
+      if (specActive()) setMode("png");
+      else if (specAvailable()) setMode("spec");
+    });
+  }
+  // The Source chip: in and straight back out, like the spec chip. Leaving returns to the static
+  // snapshot rather than to whichever interactive lane was up, for the same reason — the code is
+  // read against the *render*, and that is the lane it was entered from.
+  if (sourceChip) {
+    sourceChip.addEventListener("click", function () {
+      if (sourceActive()) setMode("png");
+      else if (sourceAvailable()) setMode("source");
     });
   }
   // ---- The renderer combo box ------------------------------------------------------------------
@@ -1968,9 +2374,6 @@
         }
       } else if (value === "wasm") {
         if (!wasmActive()) setMode("wasm"); else syncLaneSelect();
-      } else if (value === "spec") {
-        if (!specAvailable()) { syncLaneSelect(); return; }
-        if (!specActive()) setMode("spec"); else syncLaneSelect();
       } else {
         setMode("png");
       }
@@ -2023,7 +2426,7 @@
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       }
     });
-    // The page's Transparent toggle (owned by bg-toggle.js, which flips
+    // The page's Transparent toggle (owned by <cp-bg-toggle> in serve-components.js, which flips
     // `cp-bg-transparent` on <html>) changes what the stage paints — and the app mirrors that
     // backdrop, so it has to hear about it. Watching the class beats reaching across to that
     // script's click handler: the stage also changes with the render theme, and both land here.
@@ -2097,9 +2500,48 @@
   // from the `knob.<key>` patch), so a knob edit drives whichever transport is live: the Wasm
   // iframe when it's active (or auto-enable it on a static published catalog), the daemon stream
   // when Live is up, or a `/render` snapshot when the session can re-render.
-  function onKnobEdited() {
-    refreshLinks();
-    if (wasmActive()) {
+  // A closed value-set knob (`previewOverrideChoice`) renders as a <select>, and a <select> silently
+  // drops an assignment it has no option for — `.value` becomes "". That matters because "" is a
+  // REAL value for a string knob (a cleared label, a variant seeded empty), so it would be sent as
+  // `knob.<key>=` rather than ignored: opening `?knob.size=xxl` would render the wrong override
+  // instead of the stale one it names. The server already keeps an unknown *baked* value by adding
+  // it as an option; this is the same courtesy for a value that only ever existed in the URL — a
+  // hand-written link, or one from before a value was renamed.
+  function adoptChoiceValue(el, value) {
+    if (el.tagName !== "SELECT" || value === "") return;
+    for (var i = 0; i < el.options.length; i++) if (el.options[i].value === value) return;
+    var option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    el.insertBefore(option, el.firstChild);
+  }
+  // Which transport will carry a knob edit. Resolved BEFORE the URL sync rather than inline in the
+  // dispatch below, because the answer decides who owns the history entry — see [discrete] in
+  // onKnobEdited.
+  function knobRoute() {
+    if (wasmActive()) return "wasm";
+    if (live.checked && ws && ws.readyState === 1) return "live";
+    if (canRenderOverrides) return "snapshot";
+    // A published catalog can't re-render on the server, but its in-browser app can apply the
+    // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes the
+    // patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+    if (staticSnapshot && wasmToggle) return "enable-wasm";
+    return "none";
+  }
+  // [discrete] marks an edit that earns its own history entry (a value picked from a closed set),
+  // as opposed to a continuous one (typing a label) that replaces.
+  //
+  // The `enable-wasm` route writes no history here at all — not a push, and not the replace a
+  // non-discrete edit would otherwise do. That path ends in `setMode("wasm")`, and `enterMode`
+  // syncs with a push of its own for the lane change. Doing anything here first spends the entry
+  // the visitor came from on an intermediate `choice + png` state — one that cannot apply the
+  // choice it names — and Back then lands on that instead of on the previous choice. Suppressing
+  // only the push is not enough: the replace clobbers the same entry just as thoroughly.
+  function onKnobEdited(discrete) {
+    var route = knobRoute();
+    if (discrete && route !== "enable-wasm") urlPush = true;
+    refreshLinks(route === "enable-wasm");
+    if (route === "wasm") {
       if (wasmReady && wasmFrame.contentWindow) {
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       } else {
@@ -2107,19 +2549,22 @@
       }
       return;
     }
-    if (live.checked && ws && ws.readyState === 1) {
+    if (route === "live") {
       ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
-    } else if (canRenderOverrides) {
+    } else if (route === "snapshot") {
       refreshSnapshot();
-    } else if (staticSnapshot && wasmToggle) {
-      // A published catalog can't re-render on the server, but its in-browser app can apply the
-      // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes
-      // the patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+    } else if (route === "enable-wasm") {
       setMode("wasm");
     }
   }
   document.querySelectorAll(".cp-knob").forEach(function (el) {
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobEdited);
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", function () {
+      // A closed value-set knob renders as a <select>, and picking from it is a DISCRETE choice —
+      // like a lane switch or a theme pick — so it earns a history entry and Back returns to the
+      // previously chosen value. A typed knob stays continuous and replaces instead, or one edit
+      // of a label would bury the page under an entry per keystroke. See `urlPush`.
+      onKnobEdited(el.tagName === "SELECT");
+    });
   });
   // The app-theme selector and detected-feature toggles route ONLY through the server daemon —
   // an app-declared theme provider is a server-side wrapper, and focus/gesture overlays are
@@ -2173,6 +2618,7 @@
     "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
     "scroll", "mode", "sizeMode", "rcPlayer", "specView",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
+    "exploded", "explodeTilt", "explodeSpin", "explodeGap", "explodeDepth",
   ];
   function ownsUrlParam(name) {
     return URL_STATE_PARAMS.indexOf(name) >= 0 ||
@@ -2196,6 +2642,14 @@
       if (ownsUrlParam(name)) values[name] = value;
     });
     if (scrollLong && scrollLong.checked) values.scroll = "long";
+    // The exploded view and its knobs, written from the same helper the render URL uses so the
+    // page's own address, the copied link and the fetched bytes can never disagree about the
+    // angle on screen.
+    if (explodeOn()) {
+      new URLSearchParams(withExplode(".svg", "")).forEach(function (value, name) {
+        values[name] = value;
+      });
+    }
     var mode = currentMode();
     if (mode !== "png") values.mode = mode;
     var sizeModeEl = document.getElementById("cp-sizeMode");
@@ -2236,6 +2690,65 @@
       if (fsVal) fsVal.textContent = scale ? fs.value : "default";
     }
     if (scrollLong) scrollLong.checked = q.get("scroll") === "long";
+    // The exploded view restores from the URL like every other axis, so a shared
+    // `?exploded=1&explodeTilt=40` link opens on the picture it names and Back/Forward walks the
+    // angles someone tried. A knob the entry doesn't carry resets to its authored default rather
+    // than keeping the live value, which would leave the page disagreeing with its own address.
+    if (explodeToggle) {
+      var explodeWanted = explodeParamOn(q.get("exploded"));
+      explodeToggle.setAttribute("aria-pressed", explodeWanted ? "true" : "false");
+      if (root) root.setAttribute("data-exploded", explodeWanted ? "1" : "0");
+      EXPLODE_KNOBS.forEach(function (pair) {
+        var el = document.getElementById(pair[0]);
+        if (!el) return;
+        // Validate before assigning. `<input type="range">` runs the browser's value-sanitization
+        // algorithm on whatever it is given, and a value it can't parse — a stale
+        // `?explodeTilt=nope`, or one outside min..max — lands on the range's MIDPOINT, not on the
+        // authored default. The next refresh would then render a camera nobody asked for and
+        // rewrite the shared URL to match it, which is the opposite of the documented fallback.
+        var raw = q.get(pair[1]);
+        var num = raw === null || raw === "" ? NaN : Number(raw);
+        if (isFinite(num)) {
+          // Finite but out of range is CLAMPED, not rejected — `ExplodedSvg` clamps the angles and
+          // the separation it is handed, so `?explodeTilt=76` renders at 75° from the endpoint and
+          // must open at 75° here too rather than snapping to the default and rewriting the URL
+          // out from under whoever shared it.
+          var min = parseFloat(el.getAttribute("min"));
+          var max = parseFloat(el.getAttribute("max"));
+          if (!isNaN(min) && num < min) num = min;
+          if (!isNaN(max) && num > max) num = max;
+          el.value = String(num);
+        } else {
+          // Only a value the browser cannot parse falls back. Assigning it raw would be worse than
+          // useless: `<input type="range">` sanitizes an unparseable value to its MIDPOINT, so a
+          // stale `?explodeTilt=nope` rendered a camera nobody asked for.
+          el.value = el.getAttribute("data-cp-default") || el.value;
+        }
+        updateExplodeReadout(el);
+      });
+      syncExplodeControls();
+      // `?exploded=1` names a view of the VECTOR export, and the SVG lane has no URL param of its
+      // own (it is a format toggle, not a mode) — so the exploded param is what puts the page on
+      // `.svg`. Doing it here rather than at bootstrap covers Back/Forward too, and running before
+      // the first refreshSnapshot means a shared exploded link fetches the exploded SVG once
+      // instead of painting the flat PNG and replacing it. Leaving the view does NOT force the
+      // vector lane back off: the visitor may have been reading the plain SVG before they exploded
+      // it, and that is the state Back should return them to.
+      if (explodeWanted && svgToggle && !svgOn()) {
+        explodeEnabledSvg = true;
+        svgToggle.setAttribute("aria-pressed", "true");
+        snapshotExt = ".svg";
+        root.setAttribute("data-mode", "svg");
+      } else if (!explodeWanted && explodeEnabledSvg && svgToggle) {
+        // Back out of an entry that 3D created: the vector lane has no URL parameter of its own,
+        // so without this the restored page keeps the SVG that 3D switched it to and shows a flat
+        // vector render the visitor never chose. Only when 3D is what turned it on.
+        explodeEnabledSvg = false;
+        svgToggle.setAttribute("aria-pressed", "false");
+        snapshotExt = ".png";
+        root.setAttribute("data-mode", "snapshot");
+      }
+    }
     ["focus", "gestures"].forEach(function (f) {
       var el = document.getElementById("cp-" + f);
       if (el) el.checked = q.get(f) !== null;
@@ -2263,7 +2776,7 @@
       var value = q.get("knob." + key);
       if (value === null) value = el.getAttribute("data-knob-initial") || "";
       if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
-      else el.value = value;
+      else { adoptChoiceValue(el, value); el.value = value; }
     });
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
       var name = el.getAttribute("data-rc-name");

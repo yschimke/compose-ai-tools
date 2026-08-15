@@ -131,7 +131,12 @@ object LayoutInspectorProduct {
   // an app's artwork — the geometry can't — and it is what lets the figma-svg export annotate an
   // icon with its canonical fonts.google.com identity ([MaterialIconRef]). Additive — older entries
   // decode with `vectorName = null`, which exports exactly as before.
-  const val SCHEMA_VERSION: Int = 15
+  // v16: each node reports `drawsContent` when its live modifier-node chain contains a
+  // `DrawModifierNode`. This covers modern delegated `CacheDrawModifierNode` implementations whose
+  // element exposes no replayable `onDraw` lambda (Material 3's wavy progress indicators). The
+  // hybrid figma-svg export uses the signal to crop an otherwise-unrepresentable leaf from the
+  // rendered frame. Additive — older entries decode it as false.
+  const val SCHEMA_VERSION: Int = 16
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -715,6 +720,14 @@ data class LayoutInspectorNode(
    * decodes with `drawRaster = null`. See [LayoutInspectorDrawRaster].
    */
   val drawRaster: LayoutInspectorDrawRaster? = null,
+  /**
+   * True when the live modifier-node chain contains a `DrawModifierNode`, including a draw node
+   * delegated by a custom `Modifier.NodeElement`. Unlike inspecting serialized modifier names, this
+   * detects modern components whose drawing implementation is hidden behind a
+   * `CacheDrawModifierNode`; the hybrid SVG exporter can then preserve an unvectorisable leaf by
+   * cropping its rendered frame region. Additive (v16): older captures decode as false.
+   */
+  val drawsContent: Boolean = false,
   /**
    * True when this node's `drawWithContent` obscures pixels produced by `drawContent()` through a
    * clip, mask, alpha fade, clear blend, or omission. Such an effect is not represented by the

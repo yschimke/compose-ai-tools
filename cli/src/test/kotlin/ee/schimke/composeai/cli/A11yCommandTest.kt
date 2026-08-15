@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.UiMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -218,6 +219,176 @@ class A11yCommandTest {
     assertNull(filtered.singleOrNull()?.takeIf { it.id != "Bar" })
   }
 
+  // ---------- per-preview data-product fan-out (#3742) ----------
+
+  @Test
+  fun `unfiltered run asks about every preview in the module`() {
+    val cmd = TestableReportCommand(emptyList())
+
+    val requests = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta", "Gamma")))
+
+    val request = requests.single()
+    assertEquals(listOf("Alpha", "Beta", "Gamma"), request.previews.map { it.entryId })
+    assertFalse(request.narrowed, "a full module is not a partial report")
+  }
+
+  @Test
+  fun `filter narrows the per-preview fan-out and marks the report partial`() {
+    // The bug: `a11y --filter Alpha` used to fetch ATF for all three previews — a per-preview
+    // daemon render each — to print one row. The render half was narrowed in #3734; this is the
+    // daemon half.
+    val cmd = TestableReportCommand(listOf("--filter", "alpha"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta", "Gamma"))).single()
+
+    assertEquals(listOf("Alpha"), request.previews.map { it.entryId })
+    assertTrue(request.narrowed, "a subset of the module must merge into the module's report")
+  }
+
+  @Test
+  fun `a request that selects every preview is not treated as partial`() {
+    // `renderedIds` is null both here and for an unfiltered run, which is why the fan-out asks the
+    // request rather than the render what it covers.
+    val cmd = TestableReportCommand(listOf("--filter", "Preview"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "AlphaPreview", "BetaPreview"))).single()
+
+    assertEquals(listOf("AlphaPreview", "BetaPreview"), request.previews.map { it.entryId })
+    assertFalse(request.narrowed)
+  }
+
+  @Test
+  fun `a fully qualified preview reference reaches the daemon work list`() {
+    // The `<Class>.<function>` form is only recognisable from the manifest row — the id here
+    // carries neither the package nor the class. Module selection and the Gradle narrowing both
+    // see the row, so they keep the module; if this fan-out matched on the bare id instead, the
+    // work list would come back empty and `a11y` would report a clean run of a module it never
+    // asked the daemon about.
+    val cmd = TestableReportCommand(listOf("--preview", "com.example.PreviewsKt.Alpha"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"))).single()
+
+    assertEquals(listOf("Alpha"), request.previews.map { it.entryId })
+    assertTrue(request.narrowed)
+  }
+
+  @Test
+  fun `contradictory selectors select nothing rather than letting one win`() {
+    // `--id` and `--preview` intersect, the same rule `modulesMatchingPreviewRequest` applies when
+    // it narrows the build. A precedence ladder here would claim to have honoured `--id Alpha`
+    // against a candidate set the render pass had already emptied.
+    val cmd = TestableReportCommand(listOf("--id", "Alpha", "--preview", "Beta"))
+
+    assertEquals(emptyList(), cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"))))
+  }
+
+  @Test
+  fun `an exact permutation id is addressed as its declared preview, with overrides`() {
+    // `--permutations accessibility` synthesises `Foo_dark` client-side; the daemon's PreviewIndex
+    // only knows the ids the plugin discovered and resolves them exactly, so asking it for
+    // `Foo_dark` gets "unknown preview". The request names `Foo` and carries the dark-mode
+    // configuration instead — and files the result under the id the user asked about (#3762).
+    val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
+
+    val requested = request.previews.single()
+    assertEquals("Foo", requested.previewId, "the daemon-addressable id")
+    assertEquals("Foo_dark", requested.entryId, "the id a consumer looks up")
+    assertEquals(UiMode.DARK, requested.overrides?.uiMode)
+    assertTrue(requested.isPermutation)
+    assertTrue(request.narrowed, "one of eight expanded previews")
+  }
+
+  @Test
+  fun `each accessibility permutation carries the configuration it stands for`() {
+    val cmd = TestableReportCommand(listOf("--filter", "Foo", "--permutations", "accessibility"))
+
+    val byEntry =
+      cmd.requestsFor(listOf(manifest("app", "Foo"))).single().previews.associateBy { it.entryId }
+
+    assertEquals(null, byEntry.getValue("Foo").overrides, "the declared preview renders as itself")
+    assertEquals(UiMode.DARK, byEntry.getValue("Foo_dark").overrides?.uiMode)
+    assertEquals("ar-XB", byEntry.getValue("Foo_rtl").overrides?.localeTag)
+    assertEquals(2.0f, byEntry.getValue("Foo_fontscale-2x").overrides?.fontScale)
+    // Every fetch still addresses the one preview the plugin discovered.
+    assertEquals(setOf("Foo"), byEntry.values.map { it.previewId }.toSet())
+  }
+
+  @Test
+  fun `coverage is measured against the ids a consumer will look up`() {
+    // A one-preview module: the request covers one of the four ids the results will carry, so the
+    // report must call itself partial rather than let the renderer synthesise clean rows for the
+    // three permutations nobody asked for.
+    val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo"))).single()
+
+    assertEquals(listOf("Foo_dark"), request.previews.map { it.entryId })
+    assertEquals(
+      listOf("Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x"),
+      request.consumerPreviewIds,
+    )
+    assertTrue(request.narrowed)
+  }
+
+  @Test
+  fun `without permutations the two id spaces are the same`() {
+    val cmd = TestableReportCommand(emptyList())
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
+
+    assertEquals(request.previews.map { it.entryId }, request.consumerPreviewIds)
+  }
+
+  @Test
+  fun `a permutation request no longer warns about substitution`() {
+    // It used to say the permutation row would carry no data, because the run fetched the declared
+    // preview at its own parameters instead. It now fetches the permutation's configuration, so
+    // there is nothing to apologise for.
+    val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
+
+    val err = captureStderr { cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))) }
+
+    assertEquals("", err.trim())
+  }
+
+  @Test
+  fun `a filter under permutations fetches every matching permutation`() {
+    // Each expanded row is its own render at its own configuration, and checking a11y across those
+    // configurations is the point of `--permutations accessibility` — dark contrast, RTL layout,
+    // 2x font scale. Deduplicating them back to the declared preview would report one result four
+    // times over.
+    val cmd = TestableReportCommand(listOf("--filter", "Foo", "--permutations", "accessibility"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
+
+    assertEquals(
+      listOf("Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x"),
+      request.previews.map { it.entryId },
+    )
+  }
+
+  @Test
+  fun `modules the request does not touch drop out of the work list`() {
+    val cmd = TestableReportCommand(listOf("--id", "Alpha"))
+
+    val requests =
+      cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"), manifest("wear", "TilePreview")))
+
+    // No session opened, no daemon started, and no `accessibility.json` written for `:wear` — the
+    // module isn't attempted, so it can't be reported as ATF-unavailable either.
+    assertEquals(listOf(":app"), requests.map { it.module.gradlePath })
+    assertEquals(listOf("Alpha"), requests.single().previews.map { it.entryId })
+  }
+
+  @Test
+  fun `a module with no previews is never attempted`() {
+    val cmd = TestableReportCommand(emptyList())
+
+    assertEquals(emptyList(), cmd.requestsFor(listOf(manifest("app"))))
+  }
+
   // ---------- helpers ----------
 
   /**
@@ -233,6 +404,47 @@ class A11yCommandTest {
     ): String = encodeResponse(results, countsScope)
 
     fun applyFiltersFor(results: List<PreviewResult>): List<PreviewResult> = applyFilters(results)
+  }
+
+  /**
+   * Test-only [ReportCommand] subclass exposing the per-module work list its
+   * `produceAdditionalDataProducts` hook receives, so the `--id` / `--filter` narrowing can be
+   * exercised without a Gradle build or a daemon. `run()` is never called.
+   */
+  private class TestableReportCommand(args: List<String>) : ReportCommand(args, "a11y") {
+    fun requestsFor(
+      manifests: List<Pair<PreviewModule, PreviewManifest>>
+    ): List<DataProductRequest> = dataProductRequests(manifests)
+  }
+
+  private fun captureStderr(block: () -> Unit): String {
+    val buffer = java.io.ByteArrayOutputStream()
+    val saved = System.err
+    System.setErr(java.io.PrintStream(buffer))
+    try {
+      block()
+    } finally {
+      System.setErr(saved)
+    }
+    return buffer.toString()
+  }
+
+  private fun manifest(path: String, vararg ids: String): Pair<PreviewModule, PreviewManifest> {
+    val module = PreviewModule(":$path", java.io.File("/tmp/compose-preview-test/$path"))
+    return module to
+      PreviewManifest(
+        module = module.gradlePath,
+        variant = "debug",
+        previews =
+          ids.map { id ->
+            PreviewInfo(
+              id = id,
+              functionName = id,
+              className = "com.example.PreviewsKt",
+              params = PreviewParams(kind = "COMPOSE"),
+            )
+          },
+      )
   }
 
   private fun previewResult(

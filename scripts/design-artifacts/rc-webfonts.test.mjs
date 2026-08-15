@@ -410,3 +410,59 @@ test("axes that arrive after the family still reach the request", async (t) => {
     `expected the span requested after the axes arrived, saw: ${JSON.stringify(stylesheetQueries)}`,
   );
 });
+
+test("embedded variable fonts advertise their fvar weight and width ranges", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  const descriptors = await page.evaluate(() => {
+    const bytes = new Uint8Array(12 + 16 + 16 + 40);
+    const view = new DataView(bytes.buffer);
+    const tag = (offset, value) => {
+      for (let i = 0; i < 4; i++) bytes[offset + i] = value.charCodeAt(i);
+    };
+    const fixed = (offset, value) => view.setInt32(offset, value * 65536, false);
+    view.setUint16(4, 1, false);
+    tag(12, "fvar");
+    view.setUint32(20, 28, false);
+    view.setUint16(32, 16, false); // axesArrayOffset
+    view.setUint16(36, 2, false); // axisCount
+    view.setUint16(38, 20, false); // axisSize
+    tag(44, "wght");
+    fixed(48, 100); fixed(52, 400); fixed(56, 900);
+    tag(64, "wdth");
+    fixed(68, 75); fixed(72, 100); fixed(76, 125);
+    return RC.embeddedFontDescriptors(bytes);
+  });
+
+  assert.equal(descriptors.weight, "100 900");
+  assert.equal(descriptors.stretch, "75% 125%");
+});
+
+test("embedded faces are reference counted and removed after the last owner", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  const result = await page.evaluate(async (base) => {
+    RC.resetWebFonts();
+    const bytes = new Uint8Array(await (await fetch(`${base}/font-400.ttf`)).arrayBuffer());
+    const family = RC.registerEmbeddedFont(42, bytes);
+    RC.registerEmbeddedFont(42, bytes);
+    await RC.webFontsReady();
+    const count = () => {
+      let total = 0;
+      document.fonts.forEach((face) => {
+        if (face.family.replace(/^["']|["']$/g, "") === family) total++;
+      });
+      return total;
+    };
+    const before = count();
+    RC.releaseEmbeddedFont(42, bytes);
+    const afterOne = count();
+    RC.releaseEmbeddedFont(42, bytes);
+    const afterLast = count();
+    return { before, afterOne, afterLast };
+  }, origin);
+
+  assert.equal(result.before, 1);
+  assert.equal(result.afterOne, 1);
+  assert.equal(result.afterLast, 0);
+});

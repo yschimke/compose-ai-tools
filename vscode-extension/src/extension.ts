@@ -143,6 +143,7 @@ import {
     hasIncludedPluginBuild,
     materializeInitScript,
 } from "./initScript";
+import { resolveVersionPin } from "./versionPin";
 import {
     ComposePreviewMode,
     ResolvedMode,
@@ -1086,13 +1087,35 @@ export async function activate(
         );
     } else {
         try {
+            // The workspace's version pin wins over the version bundled into
+            // this VSIX, so a project pinned for the CLI and CI renders the
+            // same way here (issue #3738). No pin → BUNDLED_PLUGIN_VERSION,
+            // exactly as before.
+            const pin = resolveVersionPin(workspaceRoot);
+            const pluginVersion = pin?.version ?? BUNDLED_PLUGIN_VERSION;
+            // Per-version storage directory, mirroring the CLI's
+            // `defaultInitScriptStorageDir(version)`. `globalStorageUri` is
+            // extension-wide, and the script filename is fixed — so with the
+            // pin in play two windows on differently pinned projects would
+            // materialise into the same path, and whichever activated last
+            // would silently re-point the other window's already-captured
+            // `--init-script` argument at its own version.
             const initScriptPath = materializeInitScript(
-                context.globalStorageUri.fsPath,
+                path.join(context.globalStorageUri.fsPath, pluginVersion),
+                pluginVersion,
             );
             initScriptArgs = ["--init-script", initScriptPath];
             outputChannel.appendLine(
-                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${pluginVersion}${
+                    pin ? ` — pinned via ${pin.source}` : ""
+                })`,
             );
+            if (pin && pin.version !== BUNDLED_PLUGIN_VERSION) {
+                outputChannel.appendLine(
+                    `[startup] note: this workspace pins compose-preview ${pin.version} (${pin.source}); ` +
+                        `the extension bundles ${BUNDLED_PLUGIN_VERSION}. The pinned plugin is what gets applied.`,
+                );
+            }
         } catch (err) {
             outputChannel.appendLine(
                 `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
@@ -3030,7 +3053,14 @@ async function applyDiscoveryDiff(
         gradleService.resolveModule(editorScope.file)?.modulePath === moduleId
             ? editorScope.file
             : undefined;
-    const fresh = await reconcilePreviewManifest(module, repaintFile);
+    // `added` came from the daemon's scan of freshly-compiled bytecode. Force Gradle discovery in
+    // that case: an overlapping render can have scanned Kotlin's output directory while it was
+    // temporarily empty and left an asset-only manifest that Gradle otherwise calls up-to-date.
+    const fresh = await reconcilePreviewManifest(
+        module,
+        repaintFile,
+        added.length > 0,
+    );
 
     // reconcilePreviewManifest only reshapes the panel (setPreviews) — it does
     // not render. A newly-added @Preview would otherwise show as a card with no
@@ -3687,6 +3717,7 @@ function previewsForFile(
 async function reconcilePreviewManifest(
     module: ModuleInfo,
     repaintFilePath?: string,
+    forceFresh = false,
 ): Promise<PreviewInfo[] | null> {
     if (!gradleService) {
         return null;
@@ -3695,7 +3726,11 @@ async function reconcilePreviewManifest(
     moduleManifestCache.delete(module.modulePath);
     let manifest;
     try {
-        manifest = await gradleService.composePreviewDiscover(module);
+        manifest = await gradleService.composePreviewDiscover(
+            module,
+            undefined,
+            forceFresh,
+        );
     } catch (err) {
         logLine(
             `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message} — manifest cache left cleared`,

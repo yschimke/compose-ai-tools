@@ -30,14 +30,14 @@ class WidgetContainerIrCaptureTest {
   @Test
   fun `every widget container sticker renders`() {
     for (stem in widgetStickers) {
-      assertThat(File(rendersDir, "$stem.png").exists()).isTrue()
+      assertThat(renderFile(rendersDir, stem).exists()).isTrue()
     }
   }
 
   @Test
   fun `every widget container sticker emits its encoded RemoteCompose document as a rc sidecar`() {
     for (stem in widgetStickers) {
-      val rc = File(rendersDir, "$stem.rc")
+      val rc = renderFile(rendersDir, stem, ext = "rc")
       assertThat(rc.exists()).isTrue()
       // A real encoded document, not an empty placeholder.
       assertThat(rc.length()).isGreaterThan(0L)
@@ -62,7 +62,7 @@ class WidgetContainerIrCaptureTest {
         "WidgetContainerGradientRemote" to listOf("Gradient"),
       )
     for ((stem, strings) in expected) {
-      val bytes = File(rendersDir, "$stem.rc").readBytes().toString(Charsets.UTF_8)
+      val bytes = renderFile(rendersDir, stem, ext = "rc").readBytes().toString(Charsets.UTF_8)
       for (s in strings) {
         assertThat(bytes).contains(s)
       }

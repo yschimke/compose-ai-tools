@@ -4,6 +4,9 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -17,6 +20,7 @@
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span>compose-preview</span>
     </a>
+    <span class="cp-site-catalog">compose-m3</span>
     <a class="cp-back" href="/">← All design systems</a>
   </div>
   <div class="cp-site-status">
@@ -49,11 +53,13 @@
   </nav>
 </header>
         <main class="cp-main">
-                <h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-        <p class="cp-sub">8 preview(s) ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
-        <div class="cp-catalog-tools">
-        <div class="cp-toolbar">
+                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1></div>
+        <p class="cp-sub">8 preview(s)</p>
+        <div class="cp-catalog-actions">
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
+        </div>
+<div class="cp-catalog-tools">
+<div class="cp-toolbar">
   <span class="cp-theme" role="group" aria-label="Preview theme">
     <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
@@ -62,12 +68,10 @@
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="8"></span>
-  <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
 </div>
 </div>
-        <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<div class="cp-grid" id="cp-grid">
+        <a class="cp-card" id="cp-card-button-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
   data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
   data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
@@ -85,7 +89,7 @@
         </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/url-state.js"></script>
-<script src="/assets/serve/fixture/bg-toggle.js"></script>
+<script src="/assets/serve/fixture/serve-components.js"></script>
 <script>    (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");
@@ -234,6 +238,8 @@ applyThemeChoice();
       }
       apply();
     })();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>
+
 <details class="cp-about cp-disclosure">
   <summary>
     <span class="cp-about-title">About this preview server</span>

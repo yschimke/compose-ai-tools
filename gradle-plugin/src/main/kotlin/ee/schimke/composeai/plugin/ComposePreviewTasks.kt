@@ -316,6 +316,30 @@ internal object ComposePreviewTasks {
         }
       )
 
+    val activeSourceFiles =
+      project
+        .files(
+          project.provider {
+            val activeCompileTask = DESKTOP_COMPILE_TASK_CANDIDATES.firstOrNull {
+              it in project.tasks.names
+            }
+            val sourceSets =
+              when (activeCompileTask) {
+                "compileKotlinJvm" -> listOf("main", "commonMain", "jvmMain")
+                "compileKotlinDesktop" -> listOf("main", "commonMain", "desktopMain")
+                "compileAndroidMain" -> listOf("main", "commonMain", "androidMain")
+                "compileKotlin" -> listOf("main")
+                else -> emptyList()
+              }
+            sourceSets.map { project.layout.projectDirectory.dir("src/$it").asFile }
+          }
+        )
+        .asFileTree
+        .matching {
+          include("**/*.kt")
+          include("**/*.java")
+        }
+
     // Processed-resources output dirs, in the same priority order as [sourceClassDirs]. Linked onto
     // the render classpath so a `@Preview` can load a classpath resource (e.g. a Lottie `.json`
     // asset) at render time. Non-existent dirs resolve to nothing — harmless on resource-free
@@ -357,6 +381,7 @@ internal object ComposePreviewTasks {
         previewOutputDir,
         extension,
         activeSourceClassDirs = activeSourceClassDirs,
+        activeCompilationSourceFiles = activeSourceFiles,
         // Desktop fallback can resolve a KMP-Android module's androidRuntimeClasspath, whose
         // single AGP variant trips AmbiguousArtifactsFailure under a forced artifactType view —
         // allow discovery to go lenient *for that config only* so `compose-preview list` never
@@ -423,6 +448,7 @@ internal object ComposePreviewTasks {
         previewRowExcludes.convention(previewRowExcludeProperty(project))
         permutations.convention(previewPermutationsProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
+        linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
@@ -761,6 +787,11 @@ internal object ComposePreviewTasks {
     // unless the consumer names one; only a library module (no `<application android:theme>` to
     // inherit) needs to.
     val daemonHostTheme = composeAiHostTheme(project, extension)
+    // Unlike `fixedTime` below, this one IS forwarded to the Desktop lane: the rewritten
+    // `SlotTable`
+    // is a flag on the Compose runtime both backends share, with no Robolectric-shaped interception
+    // point for it to depend on.
+    val daemonLinkBufferComposer = composeAiLinkBufferComposer(project, extension)
     val daemonCheapSignalFiles =
       collectDesktopCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) {
         it.absolutePath
@@ -888,6 +919,7 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
       systemProperties.put("composeai.svg.background", daemonSvgBackground)
       systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
+      systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
       // NOT forwarded here: `composeai.render.fixedTime` is Android-only. The pinned clock works by
       // shadowing Wear's `currentTimeMillis()` under Robolectric, and this is the Desktop / CMP
       // daemon — no Robolectric, no instrumentation, no interception point for a plain-JVM
@@ -1507,6 +1539,7 @@ internal object ComposePreviewTasks {
     previewOutputDir: Provider<Directory>,
     extension: PreviewExtension,
     activeSourceClassDirs: FileCollection = sourceClassDirs,
+    activeCompilationSourceFiles: FileCollection? = null,
     // Desktop callers pass `true`: the desktop runtime-config fallback can land on a
     // KMP-Android module's `androidRuntimeClasspath` (a `:shared` module with no
     // `jvm("desktop")` target), whose single AGP `android` variant trips an
@@ -1536,6 +1569,7 @@ internal object ComposePreviewTasks {
           include("**/*.java")
         }
       )
+      activeSourceFiles.from(activeCompilationSourceFiles ?: sourceFiles)
       val configName = dependencyConfigName()
       project.configurations.findByName(configName)?.let { config ->
         // Lenient only for the androidRuntimeClasspath KMP-Android fallback; strict everywhere
@@ -1659,6 +1693,13 @@ internal object ComposePreviewTasks {
         .orElse("full")
     val missingRendersProvider = missingRendersProperty(project)
     val permutationsProvider = previewPermutationsProperty(project)
+    // The same selection the render applies (issue #3730). Declared as task inputs as well as read
+    // in the action: without them a filtered run and an unfiltered run have identical inputs, so
+    // whichever ran second would be UP-TO-DATE and skip validation entirely — which is how a
+    // narrowed render appeared to "satisfy" a gate it had merely never reached.
+    val nameFilterProvider = previewFilterProperty(project)
+    val idFilterProvider = previewIdFilterProperty(project)
+    val idExcludeProvider = previewIdExcludeProperty(project)
     project.tasks.register("composePreviewRenderAll", DefaultTask::class.java) {
       group = "compose preview"
       dependsOn(renderTask)
@@ -1669,6 +1710,9 @@ internal object ComposePreviewTasks {
       inputs.property("tier", tierProvider)
       inputs.property("missingRenders", missingRendersProvider)
       inputs.property("permutations", permutationsProvider)
+      inputs.property("previewFilter", nameFilterProvider)
+      inputs.property("previewIdFilter", idFilterProvider)
+      inputs.property("previewIdExclude", idExcludeProvider)
       outputs.file(validationMarker).withPropertyName("validationMarker")
       doLast {
         val isFastTier = tierProvider.get() == "fast"
@@ -1719,14 +1763,32 @@ internal object ComposePreviewTasks {
         // capture's renderOutput lands on disk — report back one missing
         // entry per preview with at least one missing capture.
         val outDir = previewOutputDir.get().asFile
+        // Only gate on what this run was actually asked to render. A `--preview` / `--preview-id`
+        // render deliberately leaves every other preview alone (its PNG stays at whatever the last
+        // run wrote, or absent on a clean tree), so validating the whole manifest would fail the
+        // narrowed render itself — the reason issue #3730's one-line "just pass the property" fix
+        // needed this half too. Filters are applied to the RAW previews and the result expanded,
+        // mirroring `RenderPreviewsTask.render`'s order exactly, so a permutation sibling of a
+        // selected preview is still checked.
+        val validated =
+          PreviewPermutations.expand(
+            selectFilteredPreviews(
+              manifestRaw.previews,
+              nameFilters = nameFilterProvider.get(),
+              idFilters = idFilterProvider.get(),
+              idExcludes = idExcludeProvider.get(),
+            ),
+            permutationsProvider.get(),
+          )
         // Files owned by non-parameterized siblings — exclude them
         // from the `<stem>_*` glob so a `Foo_header.png` that
         // belongs to a different preview never gets treated as
         // part of `Foo`'s fan-out.
-        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier)
+        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier, validate = validated)
         if (missing.isNotEmpty()) {
           val sidecars = readErrorSidecarsFor(manifest, missing, outDir)
-          val message = formatMissingPreviewsMessage(manifest, missing, sidecars)
+          val message =
+            formatMissingPreviewsMessage(manifest.copy(previews = validated), missing, sidecars)
           // `composePreview.missingRenders` controls escalation: `fail` (default) preserves
           // the historical hard error that catches whole-module classpath misconfig; `warn`
           // and `ignore` let multi-module CI runs ride out a handful of stubborn previews
@@ -1775,6 +1837,14 @@ internal object ComposePreviewTasks {
   private val PIXEL_TEST_UNIT_TEST_TASKS = setOf("testDebugUnitTest", "testReleaseUnitTest")
 
   /**
+   * How the renderer marks a diagnosis that only *points at* the first native failure in its JVM.
+   * Kept in sync with `renderer-desktop/.../NativeLoadDiagnosis.kt`; the plugin can't depend on the
+   * renderer module (it is resolved into the consumer's graph), and a drift here degrades to "leads
+   * with a cascade line", not to a wrong message.
+   */
+  internal const val CASCADE_DIAGNOSIS_PREFIX = "Cascade of the first native-load failure"
+
+  /**
    * Per-preview error-sidecar payload as the gradle plugin reads it. We mirror only the fields used
    * by [formatMissingPreviewsMessage]; the sidecar schema itself lives next to the renderer that
    * writes it (`renderer-android/.../RenderErrorSidecar.kt` and the desktop equivalent).
@@ -1785,6 +1855,19 @@ internal object ComposePreviewTasks {
     val exception: String = "",
     val message: String = "",
     val topAppFrame: TopAppFrame? = null,
+    /**
+     * The renderer's one-sentence explanation when the failure was a native-library load rather
+     * than the preview's own code (see `renderer-desktop/.../NativeLoadDiagnosis.kt`). Empty for an
+     * ordinary preview throw, and for sidecars written by an older renderer.
+     */
+    val diagnosis: String = "",
+    /**
+     * Full `Throwable.printStackTrace()` text. Read for its `Caused by:` chain and for a stack
+     * frame in the user's own package — [exception] alone is routinely the reflective wrapper the
+     * renderer's `invoke` produced, and [topAppFrame] is derived from that wrapper's frames
+     * (issue #3741). Empty for a sidecar written by a renderer that predates the field.
+     */
+    val stackTrace: String = "",
   ) {
     @kotlinx.serialization.Serializable
     internal data class TopAppFrame(
@@ -1835,6 +1918,48 @@ internal object ComposePreviewTasks {
     return result
   }
 
+  /**
+   * What one sidecar actually says, once its stack trace has been read: the deepest `Caused by:`
+   * (or the sidecar's own exception when there is no chain), the best source frame, and a compact
+   * rendering of the chain. Also the grouping key for the per-preview list — two previews are "the
+   * same failure" when all of this matches, so one broken dependency reports itself once with a
+   * count while genuinely different bugs each keep their own line.
+   */
+  internal data class RenderErrorInsight(
+    val exception: String,
+    val message: String,
+    val frame: ErrorSidecar.TopAppFrame?,
+    /** `InvocationTargetException → NoClassDefFoundError`, or empty when there is no chain. */
+    val chain: String,
+  )
+
+  /**
+   * Read [sidecar] the way a human would: lead with the root cause rather than the reflective
+   * wrapper the renderer's `invoke` produced, and point at a frame in the preview's own package
+   * (from [previewClassName]) rather than at the tooling frame that called it. Falls back to the
+   * sidecar's own `exception` / `message` / `topAppFrame` whenever the trace offers nothing better
+   * — including for sidecars written by a renderer that predates the `stackTrace` field.
+   */
+  internal fun renderErrorInsight(
+    sidecar: ErrorSidecar,
+    previewClassName: String,
+  ): RenderErrorInsight {
+    val chain = RenderErrorTrace.causeChain(sidecar.stackTrace)
+    val root = chain.lastOrNull()
+    val names =
+      (listOf(sidecar.exception) + chain.map { it.exception })
+        .filter { it.isNotBlank() }
+        .map { it.substringAfterLast('.') }
+    return RenderErrorInsight(
+      exception = root?.exception?.takeIf { it.isNotBlank() } ?: sidecar.exception,
+      message = if (root != null) root.message else sidecar.message,
+      frame =
+        RenderErrorTrace.preferredAppFrame(sidecar.stackTrace, previewClassName)
+          ?: sidecar.topAppFrame,
+      chain = if (chain.isEmpty()) "" else names.joinToString(" → "),
+    )
+  }
+
   internal fun formatMissingPreviewsMessage(
     manifest: PreviewManifest,
     missingIds: List<String>,
@@ -1869,22 +1994,52 @@ internal object ComposePreviewTasks {
         .append(" of ")
         .append(total)
         .append(" preview(s).")
+      // A native-library failure takes out every preview in the module with one root cause, so it
+      // leads — before the per-preview list it would otherwise be buried under (issue #3690). The
+      // renderer marks cascades ("Cascade of the first…"), so prefer a sidecar carrying the real
+      // first failure over one that only points at it.
+      val diagnoses = withSidecar.map { sidecars.getValue(it).diagnosis }.filter { it.isNotBlank() }
+      val rootCause =
+        diagnoses.firstOrNull { !it.startsWith(CASCADE_DIAGNOSIS_PREFIX) }
+          ?: diagnoses.firstOrNull()
+      rootCause?.let { sb.append("\n\n").append(it) }
+
       if (withSidecar.isNotEmpty()) {
         sb.append("\n\nPer-preview render errors (from .error.json sidecars):")
-        for (id in withSidecar.take(5)) {
-          val s = sidecars.getValue(id)
-          sb.append("\n  - ").append(id).append(": ").append(s.exception.substringAfterLast('.'))
-          if (s.message.isNotBlank()) sb.append(": ").append(s.message)
-          s.topAppFrame?.let { f ->
+        // Grouped by exception + message + source frame: one broken dependency reports itself once
+        // with a count instead of a thousand identical lines, and genuinely distinct failures still
+        // each get a line. The frame belongs in the key — two previews throwing
+        // `IllegalStateException("missing state")` from different composables are different bugs,
+        // and printing the first one's `at Foo.kt:12` beside a count would blame a file that has
+        // nothing to do with the others. Preview order is preserved, so the first failure stays at
+        // the top.
+        val classNames = manifest.previews.associate { it.id to it.className }
+        val insights = withSidecar.associateWith { id ->
+          renderErrorInsight(sidecars.getValue(id), classNames[id].orEmpty())
+        }
+        val groups = withSidecar.groupBy { insights.getValue(it) }
+        var shown = 0
+        for ((insight, ids) in groups.entries.take(5)) {
+          shown += ids.size
+          sb.append("\n  - ")
+          if (ids.size == 1) sb.append(ids.first()).append(": ")
+          sb.append(insight.exception.substringAfterLast('.'))
+          if (insight.message.isNotBlank()) sb.append(": ").append(insight.message)
+          insight.frame?.let { f ->
             if (f.file.isNotBlank()) {
               sb.append(" (at ").append(f.file)
               if (f.line > 0) sb.append(':').append(f.line)
               sb.append(')')
             }
           }
+          if (insight.chain.isNotBlank()) sb.append(" — chain: ").append(insight.chain)
+          if (ids.size > 1) {
+            sb.append(" — ").append(ids.size).append(" previews, e.g. ")
+            sb.append(ids.take(3).joinToString(", "))
+          }
         }
-        if (withSidecar.size > 5) {
-          sb.append("\n  (+").append(withSidecar.size - 5).append(" more with sidecars)")
+        if (withSidecar.size > shown) {
+          sb.append("\n  (+").append(withSidecar.size - shown).append(" more with sidecars)")
         }
       }
       if (withoutSidecar.isNotEmpty()) {
@@ -1899,10 +2054,52 @@ internal object ComposePreviewTasks {
     }
   }
 
+  /**
+   * The previews a filtered render actually renders: name filter first, then the id filter over
+   * what it kept, then the id exclusions — the same compose-in-order policy as
+   * `RenderPreviewsTask.render` and `PreviewFilter.select`.
+   *
+   * Unlike those, this **never throws on an empty result**. It exists to narrow the
+   * `composePreviewRenderAll` post-condition, where a filter matching nothing has already been
+   * reported by the render task that ran first; failing again here would replace that specific
+   * error ("--preview matched no previews for 'Fooo'. Available: …") with a confusing missing-PNG
+   * report.
+   */
+  internal fun selectFilteredPreviews(
+    previews: List<PreviewInfo>,
+    nameFilters: List<String>,
+    idFilters: List<String>,
+    idExcludes: List<String>,
+  ): List<PreviewInfo> {
+    var kept = previews
+    if (nameFilters.any { it.isNotBlank() }) {
+      kept = kept.filter { PreviewNameFilter.matches(nameFilters, it.functionName, it.className) }
+    }
+    if (idFilters.any { it.isNotBlank() }) {
+      kept = kept.filter { PreviewNameFilter.matchesId(idFilters, it.id) }
+    }
+    if (idExcludes.any { it.isNotBlank() }) {
+      kept = kept.filterNot { PreviewNameFilter.matchesId(idExcludes, it.id) }
+    }
+    return kept
+  }
+
+  /**
+   * The ids in [validate] whose render produced no file on disk.
+   *
+   * [validate] defaults to the whole manifest and is narrowed only when the render itself was
+   * narrowed (`--preview` / `-PcomposePreview.idFilter` / …, issue #3730): a filtered run
+   * deliberately leaves every other preview unrendered, so gating on the full manifest would fail
+   * the very run the filter was asked for. [manifest] stays the **complete** set regardless,
+   * because `siblingNames` — which stops a sibling's `Foo_header.png` being counted as part of
+   * `Foo`'s `@PreviewParameter` fan-out — is only correct when it can see previews outside the
+   * filter.
+   */
   internal fun missingPreviewOutputIds(
     manifest: PreviewManifest,
     outDir: java.io.File,
     isFastTier: Boolean,
+    validate: List<PreviewInfo> = manifest.previews,
   ): List<String> {
     val siblingNames =
       manifest.previews
@@ -1914,7 +2111,7 @@ internal object ComposePreviewTasks {
         .map { java.io.File(outDir, it).name }
         .toSet()
 
-    return manifest.previews
+    return validate
       .filter { p ->
         val captureMissing =
           p.captures.any { c ->

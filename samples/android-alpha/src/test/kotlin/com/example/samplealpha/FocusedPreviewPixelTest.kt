@@ -43,7 +43,7 @@ class FocusedPreviewPixelTest {
    */
   @Test
   fun `fan-out captures differ across focus indices`() {
-    val files = (0..3).map { File(rendersDir, "${fanOutBase}_FOCUS_$it.png") }
+    val files = (0..3).map { renderFile(rendersDir, fanOutBase, "_FOCUS_$it") }
     files.forEach { assertThat(it.exists()).isTrue() }
     val hashes = files.map { it.readBytes().contentHashCode() }.toSet()
     assertThat(hashes).hasSize(4)
@@ -67,10 +67,10 @@ class FocusedPreviewPixelTest {
    */
   @Test
   fun `traversal walks Next-Next-Previous-Next as 0-1-0-1`() {
-    val step1 = File(rendersDir, "${traversalBase}_FOCUS_step1_Next.png")
-    val step2 = File(rendersDir, "${traversalBase}_FOCUS_step2_Next.png")
-    val step3 = File(rendersDir, "${traversalBase}_FOCUS_step3_Previous.png")
-    val step4 = File(rendersDir, "${traversalBase}_FOCUS_step4_Next.png")
+    val step1 = renderFile(rendersDir, traversalBase, "_FOCUS_step1_Next")
+    val step2 = renderFile(rendersDir, traversalBase, "_FOCUS_step2_Next")
+    val step3 = renderFile(rendersDir, traversalBase, "_FOCUS_step3_Previous")
+    val step4 = renderFile(rendersDir, traversalBase, "_FOCUS_step4_Next")
     listOf(step1, step2, step3, step4).forEach { assertThat(it.exists()).isTrue() }
 
     val h1 = step1.readBytes().contentHashCode()
@@ -92,14 +92,14 @@ class FocusedPreviewPixelTest {
    */
   @Test
   fun `moving inset ring lands at a single gif`() {
-    val gif = File(rendersDir, "$movingBase.gif")
+    val gif = renderFile(rendersDir, movingBase, ext = "gif")
     assertThat(gif.exists()).isTrue()
     assertThat(gif.length()).isGreaterThan(0L)
     val header = gif.inputStream().use { it.readNBytes(6).toString(Charsets.US_ASCII) }
     assertThat(header).isAnyOf("GIF87a", "GIF89a")
     // No PNG siblings — the gif flag swapped the per-step PNG fan-out for one GIF.
     (0..3).forEach { i ->
-      val sibling = File(rendersDir, "${movingBase}_FOCUS_$i.png")
+      val sibling = renderFile(rendersDir, movingBase, "_FOCUS_$i")
       assertThat(sibling.exists()).isFalse()
     }
   }
@@ -112,8 +112,8 @@ class FocusedPreviewPixelTest {
   @Test
   fun `overlay paints marker on capture and preserves raw baseline`() {
     for (i in 0..3) {
-      val marked = File(rendersDir, "${overlayBase}_FOCUS_$i.png")
-      val raw = File(rendersDir, "${overlayBase}_FOCUS_$i.raw.png")
+      val marked = renderFile(rendersDir, overlayBase, "_FOCUS_$i")
+      val raw = renderFile(rendersDir, overlayBase, "_FOCUS_$i", ext = "raw.png")
       assertThat(marked.exists()).isTrue()
       assertThat(raw.exists()).isTrue()
       assertThat(marked.readBytes().contentHashCode())

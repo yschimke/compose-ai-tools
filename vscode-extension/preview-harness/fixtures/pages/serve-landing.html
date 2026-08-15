@@ -4,6 +4,9 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>:samples:cmp — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -17,6 +20,7 @@
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span>compose-preview</span>
     </a>
+    <span class="cp-site-catalog">:samples:cmp</span>
   </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
@@ -48,19 +52,19 @@
   </nav>
 </header>
         <main class="cp-main">
-                <h1 class="cp-head cp-catalog-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ trusted</span></h1>
-        <p class="cp-sub">6 preview(s) ·
-          <a href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
-        <div class="cp-catalog-tools">
-        <div class="cp-searchbar">
+                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ trusted</span></h1></div>
+        <p class="cp-sub">6 preview(s)</p>
+        <div class="cp-catalog-actions">
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
+        </div>
+<div class="cp-catalog-tools">
+<div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="6"></span>
-  <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
 </div>
 </div>
-        <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" href="/p/com.example.ButtonPreview?token=demo-token-fixture">
+<div class="cp-grid" id="cp-grid">
+        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture">
   </div>
@@ -70,7 +74,7 @@
     
   </div>
 </a>
-<a class="cp-card" href="/p/com.example.CardPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png?token=demo-token-fixture">
   </div>
@@ -80,7 +84,7 @@
     
   </div>
 </a>
-<a class="cp-card" href="/p/com.example.DialogPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png?token=demo-token-fixture">
   </div>
@@ -90,7 +94,7 @@
     
   </div>
 </a>
-<a class="cp-card" href="/p/com.example.ListScreenPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture">
   </div>
@@ -100,7 +104,7 @@
     
   </div>
 </a>
-<a class="cp-card" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture">
   </div>
@@ -110,7 +114,7 @@
     
   </div>
 </a>
-<a class="cp-card" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture">
   </div>
@@ -123,7 +127,7 @@
         </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/url-state.js"></script>
-<script src="/assets/serve/fixture/bg-toggle.js"></script>
+<script src="/assets/serve/fixture/serve-components.js"></script>
 <script>(function () {
   var cards = document.querySelectorAll(".cp-card");
   var input = document.getElementById("cp-search");
@@ -170,6 +174,8 @@
   }
   apply();
 })();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></div>
+
         </main>
         <footer class="cp-site-footer">
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·

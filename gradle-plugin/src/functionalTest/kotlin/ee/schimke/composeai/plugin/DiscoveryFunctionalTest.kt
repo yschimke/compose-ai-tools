@@ -359,6 +359,112 @@ class DiscoveryFunctionalTest {
   }
 
   /**
+   * `@PermissionPreview` (issue #3676) — the static render lane's way to say which permissions a
+   * capture should be taken under, so a permission-gated screen's granted branch is reachable
+   * without threading a preview-only `granted: Boolean` through the composable.
+   *
+   * Three things at once, because they fail together and a partial pass is misleading: the
+   * annotation is matched by FQN (declared locally here, exactly as the `@OverrideVariant` tests
+   * do, so the test needs no published `preview-annotations` artifact); its `grants` strings parse
+   * into the typed capture model and are stamped onto **every** capture of the function; and a
+   * malformed entry is dropped with a warning while its well-formed siblings survive.
+   *
+   * The malformed half matters more than it looks: the symptom of a silently-dropped grant is a
+   * preview named "granted" that renders the denied branch — which is the original defect, and is
+   * invisible unless discovery says something.
+   */
+  @Test
+  fun `composePreviewDiscover stamps @PermissionPreview grants onto every capture`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PermissionPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class PermissionPreview(val grants: Array<String> = [])
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Camera.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.PermissionPreview
+
+        @Preview
+        @Composable
+        fun CameraDeniedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Denied") }
+        }
+
+        @Preview
+        @PermissionPreview(
+            grants = [
+                "android.permission.CAMERA=granted",
+                "android.permission.RECORD_AUDIO=DENIED",
+                "android.permission.ACCESS_FINE_LOCATION",
+            ]
+        )
+        @Composable
+        fun CameraGrantedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Granted") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // The un-annotated sibling stays clean — the annotation is per-function, not per-module.
+    val denied = manifest.previews.single { it.functionName == "CameraDeniedPreview" }
+    assertThat(denied.captures.single().permissions).isNull()
+
+    val granted = manifest.previews.single { it.functionName == "CameraGrantedPreview" }
+    assertThat(granted.captures).isNotEmpty()
+    for (capture in granted.captures) {
+      assertThat(capture.permissions)
+        .isEqualTo(
+          PermissionsCapture(
+            grants =
+              mapOf(
+                "android.permission.CAMERA" to PermissionGrantCaptureState.GRANTED,
+                "android.permission.RECORD_AUDIO" to PermissionGrantCaptureState.DENIED,
+              )
+          )
+        )
+    }
+
+    // The third entry has no `=`, so it is dropped — loudly, naming the entry.
+    assertThat(result.output).contains("@PermissionPreview")
+    assertThat(result.output).contains("android.permission.ACCESS_FINE_LOCATION")
+  }
+
+  /**
    * Two hoisted matrices that disagree about one cell. The name is the rendered output's identity,
    * so emitting both would have the second silently overwrite the first's PNG.
    */
@@ -1989,7 +2095,9 @@ class DiscoveryFunctionalTest {
     // DeviceDimensions used the Pixel 6 Pro height here.)
     assertThat(phone.params.heightDp).isEqualTo(914)
     assertThat(phone.id).endsWith("_pixel_6")
-    assertThat(phone.captures.single().renderOutput).endsWith("_pixel_6.png")
+    // `renderOutput` is `<readable>-<digest>.png`, so the device variant is the tail of the
+    // readable part rather than of the whole leaf.
+    assertThat(phone.captures.single().renderOutput).matches("renders/.*_pixel_6-[0-9a-f]{8}\\.png")
 
     val tablet = manifest.previews.single { it.params.device == "id:pixel_tablet" }
     assertThat(tablet.params.widthDp).isEqualTo(1280)
@@ -2235,7 +2343,7 @@ class DiscoveryFunctionalTest {
       )
     assertThat(longPreview.dataProducts.single().kind).isEqualTo("render/scroll/long")
     assertThat(longPreview.dataProducts.single().output)
-      .isEqualTo("data/render-scroll-long/LongScrollPreview.png")
+      .matches("data/render-scroll-long/LongScrollPreview-[0-9a-f]{8}\\.png")
 
     val plain = manifest.previews.single { it.functionName == "PlainPreview" }
     assertThat(plain.captures.single().scroll).isNull()
@@ -2249,16 +2357,14 @@ class DiscoveryFunctionalTest {
     assertThat(topAndEnd.captures.map { it.scroll?.mode })
       .containsExactly(ScrollMode.TOP, ScrollMode.END)
       .inOrder()
-    // renderOutput strips the common `test.` package prefix from every
-    // preview id — the full FQN is retained on `preview.id` itself (and
-    // also stays addressable in `renderOutput`'s basename), but the
-    // on-disk filename drops the shared prefix.
-    assertThat(topAndEnd.captures.map { it.renderOutput })
-      .containsExactly(
-        "renders/TopAndEndScrollPreview_Scroll_SCROLL_top.png",
-        "renders/TopAndEndScrollPreview_Scroll_SCROLL_end.png",
-      )
-      .inOrder()
+    // renderOutput drops the package-and-class prefix from every preview id — the full FQN is
+    // retained on `preview.id` itself. The id digest sits between the readable part and the
+    // structural `_SCROLL_<mode>` suffix, which is what keeps the two namespaces from colliding.
+    val scrollOutputs = topAndEnd.captures.map { it.renderOutput }
+    assertThat(scrollOutputs[0])
+      .matches("renders/TopAndEndScrollPreview_Scroll-[0-9a-f]{8}_SCROLL_top\\.png")
+    assertThat(scrollOutputs[1])
+      .matches("renders/TopAndEndScrollPreview_Scroll-[0-9a-f]{8}_SCROLL_end\\.png")
 
     // Single-mode GIF: moves to the scroll data-product path (no
     // `_SCROLL_gif` suffix) and round-trips `frameIntervalMs` onto the
@@ -2278,19 +2384,20 @@ class DiscoveryFunctionalTest {
       )
     assertThat(gifOnly.dataProducts.single().kind).isEqualTo("render/scroll/gif")
     assertThat(gifOnly.dataProducts.single().output)
-      .isEqualTo("data/render-scroll-gif/GifScrollPreview_Gif.gif")
+      .matches("data/render-scroll-gif/GifScrollPreview_Gif-[0-9a-f]{8}\\.gif")
 
     // Multi-mode with GIF sibling: END remains a normal capture; GIF moves
     // to a data product with its own `_SCROLL_gif` output path.
     val endAndGif = manifest.previews.single { it.functionName == "EndAndGifScrollPreview" }
     assertThat(endAndGif.captures).hasSize(1)
     assertThat(endAndGif.captures.map { it.scroll?.mode }).containsExactly(ScrollMode.END).inOrder()
-    assertThat(endAndGif.captures.map { it.renderOutput })
-      .containsExactly("renders/EndAndGifScrollPreview_EndAndGif.png")
-      .inOrder()
+    assertThat(endAndGif.captures.single().renderOutput)
+      .matches("renders/EndAndGifScrollPreview_EndAndGif-[0-9a-f]{8}\\.png")
     assertThat(endAndGif.dataProducts.single().scroll?.mode).isEqualTo(ScrollMode.GIF)
     assertThat(endAndGif.dataProducts.single().output)
-      .isEqualTo("data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif_SCROLL_gif.gif")
+      .matches(
+        "data/render-scroll-gif/EndAndGifScrollPreview_EndAndGif-[0-9a-f]{8}_SCROLL_gif\\.gif"
+      )
   }
 
   @Test
@@ -2680,15 +2787,16 @@ class DiscoveryFunctionalTest {
     // Kotlin functions land on the synthetic `<File>Kt` class, so
     // the id is `test.PreviewsKt.TileLightStates_tile light (light)`.
     assertThat(light.id).isEqualTo("test.PreviewsKt.TileLightStates_tile light (light)")
-    // `renderOutput` drops the shared `test.PreviewsKt.` dotted
-    // prefix and sanitises the awkward `tile light (light)` variant
-    // suffix down to shell-safe `tile_light_light`.
+    // `renderOutput` drops the `test.PreviewsKt.` package-and-class
+    // prefix, sanitises the awkward `tile light (light)` variant suffix
+    // down to shell-safe `tile_light_light`, and appends the id digest
+    // that keeps the filename unique and stable.
     assertThat(light.captures.single().renderOutput)
-      .isEqualTo("renders/TileLightStates_tile_light_light.png")
+      .matches("renders/TileLightStates_tile_light_light-[0-9a-f]{8}\\.png")
 
     val dark = manifest.previews.single { it.functionName == "TileDarkStates" }
     assertThat(dark.captures.single().renderOutput)
-      .isEqualTo("renders/TileDarkStates_plain_with_slash.png")
+      .matches("renders/TileDarkStates_plain_with_slash-[0-9a-f]{8}\\.png")
   }
 
   @Test

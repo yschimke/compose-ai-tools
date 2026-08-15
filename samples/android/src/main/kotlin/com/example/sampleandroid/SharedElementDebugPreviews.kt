@@ -3,6 +3,7 @@ package com.example.sampleandroid
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.CustomizedLookaheadAnimationVisualDebugging
 import androidx.compose.animation.ExperimentalLookaheadAnimationVisualDebugApi
 import androidx.compose.animation.LookaheadAnimationVisualDebugging
 import androidx.compose.animation.SharedTransitionLayout
@@ -60,6 +61,7 @@ import ee.schimke.composeai.preview.AnimatedPreview
  * experimental in 1.11 even though the shared-element APIs themselves are stable).
  */
 private val debugBoundsSpec = BoundsTransform { _, _ -> tween(durationMillis = 600) }
+private val debugElementColor = Color(0xFF4285F4)
 
 private enum class DebugScreen {
   Collapsed,
@@ -86,21 +88,25 @@ fun SharedElementDebugMatchedAnimatedPreview() {
   MaterialTheme {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
       LookaheadAnimationVisualDebugging(isEnabled = true, isShowKeyLabelEnabled = true) {
-        SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-          AnimatedContent(
-            targetState = screen,
-            label = "debug-matched",
-            modifier = Modifier.fillMaxSize(),
-          ) { target ->
-            when (target) {
-              DebugScreen.Collapsed ->
-                DebugCollapsed(
-                  this@SharedTransitionLayout,
-                  this@AnimatedContent,
-                  includeBadge = false,
-                )
-              DebugScreen.Expanded ->
-                DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
+        // AndroidX's default debug-color allocator is process-global. An explicit color keeps this
+        // fixture independent of which other previews rendered earlier in the sandbox.
+        CustomizedLookaheadAnimationVisualDebugging(debugElementColor) {
+          SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            AnimatedContent(
+              targetState = screen,
+              label = "debug-matched",
+              modifier = Modifier.fillMaxSize(),
+            ) { target ->
+              when (target) {
+                DebugScreen.Collapsed ->
+                  DebugCollapsed(
+                    this@SharedTransitionLayout,
+                    this@AnimatedContent,
+                    includeBadge = false,
+                  )
+                DebugScreen.Expanded ->
+                  DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
+              }
             }
           }
         }
@@ -134,21 +140,23 @@ fun SharedElementDebugUnmatchedAnimatedPreview() {
         unmatchedElementColor = Color(0xCCD32F2F),
         isShowKeyLabelEnabled = true,
       ) {
-        SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-          AnimatedContent(
-            targetState = screen,
-            label = "debug-unmatched",
-            modifier = Modifier.fillMaxSize(),
-          ) { target ->
-            when (target) {
-              DebugScreen.Collapsed ->
-                DebugCollapsed(
-                  this@SharedTransitionLayout,
-                  this@AnimatedContent,
-                  includeBadge = true,
-                )
-              DebugScreen.Expanded ->
-                DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
+        CustomizedLookaheadAnimationVisualDebugging(debugElementColor) {
+          SharedTransitionLayout(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            AnimatedContent(
+              targetState = screen,
+              label = "debug-unmatched",
+              modifier = Modifier.fillMaxSize(),
+            ) { target ->
+              when (target) {
+                DebugScreen.Collapsed ->
+                  DebugCollapsed(
+                    this@SharedTransitionLayout,
+                    this@AnimatedContent,
+                    includeBadge = true,
+                  )
+                DebugScreen.Expanded ->
+                  DebugExpanded(this@SharedTransitionLayout, this@AnimatedContent)
+              }
             }
           }
         }

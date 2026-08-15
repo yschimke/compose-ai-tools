@@ -77,6 +77,18 @@ class PlaygroundRedeemService(
    * would resolve to a viewer route the daemon cannot serve, so an unknown one falls back to the
    * first exactly as if it had been omitted.
    */
+  /**
+   * Whether [id] names a session **this playground** registered by redeeming a token.
+   *
+   * Read by [ServeHttpServer]'s top-level-site interceptor, which otherwise treats every registered
+   * session that is not the site's catalog as a neighbour to 404. A redeemed session is neither: it
+   * is the visitor's own just-compiled snippet, minted seconds earlier by this host's playground
+   * under an unguessable token id, and the redirect that reaches it (`/<id>/p/<preview>`) is the
+   * last step of the run the visitor started. Refusing it would leave "open live preview" dying
+   * after every successful compile on a site hostname.
+   */
+  fun isRedeemedSession(id: String): Boolean = synchronized(lock) { id in registered }
+
   fun redeem(id: String, preview: String? = null): Outcome {
     val snippet = (tokenStore.get(id) ?: return Outcome.NotFound).snippet
     val previewId = preview?.takeIf { it in snippet.previewIds } ?: snippet.previewId

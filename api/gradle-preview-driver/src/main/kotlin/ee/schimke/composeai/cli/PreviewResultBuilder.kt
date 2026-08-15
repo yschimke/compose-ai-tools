@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
-import java.io.File
 import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -86,7 +85,7 @@ object PreviewResultBuilder {
         val captures: List<ExpandedCapture> =
           if (p.params.previewParameterProviderClassName != null) {
             p.captures.flatMap { capture ->
-              expandParamCaptures(module, capture, siblingRenderOutputs, fileSystem)
+              expandParamCaptures(module, p.id, capture, siblingRenderOutputs, fileSystem)
             }
           } else {
             p.captures.map(::ExpandedCapture)
@@ -115,6 +114,7 @@ object PreviewResultBuilder {
             changed = null,
             optional = capture.optional,
             parameterLabel = expanded.parameterLabel,
+            parameterRowId = expanded.parameterRowId,
           )
         }
         val first = captureResults.firstOrNull()
@@ -156,16 +156,22 @@ object PreviewResultBuilder {
   }
 
   /**
-   * Globs the on-disk `<stem>_<suffix>.<ext>` fan-out for a parameterised preview capture. The
+   * Reads the on-disk `<stem>_<suffix>.<ext>` fan-out for a parameterised preview capture. The
    * manifest carries one template capture (e.g. `renders/foo.png`); the renderer writes one file
    * per provider value, keying each by a derived label (`renders/foo_on.png`) or by numeric index
    * (`renders/foo_PARAM_0.png`) when the label can't be derived. Returns synthetic `Capture` rows
    * pointing at each file, or an empty list when nothing matched — the plugin's
    * `composePreviewRenderAll` verification already fails loudly when a parameterised preview
    * rendered no files at all, so we don't duplicate the error surface here.
+   *
+   * Which files count, what each row is called, and in what order they come back are all
+   * [PreviewParameterFanout]'s to decide — the same rule `serve` addresses its row cards with, so
+   * the id printed here is the id `--id` accepts (issue #3819). Only the directory listing is done
+   * here.
    */
   private fun expandParamCaptures(
     module: PreviewModule,
+    baseId: String,
     template: Capture,
     siblingRenderOutputs: Set<String>,
     fileSystem: FileSystem = SystemFileSystem,
@@ -176,94 +182,76 @@ object PreviewResultBuilder {
       }
     val file = module.projectDir.resolve("build/compose-previews/$rel").canonicalFile
     val dir = file.parentFile ?: return listOf(ExpandedCapture(template))
-    val prefix = file.nameWithoutExtension + "_"
-    val ext = ".${file.extension}"
-    val templateDir = rel.substringBeforeLast('/', "")
-    val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
-    val matches =
-      (fileSystem.listOrNull(dir.path.toPath())?.map { it.toFile() } ?: emptyList())
-        .filter { f ->
-          val candidate = dirPrefix + f.name
-          f.name.startsWith(prefix) &&
-            f.name.endsWith(ext) &&
-            candidate !in siblingRenderOutputs &&
-            siblingRenderOutputs.none { sibling ->
-              ownsMoreSpecificParameterFanout(
-                templateOutput = rel,
-                siblingOutput = sibling,
-                candidate,
-              )
-            }
-        }
-        .sortedWith(paramFanoutOrder(prefix, ext))
-    if (matches.isEmpty()) return emptyList()
+    val fileNames = fileSystem.listOrNull(dir.path.toPath())?.map { it.name } ?: return emptyList()
+    val rows =
+      PreviewParameterFanout.rowsOf(
+        baseId = baseId,
+        templateOutput = rel,
+        fileNames = fileNames,
+        siblingOutputs = siblingRenderOutputs,
+      )
+    if (rows.isEmpty()) return emptyList()
     // Preserve the template's time/scroll coordinates — a parameterised preview is orthogonal to
     // those dimensions. Each fan-out file points back at the same conceptual capture, just at a
     // different provider value.
-    return matches.map { f ->
+    return rows.map { row ->
       ExpandedCapture(
         capture =
           Capture(
             advanceTimeMillis = template.advanceTimeMillis,
             scroll = template.scroll,
-            renderOutput = dirPrefix + f.name,
+            renderOutput = row.output,
           ),
-        parameterLabel = paramFanoutLabel(f.name, prefix, ext),
+        parameterLabel = PreviewParameterFanout.label(row.token),
+        parameterRowId = row.id,
       )
     }
   }
 
-  private fun ownsMoreSpecificParameterFanout(
-    templateOutput: String,
-    siblingOutput: String,
-    candidateOutput: String,
-  ): Boolean {
-    if (siblingOutput.isEmpty()) return false
-    val siblingDir = siblingOutput.substringBeforeLast('/', "")
-    val candidateDir = candidateOutput.substringBeforeLast('/', "")
-    if (siblingDir != candidateDir) return false
-    val templateStem = templateOutput.substringAfterLast('/').substringBeforeLast('.', "")
-    val siblingLeaf = siblingOutput.substringAfterLast('/')
-    val candidateLeaf = candidateOutput.substringAfterLast('/')
-    val siblingDot = siblingLeaf.lastIndexOf('.')
-    val candidateDot = candidateLeaf.lastIndexOf('.')
-    if (siblingDot <= 0 || candidateDot <= 0) return false
-    val siblingStem = siblingLeaf.substring(0, siblingDot)
-    if (siblingStem.length <= templateStem.length) return false
-    val siblingExt = siblingLeaf.substring(siblingDot)
-    if (candidateLeaf.substring(candidateDot) != siblingExt) return false
-    return candidateLeaf.startsWith(siblingStem + "_")
-  }
+  private data class ExpandedCapture(
+    val capture: Capture,
+    val parameterLabel: String? = null,
+    val parameterRowId: String? = null,
+  )
+}
 
-  private data class ExpandedCapture(val capture: Capture, val parameterLabel: String? = null)
-
-  private fun paramFanoutLabel(name: String, prefix: String, ext: String): String? {
-    val suffix = name.removePrefix(prefix).removeSuffix(ext)
-    val parameterIndex =
-      suffix.removePrefix("PARAM_").toIntOrNull()?.takeIf { suffix.startsWith("PARAM_") }
-    return if (parameterIndex != null) {
-      "parameter $parameterIndex"
-    } else {
-      suffix.replace('_', ' ').trim().ifEmpty { null }
-    }
-  }
-
-  /**
-   * Stable ordering for a fan-out's on-disk files. Numeric `_PARAM_<idx>` entries come first,
-   * sorted by index (so `PARAM_10` lands after `PARAM_2` rather than before it as lexicographic
-   * ordering would produce). Label-based entries sort alphabetically by their suffix — provider
-   * order isn't recoverable from the filename alone, but alphabetical is stable and readable.
-   */
-  private fun paramFanoutOrder(prefix: String, ext: String): Comparator<File> = Comparator { a, b ->
-    val sa = a.name.removePrefix(prefix).removeSuffix(ext)
-    val sb = b.name.removePrefix(prefix).removeSuffix(ext)
-    val ia = sa.removePrefix("PARAM_").toIntOrNull()?.takeIf { sa.startsWith("PARAM_") }
-    val ib = sb.removePrefix("PARAM_").toIntOrNull()?.takeIf { sb.startsWith("PARAM_") }
-    when {
-      ia != null && ib != null -> ia.compareTo(ib)
-      ia != null -> -1
-      ib != null -> 1
-      else -> sa.compareTo(sb)
-    }
-  }
+/**
+ * Whether a `@PreviewParameter` fan-out candidate belongs to a **more specific sibling** template
+ * rather than to [templateOutput].
+ *
+ * Fan-out files are found by globbing `<stem>_*` beside the template, because only the provider
+ * knows its values — and that glob is ambiguous whenever one preview's template is a prefix of
+ * another's. With templates `Foo.png` and `Foo_Dark.png` in one directory, `Foo_Dark_Alice.png` is
+ * `Foo_Dark`'s row, not `Foo`'s, even though it matches `Foo_`. Attributing it to `Foo` would show
+ * one preview's exception under another preview's name.
+ *
+ * The rule: a sibling owns the candidate when it lives in the same directory, shares its extension,
+ * has a *longer* stem than the template (so it is the more specific match), and the candidate's
+ * leaf begins with that sibling's stem plus `_`.
+ *
+ * Shared rather than duplicated: [PreviewResultBuilder] applies it when expanding fan-out captures
+ * from files that exist, and the CLI's missing-render resolver applies it when attributing fan-out
+ * `.error.json` sidecars. Two copies of this rule would drift, and a drift means one preview's
+ * failure reported under another's name.
+ */
+fun parameterFanoutOwnedBySibling(
+  templateOutput: String,
+  siblingOutput: String,
+  candidateOutput: String,
+): Boolean {
+  if (siblingOutput.isEmpty()) return false
+  val siblingDir = siblingOutput.substringBeforeLast('/', "")
+  val candidateDir = candidateOutput.substringBeforeLast('/', "")
+  if (siblingDir != candidateDir) return false
+  val templateStem = templateOutput.substringAfterLast('/').substringBeforeLast('.', "")
+  val siblingLeaf = siblingOutput.substringAfterLast('/')
+  val candidateLeaf = candidateOutput.substringAfterLast('/')
+  val siblingDot = siblingLeaf.lastIndexOf('.')
+  val candidateDot = candidateLeaf.lastIndexOf('.')
+  if (siblingDot <= 0 || candidateDot <= 0) return false
+  val siblingStem = siblingLeaf.substring(0, siblingDot)
+  if (siblingStem.length <= templateStem.length) return false
+  val siblingExt = siblingLeaf.substring(siblingDot)
+  if (candidateLeaf.substring(candidateDot) != siblingExt) return false
+  return candidateLeaf.startsWith(siblingStem + "_")
 }

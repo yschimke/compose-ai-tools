@@ -27,11 +27,11 @@ import org.junit.Test
 class AndroidViewHtmlTextPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
-  private val pngName = "HtmlShowNotesPreview_HTML_show_notes.png"
+  private val pngStem = "HtmlShowNotesPreview_HTML_show_notes"
 
   @Test
   fun `AndroidView-hosted preview renders a static PNG with drawn text`() {
-    val file = File(rendersDir, pngName)
+    val file = renderFile(rendersDir, pngStem)
     assertThat(file.exists()).isTrue()
 
     val img = ImageIO.read(file)

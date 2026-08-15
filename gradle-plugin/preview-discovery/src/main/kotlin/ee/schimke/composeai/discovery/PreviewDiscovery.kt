@@ -9,6 +9,7 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
 import java.io.File
+import java.security.MessageDigest
 import java.util.zip.ZipFile
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
@@ -32,6 +33,26 @@ import kotlinx.serialization.json.floatOrNull
  */
 object PreviewDiscovery {
 
+  /**
+   * Longest readable prefix a render stem may carry, before its `-<digest>` and before the
+   * structural suffixes renderers append (`_PARAM_<label>`, `_SCROLL_<mode>`, `_animated`, …).
+   * Chosen so a stem plus the longest suffix chain stays well inside the 255-byte `NAME_MAX` that
+   * ext4, APFS and NTFS all enforce. Preview names this long are already unreadable as filenames;
+   * the digest keeps them unique after the cut.
+   */
+  internal const val MAX_READABLE_STEM: Int = 80
+
+  /**
+   * Hex chars of `sha256(preview.id)` appended to every render stem. 8 chars (32 bits) makes a tie
+   * vanishingly unlikely even in a catalog module with thousands of previews — and a tie needs the
+   * readable parts to match too, since the digest only disambiguates within one readable name.
+   * [MAX_READABLE_STEM] leaves room for it regardless.
+   */
+  internal const val RENDER_STEM_DIGEST_CHARS: Int = 8
+
+  /** Digest width used by the tie backstop. Full sha256 hex — cannot collide for distinct ids. */
+  internal const val FULL_DIGEST_CHARS: Int = 64
+
   /** Inputs the scan needs from the calling build system. All paths are absolute. */
   data class Input(
     /** Directories of compiled `.class` files belonging to the consumer module. */
@@ -43,6 +64,13 @@ object PreviewDiscovery {
     val dependencyJars: List<File>,
     /** Source files used to attach module-relative `sourceFile` paths to each [PreviewInfo]. */
     val sourceFiles: List<File>,
+    /**
+     * Source files belonging to the compilation represented by [activeClassDirs]. [sourceFiles] can
+     * contain every source set so discovery can map class metadata back to source paths, but
+     * inactive source sets must not trigger the empty-compile integrity guard. Empty falls back to
+     * [sourceFiles] for non-Gradle callers.
+     */
+    val activeSourceFiles: List<File> = emptyList(),
     /**
      * Logical module name surfaced via [PreviewManifest.module]. Bazel rules use the target label;
      * Gradle uses the project path.
@@ -226,6 +254,12 @@ object PreviewDiscovery {
   // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
   // policy. See `GestureHintPreview.kt`.
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
+  // Android runtime-permission grant state for the STATIC render lane — sibling annotation to
+  // @AmbientPreview / @GestureHintPreview, same FQN-match policy. Unlike those two it does not
+  // wrap the composition: the renderer seeds Robolectric's grant set before `setContent`, because
+  // `ContextCompat.checkSelfPermission(...)` is read on the first composition. See
+  // `PermissionPreview.kt` and issue #3676.
+  internal const val PERMISSION_PREVIEW_FQN = "ee.schimke.composeai.preview.PermissionPreview"
   // "this preview's subject IS a theme — never re-render it under a themeProvider override". A
   // marker with no parameters, matched by FQN like its siblings. See `FixedTheme.kt`.
   private const val FIXED_THEME_FQN = "ee.schimke.composeai.preview.FixedTheme"
@@ -429,10 +463,10 @@ object PreviewDiscovery {
     // Check only the active compilation output. [Input.classDirs] deliberately contains fallback
     // layouts for discovery compatibility; stale classes in an inactive target must not hide an
     // empty cache restore in the compilation that just ran.
-    val previewSourceFiles =
-      input.sourceFiles.filter {
-        it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
-      }
+    val integritySourceFiles = input.activeSourceFiles.ifEmpty { input.sourceFiles }
+    val previewSourceFiles = integritySourceFiles.filter {
+      it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
+    }
     val integrityClassDirs = input.activeClassDirs.ifEmpty { input.classDirs }
     val classDirCounts = integrityClassDirs.associateWith(::classFileCount)
     val projectJarCounts = input.projectClassJars.associateWith(::classFileCount)
@@ -709,7 +743,7 @@ object PreviewDiscovery {
           )
       }
 
-    val allPreviews = normalized + appPreviews
+    val allPreviews = enforceOutputUniqueness(normalized + appPreviews)
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -1454,10 +1488,15 @@ object PreviewDiscovery {
 
   // Source-level signal for the empty-compile guard. Anchoring at the start of a code line avoids
   // examples in line comments and KDoc; accepting a qualified prefix covers annotation use without
-  // an import. A user-defined multi-preview annotation also contains @Preview when its declaration
-  // lives in this module, so an empty compilation of that wrapper still trips the guard.
+  // an import. Supported direct and multi-preview annotations conventionally end in Preview or
+  // Previews (`NotificationPreview`, `XrSubspacePreview`, imported aliases such as
+  // `GlancePreview`, and dependency-defined wrappers such as `WearPreviewDevices`). A user-defined
+  // multi-preview annotation also contains @Preview when its declaration lives in this module, so
+  // an empty compilation of that wrapper still trips the guard.
   private val PREVIEW_SOURCE_ANNOTATION =
-    Regex("""(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?Preview(?=[\t (\r\n])""")
+    Regex(
+      """(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?(?!(?:PreviewParameter|PreviewParameterProvider)\b)(?:[A-Za-z_][A-Za-z0-9_]*)?Preview[A-Za-z0-9_]*(?=[\t (\r\n])"""
+    )
 
   private fun File.declaresPreviewAnnotation(): Boolean =
     runCatching { PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText()) }.getOrDefault(false)
@@ -1485,26 +1524,42 @@ object PreviewDiscovery {
 
   /**
    * Rewrite each capture's `renderOutput` (and each `dataProduct.output`) to a shorter, shell-safe
-   * filename. Two passes shape the result:
+   * filename of the form `<readable>-<digest>`:
    *
-   * 1. **Sanitisation per dotted segment.** Within a segment (the chunks between `.`s of the
-   *    preview id) any run of non-alphanumeric characters collapses to a single `_`. So `Devices -
-   *    Large Round` becomes `Devices_Large_Round`, `tile light (light)` becomes `tile_light_light`,
-   *    etc. Dots stay as segment separators.
-   * 2. **Shortest unique suffix per preview.** Each preview takes the rightmost segments needed to
-   *    disambiguate it from every other preview in the module — the function-name-plus-variant
-   *    segment alone for unique names, prepending the class only when another preview shares the
-   *    same function name, prepending package parts only when classes collide too. So
-   *    `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round` becomes
-   *    `ActivityListPreview_Devices_Large_Round` in most modules.
+   * 1. **`<readable>`** — the last dotted segment of the preview id (function name plus any
+   *    `@Preview(name = …)` variant suffix), with every run of non-alphanumeric characters collapsed
+   *    to a single `_`. So `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round`
+   *    contributes `ActivityListPreview_Devices_Large_Round`. Capped at [MAX_READABLE_STEM] chars so
+   *    a stem plus its structural suffixes stays inside the 255-byte `NAME_MAX` every mainstream
+   *    filesystem enforces.
+   * 2. **`-<digest>`** — [RENDER_STEM_DIGEST_CHARS] hex chars of `sha256(preview.id)`, taken over
+   *    the id verbatim. `-` is an unambiguous delimiter here: [sanitiseSegment] collapses it inside
+   *    a segment, so it can never occur in `<readable>`.
    *
    * `preview.id` itself stays untouched — it's the stable identity consumers key by (history
-   * folders, CLI state, JUnit test names). Only the on-disk filename benefits from the prettier
-   * form.
+   * folders, CLI state, JUnit test names). Only the on-disk filename takes this form.
    *
-   * If sanitisation forces a true collision (two distinct ids whose fully-sanitised forms are
-   * byte-identical — e.g. `Foo_bar` vs `Foo-bar` after collapsing), a `_<idx>` suffix
-   * disambiguates. The renders directory has to stay collision-free even when input names couldn't.
+   * **Why the digest is unconditional.** It is what makes a stem a pure function of one preview's
+   * own id, and that single property carries every guarantee the filenames need:
+   * - *Stable.* Adding, removing or renaming any other preview in the module cannot change this
+   *   preview's filename — the sole exception being [disambiguateDigestTies] below. The previous
+   *   shortest-unique-suffix walk read every sibling, so an unrelated addition silently renamed
+   *   existing PNGs — which breaks commit-pinned render URLs and makes base-vs-head visual diffing
+   *   see a rename as delete + add.
+   * - *Collision-free.* Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get distinct
+   *   digests. The old positional `_<idx>` tiebreaker minted names without checking them against
+   *   real stems, so a preview genuinely named `Foo_bar_1` could be silently overwritten.
+   * - *Case-safe.* `Foo_Dark` and `Foo_dark` are distinct ids, so they get distinct digests and stay
+   *   distinct files on the case-insensitive filesystems (APFS, NTFS) where the readable parts alone
+   *   would collide.
+   * - *Suffix-safe.* Structural suffixes are appended after the whole stem, so a preview named
+   *   `Logo_animated` lands on `Logo_animated-<digestA>.png` while `Logo`'s Lottie sidecar lands on
+   *   `Logo-<digestB>_animated.png`. The digest separates the two namespaces that used to share `_`.
+   * - *Reserved-name-safe.* A preview named `CON` or `NUL` becomes `CON-<digest>`, which is not a
+   *   Windows reserved device name.
+   *
+   * [disambiguateDigestTies] is the backstop for a truncated-digest collision, which needs two ids
+   * that agree on both readable part and digest prefix.
    */
   private fun normalizeRenderOutputs(previews: List<PreviewInfo>): List<PreviewInfo> {
     if (previews.isEmpty()) return previews
@@ -1524,45 +1579,172 @@ object PreviewDiscovery {
   }
 
   /**
-   * Pick one shell-safe stem per preview. Each stem is the shortest sanitised suffix that uniquely
-   * identifies its preview against the others — see [normalizeRenderOutputs] for the algorithm and
-   * rationale. Exposed `internal` so the unit tests can assert "no spaces ever", "no `class.`
-   * prefix when the function name is unique", and the collision-disambiguator paths directly
-   * without a full discovery pipeline.
+   * Final guarantee that no two previews in the manifest write to the same path.
+   *
+   * [normalizeRenderOutputs] only resolves stems among the *annotation-derived* previews. Several
+   * other sources are appended afterwards with literal, already-shell-safe stems — Lottie and SVG
+   * assets, the colour/typography/shape/theme catalogs, activities and app tours — and by default
+   * several of them land in the same `renders/` directory. No per-source resolver can see the
+   * others, so nothing previously checked the combined result: an annotation preview whose stem
+   * happened to equal an asset's (e.g. a composable literally named `lottie__Foo` beside a Lottie
+   * asset resolving to the same leaf) produced two manifest entries claiming one file, and one
+   * render silently overwrote the other.
+   *
+   * Rather than teach each source about the others — which fails again the next time a source is
+   * added — this validates the invariant on the assembled list. Comparison is **case-folded**,
+   * because the question is "do these address the same file" and on APFS/NTFS they do.
+   *
+   * On a collision *every* entry in the colliding group is re-stemmed with a digest of its own
+   * preview id, so the outcome stays a pure function of the ids rather than of manifest order.
+   * Entries that collide with nothing are untouched, so this cannot churn filenames in the
+   * overwhelmingly normal case where the invariant already holds.
+   *
+   * Scope note: this makes the *declared* output paths unique. It does not reason about
+   * `@PreviewParameter` fan-out siblings, which the renderer names `<stem>_<label>` at render time
+   * — a stem that is a strict prefix of another could in principle still overlap there. That needs
+   * the provider's values, which discovery cannot enumerate.
    */
-  internal fun resolveRenderStems(previews: List<PreviewInfo>): List<String> {
-    if (previews.isEmpty()) return emptyList()
-    val sanitisedSegmentsByPreview = previews.map { sanitiseSegments(it) }
-    val stems = sanitisedSegmentsByPreview.mapIndexed { i, mySegs ->
-      shortestUniqueSuffix(i, mySegs, sanitisedSegmentsByPreview)
-    }
-    return disambiguateExactCollisions(stems)
+  internal fun enforceOutputUniqueness(previews: List<PreviewInfo>): List<PreviewInfo> {
+    if (previews.size < 2) return previews
+    val contested = contestedIndices(previews)
+    if (contested.isEmpty()) return previews
+
+    // Retagging can itself land on a path some *untouched* preview already owns — the same trap
+    // the old positional `_<idx>` tiebreaker fell into. So re-check the result, and if anything is
+    // still contested, redo it from the original list at full digest width, widening the tagged set
+    // to include whatever the first attempt disturbed. Re-tagging from the original (rather than
+    // from the first attempt) is what keeps a digest from being appended twice.
+    val short = retagOutputs(previews, contested, RENDER_STEM_DIGEST_CHARS)
+    val stillContested = contestedIndices(short)
+    if (stillContested.isEmpty()) return short
+    return retagOutputs(previews, contested + stillContested, FULL_DIGEST_CHARS)
   }
 
   /**
-   * Returns the joined stem (segments joined with `.`) made from the rightmost segments of [mySegs]
-   * that aren't matched, at the same depth, by any other preview's sanitised segments.
-   *
-   * If no proper suffix is unique (two distinct ids whose sanitised segment lists are
-   * byte-identical — the only way every depth matches), return JUST the last segment. The user
-   * wants short on-disk names; the resulting duplicate is then disambiguated with a `_<idx>` suffix
-   * by [disambiguateExactCollisions] rather than padded with the full package path.
+   * Indices of previews holding at least one output path that another preview also claims.
+   * Case-folded, since that is how APFS and NTFS decide whether two names are one file. Previews
+   * declaring no outputs at all are ignored rather than all colliding on the empty path.
    */
-  private fun shortestUniqueSuffix(
-    myIndex: Int,
-    mySegs: List<String>,
-    allSegs: List<List<String>>,
-  ): String {
-    if (mySegs.isEmpty()) return ""
-    for (depth in 1..mySegs.size) {
-      val mySuffix = mySegs.takeLast(depth)
-      val collides =
-        allSegs.withIndex().any { (otherIndex, otherSegs) ->
-          otherIndex != myIndex && otherSegs.takeLast(depth) == mySuffix
-        }
-      if (!collides) return mySuffix.joinToString(".")
+  private fun contestedIndices(previews: List<PreviewInfo>): Set<Int> {
+    val pathsPerPreview = previews.map { outputPaths(it).map(String::lowercase).distinct() }
+    val counts = mutableMapOf<String, Int>()
+    for (paths in pathsPerPreview) {
+      for (path in paths) counts[path] = counts.getOrDefault(path, 0) + 1
     }
-    return mySegs.last()
+    val duplicated = counts.filterValues { it > 1 }.keys
+    if (duplicated.isEmpty()) return emptySet()
+    return pathsPerPreview
+      .withIndex()
+      .filter { (_, paths) -> paths.any { it in duplicated } }
+      .map { it.index }
+      .toSet()
+  }
+
+  private fun outputPaths(preview: PreviewInfo): List<String> =
+    (preview.captures.map { it.renderOutput } + preview.dataProducts.map { it.output }).filter {
+      it.isNotEmpty()
+    }
+
+  /** Re-stem every output of the previews at [indices] with a digest of that preview's own id. */
+  private fun retagOutputs(
+    previews: List<PreviewInfo>,
+    indices: Set<Int>,
+    digestChars: Int,
+  ): List<PreviewInfo> =
+    previews.mapIndexed { i, preview ->
+      if (i !in indices) preview
+      else {
+        val suffix = "-${idDigest(preview.id, digestChars)}"
+        preview.copy(
+          captures =
+            preview.captures.map { it.copy(renderOutput = tagLeaf(it.renderOutput, suffix)) },
+          dataProducts = preview.dataProducts.map { it.copy(output = tagLeaf(it.output, suffix)) },
+        )
+      }
+    }
+
+  /**
+   * `dir/stem.ext` → `dir/stem<suffix>.ext`, leaving the directory and the full extension alone.
+   * Splits on the *first* dot so multi-dot sidecars (`.raw.png`, `.warnings.json`) keep their whole
+   * suffix rather than having the tag wedged into the middle of it.
+   */
+  private fun tagLeaf(path: String, suffix: String): String {
+    if (path.isEmpty()) return path
+    val dir = path.substringBeforeLast('/', missingDelimiterValue = "")
+    val leaf = path.substringAfterLast('/')
+    val dot = leaf.indexOf('.')
+    val tagged =
+      if (dot < 0) leaf + suffix else leaf.substring(0, dot) + suffix + leaf.substring(dot)
+    return if (dir.isEmpty()) tagged else "$dir/$tagged"
+  }
+
+  /**
+   * Pick one shell-safe stem per preview — see [normalizeRenderOutputs] for the format and
+   * rationale. Exposed `internal` so the unit tests can assert the charset, the stability of a stem
+   * under unrelated additions, and the collision paths directly without a full discovery pipeline.
+   */
+  internal fun resolveRenderStems(
+    previews: List<PreviewInfo>,
+    // Narrowed only by tests: a real 8-hex tie needs ~2^32 work to construct, so the backstop and
+    // its case-folding are exercised at a width where a collision is reachable.
+    digestChars: Int = RENDER_STEM_DIGEST_CHARS,
+  ): List<String> {
+    if (previews.isEmpty()) return emptyList()
+    return disambiguateDigestTies(previews.map { renderStem(it, digestChars) }, previews)
+  }
+
+  /**
+   * The stem for a single preview, computed from that preview alone. Deliberately takes no view of
+   * the rest of the module — see [normalizeRenderOutputs] for why that independence is the point.
+   */
+  internal fun renderStem(
+    preview: PreviewInfo,
+    digestChars: Int = RENDER_STEM_DIGEST_CHARS,
+  ): String {
+    val readable =
+      sanitiseSegments(preview)
+        .lastOrNull()
+        .orEmpty()
+        // Truncate before trimming: a cut can land mid-run and leave a trailing `_`.
+        .take(MAX_READABLE_STEM)
+        .trim('_', '-')
+        .ifEmpty { "preview" }
+    return "$readable-${idDigest(preview.id, digestChars)}"
+  }
+
+  /** Lowercase hex of `sha256(id)`, truncated to [chars]. */
+  private fun idDigest(id: String, chars: Int): String =
+    MessageDigest.getInstance("SHA-256")
+      .digest(id.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+      .take(chars)
+
+  /**
+   * Backstop for the astronomically unlikely case where two distinct ids agree on both readable
+   * part and truncated digest. Every tied preview is re-stemmed with a full-length digest, which
+   * cannot tie unless the ids are equal (and ids are distinct by manifest construction).
+   *
+   * Only the tied previews are touched, so one freak pair cannot lengthen an unrelated preview's
+   * filename — and because the replacement is still a pure function of the id, the result stays
+   * stable under reordering. That is the property the old positional `_<idx>` tiebreaker lacked:
+   * it indexed into the manifest, so it both churned on reordering and could mint a name that
+   * collided with a real preview's.
+   */
+  private fun disambiguateDigestTies(
+    stems: List<String>,
+    previews: List<PreviewInfo>,
+  ): List<String> {
+    // Case-folded, because the question is "do these address the same file", and on APFS/NTFS
+    // `Foo_Dark-<d>.png` and `Foo_dark-<d>.png` do. Grouping case-sensitively here would let a
+    // case-only pair that also tied on the digest slip through the backstop and overwrite. The
+    // stems themselves keep their original casing — only the tie test folds.
+    val tied =
+      stems.groupingBy { it.lowercase() }.eachCount().filterValues { it > 1 }.keys
+    if (tied.isEmpty()) return stems
+    return stems.mapIndexed { i, stem ->
+      if (stem.lowercase() !in tied) stem
+      else stem.substringBeforeLast('-') + "-" + idDigest(previews[i].id, FULL_DIGEST_CHARS)
+    }
   }
 
   /**
@@ -1574,9 +1756,9 @@ object PreviewDiscovery {
    * trailing variant suffix (from `@Preview(name = ...)` / `group`) is folded into the
    * function-name segment first, because a name like `"Font scale 1.5x"` carries dots that are NOT
    * structural id separators: splitting the whole id would inject a spurious trailing segment ("1"
-   * | "5x") and the shortest-unique-suffix walk could collapse the entire stem down to it
-   * (`5x.png`). Keeping the id itself lossless preserves manifest dedup (`distinctBy { it.id }`);
-   * any stem collision two distinct ids still produce is handled by [disambiguateExactCollisions].
+   * | "5x"), and [renderStem] takes the *last* segment — so the whole readable stem would collapse
+   * to `5x`. Keeping the id itself lossless preserves manifest dedup (`distinctBy { it.id }`); any
+   * stem collision two distinct ids still produce is handled by [disambiguateDigestTies].
    *
    * Empty segments (e.g. from a leading or trailing `.`, or from a segment that was all-punctuation
    * pre-sanitisation) are dropped so they don't introduce `..` in the resulting stem.
@@ -1600,23 +1782,6 @@ object PreviewDiscovery {
    */
   private fun sanitiseSegment(segment: String): String =
     segment.replace(Regex("[^A-Za-z0-9]+"), "_").trim('_', '-')
-
-  /**
-   * Last-ditch tiebreaker when two distinct preview ids sanitise to exactly the same stem (e.g.
-   * `Foo_bar` and `Foo-bar` both become `Foo_bar`). Appends `_<idx>` to the second-and-later
-   * occurrences in the manifest order; the first occurrence keeps its clean form so the common case
-   * still gets the pretty filename.
-   */
-  private fun disambiguateExactCollisions(stems: List<String>): List<String> {
-    if (stems.toSet().size == stems.size && stems.none { it.isEmpty() }) return stems
-    val counts = mutableMapOf<String, Int>()
-    return stems.mapIndexed { i, raw ->
-      val base = if (raw.isEmpty()) "preview" else raw
-      val seen = counts.getOrDefault(base, 0)
-      counts[base] = seen + 1
-      if (seen == 0 && raw.isNotEmpty()) base else "${base}_${i}"
-    }
-  }
 
   /** `renders/<oldStem><tail>.<ext>` → `renders/<newStem><tail>.<ext>`. */
   private fun rewriteRenderStem(renderOutput: String, oldStem: String, newStem: String): String {
@@ -1731,6 +1896,8 @@ object PreviewDiscovery {
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val gestureHintSpec = extractGestureHintSpec(annotations)
+    val permissionSpec =
+      extractPermissionSpec(annotations, "${classInfo.name}.${method.name}", warnings)
     val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
     val launcherWidgetResizeSpec = extractLauncherWidgetResizeSpec(annotations)
     // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
@@ -1846,6 +2013,7 @@ object PreviewDiscovery {
             focusGifSpec,
             ambientSpec,
             gestureHintSpec,
+            permissionSpec,
             launcherWidgetSpec,
             launcherWidgetResizeSpec,
             timings,
@@ -1873,6 +2041,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           gestureHintSpec,
+          permissionSpec,
           launcherWidgetSpec,
           launcherWidgetResizeSpec,
           timings,
@@ -1900,6 +2069,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           gestureHintSpec,
+          permissionSpec,
           launcherWidgetSpec,
           launcherWidgetResizeSpec,
           timings,
@@ -2587,6 +2757,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -2645,6 +2816,12 @@ object PreviewDiscovery {
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
+    // `@PermissionPreview` reaches the screen through `:data-permissions-connector`'s
+    // around-composable seam (the extension seeds Robolectric's grant set on construction, then
+    // wraps the composition to scope the query tracking). A tile / notification / Glance / XR
+    // preview never enters that composition, so the override has nothing to attach to there —
+    // same reasoning, and same treatment, as ambient and gesture hints.
+    val effectivePermissions = if (nonComposable) null else permissions
     // `@LauncherWidgetPreview` wraps the composition in a sized Box — same reasoning as ambient:
     // non-composable previews have no Compose layout pass to wrap. The override is also dropped
     // for tile / notification renders.
@@ -2691,6 +2868,7 @@ object PreviewDiscovery {
             ),
           ambient = effectiveAmbient,
           gestureHint = effectiveGestureHint,
+          permissions = effectivePermissions,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
           cost = STATIC_COST,
         )
@@ -2704,6 +2882,7 @@ object PreviewDiscovery {
               focusGif = effectiveFocusGif,
               ambient = effectiveAmbient,
               gestureHint = effectiveGestureHint,
+              permissions = effectivePermissions,
               launcherWidget = effectiveLauncherWidget,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = FOCUS_GIF_COST,
@@ -2717,6 +2896,11 @@ object PreviewDiscovery {
           listOf(
             Capture(
               animation = effectiveAnimation,
+              // The renderer resolves the permissions extension by scanning the preview's captures
+              // for the first non-null `permissions`. An `@AnimatedPreview` that is the *only*
+              // capture on the function would otherwise leave nothing to find, so a
+              // `@PermissionPreview` on the same function would silently render the denied branch.
+              permissions = effectivePermissions,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = ANIMATION_COST,
             )
@@ -2740,6 +2924,7 @@ object PreviewDiscovery {
             focusGif = effectiveFocusGif,
             ambient = effectiveAmbient,
             gestureHint = effectiveGestureHint,
+            permissions = effectivePermissions,
             launcherWidget = effectiveLauncherWidget,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = FOCUS_GIF_COST,
@@ -2759,6 +2944,10 @@ object PreviewDiscovery {
         listOf(
           Capture(
             animation = effectiveAnimation,
+            // Same reason as the resize branch above: when `@AnimatedPreview` owns the function
+            // outright there is no static sibling carrying `permissions`, and the renderer's
+            // first-non-null scan would come up empty.
+            permissions = effectivePermissions,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = ANIMATION_COST,
           )
@@ -2840,6 +3029,7 @@ object PreviewDiscovery {
                 focus = focus,
                 ambient = effectiveAmbient,
                 gestureHint = effectiveGestureHint,
+                permissions = effectivePermissions,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
@@ -3107,6 +3297,86 @@ object PreviewDiscovery {
     val ann = annotations.firstOrNull { it.name == GESTURE_HINT_PREVIEW_FQN } ?: return null
     val showHints = (ann.parameterValues.getValue("showHints") as? Boolean) ?: true
     return GestureHintCapture(showHints = showHints)
+  }
+
+  /**
+   * Reads a `@PermissionPreview(grants = ["android.permission.CAMERA=granted"])` off [annotations]
+   * into a [PermissionsCapture], or `null` when the annotation is absent or contributed nothing
+   * usable. Single-shot per function like [extractAmbientSpec] / [extractGestureHintSpec] — the
+   * consumer pairs a bare `@Preview` (denied) with a `@PermissionPreview` `@Preview` (granted) over
+   * the same screen — and the resulting capture is stamped onto every `@Preview` expansion.
+   *
+   * Returning `null` for "annotation present but empty" is deliberate: the renderer only builds the
+   * permissions extension when the capture is non-null, and an empty grant map would otherwise mean
+   * "deny everything", which is a different (and surprising) statement from "no override".
+   */
+  private fun extractPermissionSpec(
+    annotations: List<AnnotationInfo>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): PermissionsCapture? {
+    val ann = annotations.firstOrNull { it.name == PERMISSION_PREVIEW_FQN } ?: return null
+    val entries = readStringArray(ann.parameterValues.getValue("grants"))
+    val grants = parsePermissionGrants(entries, owner, warnings)
+    return if (grants.isEmpty()) null else PermissionsCapture(grants = grants)
+  }
+
+  /**
+   * Parses `@PermissionPreview.grants` entries — each `"<permission>=<state>"`, e.g.
+   * `"android.permission.CAMERA=granted"` — into the capture's grant map.
+   *
+   * Split on the **first** `=` only: an Android permission constant never contains one, but
+   * splitting on all of them would silently mangle a hypothetical vendor permission that does, and
+   * a wrong grant is worse than a rejected one. `granted` / `denied` are matched case-insensitively
+   * after trimming, so `GRANTED` and ` Granted ` both parse.
+   *
+   * Malformed entries are dropped with a warning rather than failing the build — the same policy
+   * [extractPreviewAxes] applies to an unusable axis. That matters here because the silent symptom
+   * is a preview *named* "granted" capturing the denied branch (issue #3676), so the warning names
+   * the offending entry and the accepted spellings.
+   *
+   * Duplicate permissions keep the first entry. A duplicate that agrees is not worth a warning (an
+   * annotation reached twice is a normal discovery outcome); one that disagrees is a contradiction
+   * the author has to resolve, so it warns.
+   *
+   * `internal` purely so [PreviewDiscoveryPermissionGrantsTest] can exercise the grammar without
+   * standing up a Gradle build.
+   */
+  internal fun parsePermissionGrants(
+    entries: List<String>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): Map<String, PermissionGrantCaptureState> {
+    val grants = LinkedHashMap<String, PermissionGrantCaptureState>()
+    for (entry in entries) {
+      val separator = entry.indexOf('=')
+      val permission = if (separator < 0) "" else entry.substring(0, separator).trim()
+      val rawState = if (separator < 0) "" else entry.substring(separator + 1).trim()
+      val state =
+        when (rawState.lowercase()) {
+          "granted" -> PermissionGrantCaptureState.GRANTED
+          "denied" -> PermissionGrantCaptureState.DENIED
+          else -> null
+        }
+      if (permission.isEmpty() || state == null) {
+        warnings.add(
+          "composePreview: '$owner' declares @PermissionPreview with the entry \"$entry\", which " +
+            "is not a \"<permission>=<state>\" pair with a state of granted or denied " +
+            "(case-insensitive) — e.g. \"android.permission.CAMERA=granted\". Ignoring it; " +
+            "the preview will capture whatever branch the un-overridden permission check returns."
+        )
+        continue
+      }
+      val existing = grants.putIfAbsent(permission, state)
+      if (existing != null && existing != state) {
+        warnings.add(
+          "composePreview: '$owner' declares @PermissionPreview with conflicting states for " +
+            "\"$permission\" ($existing then $state) — a permission has one grant state per " +
+            "capture. Keeping $existing."
+        )
+      }
+    }
+    return grants
   }
 
   /**
@@ -3402,6 +3672,7 @@ object PreviewDiscovery {
       FOCUSED_PREVIEW_FQN,
       AMBIENT_PREVIEW_FQN,
       GESTURE_HINT_PREVIEW_FQN,
+      PERMISSION_PREVIEW_FQN,
       LAUNCHER_WIDGET_PREVIEW_FQN,
       LAUNCHER_WIDGET_RESIZE_FQN,
       OVERRIDE_VARIANT_FQN,
@@ -3650,6 +3921,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -3668,6 +3940,7 @@ object PreviewDiscovery {
       focusGif,
       ambient,
       gestureHint,
+      permissions,
       launcherWidget,
       launcherWidgetResize,
       timings,
@@ -3694,6 +3967,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -3712,6 +3986,7 @@ object PreviewDiscovery {
         focusGif,
         ambient,
         gestureHint,
+        permissions,
         launcherWidget,
         launcherWidgetResize,
         timings,

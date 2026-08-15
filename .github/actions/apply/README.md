@@ -49,7 +49,7 @@ jobs:
       # Android modules also need the SDK — add android-actions/setup-android@v3
       # (and a Gradle cache) here, or factor java+SDK+cache into a local
       # `./.github/actions/setup` composite as the reference workflows do.
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.19.60
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.5.0
 ```
 <!-- x-release-please-end -->
 
@@ -86,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup           # your java + SDK + cache composite
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.19.60
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.5.0
         with:
           only: compose,resources
           # `warn` keeps CI green when a handful of previews render nothing;
@@ -99,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.19.60
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.5.0
         with:
           # a11y renders first, then notifications stages the captures it
           # leaves behind — so the two must share a job (see below). Drop
@@ -118,6 +118,228 @@ removed. (`only: a11y` alone silently drops the notifications pipeline, since
 `only` clears every surface it doesn't name — so keep both unless you
 deliberately render no notification previews.) The two jobs use disjoint
 baseline branches and sticky-comment markers, so they never collide.
+
+## Fork PRs
+
+The basic usage above works for PRs raised from a branch in the repository
+itself. It cannot work for a PR from a **fork**, and no `permissions:` block
+fixes that: on a `pull_request` event from a fork, `GITHUB_TOKEN` is read-only
+for *every* scope. So the render push 403s, and the sticky comment can't be
+posted either — commenting is a write too.
+
+**`pull_request_target` is not the fix.** It hands out a write-scoped token and
+the repository's secrets, and rendering previews means checking out the PR's
+own code and running its Gradle build. That is arbitrary code execution with a
+write token — the classic pwn request. A workflow that renders untrusted code
+must never hold the token that publishes the result.
+
+Split those two responsibilities across two workflows instead. The render job
+stays unprivileged and hands its output to a publish job that runs the **base
+branch's** code and never executes anything from the PR:
+
+```yaml
+# .github/workflows/compose-preview.yml — untrusted. Renders, publishes nothing.
+name: Compose Preview
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions: {}          # nothing by default; each job asks for what it needs
+
+# Two `synchronize` events on one PR would otherwise race: the older render
+# can finish last, and its publisher then overwrites the shared render
+# branches and sticky comments with stale pixels.
+concurrency:
+  group: compose-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fork PRs: render only, in a job that is READ-ONLY BY CONSTRUCTION.
+  #
+  # Don't fold this back into the job below by switching `phase` on a
+  # condition. GitHub normally downgrades a fork PR's token to read-only on
+  # its own, but an organization can turn on "send write tokens to workflows
+  # from fork pull requests" — and then a shared job's requested write scopes
+  # are granted for real, while this action exports `github.token` into the
+  # environment the fork's Gradle build runs in. Job-level `permissions` is
+  # what makes the isolation hold regardless of that org setting.
+  render-fork:
+    if: github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup           # your java + SDK + cache composite
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.0.0
+        with:
+          phase: render
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compose-preview-handoff
+          path: _compose_preview_handoff/
+          if-no-files-found: error
+          retention-days: 1
+
+  # Everything trusted — same-repo PRs and the baseline push on `main` — keeps
+  # the single-job path, which already holds the write token it needs.
+  apply:
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.0.0
+```
+
+```yaml
+# .github/workflows/compose-preview-publish.yml — trusted. Pushes and comments.
+name: Compose Preview Publish
+on:
+  workflow_run:
+    workflows: [Compose Preview]
+    types: [completed]
+
+permissions:
+  contents: write         # renders push to compose-preview/pr
+  pull-requests: write    # sticky comment upsert
+  actions: read           # cross-run artifact download
+
+# Publishers can finish out of order too, so serialize them per head branch.
+# NOT cancel-in-progress: a publisher that is already pushing should finish,
+# and the next one supersedes it on the same shared branch anyway.
+concurrency:
+  group: compose-preview-publish-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # A failed render has nothing worth publishing, and a stale comment is
+    # better than one built from a partial envelope.
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      # This checkout is the BASE branch's code, never the PR's. Nothing from
+      # the fork is executed in this job — the handoff is read as data only.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Only a fork run uploads a handoff. Same-repo runs publish inline and
+      # upload nothing, so this workflow fires with nothing to do — that's the
+      # common case, not an error. Deciding it from `head_repository` rather
+      # than from the download's own outcome is deliberate: a blanket
+      # `continue-on-error` would also swallow a genuine artifact-service or
+      # auth failure on a fork run and let the publisher finish green having
+      # pushed nothing.
+      - id: fork
+        run: |
+          if [ "${{ github.event.workflow_run.head_repository.full_name }}" = "${{ github.repository }}" ]; then
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_fork=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # No continue-on-error: on a fork run this download failing is a real
+      # failure, and should stay visible and re-runnable.
+      - uses: actions/download-artifact@v7
+        if: steps.fork.outputs.is_fork == 'true'
+        with:
+          name: compose-preview-handoff
+          path: _compose_preview_handoff
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: pr
+        if: steps.fork.outputs.is_fork == 'true'
+        run: echo "number=$(cat _compose_preview_handoff/_pr_number)" >> "$GITHUB_OUTPUT"
+
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.0.0
+        if: steps.pr.outputs.number != ''
+        with:
+          phase: publish
+          pr-number: ${{ steps.pr.outputs.number }}
+          # Comment-shaping inputs are consumed on THIS side, so repeat any
+          # you set on the render call — e.g. comment-on-empty-diff,
+          # rerun-checkbox, ab-config. `only` / `skip` are the exception: the
+          # render job's resolution travels in the handoff.
+```
+
+### What travels between the jobs
+
+`phase: render` stages one directory (`handoff-dir`, default
+`_compose_preview_handoff`) holding everything the publish half reads off disk:
+the staged PR renders and their push metadata, the fetched baselines, the
+resolved base SHA, and the per-surface staging dirs for resources / a11y /
+notifications.
+
+The directory itself contains just two entries — `handoff.tar` and
+`_pr_number`. Everything else lives inside the tarball because
+`actions/upload-artifact` refuses any path containing a colon, and a gradle
+module path is full of them (`_pr_renders/renders/ai:sample:wear-gemini/…`).
+Those directory names cannot be sanitised: `_pr_renders` is pushed verbatim to
+the render branch, so its layout *is* the image URL in the comment and has to
+keep matching the baselines. `_pr_number` stays outside so the caller can read
+it back for `pr-number`; the publish phase unpacks the rest before anything
+reads it.
+
+Two values are in there because the publish job cannot recover them itself:
+
+| File | Why it can't be recomputed |
+|---|---|
+| `_pr_number` | `github.event.workflow_run.pull_requests` is **empty for fork PRs** — the one case this whole path exists for. |
+| `_scope_modules` | The publish job never checked the PR out, so it can't classify the diff. Without the render job's scope, [change-scoped runs](#change-scoped-rendering) would report every unrendered module's baseline as a *Removed* preview. |
+| `_pipelines` | The resolved `only` / `skip` set. Re-resolving from the publish call's own inputs would default all four on, and the upsert for a pipeline that never ran would patch its existing sticky comment to "no changes". |
+| `_ab_config` | Read from the checkout, which on the publish side is the *base* branch — so a PR that adds or edits an [A/B config](#ab-comparison-of-preview-variants) would otherwise be graded against the old grouping. |
+
+Both sides of every comparison travel, not just the new renders: the
+comparators fail closed on a missing baseline, so an absent
+`_resource_baselines/renders` would turn renderer anti-aliasing noise into a
+false resource diff, and a missing `_notification_baseline_findings.json` reads
+as an empty baseline — reporting every surviving preview as *Added* and losing
+removals entirely.
+
+`_previews.json` is rewritten on the way in. The CLI emits **absolute**
+`pngPath` values pointing into the render runner's Gradle build directories, so
+the envelope is rebased onto `<handoff-dir>/current/` and the renders that are
+still read on the publish side are copied there with it. Everything else in the
+bundle already holds copied pixels.
+
+### What this does and doesn't buy you
+
+The publish job holds a write token, so it is worth being precise about what it
+runs: the base branch's checkout, this action, and nothing else. It never
+checks out the PR, never invokes Gradle, and never installs the CLI.
+
+**The artifact is treated as hostile.** It was produced by a job that ran the
+PR's own Gradle build, and the pipelines write their push metadata as each
+surface completes — so a later pipeline, still executing fork code, can rewrite
+what an earlier one staged. Push *control* therefore never comes from the
+artifact: the destination branch, commit message and skip flag are rebuilt on
+the publish side from the same literals the single-job path uses, so a
+`_push_branch` rewritten to `main` aims nothing at the default branch. A
+`.github/` tree found in a staging dir is dropped before the push, since
+`push-branch.sh` commits the directory wholesale and a workflow file landing on
+a render branch would run on its own `push` trigger. The staging dirs
+contribute pixels; every decision is made from the action's own constants.
+
+If you add steps of your own to the publish job, hold that line — anything read
+out of the handoff is PR-authored input.
+
+It does **not** make the render itself trusted. A fork PR still runs its own
+code on the render runner; that job just has nothing worth stealing (read-only
+token, no secrets). Keep `persist-credentials: false` on its checkout so the
+token isn't left in `.git/config` for the build to find.
 
 ## Version skew
 
@@ -144,7 +366,7 @@ the CLI follows it for free:
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewPlugin = "0.19.60"
+composePreviewPlugin = "1.5.0"
 
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }
@@ -160,6 +382,18 @@ each release and `auto` picks it up automatically — no `cli-version` /
 auto-inject / zero-code path, where the CLI injects a matching plugin via
 `--init-script`) it falls back to `latest`, which is correct there because the
 injected plugin always matches the installed CLI.
+
+That fallback is now the [project version pin](../../../docs/VERSION_PIN.md)
+when there is one — `composePreview.version` in `gradle.properties`, written by
+`compose-preview pin`. It's what the CLI auto-injects and what the VS Code
+extension applies, so an auto-inject project that used to float on `latest` now
+gets the same version in CI as on a developer's machine, with no workflow change.
+
+An explicit declaration still takes precedence: auto-inject *skips* a module
+that declares the plugin, so for that module the declared version is what's
+actually applied, and that's the number `auto` and the skew guard must reason
+about. A project carrying both a declaration and a disagreeing pin gets a
+`::warning::` naming each, since neither one describes the whole build.
 
 If you want to pin the CLI to a *specific* `[versions]` key regardless of the
 plugin (e.g. a dedicated `composePreviewCli` entry), use `cli-version: catalog`

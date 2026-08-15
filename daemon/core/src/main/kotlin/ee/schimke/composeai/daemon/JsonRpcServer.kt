@@ -51,6 +51,9 @@ import ee.schimke.composeai.daemon.protocol.LeakDetectionMode
 import ee.schimke.composeai.daemon.protocol.Manifest
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.PreviewRowDto
+import ee.schimke.composeai.daemon.protocol.PreviewRowsParams
+import ee.schimke.composeai.daemon.protocol.PreviewRowsResult
 import ee.schimke.composeai.daemon.protocol.PruneReasonWire
 import ee.schimke.composeai.daemon.protocol.RejectedRender
 import ee.schimke.composeai.daemon.protocol.RenderError
@@ -680,6 +683,7 @@ class JsonRpcServer(
     when (req.method) {
       "initialize" -> handleInitialize(req)
       "renderNow" -> handleRenderNow(req)
+      "preview/rows" -> handlePreviewRows(req)
       "compileSources" -> handleCompileSources(req)
       "shutdown" -> handleShutdown(req)
       // History wire surface gated to 1.1 (see [HistoryFeature]). When disabled, every `history/*`
@@ -863,6 +867,55 @@ class JsonRpcServer(
       autoPruneIntervalMs = options.autoIntervalMs ?: autoPruneIntervalMs,
     )
 
+  /**
+   * `preview/rows` — the rows of a `@PreviewParameter` preview (issue #3749).
+   *
+   * Synchronous on the reader thread rather than queued like `renderNow`, because the answer is
+   * metadata: for an ordinary preview the host resolves it from discovery alone and returns
+   * immediately, and only a preview that actually declares a provider pays for enumeration. That
+   * gate is the reason this can't cost every client a round-trip per preview.
+   *
+   * Error mapping follows the host's contract: an unknown previewId is the caller's mistake
+   * ([ERR_INVALID_PARAMS]); a host with no enumeration at all is a missing capability
+   * ([ERR_METHOD_NOT_FOUND]), which clients already handle by falling back to the bare id.
+   */
+  private fun handlePreviewRows(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, PreviewRowsParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid preview/rows params: ${e.message}",
+        )
+        return
+      }
+    val rows =
+      try {
+        host.previewParameterRows(params.previewId)
+      } catch (e: UnsupportedOperationException) {
+        sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, "preview/rows unsupported: ${e.message}")
+        return
+      } catch (e: IllegalArgumentException) {
+        sendErrorResponse(req.id, ERR_INVALID_PARAMS, "invalid preview/rows params: ${e.message}")
+        return
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          req.id,
+          ERR_INTERNAL,
+          "preview/rows failed for '${params.previewId}': ${e.message}",
+        )
+        return
+      }
+    val result =
+      PreviewRowsResult(
+        previewId = params.previewId,
+        rows = rows.map { PreviewRowDto(index = it.index, label = it.label, id = it.id) },
+      )
+    sendResponse(req.id, encode(PreviewRowsResult.serializer(), result))
+  }
+
   private fun handleRenderNow(req: JsonRpcRequest) {
     if (firstRenderNowSeen.compareAndSet(false, true)) {
       StartupTimings.mark("first renderNow received")
@@ -912,7 +965,7 @@ class JsonRpcServer(
       // Reject them cleanly here rather than falling through to the composable-method reflection
       // path, which would throw NoSuchMethodException (the "method" is the activity class itself)
       // and surface as renderFailed. Interactive daemon support is tracked as a follow-up.
-      val kind = previewIndex.byId(previewId)?.params?.kind
+      val kind = previewIndex.rowResolved(previewId)?.info?.params?.kind
       if (kind == "ACTIVITY" || kind == "APP_TOUR") {
         rejected.add(
           RejectedRender(
@@ -1352,7 +1405,7 @@ class JsonRpcServer(
         return
       }
     val previewMetadata =
-      previewIndex.byId(previewId)?.let {
+      previewIndex.rowResolved(previewId)?.info?.let {
         PreviewMetadataSnapshot(
           displayName = it.displayName,
           group = it.group,
@@ -3385,7 +3438,7 @@ class JsonRpcServer(
         return
       }
     try {
-      val info = previewIndex.byId(params.previewId)
+      val info = previewIndex.rowResolved(params.previewId)?.info
       val spec =
         RecordingTestGenerator.defaultSpec(
           previewId = params.previewId,

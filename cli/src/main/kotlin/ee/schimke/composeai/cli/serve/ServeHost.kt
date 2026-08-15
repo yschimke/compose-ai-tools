@@ -30,6 +30,15 @@ interface ServeHost : AutoCloseable {
   fun designReferenceRaster(referenceId: String): ByteArray? = null
 
   /**
+   * Design pages this session publishes (`pages/index.json`), or empty when it publishes none — the
+   * common case, and the one every host defaults to. See [ServeDesignPages].
+   */
+  fun designPages(): ServeDesignPageStore = ServeDesignPageStore.empty()
+
+  /** Sanitized SVG markup for a previously advertised page. */
+  fun designPageSvg(pageId: String): String? = designPages().svg(pageId)
+
+  /**
    * Typography / layout annotations over this preview's *rendered* frame, if the session carries
    * any. Empty by default — a host with no annotation manifest serves the compare page unchanged.
    */
@@ -37,6 +46,20 @@ interface ServeHost : AutoCloseable {
 
   /** Typography / layout annotations over a design reference's raster. */
   fun annotationsForReference(referenceId: String): List<DesignAnnotation> = emptyList()
+
+  /**
+   * The **published** tag index for [previewId] — `testTag → {count, bounds}`, the element identity
+   * a scoped parity acceptance resolves against. Empty by default and for any host that publishes
+   * none.
+   *
+   * This is the *static* half of the pair: a published catalog's renders happened in CI, so its
+   * index is computed there and read back by [ServeBundleHost] from `tags/index.json`. A
+   * daemon-backed [ServeRenderHost] instead projects the same shape live, per render, inside its
+   * `.annotations` response ([ServeSemanticsTags]) — where it can be keyed to the frame it came
+   * from. Two producers, one projection, deliberately not one code path: only one of them has a
+   * daemon.
+   */
+  fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> = emptyMap()
 
   /**
    * The design-parity activity feed this catalog published (`parity/activity.json`), or null when
@@ -187,6 +210,18 @@ interface ServeHost : AutoCloseable {
    * safe — the caller falls back to the admitted [render] path.
    */
   fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
+
+  /**
+   * [previewId]'s baked render size in pixels, read from the PNG header alone — no decode, no
+   * fetch, no daemon — or null when the pixels aren't already on this box.
+   *
+   * Exists so a page can advertise `og:image:width`/`height` (see [ServeWeb.UnfurlMetadata]) for
+   * free. The dimensions are 8 bytes of a PNG's IHDR chunk, so the alternative — reading the whole
+   * render through [bakedRender] just to measure it — would pull ~90 KB off disk on every page
+   * build to learn two integers. Null is always safe: the page then omits the dimensions and the
+   * unfurler measures the image itself.
+   */
+  fun bakedRenderSize(previewId: String): Pair<Int, Int>? = null
 
   /**
    * A visitor is present on this session's pages right now (see `POST /api/presence`) — get its
@@ -524,8 +559,14 @@ interface ServeHost : AutoCloseable {
 
   /**
    * Render [previewId] at [overrides] and return its typography + theme inspection layers as JSON
-   * (`{previewId, annotations}`), or [AnnotationsOutcome.NotFound] when this host has no daemon.
-   * See [ServeRenderHost.renderAnnotations].
+   * (`{previewId, annotations, tags}`), or [AnnotationsOutcome.NotFound] when this host has no
+   * daemon. See [ServeRenderHost.renderAnnotations].
+   *
+   * `tags` is [ServeSemanticsTags]' `testTag → {count, bounds}` index over the same semantics
+   * payload the annotations are projected from — the element identity a scoped parity acceptance
+   * targets. Sharing this response is what keeps the two projections describing one frame; it does
+   * *not* couple either of them to the PNG a client already fetched. See
+   * [ServeRenderHost.renderAnnotations] for what that still owes.
    */
   fun renderAnnotations(previewId: String, overrides: PreviewOverrides): AnnotationsOutcome =
     AnnotationsOutcome.NotFound

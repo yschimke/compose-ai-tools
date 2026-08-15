@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.UiMode
+
 internal object PreviewPermutationsCli {
   const val PROPERTY: String = "composePreview.permutations"
   private const val ACCESSIBILITY: String = "accessibility"
@@ -13,7 +16,12 @@ internal object PreviewPermutationsCli {
   fun expandManifest(manifest: PreviewManifest, values: List<String>): PreviewManifest =
     manifest.copy(previews = expand(manifest.previews, values))
 
-  private fun expand(previews: List<PreviewInfo>, values: List<String>): List<PreviewInfo> {
+  /**
+   * The previews [values] expands [previews] into, in render order. Internal rather than private so
+   * [PreviewRenderScope] can ask "which ids will this one manifest entry actually produce?" without
+   * synthesising a whole manifest around it.
+   */
+  fun expand(previews: List<PreviewInfo>, values: List<String>): List<PreviewInfo> {
     if (clean(values).none { it.equals(ACCESSIBILITY, ignoreCase = true) }) return previews
     return previews.flatMap { preview ->
       if (preview.params.kind != "COMPOSE") listOf(preview)
@@ -38,6 +46,31 @@ internal object PreviewPermutationsCli {
         )
     }
   }
+
+  /**
+   * The render overrides that turn [base] into [expanded] — `null` when [expanded] *is* the base,
+   * or when it differs in nothing this can express.
+   *
+   * These permutations are synthesised client-side, so the daemon has never heard of `Foo_dark`:
+   * `PreviewIndex.byId` resolves against the plugin-written `previews.json`. What it *does* accept
+   * is a fetch for the declared `Foo` carrying [PreviewOverrides] in the params bag, which it
+   * threads into the re-render. Reading the override back off the expanded params — rather than
+   * mapping the id suffix — keeps this honest if [expand] ever grows an axis: the override is
+   * derived from the same `PreviewParams` the render would have used (issue #3762).
+   */
+  fun overridesFor(base: PreviewInfo, expanded: PreviewInfo): PreviewOverrides? {
+    if (expanded.id == base.id) return null
+    val darkened = expanded.params.uiMode != base.params.uiMode && isNight(expanded.params.uiMode)
+    val overrides =
+      PreviewOverrides(
+        uiMode = if (darkened) UiMode.DARK else null,
+        localeTag = expanded.params.locale.takeIf { it != base.params.locale },
+        fontScale = expanded.params.fontScale.takeIf { it != base.params.fontScale },
+      )
+    return overrides.takeIf { it.uiMode != null || it.localeTag != null || it.fontScale != null }
+  }
+
+  private fun isNight(uiMode: Int): Boolean = (uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
 
   private fun PreviewInfo.accessibilityVariant(
     idSuffix: String,

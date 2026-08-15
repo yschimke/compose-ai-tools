@@ -57,11 +57,12 @@ done
 ## Version skew
 
 Upstream builds this player against the **in-tree** `remote-core` / `remote-player-core`. We build
-it against the published alphas the version catalog pins (`compose-remote = 1.0.0-alpha15`). The
+it against the published alphas the version catalog pins (`compose-remote = 1.0.0-alpha17`). The
 player reaches a number of `@RestrictTo(LIBRARY_GROUP)` members, and `CoreDataAccessors.kt` reaches
 private `CoreDocument` state **reflectively** (upstream guards those names with its own
-`CoreReflectionGuardTest`). Both are sensitive to the gap between `androidx-main` and alpha15, so a
-snapshot refresh should be paired with a render of the `rc-compare` lane, not just a compile.
+`CoreReflectionGuardTest`). Both are sensitive to the gap between `androidx-main` and the pinned
+alpha, so a snapshot refresh should be paired with a render of the `rc-compare` lane, not just a
+compile.
 
 ## Local modifications
 
@@ -69,24 +70,23 @@ See the `rc-embedded` column of the catalogs' `rc-compare.html` for the current 
 the baked PNG. Local deltas over the upstream snapshot are listed here as they are made, each with
 the upstream tracking issue it was reported under.
 
-Each delta below is a **build-against-published-alpha** gap, not a rendering fix: upstream compiles
-this player against the in-tree `remote-creation-compose`, where these symbols are public and
-present. They are grouped in the tracking issue as "the embedded player cannot be built outside the
-androidx tree against the published alphas".
+### Resolved: the two action-dispatch deltas (restored at alpha17)
 
-- **Named-action dispatch for `LambdaAction` / `PendingIntentAction` dropped** (`RcPlayer.kt`, the
-  `LocalRemoteNamedActionHandler` block). `LambdaAction` does not exist in
-  `remote-creation-compose:1.0.0-alpha15`, and `PendingIntentAction` is `internal` there, so
-  `parseId` is not callable from outside the module. The handler now forwards straight to
-  `onNamedAction`. Both paths are *interactive click dispatch*; the render lane never fires an
-  action, so nothing the comparison measures is affected.
-- **`CapturedDocument` lambda/pending-intent forwarding dropped** (`RcPlayer.kt`, the
-  `CapturedDocument` overload). `CapturedDocument` in alpha15 carries neither a `lambdas` nor a
-  `pendingIntents` property. Same reasoning; that overload is for live capture, which this vendored
-  copy does not use.
+Two deltas used to live here — the `LocalRemoteNamedActionHandler` block and the `CapturedDocument`
+overload's `lambdas` / `pendingIntents` forwarding, both in `RcPlayer.kt`. They were
+**build-against-published-alpha** gaps rather than rendering fixes: `LambdaAction` did not exist in
+`remote-creation-compose:1.0.0-alpha15`, `PendingIntentAction` was `internal` there so `parseId` was
+not callable from outside the module, and `CapturedDocument` carried neither property.
 
-Neither delta is on the draw path. If a future alpha exposes the two action types, both blocks
-revert to upstream verbatim.
+`compose-remote` 1.0.0-alpha17 publishes all three: `LambdaAction` and `PendingIntentAction` are
+public with public `Companion.parseId`, and `CapturedDocument` carries `lambdas` + `pendingIntents`.
+Both blocks are now **restored to upstream verbatim** and this module carries no action-dispatch
+delta. The `lambdas` / `pendingIntents` parameters on `RcPlayer` were never dropped — only their
+uses were — so the restore was confined to the two bodies plus the two imports.
+
+Kept as a record because the shape recurs: when this module cannot reach a symbol upstream compiles
+against in-tree, dropping the call and noting it here is the house pattern, and the note is what
+makes the delta findable once a later alpha closes the gap.
 
 - **GMS font-provider certificates inlined as source** (`GmsFontProviderCertificates.kt`; the
   `GoogleFontR` import is gone from `EmbeddedPlayerTypefaceResolver.kt` and `RcPlayerTextLayout.kt`).

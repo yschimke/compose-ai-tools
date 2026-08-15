@@ -1852,6 +1852,171 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# stage-handoff mode
+# ---------------------------------------------------------------------------
+
+def _rewritten_png_path(prefix: str, module: str, basename: str) -> str:
+    """Workspace-relative path a staged current render lands at.
+
+    Deliberately relative: the publish job restores the handoff into its own
+    `$GITHUB_WORKSPACE` — a different runner with a different absolute root —
+    and every action step runs with the workspace as cwd, so a relative path
+    is the only form that survives the trip. Module stays verbatim: a gradle
+    path like `samples:android` is one directory segment here, matching how
+    `generate` and `copy-changed` already lay out `renders/<module>/`.
+    """
+    return f"{prefix}/{module}/{basename}"
+
+
+def cmd_stage_handoff(args: argparse.Namespace) -> int:
+    """Stage the current renders a later publish job needs, and rebase the envelope.
+
+    The fork-safe split renders in an unprivileged job and pushes / comments
+    from a trusted one, so everything the publish half reads off disk has to
+    travel between them as an artifact. `_pr_renders` and `_baselines` are
+    already self-contained copies; `_previews.json` is not — it carries
+    *absolute* `pngPath` values (see `docs/daemon/PROTOCOL.md`) pointing into
+    the render job's Gradle build directories, which do not exist on the
+    publish runner.
+
+    So: copy the current PNGs the publish half still reads, and rewrite every
+    `pngPath` to its workspace-relative staged location.
+
+    Only rows that have a baseline entry with a *different* sha are copied,
+    because those are the only ones whose bytes get read again. `compare`
+    reaches for a current PNG solely through `_is_changed`, and every call site
+    guards on the key being present in the baselines, so a **new** preview is
+    never opened — its pixels already travel in `_pr_renders`, and staging them
+    a second time would double the artifact on the very run (no baseline branch
+    yet) where every preview is new. An **unchanged** row is never opened
+    either, since `_is_changed` fast-paths on a sha match before touching disk.
+
+    Both still get their path rewritten: one uniform resolution rule beats a
+    mix of staged-relative and stale-absolute paths, and the rewritten path
+    simply points at a file nothing opens.
+    """
+    cli_json = Path(args.cli_json)
+    out_dir = Path(args.output_dir)
+    prefix = args.path_prefix.rstrip("/")
+    rewrite_json = Path(args.rewrite_json)
+
+    baselines: dict[str, dict] = {}
+    if getattr(args, "baselines", None):
+        baselines = _load_baselines(Path(args.baselines))
+
+    raw_bytes = cli_json.read_bytes()
+    if raw_bytes.startswith(b"\xef\xbb\xbf"):
+        raw_bytes = raw_bytes[3:]
+    raw = json.loads(raw_bytes.decode("utf-8"))
+    entries = raw["previews"] if isinstance(raw, dict) and "previews" in raw else raw
+
+    staged = 0
+    rewritten = 0
+
+    def handle(row: dict, key: str, module: str, preview_id: str) -> None:
+        nonlocal staged, rewritten
+        png_path = row.get("pngPath") or ""
+        if not png_path:
+            return
+        basename = _render_basename(png_path, preview_id)
+        sha = row.get("sha256") or ""
+        bl = baselines.get(key)
+        if sha and bl is not None and bl.get("sha256") != sha:
+            src = Path(png_path)
+            if src.exists():
+                dest = out_dir / module / basename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                staged += 1
+        row["pngPath"] = _rewritten_png_path(prefix, module, basename)
+        rewritten += 1
+
+    for entry in entries:
+        module = entry["module"]
+        preview_id = entry["id"]
+        captures = entry.get("captures") or []
+        if not captures:
+            handle(entry, f"{module}/{preview_id}", module, preview_id)
+            continue
+        for idx, capture in enumerate(captures):
+            key = f"{module}/{preview_id}" if idx == 0 else f"{module}/{preview_id}#{idx}"
+            handle(capture, key, module, preview_id)
+
+    rewrite_json.parent.mkdir(parents=True, exist_ok=True)
+    rewrite_json.write_text(json.dumps(raw))
+    print(
+        f"Staged {staged} current render(s) and rebased {rewritten} pngPath(s) "
+        f"onto {prefix}/",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def cmd_stage_handoff_resources(args: argparse.Namespace) -> int:
+    """`stage-handoff` for the Android-resource envelope.
+
+    Resource captures carry absolute `pngPath` values just like composables,
+    and `compare-resources` runs them through the same `_is_changed`
+    perceptual filter (with `size_aware=True`), so they need the same
+    treatment or a fork PR's resource diff is decided against paths that don't
+    exist on the publish runner — which fails closed, reporting renderer noise
+    as a real change.
+
+    Layout mirrors `copy-changed-resources`: `<module>/<destRelative>`, where
+    `destRelative` has already had its leading `renders/` stripped and the
+    module's gradle path has been translated to a filesystem one.
+    """
+    cli_json = Path(args.cli_json)
+    out_dir = Path(args.output_dir)
+    prefix = args.path_prefix.rstrip("/")
+    rewrite_json = Path(args.rewrite_json)
+
+    baselines: dict[str, dict] = {}
+    if getattr(args, "baselines", None):
+        baselines = _load_baselines(Path(args.baselines))
+
+    raw_bytes = cli_json.read_bytes()
+    if raw_bytes.startswith(b"\xef\xbb\xbf"):
+        raw_bytes = raw_bytes[3:]
+    raw = json.loads(raw_bytes.decode("utf-8"))
+
+    staged = 0
+    rewritten = 0
+    for resource in raw.get("resources", []) or []:
+        module = (resource.get("module") or "").lstrip(":").replace(":", "/")
+        resource_id = resource.get("id")
+        if not resource_id:
+            continue
+        for capture in resource.get("captures", []) or []:
+            render_output = capture.get("renderOutput") or ""
+            png_path = capture.get("pngPath")
+            if not render_output or not png_path:
+                continue
+            dest_rel = _resource_render_dest(render_output)
+            key = f"{module}::{resource_id}::{render_output}"
+            sha = capture.get("sha256") or ""
+            bl = baselines.get(key)
+            if sha and bl is not None and bl.get("sha256") != sha:
+                src = Path(png_path)
+                if src.exists():
+                    dest = out_dir / module / dest_rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dest)
+                    staged += 1
+            capture["pngPath"] = f"{prefix}/{module}/{dest_rel}"
+            rewritten += 1
+
+    rewrite_json.parent.mkdir(parents=True, exist_ok=True)
+    rewrite_json.write_text(json.dumps(raw))
+    print(
+        f"Staged {staged} current resource render(s) and rebased {rewritten} "
+        f"pngPath(s) onto {prefix}/",
+        file=sys.stderr,
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1933,6 +2098,34 @@ def main() -> int:
     cp.add_argument("--baseline-renders",
                     help="Directory containing baseline PNGs (renders/<module>/<basename>)")
 
+    sh = sub.add_parser(
+        "stage-handoff",
+        help="Stage current renders + rebase pngPath for a fork-safe publish job",
+    )
+    sh.add_argument("cli_json", help="Path to compose-preview show --json output")
+    sh.add_argument("--baselines",
+                    help="baselines.json for the current baseline branch. Omit when no "
+                         "baseline exists — every row then reads as new and no current "
+                         "render needs staging.")
+    sh.add_argument("--output-dir", required=True,
+                    help="Directory to copy current PNGs into (<dir>/<module>/<basename>)")
+    sh.add_argument("--path-prefix", required=True,
+                    help="Workspace-relative prefix written into the rewritten envelope's "
+                         "pngPath values. Must be where --output-dir lands after the "
+                         "publish job restores the handoff.")
+    sh.add_argument("--rewrite-json", required=True,
+                    help="Path to write the rebased envelope to")
+
+    shr = sub.add_parser(
+        "stage-handoff-resources",
+        help="stage-handoff for the `show-resources` envelope",
+    )
+    shr.add_argument("cli_json", help="Path to compose-preview show-resources --json output")
+    shr.add_argument("--baselines", help="resource-baselines.json for the baseline branch")
+    shr.add_argument("--output-dir", required=True)
+    shr.add_argument("--path-prefix", required=True)
+    shr.add_argument("--rewrite-json", required=True)
+
     gen_res = sub.add_parser(
         "generate-resources",
         help="Stage the rendered PNGs / GIFs from `compose-preview show-resources --json` "
@@ -1997,6 +2190,8 @@ def main() -> int:
         "generate": cmd_generate,
         "compare": cmd_compare,
         "copy-changed": cmd_copy_changed,
+        "stage-handoff": cmd_stage_handoff,
+        "stage-handoff-resources": cmd_stage_handoff_resources,
         "generate-resources": cmd_generate_resources,
         "copy-changed-resources": cmd_copy_changed_resources,
         "compare-resources": cmd_compare_resources,

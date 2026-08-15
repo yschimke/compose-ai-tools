@@ -1142,6 +1142,8 @@ jobs:
         run: python3 .github/actions/lib/test_notification_previews.py -v
       - name: Run xr-gallery tests
         run: python3 .github/actions/lib/test_xr_gallery.py -v
+      - name: Run install version-resolver tests
+        run: python3 .github/actions/install/test_resolve_version.py -v
       - name: Run apply skew-guard tests
         run: python3 .github/actions/apply/test_check_skew.py -v
       - name: Run post-comment tests
@@ -1175,6 +1177,11 @@ jobs:
       # the pre-Noto generic families while supplying broad missing-glyph coverage.
       - name: Run Linux font-fallback installer tests
         run: scripts/test-install-linux-font-fallbacks.sh
+      # Guards which JDKs the cloud bootstrap treats as "already here". Getting this wrong is not
+      # a slow build, it is a dead session: the script downloads from Adoptium, and a sandbox that
+      # gates github.com per repository 403s that fetch — on a box that already had the JDK.
+      - name: Run cloud JDK setup tests
+        run: scripts/test-setup-cloud-jdk.sh
       # Guards the preview-host image's baked font cache. Its failure mode is silent: a wrong
       # cache filename or a skipped stage-2 range query leaves faces the renderer never finds, so
       # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.
@@ -1305,3 +1312,57 @@ jobs:
         if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
         working-directory: vscode-extension
         run: xvfb-run -a npm run test:electron
+
+  serve-web-bundle:
+    name: Serve Web Components
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # `cli/serve-web/`'s bundle is COMMITTED (to `cli/src/main/resources/.../serve/assets/
+      # serve-components.js`) so the Gradle build and the release chain stay node-free. The cost of
+      # a committed artifact is that it goes stale silently: edit a component, forget `npm run
+      # build`, and `:cli:test` and every shipped tarball keep serving the old behaviour while the
+      # source review says otherwise. This job is what makes that impossible — `npm run verify`
+      # typechecks, runs the component tests, rebuilds, and fails if the rebuild differs from what
+      # is committed.
+      #
+      # Step-level path filter rather than a trigger `paths:` filter, and the same fail-open diff as
+      # VS Code Extension Tests above: the job always runs so a required check never sticks pending,
+      # and only the npm steps are conditional.
+      - name: Detect serve-web changes
+        id: changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          if ! changed=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" 2>/dev/null); then
+            echo "::warning::Could not diff against base; running Serve Web Components to be safe."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The committed bundle is in the filter too, so a hand-edit of the generated file is
+          # caught even when no source changed — that edit is exactly the drift this guards.
+          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve-components\.js$'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No cli/serve-web/** changes in this PR — skipping the npm steps (this check still reports)."
+          fi
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
+        with:
+          node-version: 20
+      - name: Install dependencies
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
+        working-directory: cli/serve-web
+        run: npm ci
+      - name: Typecheck, test, and assert the committed bundle is current
+        if: ${{ github.event_name != 'pull_request' || steps.changes.outputs.run == 'true' }}
+        working-directory: cli/serve-web
+        run: npm run verify

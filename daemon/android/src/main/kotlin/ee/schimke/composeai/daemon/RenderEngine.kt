@@ -37,6 +37,7 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -208,6 +209,11 @@ class RenderEngine(
      */
     runAccessibility: Boolean? = null,
   ): RenderResult {
+    // The rewritten Compose SlotTable opt-in, applied against the classloader this render composes
+    // on — before its first composition, which is what the runtime latches. The daemon renders many
+    // previews per JVM, so the flag is a whole-session property here rather than a per-request one;
+    // re-applying it per render is idempotent and costs a `getProperty`. Unset (default) is silent.
+    LinkBufferComposer.applyAndDescribe(classLoader)?.let(System.err::println)
     // Issue #1528 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
     // queues `mode=scroll-long` / `scroll-gif`, route into the renderer's scroll handlers
     // (`renderer.handleLongCapture` / `renderer.handleGifCapture`) instead of the default
@@ -2434,6 +2440,7 @@ private fun resolvePreviewInvocation(
     providerClassName = spec.previewParameterProviderClassName,
     limit = spec.previewParameterLimit,
     classLoader = clazz.classLoader,
+    row = spec.previewParameterRow,
   )
 
 /**
@@ -2769,15 +2776,23 @@ data class RenderSpec(
    * for the same reason as [wrapperClassName] — the upstream annotation has
    * `AnnotationRetention.BINARY` and is invisible to `Method.parameterAnnotations` at runtime.
    *
-   * The render body resolves the preview's `(<T>, Composer, int)` overload and invokes it with the
-   * provider's **first** value: the daemon renders one frame per preview id, and these ids are the
-   * un-suffixed base ids the fan-out (standalone) renderer would emit as `<id>_<label>`. Null
-   * resolves the parameterless overload as before. Without this the daemon threw
-   * `NoSuchMethodException` from `getDeclaredComposableMethod` for every parameterized preview,
-   * costing them their PNG and every data product derived from the composition (issue #3027).
+   * The render body resolves the preview's `(<T>, Composer, int)` overload and invokes it with one
+   * of the provider's values: the daemon renders one frame per preview id, and the bare id is the
+   * un-suffixed base id the fan-out (standalone) renderer would emit as `<id>_<label>`, so it binds
+   * value 0 unless [previewParameterRow] names another. Null resolves the parameterless overload as
+   * before. Without this the daemon threw `NoSuchMethodException` from
+   * `getDeclaredComposableMethod` for every parameterized preview, costing them their PNG and every
+   * data product derived from the composition (issue #3027).
    */
   val previewParameterProviderClassName: String? = null,
   val previewParameterLimit: Int = Int.MAX_VALUE,
+  /**
+   * Which `@PreviewParameter` row to bind — a fan-out suffix (`Dark`) or `PARAM_<idx>`, per
+   * [ee.schimke.composeai.renderer.PreviewParameterSupport.resolve]. Set by [PreviewManifestRouter]
+   * when the inbound previewId was row-addressed as `<baseId>_<row>` (issue #3749). Null keeps the
+   * historical "render value 0 under the bare id" contract.
+   */
+  val previewParameterRow: String? = null,
 ) {
 
   enum class SpecUiMode {
@@ -2856,6 +2871,7 @@ data class RenderSpec(
           map["previewParameterProvider"]?.takeIf { it.isNotBlank() },
         previewParameterLimit =
           map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
+        previewParameterRow = map["previewParameterRow"]?.takeIf { it.isNotBlank() },
       )
     }
 

@@ -79,10 +79,12 @@ class DoctorCommand(
 
   /**
    * Version the CLI suggests in remediation messages ("install version X"). Comes from
-   * `--plugin-version` or the CLI's compiled-in default. Distinct from [appliedPluginVersion],
-   * which is what the project actually has on its classpath.
+   * `--plugin-version`, else the project's version pin once [checkVersionPin] has read it, else the
+   * CLI's compiled-in default. Distinct from [appliedPluginVersion], which is what the project
+   * actually has on its classpath — a project can be pinned to one version and still have another
+   * applied, which is exactly the state the pin check exists to surface.
    */
-  private val recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
+  private var recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
 
   /**
    * `--variant <name>` forwarded as `-PcomposePreview.variant=<name>` on the Gradle connection,
@@ -335,6 +337,9 @@ class DoctorCommand(
 
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
+    // Cheap, disk-only, and independent of the Gradle model — so it runs first and still reports
+    // when the model query below fails. A wrong pin is one of the reasons a query fails.
+    checkVersionPin(projectDir)
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val model =
       try {
@@ -592,6 +597,93 @@ class DoctorCommand(
   }
 
   /**
+   * Report the project's compose-preview **version pin** — the one place a project names the
+   * version every entrypoint should use (issue #3738; see [resolveVersionPin]).
+   *
+   * Three outcomes, and none of them is an error:
+   * - **no pin** — `ok`, with the "how to pin" remediation. The zero-config path is legitimate:
+   *   each entrypoint uses its own bundled version, which is fine for a single-machine project.
+   * - **pin matches this CLI** — `ok`, the happy state.
+   * - **pin differs from this CLI** — `warning`. The pinned plugin is what gets injected, but the
+   *   daemon and renderer this CLI ships are stuck at [BUNDLE_VERSION], so across a major (where
+   *   the render/daemon wire format changes — docs/VERSIONING.md § 3) they can genuinely disagree.
+   *   A `-SNAPSHOT` on either side stays `ok`: a local snapshot build driving a pinned project is a
+   *   deliberate development flow, not a misconfiguration.
+   */
+  private fun checkVersionPin(projectDir: File) {
+    val pin = resolveVersionPin(projectDir, args, fileSystem = fileSystem)
+    if (pin == null) {
+      addCheck(
+        DoctorCheck(
+          id = "project.version-pin",
+          category = "project",
+          status = "ok",
+          message = "no version pin (each entrypoint uses its own bundled version)",
+          detail =
+            "This CLI is $BUNDLE_VERSION. Pin the project so the CLI, the VS Code extension and " +
+              "the install / apply GitHub actions all drive the same release.",
+          remediation =
+            DoctorRemediation(
+              summary = "Pin the compose-preview version for every entrypoint",
+              commands = listOf("compose-preview pin --cli"),
+              docs = "https://github.com/$REPO/blob/main/docs/VERSION_PIN.md",
+            ),
+        )
+      )
+      return
+    }
+    // Remediation snippets elsewhere in the report ("apply the plugin with version X") should name
+    // the version the project has actually chosen, not this CLI's build.
+    recommendedPluginVersion = pin.version
+    val snapshot = pin.version.endsWith("-SNAPSHOT") || BUNDLE_VERSION.endsWith("-SNAPSHOT")
+    val skew = pin.version != BUNDLE_VERSION && !snapshot
+    val incompatible = skew && versionsIncompatible(pin.version, BUNDLE_VERSION)
+    addCheck(
+      DoctorCheck(
+        id = "project.version-pin",
+        category = "project",
+        status = if (skew) "warning" else "ok",
+        message =
+          if (skew) "pinned to ${pin.version}, but this CLI is $BUNDLE_VERSION"
+          else "pinned to ${pin.version}",
+        detail =
+          buildString {
+            append("Pin source: ${pin.source.display}. ")
+            if (skew) {
+              append(
+                "The pinned plugin version is what gets injected, but the daemon and renderer " +
+                  "this CLI ships are $BUNDLE_VERSION. "
+              )
+              if (incompatible) {
+                append(
+                  "Those are different major versions — the render/daemon wire format differs " +
+                    "across a major, so they can fail to render or misbehave. "
+                )
+              }
+              append("Align the CLI with the pin, or re-pin to this CLI.")
+            } else {
+              append("The CLI matches the pin.")
+            }
+          },
+        remediation =
+          if (skew)
+            DoctorRemediation(
+              summary = "Align the CLI and the project pin",
+              commands =
+                listOf(
+                  "# move the CLI to the pinned version:",
+                  "compose-preview update ${pin.version}",
+                  "# …or re-pin the project to this CLI:",
+                  "compose-preview pin --cli",
+                ),
+              docs = "https://github.com/$REPO/blob/main/docs/VERSION_PIN.md",
+            )
+          else null,
+      )
+    )
+  }
+
+  /**
    * Warn when the Gradle daemon's JVM is past [AGP_JDK_CEILING] and any module on this project
    * applies AGP. Motivated by issue #1544: AGP's `JdkImageTransform` invokes the daemon JDK's
    * `jlink` to materialise `android.jar`'s system modules, and on JDK 26 that has been reported
@@ -659,19 +751,62 @@ class DoctorCommand(
   private fun checkDesktopNatives(modules: Map<String, ModuleInfo>) {
     val desktopModules = modules.filterValues { rendersThroughSkiko(it) }
     if (desktopModules.isEmpty()) return
-    val result =
+
+    // Evaluate against every JVM a render could actually fork into, not just the daemon's. A module
+    // whose render task carries its own launcher (a raised render JDK, or an explicit
+    // `composePreview.renderJavaVersion`) is the case that matters most here: store libraries on
+    // the path of a *system* JDK is the mixed-glibc trap, and reading the daemon's `java.home`
+    // instead would report a Nix daemon as healthy while the render dies (issue #3690).
+    // Per module: its own launcher when the model reports one, the daemon only as *that module's*
+    // fallback. Adding the daemon unconditionally would judge a JVM nothing renders on — and since
+    // the worst verdict wins below, an unused daemon that cannot resolve a library would fail
+    // doctor for a project whose every render is fine.
+    val candidates =
+      desktopModules.values
+        .map { it.renderPreviewsTask?.javaLauncherPath ?: daemonJavaHome }
+        .distinct()
+        .ifEmpty { listOf(null) }
+    val canonicalize = { path: String ->
+      runCatching { File(path).canonicalPath }.getOrDefault(path)
+    }
+    val results = candidates.map { javaHome ->
       DesktopNativesCheck.evaluateDesktopNatives(
         osName = System.getProperty("os.name") ?: "",
-        renderJavaHome = daemonJavaHome,
+        renderJavaHome = javaHome,
         ldLibraryPath = System.getenv("LD_LIBRARY_PATH"),
         exists = { path -> File(path).exists() },
+        // Resolved through symlinks so a store lib dir reached via a link farm
+        // (`~/.cache/coo-ee/desktop-gl/lib`, `~/.nix-profile/lib`) is still recognised as one.
+        canonicalize = canonicalize,
       )
+    }
+    // The worst verdict wins: one render JVM that cannot load skiko breaks that module's previews
+    // regardless of how healthy the others look. Ranked by severity rather than by "first not-ok",
+    // because the candidates are ordered by where they came from — so an earlier candidate's
+    // warning would otherwise hide a later one whose renders cannot work at all, and warnings exit
+    // 0. Same order [DesktopNativesCheck.interpret] uses, so the selected result and the status it
+    // is reported under agree.
+    val result =
+      results.firstOrNull { it.missing.isNotEmpty() }
+        ?: results.firstOrNull { !it.ok }
+        ?: results.first()
+
     val check = DesktopNativesCheck.interpret(result, inClaudeCloud = inClaudeCloud)
     addCheck(
       check.copy(
         detail =
           listOfNotNull(
               check.detail,
+              "evaluated against ${result.renderJavaHome ?: "an unknown JVM"}" +
+                if (candidates.size > 1) " (of ${candidates.size} candidate render JVMs)" else "",
+              // The desktop render task is not a `Test`, so the Tooling model does not report its
+              // launcher: a CMP module that pins `composePreview.renderJavaVersion` is invisible
+              // here. Only worth saying where it could change the answer — a store daemon with
+              // store libraries on the path, which is exactly the healthy-looking configuration
+              // that a pinned system render JDK turns into the #3690 failure.
+              "a CMP module pinning composePreview.renderJavaVersion is not visible to this check; " +
+                "the render task prunes store dirs for such a JVM itself"
+                  .takeIf { !result.loaderReadsSystemCache && result.storeDirsOnPath.isNotEmpty() },
               "affects ${desktopModules.size} CMP/Desktop module(s): ${desktopModules.keys.joinToString(", ")}",
             )
             .joinToString(". ")

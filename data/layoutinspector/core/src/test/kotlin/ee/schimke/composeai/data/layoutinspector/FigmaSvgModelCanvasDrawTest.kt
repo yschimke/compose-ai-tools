@@ -59,6 +59,96 @@ class FigmaSvgModelCanvasDrawTest {
   }
 
   @Test
+  fun delegatedDrawNodeWithoutAnInspectableDrawLambdaStillUsesAFrameCrop() {
+    // A custom Modifier.NodeElement can delegate to CacheDrawModifierNode without exposing an
+    // inspectable `drawWithCache` element. The live node-chain capability is then the only evidence
+    // that this otherwise-empty Spacer paints (Material 3's wavy progress indicators).
+    val node =
+      LayoutInspectorNode(
+        nodeId = "delegated-draw",
+        component = "Spacer",
+        bounds = bounds(3, 5, 103, 45),
+        size = LayoutInspectorSize(100, 40),
+        drawsContent = true,
+      )
+
+    val m = model(node, captureCanvasDraws = true)
+
+    assertEquals("one full-node raster target", 1, m.rasterTargets.size)
+    val target = m.rasterTargets.single()
+    assertEquals(3, target.left)
+    assertEquals(5, target.top)
+    assertEquals(103, target.right)
+    assertEquals(45, target.bottom)
+    assertNotNull("the delegated draw survives as a background image", m.root.background)
+  }
+
+  @Test
+  fun aDelegatedDrawIsNotSuppressedByATokenThatPaintsNothing() {
+    // A token that exists is not a token that paints. A fully transparent border (a `Switch`
+    // on-track carries `borderColor` at alpha 0) is dropped when the stroke is built, so counting
+    // its presence as "this node has content" leaves the node with no stroke AND no raster — an
+    // empty layer where the delegated pixels were.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "delegated-draw",
+        component = "Spacer",
+        bounds = bounds(3, 5, 103, 45),
+        size = LayoutInspectorSize(100, 40),
+        drawsContent = true,
+        tokens = ComposeSemanticsTokens(borderColor = "#00000000"),
+      )
+
+    val m = model(node, captureCanvasDraws = true)
+
+    assertEquals("the invisible border must not suppress the raster", 1, m.rasterTargets.size)
+    assertNotNull("the delegated draw survives as a background image", m.root.background)
+  }
+
+  @Test
+  fun aDelegatedDrawIsNotSuppressedByAFullyTransparentGradient() {
+    // Same rule, applied to gradients: a gradient whose every stop is transparent paints exactly as
+    // much as no gradient at all, so it must not stand in for the delegated pixels either.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "delegated-draw",
+        component = "Spacer",
+        bounds = bounds(3, 5, 103, 45),
+        size = LayoutInspectorSize(100, 40),
+        drawsContent = true,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#00000000", "#00FFFFFF"))
+          ),
+      )
+
+    val m = model(node, captureCanvasDraws = true)
+
+    assertEquals("the invisible gradient must not suppress the raster", 1, m.rasterTargets.size)
+    assertNotNull("the delegated draw survives as a background image", m.root.background)
+  }
+
+  @Test
+  fun aVisibleTokenStillKeepsTheNodeVector() {
+    // The other side of the same line: a border that does paint is content the vector model can
+    // represent, so the node stays a vector layer and nothing is cropped from the frame.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "bordered",
+        component = "Spacer",
+        bounds = bounds(3, 5, 103, 45),
+        size = LayoutInspectorSize(100, 40),
+        drawsContent = true,
+        tokens = ComposeSemanticsTokens(borderColor = "#FF6750A4"),
+      )
+
+    val m = model(node, captureCanvasDraws = true)
+
+    assertTrue("a painting border keeps the node vector", m.rasterTargets.isEmpty())
+    assertNull("no frame crop for a representable node", m.root.background)
+  }
+
+  @Test
   fun aBackgroundOnlyLeafStillCountsAsPaintingSoItContributesExtent() {
     // A draw-only Spacer paints nothing but its background raster; `paints` must see the background
     // or the layer contributes no extent and the export falls back to the 32×32 padding canvas.

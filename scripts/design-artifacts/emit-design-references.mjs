@@ -88,6 +88,24 @@ const warn = (message) => {
   console.log(`::warning::design-references: ${message}`);
 };
 
+// Coverage notes: everything a SECONDARY reference has to say. Kept out of [warnings] because
+// `--strict` gates on those, and the primary/secondary contract is that a variant cell can go
+// missing without failing the export — otherwise one unrenderable size cell costs the catalog every
+// reference it did resolve, which is the trade this lane was capped by to begin with.
+const notes = [];
+const note = (message) => {
+  notes.push(message);
+  console.log(`design-references: note: ${message}`);
+};
+
+/**
+ * Report something about ONE record, routed by its tier: a primary's trouble is a warning the
+ * export can be gated on, a secondary's is a note. Every per-record report goes through here so the
+ * routing cannot be forgotten at one call site and silently re-gate the run.
+ */
+const warnFor = (record, message) =>
+  record?.tier === "secondary" ? note(message) : warn(message);
+
 function readJson(file, { comments = false } = {}) {
   const text = fs.readFileSync(file, "utf8");
   return JSON.parse(comments ? stripComments(text) : text);
@@ -130,8 +148,18 @@ if (drift.length > 0) {
   process.exit(1);
 }
 
-const { records, warnings: planWarnings } = planDesignReferences({ designMap, spec, catalog });
+const {
+  records,
+  warnings: planWarnings,
+  notes: planNotes,
+} = planDesignReferences({ designMap, spec, catalog });
 planWarnings.forEach(warn);
+// Secondary-coverage observations. Printed, never counted as warnings: `--strict` exists to stop a
+// catalog publishing a WRONG primary, and a size cell the kit has no node for is neither wrong nor
+// the component's problem. Failing the export over one would cost the catalog every reference it
+// did resolve, which is the trade that capped this lane at one reference per component to begin
+// with.
+planNotes.forEach(note);
 
 if (records.length === 0) {
   console.log("design-references: no design-map entry maps to a published sticker; nothing to do");
@@ -233,14 +261,14 @@ async function sourceRaster(record) {
   if (typeof ref === "string" && ref.toLowerCase().endsWith(".png")) {
     const file = path.resolve(REPO, ref);
     if (fs.existsSync(file)) return readPng(file);
-    warn(`${record.id}: committed PNG ${ref} is missing`);
+    warnFor(record, `${record.id}: committed PNG ${ref} is missing`);
     return null;
   }
 
   if (typeof ref === "string" && ref.toLowerCase().endsWith(".html")) {
     const file = path.resolve(REPO, ref);
     if (!fs.existsSync(file)) {
-      warn(`${record.id}: HTML reference ${ref} is missing`);
+      warnFor(record, `${record.id}: HTML reference ${ref} is missing`);
       return null;
     }
     return rasterizeHtml(file, target);
@@ -248,13 +276,13 @@ async function sourceRaster(record) {
 
   if (parseFigmaRef(ref)) {
     if (!FIGMA_TOKEN) {
-      warn(`${record.id}: skipping figma reference ${ref} — no FIGMA_TOKEN in this run`);
+      warnFor(record, `${record.id}: skipping figma reference ${ref} — no FIGMA_TOKEN in this run`);
       return null;
     }
     return figmaRasterizerFor(referenceContentsOnly(record)).rasterize(ref, target);
   }
 
-  warn(`${record.id}: don't know how to rasterise a '${source}' reference from '${ref}'`);
+  warnFor(record, `${record.id}: don't know how to rasterise a '${source}' reference from '${ref}'`);
   return null;
 }
 
@@ -286,7 +314,7 @@ function referenceDensity(record) {
   const density = record.origin?.density;
   if (density === undefined) return undefined;
   if (typeof density !== "number" || !Number.isFinite(density) || density <= 0) {
-    warn(`${record.id}: ignoring density '${density}' — it must be a positive number`);
+    warnFor(record, `${record.id}: ignoring density '${density}' — it must be a positive number`);
     return undefined;
   }
   return density;
@@ -317,7 +345,7 @@ for (const record of records) {
   try {
     raster = await sourceRaster(record);
   } catch (error) {
-    warn(`${record.id}: ${error.message}`);
+    warnFor(record, `${record.id}: ${error.message}`);
     raster = null;
   }
   if (!raster) {
@@ -353,7 +381,7 @@ for (const record of records) {
       const message =
         `${record.id}: placing density-matched reference ${raster.width}x${raster.height} ` +
         `on ${target.width}x${target.height} canvas`;
-      if (reduced) warn(`${message} (too large; reduced to fit)`);
+      if (reduced) warnFor(record, `${message} (too large; reduced to fit)`);
       else console.log(`design-references: ${message}`);
       raster = { width: target.width, height: target.height, data: placed.data };
     } else {
@@ -377,7 +405,8 @@ for (const record of records) {
         const fitted = fitRgba(raster.data, raster.width, raster.height, target.width, target.height);
         placement = fitted.box;
         if (fitted.box.width !== target.width || fitted.box.height !== target.height) {
-          warn(
+          warnFor(
+            record,
             `${message} (letterboxed to ${fitted.box.width}x${fitted.box.height} — the reference's ` +
               `proportions differ from the sticker's)`,
           );
@@ -443,10 +472,26 @@ fs.writeFileSync(
 
 writeReferenceAnnotations();
 
+// Report the two lanes separately. A run that publishes 78 primaries and 300 secondaries has very
+// different coverage from one that publishes 78 and none, and the single total hid that.
+const tallyOf = (tier) => {
+  const of = records.filter((r) => r.tier === tier);
+  return { planned: of.length, published: of.filter((r) => r.rastered !== false).length };
+};
+const primary = tallyOf("primary");
+const secondary = tallyOf("secondary");
 console.log(
   `design-references: published ${written}/${records.length} reference(s) to ` +
-    `${REFERENCES_DIR}/ (${warnings.length} warning(s))`,
+    `${REFERENCES_DIR}/ — ${primary.published}/${primary.planned} primary, ` +
+    `${secondary.published}/${secondary.planned} secondary ` +
+    `(${warnings.length} warning(s), ${notes.length} coverage note(s))`,
 );
+if (secondary.planned === 0 && records.length > 0) {
+  console.log(
+    "design-references: no secondary references — every design-map entry binds a single " +
+      "scalar ref, so only each component's default render has a spec to diff against.",
+  );
+}
 
 if (written === 0) {
   // Nothing to serve: leave no half-empty directory behind for the branch to carry.

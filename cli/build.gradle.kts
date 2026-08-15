@@ -7,11 +7,13 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.ClasspathNormalizer
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
+import org.gradle.process.CommandLineArgumentProvider
 
 plugins {
   id("composeai.base-conventions")
@@ -138,6 +140,21 @@ val composePreviewBta =
     isCanBeConsumed = false
   }
 
+// Sidecar configuration carrying `:usage-source-psi` — the Kotlin *parser* behind the usage
+// cleaner.
+// Same isolation story as `lib-bta/` above, and loaded together with it: the analyzer needs a
+// frontend, and the frontend must never be on the CLI's own classpath. Resolved into
+// `cli/build/install/compose-preview/lib-usage-psi/`, located at runtime via
+// `APP_HOME/lib-usage-psi/` (or `-Dcomposeai.cli.libUsagePsiDir`).
+//
+// Just this module's jar: `:usage-source-psi` declares the frontend `compileOnly`, so its runtime
+// closure is the Kotlin stdlib the CLI already ships, and the compiler jars ride in `lib-bta/`.
+val composePreviewUsagePsi =
+  configurations.create("composePreviewUsagePsi") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
   // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
   // `composePreviewBta` configuration above). `kotlin-build-tools-impl` pulls
@@ -150,12 +167,24 @@ dependencies {
     "composePreviewBta",
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
   )
+  add("composePreviewUsagePsi", project(":usage-source-psi"))
   // BTA *interfaces only* — the CLI references `BtaCompileSession`'s build-tools-api parameter
   // types
   // (`CompilerPlugin`, `KotlinLogger`, `SourcesChanges`) to drive an in-process playground compile.
   // `:daemon:core` declares this as `implementation`, so it isn't transitive; the impl JARs ride in
   // `lib-bta/`, not here.
   implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
+
+  // SPIKE, test-only: the Kotlin frontend, for `PsiParseSpikeTest` to measure whether a
+  // *parse-only*
+  // PSI pass is cheap enough to replace the cleaner's text passes. Deliberately
+  // `testImplementation`
+  // and nothing else — the CLI's own runtime classpath must stay free of the frontend (see the
+  // `lib-bta/` note above). If the spike says yes, the real change loads these jars through the
+  // existing isolated `lib-bta/` classloader, not from here.
+  testImplementation(
+    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}"
+  )
 
   // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
   // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
@@ -201,6 +230,8 @@ dependencies {
   // WebSockets plugin: the `serve` streamed-frame lane (`/ws/{id}`) — tier-2 streaming spike.
   implementation(libs.ktor.server.websockets)
   implementation(libs.ktor.server.compression)
+  // HEAD answers GET across the whole site — the probe link unfurlers send before downloading.
+  implementation(libs.ktor.server.auto.head.response)
 
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
@@ -418,6 +449,7 @@ distributions {
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
+      into("lib-usage-psi") { from(composePreviewUsagePsi) }
       // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
       into("rc-player-wasm") { from(rcPlayerWasmDist) }
     }
@@ -439,7 +471,52 @@ tasks.register<Zip>("packageAndroidDaemon") {
   into("lib-daemon-android") { from(stageDaemonAndroidLibs) }
 }
 
-tasks.withType<Test>().configureEach { useJUnitPlatform() }
+tasks.withType<Test>().configureEach {
+  useJUnitPlatform()
+  // Catalog checkouts for the usage-snippet corpus (UsageSnippetCorpusTest). Absent by default, so
+  // the corpus is a no-op in a normal build; `scripts/usage-corpus.sh` supplies them. Forwarded
+  // rather than read from the environment so the paths show up in the build's own inputs.
+  // `repos` is one property carrying every checkout as `name=path,name=path`, rather than one
+  // forwarded key per catalog: a fixed key list silently ignores any checkout not named in it, so
+  // adding a third catalog would have produced an empty corpus and a passing run.
+  for (key in
+    listOf(
+      "composeai.usageCorpus.repos",
+      "composeai.usageCorpus.out",
+      "composeai.usageCorpus.samples",
+    )) {
+    providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
+  }
+
+  // The BTA jars, handed to `PsiParseSpikeTest` so its isolated-classloader check runs in an
+  // ordinary `:cli:test`. It used to look for the *installed* `lib-bta/`, which `test` does not
+  // stage — so on a clean checkout the one test of the proposed deployment route skipped silently,
+  // and a broken reflective signature would have passed CI. Same artifacts the install stages,
+  // taken straight from the configuration.
+  //
+  // Through a `CommandLineArgumentProvider` (resolved at execution time, declared as an input) so
+  // the configuration cache stays valid rather than resolving a configuration at configuration
+  // time.
+  val btaJars = composePreviewBta.incoming.files
+  inputs.files(btaJars).withPropertyName("libBtaJars").withNormalizer(ClasspathNormalizer::class)
+  // And `:usage-source-psi` beside them, so `PlaygroundSourceCleaner` takes its **parsed** path
+  // under test instead of silently falling back to the text passes — which would leave the
+  // parser-backed rewrite, the whole point of the change, with no coverage at all.
+  val usagePsiJars = composePreviewUsagePsi.incoming.files
+  inputs
+    .files(usagePsiJars)
+    .withPropertyName("libUsagePsiJars")
+    .withNormalizer(ClasspathNormalizer::class)
+  jvmArgumentProviders.add(
+    CommandLineArgumentProvider {
+      listOf(
+        "-Dcomposeai.libBtaJars=" + btaJars.joinToString(File.pathSeparator) { it.absolutePath },
+        "-Dcomposeai.usagePsi.jars=" +
+          (usagePsiJars + btaJars).joinToString(File.pathSeparator) { it.absolutePath },
+      )
+    }
+  )
+}
 
 abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {
   @get:Classpath abstract val runtimeClasspath: ConfigurableFileCollection

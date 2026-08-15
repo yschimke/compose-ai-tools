@@ -187,8 +187,8 @@ no-op.
 {
   frameStreamId: string;
   kind: 'click' | 'pointerDown' | 'pointerUp' | 'keyDown' | 'keyUp';
-  // Image-natural pixel coordinates. Daemon translates to dp using the
-  // last render's density. Null for keyboard events.
+  // Image-natural physical pixels, dispatched without density conversion.
+  // Null for keyboard events.
   pixelX?: number;
   pixelY?: number;
   // For 'keyDown'/'keyUp' only.
@@ -342,6 +342,100 @@ Hz on Skiko) without dropping events.
 
 `pointerMove` events specifically should also be coalesced
 intra-batch — keep only the most recent move at any pixel.
+
+## 9.7 A press is settled with a render before the next event
+
+Every `pointerDown` (and the press half of a `click`) is followed by one
+`scene.render()` **inside the dispatch**, before the call returns —
+`ScenePointerDispatch.press` owns this, so the live lane, the click
+fast-path and scripted recording playback all get it.
+
+Compose's gesture detectors are coroutines suspended in
+`awaitPointerEventScope`; a press only *becomes* the anchor of a gesture
+once that coroutine has run. Dispatching the next event into the same
+scene touch hands Compose a pointer whose down it has not processed yet.
+
+That is not a theoretical window — it is the normal shape of a browser
+drag. The viewer defers the press until the first `pointermove` (so a tap
+stays a click), then sends `pointerDown` and `pointerMove` back to back
+in the same tick. Without the settling render a text field's
+mouse-selection observer never receives `onStart(pressPosition)`, so the
+drag extends from wherever the caret already was instead of from the
+press — and when the drag ends past the end of the text, that range is
+empty and no selection is painted at all (issue #3697). Tap detection has
+the same exposure, which is why the click path already rendered between
+its press and release by hand.
+
+The settling frame goes through `RenderEngine.renderSettlingFrame`, not
+`scene.render` directly: it composes whatever the press invalidated, so
+it carries the same `localeTag` JVM-default-`Locale` scope the capture
+frames run under (`rememberResourceEnvironment` caches what it resolves,
+and a `stringResource(...)` first resolved at the host default is not
+re-resolved by the capture that follows), and it closes the snapshot it
+allocates instead of leaving native Skia memory to a cleaner.
+
+## 9.8 The `localeTag` scope is a process-wide reader/writer gate
+
+Applying `localeTag` means moving the **process-global** JVM default
+`Locale`: CMP `stringResource(...)` resolves through
+`androidx.compose.ui.text.intl.Locale.current`, which on desktop reads
+that default. One-shot renders are safe by construction — `DesktopHost`
+funnels them through its single `compose-ai-daemon-host` thread — but
+**held sessions are not**: each interactive session composes on its own
+`compose-ai-daemon-interactive-scene-<previewId>` executor, and recording
+sessions on their own playback / live-tick threads.
+
+Every locale-scoped region therefore goes through
+`RenderEngine.withPreviewLocale` — `setUp`, `renderOnce`,
+`driveStaticScrollToEnd`, `renderSettlingFrame` — which gates them on one
+static `ReentrantReadWriteLock` (issue #3721). The polarity is inverted
+from the usual intuition, and that inversion is the point:
+
+- a render with **no** locale override is a **reader**. It doesn't touch
+  the global, it only depends on it staying put, so any number run
+  concurrently and the cost is one uncontended acquire per frame.
+- a render **with** an override is a **writer**, and excludes everyone.
+
+Three constraints hold this together:
+
+- The lock is **static**, because the thing it guards is. A daemon (or a
+  test) can hold several `RenderEngine`s against one JVM.
+- It is **fair**, because unlocalized readers never stop arriving on a
+  busy multi-seat serve and would otherwise starve a localized writer.
+- It is taken **on the composing thread only, never around a cross-thread
+  wait** — held sessions reach the engine through `submit(...).get()`, so
+  a lock held on the calling side of that wait deadlocks against the
+  executor thread that needs it. `withPreviewLocale` also rejects a
+  read→write upgrade outright, since `ReentrantReadWriteLock` would hang
+  rather than fail on one.
+
+Adding a fifth region that moves the locale without going through
+`withPreviewLocale` reopens the bug; guarding only some of them is worse
+than guarding none, because it looks handled.
+
+**The gate cannot be narrowed by plumbing the locale through the
+composition**, which is the obvious-looking alternative and was the open
+question on #3721. CMP *resource* resolution does have a per-composition
+lever (`LocalComposeEnvironment`, public since 1.11.1), but it is not the
+only consumer of the global. Material resolves **its own** strings on a
+separate path — `androidx.compose.material3.internal.getString` reads
+`Locale.current` (the JVM default) from inside a composable that never
+consults its own `Composer` — against the 75 locale bundles
+`material3-desktop` ships in `androidx/compose/material3/l10n/`. So every
+built-in Material string a preview draws follows the process global, with
+no composition-scoped lever at any version. `material3`'s date-picker
+descriptions additionally use `String.format` with no `Locale`, reading
+`Locale.getDefault(Category.FORMAT)` — a *different* global that no
+composition local can reach at all.
+
+`MaterialBuiltInStringsLocaleTest` pins all three facts: that Material's
+own strings follow the JVM default (the positive control), that providing
+`LocalLocaleList` does **not** reach them while that provide demonstrably
+applies (the canary — it turns red the day upstream wires the local into
+text resolution, and says so in its failure message), and that a
+`localeTag` render localizes them end to end. The full sink inventory,
+across 6,373 classes of the pinned desktop artifacts, is in
+[yschimke/m3-catalog#54](https://github.com/yschimke/m3-catalog/issues/54).
 
 ## 9.10 v3 Android pointer
 

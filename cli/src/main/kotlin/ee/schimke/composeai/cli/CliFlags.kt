@@ -53,6 +53,9 @@ internal object CliFlags {
       "--permutations",
       "--missing-renders",
       "--variant",
+      // Preview *reference* selector. Read by `record` and `history` from the start, and since
+      // #3744 by every command that selects previews (render / show / list / show-resources /
+      // a11y / render-matrix / serve) — see `previewMatchesReference`.
       "--preview",
       "--script",
       "--out",
@@ -86,6 +89,7 @@ internal object CliFlags {
       "--catalogs",
       "--catalogs-unlisted",
       "--catalogs-file",
+      "--sites",
       "--admin-token",
       "--engagement-file",
       "--github-auth-client-id",
@@ -122,6 +126,7 @@ internal object CliFlags {
       "--agent",
       "--antigravity-config",
       "--baseline-dir",
+      "--baselines",
       "--codex-config",
       "--commit",
       "--cursor",
@@ -130,6 +135,8 @@ internal object CliFlags {
       "--mode",
       "--project",
       "--ref",
+      "--repo",
+      "--replicas-per-daemon",
       "--since",
       "--source",
       "--title",
@@ -158,7 +165,8 @@ internal object CliFlags {
    * the following token. Listed only so `CliFlagsRegistryTest` can tell them apart from a missing
    * [VALUE_FLAGS] entry — they are intentionally excluded from command-detection skipping.
    */
-  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> = setOf("--images", "--exit-when-idle")
+  val ATTACHED_OR_OPTIONAL_FLAGS: Set<String> =
+    setOf("--images", "--exit-when-idle", "--contact-sheet", "--cells-dir")
 
   /**
    * The first positional token in [args] — the bare token that isn't the value of a value-consuming

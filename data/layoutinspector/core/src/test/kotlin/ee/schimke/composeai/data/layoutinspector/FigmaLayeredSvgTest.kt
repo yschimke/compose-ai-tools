@@ -1,6 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
 import java.io.ByteArrayInputStream
+import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -368,6 +369,41 @@ class FigmaLayeredSvgTest {
     val svg = render(node)
 
     assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 1)""""))
+  }
+
+  @Test
+  fun drawCapturedVectorRetainsAnAxisMirror() {
+    // Material 3 implements a bottom-to-top VerticalSlider track by drawing in its normal local
+    // coordinates through `scale(1f, -1f)`. Bounds retain the same axis-aligned box, so only the
+    // signed captured transform distinguishes the intended mirror from an ordinary track.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "vertical-track",
+        component = "Spacer",
+        bounds = bounds(10, 20, 52, 938),
+        size = LayoutInspectorSize(42, 918),
+        transform = LayoutInspectorTransform(scaleX = 1f, scaleY = -1f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 42f,
+            viewportHeight = 918f,
+            fromDrawCapture = true,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L42,0 L42,918 L0,918 Z",
+                  fillArgb = "#FF6750A4",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(
+      "the origin moves to the bottom edge before the negative Y scale\n$svg",
+      svg.contains("""transform="translate(10 938) scale(1 -1)""""),
+    )
   }
 
   /**
@@ -2234,6 +2270,66 @@ class FigmaLayeredSvgTest {
 
     assertTrue(svg.contains(">Visible modifier</text>"))
     assertFalse(svg.contains("Accessibility copy"))
+  }
+
+  @Test
+  fun accessibilityOnlyParentTextIsNotPaintedOverVisualChild() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        200,
+        100,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              20,
+              20,
+              80,
+              80,
+              children =
+                listOf(
+                  layoutNode(
+                    "Text",
+                    38,
+                    30,
+                    62,
+                    70,
+                    modifiers =
+                      listOf(
+                        LayoutInspectorModifier(
+                          name = "text",
+                          properties = mapOf("layoutText" to "17", "layoutTextFontSizePx" to "24"),
+                        )
+                      ),
+                  )
+                ),
+            )
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "date-cell",
+              boundsInRoot = "20,20,80,80",
+              text = "Start date, Thursday, August 17, 2023",
+              mergeMode = "clearAndSet",
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    val evidenceDir = File("build/figma-svg-datepicker").apply { mkdirs() }
+    File(evidenceDir, "date-cell.svg").writeText(svg)
+
+    assertTrue(svg.contains(">17</text>"))
+    assertFalse(svg.contains("Start date, Thursday, August 17, 2023"))
   }
 
   /**

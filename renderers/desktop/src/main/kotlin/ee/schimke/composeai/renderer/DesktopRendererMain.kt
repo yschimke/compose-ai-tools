@@ -22,6 +22,7 @@ import ee.schimke.composeai.daemon.DeviceFrameConfig
 import ee.schimke.composeai.daemon.DeviceFrameDataProducer
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.preview.svg.SvgPreview
@@ -85,6 +86,15 @@ import org.jetbrains.skia.EncodedImageFormat
  * `compose-preview serve` produces for the same size override — letting a component be captured as
  * it would appear constrained to e.g. a list column.
  *
+ * Args 33–38 (indices 32–37) carry `@FocusedPreview` per-capture drive (issue #3672):
+ * `focusTabIndex` (indexed mode, `-1`/blank when absent), `focusDirections` (traversal mode: a
+ * `|`-joined list of every step up to and including this capture's, replayed in order) +
+ * `focusStep`, `focusEnterPlacesFocus`, `focusPressed`, `focusOverlay`. When either mode is present
+ * the capture leaves the [ImageComposeScene] path for [renderFocusPreview], which walks focus with
+ * a real `FocusManager.moveFocus(...)` traversal under a synthetic keyboard input mode and — for
+ * `focusPressed` — dispatches a real pointer down onto the focused element. Omitted by older
+ * plugins, which keeps every capture on the undriven path.
+ *
  * Args 15–18 carry `@ScrollingPreview` intent. When [scrollMode] is `"LONG"` or `"GIF"` the
  * renderer leaves the [ImageComposeScene] path and dispatches to [renderScrollPreview] (which uses
  * `runComposeUiTest` for paused-clock + semantic scroll). `"TOP"` / `"END"` / empty are handled by
@@ -95,6 +105,12 @@ import org.jetbrains.skia.EncodedImageFormat
  * default).
  */
 fun main(args: Array<String>) {
+  // Before anything composes — including before the pooled worker's *first* request draws a frame,
+  // since a worker calls this same `main()` per capture and the runtime latches the flag at the
+  // first composition. Idempotent, so every subsequent pooled capture re-applies the same value for
+  // free. Unset (the default) makes this a single `getProperty` and no notice at all.
+  LinkBufferComposer.applyAndDescribe()?.let(System.err::println)
+
   if (args.size < 8) {
     System.err.println(
       "Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit] [localeTag] [scrollMode] [scrollAxis] [scrollMaxScrollPx] [scrollFrameIntervalMs]"
@@ -213,6 +229,50 @@ fun main(args: Array<String>) {
   val minHeightPx = args.getOrNull(29)?.toIntOrNull()?.takeIf { it > 0 }
   val maxWidthPx = args.getOrNull(30)?.toIntOrNull()?.takeIf { it > 0 }
   val maxHeightPx = args.getOrNull(31)?.toIntOrNull()?.takeIf { it > 0 }
+  // Args 33–38 (indices 32–37) — `@FocusedPreview` per-capture drive (issue #3672). All absent /
+  // blank on a preview without the annotation, which is what keeps every existing capture on the
+  // untouched [renderPreview] path. Indexed mode carries `focusTabIndex >= 0`; traversal mode
+  // carries `focusDirection` (+ its 1-based `focusStep` for the overlay label). Both empty means
+  // "no focus intent" even if a later flag is set, so a garbled tail degrades to the old
+  // behaviour rather than driving a walk nobody asked for.
+  val focusTabIndex = args.getOrNull(32)?.toIntOrNull()?.takeIf { it >= 0 }
+  // `|`-joined traversal directions — every step from 1 up to and including the one this capture
+  // documents, so the walk can be replayed from scratch in this capture's own scene (the desktop
+  // renderer composes one scene per capture; see [DesktopFocusIntent.directions]). A single-step
+  // traversal is just a one-element list.
+  val focusDirections =
+    args
+      .getOrNull(33)
+      ?.split('|')
+      .orEmpty()
+      .filter { it.isNotBlank() }
+      .mapNotNull { name ->
+        ee.schimke.composeai.daemon.protocol.FocusDirection.entries.firstOrNull {
+          it.name.equals(name, ignoreCase = true)
+        }
+      }
+  val focusStep = args.getOrNull(34)?.toIntOrNull()?.takeIf { it > 0 }
+  val focusEnterPlacesFocus = args.getOrNull(35)?.toBoolean() ?: false
+  val focusPressed = args.getOrNull(36)?.toBoolean() ?: false
+  val focusOverlay = args.getOrNull(37)?.toBoolean() ?: false
+  val focusIntent: DesktopFocusIntent? =
+    when {
+      focusDirections.isNotEmpty() ->
+        DesktopFocusIntent(
+          directions = focusDirections,
+          step = focusStep,
+          pressed = focusPressed,
+          overlay = focusOverlay,
+        )
+      focusTabIndex != null ->
+        DesktopFocusIntent(
+          tabIndex = focusTabIndex,
+          enterPlacesFocus = focusEnterPlacesFocus,
+          pressed = focusPressed,
+          overlay = focusOverlay,
+        )
+      else -> null
+    }
   // `@OverrideVariant` seed for a synthetic variant preview, forwarded by RenderPreviewsTask as the
   // `composeai.overrides.seed` per-render system property (the desktop subprocess has no manifest
   // to
@@ -415,6 +475,76 @@ fun main(args: Array<String>) {
           showCurves = animShowCurves,
           fontScale = fontScale,
         )
+      } else if (
+        focusIntent != null &&
+          scrollDispatchMode != DesktopScrollMode.LONG &&
+          scrollDispatchMode != DesktopScrollMode.GIF
+      ) {
+        // `@FocusedPreview` — walk focus with a real `FocusManager.moveFocus(...)` traversal (and,
+        // for `pressed = true`, dispatch a real pointer down onto the focused element) before
+        // capturing. Declines only when nothing took focus, in which case the undriven capture
+        // below is written so a misuse still produces a file rather than a hole in the sheet — the
+        // same fall-through shape a declined END scroll uses. The renderer prints the decline, so
+        // it isn't silent.
+        //
+        // A capture can carry BOTH intents — discovery crosses the scroll and focus fan-outs — so
+        // the two drives are composed rather than raced: END scrolls first inside the focus path
+        // (see `scrollToEnd`), and LONG / GIF stay with the scroll branch below, because their
+        // product is a stitched strip / animation that a single focused frame cannot stand in for.
+        // Either way no capture is published under a filename naming an intent that never ran.
+        val didCapture =
+          renderFocusPreview(
+            className = className,
+            functionName = functionName,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            density = density,
+            showBackground = showBackground,
+            backgroundColor = backgroundColor,
+            outputFile = targetFile,
+            wrapperClassName = wrapperClassName,
+            wrapWidth = wrapWidth,
+            wrapHeight = wrapHeight,
+            previewArgs = previewArgs,
+            localeTag = localeTag,
+            focus = focusIntent,
+            scrollToEnd = scrollDispatchMode == DesktopScrollMode.END,
+            scrollAxis = scrollAxis,
+            scrollMaxScrollPx = scrollMaxScrollPx,
+            fontScale = fontScale,
+            showSystemUi = showSystemUi,
+            uiMode = uiMode,
+            device = device,
+            minWidthPx = minWidthPx,
+            minHeightPx = minHeightPx,
+            maxWidthPx = maxWidthPx,
+            maxHeightPx = maxHeightPx,
+          )
+        if (!didCapture) {
+          renderPreview(
+            className,
+            functionName,
+            widthPx,
+            heightPx,
+            density,
+            showBackground,
+            backgroundColor,
+            targetFile,
+            wrapperClassName,
+            wrapWidth,
+            wrapHeight,
+            previewArgs,
+            localeTag,
+            fontScale,
+            showSystemUi,
+            uiMode,
+            device,
+            minWidthPx = minWidthPx,
+            minHeightPx = minHeightPx,
+            maxWidthPx = maxWidthPx,
+            maxHeightPx = maxHeightPx,
+          )
+        }
       } else if (scrollDispatchMode != null) {
         // @ScrollingPreview(modes = [LONG, GIF, END]) — drive the dedicated scroll path. For a
         // primary *capture*, falls through to the default single-frame render on "no
@@ -630,6 +760,10 @@ private fun writeErrorSidecar(
   if (pngFile.exists()) pngFile.delete()
   val stack = java.io.StringWriter().also { e.printStackTrace(java.io.PrintWriter(it)) }.toString()
   val top = pickTopAppFrame(e)
+  // A native-loading failure kills every preview in the module with the same root cause, so say so
+  // on the sidecar rather than leaving 1000 identical `NoClassDefFoundError`s to be reverse
+  // engineered (issue #3690). Null for an ordinary preview throw, which is nearly always.
+  val diagnosis = NativeLoadDiagnosis.diagnose(e)
   // Hand-rolled JSON to avoid pulling kotlinx-serialization into the
   // renderer-desktop runtime classpath (the plugin owns serialisation
   // and we don't want a second copy here). Schema must mirror
@@ -646,9 +780,27 @@ private fun writeErrorSidecar(
     sb.append("\"function\":").append(jsonString(top.function))
     sb.append("},")
   }
+  if (diagnosis != null) {
+    sb.append("\"diagnosis\":").append(jsonString(diagnosis.text)).append(',')
+  }
+  // Which JVM drew this, and what it would have searched for native libraries. Always present:
+  // "which of the four JDKs on this box did the toolchain actually fork, and did my LD_LIBRARY_PATH
+  // reach it?" is unanswerable after the fact, and it is two lines of JSON to answer up front.
+  sb.append("\"runtime\":{")
+  NativeLoadDiagnosis.runtimeSnapshot().forEachIndexed { index, (key, value) ->
+    if (index > 0) sb.append(',')
+    sb.append(jsonString(key)).append(':').append(jsonString(value))
+  }
+  sb.append("},")
   sb.append("\"stackTrace\":").append(jsonString(stack))
   sb.append('}')
   fileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
+  // The build log is where a batch render is actually watched, and a per-preview stack trace there
+  // would be the cascade all over again — one line, once per JVM, only for the failure class that
+  // means "nothing in this module can render".
+  if (diagnosis != null && !diagnosis.cascade) {
+    System.err.println("Render failed (native): ${diagnosis.text}")
+  }
 }
 
 /**
@@ -708,6 +860,39 @@ private fun jsonString(s: String): String {
 private val NO_PARAM = Any()
 
 /**
+ * Suffixes a renderer appends to a render output's own file name to make a companion that lives
+ * beside it — `renders/Foo.png` → `renders/Foo.png.error.json`. The stale-fan-out sweeps must treat
+ * a companion as belonging to the output it names, or a removed provider value leaves its sidecar
+ * behind forever (see [deleteStaleFanoutFiles]).
+ *
+ * `.error.json` is written by [writeErrorSidecar] here and by `RenderErrorSidecar` on the Android
+ * side; `.warnings.json` (`RenderWarningsSidecar`) only has an Android writer today, but the sweep
+ * covers it on both backends so the cleanup contract doesn't depend on which renderer produced the
+ * directory. Kept in sync with `PreviewManifestLoader.RENDER_COMPANION_SUFFIXES`.
+ */
+internal val RENDER_COMPANION_SUFFIXES = listOf(".error.json", ".warnings.json")
+
+/**
+ * The render output [name] belongs to: [name] itself when it is an `[ext]` output, the output it
+ * names when it is one of that output's [RENDER_COMPANION_SUFFIXES] companions, and `null`
+ * otherwise — `null` meaning "not this template's business", which on a delete path is the answer
+ * that keeps a file.
+ *
+ * A companion is recognised by its suffix **before** the plain-extension fallback is reached, and
+ * is then held to the same per-extension scoping as any other candidate: it belongs to this sweep
+ * only if the output it names carries [ext]. Deciding in the other order breaks down as soon as
+ * [ext] is itself `.json` — a data product — because then every `.error.json` in the directory ends
+ * with [ext], and the fallback claims image companions like `Foo_Alice.png.error.json` as JSON
+ * outputs of its own, deleting another output's *current* diagnostics.
+ */
+internal fun fanoutOutputNameOf(name: String, ext: String): String? {
+  RENDER_COMPANION_SUFFIXES.forEach { companion ->
+    if (name.endsWith(companion)) return name.removeSuffix(companion).takeIf { it.endsWith(ext) }
+  }
+  return name.takeIf { it.endsWith(ext) }
+}
+
+/**
  * Deletes `<stem>_*<ext>` files from prior runs that this render won't rewrite — stale fan-out left
  * behind by provider renames ("loading" → "busy") and the `_PARAM_<idx>` → `_<label>` migration.
  *
@@ -717,6 +902,13 @@ private val NO_PARAM = Any()
  * `Foo_*` while belonging to a different subprocess. The plugin — which has the manifest this
  * subprocess doesn't — passes those stems in [protectedSiblingStems]; any file that is
  * `<sibling>.<ext>` or `<sibling>_*` is theirs, not stale.
+ *
+ * A stale row's companions go with it. A failed row writes `<stem>_<label><ext>.error.json` and no
+ * output, so an extension-only filter never matched the one file the row actually left behind, and
+ * the orphan outlived every subsequent run — the CLI's missing-render report then rediscovers it by
+ * directory glob and can present an obsolete exception as a failure of the current run (PR #3815).
+ * The companion is classified by the output it names, so it is kept exactly when that output is
+ * expected and swept exactly when that output is stale.
  */
 internal fun deleteStaleFanoutFiles(
   template: File,
@@ -731,9 +923,10 @@ internal fun deleteStaleFanoutFiles(
   dir
     .listFiles()
     ?.filter { f ->
+      val output = fanoutOutputNameOf(f.name, ext)
       f.name.startsWith(prefix) &&
-        f.name.endsWith(ext) &&
-        f.name !in expectedNames &&
+        output != null &&
+        output !in expectedNames &&
         protectedSiblingStems.none { sib ->
           f.name.startsWith("$sib.") || f.name.startsWith("${sib}_")
         }
@@ -1276,7 +1469,7 @@ private fun InvokeComposable(
  * [ee.schimke.composeai.renderer.findComposableMethodWithArgs] for the full commentary. Kept local
  * (not shared via a common module) so the two renderer artefacts stay independently buildable.
  */
-private fun findComposableMethodWithArgs(
+internal fun findComposableMethodWithArgs(
   clazz: Class<*>,
   name: String,
   previewArgs: List<Any?>,
@@ -1321,7 +1514,7 @@ private fun InvokeWrappedComposable(wrapperFqn: String, body: @Composable () -> 
   resolved.first.invoke(currentComposer, resolved.second, body)
 }
 
-private fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
+internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
   val cls = ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass(wrapperFqn)
   val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
   // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to

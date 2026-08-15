@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
@@ -506,6 +507,117 @@ fun HighDensityClickTargetSquare() {
 }
 
 /**
+ * Records the JVM default `Locale` each time [PressLocaleProbeSquare] composes.
+ *
+ * `localeTag` is applied by pointing the JVM default `Locale` at the override for the duration of a
+ * composition / frame — that is what CMP `stringResource(...)` resolves against on desktop (see
+ * `RenderEngine.overrideJvmDefaultLocale`). So "which locale was live while this composed" *is* the
+ * JVM default at composition time, and reading it is how a test can tell whether a given frame ran
+ * inside the override or outside it.
+ */
+object PressLocaleProbe {
+  @Volatile var composedUnder: String? = null
+
+  /**
+   * Every locale seen, keyed by the composing thread's name.
+   *
+   * A held session composes on its own `compose-ai-daemon-interactive-scene-<previewId>` executor,
+   * so the thread name is which *session* composed — which is what a concurrency test needs, since
+   * two sessions share this one object.
+   */
+  val observedByThread: java.util.concurrent.ConcurrentHashMap<String, MutableList<String>> =
+    java.util.concurrent.ConcurrentHashMap()
+
+  /**
+   * Held open, mid-composition, on threads whose name contains [gateThreadMarker].
+   *
+   * A locale leak is a *window*, not a state: it needs one session to be inside the override while
+   * another composes. Parking the localized session inside its composition is how a test opens that
+   * window on purpose instead of hoping the scheduler produces it.
+   */
+  @Volatile var gate: java.util.concurrent.CountDownLatch? = null
+
+  /** Counted down once a gated composition has recorded and is about to park. */
+  @Volatile var gateReached: java.util.concurrent.CountDownLatch? = null
+
+  @Volatile var gateThreadMarker: String? = null
+
+  fun record() {
+    val thread = Thread.currentThread().name
+    val tag = java.util.Locale.getDefault().toLanguageTag()
+    composedUnder = tag
+    observedByThread
+      .computeIfAbsent(thread) { java.util.Collections.synchronizedList(mutableListOf()) }
+      .add(tag)
+    val marker = gateThreadMarker
+    if (marker != null && thread.contains(marker)) {
+      gateReached?.countDown()
+      gate?.await(30, java.util.concurrent.TimeUnit.SECONDS)
+    }
+  }
+
+  /** Locales recorded by composing threads whose name contains [threadMarker]. */
+  fun observedOn(threadMarker: String): List<String> =
+    observedByThread.entries.filter { it.key.contains(threadMarker) }.flatMap { it.value.toList() }
+
+  fun reset() {
+    composedUnder = null
+    observedByThread.clear()
+    gate = null
+    gateReached = null
+    gateThreadMarker = null
+  }
+}
+
+/**
+ * Recomposes on **every frame** and publishes the locale each one ran under to [PressLocaleProbe].
+ *
+ * [PressLocaleProbeSquare] only recomposes once, on the press — enough to say what the settling
+ * frame ran under, but silent about the frames after it. A recording renders a frame per tick and
+ * is the lane where "the composition kept running long after `setUp`" matters, so its probe has to
+ * report on every one of them.
+ */
+@Composable
+fun FrameTickLocaleProbeSquare() {
+  var tick by remember { mutableStateOf(0L) }
+  PressLocaleProbe.record()
+  LaunchedEffect(Unit) {
+    while (true) {
+      withFrameNanos { tick = it }
+    }
+  }
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(if (tick % 2L == 0L) Color(0xFFEF5350) else Color(0xFF66BB6A))
+  )
+}
+
+/**
+ * Recomposes on a pointer press and publishes the locale it recomposed under to [PressLocaleProbe].
+ *
+ * The press-settling render is a frame like any other — it composes whatever the press invalidated
+ * — so it has to run inside the same `localeTag` scope as the capture frames, or a localized
+ * preview caches host-language resources on a press it can never re-resolve.
+ */
+@Composable
+fun PressLocaleProbeSquare() {
+  var pressed by remember { mutableStateOf(false) }
+  PressLocaleProbe.record()
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(if (pressed) Color(0xFF66BB6A) else Color(0xFFEF5350))
+        .pointerInput(Unit) {
+          awaitPointerEventScope {
+            awaitFirstDown()
+            pressed = true
+          }
+        }
+  )
+}
+
+/**
  * Live interactive fixture that exposes Compose's frame clock as pixels. It starts red and turns
  * green after at least 250 ms of frame-clock time has elapsed. If [ImageComposeScene.render] is
  * called without an explicit timestamp, every frame is rendered at `nanoTime = 0` and this preview
@@ -778,6 +890,25 @@ fun LocaleAwareSquare() {
 }
 
 /**
+ * A Material 3 [RangeSlider], whose two thumbs carry **Material's own** built-in strings as content
+ * descriptions — `Strings.SliderRangeStart` / `SliderRangeEnd`, "Range start" / "Range end" in
+ * English and "Bereichsstart" / "Bereichsende" in German, from the 75 locale bundles
+ * `material3-desktop` ships in `androidx/compose/material3/l10n/`.
+ *
+ * Distinct from [LocaleAwareSquare], and the distinction is the point. That fixture covers CMP
+ * *resource* resolution — the previewed app's own `composeResources`, which has a per-composition
+ * lever (`LocalComposeEnvironment`). This one covers strings Material resolves for itself through
+ * `androidx.compose.material3.internal.getString`, which reads
+ * `androidx.compose.ui.text.intl.Locale.current` — the JVM default — from inside a composable that
+ * never consults its own `Composer`, and for which no per-composition lever exists at any version.
+ * Used by [MaterialBuiltInStringsLocaleTest].
+ */
+@Composable
+fun MaterialBuiltInStringsSlider() {
+  RangeSlider(value = 0.2f..0.8f, onValueChange = {})
+}
+
+/**
  * Reads the *ambient* `MaterialTheme.colorScheme.primary` (no inner [MaterialTheme] wrap) so a
  * `WallpaperOverrideExtension` applied at the outer `AroundComposable` phase visibly drives the
  * background colour. Used by the wallpaper override integration tests.
@@ -981,6 +1112,30 @@ class SquareTintProvider {
 @Composable
 fun ThemedTintedSquare(tint: Long) {
   Box(modifier = Modifier.fillMaxSize().background(Color(tint)))
+}
+
+/**
+ * `@PreviewParameter` fixture whose two values carry labels differing **only by case** — the shape
+ * that makes row addressing's label matching subtle (issue #3749 review follow-up).
+ *
+ * [PreviewParameterLabels][ee.schimke.composeai.renderer.PreviewParameterLabels] compares labels
+ * case-*sensitively* when deciding whether a fan-out collides, so this provider legitimately emits
+ * `<stem>_Dark.png` AND `<stem>_dark.png` on a case-sensitive filesystem. A row resolver that folds
+ * case unconditionally maps both ids onto the first value; `Dark` is green (`0xFF43A047`) and
+ * `dark` is blue (`0xFF1E88E5`) so that mistake shows up as the wrong pixels rather than as a pass.
+ */
+@Suppress("unused")
+class CaseTintProvider {
+  val values: Sequence<CaseTint> =
+    sequenceOf(CaseTint("Dark", 0xFF43A047L), CaseTint("dark", 0xFF1E88E5L))
+}
+
+/** A labelled tint for [CaseTintProvider]; `name` is what the label derivation picks up. */
+data class CaseTint(val name: String, val tint: Long)
+
+@Composable
+fun CaseLabelledSquare(swatch: CaseTint) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(swatch.tint)))
 }
 
 /**

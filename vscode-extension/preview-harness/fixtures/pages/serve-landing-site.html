@@ -1,0 +1,199 @@
+    <!doctype html>
+    <html lang="en" data-cp-theme-key="cp-theme:meshcore-mobile">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>meshcore-mobile — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:meshcore-mobile"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <span class="cp-site-catalog">meshcore-mobile</span>
+  </div>
+  <div class="cp-site-status">
+    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+  </nav>
+</header>
+        <main class="cp-main">
+                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">meshcore-mobile <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ trusted</span></h1></div>
+        <p class="cp-sub">6 preview(s)</p>
+        <div class="cp-catalog-actions">
+          <a class="cp-action-chip" href="/parity">compare to Figma</a>
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
+        </div>
+<div class="cp-catalog-tools">
+<div class="cp-searchbar">
+  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
+    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+</div>
+</div>
+<div class="cp-grid" id="cp-grid">
+        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.ButtonPreview">Button</div>
+    <div class="cp-id">com.example.ButtonPreview</div>
+    
+  </div>
+</a>
+<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.CardPreview">Card</div>
+    <div class="cp-id">com.example.CardPreview</div>
+    
+  </div>
+</a>
+<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.DialogPreview">Dialog</div>
+    <div class="cp-id">com.example.DialogPreview</div>
+    
+  </div>
+</a>
+<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.ListScreenPreview">List screen</div>
+    <div class="cp-id">com.example.ListScreenPreview</div>
+    
+  </div>
+</a>
+<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.ProfileScreenPreview">Profile screen</div>
+    <div class="cp-id">com.example.ProfileScreenPreview</div>
+    
+  </div>
+</a>
+<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="com.example.SettingsScreenPreview">Settings screen</div>
+    <div class="cp-id">com.example.SettingsScreenPreview</div>
+    
+  </div>
+</a>
+        </div>
+<p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
+<script src="/assets/serve/fixture/url-state.js"></script>
+<script src="/assets/serve/fixture/serve-components.js"></script>
+<script>(function () {
+  var cards = document.querySelectorAll(".cp-card");
+  var input = document.getElementById("cp-search");
+  var count = document.getElementById("cp-count");
+  var empty = document.getElementById("cp-empty");
+  var total = cards.length;
+  // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+  // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+  // reachable with Back — without ever reloading: the grid re-points its own images.
+  var urlState = window.cpUrlState || null;
+  function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+  function pushUrl(v) { if (urlState) urlState.push(v); }
+  function replaceUrl(v) { if (urlState) urlState.replace(v); }
+  if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+  
+  function apply() {
+    
+    var q = input ? input.value.trim().toLowerCase() : "";
+    var shown = 0;
+    cards.forEach(function (c) {
+      var lab = c.querySelector(".cp-label");
+      var idn = c.querySelector(".cp-id");
+      var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+      var searchOk = q === "" || hay.indexOf(q) !== -1;
+      c.hidden = !searchOk;
+      if (searchOk) shown++;
+    });
+    if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+    if (empty) empty.hidden = shown !== 0;
+  }
+  if (input) input.addEventListener("input", function () {
+    // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+    // visitor arrived from under five entries. The URL still carries the query, so the
+    // filtered grid is bookmarkable.
+    replaceUrl({ q: input.value.trim() });
+    apply();
+  });
+  
+  if (urlState) {
+    urlState.onPop(function () {
+      if (input) input.value = urlParam("q");
+      apply();
+    });
+  }
+  apply();
+})();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>
+
+<details class="cp-about cp-disclosure">
+  <summary>
+    <span class="cp-about-title">About this preview server</span>
+    <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
+  </summary>
+  <div class="cp-disclosure-body">
+    <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
+      using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
+      server never re-runs untrusted code. Catalogs are trusted by signature or their published
+      <code>design-artifacts</code> branch, and anything unverified is badged.</p>
+  </div>
+</details>
+        </main>
+        <footer class="cp-site-footer">
+          <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+          <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+        </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
+      </body>
+    </html>

@@ -15,6 +15,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
@@ -25,6 +26,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import javax.annotation.Priority;
 import org.robolectric.nativeruntime.DefaultNativeRuntimeLoader;
 import org.robolectric.shadow.api.Shadow;
@@ -56,6 +58,28 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
 
   private static final String COMPLETE_MARKER = ".complete";
   private static final String HYPHEN_DATA_DIR = "hyphen-data";
+  private static final String SANDBOX_LIBRARY_DIR = "sandbox-libraries";
+  private static final String PROCESS_DIR_PREFIX = "jvm-";
+
+  /**
+   * Identifies the directory this loader stages sandbox library copies in.
+   *
+   * <p>Deliberately a static field — see {@link #sandboxLibraryDirectory} for why nothing a child
+   * process can inherit will do.
+   */
+  private static final String OWNER_TOKEN = UUID.randomUUID().toString().replace("-", "");
+
+  /**
+   * Registers a path for best-effort deletion at JVM exit.
+   *
+   * <p>An indirection so {@code SharedNativeRuntimeLoaderTest} can pin <em>which</em> paths a
+   * render JVM claims. Registering anything shared between render JVMs — the {@code
+   * sandbox-libraries/} key directory in particular — is the regression this seam exists to catch;
+   * see {@link #sandboxLibraryDirectory}.
+   *
+   * <p>Visible for testing.
+   */
+  static java.util.function.Consumer<Path> deleteAtExit = path -> path.toFile().deleteOnExit();
 
   /** Serializes cache initialization for every sandbox that shares this class — see below. */
   private static final Object EXTRACTION_MONITOR = new Object();
@@ -107,7 +131,11 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
       loaded.set(true);
     } catch (IOException | ReflectiveOperationException e) {
       loaded.set(false);
-      throw new AssertionError("Unable to load shared Robolectric native runtime library", e);
+      // Name the cache root and the cause inline: Gradle's test report shows the failure line
+      // without the cause chain, which left issue #3754 diagnosable only by guesswork.
+      throw new AssertionError(
+          "Unable to load shared Robolectric native runtime library from " + cacheRoot() + ": " + e,
+          e);
     }
   }
 
@@ -260,15 +288,65 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
    */
   static Path createSandboxLibraryCopy(Path cacheDirectory) throws IOException {
     Path source = cacheDirectory.resolve(libraryName());
-    Path copies =
-        cacheRoot().resolve("sandbox-libraries").resolve(cacheDirectory.getFileName().toString());
-    Files.createDirectories(copies);
+    Path copies = sandboxLibraryDirectory(cacheDirectory);
 
-    Path copy = Files.createTempFile(copies, "sandbox-", "-" + libraryName());
+    Path copy;
+    try {
+      copy = Files.createTempFile(copies, "sandbox-", "-" + libraryName());
+    } catch (NoSuchFileException reaped) {
+      // Only an outside cleaner (tmpreaper, a wiped cache root) can get here now that the
+      // directory is process-private. Recreating it is safe: nothing else in the tree points at it.
+      Files.createDirectories(copies);
+      copy = Files.createTempFile(copies, "sandbox-", "-" + libraryName());
+    }
     Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING);
-    copies.toFile().deleteOnExit();
-    copy.toFile().deleteOnExit();
+    deleteAtExit.accept(copy);
     return copy;
+  }
+
+  /**
+   * Returns this JVM's private directory for sandbox library copies, creating it on first use.
+   *
+   * <p>The directory is private to this JVM because it is the one part of the cache written outside
+   * the extraction lock, and every render JVM registers what it creates for deletion at exit. A
+   * directory shared across JVMs therefore races: each JVM unlinks its own copy as soon as {@code
+   * System.load} returns, so the shared directory is usually <em>empty</em> when a worker exits and
+   * its {@link java.io.File#deleteOnExit()} hook succeeds in removing it — out from under a
+   * concurrent worker that has already created it and is about to add its copy. That worker's
+   * {@code createTempFile} then fails with {@link NoSuchFileException} and the render dies with
+   * "Unable to load shared Robolectric native runtime library" (issue #3754). Gradle retires and
+   * forks test workers throughout a render session, so the window opens constantly; the failure is
+   * unreachable with a single worker, which is why it only ever surfaced as a concurrency flake.
+   *
+   * <p>Per-JVM directories close that window without reintroducing the disk leak this class exists
+   * to fix (issue #3281): no JVM ever deletes a path another JVM depends on, the copies inside stay
+   * the roughly 10 MB library rather than the full runtime payload, and a normal exit now removes
+   * the directory as well as its contents. A worker killed hard enough to skip shutdown hooks
+   * leaves its directory behind, exactly as it already left copies behind in the shared one.
+   *
+   * <p>{@link #OWNER_TOKEN} must stay a static field rather than something reachable from outside
+   * the process. A system property looks like the tidier home for it — it would give every
+   * Robolectric sandbox classloader in a JVM one shared directory instead of one apiece — but the
+   * daemon's {@code SandboxProcessPool} forwards every {@code composeai.*} property to the worker
+   * JVMs it spawns, and {@code RobolectricHost.start()} boots its in-process slot 0 (populating the
+   * property) before spawning them. Every worker would inherit the parent's token and stage its
+   * copies in the parent's directory, putting several processes back in one directory and
+   * reintroducing exactly the race above. A static cannot cross a process boundary, so a child
+   * always generates its own. The cost is a directory per sandbox classloader rather than per JVM,
+   * which is a handful of empty directories that exit deletion then removes.
+   */
+  private static Path sandboxLibraryDirectory(Path cacheDirectory) throws IOException {
+    Path owned =
+        cacheRoot()
+            .resolve(SANDBOX_LIBRARY_DIR)
+            .resolve(cacheDirectory.getFileName())
+            .resolve(PROCESS_DIR_PREFIX + OWNER_TOKEN);
+    if (Files.isDirectory(owned)) {
+      return owned;
+    }
+    Files.createDirectories(owned);
+    deleteAtExit.accept(owned);
+    return owned;
   }
 
   private static void deleteSandboxLibraryCopy(Path copy) {

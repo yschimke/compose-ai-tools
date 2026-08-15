@@ -24,6 +24,22 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
    > **The heavy CI suite is skipped on release PRs, so no admin bypass is needed to merge.** A release PR only bumps the version manifest / `CHANGELOG.md` / version strings in docs — no source or build inputs change. The build/test/security/preview workflows (`ci`, `codeql`, `compose-preview`, `daemon-harness`, `integration`, `report-schemas`, `format`) gate each job with `if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}`, so they report **skipped** only on a release PR — i.e. one whose head branch is `release-please--*` **and** whose author is the release bot. (The branch name alone is contributor-controlled, so the author check is what stops a human/fork PR from naming its branch `release-please--…` to skip CI and abuse "skipped == passing"; switch the login if you move release-please to a GitHub App token.) Branch protection treats a skipped required check as passing, so the required checks go green instantly. The cheap PR-hygiene checks (`pr-title`, `no-agent-attribution`) still run — a release PR passes both. The guard is at job level on purpose: a `branches` filter on the trigger would leave the required check stuck *pending* and block the merge instead.
 
+## Versioning after 1.0.0
+
+`v1.0.0` was cut by pinning `"release-as": "1.0.0"` in [`release-please-config.json`](../release-please-config.json). **That override has been removed, and it had to be** — `release-as` is sticky, not consumed by the release it forces, so left in place every subsequent release PR proposes 1.0.0 again, the tag already exists, and the release wedges. This repo had been bitten by it once before, by an override pinning 0.7.0 that outlived its release. If you ever force a version this way again, delete the key in the first PR after the release publishes.
+
+Removed alongside it: `bump-minor-pre-major` and `bump-patch-for-minor-pre-major`, which only ever applied while the major version was `0`.
+
+**Those two keys are what made `feat:` land as a *patch* bump for the whole `0.x` line**, which is how a repo with this much history spent so long on `0.19.x`. With them gone the usual semver mapping applies:
+
+| Commit type | Bump |
+|---|---|
+| `fix:` | patch |
+| `feat:` | minor |
+| `feat!:` / `BREAKING CHANGE` | **major** |
+
+So a PR titled `feat!:` now cuts **2.0.0**, not 1.0.1. Watch PR titles accordingly — this is the single most likely way to cut an unintended major.
+
 ## Fallback paths
 
 If the automatic chain ever leaves a release half-published (e.g. Maven Central rejected an upload, CLI build failed), you can re-run the build/publish against an existing tag without touching release-please:
@@ -52,9 +68,9 @@ republishing the release.
    - **Gradle plugin** — `ee.schimke.composeai:compose-preview-plugin`
    - **Android renderer AAR** — `ee.schimke.composeai:renderer-android`
    - **Preview annotations** — `ee.schimke.composeai:preview-annotations`
-   - **Daemon core** (pre-1.0) — `ee.schimke.composeai:daemon-core` — renderer-agnostic JSON-RPC server, protocol types, RenderHost interface
-   - **Daemon desktop** (pre-1.0) — `ee.schimke.composeai:daemon-desktop` — Compose Multiplatform desktop backend (DesktopHost + DaemonMain)
-   - **Daemon android** (pre-1.0) — `ee.schimke.composeai:daemon-android` — Robolectric backend; Compose / Roborazzi / UI-test stay `compileOnly`, consumer supplies runtime versions
+   - **Daemon core** (unstable API) — `ee.schimke.composeai:daemon-core` — renderer-agnostic JSON-RPC server, protocol types, RenderHost interface
+   - **Daemon desktop** (unstable API) — `ee.schimke.composeai:daemon-desktop` — Compose Multiplatform desktop backend (DesktopHost + DaemonMain)
+   - **Daemon android** (unstable API) — `ee.schimke.composeai:daemon-android` — Robolectric backend; Compose / Roborazzi / UI-test stay `compileOnly`, consumer supplies runtime versions
    - **Data product connectors** — `ee.schimke.composeai:data-*-connector` artifacts used by daemon modules, including recomposition
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
@@ -86,7 +102,7 @@ that forwards to the canonical script — kept so historical
 `raw.githubusercontent.com/yschimke/compose-ai-tools/.../scripts/install.sh`
 URLs keep resolving.
 
-The `daemon-*` artifacts are **pre-1.0**; their public API is not yet stable. Expect breakage across minor versions until the surface settles. See [docs/daemon/DESIGN.md § 17](daemon/DESIGN.md) for the architectural decisions and § 19 for the captureToImage fallback path.
+The `daemon-*` artifacts carry **no API-stability guarantee**; their public API is not yet settled. Expect breakage across minor versions until the surface settles. See [docs/daemon/DESIGN.md § 17](daemon/DESIGN.md) for the architectural decisions and § 19 for the captureToImage fallback path.
 
 Required secrets on the repository:
 
@@ -149,7 +165,7 @@ live there), just apply the plugin:
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.19.60"
+    id("ee.schimke.composeai.preview") version "1.5.0"
 }
 ```
 <!-- x-release-please-end -->
@@ -205,9 +221,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.19.60.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-1.5.0.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-0.19.60/bin/compose-preview list
+./compose-preview-1.5.0/bin/compose-preview list
 ```
 <!-- x-release-please-end -->
 
@@ -220,9 +236,9 @@ want the server binary:
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview-mcp.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-0.19.60.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-1.5.0.tar.gz
 tar xzf compose-preview-mcp.tar.gz
-./compose-preview-mcp-0.19.60/bin/compose-preview-mcp
+./compose-preview-mcp-1.5.0/bin/compose-preview-mcp
 ```
 <!-- x-release-please-end -->
 

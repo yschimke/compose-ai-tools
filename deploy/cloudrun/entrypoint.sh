@@ -73,6 +73,10 @@ fi
 # (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>
 # (e.g. meshcore-mobile@yschimke/meshcore-mobile).
 [[ -n "${SERVE_CATALOGS_UNLISTED:-}" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
+# Top-level sites (<host>=<system>[,…]): one of the catalogs above, additionally served on a
+# hostname of its own where it looks like the only thing here. A routing view over the same
+# sessions — no extra catalog, no extra render.
+[[ -n "${SERVE_SITES:-}" ]] && args+=(--sites "${SERVE_SITES}")
 [[ -n "${SERVE_TRUST_STORE:-}" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
 # Trusted server-side re-render (opt-in, OFF by default). Only enable on a box that

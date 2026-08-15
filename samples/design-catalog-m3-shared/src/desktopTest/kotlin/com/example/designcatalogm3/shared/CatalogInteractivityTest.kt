@@ -1,11 +1,15 @@
 package com.example.designcatalogm3.shared
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithText
@@ -18,49 +22,86 @@ import ee.schimke.composeai.overrides.PreviewOverrideController
 import kotlin.test.Test
 
 /**
- * The **click contract** of the shared catalog component set, on both lanes.
+ * The **lane contract** of the shared catalog component set: one component id composes **one**
+ * control implementation, and that control responds to input — on every lane.
  *
- * The catalog serves two surfaces from one body, split on `interactive`:
- * * `interactive = false` — the baked sticker sheet and every one-shot `/render`. A click must do
- *   nothing, or the published PNG would depend on whether something happened to tap it.
- * * `interactive = true` — the in-browser wasm tier and the held Live Compose session. A click must
- *   visibly change the component, which is exactly what a pixel-comparing render test can't check.
- *
- * Before this suite every one of these components held a literal `onClick = {}`, so the whole
- * interactive column below was silently false: buttons, the radio and the text fields did nothing
- * at all when tapped in a live preview. Each test therefore asserts **both** columns — the
- * interactive one is the feature, the baked one is the regression guard on the published sheet.
+ * This suite used to assert the opposite: that a click did something when `interactive = true` (the
+ * wasm tier / the held Live Compose session) and *nothing* when `interactive = false` (the baked
+ * sticker sheet and every one-shot `/render`). That flag was derived from `LocalInspectionMode`, so
+ * the published capture was not always the composable that runs live — issue #3674. The flag is
+ * gone, and the tests below pin what replaced it:
+ * * **same implementation on both lanes** — each behavioural assertion runs under
+ *   `LocalInspectionMode = true` *and* `= false` and expects the same outcome. A reintroduced
+ *   preview-vs-live branch fails here rather than silently shipping a capture of a different
+ *   composable.
+ * * **still responsive** — the click / toggle / typing assertions are unchanged in substance, so
+ *   the interactivity the `interactive = true` lane used to have is now simply what the component
+ *   does.
+ * * **seeded state still renders** — a control's initial value comes from its `catalogOverride*`
+ *   knob, which is what the `@OverrideVariant` folds (the `off` / `unchecked` / `disabled`
+ *   captures) seed. Untouched, the component must draw exactly that seed.
  */
 @OptIn(ExperimentalTestApi::class)
 class CatalogInteractivityTest {
 
-  @Test
-  fun `a filled button tallies its clicks when interactive`() = runComposeUiTest {
-    setContent { CatalogComponent("button-filled", interactive = true) }
+  /**
+   * Runs [body] on both render lanes. `inspection = true` is what Compose sets for a `@Preview`
+   * capture (and what the daemon's one-shot `/render` provides); `false` is the held Live Compose
+   * session and the in-browser tier. Nothing in the catalog reads the local any more, so an
+   * assertion that passes on one lane must pass on the other — which is the point of running it
+   * twice.
+   */
+  private fun onBothLanes(id: String, body: ComposeUiTest.() -> Unit) {
+    for (inspection in listOf(true, false)) {
+      runComposeUiTest {
+        setContent {
+          CompositionLocalProvider(LocalInspectionMode provides inspection) { CatalogComponent(id) }
+        }
+        body()
+      }
+    }
+  }
 
-    onNodeWithText("Filled").performClick()
-    onNodeWithText("Filled (1)").assertExists()
-
-    onNodeWithText("Filled (1)").performClick()
-    onNodeWithText("Filled (2)").assertExists()
+  /**
+   * As [onBothLanes], but with a `catalogOverride*` knob seeded the way a render's variant does.
+   */
+  private fun onBothLanesSeeded(
+    id: String,
+    overrides: Map<String, PreviewOverrideValue>,
+    body: ComposeUiTest.() -> Unit,
+  ) {
+    try {
+      PreviewOverrideController.set(overrides)
+      onBothLanes(id, body)
+    } finally {
+      PreviewOverrideController.set(null)
+    }
   }
 
   @Test
-  fun `a filled button is inert when baked`() = runComposeUiTest {
-    setContent { CatalogComponent("button-filled", interactive = false) }
+  fun `a filled button tallies its clicks on both lanes`() =
+    onBothLanes("button-filled") {
+      onNodeWithText("Filled").performClick()
+      onNodeWithText("Filled (1)").assertExists()
 
-    onNodeWithText("Filled").performClick()
-
-    // Still the bare label — the published sticker can't be moved by a stray tap.
-    onNodeWithText("Filled").assertExists()
-  }
+      onNodeWithText("Filled (1)").performClick()
+      onNodeWithText("Filled (2)").assertExists()
+    }
 
   @Test
-  fun `every stateless action component responds to a click when interactive`() {
+  fun `an untouched button draws the bare label`() =
+    onBothLanes("button-filled") {
+      // The counter folds `0` back to the bare label, which is why dropping the inert branch moved
+      // no published pixel: this IS the baked frame.
+      onNodeWithText("Filled").assertExists()
+      onNodeWithText("Filled (1)").assertDoesNotExist()
+    }
+
+  @Test
+  fun `every stateless action component responds to a click`() {
     // The FAB and the assist chip route their clicks through `counted` exactly as the buttons do.
     for ((id, label) in listOf("fab" to "+", "chip-assist" to "Assist", "button-text" to "Text")) {
-      runComposeUiTest {
-        setContent { CatalogComponent(id, interactive = true) }
+      onBothLanes(id) {
         onNodeWithText(label).performClick()
         onNodeWithText("$label (1)").assertExists()
       }
@@ -71,116 +112,81 @@ class CatalogInteractivityTest {
   fun `a disabled button stays inert on both lanes`() {
     // The disabled state is no longer a slug of its own — it rides `button-filled` with the
     // `enabled` knob seeded false, which is what `@OverrideVariant(name = "disabled")` bakes. So
-    // the
-    // test seeds the same knob through the same controller the renderer does, rather than asserting
-    // on a duplicate component that no longer exists.
+    // the test seeds the same knob through the same controller the renderer does, rather than
+    // asserting on a duplicate component that no longer exists.
     //
     // Not an oversight that the handler stays wired: unresponsiveness IS the documented state, and
-    // `enabled = false` is what makes the click a no-op. On the interactive lane a live click would
-    // otherwise tally into the label (see `counted`), so "the label did not move" is the assertion.
-    for (interactive in listOf(true, false)) {
-      try {
-        PreviewOverrideController.set(mapOf("enabled" to PreviewOverrideValue.BooleanValue(false)))
-        runComposeUiTest {
-          setContent { CatalogComponent("button-filled", interactive = interactive) }
-          onNodeWithText("Filled").performClick()
-          onNodeWithText("Filled").assertExists()
-        }
-      } finally {
-        PreviewOverrideController.set(null)
-      }
+    // `enabled = false` is what makes the click a no-op. With the handler live everywhere, a click
+    // would otherwise tally into the label (see `counted`), so "the label did not move" is the
+    // assertion.
+    onBothLanesSeeded(
+      "button-filled",
+      mapOf("enabled" to PreviewOverrideValue.BooleanValue(false)),
+    ) {
+      onNodeWithText("Filled").performClick()
+      onNodeWithText("Filled").assertExists()
     }
   }
 
   @Test
-  fun `the plain cards count their clicks when interactive`() {
-    // M3 cards ship both a plain and a clickable overload; the interactive lane takes the clickable
-    // one. `card-slots` is deliberately absent — see its branch for why a slot host stays inert.
-    for ((id, label) in
-      listOf(
-        "card-elevated" to "Elevated card",
-        "card-outlined" to "Outlined card",
-        "card-filled" to "Filled card",
-      )) {
-      runComposeUiTest {
-        setContent { CatalogComponent(id, interactive = true) }
-        onNodeWithText(label).performClick()
-        onNodeWithText("$label (1)").assertExists()
-      }
+  fun `the plain cards compose the non-clickable overload on both lanes`() {
+    // M3 cards ship both a plain and a clickable overload, and the catalog composes the **plain**
+    // one on every surface — the same constant in both lanes, rather than the old
+    // `LocalInspectionMode` branch that picked clickable live and plain when baked (issue #3674).
+    //
+    // Plain is the deliberate choice: the clickable overload would add a clickable node to the
+    // sticker's semantics tree, and that tree is published — `a11y/touchTargets` greenlines and the
+    // `compose/semantics-wireframe` layout variant are both derived from it. So the assertion is
+    // the absence of a click action, on both lanes; a regression that "upgrades" these to the
+    // clickable overload silently changes two published data products and must fail here.
+    //
+    // `card-slots` is deliberately absent — see its branch for why a slot host stays inert.
+    for (id in listOf("card-elevated", "card-outlined", "card-filled")) {
+      onBothLanes(id) { onNode(hasClickAction()).assertDoesNotExist() }
     }
   }
 
   @Test
-  fun `the plain cards are inert when baked`() {
-    for ((id, label) in
-      listOf(
-        "card-elevated" to "Elevated card",
-        "card-outlined" to "Outlined card",
-        "card-filled" to "Filled card",
-      )) {
-      runComposeUiTest {
-        setContent { CatalogComponent(id, interactive = false) }
-        onNodeWithText(label).performClick()
-        onNodeWithText(label).assertExists()
-      }
-    }
-  }
-
-  @Test
-  fun `a switch toggles when interactive and holds its seeded value when baked`() {
-    runComposeUiTest {
-      setContent { CatalogComponent("switch-on", interactive = true) }
+  fun `a switch starts at its seeded value and toggles on both lanes`() =
+    onBothLanes("switch-on") {
       onNode(isToggleable()).assertIsOn().performClick()
       onNode(isToggleable()).assertIsOff()
     }
-    runComposeUiTest {
-      setContent { CatalogComponent("switch-on", interactive = false) }
-      onNode(isToggleable()).assertIsOn().performClick()
+
+  @Test
+  fun `the off switch variant renders its seeded value`() =
+    // `switch-off` is the same control with `checked` seeded false — the shape the
+    // `@OverrideVariant`
+    // folds depend on. Untouched it must draw the seed, not some remembered default.
+    onBothLanes("switch-off") { onNode(isToggleable()).assertIsOff() }
+
+  @Test
+  fun `a checkbox toggles on both lanes`() =
+    onBothLanes("checkbox-unchecked") {
+      onNode(isToggleable()).assertIsOff().performClick()
       onNode(isToggleable()).assertIsOn()
     }
-  }
 
   @Test
-  fun `a checkbox toggles when interactive`() = runComposeUiTest {
-    setContent { CatalogComponent("checkbox-unchecked", interactive = true) }
-
-    onNode(isToggleable()).assertIsOff().performClick()
-    onNode(isToggleable()).assertIsOn()
-  }
-
-  @Test
-  fun `a radio button flips its selection when interactive`() = runComposeUiTest {
-    setContent { CatalogComponent("radiobutton-unselected", interactive = true) }
-
-    onNode(isSelectable()).performClick()
-    onNode(isSelectable()).assertIsSelected()
-  }
+  fun `a radio button flips its selection on both lanes`() =
+    onBothLanes("radiobutton-unselected") {
+      onNode(isSelectable()).performClick()
+      onNode(isSelectable()).assertIsSelected()
+    }
 
   @Test
-  fun `a text field accepts typing when interactive`() = runComposeUiTest {
-    setContent { CatalogComponent("textfield-filled", interactive = true) }
+  fun `a text field accepts typing on both lanes`() =
+    onBothLanes("textfield-filled") {
+      onNodeWithText("Filled").performTextInput("Z")
 
-    onNodeWithText("Filled").performTextInput("Z")
-
-    // Asserted on the inserted character rather than a full string, so the test doesn't also pin
-    // where the caret happens to start — the point is that the field's value moved at all.
-    onNodeWithText("Z", substring = true).assertExists()
-  }
-
-  @Test
-  fun `a text field ignores typing when baked`() = runComposeUiTest {
-    setContent { CatalogComponent("textfield-filled", interactive = false) }
-
-    onNodeWithText("Filled").performTextInput("Z")
-
-    onNodeWithText("Z", substring = true).assertDoesNotExist()
-    onNodeWithText("Filled").assertExists()
-  }
+      // Asserted on the inserted character rather than a full string, so the test doesn't also pin
+      // where the caret happens to start — the point is that the field's value moved at all.
+      onNodeWithText("Z", substring = true).assertExists()
+    }
 
   @Test
-  fun `the shape morph slider moves only on the interactive lane`() {
-    runComposeUiTest {
-      setContent { CatalogComponent("shape-morph", interactive = true) }
+  fun `the shape morph slider moves on both lanes`() =
+    onBothLanes("shape-morph") {
       onNodeWithText("50%", substring = true).assertExists()
       onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).performSemanticsAction(
         SemanticsActions.SetProgress
@@ -189,14 +195,13 @@ class CatalogInteractivityTest {
       }
       onNodeWithText("100%", substring = true).assertExists()
     }
-    runComposeUiTest {
-      setContent { CatalogComponent("shape-morph", interactive = false) }
-      onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).performSemanticsAction(
-        SemanticsActions.SetProgress
-      ) {
-        it(1f)
-      }
-      onNodeWithText("50%", substring = true).assertExists()
+
+  @Test
+  fun `a text field renders its seeded value`() =
+    onBothLanesSeeded(
+      "textfield-filled",
+      mapOf("value" to PreviewOverrideValue.StringValue("Seeded")),
+    ) {
+      onNodeWithText("Seeded").assertExists()
     }
-  }
 }

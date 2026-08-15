@@ -223,6 +223,18 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp-site-lead .cp-breadcrumb > a { color: var(--md-sys-color-on-surface-variant);
   overflow: hidden; text-overflow: ellipsis; }
+/* The catalog this page belongs to, named in the bar. Styled like the breadcrumb it sits beside —
+   a hairline continuation of the brand rather than a second chip — because it answers the same
+   "where am I" question and must not compete with the brand for weight. It carries the catalog's
+   own primary colour, so on a themed system the bar picks up the palette the page already wears. */
+.cp-site-catalog { min-width: 0; padding-left: 12px; border-left: 1px solid var(--cp-border);
+  color: var(--md-sys-color-primary);
+  font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line);
+  font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Beside a breadcrumb the name is the parent, so the trail drops its own keyline (one separator
+   between any two items, never two). */
+.cp-site-catalog + .cp-breadcrumb { padding-left: 0; border-left: 0; }
 .cp-crumb-sep { color: var(--cp-fg-faint); }
 .cp-crumb-current { overflow: hidden; text-overflow: ellipsis; }
 /* A catalog landing's back button keeps its outlined-button shape but drops to the bar's own
@@ -315,7 +327,10 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-section-count { padding: 4px 10px; border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant); font-weight: 500; }
-.cp-catalog-id { margin: 0 0 14px; font-family: var(--md-sys-typescale-mono-font); }
+.cp-catalog-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px;
+  margin: 0 0 4px; }
+.cp-catalog-title .cp-head, .cp-catalog-title .cp-catalog-id { margin: 0; }
+.cp-catalog-id { font-family: var(--md-sys-typescale-mono-font); }
 .cp-catalog-head { font-size: var(--md-sys-typescale-headline-small-size);
   line-height: var(--md-sys-typescale-headline-small-line); }
 /* Per-preview GitHub links under the viewer title: source file, and "report an issue". One flex
@@ -391,8 +406,8 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary);
   text-decoration: none; }
 /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
-   a link to re-run the generating workflow). Shown near the catalog header. */
-.cp-prov { margin: 0 0 18px; padding: 14px 18px; border: 0;
+   a link to re-run the generating workflow). It closes the catalog below its content. */
+.cp-prov { margin: 18px 0 0; padding: 14px 18px; border: 0;
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low);
   font-size: var(--md-sys-typescale-body-small-size);
@@ -432,6 +447,25 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
 .cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
+/* The catalog's own actions — download, the comparison views, the parity view, the playground.
+   M3 *assist chips*: outlined, 32dp, label-large, one per destination. They used to be a run of
+   0.75rem grey text links inside the summary sentence, which is where they went unnoticed; a chip
+   row states plainly that these are the places you can go from here, and matches the toggle chips
+   in `.cp-catalog-tools` directly beneath. */
+.cp-catalog-actions { margin: 0 0 18px; display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px; }
+.cp-catalog-download { margin: 30px 0 0; }
+.cp-action-chip { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent; color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  text-decoration: none; white-space: nowrap;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-action-chip:hover, .cp-action-chip:focus-visible { text-decoration: none;
+  color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 /* M3 search bar: a filled `surface-container-high` pill with NO outline — the fill is the
    affordance. Focus is the shared 3dp `secondary` ring rather than a border colour change. */
 .cp-search { flex: 1 1 260px; max-width: 420px; min-height: 44px; padding: 10px 18px; font: inherit;
@@ -446,49 +480,152 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-empty { margin: 12px 0 0; font-size: var(--md-sys-typescale-body-medium-size);
   color: var(--cp-fg-muted); }
 .cp-empty[hidden] { display: none; }
-/* Tabbed catalog: a tab bar (role=tablist) over per-section panels. Progressive enhancement —
-   with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
-   the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
-   <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
-/* M3 *primary tabs*. Not folder tabs: a 48dp row of label-large targets over one divider, where
-   the selected tab is marked by a 3dp `primary` active indicator with rounded top corners and a
-   `primary` label. Hover is a state layer over the tab's own footprint. */
-.cp-tabs { display: flex; flex-wrap: wrap; gap: 0; margin: 0 0 22px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant); }
-.cp-tab { position: relative; display: inline-flex; align-items: center; justify-content: center;
-  gap: 8px; min-height: 48px; padding: 14px 16px;
-  font-size: var(--md-sys-typescale-title-small-size);
-  line-height: var(--md-sys-typescale-title-small-line);
-  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500;
-  color: var(--md-sys-color-on-surface-variant); border: 0; border-radius: 0;
-  background: transparent; cursor: pointer;
+/* Sectioned catalog: a navigation TREE beside the grid (ServeWeb.catalogTreeHtml) rather than a
+   row of tabs above it — sections as rows, each opening onto its named sub-groups, so both levels
+   of a catalog's structure are visible at once instead of only its top one. Progressive
+   enhancement — with no JS every section shows under its own <h2>, nothing collapses, and every
+   row is a working in-page anchor; the filter script turns the rows into real section switching
+   and adds `cp-js` to <html>, which collapses the unselected branches and hides the then-redundant
+   per-section <h2> (the tree already names the section). */
+.cp-catalog-body { display: block; }
+/* The sidebar only appears where there is room for one beside a grid of 200px cards. Below that
+   the tree stays a full-width block above the panels — the same reading order, stacked.
+
+   `--cp-sticky-tools` is how much sticky chrome sits above everything: `.cp-catalog-tools` pins
+   itself at `top: 0` with a higher z-index, so a second sticky element parked at 16px would spend
+   its life underneath the search field, and a `scrollIntoView` that lands an element at viewport
+   zero puts it under there too. Both clear it by that height instead. It is set by the tree script
+   from the toolbar's measured box — it wraps on a narrow viewport and grows a row with the
+   declared-theme chips — and, like every other script-supplied property in this sheet, it is read
+   ONLY with a literal fallback, so the no-JS page still clears an unwrapped toolbar. */
+@media (min-width: 960px) {
+  .cp-catalog-body { display: grid; grid-template-columns: minmax(168px, 216px) minmax(0, 1fr);
+    gap: 32px; align-items: start; }
+  .cp-catalog-menu { position: sticky; top: calc(var(--cp-sticky-tools, 0px) + 12px);
+    max-height: calc(100vh - var(--cp-sticky-tools, 0px) - 28px);
+    overflow-y: auto; overscroll-behavior: contain; }
+}
+.cp-catalog-menu { margin: 0 0 22px; }
+.cp-catalog-menu .cp-searchbar { display: block; margin: 0 0 18px; }
+.cp-catalog-menu .cp-search { width: 100%; min-width: 0; padding-inline: 14px; }
+.cp-catalog-menu .cp-tree { margin: 0; }
+.cp-tree { margin: 0 0 22px; }
+.cp-tree-list, .cp-tree-children { list-style: none; margin: 0; padding: 0; }
+.cp-tree-node[hidden], .cp-tree-children li[hidden] { display: none; }
+/* A section row. Still `.cp-tab` — the section-switching script and the e2e harness both key off
+   that class and its `data-tab` — but drawn as an M3 navigation item: a full-width 40dp row whose
+   selected state is a `secondary-container` pill rather than an underline. */
+.cp-tab { position: relative; display: flex; align-items: center; gap: 8px; width: 100%;
+  min-height: 40px; padding: 8px 14px;
+  font-size: var(--md-sys-typescale-label-large-size);
+  line-height: var(--md-sys-typescale-label-large-line);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant); border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent; cursor: pointer; text-align: left;
   transition: color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
     background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
 .cp-tab:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-tab[aria-selected="true"] { color: var(--md-sys-color-primary); font-weight: 500;
-  background: transparent; }
-/* The active indicator. A 3dp bar pinned to the divider, full-round on its top corners, that
-   scales in from the tab's centre so switching tabs reads as one moving indicator. */
-.cp-tab::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 3px;
-  border-radius: 3px 3px 0 0; background: var(--md-sys-color-primary);
-  transform: scaleX(0);
+.cp-tab[aria-selected="true"] { color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container); }
+/* The expand/collapse twisty, drawn only for a section that HAS sub-groups (the markup omits
+   `aria-expanded` on a leaf), so a leaf row's label lines up with the others' labels. */
+.cp-tab[aria-expanded]::before { content: ""; flex: none; width: 0; height: 0;
+  margin-left: -4px; border: 5px solid transparent;
+  border-left-color: currentColor; border-right-width: 0;
   transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
-.cp-tab[aria-selected="true"]::after { transform: scaleX(1); }
-@media (prefers-reduced-motion: reduce) { .cp-tab::after { transition-duration: 0.01ms; } }
-/* A tab's count is an M3 badge — a small tonal pill riding beside the label. */
-.cp-tab-count { font-size: var(--md-sys-typescale-label-small-size);
+.cp-tab[aria-expanded="true"]::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .cp-tab[aria-expanded]::before { transition-duration: 0.01ms; } }
+/* Collapse is a JS-only state: a no-JS client shows every panel, so it must show every branch —
+   which is also the only way its rows stay reachable, since the arrow keys never bind there. One
+   rule for all four levels: a collapsed row hides the list it owns. */
+html.cp-js .cp-tab[aria-expanded="false"] + .cp-tree-children,
+html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: none; }
+/* The twisty, drawn for any row that can expand — group and component alike. */
+.cp-tree-link[aria-expanded]::before { content: ""; flex: none; width: 0; height: 0;
+  margin-left: -6px; border: 4px solid transparent;
+  border-left-color: currentColor; border-right-width: 0;
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
+.cp-tree-link[aria-expanded="true"]::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .cp-tree-link[aria-expanded]::before { transition-duration: 0.01ms; }
+}
+/* Level three and four. Each nests one step further in and loses a little weight, so depth reads
+   at a glance rather than having to be counted: group → component → variant. */
+/* A component row jumps to a card, so a card needs the same clearance under the sticky toolbar
+   that sections and sub-groups already get — without it every component jump parks the preview's
+   top edge behind the toolbar. */
+.cp-card { scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 12px); }
+.cp-tree-components { margin: 2px 0 4px 12px;
+  border-left: 1px solid var(--md-sys-color-outline-variant); }
+.cp-tree-component, .cp-tree-page { display: flex; align-items: center; gap: 6px; min-height: 30px;
+  padding: 4px 10px; border-radius: 0 var(--md-sys-shape-corner-full)
+    var(--md-sys-shape-corner-full) 0;
+  font-size: var(--md-sys-typescale-label-medium-size);
+  color: var(--cp-fg-muted); text-decoration: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-tree-component:hover, .cp-tree-page:hover { color: var(--md-sys-color-on-surface);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-tree-component[aria-expanded="true"] { color: var(--md-sys-color-on-surface);
+  font-weight: 500; }
+.cp-tree-variants { margin: 0 0 4px 12px;
+  border-left: 1px dashed var(--md-sys-color-outline-variant); }
+/* A variant row leaves the page — it is the one row that navigates to the viewer, because the
+   grid folds these renders out and there is nothing here to jump to. */
+.cp-tree-variant { display: block; min-height: 26px; padding: 3px 10px;
+  font-size: var(--md-sys-typescale-label-small-size);
+  color: var(--cp-fg-faint); text-decoration: none; }
+.cp-tree-variant:hover { color: var(--md-sys-color-primary); text-decoration: underline; }
+.cp-tree-component:focus-visible, .cp-tree-variant:focus-visible,
+.cp-tree-page:focus-visible, .cp-tree-pages-row:focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary); outline-offset: -2px; }
+/* The design file's own PAGES, at the foot of the tree. A page is a view of the specification
+   rather than a part of this catalog's inventory, and its rows leave the page instead of jumping
+   within it — so the branch sits below the components behind a hairline, wearing the group row's
+   shape so it still reads as one of the tree's top-level destinations. */
+.cp-tree-node.cp-tree-pages { margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid var(--md-sys-color-outline-variant); }
+/* A section's sub-groups, indented under one guide line. */
+.cp-tree-children { margin: 2px 0 8px 22px;
+  border-left: 1px solid var(--md-sys-color-outline-variant); }
+.cp-tree-group, .cp-tree-pages-row { display: flex; align-items: center; gap: 8px; min-height: 32px;
+  padding: 5px 12px; border-radius: 0 var(--md-sys-shape-corner-full)
+    var(--md-sys-shape-corner-full) 0;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking);
+  color: var(--cp-fg-muted); text-decoration: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-tree-group:hover, .cp-tree-pages-row:hover { color: var(--md-sys-color-on-surface);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+/* Where you ARE — set by the scroll-spy as the grid moves under you, and on click. */
+.cp-tree-group[aria-current="true"] { color: var(--md-sys-color-primary); font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--md-sys-color-primary); }
+.cp-tab:focus-visible, .cp-tree-group:focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary); outline-offset: -2px; }
+/* A section row's count is an M3 badge — a small tonal pill riding at the end of the row. */
+.cp-tab-count { margin-left: auto; font-size: var(--md-sys-typescale-label-small-size);
   letter-spacing: var(--md-sys-typescale-label-small-tracking); font-weight: 500;
   padding: 2px 8px; border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container); }
-.cp-section { margin: 0; }
+.cp-tab[aria-selected="true"] .cp-tab-count { background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary); }
+/* A group row's count is plain text: two badge styles down one column would compete. */
+.cp-tree-count { margin-left: auto; font-size: var(--md-sys-typescale-label-small-size);
+  font-weight: 400; font-variant-numeric: tabular-nums; color: var(--cp-fg-faint); }
+.cp-section { margin: 0; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-section[hidden] { display: none; }
 .cp-section-head { margin: 0 0 16px; font-size: var(--md-sys-typescale-title-medium-size);
   line-height: var(--md-sys-typescale-title-medium-line);
   letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
 html.cp-js .cp-section-head { display: none; }
-.cp-subgroup { margin: 0 0 30px; }
+/* `scroll-margin-top` because both are jump targets — a tree row scrolls to a `.cp-subgroup`, and
+   a no-JS client follows `#cp-panel-<slug>` to a `.cp-section`. Without it the heading they were
+   asked for lands at viewport zero, under the sticky toolbar. */
+.cp-subgroup { margin: 0 0 30px; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-subgroup[hidden] { display: none; }
 .cp-group-head { margin: 26px 0 12px; font-size: var(--md-sys-typescale-label-medium-size);
   line-height: var(--md-sys-typescale-label-medium-line); font-weight: 500; letter-spacing: 0.06em;
@@ -520,8 +657,12 @@ html.cp-js .cp-section-head { display: none; }
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-state-btn[aria-current="page"] { background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* `<cp-bg-toggle>` (serve-components.js) renders the Transparent button into its own light DOM.
+   `display: contents` drops the wrapper out of layout entirely, so the .cp-bg-btn inside stays the
+   toolbar's own flex item and the upgraded control lays out exactly as the bare button did. */
+cp-bg-toggle { display: contents; }
 /* …and the same filter chip for the theme chips and for the two standalone toggles that used to
-   be segmented pairs — Transparent (.cp-bg-toggle) and the viewer's Fit width (.cp-zoom-toggle).
+   be segmented pairs — Transparent (<cp-bg-toggle>) and the viewer's Fit width (.cp-zoom-toggle).
    One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's
    selected state, exactly as `aria-current` is a navigation chip's. A disabled chip keeps M3's 38%
    on-surface treatment rather than vanishing — a theme this lane cannot render is information. */
@@ -618,6 +759,61 @@ html.cp-js .cp-section-head { display: none; }
   background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); border: 0; }
 .cp-degrade-icon { font-weight: 700; }
 .cp-degrade-item { display: inline; }
+/* Historical permalinks. The pin banner takes the same tonal-container shape as the degradation
+   banner above — it is the same kind of statement, "what you are looking at is not the default" —
+   but in the primary family rather than the warning one: a pinned page is a deliberate choice, not
+   a degraded state. */
+.cp-pinned { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  margin: 0 0 10px; padding: 12px 16px; border-radius: var(--md-sys-shape-corner-medium);
+  font-size: var(--md-sys-typescale-body-medium-size); line-height: 1.4;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
+.cp-pinned code { font-size: 0.86em; }
+.cp-pinned-current { font-weight: 650; }
+/* The revision control is a menu, not a wall: an outlined trigger that names the revision the page
+   is on, and a floating list of the others — the same `<details>`-as-menu shape as the settings
+   button above. A dozen publishes as chips took four lines of page before the preview and made the
+   reader hunt for the highlighted one; closed, this is a single control that already says which
+   version you are looking at. */
+.cp-revisions { position: relative; display: inline-block; margin: 0 0 12px;
+  font-size: 0.82rem; color: var(--cp-fg-muted); }
+.cp-revisions-btn { display: inline-flex; align-items: baseline; gap: 8px; padding: 7px 14px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-surface-variant); cursor: pointer; list-style: none;
+  user-select: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-revisions-btn::-webkit-details-marker { display: none; }
+.cp-revisions-btn:hover, .cp-revisions[open] > .cp-revisions-btn {
+  color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-revisions-key { font-weight: 650; }
+.cp-revisions-caret { font-size: 0.9em; opacity: 0.7; }
+.cp-revisions[open] .cp-revisions-caret { transform: rotate(180deg); }
+/* Menu surface: M3 elevated container, capped so a long branch history scrolls inside the popup
+   instead of pushing the page around. */
+.cp-revisions-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 50;
+  width: max-content; max-width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 420px); overflow-y: auto; padding: 8px 4px;
+  border: 0; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level2); }
+.cp-revision-list { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.cp-revision { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px;
+  border: 0; border-radius: var(--md-sys-shape-corner-small);
+  color: var(--cp-fg); text-decoration: none; white-space: nowrap; }
+.cp-revision:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-revision[aria-current="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
+.cp-revision-date { font-variant-numeric: tabular-nums; }
+.cp-revision-sha { font-size: 0.92em; opacity: 0.85; margin-left: auto; }
+.cp-revision-tag { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em;
+  opacity: 0.8; }
+.cp-revision-tag--pinned { color: var(--md-sys-color-primary); opacity: 1; }
+.cp-revision-note { margin: 8px 12px 4px; max-width: 44ch; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); }
 /* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
 .cp-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 10px; margin: 0 0 22px; max-width: 860px; }
@@ -855,6 +1051,66 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-size: var(--md-sys-typescale-body-small-size);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The four disclosures — Components, State/Variant, Theme, Overrides — ride at the end of that
+   same identity row, pushed to the trailing edge by the auto margin. They are the page's controls
+   over what is *shown*, so grouping them buys one place to look; keeping them on the title row
+   rather than a strip of their own is what makes the fold they buy back a net gain. `align-self`
+   overrides the row's baseline alignment: a 34px pill sitting on a headline's baseline hangs below
+   the row it belongs to. */
+.cp-head-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-left: auto; align-self: center; }
+/* The axis toggles are the drawer toggle's compact sibling: same pill, same selected language,
+   but two-part — the axis it folds, then the value that axis currently holds. Four full-size
+   drawer pills on the title row of a 1100px laptop wrap; at this size they don't. */
+/* Both classes on one button, and `.cp-drawer-toggle` is declared further down this sheet — at
+   equal specificity the later rule wins, so a bare `.cp-axis-toggle` here set `gap`/`min-height`/
+   `padding` and then had all three taken straight back off it. Qualifying with both classes is what
+   actually makes these compact, which is what keeps four controls beside the title instead of
+   wrapping them onto a row of their own. */
+.cp-drawer-toggle.cp-axis-toggle { gap: 6px; min-height: 34px; padding: 6px 14px; }
+.cp-toggle-label { color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; }
+.cp-axis-toggle[aria-expanded="true"] .cp-toggle-label {
+  color: var(--md-sys-color-on-secondary-container); }
+/* The value is the fact the folded row would otherwise have carried, so it is the emphasised half
+   and it never ellipsises away to nothing. */
+.cp-toggle-value { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The folded component subtree. A plain block wrapper so `hidden` is all the toggle has to set;
+   the `<nav class="cp-tree">` inside keeps the tree's own layout. */
+.cp-axes[hidden] { display: none; }
+/* The viewer's subtree is the catalog tree's markup, so it inherits the rails, the twisty and the
+   row shapes for free — but NOT the sidebar geometry. `.cp-tree` is a sticky 216px column inside
+   `.cp-catalog-body` above 960px; here it is a block above the stage, on a page that has no such
+   grid, so both the stickiness and the outer margin are undone. Overriding rather than minting a
+   parallel class is the point: a change to how a tree row looks has to reach both places. */
+.cp-axes-tree { position: static; max-height: none; overflow: visible; margin: 0 0 10px;
+  max-width: 760px; }
+/* A long axis FLOWS into columns rather than running down the page. On the landing the tree lives
+   in a 216px sidebar, where one column is the only option; here it sits full-width above the stage
+   with the whole right-hand side empty, and `iconbutton-outlined`'s 22 size × width × shape renders
+   became a 550px ladder of two-word labels — half the fold, to say what fits in four short columns.
+   `column-width` rather than a column count so the browser picks the number that fits, and the
+   rows stay one-per-line at any width. */
+.cp-axes-tree .cp-tree-variants { columns: 11em; column-gap: 20px; }
+.cp-axes-tree .cp-tree-variants li { break-inside: avoid; }
+/* The subtree's ROOT is the component itself, so it hangs off nothing and needs no rail or indent
+   of its own; the variants keep theirs, which is what still reads as a tree rather than a list. */
+.cp-axes-tree > .cp-tree-list > li > .cp-tree-component { padding-left: 0; }
+.cp-axes-tree .cp-tree-variants { margin-left: 10px; }
+/* Where you ARE. The landing tree marks a row it scroll-spied to with `aria-current="true"`; here
+   every row is a real navigation, so the render on screen is `aria-current="page"` — the same
+   distinction the component nav drawer already draws, and the same tonal pill it uses. */
+.cp-axes-tree .cp-tree-link[aria-current="page"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500;
+  border-radius: var(--md-sys-shape-corner-full); }
+.cp-axes-tree .cp-tree-variant[aria-current="page"] { text-decoration: none; }
+/* `inline-block`, not the landing tree's `block`: on the landing a variant row is one line in a
+   216px column, but here the marker is a filled pill in a 420px block, and a block-level pill
+   stretches the full width — a bar the length of the panel to say "this one", which reads as a
+   heading rather than a selection. Shrunk to its label it reads as the chip it replaced. */
+.cp-axes-tree .cp-tree-variant { display: inline-block; }
 .cp-preview-primary { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 /* The stage is the viewer's hero surface — an M3 elevated card at the large corner. */
@@ -1026,6 +1282,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-overlays { border-top: 1px solid var(--cp-border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cp-overlays-head { font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-knobs input:disabled { opacity: 0.7; }
+/* The Exploded 3D group's camera axes. A range + a live readout on one row: the drawer column is
+   240px, and the stacked `label { flex-direction: column }` default would give each of four
+   sliders three lines. `font-variant-numeric: tabular-nums` on the readout stops the row twitching
+   sideways as the value crosses a digit boundary mid-drag. */
+.cp-explode-row { flex-direction: row !important; align-items: center; gap: 8px !important;
+  justify-content: space-between; }
+.cp-explode-row input[type="range"] { flex: 1 1 90px; min-width: 0; padding: 0; }
+.cp-explode-value { flex: 0 0 auto; min-width: 3.2em; text-align: right; font-size: 0.75rem;
+  font-variant-numeric: tabular-nums; color: var(--cp-fg-muted); }
 .cp-links { border-top: 1px solid var(--cp-border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 /* The under-stage column: the static-snapshot note and the export bar. Page-level, not part of
    the collapsible overrides drawer, so grabbing the /render URLs stays visible with the drawer
@@ -1135,6 +1400,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-nav-empty[hidden] { display: none; }
 .cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
 .cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
+/* `.cp-theme` is inline-flex, which would out-specify the UA's `[hidden]` rule, so the folded
+   theme bar needs saying explicitly. */
+.cp-theme-bar[hidden] { display: none; }
 /* Mobile drawer backdrop — hidden by default; shown (below) only while a drawer is open on a
    narrow viewport, where the drawers render as bottom sheets. */
 .cp-scrim { display: none; }
@@ -1241,16 +1509,58 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
    render; pressing it while Live is on drops back to the static SVG. */
-.cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; min-height: 40px;
+/* The Source panel: the usage code, on the stage in place of the render.
+
+   Scrolls within itself rather than growing the stage, so entering and leaving the lane does not
+   resize the page around the visitor — and `max-width` keeps a long line from stretching the stage
+   wider than the render it replaced. The surface is the container colour rather than the stage's
+   own backing: this is a document, not a render, and it should not look like one that failed to
+   load. */
+.cp-source-panel { display: none; box-sizing: border-box; width: 100%; max-width: 72ch;
+  max-height: min(70vh, 640px); overflow: auto; text-align: left;
+  padding: 16px; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface); }
+.cp-viewer[data-mode="source"] .cp-source-panel { display: block; }
+/* The stage's own backing exists to show a RENDER on a neutral field, and the backend badge names
+   the engine that drew one. Neither means anything over a code panel: on a dark page the backing
+   framed the panel in a white card, and the badge sat on top of the first line of source. Both are
+   suppressed for the duration of the lane rather than restyled — the panel brings its own
+   surface. */
+.cp-viewer[data-mode="source"] .cp-stage { box-shadow: none; padding: 0; }
+/* Written at the same specificity as the Day/Night stage-backing rules above, and after them, or
+   they win: those paint the stage `#fff` / `#1d1d20` to give a RENDER a known field to sit on, and
+   on a dark page that framed the code panel in a white card. */
+html:not(.cp-bg-transparent) .cp-viewer[data-mode="source"] .cp-stage,
+html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: transparent; }
+.cp-viewer[data-mode="source"] .cp-backend { display: none; }
+.cp-source-panel pre { margin: 0; white-space: pre; overflow-x: auto;
+  font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem; line-height: 1.55; }
+.cp-source-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  margin-top: 12px; }
+.cp-source-note { margin: 0 0 12px; color: var(--cp-fg-muted); font-size: 0.75rem;
+  line-height: 1.5; }
+.cp-source-note--warn { color: light-dark(#573100, #ffd8a3); }
+
+/* `.cp-spec-chip` shares this shape on purpose: the design-spec lane is now a top-level toggle on
+   the viewer bar (not an <option> buried in the renderer combo), and it is the same *kind* of
+   control as the SVG format toggle — "swap what is on the stage" — so it reads as one family with
+   it and with the Live chip. */
+.cp-fmt-toggle, .cp-spec-chip { display: inline-flex; align-items: center; font: inherit;
+  min-height: 40px;
   font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
   padding: 8px 20px; border-radius: var(--md-sys-shape-corner-full);
   border: 1px solid var(--md-sys-color-outline); background: transparent;
   color: var(--md-sys-color-on-surface-variant); cursor: pointer;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-fmt-toggle:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-fmt-toggle[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+.cp-fmt-toggle:hover, .cp-spec-chip:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-fmt-toggle[aria-pressed="true"], .cp-spec-chip[aria-pressed="true"] {
+  background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
+.cp-spec-chip:disabled { opacity: 0.38; cursor: default; }
 .cp-format-link { color: var(--cp-fg-muted); font-size: 0.75rem; white-space: nowrap; }
 .cp-format-link:hover { color: var(--cp-accent-strong); }
 /* Score chips: M3 assist-chip shape, literal semantic colours. */
@@ -1377,17 +1687,28 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 0.6rem;
   font-weight: 700; line-height: 1; color: #fff; }
 .cp-annotation .cp-annotation-badge { position: absolute; top: -7px; left: -7px; }
-.cp-annotation--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
-.cp-annotation--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+/* The badge is coloured by kind wherever it appears — on the overlay box AND in the legend row.
+   Only the box was covered before, so a legend ordinal was `color: #fff` over no background: the
+   number was invisible and the row could not be matched back to its box, which is the legend's one
+   job. Fixed for all three kinds rather than only the new one, since layout and typography had it
+   too. */
+.cp-annotation--layout .cp-annotation-badge,
+.cp-annotation-entry--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
+.cp-annotation--typography .cp-annotation-badge,
+.cp-annotation-entry--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+.cp-annotation--theme .cp-annotation-badge,
+.cp-annotation-entry--theme .cp-annotation-badge { background: rgba(13, 148, 136, 0.95); }
 .cp-annotation-legend { display: none; margin: 8px 0 0; padding: 0; list-style: none;
   font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-annotation-entry { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .cp-annotation-role { font-weight: 650; color: var(--cp-fg); }
 .cp-annotation-spec { font-variant-numeric: tabular-nums; }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation-legend,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation-legend,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation-legend { display: block; }
 .cp-annotation-entry { display: none; }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation-entry--layout,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation-entry--theme,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation-entry--typography
   { display: flex; }
 /* Layout is the redline layer, typography the type spec — distinct hues so both can be on at once
@@ -1396,12 +1717,24 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation--layout .cp-annotation-label { background: rgba(214, 51, 108, 0.92); }
 .cp-annotation--typography { border: 1px dashed rgba(37, 99, 235, 0.9); }
 .cp-annotation--typography .cp-annotation-label { background: rgba(37, 99, 235, 0.92); }
+/* Theme is the resolved-container layer — fill, border, radius. A third hue AND a third border
+   style, because hue alone is not enough here: a container's redline and its resolved tokens
+   describe the SAME box in the ordinary case, so with Layout and Theme both on, the later-appended
+   theme box sits exactly on the layout box. Dotted against layout's solid and typography's dashed
+   keeps two coincident boxes legible. */
+.cp-annotation--theme { border: 1px dotted rgba(13, 148, 136, 0.9); }
+.cp-annotation--theme .cp-annotation-label { background: rgba(13, 148, 136, 0.92); }
+/* Same collision, worse: every box badge is pinned to the top-left corner, so a theme badge over a
+   layout box hid the layout ordinal completely and the legend's ① pointed at nothing visible. Park
+   the theme badge on the opposite corner — the two can then never occupy one spot. */
+.cp-annotation--theme .cp-annotation-badge { left: auto; right: -7px; }
 .cp-annotation--typography-hit { border: 0; background: transparent; }
 .cp-annotation--typography-cluster.cp-annotation-active { border-width: 2px;
   background: rgba(37, 99, 235, 0.08); }
 .cp-annotation--typography-hit.cp-annotation-active { background: rgba(37, 99, 235, 0.28);
   outline: 1px solid rgba(37, 99, 235, 0.95); }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation--layout,
+#cp-reference-compare[data-annotate-theme="on"] .cp-annotation--theme,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation--typography { display: block; }
 .cp-typography-summary { display: none; margin: 14px 0 0; }
 #cp-reference-compare[data-annotate-typography="on"] .cp-typography-summary { display: block; }
@@ -1549,9 +1882,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); border: 0; }
 
 @media (min-width: 1100px) {
-  /* Component discovery is part of the desktop workspace; drawers remain opt-in below this. */
-  .cp-viewer:not(.cp-nav-open) .cp-nav { display: flex; }
-  #cp-nav-toggle, .cp-nav-close { display: none; }
+  /* Component discovery is part of the desktop workspace, so the list still *opens* by default
+     here — but it is no longer nailed open. `cp-nav-closed` is the explicit "the reader put this
+     away" class the drawer script sets, and it is what lets a 240px column be reclaimed for the
+     render on a desktop too; without it the toggle in the title bar would be a control that did
+     nothing at exactly the width where the column costs the most. Three states, not two: no class
+     (open here, closed below), `cp-nav-open` (open everywhere), `cp-nav-closed` (closed
+     everywhere), so a no-JS desktop keeps today's list. */
+  .cp-viewer:not(.cp-nav-open):not(.cp-nav-closed) .cp-nav { display: flex; }
 }
 /* Mobile / narrow viewports. The viewer is a flex row of stage + overrides (+ optional nav);
    on a phone we collapse it to a single stacked column and — crucially for usability on a tall
@@ -1572,6 +1910,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   /* Wrapped onto its own line the crumb no longer continues the brand horizontally, so the
      keyline that stood in for the first `/` would read as a stray rule. */
   .cp-site-lead .cp-breadcrumb { padding-left: 0; border-left: 0; }
+  /* Wrapped onto its own line, the name loses the keyline that only reads inline. */
+  .cp-site-catalog { padding-left: 0; border-left: 0; }
   .cp-site-nav { justify-self: start; flex-wrap: wrap; }
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }
@@ -1585,12 +1925,21 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   /* The trust badge can carry a long branch string; constrain it to the viewport and let it
      wrap instead of forcing a horizontal scroll. */
   .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-  /* Sticky toggle bar so ⚙ Overrides / ☰ Components stay one tap away without scrolling. */
-  .cp-viewer-bar { position: sticky; top: 0; z-index: 20; margin: 0 0 10px; padding: 6px 0;
-    background: var(--cp-bg); }
-  /* The four fixed controls alone fill a phone's width, so the bar wraps again here. The theme
-     group keeps its own single scrolling row — that is its own axis, not the bar's. */
-  .cp-viewer-bar { flex-wrap: wrap; }
+  /* Sticky disclosure row so ⚙ Overrides / ☰ Components — and now the State and Theme folds —
+     stay one tap away without scrolling past a tall preview. The row that sticks is the title row,
+     because that is where all four toggles live; the opaque preview id goes, since it is the one
+     thing on that row a phone was already ellipsising into a stub and it is in the URL, the export
+     links and the title attribute regardless. */
+  .cp-preview-head { position: sticky; top: 0; z-index: 21; margin: 0 0 8px; padding: 6px 0;
+    background: var(--cp-bg); row-gap: 6px; }
+  .cp-preview-head .cp-preview-id { display: none; }
+  /* The name is NOT clamped to one line here, though it would buy a row back: the trust verdict is
+     a `<span>` inside the `<h1>`, so an ellipsis on the headline eats the badge — and "is this
+     render trustworthy" is not a fact to drop for 24px of a sticky row. */
+  .cp-head-toggles { margin-left: 0; }
+  /* The bar's controls alone fill a phone's width, so it wraps again here. The theme group keeps
+     its own single scrolling row — that is its own axis, not the bar's. */
+  .cp-viewer-bar { margin: 0 0 10px; flex-wrap: wrap; }
   .cp-theme-bar { flex-basis: 100%; }
   .cp-viewer { gap: 16px; }
   /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
@@ -1740,4 +2089,337 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-history-span {
   color: var(--cp-muted, #656d76);
   font-size: 0.72rem;
+}
+
+/* ── Design page ──────────────────────────────────────────────────────────────────────────────
+   One whole page of the design file, inlined as SVG, with an outline over every component node on
+   it and — behind a toggle — this catalog's own renders standing in for the design's own drawing.
+
+   Unlike the screen backdrop this replaced, the geometry is NOT in percentages: the SVG is the
+   source of truth for where a node is, so `design-page.js` measures each `[data-node-id]` element
+   and writes the four offsets. Everything here is therefore paint and state, not layout — which is
+   also why the stage stacks above the list rather than beside it: a specimen sheet is wider than
+   it is tall, the opposite of the phone screens the two-column version was shaped for. */
+.cp-page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.4rem;
+  align-items: start;
+}
+.cp-page-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--cp-page-aspect, 1.2);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  overflow: hidden;
+  /* The design's own pixels are the ground truth here, so the stage never tints them: a light
+     sheet stays light in dark mode rather than being composited onto a dark surface. */
+  background: #fff;
+}
+/* The inlined export. `width/height: 100%` on the element and the frame's own aspect on the stage
+   between them make the SVG's user units and the stage's pixels a fixed ratio, which is what lets
+   a measured node box stay correct through any resize. */
+.cp-page-stage > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* The design's own drawing of a node we have a render for, hidden so ours can stand in its place.
+   `visibility` rather than `display`: a hidden SVG element keeps its box, so the measurement that
+   positioned our render stays valid while it is hidden, and toggling back is free. */
+.cp-page-hide-design .cp-page-replaced { visibility: hidden; }
+/* A hit area, drawn as nothing. The sheet is the content, so the resting state of every node is
+   invisible — a mark appears where the reader is pointing, or across the board once they ask for
+   the layer. `transparent` rather than no border at all keeps the box the same size in both
+   states, so turning outlines on doesn't nudge thirty-eight rectangles by a pixel. */
+.cp-page-node {
+  position: absolute;
+  display: block;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+/* Colour by *how* the placement was linked, so the weak links read as weak at a glance. An
+   unlinked rectangle — a part of the sheet no code implements — is the dashed red one, and is the
+   single most interesting mark on the page once the layer is on. */
+.cp-page-node[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
+.cp-page-node[data-link="manifest"] { --cp-page-node-color: #0969da; }
+.cp-page-node[data-link="convention"] { --cp-page-node-color: #bf8700; }
+/* Red is reserved for a real gap. An unlinked node that is furniture — a private component, a
+   variant-set container — is structure rather than missing work, so it takes the neutral grey and
+   stops competing for the eye with the thing the reader is hunting for. */
+.cp-page-node[data-link="unlinked"] { --cp-page-node-color: #6e7781; }
+.cp-page-node[data-cp-gap] { --cp-page-node-color: #cf222e; }
+/* The opt-in layer: every node marked at once, which is the coverage read rather than the reading
+   view. */
+.cp-page-outlines-on .cp-page-node {
+  border-color: var(--cp-page-node-color, #2da44e);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 10%, transparent);
+}
+.cp-page-outlines-on .cp-page-node[data-link="unlinked"] { border-style: dashed; }
+.cp-page-outlines-on .cp-page-node[data-cp-gap] {
+  background: color-mix(in srgb, #cf222e 8%, transparent);
+}
+/* Pointing, keyboard focus, and selection all mark ONE node — and do it whether or not the resting
+   layer is on. This is the page's primary affordance now: an unmarked sheet that answers where you
+   point. Selection is the loudest of the three because it persists after the pointer leaves, and
+   it must stay legible against both a light sheet and our own render sitting in the slot. */
+.cp-page-node:hover,
+.cp-page-node:focus-visible,
+.cp-page-node.cp-page-active {
+  border-color: var(--cp-page-node-color, #2da44e);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-page-node-color, #2da44e) 45%, transparent);
+  outline: none;
+}
+.cp-page-node.cp-page-selected {
+  border-color: var(--cp-page-node-color, #2da44e);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 12%, transparent);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--cp-page-node-color, #2da44e);
+}
+/* "Only what we don't implement" — keeps the components with no code behind them and mutes the
+   rest, which is the fastest read of a page's coverage.
+
+   Keyed on `data-cp-gap`, NOT on `data-link="unlinked"`. Unlinked also catches the sheet's own
+   furniture: a private component (Figma's leading-dot convention) and the `COMPONENT_SET` container
+   whose variants ARE the components listed beside it. Filtering on unlinked made a Shape page whose
+   35 shapes are all implemented light up `.Header`, `.Header` and `Shape Set` as work to do — three
+   marks that no amount of code would ever clear. */
+.cp-page-unlinked-only .cp-page-node:not([data-cp-gap]) {
+  opacity: 0.12;
+  pointer-events: none;
+}
+/* A render is pinned to its node's top-left and scaled to the node's WIDTH, keeping its own aspect
+   ratio — deliberately not stretched to fill the box. A component that renders taller than the
+   design drew it is a real finding, and stretching would hide exactly that.
+
+   `object-fit: contain` with the node's full height is what centres it in the slot the design left,
+   which is how the swapped-in render lands where the eye expects it rather than hugging the top. */
+.cp-page-render {
+  position: absolute;
+  inset: 0;
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.cp-page-swap-on .cp-page-render { display: block; }
+/* A render the server could not produce. `design-page.js` restores the design's own drawing in that
+   slot and hides the failed image — but the rule above is a two-class selector and would beat the
+   UA stylesheet's `[hidden]`, leaving the browser's broken-image glyph sitting on top of the
+   drawing just restored. Specificity has to be answered explicitly. */
+.cp-page-swap-on .cp-page-render[hidden] { display: none; }
+/* A node the manifest named but the export doesn't carry — a layer the design tool flattened on
+   the way out. Its row stays (the mapping is still true); its outline can't, because there is
+   nothing to put it around. */
+.cp-page-node[data-cp-missing] { display: none; }
+/* The diff lane's readout: how far our render is from the design's drawing of that same node, as
+   one number per slot. Hidden outside the lane rather than not built, so flipping back into it is
+   free and the scoring runs once.
+
+   A number and not a diff map, deliberately — thirty-eight magenta thumbnails at slot size is the
+   annotated sheet this page was rescued from. The map is one click away at a readable size. */
+.cp-page-score { display: none; }
+.cp-page-diff-on .cp-page-score {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: block;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: var(--cp-score-bg, #6e7781);
+  color: #fff;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  pointer-events: none;
+}
+/* Three bands, not a gradient: the reader is triaging, and "does this need looking at" is a
+   decision rather than a measurement. */
+.cp-page-score[data-cp-score="close"] { --cp-score-bg: #1a7f37; }
+.cp-page-score[data-cp-score="drifting"] { --cp-score-bg: #9a6700; }
+.cp-page-score[data-cp-score="far"] { --cp-score-bg: #cf222e; }
+.cp-page-score[data-cp-score="none"] { --cp-score-bg: #6e7781; }
+/* In the diff lane every scoreable node is a way out to its full comparison, so the whole slot
+   reads as a link rather than as something to select in place. */
+.cp-page-diff-on .cp-page-node { cursor: zoom-in; }
+.cp-page-diff-link { display: none; }
+.cp-page-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0.8rem 0;
+  font-size: var(--md-sys-typescale-body-small-size, 0.82rem);
+}
+.cp-page-controls label { display: inline-flex; align-items: center; gap: 0.35rem; }
+/* The flip, as a segmented pair rather than two loose radios: the two lanes are one question with
+   one answer, and it is the control the page is built around, so it reads as a switch you throw
+   rather than a preference you set. The radios stay real (and stay reachable) — they are visually
+   removed, not `display: none`, so arrow keys still move between the lanes. */
+.cp-page-lane {
+  display: inline-flex;
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.cp-page-lane label { gap: 0; }
+.cp-page-lane input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.cp-page-lane span {
+  display: block;
+  padding: 0.32rem 0.85rem;
+  color: var(--cp-fg-muted);
+  cursor: pointer;
+}
+.cp-page-lane input:checked + span {
+  background: var(--cp-accent, #6750a4);
+  color: #fff;
+  font-weight: 600;
+}
+.cp-page-lane input:focus-visible + span {
+  outline: 2px solid var(--cp-accent, #6750a4);
+  outline-offset: -2px;
+}
+.cp-page-opt { color: var(--cp-fg-muted); }
+.cp-page-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+  color: var(--cp-fg-muted);
+  font-size: 0.75rem;
+}
+.cp-page-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+/* `display: flex` above beats the `hidden` attribute on its own, so the legend has to be told to
+   respect it — otherwise it stands over an unmarked sheet naming four colours nothing is wearing,
+   which is most of the noise this page was carrying. */
+.cp-page-legend[hidden] { display: none; }
+.cp-page-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+/* The pointer tooltip: what the node under the cursor is, where the eye already is.
+   
+   It replaced a strip under the sheet, which on a specimen sheet taller than the fold put the
+   answer somewhere the reader could not see while pointing at the question. Inert, so it can never
+   eat the click meant for the node beneath it, and positioned by script against the stage. */
+.cp-page-tip {
+  position: absolute;
+  z-index: 2;
+  max-width: min(360px, 80%);
+  padding: 0.15rem;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  background: var(--cp-surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  pointer-events: none;
+}
+.cp-page-tip[hidden] { display: none; }
+.cp-page-tip-card { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+.cp-page-tip-card .cp-page-row-code { font-size: 0.74rem; }
+
+/* The audit list, collapsed. It is a coverage inventory — every node, linked or not — which is a
+   thing to go and check rather than the first thing to read, so it ships closed and says what it
+   holds. */
+.cp-page-nodes > summary {
+  cursor: pointer;
+  padding: 0.35rem 0;
+  color: var(--cp-fg-muted);
+  font-size: 0.82rem;
+}
+.cp-page-nodes[open] > summary { margin-bottom: 0.4rem; }
+/* A definition sheet carries tens of nodes where a screen carried a dozen, so the list wraps into
+   columns instead of running off the bottom of the page. */
+.cp-page-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.2rem;
+}
+.cp-page-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--md-sys-shape-corner-small, 8px);
+  color: inherit;
+  text-decoration: none;
+}
+.cp-page-row:hover,
+.cp-page-row.cp-page-active {
+  border-color: var(--cp-border);
+  background: var(--cp-surface);
+}
+.cp-page-row-name { font-weight: 600; }
+.cp-page-row-code {
+  grid-column: 2;
+  color: var(--cp-fg-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+.cp-page-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--cp-page-node-color, #2da44e);
+}
+.cp-page-row[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
+.cp-page-row[data-link="manifest"] { --cp-page-node-color: #0969da; }
+.cp-page-row[data-link="convention"] { --cp-page-node-color: #bf8700; }
+.cp-page-row[data-link="unlinked"] { --cp-page-node-color: #6e7781; }
+.cp-page-row[data-cp-gap] { --cp-page-node-color: #cf222e; }
+.cp-page-count { color: var(--cp-fg-muted); font-size: 0.8rem; }
+.cp-page-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  color: inherit;
+  text-decoration: none;
+}
+.cp-page-card:hover { border-color: var(--cp-border-strong); background: var(--cp-surface); }
+.cp-page-card img {
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  object-position: top;
+  background: #fff;
+  border-radius: var(--md-sys-shape-corner-small, 8px);
+}
+.cp-page-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+/* A hotspot is a bare rectangle, so its accessible name lives in a visually-hidden span rather
+   than in the (decorative) outline itself. */
+.cp-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

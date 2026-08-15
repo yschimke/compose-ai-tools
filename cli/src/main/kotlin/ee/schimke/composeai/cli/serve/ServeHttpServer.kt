@@ -4,21 +4,27 @@ import ee.schimke.composeai.cli.BUNDLE_VERSION
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.ExplodedSvg
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.autohead.AutoHeadResponse
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.matchContentType
 import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.origin
+import io.ktor.server.request.path
 import io.ktor.server.request.queryString
 import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respond
@@ -68,6 +74,10 @@ import kotlinx.serialization.json.Json
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
  * - `GET /hero/{system}/{hash}.png` a prebaked, immutable front-door thumbnail ([ServeHeroImages]),
+ * - `GET /social/{hash}.png` the drawn link-unfurl card a page advertises ([ServeSocialCard]), and
+ *   `GET /favicon.svg` / `/favicon.ico` / `/apple-touch-icon.png` the site icon ([ServeSiteIcon]) —
+ *   all ungated, because a link unfurler presents no token when it fetches what a page pointed it
+ *   at, and an icon fetcher never presents one at all,
  * - `GET /readyz` readiness (green only after a representative preview actually renders — the
  *   rolling-update gate),
  * - `GET /index.json` Storybook stories index, `GET /iframe.html?id=` isolated story render
@@ -125,6 +135,14 @@ class ServeHttpServer(
    * exists, so an app's own landing keeps a "← back" link whenever the server also lists systems.
    */
   private val appCatalogSessions: List<String> = emptyList(),
+  /**
+   * **Top-level sites** (`--sites m3.preview.coo.ee=m3-catalog`, or `catalogs.json`'s `sites`):
+   * host names that serve one already-published catalog as though it were the whole server. See
+   * [ServeSites] — it's a routing/presentation view over the same session, not a second tenant, so
+   * it costs a map lookup per request and nothing else. Empty (the default) leaves every request
+   * behaving exactly as it did before sites existed.
+   */
+  private val sites: ServeSites = ServeSites.EMPTY,
   /**
    * Configured catalog availability shared with startup + refresh. When present, `/status` includes
    * failed/pending catalogs instead of silently omitting them. Catalog loading remains best-effort:
@@ -278,34 +296,61 @@ class ServeHttpServer(
    * a preview id, and everything that forms the fetch URL comes from the catalog metadata behind
    * them. Null when no fetcher was supplied, or the lane isn't wired at all.
    */
-  private val playgroundSeeds: PlaygroundSeedResolver? =
-    playgroundSourceFetch
-      ?.takeIf { playgroundService != null }
-      ?.let { fetch ->
-        PlaygroundSeedResolver(
-          locate = { system, previewId ->
-            // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up
-            // just to answer where a file lives.
-            val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
-            val source = bundleHost?.catalogSource
-            val preview = bundleHost?.previews?.firstOrNull { it.id == previewId }
-            val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
-            if (source != null && sourceFile != null)
-              PlaygroundSeedResolver.Location(
-                repo = source.repo,
-                ref = source.ref,
-                module = source.module,
-                sourceFile = sourceFile,
-                // Absent on a catalog published before discovery recorded it, which is exactly the
-                // case the resolver falls back to whole-file seeding for.
-                bodyLine = preview.bodyLine,
-              )
-            else null
-          },
-          fetch = fetch,
-          onLog = { System.err.println("serve: playground seed: $it") },
-        )
-      }
+  private val playgroundSeeds: PlaygroundSeedResolver? = playgroundSourceFetch
+  // Deliberately NOT gated on `playgroundService`. The resolver reads and cleans a preview's
+  // source, which the viewer's Source panel wants on every host that can browse a catalog —
+  // including the many that cannot compile it (a pin-only host, or one with no Robolectric
+  // sidecar, which is every Android and Wear catalog on the public deployment). Only the
+  // *handoff* needs a compiler, and `playgroundLinkFor` checks for one itself.
+  ?.let { fetch ->
+    PlaygroundSeedResolver(
+      locate = { system, previewId ->
+        // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up just
+        // to answer where a file lives.
+        val host = sessions.peekHost(system)
+        when {
+          // Resident: authoritative, in BOTH directions. A live host that does not list this
+          // preview — a catalog refreshed under the same id with it dropped, or its source
+          // metadata cleared — has to answer "no". Falling through to a remembered location there
+          // would serve the previous publication's source instead of a 404, so its negative
+          // answer drops the stale entry too.
+          host != null -> sourceLocationOf(host, previewId)
+          // Suspended, but still a session this server serves: answer from the snapshot taken as
+          // it was suspended. Taken from the host being suspended, so a catalog refreshed and then
+          // idled out snapshots the REPLACEMENT — the case a lazily-primed map got wrong, since a
+          // stale entry could answer a tab that loaded before the refresh.
+          sessions.isKnownSession(system) -> catalogSourceLocationsSeen[system]?.get(previewId)
+          // Retired: the catalog is gone and every other session-backed route for it 404s. A
+          // remembered location would keep answering — and keep re-fetching the old repository
+          // once the seed's TTL lapsed — long after the catalog was withdrawn.
+          else -> null
+        }
+      },
+      fetch = fetch,
+      onLog = { System.err.println("serve: playground seed: $it") },
+    )
+  }
+
+  /** Where a preview's source lives according to [host], or null when it cannot say. */
+  private fun sourceLocationOf(
+    host: ServeHost,
+    previewId: String,
+  ): PlaygroundSeedResolver.Location? {
+    val bundleHost = catalogBundleHost(host) ?: return null
+    val source = bundleHost.catalogSource ?: return null
+    val preview = bundleHost.previews.firstOrNull { it.id == previewId } ?: return null
+    val sourceFile = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return null
+    return PlaygroundSeedResolver.Location(
+      repo = source.repo,
+      ref = source.ref,
+      module = source.module,
+      sourceFile = sourceFile,
+      // Absent on a catalog published before discovery recorded it, which is exactly the case the
+      // resolver falls back to whole-file seeding for.
+      bodyLine = preview.bodyLine,
+    )
+  }
+
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
 
@@ -365,6 +410,13 @@ class ServeHttpServer(
   private val heroImages = ServeHeroImages()
 
   /**
+   * Drawn link-unfurl cards, served by the `/social/` route. Composed from the hero thumbnails
+   * above — so a card costs no render and no extra decode of a full-resolution PNG — and memoised
+   * by its inputs. See [ServeSocialCard].
+   */
+  private val socialCards = ServeSocialCard()
+
+  /**
    * Whether the `/admin/catalogs` routes exist on this server: both an administrator
    * ([catalogAdmin]) and an [adminToken] are required. Fail-closed by construction — an operator
    * who never set a token gets no admin surface, not an open one.
@@ -377,6 +429,86 @@ class ServeHttpServer(
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
+      // Top-level sites ([ServeSites]): make the canonical `/<system>/…` spelling behave, on a site
+      // host, as though this box served only that one catalog. Registered before routing (and only
+      // when sites are configured, so an ordinary server has no interceptor at all) because it has
+      // to answer INSTEAD of the `/{system}/…` handlers, not after them.
+      //
+      // Two cases, and both cost one map lookup on a request that would otherwise be served anyway:
+      //   • this site's own system — 301 to the same page's rooted URL, so `m3.preview.coo.ee/`
+      //     and `…/m3-catalog/` don't compete as two spellings of one page in a crawler's index;
+      //   • another served catalog — 404, because a neighbour reachable through this domain is
+      //     precisely what a top-level site exists not to be. Only ids this server actually serves
+      //     are considered, so every constant route (`/p/…`, `/render/…`, `/assets/…`, `/healthz`)
+      //     falls straight through untouched.
+      if (!sites.isEmpty) {
+        intercept(ApplicationCallPipeline.Plugins) {
+          val current: ApplicationCall = context
+          val system = current.siteSystem() ?: return@intercept
+          val path = current.request.path()
+          val first = decodeSegment(path.trimStart('/').substringBefore('/'))
+          if (first.isEmpty()) return@intercept
+          if (first == system) {
+            // `trimStart` on the remainder as well as the head: `/<system>//evil.example` would
+            // otherwise build `//evil.example`, which a browser reads as a protocol-relative URL
+            // to another origin — an open redirect on every site host. The target must be exactly
+            // one leading slash, i.e. same-origin by construction.
+            val rest = path.trimStart('/').substringAfter('/', "").trimStart('/')
+            val query = current.request.queryString().prefixedQuery()
+            // 308, not 301: the canonical prefix also carries POST routes (`/{system}/refresh`,
+            // `/{system}/api/presence`, the theme-lease pair), and a 301 is re-issued as GET by
+            // most clients — the request would arrive at the rooted path with the wrong method.
+            current.response.headers.append(HttpHeaders.Location, "/$rest$query")
+            current.respond(HttpStatusCode.PermanentRedirect)
+            finish()
+          } else if (!isRootedRoute(first)) {
+            // The site's OWN styled 404 — every mistyped path on a site hostname lands here, so a
+            // plain string would undo the one-skin-per-hostname property for the page a visitor is
+            // most likely to meet.
+            //
+            // …but ONLY for a caller who is already allowed to see this server. This interceptor
+            // runs BEFORE the routes' own `rejectBadToken`, and `notFoundPage` threads the access
+            // token through its links — so on a token-gated box the styled page would have handed
+            // the secret to any unauthenticated request for a made-up path, which is every scanner.
+            // An unauthorized caller gets the same bare 404 the token gate itself answers with.
+            val provided =
+              current.request.queryParameters["token"] ?: current.request.headers[TOKEN_HEADER]
+            if (!isAuthorized(token, provided, isPublic)) {
+              current.respondText("not found", status = HttpStatusCode.NotFound)
+              finish()
+              return@intercept
+            }
+            val skin = current.siteSkin()
+            current.respondText(
+              ServeWeb.notFoundPage(
+                "That page was not found on this site.",
+                token,
+                isPublic,
+                version = BUNDLE_VERSION,
+                siteName = skin.first,
+                themeCss = skin.second,
+                themeStorageKey = skin.third,
+              ),
+              ContentType.Text.Html,
+              HttpStatusCode.NotFound,
+            )
+            finish()
+          }
+        }
+      }
+      // Answer HEAD everywhere GET is answered. Every route on this server is registered with
+      // `get`, so without this a HEAD got 405 where a constant path segment matched and 404 where
+      // routing needed a `{system}` — the whole site was un-HEAD-able.
+      //
+      // That is what broke link unfurling: an unfurler probes a URL and its `og:image` with HEAD
+      // before committing to a download, and a 4xx there reads as "this link is dead" rather than
+      // "this server only speaks GET". The same probe is what link checkers, uptime monitors and
+      // `curl -I` use, so all three were being told the site was broken.
+      //
+      // The plugin re-runs the GET pipeline and drops the body, so the headers a probe is asking
+      // about (content type and length, `Cache-Control`, ETag, the generation marker) match the GET
+      // exactly — which is the whole point of the probe.
+      install(AutoHeadResponse)
       // Sliding sessions: any request carrying a session past its half-life gets a freshly signed
       // cookie, so a visitor who keeps coming back is never bounced through GitHub. Runs before
       // routing so it covers every response, and no-ops (no `Set-Cookie` at all) for a young
@@ -461,6 +593,14 @@ class ServeHttpServer(
         get("/status") { handleStatus(json = false) }
         get("/status.json") { handleStatus(json = true) }
 
+        // The crawler-facing pair (see [ServeSiteIndex]). Both are deliberately UNGATED even on a
+        // token-gated host: a crawler has no token, and answering the styled HTML 404 — which is
+        // what these paths did before they existed — tells it nothing. A private server's
+        // `robots.txt` says "disallow everything" and its sitemap is simply absent, which is the
+        // honest answer and the one that keeps its URLs out of an index.
+        get("/robots.txt") { handleRobotsTxt() }
+        get("/sitemap.xml") { handleSitemapXml() }
+
         // Shared frontend assets for ServeWeb pages. These are generic CSS/JS bytes baked into the
         // CLI jar, so they are ungated like the Wasm/RC players and cacheable with an ETag.
         get("/assets/serve/{name}") { handleServeWebAsset(versioned = false) }
@@ -479,7 +619,13 @@ class ServeHttpServer(
         // iframe re-renders on knob override" failure. An unknown system 404s inside the handler
         // either way, so the route costs nothing when no app is ever registered.
         get("/wasm/{system}/{path...}") {
-          val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
+          val system = call.parameters["system"]
+          // A site hostname serves ONE catalog's app. `/wasm/<other>/…` is a constant-prefix route,
+          // so the canonical-path interceptor never sees it — without this check a site would hand
+          // out a neighbouring catalog's compiled Wasm app, which is the isolation contract broken
+          // by the heaviest asset on the box.
+          val site = call.siteSystem()
+          val dir = if (site != null && system != site) null else system?.let { wasmCatalogs[it] }
           if (dir == null) {
             call.respondText("not found", status = HttpStatusCode.NotFound)
             return@get
@@ -557,6 +703,24 @@ class ServeHttpServer(
         // repeat visitor's browser serves the whole front door's imagery from cache without asking.
         // A constant first segment, so it outscores the `/{system}` catch-all in Ktor routing.
         get("/hero/{system}/{name}") { handleHeroImage() }
+
+        // The drawn link-unfurl card a page advertises as its `og:image` ([ServeSocialCard]).
+        // Cached exactly like `/hero/` and for the same reason — the name is the content hash — but
+        // the immutability matters more here: unfurlers key their caches by URL and several never
+        // revalidate, so a card URL whose pixels could change would pin a stale picture in Slack
+        // indefinitely. A constant first segment, so it outscores the `/{system}` catch-all.
+        get("/social/{name}") { handleSocialCard() }
+
+        // The site icon, in the three forms the web asks for ([ServeSiteIcon]). These are what an
+        // unfurl card shows *beside* the picture — Slack, iMessage, Discord and Google all resolve
+        // a site icon from the page's `<link rel="icon">` tags or by probing `/favicon.ico`, and
+        // before these routes existed every one of them fell back to a generic globe. Ungated even
+        // on a token-gated server: an icon carries no session data, and a favicon fetch never
+        // carries the token anyway (the browser requests it outside the page's query string), so
+        // gating it would only guarantee the blank tab it is here to fix.
+        get(ServeSiteIcon.SVG_PATH) { respondSiteIcon(ServeSiteIcon.svg) }
+        get(ServeSiteIcon.ICO_PATH) { respondSiteIcon(ServeSiteIcon.ico) }
+        get(ServeSiteIcon.APPLE_TOUCH_PATH) { respondSiteIcon(ServeSiteIcon.appleTouchIcon) }
 
         // The in-browser Remote Compose player: a single shared IIFE bundle (global `RC`), baked
         // into the CLI jar as a classpath resource and served here so the viewer's client-side
@@ -784,6 +948,14 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
+        // Design pages (see [ServeDesignPages]). One route per level rather than a
+        // separate asset path: `{name}` ending in `.png` is the backdrop image, anything else is
+        // the screen's own view — the same suffix convention `/reference/{name}` already uses.
+        get("/pages") { handleDesignPageIndex(sessionInPath = false) }
+        get("/{system}/pages") { handleDesignPageIndex(sessionInPath = true) }
+        get("/pages/{name}") { handleDesignPage(sessionInPath = false) }
+        get("/{system}/pages/{name}") { handleDesignPage(sessionInPath = true) }
+
         // The published Remote Compose player renders + build-time diffs the compare page replays
         // (see [ServeRcCompare]). Content-addressed by lane and slot, never by a published id.
         get("/rc-compare/{lane}/{name}") { handleRcCompareAsset(sessionInPath = false) }
@@ -830,6 +1002,9 @@ class ServeHttpServer(
         get("/p/{name}") { handleViewer(sessionInPath = false) }
         get("/{system}/p/{name}") { handleViewer(sessionInPath = true) }
 
+        get("/usage/{name}") { handleUsage(sessionInPath = false) }
+        get("/{system}/usage/{name}") { handleUsage(sessionInPath = true) }
+
         get("/render/{name}") { handleRender(sessionInPath = false) }
         get("/{system}/render/{name}") { handleRender(sessionInPath = true) }
 
@@ -862,7 +1037,80 @@ class ServeHttpServer(
    */
   private fun RoutingContext.selectedSessionId(sessionInPath: Boolean): String =
     if (sessionInPath) call.parameters["system"] ?: defaultSessionId
-    else call.request.queryParameters["session"] ?: defaultSessionId
+    // A top-level site's host OUTRANKS `?session=`. It has to: the whole guarantee is one catalog
+    // per hostname, and a query param that could re-point the session would hand a neighbour's
+    // previews out through `/api/previews?session=wear-m3` while `/wear-m3/` 404s — the isolation
+    // undone by the older spelling of the same request.
+    else siteSystem() ?: call.request.queryParameters["session"] ?: defaultSessionId
+
+  /**
+   * The catalog this request's **host** publishes as a top-level site, or null on the main host
+   * (and on every server with no sites configured, which is the fast path). See [ServeSites].
+   *
+   * Read from the same forwarded headers [externalOrigin] trusts, because the only thing in front
+   * of this server is the deployment's own reverse proxy — a request that reaches the listener
+   * direct carries its `Host` verbatim, which is what a local `curl -H 'Host: m3.preview.coo.ee'`
+   * needs.
+   */
+  private fun ApplicationCall.siteSystem(): String? {
+    if (sites.isEmpty) return null
+    val forwarded = request.headers["X-Forwarded-Host"]?.substringBefore(',')?.trim()
+    return sites.systemFor(
+      forwarded?.takeIf { it.isNotEmpty() } ?: request.headers[HttpHeaders.Host]
+    )
+  }
+
+  private fun RoutingContext.siteSystem(): String? = call.siteSystem()
+
+  /**
+   * The catalog identity a **top-level site**'s non-catalog pages should wear — its name, its
+   * palette, and the `localStorage` key its theme choice is remembered under. All three empty on
+   * the main host, and on a site whose catalog has not loaded yet.
+   *
+   * A site hostname publishes one design system, so `/status` and the 404 on that host are that
+   * system's pages too. Without this they rendered in the built-in chrome beside a themed landing —
+   * one hostname wearing two skins. Read through [ServeSessionRegistry.peekHost], which never
+   * resumes: a 404 must not wake a daemon to find out what colour to be.
+   */
+  private fun RoutingContext.siteSkin(): Triple<String, String, String> = call.siteSkin()
+
+  /** As [siteSkin], from the call alone — the site interceptor has no [RoutingContext]. */
+  private fun ApplicationCall.siteSkin(): Triple<String, String, String> {
+    val system = siteSystem() ?: return Triple("", "", "")
+    val host = sessions.peekHost(system)
+    val bundle = host?.let { catalogBundleHost(it) }
+    val name =
+      bundle?.title?.takeIf { it.isNotBlank() }
+        ?: catalogMetaSeen[system]?.title
+        ?: host?.label
+        ?: system
+    // Same key the catalog's own pages use, so one choice follows a visitor across the hostname
+    // instead of `/status` and the grid each remembering their own light/dark.
+    // Palette from the resident bundle, else the last-known snapshot: residency, not registration,
+    // is what the idle timer takes away, and a suspended site must keep its colours.
+    val themeCss =
+      bundle?.webThemeCss?.takeIf { it.isNotBlank() }
+        ?: catalogMetaSeen[system]?.webThemeCss.orEmpty()
+    return Triple(name, themeCss, "cp-theme:$system")
+  }
+
+  /**
+   * Whether a GitHub sign-in started from *this* request's origin can actually come back to it.
+   *
+   * False on a top-level site whose box pins a callback base URL
+   * (`--github-auth-callback-base-url`, which the deployment sets): the `cp_gh_state` cookie is
+   * host-only, so it is written on the site host while GitHub returns to the pinned one — the
+   * callback then sees no state and answers 401, and its relative return URL could not have come
+   * back to the site anyway. Offering the link would advertise a dead end, so the affordance is
+   * withheld and the surface stays snapshot-only there. Sites on a box with no pinned callback are
+   * unaffected (the callback is derived from the request, so it stays on the site host and the
+   * round trip closes).
+   *
+   * The real fix is an OAuth handoff that carries the originating host through the dance; until
+   * then this keeps the failure honest rather than hidden behind a button.
+   */
+  private fun RoutingContext.oauthCanRoundTrip(): Boolean =
+    siteSystem() == null || githubAuth?.hasPinnedCallback != true
 
   /**
    * The session id to hand [ServeWeb] for nav-marking + link building, and the URL [basePath] its
@@ -874,8 +1122,49 @@ class ServeHttpServer(
    */
   private fun RoutingContext.webSessionAndBase(sessionInPath: Boolean): Pair<String?, String> {
     val system = if (sessionInPath) call.parameters["system"] else null
-    return if (system != null) system to "/" + WebEscaping.urlEncodeSegment(system)
-    else call.request.queryParameters["session"] to ""
+    if (system != null) return system to "/" + WebEscaping.urlEncodeSegment(system)
+    // A top-level site: the session is this host's catalog, and its base path is EMPTY — that empty
+    // string is the whole reason links stay on the custom domain instead of walking back to
+    // `preview.coo.ee/<system>/`. The session id is still passed so nav-marking and the engagement
+    // counters attribute to the right catalog; it is the same catalog either way, so a visit
+    // through the site host and one through the canonical path count together.
+    siteSystem()?.let {
+      return it to ""
+    }
+    return call.request.queryParameters["session"] to ""
+  }
+
+  /**
+   * The catalogs the playground may offer **this** request: every one on the main host, and only
+   * its own on a top-level site.
+   *
+   * The playground lives at constant paths (`/playground`, `/api/<v>/compiler/catalogs`), so the
+   * canonical-path interceptor never sees it — its first segment names no session. Without this, a
+   * site host would list, preselect and compile against every catalog on the box, which is the
+   * one-catalog-per-host contract broken by the one lane that runs code. The pinned "Server
+   * default" entry (empty id) is not a catalog and is kept either way.
+   */
+  private fun RoutingContext.siteScopedCatalogChoices(
+    service: PlaygroundCompileService
+  ): List<PlaygroundCatalogInfo> {
+    val choices = service.catalogChoices()
+    val site = siteSystem() ?: return choices
+    return choices.filter { it.id.isEmpty() && sitePinIsOwn(service) || it.id == site }
+  }
+
+  /**
+   * Whether the host's **pinned** playground default compiles against this site's own catalog.
+   *
+   * The pinned entry carries an empty id and reads as "Server default", which sounds catalog-less
+   * but is not: `--playground-bundle=wear-m3` on a box whose site is `compose-m3` makes that
+   * default a *neighbour's* classpath. Keeping the option, or accepting `catalog: ""`, would let a
+   * one-catalog hostname compile against another design system under a name that never says so. A
+   * pin naming no catalog at all (local files) is nobody's neighbour and stays offered.
+   */
+  private fun RoutingContext.sitePinIsOwn(service: PlaygroundCompileService): Boolean {
+    val site = siteSystem() ?: return true
+    val pinned = service.pinnedCatalogSystems
+    return pinned.isEmpty() || pinned == setOf(site)
   }
 
   /** `POST /{system}/refresh`: check the published catalog branch and reload it when newer. */
@@ -981,6 +1270,7 @@ class ServeHttpServer(
    * [ServeWeb.notFoundPage]. Asset/API lanes keep their bare `text/plain` 404.
    */
   private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
+    val skin = siteSkin()
     call.respondText(
       ServeWeb.notFoundPage(
         message,
@@ -988,6 +1278,9 @@ class ServeHttpServer(
         isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
+        siteName = skin.first,
+        themeCss = skin.second,
+        themeStorageKey = skin.third,
       ),
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
@@ -1100,7 +1393,14 @@ class ServeHttpServer(
       call.request.queryParameters["from"]?.let { raw ->
         val system = raw.substringBefore('/')
         val previewId = raw.substringAfter('/', "")
+        // `?from=` is supplied by the caller, not by the selector this page renders — so narrowing
+        // the selector does not narrow this. On a site host a `from` naming a neighbour would
+        // otherwise seed the editor with that catalog's Kotlin source, which is the one-catalog
+        // contract broken by a query parameter. Ignored rather than refused: the playground still
+        // opens, on its sample.
+        val siteSystem = siteSystem()
         if (system.isBlank() || previewId.isBlank()) null
+        else if (siteSystem != null && system != siteSystem) null
         // On the IO dispatcher: an uncached seed is a synchronous GitHub GET with 10 s connect +
         // 10 s read, and running that on the routing dispatcher lets a handful of concurrent
         // handoffs during GitHub latency stall every other route on this host.
@@ -1111,7 +1411,7 @@ class ServeHttpServer(
       ServeWeb.playgroundPage(
         token = token,
         isPublic = isPublic,
-        catalogs = service.catalogChoices(),
+        catalogs = siteScopedCatalogChoices(service),
         catalogSelectorEnabled = service.catalogSelectorEnabled,
         seed = seed,
         preselectCatalog = call.request.queryParameters["catalog"],
@@ -1138,7 +1438,7 @@ class ServeHttpServer(
     call.respondText(
       JSON.encodeToString(
         PlaygroundCatalogsResponse.serializer(),
-        PlaygroundCatalogsResponse(service.catalogChoices()),
+        PlaygroundCatalogsResponse(siteScopedCatalogChoices(service)),
       ),
       ContentType.Application.Json,
     )
@@ -1282,6 +1582,22 @@ class ServeHttpServer(
         )
         return
       }
+    // Not advertising a neighbour is not the same as refusing to compile against one: the id is a
+    // request field, so a site host has to reject it outright or the selector's absence is
+    // cosmetic. Empty stays legal — that is the host's pinned default, which is not a catalog.
+    val site = siteSystem()
+    val foreignCatalog = request.catalog.isNotEmpty() && request.catalog != site
+    // An EMPTY catalog is the pinned default, which is only legitimate here when the pin is this
+    // site's own — otherwise it is a neighbour's classpath wearing the name "Server default".
+    val foreignPin = request.catalog.isEmpty() && !sitePinIsOwn(service)
+    if (site != null && (foreignCatalog || foreignPin)) {
+      call.respondText(
+        "{\"error\":\"unknown catalog\"}",
+        ContentType.Application.Json,
+        HttpStatusCode.NotFound,
+      )
+      return
+    }
     val response = withContext(Dispatchers.IO) { service.run(request, isSecurityChecked = true) }
     call.respondText(
       JSON.encodeToString(PlaygroundRunResponse.serializer(), response),
@@ -1449,7 +1765,10 @@ class ServeHttpServer(
     // Belt to `private, no-store`'s braces: an intermediary that under-honours the directive still
     // learns the body turns on the session cookie, rather than keying one visitor's HTML by URL
     // alone.
-    if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL) {
+    // Load-bearing for ANON_PAGE_CACHE_CONTROL, not just belt-and-braces: that value invites a
+    // shared cache to store the response, and without `Vary: Cookie` the cache would key one
+    // anonymous rendering by URL alone and hand it to a signed-in visitor.
+    if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL || cacheControl == ANON_PAGE_CACHE_CONTROL) {
       call.response.headers.append(HttpHeaders.Vary, HttpHeaders.Cookie)
     }
   }
@@ -1473,8 +1792,12 @@ class ServeHttpServer(
     // than an arbitrary default module's grid. A plain `serve` (no `--catalogs`) keeps the module
     // landing. A query `?session=` or a `/<system>` path still selects that session's landing
     // below.
+    // …unless this request arrived on a top-level site host, whose `/` IS its catalog's landing.
+    // A site that opened on an index of its neighbours would be advertising exactly what it exists
+    // not to.
     if (
       !sessionInPath &&
+        siteSystem() == null &&
         (listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty()) &&
         call.request.queryParameters["session"] == null
     ) {
@@ -1487,7 +1810,9 @@ class ServeHttpServer(
       selectedSessionId,
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
-      val systemViews = engagementStore.incrementSystem(selectedSessionId)
+      val systemViews =
+        if (isViewRequest()) engagementStore.incrementSystem(selectedSessionId)
+        else engagementStore.systemViews(listOf(selectedSessionId)).getValue(selectedSessionId)
       val heroId =
         catalogBundleHost(renderHost)?.declaredHeroPreviewId
           ?: ServeWeb.representativePreviewId(renderHost.previews)
@@ -1497,6 +1822,62 @@ class ServeHttpServer(
           "/render/${WebEscaping.urlEncodeSegment(it)}.png" +
           requestQuerySuffix()
       }
+      // Measured off the PNG header, so the unfurl card can declare `og:image:width`/`height`
+      // instead of making the fetcher download the render to find out. Skipped when the URL carries
+      // overrides — `heroUrl` inherits the page's query, so the image would be a re-render at a
+      // size
+      // the bake doesn't describe (same reasoning as the viewer's `imageSize`).
+      val heroSize =
+        if (requestCarriesOverrides()) null else heroId?.let { renderHost.bakedRenderSize(it) }
+      // …and, like the front door, prefer a **drawn** card over the render itself: this catalog's
+      // hero thumbnail set into a 1200×630 layout with the catalog's name and preview count, rather
+      // than a bare phone screenshot an unfurler has to crop to a band. Same reasoning and the same
+      // baked pixels as [handleHomeIndex]; see [ServeSocialCard].
+      //
+      // Skipped when the request carries overrides, for the reason `heroSize` is: the page then
+      // describes a re-render, and a card built from the baked hero would advertise the wrong
+      // picture for that URL.
+      //
+      // The hero is baked here rather than read out of `catalogMetaSeen`, so a visitor who lands
+      // straight on `/<system>/` — the shape of URL people actually share — gets a card without
+      // having gone through the front door first. It is the same memoised call the front door makes
+      // ([ServeHeroImages.heroFor] is per host instance), so this costs one decode per catalog for
+      // the whole life of that host, not one per request.
+      val bundle = catalogBundleHost(renderHost)
+      val heading = ServeWeb.catalogHeading(bundle?.title, renderHost.label)
+      val card =
+        if (requestCarriesOverrides() || bundle == null || heroId == null) null
+        else
+          withContext(Dispatchers.IO) {
+            heroImages.heroFor(bundle, heroId, bundle.contentCrop(heroId))?.let { hero ->
+              socialCards.cardFor(
+                ServeSocialCard.Spec(
+                  title = heading,
+                  subtitle = ServeWeb.catalogCardSubtitle(renderHost.previews.size),
+                  heroes = listOf(hero),
+                  system = selectedSessionId,
+                )
+              )
+            }
+          }
+      val unfurl =
+        if (card != null)
+          ServeWeb.UnfurlMetadata(
+            pageUrl = externalPageUrl(),
+            imageUrl = externalOrigin() + ServeSocialCard.PATH_PREFIX + "/" + card.fileName,
+            imageWidth = card.width,
+            imageHeight = card.height,
+          )
+        else
+        // No baked hero for this catalog yet, or the request carries overrides. The render is a
+        // worse picture but a real one, and `twitterCard` demotes it to the small card its shape
+        // can fill rather than claiming a banner it cannot.
+        ServeWeb.UnfurlMetadata(
+            pageUrl = externalPageUrl(),
+            imageUrl = heroUrl,
+            imageWidth = heroSize?.first,
+            imageHeight = heroSize?.second,
+          )
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.landingPage(
@@ -1509,18 +1890,36 @@ class ServeHttpServer(
           // A back-to-home button whenever this server publishes a front-door index — listed
           // catalogs OR unlisted app catalogs (mirrors handleLanding's home-index condition), so an
           // app-only server's landings still link home.
-          hasHomeIndex = listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty(),
+          // …and never on a top-level site: there is no front door on this hostname to go back to,
+          // and a "← All design systems" button would either lie or leave the domain.
+          hasHomeIndex =
+            siteSystem() == null &&
+              (listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty()),
           basePath = basePath,
-          hasFormatComparison =
-            renderHost.previews.any { preview ->
-              renderHost.hasSvgExportFor(preview.id) ||
-                renderHost.hasRemoteComposeDoc(preview.id) ||
-                renderHost.designReferencesFor(preview.id).isNotEmpty()
-            },
+          // One action per comparable format, each gated on the same condition `comparisonPage`
+          // turns that format on with — so "compare SVG" and "compare RC players" only appear when
+          // there is something behind them.
+          hasSvgComparison = renderHost.previews.any { renderHost.hasSvgExportFor(it.id) },
+          hasRcComparison =
+            renderHost.rcCompare() != null ||
+              renderHost.previews.any { renderHost.hasRemoteComposeDoc(it.id) },
           // Same condition `handleParity` serves on, so the link never leads to that route's 404.
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
+          // Same condition `handleDesignPageIndex` serves on, for the same reason. Listed by name
+          // in the navigation tree, so the landing has to know what they are called, not just how
+          // many there are.
+          designPages = renderHost.designPages().pages.map { ServeWeb.PageLink(it.id, it.name) },
+          // …and name that action after the design tool the catalog is specified by, read from the
+          // references it published (or from the parity feed's Figma lane when the references are
+          // rasters with no provider). Null ⇒ the generic "design parity" label.
+          designToolLabel =
+            renderHost.previews.firstNotNullOfOrNull { preview ->
+              renderHost.designReferencesFor(preview.id).firstNotNullOfOrNull {
+                ServeWeb.designToolLabel(it.source.provider)
+              }
+            } ?: renderHost.parityActivity()?.figma?.let { "Figma" },
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
@@ -1588,12 +1987,16 @@ class ServeHttpServer(
             githubAuth
               ?.takeIf { renderHost.hasLiveStream }
               ?.takeUnless { it.isAuthenticated(call) }
+              ?.takeIf { oauthCanRoundTrip() }
               ?.loginPath(call),
           themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
-          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
-          displayTitle = catalogBundleHost(renderHost)?.title,
+          unfurl = unfurl,
+          displayTitle = bundle?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -1722,6 +2125,9 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -1795,19 +2201,121 @@ class ServeHttpServer(
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
+          // Same derivation the landing uses to label its "compare to Figma" action, so the page a
+          // visitor arrives on names the tool the same way the link that brought them here did.
+          designToolLabel =
+            renderHost.previews.firstNotNullOfOrNull { preview ->
+              renderHost.designReferencesFor(preview.id).firstNotNullOfOrNull {
+                ServeWeb.designToolLabel(it.source.provider)
+              }
+            } ?: activity?.figma?.let { "Figma" },
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
     }
   }
 
+  /**
+   * Refuse a request whose `at=` is present but is not a commit sha.
+   *
+   * The alternative — ignoring it — is the one behaviour this feature must never have: it would
+   * answer a request that explicitly asked for a particular publish with whatever is current, under
+   * a URL whose whole promise is the opposite, and nothing about the response would say so. A
+   * `?at=main` is a mistake worth naming rather than quietly satisfying (see
+   * [ServeCatalogRevision.normalize] for why a ref is not a pin).
+   */
+  private suspend fun RoutingContext.rejectMalformedPin(): Boolean {
+    val raw = call.request.queryParameters[ServeCatalogRevision.PARAM] ?: return false
+    if (ServeCatalogRevision.normalize(raw) != null) return false
+    call.respondText(
+      "'${ServeCatalogRevision.PARAM}' must be a commit sha (7-40 hex), not a branch or tag",
+      status = HttpStatusCode.BadRequest,
+    )
+    return true
+  }
+
+  /**
+   * The revision state for a catalog page: the pin the request carries, and the delivery branch's
+   * recent publishes to offer as destinations ([ServeWeb.CatalogRevisions]).
+   *
+   * A pin is honoured whether or not it appears in that list. The list is the tail of a feed —
+   * about the last dozen publishes — while a permalink is meant to outlive them; refusing a sha
+   * just because it has scrolled off would make every link expire on a schedule nobody chose. What
+   * decides a pin is whether the branch still answers for it, which the asset lanes find out by
+   * asking.
+   *
+   * A session with no delivery branch behind it (an uploaded bundle, a local project) gets no
+   * revision surface at all rather than an empty control.
+   */
+  private fun RoutingContext.catalogRevisions(renderHost: ServeHost): ServeWeb.CatalogRevisions {
+    val host = catalogBundleHost(renderHost) ?: return ServeWeb.CatalogRevisions.NONE
+    if (!host.supportsPinnedRevisions) return ServeWeb.CatalogRevisions.NONE
+    return ServeWeb.CatalogRevisions(
+      pinned =
+        ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM]),
+      revisions = host.revisions,
+      repo = host.provenance?.repo,
+    )
+  }
+
+  /**
+   * Answer one **pinned** image request: the published bytes at a delivery-branch commit, or a 404
+   * naming why there are none.
+   *
+   * `(commit, path)` is immutable, so the response is `immutable` too — a pinned page reloads and a
+   * shared link re-opens without touching the branch again — under exactly the same public/private
+   * split the other content-addressed lanes use ([prebakedImageCacheControl]): on a token-gated box
+   * the URL carries the bearer token, and licensing a shared proxy to keep private catalog imagery
+   * for a year is not a trade a permalink is worth.
+   */
+  private suspend fun RoutingContext.respondPinnedAsset(
+    outcome: ServeBundleHost.PinnedOutcome?,
+    missing: String,
+  ) {
+    when (outcome) {
+      is ServeBundleHost.PinnedOutcome.Ok -> {
+        markGeneration("pinned-asset", prebakedImageCacheControl(isPublic))
+        call.respondBytes(outcome.bytes, ContentType.Image.PNG)
+      }
+      // The lane is admission-bounded, and a shed request is not a dead link. Saying so with a 503
+      // + Retry-After keeps a link checker (and a visitor) from concluding that a revision which
+      // exists is gone, and tells a well-behaved client when to come back.
+      ServeBundleHost.PinnedOutcome.Busy -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "5")
+        call.respondText(
+          "busy reading that revision from the delivery branch; try again shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      else -> call.respondText(missing, status = HttpStatusCode.NotFound)
+    }
+  }
+
   /** Canonical, inert PNG for a design reference. Original HTML/Figma sources are never served. */
   private suspend fun RoutingContext.handleDesignReferenceAsset(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     val sessionId = selectedSessionId(sessionInPath)
     val referenceId = call.parameters["name"]?.removeSuffix(".png").orEmpty()
+    val pinnedCommit =
+      ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
     withLeasedSession(sessionId, onMissing = { call.respond(HttpStatusCode.NotFound) }) { renderHost
       ->
+      // A pinned comparison has to pin BOTH panels. A reference is republished with the catalog
+      // like everything else, so leaving this lane on the tip would score today's mock against a
+      // historical render — a comparison of two moments rather than of two sides.
+      if (pinnedCommit != null) {
+        respondPinnedAsset(
+          outcome =
+            catalogBundleHost(renderHost)?.let {
+              withContext(Dispatchers.IO) { it.pinnedReference(pinnedCommit, referenceId) }
+            },
+          missing = "no published design reference at that revision",
+        )
+        return@withLeasedSession
+      }
       val bytes = renderHost.designReferenceRaster(referenceId)
       if (bytes == null) {
         call.respond(HttpStatusCode.NotFound)
@@ -1815,6 +2323,107 @@ class ServeHttpServer(
         markGeneration("design-reference", "private, max-age=300")
         call.respondBytes(bytes, ContentType.Image.PNG)
       }
+    }
+  }
+
+  /** The catalog's published design pages, or a 404 when it publishes none. */
+  private suspend fun RoutingContext.handleDesignPageIndex(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    withLeasedSession(
+      sessionId,
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
+      val pages = renderHost.designPages().pages
+      if (pages.isEmpty()) {
+        respondNotFoundHtml("This design system publishes no design pages.")
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.designPagesIndexPage(
+          moduleLabel = renderHost.label,
+          pages = pages,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
+          displayTitle = catalogBundleHost(renderHost)?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
+  /**
+   * One published design page: its view, or — when the name carries a `.svg` suffix — the cached
+   * export itself. The export is the design's own, staged at catalog load and sanitized once by
+   * [ServeDesignPageStore]; the server holds no Figma credential and never fetches it per request.
+   *
+   * The asset route answers the *same* sanitized markup the view inlines, deliberately. Serving the
+   * branch's raw bytes here would publish markup this server has already judged unsafe to inline,
+   * and two different answers for one URL is how a check gets bypassed.
+   */
+  private suspend fun RoutingContext.handleDesignPage(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    val name = call.parameters["name"].orEmpty()
+    val isImage = name.endsWith(".svg")
+    val pageId = if (isImage) name.removeSuffix(".svg") else name
+    withLeasedSession(
+      sessionId,
+      onMissing = {
+        if (isImage) call.respond(HttpStatusCode.NotFound)
+        else respondNotFoundHtml("That design system was not found on this server.")
+      },
+    ) { renderHost ->
+      val store = renderHost.designPages()
+      val page = store.page(pageId)
+      val svg = page?.let { renderHost.designPageSvg(pageId) }
+      if (page == null || svg == null) {
+        if (isImage) call.respond(HttpStatusCode.NotFound)
+        else respondNotFoundHtml("That page was not found in this design system.")
+        return@withLeasedSession
+      }
+      if (isImage) {
+        markGeneration("design-page", "private, max-age=300")
+        call.respondText(svg, ContentType.Image.SVG)
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.designPage(
+          moduleLabel = renderHost.label,
+          page = page,
+          svg = svg,
+          fileKey = store.fileKey,
+          // Resolved against what this session actually publishes, so a node mapped to a preview
+          // the catalog dropped renders as a plain outline instead of a broken image.
+          renderablePreviewIds = renderHost.previews.mapTo(HashSet()) { it.id },
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
+          displayTitle = catalogBundleHost(renderHost)?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
+        ),
+        ContentType.Text.Html,
+      )
     }
   }
 
@@ -1841,7 +2450,7 @@ class ServeHttpServer(
 
   /** Focused Reference / Diff / Actual comparison for one exact preview-reference mapping. */
   private suspend fun RoutingContext.handleReferenceComparison(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
     val previewId = call.parameters["name"].orEmpty()
@@ -1859,6 +2468,8 @@ class ServeHttpServer(
         respondNotFoundHtml("That preview has no matching design reference.")
         return@withLeasedSession
       }
+      val revisions = catalogRevisions(renderHost)
+      val pinned = revisions.pinned != null
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.referenceComparisonPage(
@@ -1877,8 +2488,19 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
-          referenceAnnotations = renderHost.annotationsForReference(reference.id),
-          actualAnnotations = renderHost.annotationsForPreview(previewId),
+          // Annotation layers describe the CURRENT catalog's layout and typography. Drawing them
+          // over a pinned pair would overlay today's bounds on historical pixels and label the
+          // result as that revision's spec — the same "current output on a pinned page" the viewer
+          // refuses, arriving through a payload rather than a lane. They are published per catalog
+          // load, not per revision, so there is nothing historical to draw instead.
+          referenceAnnotations =
+            if (pinned) emptyList() else renderHost.annotationsForReference(reference.id),
+          actualAnnotations =
+            if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
+          revisions = revisions,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -2085,6 +2707,48 @@ class ServeHttpServer(
       ?: appCatalogSessions
 
   /**
+   * Whether [first] — a request's first path segment on a **site host** — names one of the server's
+   * own routes, and so is not a session at all. Everything else 404s there.
+   *
+   * This is an **allowlist**, deliberately. The gate used to enumerate what was *foreign* — catalog
+   * ids, then registered sessions, then `<system>@<rev>` — and each review round found another way
+   * for a session to exist that the enumeration had not met: an uploaded bundle, a suspended entry
+   * that `peekHost` reports as absent, and finally a `--revisions` ref like `main`, which is not
+   * registered at all until the generic route leases it and the factory *builds* it. A list of
+   * things to refuse can only ever chase that. The set of constant first segments is closed and
+   * already written down ([ServeSites.RESERVED_SYSTEMS]), so a site host now serves its own system,
+   * serves the routes, and refuses everything else — including whatever the next session kind is.
+   *
+   * The cost is that a top-level route missing from that list 404s on a site host. That is a
+   * visible, tested failure rather than a silent leak, which is the right way round for a feature
+   * whose whole promise is that the hostname publishes one catalog.
+   *
+   * Letting a reserved segment through is only safe while **no session can be named one**, because
+   * Ktor matches whole paths and this matches a prefix: a bundle uploaded as `api` would make
+   * `/api/` (which no constant route matches) fall to `/{system}/` and serve that bundle. So the
+   * invariant is enforced at the two places a session gets its name —
+   * [ServeBundleStore.sanitizeName] refuses a reserved upload name, and [ServeSites] refuses a site
+   * whose catalog id is one.
+   */
+  private fun isRootedRoute(first: String): Boolean {
+    // The visitor's own redeemed playground session is the one session a site host must let
+    // through: this server minted it seconds ago under an unguessable token id and is redirecting
+    // them to it, so refusing it would 404 the last step of their own run.
+    if (playgroundRedeem?.isRedeemedSession(first) == true) return true
+    return first in ServeSites.RESERVED_SYSTEMS
+  }
+
+  /** `?a=b` for a non-empty query string, else `""` — for rebuilding a URL we are redirecting. */
+  private fun String.prefixedQuery(): String = if (isEmpty()) "" else "?$this"
+
+  /**
+   * One percent-decoded path segment, or the segment verbatim when it isn't valid encoding. Used to
+   * compare a first path segment against a catalog id; a bad escape simply won't match one.
+   */
+  private fun decodeSegment(raw: String): String =
+    runCatching { java.net.URLDecoder.decode(raw, Charsets.UTF_8) }.getOrDefault(raw)
+
+  /**
    * `/playground?from=<system>/<previewId>` for a preview, or null when this host would not honour
    * it — no playground lane, no source fetcher, a preview whose catalog never recorded a source
    * path, or a catalog this host cannot compile against. Checked here rather than left to the
@@ -2100,6 +2764,9 @@ class ServeHttpServer(
     sourceFile: String?,
   ): String? {
     if (playgroundService == null || playgroundSeeds == null) return null
+    // Same dead end the catalog-level handoff is withheld for: a site host whose OAuth cannot round
+    // trip would offer an editor that ends in a 401.
+    if (!playgroundReachable()) return null
     if (sourceFile.isNullOrBlank()) return null
     // The handoff is only an offer when THIS catalog is a compile target here. A serve host browses
     // far more catalogs than its playground can compile: a pin-only host compiles exactly its pin,
@@ -2126,7 +2793,20 @@ class ServeHttpServer(
    * — a landing that offers "try this in the playground" for a catalog the playground can't select
    * is the same dead affordance, one page earlier).
    */
+  /**
+   * Whether a playground handoff can complete from *this* request's origin at all.
+   *
+   * The playground is gated on GitHub auth, so on a site host whose box pins an OAuth callback the
+   * link leads into the same dance whose state cookie cannot reach the callback — a 401 at the end
+   * of a button that promised an editor. The live-preview prompts were already withheld for this;
+   * the handoff links are the same dead end and are withheld with them, rather than left as the one
+   * affordance that still walks a visitor into it.
+   */
+  private fun RoutingContext.playgroundReachable(): Boolean =
+    githubAuth == null || oauthCanRoundTrip()
+
   private fun RoutingContext.playgroundLinkForCatalog(system: String): String? {
+    if (!playgroundReachable()) return null
     if (playgroundService == null) return null
     if (!playgroundService.compilesCatalog(system)) return null
     val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
@@ -2163,6 +2843,70 @@ class ServeHttpServer(
             "${WebEscaping.urlEncodeSegment(it)}.png"
         }
     val featuredUrl = featuredPath?.let { externalOrigin() + it + requestQuerySuffix() }
+    // The FULL render behind the featured card, kept only as the fallback unfurl image for when no
+    // card can be drawn (see below). The full render rather than the `/hero/` thumbnail the page
+    // lays out, because those are downscaled to card size (the front door's is 216×480) — under
+    // every unfurler's floor for a large-image card and under Google's 512² guidance for using the
+    // image at all. The page wants a small file; a link preview wants a big picture.
+    // Read from the remembered metadata, not from a live host: `peekHost` is null for a suspended
+    // catalog, and falling back would quietly re-advertise the undersized thumbnail exactly when
+    // the
+    // featured catalog is idle — the common case, not a rare one.
+    val featuredRender =
+      featured?.heroPreviewId?.let { id ->
+        // Same rule as the viewer and the catalog landing: the URL below inherits the request's
+        // query, so a shared `/?widthPx=1200` names a re-render the baked size does not describe.
+        if (requestCarriesOverrides()) return@let null
+        val size = catalogMetaSeen[featured.system]?.heroRenderSize ?: return@let null
+        val path =
+          "/${WebEscaping.urlEncodeSegment(featured.system)}/render/" +
+            "${WebEscaping.urlEncodeSegment(id)}.png"
+        (externalOrigin() + path + requestQuerySuffix()) to size
+      }
+    // …but what the front door actually advertises is a **drawn** card ([ServeSocialCard]): a
+    // 1200×630 picture of the site, at the aspect every unfurler lays a large card out at. It has
+    // to be drawn rather than picked, because no catalog render is that shape — the featured hero
+    // is a 1078×2399 phone screenshot, so pointing at it meant the card showed a horizontal band
+    // through the middle of one app scaffold and nothing that identified this site at all.
+    //
+    // Composed from the hero thumbnails the front door already baked, in the order a visitor meets
+    // them, so it costs no render and no second decode of a full-resolution PNG. On
+    // `Dispatchers.IO`
+    // beside `homeSystemsFor` for the same reason that call is: the first visit after a catalog
+    // changes pays a rasterize, and that is not work for the request thread.
+    val card =
+      withContext(Dispatchers.IO) {
+        socialCards.cardFor(
+          ServeSocialCard.Spec(
+            title = ServeWeb.HOME_TITLE,
+            subtitle = ServeWeb.homeCardSubtitle(systems),
+            heroes =
+              ServeWeb.homeSections(systems)
+                .asSequence()
+                .flatMap { it.systems.asSequence() }
+                .mapNotNull { catalogMetaSeen[it.system]?.heroImage }
+                .take(ServeSocialCard.MAX_HEROES)
+                .toList(),
+          )
+        )
+      }
+    val unfurl =
+      if (card != null)
+        ServeWeb.UnfurlMetadata(
+          pageUrl = externalPageUrl(),
+          imageUrl = externalOrigin() + ServeSocialCard.PATH_PREFIX + "/" + card.fileName,
+          imageWidth = card.width,
+          imageHeight = card.height,
+        )
+      else
+      // Only when the card couldn't be encoded at all. The featured render is a worse picture but
+      // a real one, and `twitterCard` now demotes it to the small card its shape can fill.
+      ServeWeb.UnfurlMetadata(
+          pageUrl = externalPageUrl(),
+          imageUrl = featuredRender?.first ?: featuredUrl,
+          imageWidth = featuredRender?.second?.first,
+          imageHeight = featuredRender?.second?.second,
+        )
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.homeIndexPage(
@@ -2170,7 +2914,7 @@ class ServeHttpServer(
         token,
         isPublic = isPublic,
         version = BUNDLE_VERSION,
-        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = featuredUrl),
+        unfurl = unfurl,
         githubAuth =
           githubAuth?.let { auth ->
             ServeWeb.GitHubAuthStatus(
@@ -2181,6 +2925,75 @@ class ServeHttpServer(
           },
       ),
       ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * The catalogs a crawler may enumerate: the **listed** ones, each with its preview ids and its
+   * generation date. Unlisted app catalogs are excluded for exactly the reason they're kept off the
+   * front door — they're served, not published — so the sitemap and the home index agree on what
+   * this server claims to offer.
+   *
+   * Reads through [ServeSessionRegistry.peekHost] + [catalogMetaSeen] rather than leasing, which is
+   * the same trick `/status` and the home index use: enumerating every catalog's previews by lease
+   * would resume every suspended daemon on the box, and a sitemap fetch is the last request that
+   * should cost that. A catalog that has never been resident contributes nothing yet and appears
+   * once it has been seen.
+   *
+   * Deliberately does **not** call [rememberCatalogMeta] to freshen a resident host, even though it
+   * could: that path bakes the hero thumbnail ([ServeHeroImages.heroFor] renders, decodes and
+   * rescales a PNG) and reads render sizes, and doing it here would put that work on the Ktor
+   * request coroutine for every listed system — the home index moves the same work to
+   * `Dispatchers.IO` precisely because it is not free. A sitemap needs two lightweight fields, so
+   * it reads them straight off the resident host and falls back to whatever a previous page view
+   * already remembered.
+   */
+  private fun crawlableCatalogs(onlySystem: String? = null): List<ServeSiteIndex.CatalogEntry> =
+    (if (onlySystem != null) listOf(onlySystem) else listedCatalogs()).mapNotNull { system ->
+      val host = sessions.peekHost(system)
+      val meta = catalogMetaSeen[system]
+      val previewIds = host?.previews?.map { it.id } ?: meta?.previewIds ?: return@mapNotNull null
+      val generatedAt =
+        host?.let { catalogBundleHost(it)?.provenance?.generatedAt }
+          ?: meta?.provenance?.generatedAt
+      ServeSiteIndex.CatalogEntry(
+        system = system,
+        previewIds = previewIds,
+        lastModified = generatedAt,
+      )
+    }
+
+  /** `GET /robots.txt`: what a crawler may ask this server for. See [ServeSiteIndex]. */
+  private suspend fun RoutingContext.handleRobotsTxt() {
+    // Advertised only when there is something in it — an empty sitemap is a broken promise, and a
+    // token-gated host has no crawlable pages at all.
+    // On a top-level site the sitemap covers that site's own catalog, so the advertisement is
+    // gated on the same scoped set the sitemap itself is built from.
+    val sitemapUrl =
+      if (isPublic && crawlableCatalogs(siteSystem()).isNotEmpty())
+        externalOrigin() + "/sitemap.xml"
+      else null
+    markGeneration("robots", STATIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(ServeSiteIndex.robotsTxt(isPublic, sitemapUrl), ContentType.Text.Plain)
+  }
+
+  /**
+   * `GET /sitemap.xml`: every catalog landing and preview viewer, each stamped with the date its
+   * catalog was generated. 404 on a token-gated host — its pages need a token the crawler doesn't
+   * have, so publishing their URLs would only mint dead links.
+   */
+  private suspend fun RoutingContext.handleSitemapXml() {
+    if (!isPublic) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    markGeneration("sitemap", STATIC_RESOURCE_CACHE_CONTROL)
+    // A site host publishes ONE catalog, rooted: its landing is `/`, its viewers are `/p/<id>`, and
+    // its neighbours are none of a crawler's business here.
+    val site = siteSystem()
+    call.respondText(
+      ServeSiteIndex.sitemapXml(externalOrigin(), crawlableCatalogs(site), rootedSystem = site),
+      ContentType.Application.Xml,
     )
   }
 
@@ -2200,7 +3013,14 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleHeroImage() {
     if (rejectBadToken()) return
-    val hero = call.parameters["name"]?.let { heroImages.byFileName(it) }
+    // Scoped like `/wasm/<system>/…`, and for the same reason: the `{system}` segment is not the
+    // first one, so the canonical-path interceptor never inspects it. Once a neighbour's hero has
+    // been baked — loading the main index is enough — its thumbnail would stay fetchable through a
+    // hostname that publishes one catalog.
+    val site = call.siteSystem()
+    val hero =
+      if (site != null && call.parameters["system"] != site) null
+      else call.parameters["name"]?.let { heroImages.byFileName(it) }
     if (hero == null) {
       call.respondText("no such hero image", status = HttpStatusCode.NotFound)
       return
@@ -2215,12 +3035,75 @@ class ServeHttpServer(
   }
 
   /**
+   * `GET /social/{name}`: a drawn link-unfurl card ([ServeSocialCard]).
+   *
+   * Ungated, unlike `/hero/`. The card is only ever *named* by an `og:image` on a page the fetcher
+   * has already been given, it is drawn from the site's own chrome plus thumbnails that are public
+   * on the front door, and — decisively — a link unfurler does not replay a page's token when it
+   * fetches the image it was pointed at. Gating this would leave a token-gated server advertising
+   * an image every consumer 403s on, which is the failure this whole lane exists to remove.
+   */
+  private suspend fun RoutingContext.handleSocialCard() {
+    val site = call.siteSystem()
+    val card =
+      call.parameters["name"]
+        ?.let { socialCards.byFileName(it) }
+        // A site hostname answers for one catalog, including in an unfurl. The file name is a
+        // content hash, so a card baked for a neighbour (and published by its `og:image` on the
+        // main host) would otherwise be fetchable back through this domain and hand a chat client
+        // that catalog's title and thumbnails under this site's name. The front door's own card
+        // (system == null) is nobody's catalog and is refused here for the same reason.
+        ?.takeIf { site == null || site in it.systems }
+    if (card == null) {
+      call.respondText("no such card", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
+    call.response.headers.append(HttpHeaders.ETag, card.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == card.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(card.bytes, ContentType.Image.PNG)
+  }
+
+  /**
+   * Respond one of the site icons ([ServeSiteIcon]).
+   *
+   * Not `immutable` like the hashed lanes: these live at well-known paths that an icon fetcher
+   * guesses rather than reads, so the bytes behind them *do* change across a deploy. A day of
+   * caching plus the ETag is the trade — an icon is a few hundred bytes, and pinning a stale one
+   * for a year in every visitor's browser would be the worse mistake.
+   */
+  private suspend fun RoutingContext.respondSiteIcon(icon: ServeSiteIcon.Icon) {
+    if (icon.bytes.isEmpty()) {
+      call.respondText("icon unavailable", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.CacheControl, SITE_ICON_CACHE_CONTROL)
+    call.response.headers.append(HttpHeaders.ETag, icon.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == icon.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(icon.bytes, ContentType.parse(icon.contentType))
+  }
+
+  /**
    * Whether this render request asks for the base preview and nothing else — the only shape a
    * prebaked grid thumbnail can answer. See the `?thumb=` lane in [handleRender] for why.
    */
   private fun RoutingContext.plainThumbRequest(): Boolean =
     call.request.queryParameters.entries().none { (key, _) ->
-      ServeOverrides.isOverrideParam(key) || key == "scroll" || key == "rcPlayer" || key == "mode"
+      ServeOverrides.isOverrideParam(key) ||
+        key == "scroll" ||
+        key == "rcPlayer" ||
+        key == "mode" ||
+        // A pin asks for a *different* version of the render, which the in-memory thumbnail is by
+        // definition not — it is baked from the catalog on disk. Same rule as the overrides above:
+        // anything that changes which pixels are being asked for leaves this lane.
+        key == ServeCatalogRevision.PARAM ||
+        key in ServeExplodedSvg.PARAMS
     }
 
   /**
@@ -2249,7 +3132,13 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handleStatus(json: Boolean) {
     if (rejectBadToken()) return
     val wantJson = json || call.request.queryParameters["format"].equals("json", ignoreCase = true)
-    val data = withContext(Dispatchers.IO) { buildStatusData() }
+    // On a top-level site, `/status` reports on THAT app only: its catalog row, its daemons, and
+    // the startup failures that name it. A visitor to `m3.preview.coo.ee/status` has no business
+    // learning what else this box happens to run, and a monitor pointed at the site should alert on
+    // the site. The same underlying snapshot is taken either way — the scoping is a filter over it,
+    // not a second collection pass.
+    val data = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
+    val skin = siteSkin()
     if (wantJson) {
       call.respondText(
         JSON.encodeToString(StatusResponse.serializer(), data.toResponse()),
@@ -2262,6 +3151,9 @@ class ServeHttpServer(
           token,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
+          siteName = skin.first,
+          themeCss = skin.second,
+          themeStorageKey = skin.third,
         ),
         ContentType.Text.Html,
       )
@@ -2412,12 +3304,43 @@ class ServeHttpServer(
    */
   private val catalogMetaSeen = ConcurrentHashMap<String, CatalogMeta>()
 
+  /**
+   * Where each preview's source lives, per system, so `/usage/<id>` can answer for a **suspended**
+   * catalog — the snapshot [ServeSessionRegistry.peekHost] tells a caller to keep rather than read
+   * absence as a verdict.
+   *
+   * Written and removed **only** by [ServeSessionRegistry.SessionSnapshots], under the registry's
+   * own lock, as part of the detach and retire transitions. That single-writer rule is what makes
+   * it correct rather than merely narrow: a reader sees the session resident (and uses the live
+   * host) or suspended-with-a-snapshot, never the gap between, and a retirement cannot be overtaken
+   * by a slower writer still holding the removed host.
+   *
+   * Two earlier shapes did not hold, and both failed the same way — the storage was the registry's
+   * business but lived outside it. Refreshing this from resident reads gave it a second writer
+   * outside the lock, which is how a retired catalog's entry came back. Publishing it from a
+   * suspend listener only shortened the window, because listeners run after the lock is released.
+   *
+   * Nothing is written while a session is resident, and nothing needs to be: the live host answers
+   * then, and the snapshot is taken from the host being detached, which is fresher than anything a
+   * resident read could have left behind.
+   */
+  private val catalogSourceLocationsSeen =
+    ConcurrentHashMap<String, Map<String, PlaygroundSeedResolver.Location>>()
+
   /** A resident-time snapshot of one catalog's status facts. See [catalogMetaSeen]. */
   private data class CatalogMeta(
     val title: String?,
     val subtitle: String?,
     val trust: String?,
     val previews: Int?,
+    /**
+     * The preview ids themselves, not just the [previews] count — the sitemap lists one URL per
+     * viewer page and has to name them. Remembered here for the same reason everything else in this
+     * snapshot is: `peekHost` never resumes a suspended catalog, so building the sitemap off live
+     * hosts alone would publish only whichever catalogs happened to be warm, and the file would
+     * change shape between two requests a minute apart.
+     */
+    val previewIds: List<String>,
     val failedRenders: Int,
     val deferredPreviews: Int,
     val heroPreviewId: String?,
@@ -2430,7 +3353,26 @@ class ServeHttpServer(
      * catalog has no hero, or its PNG couldn't be decoded — the card falls back to `/render`.
      */
     val heroImage: ServeHeroImages.Hero?,
+    /**
+     * The pixel size of the hero preview's **full** render — what the front door advertises to link
+     * unfurlers, as opposed to the card-sized [heroImage] thumbnail beside it.
+     *
+     * Remembered rather than looked up when the home page renders, for the same reason [heroImage]
+     * is: `peekHost` returns null for a suspended catalog, so a live lookup would silently fall
+     * back to advertising the downscaled thumbnail — the undersized image this stopped advertising
+     * — whenever the featured catalog happened to be idle. Which catalog is featured depends only
+     * on publisher grouping, so that would have been the *usual* state on a quiet server, not an
+     * edge case.
+     */
+    val heroRenderSize: Pair<Int, Int>?,
     val darkStage: Boolean,
+    /**
+     * The catalog's own web palette ([ServeThemeCss]). Remembered for the same reason the trust
+     * badge and hero are: a **site**'s `/status` and 404 wear this skin, and reading it live meant
+     * the whole hostname reverted to the default palette the moment its daemon went idle. It comes
+     * from the delivery branch, not the daemon, so a suspension cannot invalidate it.
+     */
+    val webThemeCss: String,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
@@ -2440,6 +3382,55 @@ class ServeHttpServer(
   init {
     // Snapshot a catalog's facts as its daemon goes idle — the last moment they're readable.
     sessions.addSuspendListener { id, host -> rememberCatalogMeta(id, host) }
+    // A retired catalog's status snapshot goes with it. Without this every published-then-retired
+    // system on a churning host is retained for the life of the process. This one is a listener
+    // rather than a registry transition because [catalogMetaSeen] is also written from resident
+    // status reads, so it has other writers by design and cannot claim the guarantee below; the
+    // eviction is still strictly better than never evicting.
+    sessions.addUnregisterListener { id -> catalogMetaSeen.remove(id) }
+    // The source locations ride the registry's own transitions instead — see
+    // [catalogSourceLocationsSeen]. Both halves are pure map operations: no I/O, no blocking, no
+    // re-entry into the registry, which is what the under-lock contract requires.
+    sessions.setSessionSnapshots(
+      object : ServeSessionRegistry.SessionSnapshots {
+        override fun capture(sessionId: String, host: ServeHost) {
+          // Nothing stored for a host with no catalog source — a forked revision session, a plain
+          // module — rather than an empty map per session. The GC discards these anyway, but an
+          // entry that can never answer is not worth holding in the first place.
+          val locations = sourceLocationsOf(host)
+          if (locations.isEmpty()) catalogSourceLocationsSeen.remove(sessionId)
+          else catalogSourceLocationsSeen[sessionId] = locations
+        }
+
+        override fun discard(sessionId: String) {
+          catalogSourceLocationsSeen.remove(sessionId)
+        }
+      }
+    )
+  }
+
+  /**
+   * Every preview's source location on [host], as the suspended-catalog snapshot keeps them.
+   *
+   * Runs under the registry lock (see [ServeSessionRegistry.SessionSnapshots]), so it walks the
+   * preview list, builds a map, and does nothing else — no render, no decode, no I/O.
+   */
+  private fun sourceLocationsOf(host: ServeHost): Map<String, PlaygroundSeedResolver.Location> {
+    val bundle = catalogBundleHost(host) ?: return emptyMap()
+    val source = bundle.catalogSource ?: return emptyMap()
+    return host.previews
+      .mapNotNull { preview ->
+        val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        preview.id to
+          PlaygroundSeedResolver.Location(
+            repo = source.repo,
+            ref = source.ref,
+            module = source.module,
+            sourceFile = file,
+            bodyLine = preview.bodyLine,
+          )
+      }
+      .toMap()
   }
 
   /**
@@ -2458,6 +3449,7 @@ class ServeHttpServer(
         subtitle = bundle.subtitle,
         trust = BundleVerifier.summary(bundle.trust),
         previews = host.previews.size,
+        previewIds = host.previews.map { it.id },
         failedRenders = host.previews.count { it.renderFailure != null },
         deferredPreviews = host.liveOnlyPreviewIds.size,
         heroPreviewId = heroId,
@@ -2465,7 +3457,9 @@ class ServeHttpServer(
         // Memoised per (host instance, preview): the decode + scale runs once per catalog, and a
         // refresh — which installs a fresh host — re-bakes under a new hash.
         heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
+        heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
+        webThemeCss = bundle.webThemeCss.orEmpty(),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
@@ -2481,8 +3475,31 @@ class ServeHttpServer(
     val catalogs: List<CatalogStat>,
     val running: List<ServeSessionRegistry.RunningDaemon>,
     val failures: List<DaemonStartupLog.Failure>,
+    /**
+     * The one system this snapshot is about ([ServeSites]), or null for the whole box. Carried
+     * rather than applied only to [catalogs] / [running] because a status page is more than two
+     * lists: the session count and the playground's catalog selector are box-wide reads that would
+     * have kept naming neighbours (and reporting another app's daemons) to a per-site monitor.
+     */
+    val onlySystem: String? = null,
   ) {
     val uptimeSeconds: Long = ((nowMillis - startedAtMillis) / 1000).coerceAtLeast(0)
+
+    /**
+     * Sessions known to this status view: every registered one for the box, or just this site's (0
+     * or 1 — it is registered, or it has not loaded yet).
+     */
+    val knownSessions: Int =
+      if (onlySystem == null) sessions.activeCount()
+      // Registration, not residency: `peekHost` is null for a suspended-but-registered catalog, so
+      // reading it here reported `known: 0` beside an available catalog every time the site's
+      // daemon went idle — a per-site monitor would see its session vanish on a timer.
+      else if (sessions.isKnownSession(onlySystem)) 1 else 0
+
+    /** The playground's offered catalogs, narrowed to what this view is allowed to name. */
+    fun offeredCatalogs(offered: List<String>): List<String> =
+      if (onlySystem == null) offered else offered.filter { it == onlySystem }
+
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
@@ -2514,7 +3531,7 @@ class ServeHttpServer(
           ),
         daemons =
           DaemonSummaryDto(
-            known = sessions.activeCount(),
+            known = knownSessions,
             running = liveDaemons.size,
             activeStreams = activeStreams,
             liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
@@ -2621,7 +3638,17 @@ class ServeHttpServer(
                 },
               catalogSelector =
                 h.catalogSelector?.invoke()?.let {
-                  CatalogSelectorDto(offered = it.offered, resolved = it.resolved, limit = it.limit)
+                  // Scoped like everything else on a site's status: the selector must not name a
+                  // neighbouring catalog through a hostname that publishes one app.
+                  CatalogSelectorDto(
+                    offered = offeredCatalogs(it.offered),
+                    // Omitted rather than carried through when scoped: `resolved` counts how many
+                    // of the BOX's catalogs hold a compile classpath, and there is no per-catalog
+                    // breakdown to narrow it with. Reporting "1 offered, 5 resolved" would be
+                    // internally inconsistent and would leak the neighbour count it exists to hide.
+                    resolved = if (onlySystem == null) it.resolved else null,
+                    limit = it.limit,
+                  )
                 },
               rateLimit =
                 playgroundRateLimiter?.let {
@@ -2659,7 +3686,7 @@ class ServeHttpServer(
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
         add(ServeWeb.Stat("Live seats", seatsText))
-        add(ServeWeb.Stat("Known sessions", sessions.activeCount().toString()))
+        add(ServeWeb.Stat("Known sessions", knownSessions.toString()))
         add(ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)))
         if (renderAgg != null) {
           // One-line human roll-up; full per-daemon detail (cold counts, p50/p95, first-render
@@ -2777,13 +3804,16 @@ class ServeHttpServer(
    * reported as blank: an empty trust cell reads as "untrusted", which is a different and wrong
    * claim about a catalog that merely has an idle daemon.
    */
-  private fun buildStatusData(): StatusData {
-    val running = sessions.runningDaemons()
-    val byId = running.associateBy { it.id }
+  private fun buildStatusData(onlySystem: String? = null): StatusData {
+    val allRunning = sessions.runningDaemons()
+    val running = if (onlySystem == null) allRunning else allRunning.filter { it.id == onlySystem }
+    val byId = allRunning.associateBy { it.id }
     val tracked = catalogLoads?.snapshot()?.associateBy { it.config.system }.orEmpty()
-    val entries =
+    val allEntries =
       if (tracked.isNotEmpty()) tracked.values.map { it.config.system to it.config.listed }
       else listedCatalogs().map { it to true } + unlistedCatalogs().map { it to false }
+    val entries =
+      if (onlySystem == null) allEntries else allEntries.filter { it.first == onlySystem }
     val catalogs = entries.map { (id, listed) ->
       val load = tracked[id]
       val daemon = byId[id]
@@ -2828,7 +3858,11 @@ class ServeHttpServer(
       nowMillis = System.currentTimeMillis(),
       catalogs = catalogs,
       running = running,
-      failures = daemonLog?.recent().orEmpty(),
+      failures =
+        daemonLog?.recent().orEmpty().let { failures ->
+          if (onlySystem == null) failures else failures.filter { it.session == onlySystem }
+        },
+      onlySystem = onlySystem,
     )
   }
 
@@ -2975,6 +4009,10 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // Renders a story unconditionally — there is no baked lane here. A chrome-less frame for
+    // screenshot tools is never an unfurl target (and is robots-disallowed), so a bodyless probe
+    // gets nothing but the render bill.
+    if (rejectHeadProbe()) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val storyId = call.request.queryParameters["id"]
@@ -3133,6 +4171,9 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleBundleZip(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // Renders every preview in the catalog and packs a zip. Never probed for an unfurl, and the
+    // most expensive thing a HEAD could otherwise trigger anonymously.
+    if (rejectHeadProbe()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       // Render the whole module once (cache-backed) into the portable WebEmbed gallery and stream
       // it
@@ -3156,6 +4197,8 @@ class ServeHttpServer(
   /** Return one server-hydrated, self-contained executable PNG+ZIP preview bundle. */
   private suspend fun RoutingContext.handleExecutableBundle(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // Materialises a per-preview bundle, which can reach the network.
+    if (rejectHeadProbe()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       val previewId = call.parameters["name"]
       val available =
@@ -3182,9 +4225,99 @@ class ServeHttpServer(
     }
   }
 
+  /**
+   * `GET /usage/{name}` and `GET /{system}/usage/{name}`: the plain-Compose usage code behind one
+   * preview, as JSON, for the viewer's **Source** panel.
+   *
+   * Its own resource rather than a field on the viewer page, because producing it costs a GitHub
+   * read on a cold cache and most visitors never open the panel — the panel fetches on first entry,
+   * so a page load pays nothing.
+   *
+   * **No session lease.** This is a metadata read served entirely from the catalog registry and the
+   * resolver's cache; leasing would stand a render daemon up to answer a question about source
+   * text. Same reasoning as the resolver's own `locate`, which peeks rather than leases.
+   *
+   * 404 covers every "there is nothing to show" case — no resolver, an unknown preview, a catalog
+   * with no recorded source, or source the cleaner declined — so the panel has exactly one branch
+   * to handle and never renders a half-answer.
+   */
+  /**
+   * `/usage/<previewId>` for a preview, or null when this host has nothing to serve there — no
+   * source fetcher, a preview whose catalog never recorded a source path, or a session with no
+   * catalog source to resolve against. Checked here so the Source chip is never rendered dead.
+   *
+   * Unlike [playgroundLinkFor] this does **not** require a playground: reading the usage code is
+   * useful on any host that can browse the catalog, and only running it needs a compiler.
+   */
+  private fun RoutingContext.usageLinkFor(
+    system: String,
+    previewId: String,
+    sourceFile: String?,
+    basePath: String,
+  ): String? {
+    if (playgroundSeeds == null) return null
+    if (sourceFile.isNullOrBlank()) return null
+    // The same condition the resolver applies rather than a proxy for it: a plain daemon session or
+    // an uploaded bundle can carry a `sourceFile` from its own `previews.json` while having no
+    // catalog source to resolve it against, and the chip would then open on an error.
+    if (sessions.peekHost(system)?.let { catalogBundleHost(it) }?.catalogSource == null) return null
+    return "$basePath/usage/${WebEscaping.urlEncodeSegment(previewId)}${requestQuerySuffix()}"
+  }
+
+  private suspend fun RoutingContext.respondNoUsage() {
+    markGeneration("usage-snippet", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      "{\"status\":\"no-usage\"}",
+      ContentType.Application.Json,
+      HttpStatusCode.NotFound,
+    )
+  }
+
+  private suspend fun RoutingContext.handleUsage(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    // Ktor hands route parameters over already decoded, which is why every neighbouring handler
+    // (`handleViewer`, `handleRender`) reads this straight. Decoding a second time turned a `%2B`
+    // inside a legitimately-escaped preview id into a space and a `%2F` into a separator, so the
+    // resolver could not find a preview whose viewer page rendered perfectly.
+    val previewId = call.parameters["name"]
+    val seeds = playgroundSeeds
+    if (seeds == null || previewId.isNullOrBlank()) {
+      respondNoUsage()
+      return
+    }
+    // Off the request dispatcher: an uncached seed is a synchronous GitHub GET with 10 s connect +
+    // 10 s read, and holding Ktor's request threads through that would stall unrelated routes.
+    val seed = withContext(Dispatchers.IO) { seeds.seed(sessionId, previewId) }
+    // `cleaned` and not merely non-null: a verbatim slice is the preview's own source, which is
+    // what the `source` link already offers. This panel claims to show usage code, so when the
+    // cleaner declined there is nothing here to serve.
+    if (seed == null || !seed.cleaned) {
+      respondNoUsage()
+      return
+    }
+    val host = sessions.peekHost(sessionId)
+    val sourceFile = host?.previews?.firstOrNull { it.id == previewId }?.sourceFile
+    markGeneration("usage-snippet", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(
+        UsageSnippetResponse.serializer(),
+        UsageSnippetResponse(
+          text = seed.text,
+          entryFunction = seed.previewId.substringAfterLast('.').takeIf { it.isNotBlank() },
+          scaffoldsDeclared = seed.scaffoldsDeclared,
+          residue = seed.residue,
+          blobUrl = seed.blobUrl,
+          playgroundHref = host?.let { playgroundLinkFor(it, sessionId, previewId, sourceFile) },
+        ),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
   /** `GET /p/{name}` (query) and `GET /{system}/p/{name}` (path): one preview's viewer page. */
   private suspend fun RoutingContext.handleViewer(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
     withLeasedSession(
@@ -3192,7 +4325,34 @@ class ServeHttpServer(
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
       val previewId = call.parameters["name"]
-      val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
+      val revisions = catalogRevisions(renderHost)
+      // Which catalog decides what this page is *about*. Unpinned it is the session's own list;
+      // under a pin it is the revision's own catalog, asked FIRST — the same authority rule the
+      // asset lanes follow, and for the same reason. Asking the tip first looks harmless while a
+      // preview merely moved, but it hands back today's metadata for an id that revision never
+      // published (whose render correctly 404s, so the page would render around a broken image),
+      // and today's component name for a route id that has since moved between components.
+      //
+      // Off the request dispatcher, because a cold lookup fetches that revision's manifests: the
+      // route takes any syntactically valid sha, so leaving it here would let concurrent requests
+      // for distinct shas hold Ktor's request threads through several round trips each.
+      val preview = previewId?.let { id ->
+        val host = catalogBundleHost(renderHost)
+        val pinnedPreview =
+          revisions.pinned?.let { pin ->
+            withContext(Dispatchers.IO) { host?.pinnedPreview(pin, id) }
+          }
+        // The fallback is for a revision whose catalog could not be READ — never for one that
+        // was read and does not list this id. [ServeBundleHost.pinnedCatalogIsAuthoritative]
+        // tells those apart; without it, "the manifest says no" would quietly become "ask the
+        // tip", which is the failure #3769 removed from the asset lanes.
+        val revisionAnswers =
+          revisions.pinned?.let { pin ->
+            withContext(Dispatchers.IO) { host?.pinnedCatalogIsAuthoritative(pin) }
+          } == true
+        pinnedPreview
+          ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
+      }
       if (preview == null) {
         respondNotFoundHtml("That preview does not exist in this catalog.")
         return@withLeasedSession
@@ -3213,7 +4373,20 @@ class ServeHttpServer(
       val origin = externalOrigin()
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
-      val engagement = incrementPreviewViews(sessionId, preview.id)
+      // PNG-header read, so the unfurl card carries the render's real size rather than making the
+      // fetcher download it to measure. Also what stops a 300×210 component from claiming a
+      // large-image card it can't fill (see [ServeWeb.twitterCard]).
+      //
+      // Only when the URL carries no overrides. `imageUrl` inherits the page's query suffix, so a
+      // link shared from a viewer with `?device=` / `?widthPx=` / `?orientation=` points at a
+      // re-render whose pixel size is not the baked one — declaring the baked dimensions there
+      // would have the card lay out against a size the image doesn't have. Omitting them is always
+      // safe: the fetcher measures the image itself.
+      val imageSize =
+        if (requestCarriesOverrides()) null else renderHost.bakedRenderSize(preview.id)
+      val engagement =
+        if (isViewRequest()) incrementPreviewViews(sessionId, preview.id)
+        else previewEngagement(sessionId, listOf(preview)).getValue(preview.id)
       val bundleHost = catalogBundleHost(renderHost)
       // Link the preview to its source file on GitHub, built from the catalog's SOURCE (repo/ref/
       // module of the Kotlin — NOT the delivery branch) joined with the preview's module-relative
@@ -3255,6 +4428,7 @@ class ServeHttpServer(
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
           ?.takeUnless { it.isAuthenticated(call) }
+          ?.takeIf { oauthCanRoundTrip() }
           ?.let {
             ServeWeb.LiveAuthPrompt(
               loginHref = it.loginPath(call),
@@ -3275,7 +4449,11 @@ class ServeHttpServer(
         withContext(Dispatchers.IO) { renderHost.canDownloadExecutableBundle(preview.id) }
       markGeneration(
         "static-page",
-        viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
+        viewerCacheControl(
+          githubAuthConfigured = githubAuth != null,
+          isPublic = isPublic,
+          signedIn = requestIsSignedIn(),
+        ),
       )
       call.respondText(
         ServeWeb.viewerPage(
@@ -3343,12 +4521,22 @@ class ServeHttpServer(
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
           // …and its own colour palette, so this system's pages are framed in its colours.
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          // The header bar names the catalog this preview belongs to — the viewer's own <h1>
+          // is the preview, so without this the page never says which system it is from.
+          catalogName =
+            ServeWeb.catalogHeading(catalogBundleHost(renderHost)?.title, renderHost.label),
           // Why this session is snapshot-only, when it is — the banner under the header explains
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
           degradations = renderHost.degradations,
           engagement = engagement,
-          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
+          unfurl =
+            ServeWeb.UnfurlMetadata(
+              pageUrl = externalPageUrl(),
+              imageUrl = imageUrl,
+              imageWidth = imageSize?.first,
+              imageHeight = imageSize?.second,
+            ),
           version = BUNDLE_VERSION,
           sourceHref = sourceHref,
           reportIssue = reportIssue,
@@ -3365,6 +4553,7 @@ class ServeHttpServer(
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.
           playgroundHref = playgroundLinkFor(renderHost, sessionId, preview.id, preview.sourceFile),
+          usageHref = usageLinkFor(sessionId, preview.id, preview.sourceFile, basePath),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a
@@ -3385,6 +4574,10 @@ class ServeHttpServer(
           // never both.
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
+          revisions = revisions,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -3402,6 +4595,8 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleHistoryRender() {
     if (rejectBadToken()) return
+    // Reads an old render out of the local git object store, per request.
+    if (rejectHeadProbe()) return
     val history = projectHistory
     val name = call.parameters["name"].orEmpty().removeSuffix(".png")
     val bytes =
@@ -3426,7 +4621,20 @@ class ServeHttpServer(
    * carries `ir/` sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
+    // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
+    // so it must keep answering HEAD. Everything else on this route reaches a daemon or a bundle
+    // host, and amplifying a bodyless probe into one is the same trade as `/bundle.zip` at smaller
+    // scale: an override turns the replay into a live render, and the non-PNG products
+    // ([DAEMON_ONLY_RENDER_SUFFIXES]) are produced on demand whether or not a query is present.
+    // The override half is keyed on param names rather than a parse — the check has to be cheap,
+    // and erring toward refusing costs a probe nothing (the caller GETs instead).
+    if (
+      (requestCarriesOverrides() ||
+        wantsDaemonOnlyRenderProduct() ||
+        !renderWouldReplayBakedBytes(sessionInPath)) && rejectHeadProbe()
+    )
+      return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val rawName = call.parameters["name"]
@@ -3484,6 +4692,62 @@ class ServeHttpServer(
           respondGridThumb(thumb)
           return@withLeasedSession
         }
+      }
+      // A **pinned** render (`?at=<sha>`): the bytes this preview had at that delivery-branch
+      // commit, read from the branch rather than from the catalog on disk. This is what makes a
+      // published URL a permalink (issue #3723) — see [ServeCatalogRevision].
+      //
+      // It short-circuits ahead of everything below because a pin and a live render are mutually
+      // exclusive by definition: the daemon renders today's code, so honouring an override here
+      // would answer a request for the past with the present. Only the raster product is pinnable
+      // (the branch publishes PNGs, not slot trees or `.rc` documents), and a pin the branch cannot
+      // answer is a 404 rather than a fall-through to the current bytes — silently serving today's
+      // render under a permalink is the exact failure this feature exists to prevent, and it would
+      // be invisible to whoever followed the link.
+      val pinnedCommit =
+        ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
+      if (pinnedCommit != null) {
+        // The non-raster products are made on demand by the daemon — an SVG export, a slot tree,
+        // an a11y or annotation pass, a captured Remote Compose document. The branch publishes
+        // none of them per revision, so there is nothing historical to serve, and *falling through*
+        // would be the worst of the three options: `/render/<id>.svg?at=<sha>` would answer with
+        // today's export under a URL that names an old publish. Refusing says so.
+        if (wantSvg || wantSlots || wantA11y || wantAnnotations || wantRcDoc) {
+          call.respondText(
+            "only the baked render is published per revision; drop " +
+              "'${ServeCatalogRevision.PARAM}' to ask the daemon for this product",
+            status = HttpStatusCode.NotFound,
+          )
+          return@withLeasedSession
+        }
+        // A product can also be selected by *query* rather than by suffix: `?scroll=long` is a
+        // full-page capture, `?rcPlayer=cmp-jvm` is a different player's raster, and any override
+        // (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order. None of those is a
+        // published byte, so answering with the plain baked PNG would hand back a 200 that
+        // silently ignores half the URL — two links claiming different things returning identical
+        // pixels. Refusing names the conflict instead.
+        val onDemand =
+          requestCarriesOverrides() ||
+            call.request.queryParameters["scroll"] != null ||
+            call.request.queryParameters["rcPlayer"] != null ||
+            call.request.queryParameters["mode"] != null ||
+            ServeExplodedSvg.PARAMS.any { call.request.queryParameters[it] != null }
+        if (onDemand) {
+          call.respondText(
+            "'${ServeCatalogRevision.PARAM}' pins the published render, which cannot be " +
+              "re-rendered to order; drop the pin or drop the render parameters",
+            status = HttpStatusCode.BadRequest,
+          )
+          return@withLeasedSession
+        }
+        respondPinnedAsset(
+          outcome =
+            catalogBundleHost(renderHost)?.let {
+              withContext(Dispatchers.IO) { it.pinnedRender(pinnedCommit, previewId) }
+            },
+          missing = "no published render for that preview at that revision",
+        )
+        return@withLeasedSession
       }
       // The `.rc` lane serves the captured Remote Compose document bytes verbatim (no override
       // pass — the in-browser player replays the doc and applies knob edits client-side), so it
@@ -3554,8 +4818,19 @@ class ServeHttpServer(
             // `mode`,
             // or `mode=figma`) stays fully self-contained — right for `<img>`/Figma import, where
             // external references don't load.
+            // `?exploded=1` (plus its tilt / spin / gap / depth knobs) is a second rewrite of the
+            // same bytes: the layered export pulled apart into one sheet per composable nesting
+            // level. It composes with `mode=web` and `scroll=long` because all three are
+            // post-processing steps over one render.
             val webMode = call.request.queryParameters["mode"]?.lowercase() == "web"
-            renderSvgResponse(renderHost, previewId, overrides, scroll = scroll, webMode = webMode)
+            renderSvgResponse(
+              renderHost,
+              previewId,
+              overrides,
+              scroll = scroll,
+              webMode = webMode,
+              exploded = explodedOptions(),
+            )
             return@withLeasedSession
           }
           if (wantSlots) {
@@ -3974,8 +5249,117 @@ class ServeHttpServer(
     }
   }
 
-  private fun pageCacheControl(): String =
-    pageCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic)
+  /**
+   * Whether *this* request is a signed-in one — it presented a valid session cookie. The input that
+   * decides between [SIGNED_IN_PAGE_CACHE_CONTROL] and [ANON_PAGE_CACHE_CONTROL], and the reason
+   * both cache-control helpers are request-scoped rather than server-scoped: "this server has auth
+   * configured" is not the same claim as "this response is personal", and only the second one
+   * justifies refusing to store it.
+   */
+  /**
+   * Whether this request should count as somebody *looking at* the page.
+   *
+   * False for a HEAD. [io.ktor.server.plugins.autohead.AutoHeadResponse] answers a HEAD by running
+   * the GET pipeline and discarding the body, so without this the view tallies would count the
+   * probe an unfurler sends before it fetches — and then count the fetch too, double-counting every
+   * shared link and inflating the numbers with traffic that never rendered a pixel for anyone.
+   */
+  private fun RoutingContext.isViewRequest(): Boolean = call.request.local.method != HttpMethod.Head
+
+  /**
+   * Refuse a `HEAD` on a lane whose GET handler does real work, answering `405` + `Allow: GET`
+   * instead. True when the request was refused and the caller must return.
+   *
+   * [io.ktor.server.plugins.autohead.AutoHeadResponse] answers a HEAD by running the **whole** GET
+   * handler and discarding the body, which is exactly right for a page or a baked PNG and exactly
+   * wrong here. `HEAD /bundle.zip` would render every preview in the catalog and pack the zip only
+   * to throw it away, so on a public host an unauthenticated `curl -I` — or a link checker, or an
+   * uptime monitor — could cold-start a catalog's daemons and burn its render capacity repeatedly
+   * while downloading nothing.
+   *
+   * Scoped to the work lanes, deliberately not applied by default: the whole point of installing
+   * the plugin is that an unfurler's probe of a page and its `og:image` succeeds, and both of those
+   * are a map lookup or a file read. A caller that wants the bytes can still GET; nothing shares
+   * links to a zip and expects a card.
+   */
+  /**
+   * Whether the request's query names any render override (`fontScale`, `device`, `themeProvider`,
+   * `knob.<key>`, …) — i.e. whether the response could be anything other than the published pixels.
+   *
+   * Deliberately the cheap key-level test rather than [ServeOverrides.parse]: both callers only
+   * need "could this differ from the bake?", and both of them fail safe when it over-reports. A
+   * render that would have replayed baked pixels anyway refuses a HEAD (the caller GETs, costing
+   * nothing), and an unfurl card omits dimensions it could have declared (the fetcher measures the
+   * image).
+   */
+  private fun RoutingContext.requestCarriesOverrides(): Boolean =
+    call.request.queryParameters.entries().any { (key, _) -> ServeOverrides.isOverrideParam(key) }
+
+  /**
+   * The `/render/{name}` suffixes that are **never** a baked replay: the figma-svg export, the slot
+   * / accessibility / annotation products (all daemon-produced), and the captured Remote Compose
+   * document (bundle-host, read per request). Only `<id>.png` — or no suffix — serves published
+   * bytes off disk.
+   */
+  private val DAEMON_ONLY_RENDER_SUFFIXES = listOf(".svg", ".slots", ".a11y", ".annotations", ".rc")
+
+  /**
+   * Whether `/render/{name}` names one of [DAEMON_ONLY_RENDER_SUFFIXES] — i.e. a product this route
+   * has to *make*, with or without a query string. Without this, an override-free `HEAD
+   * /{system}/render/{id}.svg` still ran the full handler, took the render semaphore and possibly
+   * started a daemon, purely to have the body discarded.
+   */
+  private fun RoutingContext.wantsDaemonOnlyRenderProduct(): Boolean {
+    val name = call.parameters["name"] ?: return false
+    return DAEMON_ONLY_RENDER_SUFFIXES.any { name.endsWith(it) }
+  }
+
+  /**
+   * Whether a bare `/render/{name}` can be answered from published bytes alone — the only case
+   * where replaying the GET pipeline for a HEAD is free.
+   *
+   * "It ends in `.png`" is not enough. A plain [ServeRenderHost] has no bake at all, and a
+   * catalog's **deferred** previews ([ServeHost.liveOnlyPreviewIds]) are published without one, so
+   * those go to the daemon even with no query string — the probe would take the render semaphore
+   * and start a daemon purely to have the body discarded. [ServeHost.bakedRenderSize] answers
+   * exactly this question for the cost of a PNG header read, and is null for both.
+   *
+   * Also requires the session to be **resident**: [ServeSessionRegistry.peekHost] never resumes, so
+   * a probe for a suspended catalog is refused rather than waking it. Both refusals are safe for
+   * the unfurl case — an image fetcher issues a GET, and the page URLs an unfurler probes do not
+   * come through this route.
+   */
+  private fun RoutingContext.renderWouldReplayBakedBytes(sessionInPath: Boolean): Boolean {
+    // Only a HEAD pays for this lookup; a GET is going to do the work regardless.
+    if (call.request.local.method != HttpMethod.Head) return true
+    // A pinned render answers HEAD, which it did not before, and the reason it now can is that the
+    // lane became admission-bounded: a probe costs at most one permitted branch read, and the GET
+    // that follows it is served from the cache that read filled. Refusing was the wrong trade — an
+    // unfurler probes an `og:image` before fetching it, so a blanket 405 dropped the preview card
+    // on exactly the historical links this feature exists to share.
+    // Free when the bytes are already resident; otherwise one permitted branch read, which is the
+    // same thing the GET behind the probe would spend and which the cache then serves.
+    if (call.request.queryParameters[ServeCatalogRevision.PARAM] != null) return true
+    val name = call.parameters["name"]?.removeSuffix(".png") ?: return false
+    val host = sessions.peekHost(selectedSessionId(sessionInPath)) ?: return false
+    return host.bakedRenderSize(name) != null
+  }
+
+  private suspend fun RoutingContext.rejectHeadProbe(): Boolean {
+    if (call.request.local.method != HttpMethod.Head) return false
+    call.response.headers.append(HttpHeaders.Allow, HttpMethod.Get.value)
+    call.respondText("", status = HttpStatusCode.MethodNotAllowed)
+    return true
+  }
+
+  private fun RoutingContext.requestIsSignedIn(): Boolean = githubAuth?.currentLogin(call) != null
+
+  private fun RoutingContext.pageCacheControl(): String =
+    pageCacheControl(
+      githubAuthConfigured = githubAuth != null,
+      isPublic = isPublic,
+      signedIn = requestIsSignedIn(),
+    )
 
   private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
@@ -3984,12 +5368,24 @@ class ServeHttpServer(
    * [scroll] is set, serves the full-page (`compose/figma-svg-long`) export of a scrolling preview
    * instead of the viewport-sized one.
    */
+  /**
+   * The exploded-view options this request asks for, or null when it didn't ask. Reading them off
+   * the raw query (rather than through `ServeOverrides`) is deliberate: like `mode=web`, these
+   * describe how the produced SVG is *presented*, not what gets rendered, so they must not join the
+   * override set that decides cache identity or gets reported as "dropped".
+   */
+  private fun RoutingContext.explodedOptions(): ExplodedSvg.Options? {
+    val params = { key: String -> call.request.queryParameters[key] }
+    return if (ServeExplodedSvg.enabled(params)) ServeExplodedSvg.optionsFrom(params) else null
+  }
+
   private suspend fun RoutingContext.renderSvgResponse(
     renderHost: ServeHost,
     previewId: String,
     overrides: PreviewOverrides,
     scroll: Boolean = false,
     webMode: Boolean = false,
+    exploded: ExplodedSvg.Options? = null,
   ) {
     val outcome =
       withContext(Dispatchers.IO) {
@@ -3997,15 +5393,29 @@ class ServeHttpServer(
           null
         } else {
           try {
-            when {
-              scroll -> renderHost.renderScrollSvg(previewId, overrides)
-              // Web mode routes through the host's web variant: a catalog-backed host links its
-              // raster crops to their published branch files instead of embedding them (the
-              // default host keeps the self-contained bytes). The font-`@import` rewrite below
-              // applies either way.
-              webMode -> renderHost.renderSvgForWeb(previewId, overrides)
-              else -> renderHost.renderSvg(previewId, overrides)
-            }
+            val produced =
+              when {
+                scroll -> renderHost.renderScrollSvg(previewId, overrides)
+                // Web mode routes through the host's web variant: a catalog-backed host links its
+                // raster crops to their published branch files instead of embedding them (the
+                // default host keeps the self-contained bytes). The font-`@import` rewrite below
+                // applies either way.
+                webMode -> renderHost.renderSvgForWeb(previewId, overrides)
+                else -> renderHost.renderSvg(previewId, overrides)
+              }
+            // Both post-render rewrites run with the permit still held. The `mode=web` one is a
+            // regex pass over a string, but the exploded projection parses the whole SVG into a
+            // DOM, structurally copies it once per sheet and re-serializes — comparable to a
+            // render on a large catalog export. Outside the semaphore, a public host could be
+            // asked for a hundred different `explodeTilt=` values at once and would run all of
+            // them in parallel, which is precisely what this route's load shedding exists to
+            // prevent. Inside it, the burst queues like any other render and sheds with a 503.
+            if (produced is SvgOutcome.Ok && (webMode || exploded != null)) {
+              var text = produced.svg.toString(Charsets.UTF_8)
+              if (webMode) text = webModeSvg(text)
+              if (exploded != null) text = ExplodedSvg.render(text, exploded)
+              produced.copy(svg = text.toByteArray(Charsets.UTF_8))
+            } else produced
           } finally {
             renderSemaphore.release()
           }
@@ -4020,11 +5430,13 @@ class ServeHttpServer(
         )
       }
       is SvgOutcome.Ok -> {
-        // The render host produces the self-contained (embedded) SVG and caches it; the web variant
-        // is a cheap per-response rewrite of those bytes, so both modes share one render + cache.
-        val svg =
-          if (webMode) webModeSvg(outcome.svg.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
-          else outcome.svg
+        // The render host produces the self-contained (embedded) SVG and caches it; the web and
+        // exploded variants are per-response rewrites of those bytes, so every mode shares one
+        // render + cache. Both were already applied above, inside the semaphore — web mode first,
+        // since it rewrites the `@font-face` block the exploded view then carries through
+        // untouched, whereas the reverse order would have it hunting for that block inside a
+        // reserialized document.
+        val svg = outcome.svg
         val contentType = ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG)
         // The vector lane drops overrides exactly like the PNG one: a `figma/<slug>.svg` read off
         // the delivery branch was drawn at the preview's discovery-time axes, so serving it for a
@@ -4175,7 +5587,12 @@ class ServeHttpServer(
       return
     }
     val sessionId =
-      call.parameters["system"] ?: call.request.queryParameters["session"] ?: defaultSessionId
+      call.parameters["system"]
+        // Same precedence as [selectedSessionId]: on a site host the origin decides, so a
+        // `?session=` on the socket URL can't stream a catalog the site doesn't publish.
+        ?: call.siteSystem()
+        ?: call.request.queryParameters["session"]
+        ?: defaultSessionId
     // Reserve live-seat permits BEFORE opening the session: leasing resumes a suspended/forked
     // host,
     // which spawns the JVM render daemon, so a post-lease check would let an over-budget burst
@@ -4407,12 +5824,48 @@ class ServeHttpServer(
     internal const val SIGNED_IN_PAGE_CACHE_CONTROL = "private, no-store"
 
     /**
-     * Caching for an assembled HTML page. Public and auth-free ⇒ short edge caching; otherwise the
-     * response is personal (sign-in state) or token-bearing, and is not stored at all.
+     * Caching for a page on a GitHub-auth server that the request proves is **not** personal — no
+     * session cookie, so the HTML is the signed-out rendering every anonymous visitor gets.
+     *
+     * [SIGNED_IN_PAGE_CACHE_CONTROL] used to cover this case too, and `no-store` on an anonymous
+     * public page is a stronger claim than the page deserves: it tells every intermediary and every
+     * link-preview service that this response must not be retained at all, which is a poor thing to
+     * say about a page whose whole purpose is to be shared into a chat and unfurled.
+     *
+     * `max-age=0` keeps the *browser* exactly where `no-store` had it — every visit revalidates, so
+     * the sign-in chip can never be replayed stale, which is the regression the constant above
+     * exists to prevent. `s-maxage` licenses only shared caches, and only in combination with the
+     * `Vary: Cookie` that [markGeneration] appends alongside this value: a request carrying a
+     * session key is a different cache entry and never reaches these bytes. Deliberately no
+     * `stale-while-revalidate` — that is precisely the directive that would let a browser paint the
+     * pre-sign-in HTML after the visitor has signed in.
+     *
+     * One thing `no-store` did that this doesn't: block the back/forward cache. A visitor who signs
+     * in and then presses Back can see the signed-out chrome until they reload. That is a cosmetic
+     * wart for the few who sign in, traded against every shared link on the server being storable.
      */
-    internal fun pageCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
-      if (githubAuthConfigured) SIGNED_IN_PAGE_CACHE_CONTROL
-      else if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+    internal const val ANON_PAGE_CACHE_CONTROL = "public, max-age=0, s-maxage=300, must-revalidate"
+
+    /**
+     * Caching for an assembled HTML page. Public and auth-free ⇒ short edge caching; a token-gated
+     * or signed-in response is personal and is not stored at all; an anonymous page on an auth
+     * server is public bytes that shared caches may keep ([ANON_PAGE_CACHE_CONTROL]).
+     *
+     * [signedIn] is only consulted when auth is configured *and* the server is public. A
+     * token-gated host stays on `no-store` whoever is asking: its URLs carry a credential, and
+     * "nobody is signed in" says nothing about whether the response may be stored.
+     */
+    internal fun pageCacheControl(
+      githubAuthConfigured: Boolean,
+      isPublic: Boolean,
+      signedIn: Boolean = true,
+    ): String =
+      when {
+        !githubAuthConfigured ->
+          if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+        !isPublic || signedIn -> SIGNED_IN_PAGE_CACHE_CONTROL
+        else -> ANON_PAGE_CACHE_CONTROL
+      }
 
     /**
      * The viewer page follows [pageCacheControl]. It used to drop to `no-store` only for a
@@ -4420,8 +5873,11 @@ class ServeHttpServer(
      * personalised thing on the page — but the sign-in chip is on every viewer, live or not, so the
      * non-live viewer was being cached with one visitor's identity baked in.
      */
-    internal fun viewerCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
-      pageCacheControl(githubAuthConfigured, isPublic)
+    internal fun viewerCacheControl(
+      githubAuthConfigured: Boolean,
+      isPublic: Boolean,
+      signedIn: Boolean = true,
+    ): String = pageCacheControl(githubAuthConfigured, isPublic, signedIn)
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"
@@ -4504,6 +5960,14 @@ class ServeHttpServer(
      * catalog changes the hash, hence the URL, so there is nothing to invalidate.
      */
     private const val HERO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+    /**
+     * Caching for the site icons ([ServeSiteIcon]). Public on every server, token-gated or not:
+     * these are drawn from the build's own chrome and carry nothing a token protects — and a
+     * favicon request doesn't present the token anyway. A day rather than `immutable`, because
+     * unlike the hashed lanes these live at well-known paths whose bytes change across a deploy.
+     */
+    private const val SITE_ICON_CACHE_CONTROL = "public, max-age=86400"
 
     /**
      * Caching for the prebaked image lanes: `/hero/` and `?thumb=` on the render lane.
@@ -4694,8 +6158,12 @@ private data class CatalogSelectorDto(
    * startup log tell those apart.
    */
   val offered: List<String>,
-  /** How many of them hold a resolved compile classpath, against [limit]. */
-  val resolved: Int,
+  /**
+   * How many of them hold a resolved compile classpath, against [limit]. Null on a
+   * [ServeSites]-scoped status: the count is box-wide with no per-catalog breakdown, so a scoped
+   * response omits it rather than pairing a filtered [offered] with a total that contradicts it.
+   */
+  val resolved: Int? = null,
   /** `--playground-catalog-limit`; at [resolved] == this, a run naming a new catalog is refused. */
   val limit: Int,
 )

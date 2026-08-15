@@ -20,11 +20,10 @@ import org.junit.Test
  */
 class LongScrollPreviewPixelTest {
 
-  private val longPng =
-    File(
-      "build/compose-previews/data/render-scroll-long/" +
-        "ActivityListLongPreview_Devices_Large_Round.png"
-    )
+  private val scrollLongDir = File("build/compose-previews/data/render-scroll-long")
+  private val scrollGifDir = File("build/compose-previews/data/render-scroll-gif")
+
+  private val longPng = renderFile(scrollLongDir, "ActivityListLongPreview_Devices_Large_Round")
 
   @Test
   fun `LONG preview produces a tall stitched PNG`() {
@@ -110,10 +109,7 @@ class LongScrollPreviewPixelTest {
   @Test
   fun `LONG capture always flattens motion in a multi-mode annotation`() {
     val motionLongPng =
-      File(
-        "build/compose-previews/data/render-scroll-long/" +
-          "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png"
-      )
+      renderFile(scrollLongDir, "ActivityListMotionLongPreview_Devices_Large_Round", "_SCROLL_long")
     assertThat(motionLongPng.exists()).isTrue()
     val img = ImageIO.read(motionLongPng)
     // Multi-slice stitch, not a single-frame fallback.
@@ -130,9 +126,11 @@ class LongScrollPreviewPixelTest {
   @Test
   fun `GIF sibling of forced-flatten LONG still animates`() {
     val gif =
-      File(
-        "build/compose-previews/data/render-scroll-gif/" +
-          "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_gif.gif"
+      renderFile(
+        scrollGifDir,
+        "ActivityListMotionLongPreview_Devices_Large_Round",
+        "_SCROLL_gif",
+        ext = "gif",
       )
     assertThat(gif.exists()).isTrue()
     assertThat(readGifFrames(gif).size).isAtLeast(2)

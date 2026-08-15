@@ -94,6 +94,12 @@ internal class DesktopRenderWorkerPool(
    * its own failure messages would silently swallow them.
    */
   private val stderrSink: (String) -> Unit,
+  /**
+   * What the worker's `LD_LIBRARY_PATH` should be, relative to the daemon's own. Defaults to
+   * "inherit", which is what a worker got before [RenderNativeEnv] existed and what it still gets
+   * everywhere but a hybrid store/system sandbox.
+   */
+  private val nativeEnv: RenderNativeEnv.Decision = RenderNativeEnv.Decision.Inherit,
   private val workerMainClass: String = WORKER_MAIN_CLASS,
 ) : AutoCloseable {
 
@@ -218,7 +224,7 @@ internal class DesktopRenderWorkerPool(
       // `watchdog.shutdownNow()` would then drop the handshake kill-switch — leaving the read
       // blocked forever with the JVM still up. Registering first means `close()` can always reap
       // it, and a pool that closed underneath us is detected right after.
-      val worker = Worker(command, watchdog, workingDir, stderrSink)
+      val worker = Worker(command, watchdog, workingDir, stderrSink, nativeEnv)
       val tracked = synchronized(lock) { if (closed) false else liveWorkers.add(worker) }
       if (!tracked) {
         worker.close()
@@ -265,9 +271,14 @@ internal class DesktopRenderWorkerPool(
     private val watchdog: ScheduledExecutorService,
     workingDir: File,
     private val stderrSink: (String) -> Unit,
+    nativeEnv: RenderNativeEnv.Decision,
   ) {
     private val process =
-      ProcessBuilder(command).directory(workingDir).redirectErrorStream(false).start()
+      ProcessBuilder(command)
+        .directory(workingDir)
+        .redirectErrorStream(false)
+        .also { RenderNativeEnv.apply(nativeEnv, it.environment()) }
+        .start()
     private val toWorker = DataOutputStream(process.outputStream.buffered())
     private val fromWorker = DataInputStream(process.inputStream.buffered())
     private val stderrTail = ArrayDeque<String>()

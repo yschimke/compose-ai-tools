@@ -92,7 +92,8 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
     val cells = MatrixAxes.expand(devices, locales, uiModes, fontScaleValues)
 
     // Standard render: builds the module(s) and writes each preview manifest so we can resolve the
-    // single target preview. `--module` / `--id` / `--filter` narrow which modules render.
+    // single target preview. `--module` / `--id` / `--filter` / `--preview` narrow which modules
+    // render.
     val outcome = renderAllModules(silenceStdout = jsonOutput)
     if (!outcome.buildOk) {
       System.err.println("render-matrix: render build failed.")
@@ -103,17 +104,18 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       outcome.manifests.flatMap { (module, manifest) ->
         manifest.previews.map { Triple(module, manifest, it) }
       }
-    val matched = candidates.filter { (_, _, preview) -> matchesPreview(preview.id) }
+    val matched = candidates.filter { (_, _, preview) -> matchesPreview(preview) }
     if (matched.isEmpty()) {
       System.err.println(
-        "render-matrix: no previews matched. Use --id <exact> or --filter <substr>."
+        "render-matrix: no previews matched. Use --id <exact>, --filter <substr> or " +
+          "--preview <ref>."
       )
       exitProcess(3)
     }
     if (matched.size > 1) {
       System.err.println(
-        "render-matrix: matched ${matched.size} previews; narrow to one with --id <exact> or " +
-          "--filter <substr>:"
+        "render-matrix: matched ${matched.size} previews; narrow to one with --id <exact>, " +
+          "--filter <substr> or --preview <ref>:"
       )
       matched.take(20).forEach { (_, _, p) -> System.err.println("  ${p.id}") }
       exitProcess(1)
@@ -162,14 +164,25 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       .takeIf { it.isNotEmpty() }
 
   /**
-   * Match a preview id against `--id` (exact) / `--filter` (substring); all when neither is set.
+   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference)
+   * — the shared [previewIdMatchesRequest] rule, so every selector passed must hold.
+   *
+   * Deliberately **not** a precedence ladder. `renderAllModules` above already narrowed the build
+   * through `modulesMatchingPreviewRequest`, which intersects, so `--id A --filter B` has dropped
+   * every module before this predicate ever runs. A local "tightest selector wins" rule could only
+   * disagree with that by claiming to have honoured `--id A` on a candidate set the build had
+   * already emptied — one rule, applied in both passes, is the only way the two can't contradict
+   * each other.
    */
-  private fun matchesPreview(id: String): Boolean =
-    when {
-      exactId != null -> id == exactId
-      filter != null -> id.contains(filter!!, ignoreCase = true)
-      else -> true
-    }
+  private fun matchesPreview(preview: PreviewInfo): Boolean =
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
 
   private fun runDaemonStart(module: PreviewModule): Boolean {
     var ok = true
@@ -349,8 +362,10 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       screen + RTL + large font?" in one command. The CLI counterpart of the render_matrix MCP
       tool (issue #1788). Bounded at ${MatrixAxes.CELL_CAP} cells.
 
-      Target one preview with --id <exact> or --filter <substring> (and --module to scope the
-      build). At least one axis is required:
+      Target one preview with --id <exact>, --filter <substring> or --preview <ref> — the
+      loose reference form: an id, a `Class.function`, a bare function name, or a
+      case-insensitive substring of an id (and --module to scope the build). At least one
+      axis is required:
 
         --device <ids>       @Preview(device=...) ids/specs, e.g. id:pixel_5,id:pixel_tablet
         --locale <tags>      BCP-47 locale tags, e.g. en,ar,ja-JP

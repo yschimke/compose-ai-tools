@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.File
@@ -124,9 +125,52 @@ abstract class Command(
   protected val explicitModule: String? = args.flagValue("--module")
   protected val filter: String? = args.flagValue("--filter")
   protected val exactId: String? = args.flagValue("--id")
+
+  /**
+   * `--preview <ref>` — the third, *loose* selector, and the one the rest of the toolchain already
+   * calls a "preview reference": `compose-preview record --preview`, `history list --preview`, and
+   * the Gradle `composePreviewRender --preview` option all spell it this way (issue #3744). Before
+   * this it was read by `record` alone, and every other command **silently ignored** it — a `render
+   * --preview Foo` rendered the whole module while the user believed they had narrowed it.
+   *
+   * Semantics, deliberately spelled out because it is neither [exactId] nor [filter] (see
+   * [previewMatchesReference]): a preview is selected when the ref equals its id, equals
+   * `<className>.<functionName>`, equals its bare `functionName`, **or** is a case-insensitive
+   * substring of its id. Unlike `record`'s resolver, which needs exactly one preview to record,
+   * this one may select several and never fails on ambiguity — `render` / `show` / `list` are
+   * set-shaped commands.
+   *
+   * `--id` stays exact-match and `--filter` stays a case-insensitive substring; combining flags
+   * intersects them, as `--id` + `--filter` already did.
+   */
+  protected val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
+
+  /**
+   * Whether this command can turn a `@PreviewParameter` fan-out into addressable **row ids**, and
+   * so wants module selection to keep previews whose (unknowable) rows might satisfy the request —
+   * issue #3786's conservative lane, see [previewMatchesRequestIncludingRows].
+   *
+   * The condition for opting in is being able to *cash the maybe in*: expand the fan-out after the
+   * render and re-filter, so a module kept speculatively is proven or discarded before anything is
+   * shown. `serve` does it with `ServeParameterRows`; since issue #3819 the result-shaped commands
+   * (`show`, `list`, `render`) do it with [selectRequestedResults], which matches the row ids
+   * `PreviewResultBuilder` now carries on each capture — both derived by `PreviewParameterFanout`,
+   * so a row kept here is a row that can be selected there.
+   *
+   * Still opt-in rather than global, because a command can filter row-aware and *still* be unable
+   * to act on a row: the extension commands (`a11y` and friends) drive per-preview data production
+   * off the discovery manifest ([requestedPreviewIds] / `dataProductRequests`), which only knows
+   * declared ids, so a speculative keep would render a module and produce no data for the row that
+   * motivated it. Those keep the strict lane, and a row selector still fails fast there rather than
+   * after a render.
+   */
+  protected open val rowAwareSelection: Boolean
+    get() = false
+
   protected val verbose: Boolean = "--verbose" in args || "-v" in args
   protected val progress: Boolean = verbose || "--progress" in args
-  protected val timeoutSeconds: Long = args.flagValue("--timeout")?.toLongOrNull() ?: 300
+  protected val timeoutSeconds: Long =
+    args.flagValue("--timeout")?.toLongOrNull() ?: GradleConnection.DEFAULT_TIMEOUT_SECONDS
   /** When true, drop previews with no `changed=true` capture from JSON output. */
   protected val changedOnly: Boolean = "--changed-only" in args
   /**
@@ -307,7 +351,7 @@ abstract class Command(
       // Resolve via the Tooling API so --module works with nested
       // Gradle paths (e.g. `--module auth:composables`) and reflects
       // any custom `project.projectDir` override.
-      val one = gradle.findPreviewModule(explicitModule)
+      val one = gradle.findPreviewModule(explicitModule, timeoutSeconds)
       if (one == null) {
         gradle.lastModelAccessFailure?.let {
           System.err.println(
@@ -329,7 +373,7 @@ abstract class Command(
       return listOf(one)
     }
 
-    val modules = gradle.findPreviewModules()
+    val modules = gradle.findPreviewModules(timeoutSeconds)
     if (modules.isEmpty()) {
       gradle.lastModelAccessFailure?.let {
         System.err.println("Could not query Gradle project model.")
@@ -430,6 +474,20 @@ abstract class Command(
     val manifests: List<Pair<PreviewModule, PreviewManifest>>,
     val results: List<PreviewResult>,
     val discoveredPreviewCount: Int,
+    /**
+     * Per-task dispositions captured from the Tooling API during this invocation. Carried on the
+     * outcome because reporting has to distinguish "the renderer ran and the preview threw" from
+     * "the renderer was skipped and that `.error.json` is last week's" — see
+     * [renderTaskEvidenceOf].
+     */
+    val taskOutcomes: Map<String, GradleTaskOutcome> = emptyMap(),
+    /**
+     * Preview ids this run rendered, or `null` when it rendered everything the modules declare.
+     * Non-null means the Gradle drive was narrowed to the `--id` / `--filter` request
+     * (issue #3730), so the previews outside it carry whatever the *previous* run left on disk —
+     * often nothing at all. Reporting has to say so rather than count them as render failures.
+     */
+    val renderedIds: Set<String>? = null,
   )
 
   /**
@@ -443,6 +501,12 @@ abstract class Command(
     val modules: List<PreviewModule>,
     val discoveredPreviewCount: Int,
     val taskOutcomes: Map<String, GradleTaskOutcome> = emptyMap(),
+    /**
+     * Preview ids this run actually asked Gradle to render, or `null` when it rendered everything.
+     * Threaded into [buildResults] so a narrowed render doesn't drop the `.cli-state.json` shas of
+     * the previews it deliberately skipped — see [PreviewRenderScope].
+     */
+    val renderedIds: Set<String>? = null,
   )
 
   /**
@@ -471,8 +535,8 @@ abstract class Command(
     var outcome: RawRenderOutcome? = null
     withGradle(silenceStdout = silenceStdout) { gradle ->
       val modules = withGradleStdout(silenceStdout) { resolveModules(gradle).filter(moduleFilter) }
-      val (buildOk, modulesToRead, discoveredPreviewCount, taskOutcomes) =
-        if (modules.isEmpty()) Quad(true, emptyList(), 0, emptyMap<String, GradleTaskOutcome>())
+      outcome =
+        if (modules.isEmpty()) RawRenderOutcome(true, emptyList(), 0)
         else {
           // Explicit discover pass before the render so `shards=auto` sees a fresh previews.json at
           // render-configuration time (see [runDiscover]). Kept as a first-class step — not an
@@ -489,13 +553,13 @@ abstract class Command(
                 discoverySucceeded = discoverySucceeded,
               )
             } else modules
-          if (scopeToPreviewRequest) {
-            warnIfPreviewFilterStillRendersExtraRows(
-              renderModules,
-              discoveryManifests,
-              discoverySucceeded = discoverySucceeded,
-            )
-          }
+          // Narrow the render itself to the requested previews rather than rendering the module and
+          // discarding the rows afterwards (issue #3730). Only for the preview-shaped pipeline:
+          // `show-resources` drives a resource manifest whose entries aren't `@Preview`s at all.
+          val scope =
+            if (scopeToPreviewRequest)
+              previewRenderScope(renderModules, discoveryManifests, discoverySucceeded)
+            else PreviewRenderScope.FULL
           val xrArgs =
             provisionXrCompositeArgs(gradle, renderModules, silenceStdout, discoverFirst = false)
           val tasks = renderModules.map(taskFor).toTypedArray()
@@ -503,28 +567,74 @@ abstract class Command(
             if (renderModules.isEmpty()) true
             else {
               withGradleStdout(silenceStdout) {
-                runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs)
+                runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs + scope.gradleArgs)
               }
             }
           if (!ok) reportRenderFailures(gradle)
           val outcomes = gradle.lastTaskOutcomes()
-          val readableModules = readableRenderModules(renderModules, taskFor, outcomes)
-          val discoveredPreviewCount =
-            if (scopeToPreviewRequest) discoveryManifests.sumOf { it.second.previews.size } else 0
-          Quad(ok, readableModules, discoveredPreviewCount, outcomes)
+          RawRenderOutcome(
+            buildOk = ok,
+            modules = readableRenderModules(renderModules, taskFor, outcomes),
+            discoveredPreviewCount =
+              if (scopeToPreviewRequest) discoveryManifests.sumOf { it.second.previews.size }
+              else 0,
+            taskOutcomes = outcomes,
+            renderedIds = scope.renderedIds,
+          )
         }
-      outcome =
-        RawRenderOutcome(
-          buildOk = buildOk,
-          modules = modulesToRead,
-          discoveredPreviewCount = discoveredPreviewCount,
-          taskOutcomes = taskOutcomes,
-        )
     }
     return outcome ?: error("renderModules: gradle block did not produce an outcome")
   }
 
-  private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+  /**
+   * The `-PcomposePreview.idFilter` narrowing for this invocation's `--id` / `--filter`, plus the
+   * stderr diagnostics that go with it. Shared by the [renderModules] pipeline (`show`, `a11y`,
+   * reports) and by `render`, which drives Gradle itself.
+   *
+   * Returns [PreviewRenderScope.FULL] — render everything, the pre-#3730 behaviour — whenever the
+   * request can't be resolved to an exact id list: no filter, no modules, or a discovery pass that
+   * failed (the render task depends on discovery and is the authoritative retry, so a stale or
+   * missing manifest must never be allowed to narrow it).
+   */
+  internal fun previewRenderScope(
+    renderModules: List<PreviewModule>,
+    discoveryManifests: List<Pair<PreviewModule, PreviewManifest>>,
+    discoverySucceeded: Boolean,
+  ): PreviewRenderScope.Scope {
+    if (exactId == null && filter == null && previewRef == null) return PreviewRenderScope.FULL
+    if (renderModules.isEmpty()) return PreviewRenderScope.FULL
+    val flag =
+      when {
+        exactId != null -> "--id"
+        filter != null -> "--filter"
+        else -> "--preview"
+      }
+    if (!discoverySucceeded) {
+      System.err.println(
+        "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
+          "rendering all resolved modules so Gradle can retry discovery."
+      )
+      return PreviewRenderScope.FULL
+    }
+    val byPath = renderModules.map { it.gradlePath }.toSet()
+    val scope =
+      PreviewRenderScope.forRequest(
+        manifests = discoveryManifests.filter { (module, _) -> module.gradlePath in byPath },
+        exactId = exactId,
+        filter = filter,
+        previewRef = previewRef,
+        permutations = permutations,
+        rowAware = rowAwareSelection,
+      )
+    scope.note?.let { System.err.println("compose-preview: $flag $it; rendering the full module.") }
+    if (verbose && scope.narrowed) {
+      System.err.println(
+        "compose-preview: $flag narrowed the render to ${scope.renderedIds?.size ?: 0} preview(s) " +
+          "via -P${PreviewRenderScope.GRADLE_PROPERTY}"
+      )
+    }
+    return scope
+  }
 
   /**
    * Standard "discover modules → run `:composePreviewRenderAll` → load manifests → build results"
@@ -546,7 +656,7 @@ abstract class Command(
         scopeToPreviewRequest = true,
       )
     val manifests = readAllManifests(raw.modules)
-    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
+    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests, raw.renderedIds)
     return RenderModulesOutcome(
       buildOk = raw.buildOk,
       modules = raw.modules,
@@ -554,6 +664,8 @@ abstract class Command(
       results = results,
       discoveredPreviewCount =
         raw.discoveredPreviewCount.takeIf { it > 0 } ?: manifests.sumOf { it.second.previews.size },
+      taskOutcomes = raw.taskOutcomes,
+      renderedIds = raw.renderedIds,
     )
   }
 
@@ -632,9 +744,16 @@ abstract class Command(
    *
    * The top-level `pngPath` / `sha256` / `changed` on [PreviewResult] mirror the first capture
    * verbatim so existing agents keep working.
+   *
+   * [renderedIds] names the previews this run actually re-rendered, or `null` for "all of them". It
+   * only matters once the render is narrowed (issue #3730): a preview that was deliberately skipped
+   * and has no PNG on disk must keep the sha the previous run recorded, or the next full render
+   * would report it as `changed` purely because the CLI forgot it. A skipped preview whose PNG *is*
+   * on disk needs nothing special — its sha still matches, so it reads as unchanged.
    */
   protected fun buildResults(
-    manifests: List<Pair<PreviewModule, PreviewManifest>>
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    renderedIds: Set<String>? = null,
   ): List<PreviewResult> {
     val base = PreviewResultBuilder.build(manifests)
     val imageSizeOverride = ImageSizeOverride.detect()
@@ -651,12 +770,41 @@ abstract class Command(
       val prior = readState(module).shas
       val updated = mutableMapOf<String, String>()
       for (result in moduleResults) {
+        val skipped = renderedIds != null && result.id !in renderedIds
         val overlayed = applyImageOverrideAndStateDiff(result, prior, updated, imageSizeOverride)
+        if (skipped) carryForwardSkippedState(result.id, prior, updated)
         out += annotateExtensions(overlayed, module)
       }
       writeState(module, CliState(updated))
     }
     return out
+  }
+
+  /**
+   * Re-adopt every `.cli-state.json` entry belonging to [id] that this run didn't rewrite
+   * (issue #3730).
+   *
+   * A narrowed render leaves the previews it skipped with no PNG to hash, so
+   * [applyImageOverrideAndStateDiff] writes no sha for them — and a dropped entry reads as
+   * "first-ever render" next time, which would make the following full render report every skipped
+   * preview as `changed`. The render didn't happen, so nothing about those previews' last known
+   * pixels changed either: keep what the previous run recorded.
+   *
+   * It has to work off the prior *keys* rather than the result's captures, because a
+   * `@PreviewParameter` preview whose fan-out files are all absent has **no** captures — the CLI
+   * globs those rows off disk, so an unrendered parameterized preview presents as zero rows rather
+   * than one empty one, and there is nothing to hang a carried-forward sha on. Matching is scoped
+   * to the `<id>` / `<id>#…` family so a sibling (`Foo_Dark` next to `Foo`) can't be dragged along,
+   * and [MutableMap.putIfAbsent] means a sha this run actually computed always wins.
+   */
+  private fun carryForwardSkippedState(
+    id: String,
+    prior: Map<String, String>,
+    updated: MutableMap<String, String>,
+  ) {
+    for ((key, sha) in prior) {
+      if (key == id || key.startsWith("$id#")) updated.putIfAbsent(key, sha)
+    }
   }
 
   /**
@@ -709,9 +857,16 @@ abstract class Command(
     captures.any { it.changed == true } || changed == true
 
   /** Filters by `--id` / `--filter` and (optionally) `--changed-only`. */
-  protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> = all.filter {
-    matchesRequest(it) && (!changedOnly || it.anyChanged())
-  }
+  protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> =
+    selectRequested(all).filter { !changedOnly || it.anyChanged() }
+
+  /**
+   * This invocation's `--id` / `--filter` / `--preview` applied to rendered results, honouring
+   * `@PreviewParameter` row ids — see [selectRequestedResults]. `--changed-only` is deliberately
+   * *not* applied here, so it can be evaluated against the rows the request actually selected.
+   */
+  protected fun selectRequested(all: List<PreviewResult>): List<PreviewResult> =
+    selectRequestedResults(all, exactId = exactId, filter = filter, previewRef = previewRef)
 
   /**
    * @param results rows to emit (after `--id`/`--filter`/`--changed-only`)
@@ -776,9 +931,47 @@ abstract class Command(
         },
     )
 
-  protected fun matchesRequest(result: PreviewResult): Boolean {
-    return previewIdMatchesRequest(result.id, exactId = exactId, filter = filter)
-  }
+  protected fun matchesRequest(preview: PreviewInfo): Boolean =
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
+
+  /**
+   * Id-only overload, for the call sites that hold nothing but an id. `--preview` still applies,
+   * minus the forms that need the class / function metadata — prefer the [PreviewInfo] /
+   * [PreviewResult] overloads whenever the row is in hand.
+   */
+  protected fun matchesRequest(id: String): Boolean =
+    previewIdMatchesRequest(id, exactId = exactId, filter = filter, previewRef = previewRef)
+
+  /**
+   * The ids in [manifest] this invocation's `--id` / `--filter` asks about — every id when there is
+   * no request. The manifest-side counterpart of [matchesRequest], for the paths that fan out per
+   * preview *before* there are [PreviewResult]s to filter (issue #3742).
+   *
+   * Takes the **unexpanded** discovery manifest (`PreviewResultBuilder.readAllManifests`, *not*
+   * [readAllManifests], which layers [PreviewPermutationsCli] expansion on top) and returns
+   * unexpanded ids, because the consumer is the daemon: `PreviewIndex.byId` resolves against the
+   * `previews.json` the plugin wrote, so `Foo` is addressable and the CLI-synthesised `Foo_dark` is
+   * not. Matching still happens against the *expanded* ids, since that is what the user saw in
+   * `show` output — so `--id Foo_dark` selects `Foo`, the preview the daemon can actually render,
+   * and `--filter Foo` under `--permutations accessibility` selects it once rather than four times.
+   *
+   * The two halves have to stay on opposite sides of the expansion: matching the unexpanded ids
+   * would miss a permutation request entirely, and returning the expanded ones would hand the
+   * daemon an id it answers with "unknown preview".
+   */
+  protected fun requestedPreviewIds(manifest: PreviewManifest): List<String> =
+    manifest.previews
+      .filter { preview ->
+        PreviewPermutationsCli.expand(listOf(preview), permutations).any { matchesRequest(it) }
+      }
+      .map { it.id }
 
   private fun modulesMatchingPreviewRequest(
     modules: List<PreviewModule>,
@@ -790,41 +983,10 @@ abstract class Command(
       manifests = manifests,
       exactId = exactId,
       filter = filter,
+      previewRef = previewRef,
       discoverySucceeded = discoverySucceeded,
+      rowAware = rowAwareSelection,
     )
-
-  private fun warnIfPreviewFilterStillRendersExtraRows(
-    renderModules: List<PreviewModule>,
-    manifests: List<Pair<PreviewModule, PreviewManifest>>,
-    discoverySucceeded: Boolean,
-  ) {
-    if (exactId == null && filter == null) return
-    if (renderModules.isEmpty()) return
-    val flag = if (exactId != null) "--id" else "--filter"
-    if (!discoverySucceeded) {
-      System.err.println(
-        "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
-          "rendering all resolved modules so Gradle can retry discovery."
-      )
-      return
-    }
-    val byPath = renderModules.map { it.gradlePath }.toSet()
-    val rendersExtraRows =
-      manifests
-        .filter { (module, _) -> module.gradlePath in byPath }
-        .any { (_, manifest) ->
-          manifest.previews.any {
-            !previewIdMatchesRequest(it.id, exactId = exactId, filter = filter)
-          }
-        }
-    if (!rendersExtraRows) return
-    System.err.println(
-      "compose-preview: $flag narrowed the render to matching module(s) " +
-        renderModules.joinToString(", ") { it.gradlePath } +
-        "; Gradle still renders the full selected module task, so other previews in those " +
-        "module(s) may execute but will not be printed."
-    )
-  }
 
   private fun stateFile(module: PreviewModule): File =
     module.projectDir.resolve("build/compose-previews/.cli-state.json")
@@ -850,14 +1012,7 @@ abstract class Command(
     }
   }
 
-  protected fun findProjectRoot(): File? {
-    var dir: File? = File(".").absoluteFile
-    while (dir != null) {
-      if (File(dir, "gradlew").exists()) return dir
-      dir = dir.parentFile
-    }
-    return null
-  }
+  protected fun findProjectRoot(): File? = findGradleProjectRoot()
 }
 
 /**
@@ -974,27 +1129,302 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
 
 internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
 
-internal fun previewIdMatchesRequest(id: String, exactId: String?, filter: String?): Boolean {
+/**
+ * Does one preview satisfy this invocation's selection request?
+ *
+ * The three selectors are independent predicates and **intersect** (all of the ones that were
+ * passed must hold):
+ * - `--id <exact>` — the id, exactly, case-sensitively.
+ * - `--filter <substring>` — a case-insensitive substring of the id.
+ * - `--preview <ref>` — a loose *preview reference*; see [previewMatchesReference].
+ *
+ * [className] / [functionName] are optional because some call sites only hold an id (they come from
+ * a manifest or a [PreviewResult] where the metadata is available, or from an already-resolved id
+ * list where it isn't). They only affect `--preview`: without them the `Class.function` and bare
+ * function-name forms can't be recognised and the ref falls back to its id-only forms.
+ */
+internal fun previewIdMatchesRequest(
+  id: String,
+  exactId: String?,
+  filter: String?,
+  previewRef: String? = null,
+  className: String? = null,
+  functionName: String? = null,
+): Boolean {
   if (exactId != null && id != exactId) return false
   if (filter != null && !id.contains(filter, ignoreCase = true)) return false
+  if (
+    previewRef != null &&
+      !previewMatchesReference(previewRef, id, className = className, functionName = functionName)
+  ) {
+    return false
+  }
   return true
 }
+
+/**
+ * Is [exactId] a preview that actually exists in [manifests]?
+ *
+ * The gate on [previewMatchesRequestIncludingRows]'s row lane, and the reason a precise selector
+ * stays precise. Two modules can declare a parameterized `Foo` and an ordinary `Foo_Dark`; without
+ * this, `--id Foo_Dark` would keep both — the second on its own name, the first because `Foo_Dark`
+ * *could* be a row of `Foo` — and `serve` aborts on more than one module before its row-level
+ * filtering ever runs. So a real hit wins outright, mirroring the daemon's own
+ * exact-hit-before-row-split rule (`PreviewRowAddress.split` is only consulted on a miss).
+ *
+ * **`--id` only, deliberately.** Extending this precedence to `--filter` / `--preview` looks
+ * symmetrical and is wrong: those are substring rules, so matching several previews at once is
+ * their normal mode, not a conflict to resolve. A parameterized `Foo` yielding `Foo_Crimson`
+ * alongside an ordinary `CrimsonButton` means `--filter Crimson` legitimately names both, and
+ * letting the concrete one suppress the row owner would drop a preview that satisfies the
+ * documented predicate. Only `--id` is single-target, and only `--id` has a caller who breaks when
+ * a second module tags along.
+ */
+internal fun manifestsDeclareExactId(
+  manifests: List<Pair<PreviewModule, PreviewManifest>>,
+  exactId: String?,
+): Boolean =
+  declaresExactId(
+    exactId,
+    manifests.asSequence().flatMap { (_, manifest) -> manifest.previews.asSequence().map { it.id } },
+  )
+
+/**
+ * [manifestsDeclareExactId] over rendered results — the same gate on the same `--id`, one step
+ * later in the pipeline, where [selectRequestedResults] decides whether a row id may be honoured.
+ *
+ * Shares the rule rather than restating it: the two run over different id sources (the discovery
+ * manifest before the render, the built results after it) but must answer identically, or `--id
+ * Foo_Dark` would keep a module for a real `Foo_Dark` and then print `Foo`'s row of the same name.
+ */
+internal fun resultsDeclareExactId(results: List<PreviewResult>, exactId: String?): Boolean =
+  declaresExactId(exactId, results.asSequence().map { it.id })
+
+private fun declaresExactId(exactId: String?, ids: Sequence<String>): Boolean =
+  exactId != null && ids.any { it == exactId }
+
+/**
+ * The `--id` / `--filter` / `--preview` selection over **rendered results**, with
+ * `@PreviewParameter` row ids honoured (issue #3819).
+ *
+ * `show`, `list` and `render` print one line per [PreviewResult] and used to filter on its base id
+ * alone, so `--id Foo_PARAM_1` matched nothing — after paying for the render, and while the very
+ * row it named was sitting in `Foo`'s capture list. The rows were already there; what was missing
+ * were their **ids**. A capture carries `parameterLabel` (`parameter 1`), a lossy human coordinate
+ * that can't be turned back into a selector, so the id is now derived once by
+ * `PreviewParameterFanout` and carried as [CaptureResult.parameterRowId] — the same derivation
+ * `serve` addresses its cards with, so the two can't disagree about what a row is called.
+ *
+ * The rule mirrors `serve`'s (`ServeCommand.servablePreviewsOf`):
+ * - the base id matches → the whole preview, every row, because asking for a parameterized preview
+ *   means asking for its states;
+ * - otherwise a row id matches → the preview, narrowed to the matching rows;
+ * - `--id` naming a preview that really exists ([resultsDeclareExactId]) turns the row lane off, so
+ *   a real `Foo_Dark` outranks `Foo`'s hypothetical row of that name — the #3798 / #3799
+ *   precedence, deliberately scoped to `--id` because the substring selectors legitimately name
+ *   many previews at once.
+ *
+ * Rows are matched by id alone, without the class / function metadata: a synthetic row id has no
+ * manifest row of its own, and the `<Class>.<function>` and bare-function forms of `--preview` were
+ * already tested against the base id above.
+ */
+internal fun selectRequestedResults(
+  results: List<PreviewResult>,
+  exactId: String?,
+  filter: String?,
+  previewRef: String? = null,
+): List<PreviewResult> {
+  if (exactId == null && filter == null && previewRef == null) return results
+  val exactIdExists = resultsDeclareExactId(results, exactId)
+  return results.mapNotNull { result ->
+    if (
+      previewIdMatchesRequest(
+        result.id,
+        exactId = exactId,
+        filter = filter,
+        previewRef = previewRef,
+        className = result.className,
+        functionName = result.functionName,
+      )
+    ) {
+      return@mapNotNull result
+    }
+    if (exactIdExists) return@mapNotNull null
+    val rows =
+      result.captures.filter { capture ->
+        capture.parameterRowId?.let {
+          previewIdMatchesRequest(it, exactId = exactId, filter = filter, previewRef = previewRef)
+        } == true
+      }
+    if (rows.isEmpty()) null else result.withCaptures(rows)
+  }
+}
+
+/**
+ * [PreviewResult] narrowed to [captures], with the back-compat `pngPath` / `sha256` / `changed`
+ * mirrors re-pointed at the first *surviving* capture. Without the re-point, selecting one row
+ * would report the PNG of a row that was filtered out — the mirrors are documented as "the first
+ * capture".
+ */
+private fun PreviewResult.withCaptures(captures: List<CaptureResult>): PreviewResult {
+  val first = captures.firstOrNull()
+  return copy(
+    captures = captures,
+    pngPath = first?.pngPath,
+    sha256 = first?.sha256,
+    changed = first?.changed,
+  )
+}
+
+/**
+ * Like [previewIdMatchesRequest], but a **`@PreviewParameter` preview** whose rows might satisfy
+ * the request also counts as a match (issue #3786).
+ *
+ * Discovery emits one manifest entry per parameterized *function* — it reads bytecode and cannot
+ * instantiate a `PreviewParameterProvider` — so the manifest holds `Foo` and has never heard of
+ * `Foo_PARAM_1` or `Foo_Crimson`. `serve` synthesises the row ids later, from the fan-out on disk
+ * ([ServeParameterRows][ee.schimke.composeai.cli.serve.ServeParameterRows]), but module selection
+ * and render narrowing both run *before* that, against the manifest. Matching on the manifest alone
+ * dropped the module and the command exited with "no previews discovered" — precisely when the
+ * caller had been most specific.
+ *
+ * **The rule is "maybe", not a grammar.** A parameterized preview's row ids genuinely cannot be
+ * known here, so any selector that doesn't match its base id is undecidable rather than false — and
+ * `--filter` makes that unavoidable: it is a case-insensitive *substring* of the final row id, so
+ * `--filter Crimson` is a perfectly ordinary way to ask for one row of every provider and matches
+ * no base id anywhere. An earlier `<base>_<row>` prefix test looked precise but quietly answered
+ * "no" to exactly those requests, and changed `--filter`'s documented substring rule into a
+ * case-sensitive prefix one for rows. Undecidable therefore resolves to **keep**: a wrong drop is a
+ * hard error the caller cannot work around, a wrong keep costs only build time.
+ *
+ * Two things stop that from becoming "keep everything":
+ * 1. [manifestsDeclareExactId] — when `--id` names a preview that really exists, the row lane is
+ *    off entirely, so precise selection stays precise. Scoped to `--id`, because only it is
+ *    single-target; see that function for why the substring selectors must not inherit it.
+ * 2. A preview with **no** provider has no rows, so it is still matched exactly as before. That is
+ *    what preserves the "no previews discovered" diagnostic for a typo.
+ *
+ * The render is still narrowed to the parameterized previews rather than the whole module — see
+ * [PreviewRenderScope.forRequest] — so #3730's optimisation survives the conservatism.
+ */
+internal fun previewMatchesRequestIncludingRows(
+  preview: PreviewInfo,
+  exactId: String?,
+  filter: String?,
+  previewRef: String? = null,
+  exactIdExists: Boolean,
+  rowAware: Boolean = true,
+): Boolean {
+  if (
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
+  ) {
+    return true
+  }
+  if (!rowAware) return false
+  if (exactIdExists) return false
+  if (preview.params.previewParameterProviderClassName.isNullOrBlank()) return false
+  // `--id` is exact by contract, so it pins the candidate row id outright: it must be spelled
+  // `<base>_<row>`, and once it is, the other selectors can be tested against that concrete id
+  // rather than left undecidable. That keeps an unsatisfiable intersection
+  // (`--id Foo_PARAM_1 --filter Unrelated`) failing fast, and keeps a typo'd `--id` from dragging
+  // in every parameterized preview in the repo.
+  if (exactId != null) {
+    if (!isRowAddressOf(preview.id, exactId)) return false
+    return previewIdMatchesRequest(
+      exactId,
+      exactId = null,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
+  }
+  // `--filter` / `--preview` alone are substring rules over an id that does not exist yet. Nothing
+  // here can decide them, so the preview stays a candidate.
+  return true
+}
+
+/**
+ * Whether [selector] spells a row of [baseId] — `<baseId>_<row>` with a non-empty row token, the
+ * same `<stem>_<suffix>` shape the fan-out renderer writes to disk (docs/RENDER_FILENAMES.md) and
+ * the daemon accepts on `renderNow`.
+ *
+ * Case-sensitive, and only applied to `--id`, whose contract is an exact match. The substring
+ * selectors deliberately don't use it — see [previewMatchesRequestIncludingRows].
+ */
+private fun isRowAddressOf(baseId: String, selector: String): Boolean =
+  selector.length > baseId.length + 1 &&
+    selector.startsWith(baseId) &&
+    selector[baseId.length] == '_'
+
+/**
+ * The `--preview <ref>` rule (issue #3744) — one preview, one boolean, no dependence on the rest of
+ * the candidate set.
+ *
+ * A ref matches when **any** of these holds:
+ * 1. it equals [id] exactly (case-sensitive);
+ * 2. it equals `<className>.<functionName>` — the fully-qualified form `record --preview` and the
+ *    Gradle `--preview` option both accept;
+ * 3. it equals the bare [functionName];
+ * 4. it is a case-insensitive substring of [id] — the `--filter` rule, kept last so the loose form
+ *    people already type keeps working.
+ *
+ * Because the forms are OR'ed rather than tried in stages, `--preview Foo` selects `Foo` *and*
+ * `FooBar`, exactly like `--filter Foo` would. That is the deliberate trade: a per-preview
+ * predicate stays consistent between the module-selection pass, the Gradle narrowing pass, and the
+ * row-printing pass, which a "first stage that matches anything wins" resolver could not (each pass
+ * sees a different candidate set, so the stage they landed on could disagree). Reach for `--id`
+ * when exactly one preview is meant.
+ */
+internal fun previewMatchesReference(
+  ref: String,
+  id: String,
+  className: String? = null,
+  functionName: String? = null,
+): Boolean =
+  id == ref ||
+    (className != null && functionName != null && "$className.$functionName" == ref) ||
+    functionName == ref ||
+    id.contains(ref, ignoreCase = true)
 
 internal fun modulesMatchingPreviewRequest(
   modules: List<PreviewModule>,
   manifests: List<Pair<PreviewModule, PreviewManifest>>,
   exactId: String?,
   filter: String?,
+  previewRef: String? = null,
   discoverySucceeded: Boolean = true,
+  rowAware: Boolean = true,
 ): List<PreviewModule> {
   // The render task depends on discovery and is the authoritative retry. Do not let missing or
   // stale discovery manifests suppress that retry after the separate optimization pass fails.
   if (!discoverySucceeded) return modules
-  if (exactId == null && filter == null) return modules
+  if (exactId == null && filter == null && previewRef == null) return modules
+  // Row-aware (issue #3786): a module whose only match is `Foo_PARAM_1` must survive, because the
+  // row ids don't exist until `serve` reads the rendered fan-out back off disk — long after this
+  // narrowing ran. Resolved across ALL manifests first so an `--id` that names a real preview never
+  // also drags in the parameterized previews it could hypothetically be a row of.
+  val exactIdExists = manifestsDeclareExactId(manifests, exactId)
   val matchingPaths =
     manifests
       .filter { (_, manifest) ->
-        manifest.previews.any { previewIdMatchesRequest(it.id, exactId = exactId, filter = filter) }
+        manifest.previews.any {
+          previewMatchesRequestIncludingRows(
+            it,
+            exactId = exactId,
+            filter = filter,
+            previewRef = previewRef,
+            exactIdExists = exactIdExists,
+            rowAware = rowAware,
+          )
+        }
       }
       .map { (module, _) -> module.gradlePath }
       .toSet()
@@ -1060,6 +1490,16 @@ internal fun captureCoordLabel(c: CaptureResult): String =
     .ifEmpty { "default" }
 
 class ShowCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `show` prints the `@PreviewParameter` rows and, since issue #3819, selects on them — so it
+   * wants the module and the narrowed render a row id implies. The keep is cashed in by
+   * [applyFilters]: a module kept for a row that turned out not to exist contributes nothing to the
+   * output.
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val jsonOutput = "--json" in args
   // Auto-on when stdout is an interactive TTY in a kitty-graphics-capable terminal. Users
   // opt out with `--images=off`; `--images=kitty` forces it on (still TTY-gated). `--json`
@@ -1117,12 +1557,15 @@ class ShowCommand(args: List<String>) : Command(args) {
     val all = outcome.results
     val modules = outcome.modules
     val filtered = applyFilters(all)
+    // Counts reflect the full discovered set so an agent using `--changed-only` can still see
+    // "60 unchanged, 0 changed" and skip a follow-up query — but only when the run actually
+    // rendered that set. Once `--id` / `--filter` narrows the Gradle drive (issue #3730) the
+    // previews outside the request were deliberately not rendered, so counting their absent PNGs
+    // as `missing` would report 63 render failures for a run that did exactly what was asked.
+    val countsScope = if (outcome.renderedIds == null) all else selectRequested(all)
 
     if (filtered.isEmpty()) {
-      // Counts reflect the full discovered set so an agent using
-      // `--changed-only` can still see "60 unchanged, 0 changed"
-      // and skip a follow-up query.
-      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = all))
+      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = countsScope))
       else println("No previews matched.")
       System.out.flush()
       // A build failure outranks "no match": exit 3 advertises a healthy build that simply had
@@ -1131,7 +1574,7 @@ class ShowCommand(args: List<String>) : Command(args) {
     }
 
     if (jsonOutput) {
-      println(encodeResponse(filtered, countsScope = all))
+      println(encodeResponse(filtered, countsScope = countsScope))
     } else {
       var lastModule: String? = null
       for (r in filtered) {
@@ -1174,26 +1617,20 @@ class ShowCommand(args: List<String>) : Command(args) {
       val policy = missingRendersPolicy?.lowercase()
       val prefix =
         if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
-      System.err.println(
-        "${prefix}Render task completed but produced no PNG for ${missing.size} of " +
-          "${filtered.size} preview(s):"
-      )
       // List the offenders so the CI log is self-diagnosing — no need to download the
-      // `composePreviewRender-reports` artifact just to learn *which* previews failed.
-      for (r in missing) {
-        val nullCoords =
-          r.captures
-            .filter { it.pngPath == null && !it.optional }
-            .joinToString(", ") { captureCoordLabel(it) }
-            .ifEmpty { "default" }
-        val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
-        System.err.println("  - ${r.id}$moduleTag — no PNG for: $nullCoords")
-      }
+      // `composePreviewRender-reports` artifact just to learn *which* previews failed — and read
+      // the renderer's `.error.json` sidecar beside each one so a preview that rendered and *threw*
+      // reports its exception instead of the NO-SOURCE build-wiring guess (issue #3741). The task
+      // outcomes go along so a sidecar left by an earlier run isn't quoted as this run's finding
+      // when `composePreviewRender` was skipped (NO-SOURCE) this time.
       System.err.println(
-        "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
-          "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
-          "testClassesDirs. Per-preview stack traces are in the `composePreviewRender-reports` " +
-          "artifact attached to the run."
+        missingRenderReport(
+          missing = missing,
+          manifests = outcome.manifests,
+          total = filtered.size,
+          taskOutcomes = outcome.taskOutcomes,
+          prefix = prefix,
+        )
       )
       System.out.flush()
       if (shouldFailOnMissingRenders()) exitProcess(2)
@@ -1230,6 +1667,15 @@ class ShowCommand(args: List<String>) : Command(args) {
 }
 
 class ListCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `list` selects on row ids too (issue #3819) — it runs discovery only, so the rows it can list
+   * are whatever an earlier render left on disk. Set for consistency with the filtering it now
+   * performs; `list` drives no render of its own, so nothing is spent on a "maybe".
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val jsonOutput = "--json" in args
 
   override fun run() {
@@ -1248,7 +1694,7 @@ class ListCommand(args: List<String>) : Command(args) {
       // List runs discovery only — PNGs may not exist, so sha/changed are null.
       // `--changed-only` is meaningless without rendering; ignore it here.
       val all = buildResults(manifests)
-      val filtered = all.filter { matchesRequest(it) }
+      val filtered = selectRequested(all)
 
       if (filtered.isEmpty()) {
         if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
@@ -1268,6 +1714,15 @@ class ListCommand(args: List<String>) : Command(args) {
 }
 
 class RenderCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `render` reports the rows it rendered and selects on their ids (issue #3819), so it takes the
+   * same conservative keep `show` does — including for `--output`, where a row id is the only way
+   * to ask for one value of a provider's PNG.
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val output: String? = args.flagValue("--output")
 
   /**
@@ -1312,11 +1767,46 @@ class RenderCommand(args: List<String>) : Command(args) {
         }
       }
     withGradle { gradle ->
-      val modules = resolveModules(gradle)
-      val xrArgs = provisionXrCompositeArgs(gradle, modules, silenceStdout = false)
+      val resolved = resolveModules(gradle)
+      // Discover first so `--id` / `--filter` can be resolved to the exact ids Gradle should
+      // render, instead of rendering every module at full width and dropping the rows afterwards
+      // (issue #3730). `show` gets this from the shared [renderModules] pipeline; `render` drives
+      // Gradle itself, so it repeats the two steps here.
+      val discoverySucceeded = runDiscover(gradle, resolved, silenceStdout = false)
+      val discoveryManifests = if (discoverySucceeded) readAllManifests(resolved) else emptyList()
+      // `--bundle` packs a whole *module's* previews into one portable artifact, and
+      // `BundlePreviewTask` omits any preview whose PNG isn't on disk — so narrowing under
+      // `--bundle` would quietly ship a bundle containing a single preview, and dropping the
+      // non-matching modules would stop producing their bundles at all. That command keeps its
+      // pre-#3730 full-width behaviour; the render is the cheap half of it anyway.
+      val modules =
+        if (bundle) resolved
+        else
+          modulesMatchingPreviewRequest(
+            resolved,
+            discoveryManifests,
+            exactId = exactId,
+            filter = filter,
+            previewRef = previewRef,
+            discoverySucceeded = discoverySucceeded,
+            rowAware = rowAwareSelection,
+          )
+      if (modules.isEmpty()) {
+        System.err.println("No previews matched.")
+        exitProcess(3)
+      }
+      val scope =
+        if (bundle) PreviewRenderScope.FULL
+        else previewRenderScope(modules, discoveryManifests, discoverySucceeded)
+      val xrArgs =
+        provisionXrCompositeArgs(gradle, modules, silenceStdout = false, discoverFirst = false)
       val tasks = previewTasksFor(modules.map { it.gradlePath }).toTypedArray()
       if (
-        !runGradle(gradle, *tasks, arguments = gradleArgsWithForce(bundleGradleArgs()) + xrArgs)
+        !runGradle(
+          gradle,
+          *tasks,
+          arguments = gradleArgsWithForce(bundleGradleArgs()) + xrArgs + scope.gradleArgs,
+        )
       ) {
         reportRenderFailures(gradle)
         exitProcess(2)
@@ -1325,11 +1815,11 @@ class RenderCommand(args: List<String>) : Command(args) {
       if (bundle) reportBundles(modules)
 
       val manifests = readAllManifests(modules)
-      val all = buildResults(manifests)
+      val all = buildResults(manifests, scope.renderedIds)
       // `render` ignores `--changed-only` so the agent can ask "render
       // the world, but report only what changed" via a follow-up
       // `show --changed-only`.
-      val filtered = all.filter { matchesRequest(it) }
+      val filtered = selectRequested(all)
 
       if (filtered.isEmpty()) {
         System.err.println("No previews matched.")
@@ -1347,13 +1837,28 @@ class RenderCommand(args: List<String>) : Command(args) {
         if (filtered.size != 1) {
           System.err.println(
             "--output requires a single match (got ${filtered.size}). " +
-              "Narrow with --id <exact> or --filter <substring>."
+              "Narrow with --id <exact>, --filter <substring>, or --preview <ref>."
           )
           exitProcess(1)
         }
         val one = filtered.single()
         if (one.pngPath == null) {
-          System.err.println("Render produced no PNG for: ${one.id}")
+          // This branch used to exit with a bare "Render produced no PNG", throwing away the very
+          // sidecar issue #3741 exists to surface — so it goes through the same report `show` and
+          // the no-`--output` path below print. `missing` is empty only when the absent PNG is by
+          // design (an XR_SUBSPACE preview, an `optional` capture); `--output` still can't produce
+          // the file, so say so plainly. No policy prefix here: `--missing-renders warn` opts the
+          // *gate* down, and this exit is `--output` failing to deliver the file it was asked for.
+          System.err.println(
+            if (missing.isEmpty()) "Render produced no PNG for: ${one.id}"
+            else
+              missingRenderReport(
+                missing = missing,
+                manifests = manifests,
+                total = filtered.size,
+                taskOutcomes = gradle.lastTaskOutcomes(),
+              )
+          )
           exitProcess(2)
         }
         File(one.pngPath).copyTo(File(output), overwrite = true)
@@ -1367,10 +1872,18 @@ class RenderCommand(args: List<String>) : Command(args) {
           val policy = missingRendersPolicy?.lowercase()
           val prefix =
             if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
+          // Same report `show` prints: the `.error.json` sidecar beside each would-be output tells
+          // "the preview threw" apart from "the render task never ran" (issue #3741), and the task
+          // outcomes keep a sidecar left by an earlier run from being quoted as this run's finding.
           System.err.println(
-            "${prefix}Render task completed but produced no PNG for ${missing.size} preview(s):"
+            missingRenderReport(
+              missing = missing,
+              manifests = manifests,
+              total = filtered.size,
+              taskOutcomes = gradle.lastTaskOutcomes(),
+              prefix = prefix,
+            )
           )
-          for (r in missing) System.err.println("  ${r.id}")
           if (shouldFailOnMissingRenders()) exitProcess(2)
         }
       }
@@ -1410,7 +1923,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     if (output != null && filtered.size != 1) {
       System.err.println(
         "--output requires a single match (got ${filtered.size}). " +
-          "Narrow with --id <exact> or --filter <substring>."
+          "Narrow with --id <exact>, --filter <substring>, or --preview <ref>."
       )
       exitProcess(1)
     }
@@ -1611,20 +2124,116 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
   override fun implicitExtensions(): List<String> = listOf(extensionId)
 
   /**
+   * One preview a data-product hook has been asked to produce for.
+   *
+   * [previewId] is the id to **address the daemon with** — always one the plugin discovered, since
+   * `PreviewIndex.byId` is an exact lookup against `previews.json`. [entryId] is the id to **key
+   * the result on**, which is what a consumer looks up. They differ only for a `--permutations`
+   * variant: `Foo_dark` is synthesised client-side, so the fetch names `Foo` and carries
+   * [overrides] — the dark/RTL/font-scale configuration the daemon threads into its re-render —
+   * while the result is filed under `Foo_dark` (issue #3762).
+   *
+   * [overrides] is `null` for a plain preview, which is also the "no params bag" case.
+   */
+  data class RequestedPreview(
+    val previewId: String,
+    val entryId: String,
+    val overrides: PreviewOverrides? = null,
+  ) {
+    /** True when this is a client-side permutation rather than a declared preview. */
+    val isPermutation: Boolean
+      get() = entryId != previewId
+  }
+
+  /**
+   * One module's share of the work [produceAdditionalDataProducts] has to do.
+   *
+   * [previews] is **already narrowed** to the invocation's `--id` / `--filter` — implementations
+   * fan out over it rather than over `manifest.previews`, so `a11y --filter Foo` pays for one
+   * per-preview daemon render instead of the module's full set (issue #3742). A module none of
+   * whose previews the request selects never becomes a request at all.
+   *
+   * [consumerPreviewIds] is every id a *consumer* of the sidecar may look up — the manifest
+   * expanded through [PreviewPermutationsCli], which is the id space `PreviewResult`s carry and so
+   * the one the extension renderers annotate against. Coverage is measured against this rather than
+   * against what was fetched, so a run that skipped a permutation is reported as not covering it.
+   *
+   * [narrowed] is true exactly when [previews] is a strict subset of [consumerPreviewIds], i.e.
+   * when whatever this hook writes covers only part of the module. The sidecars are *per-module*
+   * reports, so a narrowed run that writes one wholesale discards the findings for previews the
+   * user didn't ask about — the analogue of the `.cli-state.json` problem #3730 had to solve.
+   * Implementations must merge into whatever is already on disk when this is set, not clobber it.
+   */
+  data class DataProductRequest(
+    val module: PreviewModule,
+    val manifest: PreviewManifest,
+    val previews: List<RequestedPreview>,
+    val consumerPreviewIds: List<String>,
+    val narrowed: Boolean,
+  )
+
+  /**
    * Subclass hook called between the gradle build and the result-building / reporting step.
    * Subclasses use this to spin up additional production paths (the daemon-driven a11y fetch in
    * [A11yCommand]) that write sidecar JSON the extension renderer's `load` pass then picks up when
    * [buildResults] runs. Default no-op.
    *
    * At the point this is called, the standard `composePreviewRenderAll` gradle task has already run
-   * and each module's `previews.json` is on disk. Implementations iterate the manifests for preview
-   * ids, drive any out-of-band production, and write the resulting sidecars to the conventional
+   * and each module's `previews.json` is on disk. Implementations walk [requests] — one per module
+   * with at least one requested preview — drive any out-of-band production for
+   * [DataProductRequest.previewIds], and write the resulting sidecars to the conventional
    * `build/compose-previews/<extension>.json` locations the renderers read.
    */
-  protected open fun produceAdditionalDataProducts(
-    modules: List<PreviewModule>,
-    manifests: List<Pair<PreviewModule, PreviewManifest>>,
-  ) {}
+  protected open fun produceAdditionalDataProducts(requests: List<DataProductRequest>) {}
+
+  /**
+   * Resolve the per-module work list for [produceAdditionalDataProducts]: each module's manifest
+   * narrowed to the `--id` / `--filter` request, dropping the modules the request leaves empty.
+   *
+   * The narrowing is computed from the request itself rather than from
+   * [RawRenderOutcome.renderedIds]: that set is `null` both when there was no request and when the
+   * request happened to select every preview (the render declines to narrow in that case, because a
+   * filtered `composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
+   * ask about". [requestedPreviewIds] can — in the unexpanded, daemon-addressable id space these
+   * manifests are read in.
+   */
+  protected fun dataProductRequests(
+    manifests: List<Pair<PreviewModule, PreviewManifest>>
+  ): List<DataProductRequest> = manifests.mapNotNull { (module, manifest) ->
+    val consumerIds = mutableListOf<String>()
+    val requested = mutableListOf<RequestedPreview>()
+    for (preview in manifest.previews) {
+      // Fetch order within a preview is load-bearing: the daemon keys its artefacts by preview id,
+      // so each permutation's overlay lands on top of the last. [RequestedPreview] production keeps
+      // the declared preview *first* here, and `DaemonA11yFetcher` reverses that so the base render
+      // is the one left on disk under its own id. See its `fetch` KDoc.
+      for (expanded in PreviewPermutationsCli.expand(listOf(preview), permutations)) {
+        consumerIds += expanded.id
+        // Matched as a manifest *row*, not as a bare id: `--preview` also accepts
+        // `<Class>.<function>` and the bare function name, and the expansion carries both through
+        // from the declared preview. The id-only overload would drop those two forms here while
+        // module selection and the Gradle narrowing — which do see the metadata — kept the module,
+        // leaving the daemon with an empty work list and the command reporting a clean run it never
+        // performed.
+        if (!matchesRequest(expanded)) continue
+        requested +=
+          RequestedPreview(
+            previewId = preview.id,
+            entryId = expanded.id,
+            overrides = PreviewPermutationsCli.overridesFor(preview, expanded),
+          )
+      }
+    }
+    if (requested.isEmpty()) null
+    else
+      DataProductRequest(
+        module = module,
+        manifest = manifest,
+        previews = requested,
+        consumerPreviewIds = consumerIds,
+        narrowed = requested.size < consumerIds.size,
+      )
+  }
 
   /**
    * Optional subclass hook for "the data product we just tried to produce wasn't actually
@@ -1657,7 +2266,11 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         scopeToPreviewRequest = true,
       )
     val manifests = readAllManifests(raw.modules)
-    produceAdditionalDataProducts(raw.modules, manifests)
+    // Deliberately the *unexpanded* manifests, not `manifests` — the hook drives the daemon, which
+    // only knows the previews the plugin discovered. See [requestedPreviewIds].
+    produceAdditionalDataProducts(
+      dataProductRequests(PreviewResultBuilder.readAllManifests(raw.modules))
+    )
     // After production runs, give the subclass a chance to abort the run when its data product
     // wasn't actually available — without this, a daemon-crash in `compose-preview a11y` looks
     // identical to a clean run with zero findings (issue #1453).
@@ -1665,7 +2278,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
       System.err.println(message)
       exitProcess(2)
     }
-    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
+    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests, raw.renderedIds)
     val outcome =
       RenderModulesOutcome(
         buildOk = raw.buildOk,
@@ -1675,6 +2288,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         discoveredPreviewCount =
           raw.discoveredPreviewCount.takeIf { it > 0 }
             ?: manifests.sumOf { it.second.previews.size },
+        renderedIds = raw.renderedIds,
       )
 
     if (outcome.manifests.isEmpty()) {
@@ -1684,8 +2298,8 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     }
 
     val filtered =
-      outcome.results.filter {
-        matchesRequest(it) && renderer.hasData(it) && (!changedOnly || it.anyChanged())
+      selectRequested(outcome.results).filter {
+        renderer.hasData(it) && (!changedOnly || it.anyChanged())
       }
 
     if (jsonOutput) {
@@ -1713,11 +2327,17 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
  *
  * Production of a11y data products moved entirely to the preview daemon, so this command opens a
  * short-lived [ee.schimke.composeai.render.session.RenderSession] per module after the standard
- * `composePreviewRenderAll` build completes, walks every preview through `data/fetch` for
+ * `composePreviewRenderAll` build completes, walks the requested previews through `data/fetch` for
  * `a11y/atf`, aggregates the findings into the canonical
  * `build/compose-previews/accessibility.json` shape that [A11yReportRenderer] then loads through
  * its disk-fallback path, and closes the session. The daemon is short-lived — spawned, drained,
  * shut down — so there's no persistent server for the agent / CI script to manage.
+ *
+ * "The requested previews" is load-bearing: each `a11y/atf` fetch is a per-preview daemon render,
+ * so fanning out over the whole module would make `a11y --id Foo` cost 66 renders on a 66-preview
+ * module to print one row (issue #3742). [ReportCommand.DataProductRequest] hands this hook the ids
+ * the `--id` / `--filter` request actually selects, and the resulting partial report merges into
+ * the module's existing `accessibility.json` rather than replacing it.
  *
  * The session is opened via the public `:render-session-api` / `:render-session-subprocess`
  * library; everything the CLI does here is reachable from any third-party tooling that compiles
@@ -1734,43 +2354,54 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
   private var anyModuleAtfOk: Boolean = false
   private val unavailableModules: MutableList<String> = mutableListOf()
 
-  override fun produceAdditionalDataProducts(
-    modules: List<PreviewModule>,
-    manifests: List<Pair<PreviewModule, PreviewManifest>>,
-  ) {
-    if (modules.isEmpty()) return
+  override fun produceAdditionalDataProducts(requests: List<DataProductRequest>) {
+    if (requests.isEmpty()) return
     // The daemon launch descriptor (`daemon-launch.json`) is written by
     // `composePreviewDaemonStart`, which the standalone `composePreviewRenderAll` task does not
     // depend
     // on. Run it in a second gradle invocation so the descriptor is fresh against the
     // consumer's current classpath. Gradle's daemon reuses the warm JVM started by the first
     // invocation, so the cold-start cost is paid once per CLI run, not once per gradle task.
-    val daemonStartOk = runDaemonStartTasks(modules)
+    val daemonStartOk = runDaemonStartTasks(requests.map { it.module })
     if (!daemonStartOk) {
       System.err.println(
         "compose-preview a11y: composePreviewDaemonStart failed; skipping daemon-driven a11y " +
           "fetch."
       )
-      // Treat a failed daemon-start as ATF-unavailable for every module that has previews — the
-      // user needs to see the run fail rather than receive a misleading "no findings" report.
-      for ((module, manifest) in manifests) {
-        if (manifest.previews.isEmpty()) continue
+      // Treat a failed daemon-start as ATF-unavailable for every module we were going to ask
+      // about — the user needs to see the run fail rather than receive a misleading "no findings"
+      // report.
+      for (request in requests) {
         attemptedAnyModule = true
-        unavailableModules += module.gradlePath
+        unavailableModules += request.module.gradlePath
       }
       return
     }
     val fetcher = DaemonA11yFetcher(onLog = { System.err.println("[daemon a11y] $it") })
-    for ((module, manifest) in manifests) {
-      val previewIds = manifest.previews.map { it.id }
-      if (previewIds.isEmpty()) continue
+    for (request in requests) {
+      val (module, manifest, previews, consumerPreviewIds, narrowed) = request
       attemptedAnyModule = true
+      if (verbose && narrowed) {
+        System.err.println(
+          "compose-preview a11y: ${module.gradlePath} fetching ATF for ${previews.size} of " +
+            "${consumerPreviewIds.size} preview(s); the rest keep whatever the last run recorded, " +
+            "and the report is marked partial for any still uncovered."
+        )
+      }
       val outcome =
         fetcher.fetch(
           projectDir = module.projectDir,
           modulePath = module.gradlePath,
           moduleName = manifest.module,
-          previewIds = previewIds,
+          previews = previews,
+          // A narrowed run only speaks for the previews it fetched, so the fetcher carries the
+          // rest of the module's report forward and marks what it still doesn't cover as partial
+          // rather than publishing a module-wide report full of silent gaps (issue #3742).
+          // Coverage is measured in the *consumer's* id space so a permutation the daemon never
+          // addressed counts as uncovered rather than as a preview that came back clean. Whether
+          // to merge at all is the separate question of whether the *request* narrowed the fetch.
+          modulePreviewIds = consumerPreviewIds,
+          narrowed = narrowed,
         )
       when (outcome) {
         is DaemonA11yFetcher.Outcome.Ok -> {

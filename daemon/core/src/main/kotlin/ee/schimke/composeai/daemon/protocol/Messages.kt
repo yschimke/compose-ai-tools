@@ -1381,6 +1381,34 @@ data class RenderNowResult(val queued: List<String>, val rejected: List<Rejected
 @Serializable data class RejectedRender(val id: String, val reason: String)
 
 // ---------------------------------------------------------------------------
+// `preview/rows` — enumerate a `@PreviewParameter` provider's rows (issue #3749).
+//
+// `previews.json` carries base ids only: discovery reads bytecode and can't instantiate a
+// provider, so nothing upstream of the daemon knows how many values there are. Row *addressing*
+// (`<baseId>_<row>` on `renderNow`) shipped first and left discovery to a probe — ask for a row
+// past the end and read the error. This is the direct answer.
+// ---------------------------------------------------------------------------
+
+@Serializable data class PreviewRowsParams(val previewId: String)
+
+/**
+ * [rows] is empty for an ordinary preview — the daemon answers that from discovery metadata alone,
+ * without touching a classloader or (on Android) the render sandbox. Empty means "render the bare
+ * id"; it is not an error.
+ */
+@Serializable data class PreviewRowsResult(val previewId: String, val rows: List<PreviewRowDto>)
+
+@Serializable
+data class PreviewRowDto(
+  /** Zero-based position in the provider's value sequence. */
+  val index: Int,
+  /** The row token — a derived label (`Dark`) or `PARAM_<index>`. See docs/RENDER_FILENAMES.md. */
+  val label: String,
+  /** The addressable previewId for this row, ready to hand back to `renderNow`. */
+  val id: String,
+)
+
+// ---------------------------------------------------------------------------
 // D1 — data products (see docs/daemon/DATA-PRODUCTS.md).
 //
 // `params` is per-kind options carried as JsonElement so the dispatch surface
@@ -1930,7 +1958,7 @@ sealed class RemoteComposeChange {
 data class InteractiveInputParams(
   val frameStreamId: String,
   val kind: InteractiveInputKind,
-  /** Image-natural pixel coordinates. Daemon translates to dp using the last render's density. */
+  /** Image-natural physical pixels, dispatched without density conversion. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**
@@ -2199,7 +2227,7 @@ data class RecordingStartParams(
 data class RecordingInputParams(
   val recordingId: String,
   val kind: InteractiveInputKind,
-  /** Image-natural pixel coordinates. Daemon translates to dp using the held scene's density. */
+  /** Image-natural physical pixels, dispatched without density conversion. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**

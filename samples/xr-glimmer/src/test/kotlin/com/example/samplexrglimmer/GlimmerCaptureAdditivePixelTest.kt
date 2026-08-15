@@ -37,17 +37,17 @@ class GlimmerCaptureAdditivePixelTest {
   // `NowPlayingCard_Glimmer_Light.png` (not `_·_`).
   private val nowPlayingCaptures =
     listOf(
-      "NowPlayingCard_Glimmer_Light.png",
-      "NowPlayingCard_Glimmer_Dark.png",
-      "NowPlayingCard_Glimmer_Busy.png",
-      "NowPlayingCard_Glimmer_VeniceCanalCats.png",
+      "NowPlayingCard_Glimmer_Light",
+      "NowPlayingCard_Glimmer_Dark",
+      "NowPlayingCard_Glimmer_Busy",
+      "NowPlayingCard_Glimmer_VeniceCanalCats",
     )
 
-  private val focusableMenuCapture = "FocusableMenu_Glimmer_Input.png"
+  private val focusableMenuCapture = "FocusableMenu_Glimmer_Input"
 
   @Test
   fun `every Glimmer capture is opaque RGB with additive-zero corners`() {
-    val files = (nowPlayingCaptures + focusableMenuCapture).map { File(rendersDir, it) }
+    val files = (nowPlayingCaptures + focusableMenuCapture).map { renderFile(rendersDir, it) }
     files.forEach { file ->
       assertThat(file.exists()).isTrue()
       val img = ImageIO.read(file)
@@ -80,7 +80,7 @@ class GlimmerCaptureAdditivePixelTest {
    */
   @Test
   fun `four NowPlayingCard env variants land at pixel-identical captures`() {
-    val files = nowPlayingCaptures.map { File(rendersDir, it) }
+    val files = nowPlayingCaptures.map { renderFile(rendersDir, it) }
     files.forEach { assertThat(it.exists()).isTrue() }
     val hashes = files.map { it.readBytes().contentHashCode() }.toSet()
     assertThat(hashes).hasSize(1)

@@ -47,6 +47,48 @@ Because the CLI auto-injects, projects that already apply
 work without touching `build.gradle.kts`. Projects that already declare the
 plugin are detected and left alone, so mixed setups don't conflict.
 
+## Pinning one version for every entrypoint
+
+compose-preview reaches a project through several doors — the CLI, the VS Code
+extension, the CI actions, an explicitly applied Gradle plugin — and by default
+each one uses whatever version *it* was installed at. On a project with more
+than one door in use that drifts, and a CLI newer than the plugin it's driving
+fails in a way that reads like a project misconfiguration ("no modules have the
+compose-preview plugin applied") rather than the version skew it is.
+
+Pin the project once:
+
+```sh
+compose-preview pin --cli      # pin to the CLI you just installed
+compose-preview pin 1.1.0      # …or to a specific release
+compose-preview pin            # show the pin, and whether your CLI matches
+```
+
+That writes a single line to your `gradle.properties`:
+
+```properties
+composePreview.version=1.1.0
+```
+
+From then on the CLI auto-injects **that** plugin version, the VS Code extension
+applies it too, and CI installs it with `version: pin` on the
+[`install`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install)
+action (the [`apply`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/apply)
+action's default `cli-version: auto` picks it up with no workflow change). If a
+project already pins `composePreviewCli` in `gradle/libs.versions.toml`, that's
+read as a pin too — nothing to add.
+
+`compose-preview doctor` reports the pin, its source, and whether the CLI on your
+`$PATH` matches it. Unpinned projects keep working exactly as before; the pin is
+opt-in.
+
+The pin governs the **auto-injected** plugin — the zero-config path above. A module
+that declares `id("ee.schimke.composeai.preview") version "…"` itself keeps its own
+version, and `compose-preview pin` never edits build scripts or version catalogs:
+auto-inject already leaves such a module alone, so its declaration is the single
+source of truth there. Full model:
+[VERSION_PIN.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/VERSION_PIN.md).
+
 ## Builds that apply AGP via a convention plugin
 
 If your build supplies the Android Gradle Plugin through an **included build's
@@ -171,7 +213,7 @@ agent at the skill" and "run the installer" converge on the same place. See
 
 Composite actions for pipelines:
 
-- [`install`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install) — pin the CLI on `$PATH`, with version-catalog + Renovate recipes.
+- [`install`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install) — pin the CLI on `$PATH`. `version: pin` reads the project's own [version pin](#pinning-one-version-for-every-entrypoint); `version: catalog` tracks a specific catalog key (Renovate recipe included).
 - [`apply`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/apply) — unified pipeline: baselines on push, before/after PR comments, a11y + notification surfaces.
 
 There's also a reusable, preview-gated AI PR-review workflow (Codex / Claude

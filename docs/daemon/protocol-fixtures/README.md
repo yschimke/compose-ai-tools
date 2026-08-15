@@ -13,6 +13,7 @@ Fixture inventory (added in B1.2):
 - `client-setVisible.json`, `client-setFocus.json`, `client-fileChanged.json` — client → daemon notifications (§ 4).
 - `client-renderNow.json`, `client-renderNow-overrides.json`, `daemon-renderNowResult.json` — `renderNow` request (with and without `overrides`) and response (§ 5).
 - `daemon-discoveryUpdated.json`, `daemon-renderStarted.json`, `daemon-renderFinished.json`, `daemon-renderFailed.json`, `daemon-classpathDirty.json`, `daemon-sandboxRecycle.json`, `daemon-daemonWarming.json`, `daemon-daemonReady.json`, `daemon-log.json` — daemon → client notifications (§ 6).
+- `client-previewRows.json`, `daemon-previewRowsResult.json` — `preview/rows` request and response (§ 5), the `@PreviewParameter` row enumeration surface (issue #3749). The result fixture carries both row spellings on purpose: a derived label (`Crimson`) and the positional `PARAM_<idx>` fallback.
 - `envelope-request.json`, `envelope-response.json`, `envelope-notification.json`, `envelope-errorResponse.json` — JSON-RPC envelope shapes (§ 2).
 
 D1 (data products — see [../DATA-PRODUCTS.md](../DATA-PRODUCTS.md)):

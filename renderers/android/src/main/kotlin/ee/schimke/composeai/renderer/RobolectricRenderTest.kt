@@ -38,6 +38,7 @@ import ee.schimke.composeai.daemon.GestureOverrideExtension
 import ee.schimke.composeai.daemon.KeyboardController
 import ee.schimke.composeai.daemon.KeyboardOverrideExtension
 import ee.schimke.composeai.daemon.LauncherWidgetExtension
+import ee.schimke.composeai.daemon.PermissionsOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
@@ -46,9 +47,13 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
+import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
+import ee.schimke.composeai.daemon.protocol.PermissionsOverride
+import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewAnimationContext
 import ee.schimke.composeai.data.render.PreviewFilter
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
@@ -203,8 +208,8 @@ object PreviewManifestLoader {
     // from prior runs that today's manifest doesn't account for. Guards
     // against provider renames ("loading" → "busy") and the
     // `_PARAM_<idx>` → `_<label>` migration leaving a mix of old-shape
-    // and new-shape PNGs on disk. Runs at shard-load time, before any
-    // test body writes to the directory.
+    // and new-shape captures or rendered data products on disk. Runs at shard-load time, before
+    // any test body writes to the directory.
     deleteStaleFanoutFiles(
       outDir = System.getProperty("composeai.render.outputDir")?.let(::File),
       allEntries = allEntries,
@@ -349,21 +354,38 @@ object PreviewManifestLoader {
   }
 
   /**
-   * Deletes stale `<stem>_*<ext>` fan-out files for the parameterized previews in
-   * [expandedByEntry].
+   * Deletes stale `<stem>_*<ext>` capture and rendered-data-product fan-out files for the
+   * parameterized previews in [expandedByEntry]. Both output classes use the same path-aware sweep
+   * rule so their cleanup cannot drift independently.
    *
-   * Two guards keep the prefix match from destroying correct sibling output (issue #2193):
+   * Three guards keep the prefix match from destroying correct sibling output (issue #2193):
    * - **Manifest-wide expected set.** `@Preview(name = …)` / `@Preview(group = …)` variant suffixes
    *   make a sibling preview's stem an underscore-extension of the base stem (`Foo` vs `Foo_Dark`),
    *   so the sibling's base render and its own fan-out (`Foo_Dark_<label>.png`) match `Foo_*`. The
    *   exclusion set therefore spans every manifest entry's outputs — declared ([allEntries]) and
    *   expanded ([expandedByEntry]) — not just the preview whose prefix is being swept.
+   * - **Declared sibling stems.** The expected set only covers a sibling's *expanded* rows when the
+   *   sibling was itself expanded, which a `--preview` / `--preview-id` filter prevents: the filter
+   *   applies to the selection [expandedByEntry] is built from, while [allEntries] stays the full
+   *   manifest. A filtered-out parameterized sibling therefore contributes its declared
+   *   `Foo_Dark.png` and nothing else, leaving `Foo_Dark_<label>.png` and its companions
+   *   unaccounted for under `Foo`'s prefix. [fanoutSiblingStems] shields the whole stem, so the
+   *   loader's promise that a filtered-out preview keeps its existing artifacts holds for a
+   *   parameterized one too — matching what the plugin already computes for the desktop renderer.
    * - **Shard-owned pass.** Every parallel fork (`maxParallelForks = shardCount`) expands the whole
    *   manifest at shard load, at a time when sibling forks may already be rendering — under the old
    *   per-entry expected set a late-loading fork would delete fan-out PNGs another fork had just
    *   written. The manifest-wide set makes that impossible (every fork's outputs are expected), and
    *   gating the sweep on [ownedIds] additionally keeps forks whose shard was assigned none of a
    *   preview's fan-out from redundantly re-sweeping its prefix.
+   *
+   * A stale row's companions go with it. A failed row writes `<stem>_<label><ext>.error.json`
+   * ([RenderErrorSidecar]) and no PNG, so an extension-only filter never matched the one file the
+   * row actually left behind, and the orphan outlived every subsequent run — the CLI's
+   * missing-render report then rediscovers it by directory glob and can present an obsolete
+   * exception as a failure of the current run (PR #3815). A companion is classified by the output
+   * it names ([fanoutOutputNameOf]), so it is kept exactly when that output is expected and swept
+   * exactly when that output is stale.
    */
   internal fun deleteStaleFanoutFiles(
     outDir: File?,
@@ -372,39 +394,141 @@ object PreviewManifestLoader {
     ownedIds: Set<String>,
   ) {
     if (outDir == null || !outDir.isDirectory) return
-    val expectedNames = buildSet {
-      allEntries.flatMap { it.captures }.mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
-      expandedByEntry
-        .flatMap { it.second }
-        .flatMap { it.entry.captures }
-        .mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
+    val productRoot = outDir.parentFile ?: outDir
+    val expectedFiles = buildSet {
+      allEntries.forEach { entry ->
+        entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+        entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+      }
+      expandedByEntry.flatMap { it.second }.forEach { row ->
+        row.entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+        row.entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+      }
+    }
+    val declaredOutputFiles = buildList {
+      allEntries.forEach { entry ->
+        entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+        entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+      }
     }
     for ((entry, rows) in expandedByEntry) {
       if (entry.params.previewParameterProviderClassName == null) continue
       if (rows.none { it.entry.id in ownedIds }) continue
       for (template in entry.captures) {
-        val templateFile = File(outDir, template.renderOutput.substringAfter("renders/"))
-        val dir = templateFile.parentFile ?: continue
-        val stem = templateFile.nameWithoutExtension
-        val ext = ".${templateFile.extension}"
-        val prefix = stem + "_"
-        dir
-          .listFiles()
-          ?.filter { f ->
-            f.name.startsWith(prefix) && f.name.endsWith(ext) && f.name !in expectedNames
-          }
-          ?.forEach { f ->
-            if (!f.delete()) {
-              System.err.println("Failed to delete stale fan-out file: ${f.absolutePath}")
-            }
-          }
+        captureOutputFile(outDir, template.renderOutput)?.let { templateFile ->
+          deleteStaleFanoutFiles(templateFile, expectedFiles, declaredOutputFiles)
+        }
+      }
+      for (template in entry.dataProducts) {
+        productOutputFile(productRoot, template.output)?.let { templateFile ->
+          deleteStaleFanoutFiles(templateFile, expectedFiles, declaredOutputFiles)
+        }
       }
     }
   }
 
-  private fun fanoutLeaf(renderOutput: String): String? {
+  /**
+   * Suffixes a renderer appends to a render output's own file name to make a companion that lives
+   * beside it — `renders/Foo.png` → `renders/Foo.png.error.json` ([RenderErrorSidecar.pathFor]) and
+   * `renders/Foo.png.warnings.json` ([RenderWarningsSidecar.pathFor]).
+   *
+   * Kept in sync with the desktop renderer's `RENDER_COMPANION_SUFFIXES`: the two sweeps answer the
+   * same question about the same directory layout, and a suffix known to one but not the other
+   * would leave an orphan on whichever backend rendered the module.
+   */
+  internal val RENDER_COMPANION_SUFFIXES = listOf(".error.json", ".warnings.json")
+
+  /**
+   * The render output [name] belongs to: [name] itself when it is an `[ext]` output, the output it
+   * names when it is one of that output's [RENDER_COMPANION_SUFFIXES] companions, and `null`
+   * otherwise — `null` meaning "not this template's business", which on a delete path is the answer
+   * that keeps a file.
+   *
+   * A companion is recognised by its suffix **before** the plain-extension fallback is reached, and
+   * is then held to the same per-extension scoping as any other candidate: it belongs to this sweep
+   * only if the output it names carries [ext]. Deciding in the other order breaks down as soon as
+   * [ext] is itself `.json`, because then every `.error.json` in the directory ends with [ext] and
+   * the fallback claims image companions like `Foo_Alice.png.error.json` as JSON outputs of its
+   * own, deleting another output's *current* diagnostics.
+   */
+  internal fun fanoutOutputNameOf(name: String, ext: String): String? {
+    RENDER_COMPANION_SUFFIXES.forEach { companion ->
+      if (name.endsWith(companion)) return name.removeSuffix(companion).takeIf { it.endsWith(ext) }
+    }
+    return name.takeIf { it.endsWith(ext) }
+  }
+
+  /**
+   * Stems of declared manifest outputs in the same directory as [templateFile], with the same
+   * extension, whose name extends [templateFile]'s stem with an underscore — the issue #2193
+   * siblings whose files a prefix-greedy sweep would otherwise mistake for its own fan-out.
+   *
+   * Deliberately built from the **declared** entries rather than the expanded rows, and so from the
+   * FULL manifest rather than the filtered selection: a `@Preview(name = "Dark")` sibling that a
+   * `--preview-id` filter dropped is never expanded, so its fan-out rows (`Foo_Dark_<label>.png` and
+   * their companions) appear in no expected-name set, yet they all match the swept preview's `Foo_*`
+   * prefix. Protecting the declared stem covers the sibling's whole fan-out without requiring it to
+   * have been expanded, which is what makes good on the loader's promise that a filtered-out preview
+   * keeps its existing artifacts.
+   *
+   * Mirrors the plugin's `fanoutSiblingStems`, which computes the same list for the desktop renderer
+   * (that subprocess has no manifest, so the plugin passes the stems on the command line). The
+   * same-extension restriction is load-bearing in both: the sweep only ever deletes files belonging
+   * to an [templateFile]-extension output, so shielding a different-extension sibling's stem would
+   * strand a genuinely stale `Foo_Dark.png` from before that sibling's capture became a GIF.
+   */
+  private fun fanoutSiblingStems(
+    declaredOutputFiles: List<File>,
+    templateFile: File,
+  ): List<String> {
+    val prefix = templateFile.nameWithoutExtension + "_"
+    return declaredOutputFiles
+      .filter {
+        it.parentFile == templateFile.parentFile &&
+          it != templateFile &&
+          it.extension == templateFile.extension
+      }
+      .map { it.nameWithoutExtension }
+      .filter { it.startsWith(prefix) }
+      .distinct()
+  }
+
+  private fun captureOutputFile(outDir: File, renderOutput: String): File? {
     if (renderOutput.isEmpty()) return null
-    return renderOutput.substringAfterLast('/').ifEmpty { renderOutput }
+    return File(outDir, renderOutput.substringAfterLast('/'))
+  }
+
+  private fun productOutputFile(productRoot: File, output: String): File? {
+    if (output.isEmpty()) return null
+    return File(productRoot, output)
+  }
+
+  private fun deleteStaleFanoutFiles(
+    templateFile: File,
+    expectedFiles: Set<File>,
+    declaredOutputFiles: List<File>,
+  ) {
+    val dir = templateFile.parentFile ?: return
+    val stem = templateFile.nameWithoutExtension
+    val ext = ".${templateFile.extension}"
+    val prefix = stem + "_"
+    val siblingStems = fanoutSiblingStems(declaredOutputFiles, templateFile)
+    dir
+      .listFiles()
+      ?.filter { file ->
+        val output = fanoutOutputNameOf(file.name, ext)
+        file.name.startsWith(prefix) &&
+          output != null &&
+          File(dir, output) !in expectedFiles &&
+          siblingStems.none { sibling ->
+            file.name.startsWith("$sibling.") || file.name.startsWith("${sibling}_")
+          }
+      }
+      ?.forEach { file ->
+        if (!file.delete()) {
+          System.err.println("Failed to delete stale fan-out file: ${file.absolutePath}")
+        }
+      }
   }
 
   /**
@@ -504,6 +628,12 @@ abstract class RobolectricRenderTestBase(
   @OptIn(ExperimentalRoborazziApi::class)
   @Test
   fun renderPreview() {
+    // Before this preview's first composition, and inside the Robolectric sandbox — each sandbox
+    // classloader holds its own copy of `ComposeRuntimeFlags`, so the opt-in has to be applied from
+    // in here rather than once per JVM. Idempotent, so a shard that reuses its sandbox across
+    // previews pays a `getProperty` per capture and nothing more. Unset (the default) is silent.
+    LinkBufferComposer.applyAndDescribe(javaClass.classLoader)?.let(System.err::println)
+
     val outputDir =
       File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
     outputDir.mkdirs()
@@ -1124,6 +1254,26 @@ abstract class RobolectricRenderTestBase(
             preview.captures
               .firstNotNullOfOrNull { it.gestureHint }
               ?.let { GestureOverrideExtension(it.toGestureOverride()) }
+          // `@PermissionPreview` discovery stamps the same `PermissionsCapture` onto every capture
+          // of an annotated function. Constructing `PermissionsOverrideExtension` is what applies
+          // the grants: its `init` calls `PermissionsController.set(...)`, which reflectively
+          // seeds Robolectric's `ShadowApplication.grantPermissions/denyPermissions`. That has to
+          // happen HERE — before `rule.setContent` below — and not from inside the composition,
+          // because a permission-gated screen reads
+          // `ContextCompat.checkSelfPermission(...)` on its FIRST composition; a seed applied from
+          // an effect would leave the screen on the pre-seed branch for the whole capture, which is
+          // exactly the regression `PermissionsOverrideIntegrationTest` in `:daemon:android` pins
+          // for the daemon lane. Daemon-driven `renderNow.overrides.permissions` reaches the same
+          // controller via the `PermissionsPreviewOverrideExtension` planner registered in
+          // `RobolectricHost`, so both lanes agree by construction.
+          //
+          // Built only when the preview actually carries the annotation: the extension's contract
+          // is "the grant map is exhaustive", so constructing it unconditionally would deny every
+          // permission on every render and change captures that never asked for an override.
+          val permissionsExtension =
+            preview.captures
+              .firstNotNullOfOrNull { it.permissions }
+              ?.let { PermissionsOverrideExtension(seed = it.toPermissionsOverride()) }
           // `@LauncherWidgetPreview` discovery stamps the same `LauncherWidgetCapture` onto
           // every capture of an annotated function. Wrap the composition with
           // `LauncherWidgetExtension` from `:data-launcher-widget-connector` so the rendered
@@ -1261,11 +1411,35 @@ abstract class RobolectricRenderTestBase(
                   ambientOrPlain()
                 }
               }
-              val pseudoOrPlain: @Composable () -> Unit = {
-                if (pseudolocaleExtension != null) {
-                  pseudolocaleExtension.AroundComposable { launcherWidgetOrPlain() }
+              // `@PermissionPreview` — the grants were already seeded into Robolectric when the
+              // extension was constructed above; this wrap is what scopes the connector's
+              // query tracking to this preview (`PermissionsController.beginRender`) and clears
+              // the override on dispose so the next preview in the sandbox starts clean. Same
+              // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
+              val permissionsOrPlain: @Composable () -> Unit = {
+                if (permissionsExtension != null) {
+                  // `Around` (not `AroundComposable`): the permissions extension implements the
+                  // raw `AroundComposableHook`, because it needs the context's `previewId` to
+                  // scope query tracking — the convenience `AroundComposableExtension` base the
+                  // gesture / launcher-widget extensions use drops the context.
+                  permissionsExtension.Around(
+                    ExtensionComposeContext(
+                      extensionId = PermissionsOverrideExtension.ID,
+                      previewId = preview.id,
+                      renderMode = null,
+                    )
+                  ) {
+                    launcherWidgetOrPlain()
+                  }
                 } else {
                   launcherWidgetOrPlain()
+                }
+              }
+              val pseudoOrPlain: @Composable () -> Unit = {
+                if (pseudolocaleExtension != null) {
+                  pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
+                } else {
+                  permissionsOrPlain()
                 }
               }
               keyboardExtension.AroundComposable { pseudoOrPlain() }
@@ -2900,6 +3074,28 @@ private fun overrideSeedMap(
  */
 private fun GestureHintCapture.toGestureOverride(): GestureOverride =
   GestureOverride(showHints = showHints)
+
+/**
+ * Maps the renderer-side [PermissionsCapture] (read from `previews.json`) onto the connector's
+ * `protocol.PermissionsOverride` wire shape — the exact type daemon-driven
+ * `renderNow.overrides.permissions` carries, so `@PermissionPreview` and a live panel chip flip
+ * feed one code path instead of two grant-seeding implementations that could drift.
+ *
+ * The two enums are separate on purpose: discovery cannot depend on `:daemon:core`, so the plugin
+ * mirrors the state as [PermissionGrantCaptureState] and this is where the two meet. Both are
+ * closed two-value sets, so the `when` is exhaustive and a future third state fails to compile here
+ * rather than silently mapping to "denied".
+ */
+private fun PermissionsCapture.toPermissionsOverride(): PermissionsOverride =
+  PermissionsOverride(
+    grants =
+      grants.mapValues { (_, state) ->
+        when (state) {
+          PermissionGrantCaptureState.GRANTED -> PermissionGrantStateOverride.GRANTED
+          PermissionGrantCaptureState.DENIED -> PermissionGrantStateOverride.DENIED
+        }
+      }
+  )
 
 /**
  * Maps the renderer-side [LauncherWidgetCapture] (read from `previews.json`) onto the connector's

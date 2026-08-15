@@ -315,3 +315,44 @@ sources:
 
 When a new `--vscode-*` token starts appearing in `media/preview.css`,
 add a value for it in `vscode-theme.css` (both dark and light blocks).
+
+## Capture determinism
+
+Two runs of the same tree must produce byte-identical PNGs. Two things enforce
+that, both added for issue #3837 after four `serve-*` captures were found
+differing between runs of unmodified code:
+
+- **Rasterization** — `playwright.config.mjs` launches Chromium with
+  `--disable-partial-raster --disable-skia-runtime-opts`. Without them, cached
+  tile reuse and CPU-feature-dependent Skia paths round antialiased rounded
+  corners differently from run to run (20–30 px, ±1–3 colour units).
+  `serve-design-page-index` was the worst: it latched onto one of two variants
+  for a whole process, so it read as a real diff on PRs that touched nothing
+  near it. Deliberately NOT `--disable-lcd-text` / `--disable-gpu-rasterization`
+  — they fix it too, but change glyph rasterization and move 12–20k pixels on
+  every capture.
+- **Pointer position** — a `FIXTURE_STATES` entry can set `parkPointer: true`,
+  which moves the mouse to (0, 0) before the shot. `page.click()` leaves the
+  pointer where it clicked, so a state that expands something slides fresh rows
+  under it and captures a coin-flip hover.
+
+`parkPointer` is **opt-in on purpose.** Parking by default was measured and
+moved 53 of 196 captures, because a large minority of these states exist to
+capture the resting pointer — `serve-home-index-card-hover`,
+`serve-design-page-hover`, `serve-landing-public-card-hover`, both
+`serve-landing-live` long-press states. Those keep passing while quietly
+capturing the un-hovered page, which is the worst possible failure for a
+baseline. Set `parkPointer` only when the pointer position is incidental.
+
+To check determinism after changing the harness, run the suite twice into
+separate directories and compare:
+
+```
+cd vscode-extension
+for i in 1 2; do
+  rm -rf preview-harness/out
+  npx playwright test -c preview-harness/playwright.config.mjs pages-snapshot
+  cp -r preview-harness/out /tmp/run$i
+done
+diff -rq /tmp/run1 /tmp/run2   # must be silent
+```

@@ -772,6 +772,14 @@ object FigmaLayeredSvg {
     val fittedHeight = vec.viewportHeight.toDouble() * scaleY
     val x = layer.left + (layer.width - fittedWidth) / 2.0
     val y = layer.top + (layer.height - fittedHeight) / 2.0
+    // A negative Compose graphics-layer scale mirrors around the layer's centre. SVG's negative
+    // scale mirrors around the origin, so move the origin to the far edge on each flipped axis
+    // before applying it. Keeping fitted sizes positive also leaves all centring/aspect-fit logic
+    // above unchanged for the overwhelmingly common non-mirrored case.
+    val translateX = if (vec.flipX) x + fittedWidth else x
+    val translateY = if (vec.flipY) y + fittedHeight else y
+    val emittedScaleX = if (vec.flipX) -scaleX else scaleX
+    val emittedScaleY = if (vec.flipY) -scaleY else scaleY
     val sb = StringBuilder()
     // A stock Material icon names itself on its own layer: the canonical fonts.google.com icon
     // name, its style, and the CDN URL of that exact drawing. The geometry below is still the one
@@ -795,7 +803,7 @@ object FigmaLayeredSvg {
       .append('\n')
     sb
       .append(
-        """$indent  <g transform="translate(${fmt(x)} ${fmt(y)}) scale(${fmt(scaleX)} ${fmt(scaleY)})"${opacityAttr(layer.contentOpacity)}>"""
+        """$indent  <g transform="translate(${fmt(translateX)} ${fmt(translateY)}) scale(${fmt(emittedScaleX)} ${fmt(emittedScaleY)})"${opacityAttr(layer.contentOpacity)}>"""
       )
       .append('\n')
     if (iconId != null) {

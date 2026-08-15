@@ -240,6 +240,10 @@ include(":wear-preview-runtime")
 
 project(":wear-preview-runtime").projectDir = file("runtimes/wear-preview")
 
+// The usage-snippet compile gate (see its build file). Empty unless `-PusageCorpus=` points it at
+// a generated corpus, so it costs a normal build nothing.
+include(":usage-source-psi")
+include(":tools:usage-compile-check")
 include(":samples:android")
 
 // Compose Material 3 **design catalog** — one `@Preview` per component in its
@@ -495,6 +499,10 @@ project(":data-gestures-core").projectDir = file("data/gestures/core")
 include(":data-gestures-connector")
 
 project(":data-gestures-connector").projectDir = file("data/gestures/connector")
+
+include(":data-gestures-robolectric-stubs")
+
+project(":data-gestures-robolectric-stubs").projectDir = file("data/gestures/robolectric-stubs")
 
 include(":data-shared-element-core")
 

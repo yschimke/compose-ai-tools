@@ -1,5 +1,174 @@
 # Changelog
 
+## [1.5.0](https://github.com/yschimke/compose-ai-tools/compare/v1.4.0...v1.5.0) (2026-08-14)
+
+
+### Features
+
+* **render:** opt renders into the rewritten Compose SlotTable ([#3840](https://github.com/yschimke/compose-ai-tools/issues/3840)) ([02881ce](https://github.com/yschimke/compose-ai-tools/commit/02881cedd3bb001d4fb882077e50092d339a57a9))
+* **render:** render this repo's own catalogs with the rewritten SlotTable ([#3845](https://github.com/yschimke/compose-ai-tools/issues/3845)) ([aed817b](https://github.com/yschimke/compose-ai-tools/commit/aed817b2979e69f235d4314e887f2d8ba37f3c49))
+
+
+### Bug Fixes
+
+* **discovery:** case-fold the render stem tie test ([#3843](https://github.com/yschimke/compose-ai-tools/issues/3843)) ([9c2cac2](https://github.com/yschimke/compose-ai-tools/commit/9c2cac200714d5a7a92510fe52bfa57833ebcb8f))
+* **discovery:** guarantee render output paths are unique manifest-wide ([#3847](https://github.com/yschimke/compose-ai-tools/issues/3847)) ([01609fc](https://github.com/yschimke/compose-ai-tools/commit/01609fc49c4cabc9d6ab8c11acd5db083b0bc8b3))
+* **harness:** make the serve page captures deterministic ([#3848](https://github.com/yschimke/compose-ai-tools/issues/3848)) ([adc2e9a](https://github.com/yschimke/compose-ai-tools/commit/adc2e9a587443ece74bdc85a823d587f94a9b070))
+* **samples:** restore the Remote Compose doc-capture guard, unstale an xr-glimmer comment ([#3846](https://github.com/yschimke/compose-ai-tools/issues/3846)) ([979d472](https://github.com/yschimke/compose-ai-tools/commit/979d4722b3937795c31e3b2bd3d56ec65363af46))
+* **serve:** capture session snapshots as part of the registry's transitions ([#3842](https://github.com/yschimke/compose-ai-tools/issues/3842)) ([a8200ed](https://github.com/yschimke/compose-ai-tools/commit/a8200edb46d600613836031800668015af321748))
+* **serve:** compare corpus paths with invariant separators ([#3855](https://github.com/yschimke/compose-ai-tools/issues/3855)) ([5e93198](https://github.com/yschimke/compose-ai-tools/commit/5e93198e23a743d8db3519deaa0961d8cc798ca8))
+* **serve:** open the query when pinning a token-free link, and make revisions a menu ([#3858](https://github.com/yschimke/compose-ai-tools/issues/3858)) ([b31c1e4](https://github.com/yschimke/compose-ai-tools/commit/b31c1e45ab8dc194d8b1ada79242f84c0d7cb8c6))
+* **serve:** rewrite fully qualified knob calls, and make the corpus fail loudly ([#3851](https://github.com/yschimke/compose-ai-tools/issues/3851)) ([822dfcd](https://github.com/yschimke/compose-ai-tools/commit/822dfcd2219769bdaec732d496dd00ff7cd1a09b))
+* **serve:** unqualify only declared scaffold packages, not package-shaped receivers ([#3853](https://github.com/yschimke/compose-ai-tools/issues/3853)) ([520b613](https://github.com/yschimke/compose-ai-tools/commit/520b61323bbd08bcecc6b66f5f1b413820ddc972))
+
+## [1.4.0](https://github.com/yschimke/compose-ai-tools/compare/v1.3.0...v1.4.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** select @PreviewParameter rows on show, list and render ([#3825](https://github.com/yschimke/compose-ai-tools/issues/3825)) ([6131db9](https://github.com/yschimke/compose-ai-tools/commit/6131db95448ac3e78d98edc389389e92a43678e5))
+* **serve:** add a Source lane to the viewer ([#3827](https://github.com/yschimke/compose-ai-tools/issues/3827)) ([eeb2953](https://github.com/yschimke/compose-ai-tools/commit/eeb2953ca3c04ca304d3cc415ccd236d09cf1c11))
+* **serve:** point to describe, click to go, and only call a real gap a gap ([#3828](https://github.com/yschimke/compose-ai-tools/issues/3828)) ([399a355](https://github.com/yschimke/compose-ai-tools/commit/399a355d2fe2a74e66d74bb64c810aa488f2c5fd))
+* **serve:** project a tag index off the scored render, and let the theme layer be seen ([#3830](https://github.com/yschimke/compose-ai-tools/issues/3830)) ([74e7678](https://github.com/yschimke/compose-ai-tools/commit/74e7678bd5c058b96572da4b371c15a3321b7c31))
+* **serve:** score a design page's drift per node, and open the full diff from it ([#3818](https://github.com/yschimke/compose-ai-tools/issues/3818)) ([37c7452](https://github.com/yschimke/compose-ai-tools/commit/37c74520cb7133fb22838a2fd184af264a4a3c65))
+* **serve:** seed the playground with usage code, not sticker source ([#3816](https://github.com/yschimke/compose-ai-tools/issues/3816)) ([222369f](https://github.com/yschimke/compose-ai-tools/commit/222369fe1488746d79648588c72a4d1cbee34bc8))
+
+
+### Bug Fixes
+
+* **design-artifacts:** republish a page node's type, so containers are exact ([#3831](https://github.com/yschimke/compose-ai-tools/issues/3831)) ([634bfbd](https://github.com/yschimke/compose-ai-tools/commit/634bfbd9f310bc82bc81ce59d11c9c0471457455))
+* **discovery:** make render filenames collision-free and stable ([#3839](https://github.com/yschimke/compose-ai-tools/issues/3839)) ([c97d558](https://github.com/yschimke/compose-ai-tools/commit/c97d558951d4609b193aa0cf188ca058ce920347))
+* **pages:** read the container flag the import states, not one inferred from depth ([#3834](https://github.com/yschimke/compose-ai-tools/issues/3834)) ([b3cdcf9](https://github.com/yschimke/compose-ai-tools/commit/b3cdcf985307385122018020f1d9215d2ec39faf))
+* **renderer:** scope fan-out companions to their own output's extension ([#3829](https://github.com/yschimke/compose-ai-tools/issues/3829)) ([3ca8fa1](https://github.com/yschimke/compose-ai-tools/commit/3ca8fa12ea5aede89f20dd75e2a5f36ce8e02d04))
+* **renderer:** sweep .error.json companions with stale fan-out rows ([#3822](https://github.com/yschimke/compose-ai-tools/issues/3822)) ([3dcc3a8](https://github.com/yschimke/compose-ai-tools/commit/3dcc3a8093470aaa96f40f1b0e5f6407209dd112))
+* **serve:** evict catalog snapshots on retirement, and close the suspend race ([#3841](https://github.com/yschimke/compose-ai-tools/issues/3841)) ([174bf91](https://github.com/yschimke/compose-ai-tools/commit/174bf91699925c08448914a97779a62fa560ce08))
+* **serve:** keep the design's drawing when a render never arrives ([#3814](https://github.com/yschimke/compose-ai-tools/issues/3814)) ([c96f34e](https://github.com/yschimke/compose-ai-tools/commit/c96f34e4061f6bc4a7f4929eab431f1ee7365eec))
+* **serve:** make /usage answer for suspended catalogs and escaped ids ([#3833](https://github.com/yschimke/compose-ai-tools/issues/3833)) ([c828a4a](https://github.com/yschimke/compose-ai-tools/commit/c828a4a425b334f8a2c08de8e9823f3d3705bd9b))
+* **serve:** make a resident catalog authoritative for /usage locations ([#3835](https://github.com/yschimke/compose-ai-tools/issues/3835)) ([ac04205](https://github.com/yschimke/compose-ai-tools/commit/ac042051c62d368145c587c96ae65eed4a9efef4))
+* **serve:** report drift, not match, in the design page's diff lane ([#3821](https://github.com/yschimke/compose-ai-tools/issues/3821)) ([3fda2fe](https://github.com/yschimke/compose-ai-tools/commit/3fda2fe8df843669e69edc4750506083ce42be49))
+* **serve:** stop the usage cleaner emitting seeds that do not compile ([#3820](https://github.com/yschimke/compose-ai-tools/issues/3820)) ([a078979](https://github.com/yschimke/compose-ai-tools/commit/a078979243db7a67758e3187a71a3e29122cc9b6))
+
+## [1.3.0](https://github.com/yschimke/compose-ai-tools/compare/v1.2.0...v1.3.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** honour --preview as a preview reference on the render commands ([#3780](https://github.com/yschimke/compose-ai-tools/issues/3780)) ([c74baec](https://github.com/yschimke/compose-ai-tools/commit/c74baec5296081d0e19d4fd0800f8d72e3f6a59f))
+* **daemon:** add preview/rows to enumerate @PreviewParameter rows ([#3788](https://github.com/yschimke/compose-ai-tools/issues/3788)) ([6da9bc9](https://github.com/yschimke/compose-ai-tools/commit/6da9bc95ff48043a04c9c5ec0d23a750e0be6514))
+* **serve:** make a design page lead with the sheet, not its annotation ([#3813](https://github.com/yschimke/compose-ai-tools/issues/3813)) ([71e7d6a](https://github.com/yschimke/compose-ai-tools/commit/71e7d6ab7f87118cc30da89fd84a47eae347bd27))
+* **serve:** top-level sites — one catalog on a hostname of its own ([#3783](https://github.com/yschimke/compose-ai-tools/issues/3783)) ([1f9fa26](https://github.com/yschimke/compose-ai-tools/commit/1f9fa2685905cfb23bfccfae430a61534680d4b5))
+
+
+### Bug Fixes
+
+* **cli:** force every permutation's own render, discard a failed restore ([#3784](https://github.com/yschimke/compose-ai-tools/issues/3784)) ([b096f64](https://github.com/yschimke/compose-ai-tools/commit/b096f6405379a0a55b9c012aaff0cf0444d58946))
+* **cli:** keep every render-error sidecar, and only quote fresh ones ([#3789](https://github.com/yschimke/compose-ai-tools/issues/3789)) ([e3d336a](https://github.com/yschimke/compose-ai-tools/commit/e3d336ab1ae03b7bcb58c3956cab0de1741f554c))
+* **cli:** let a @PreviewParameter row id select its module and narrow the render ([#3795](https://github.com/yschimke/compose-ai-tools/issues/3795)) ([8184262](https://github.com/yschimke/compose-ai-tools/commit/81842629b1aad1689a64ae4ecf147cced81e39b3))
+* **cli:** name the renderer that actually skipped, and keep the blank-capture stem ([#3794](https://github.com/yschimke/compose-ai-tools/issues/3794)) ([cf3e9a0](https://github.com/yschimke/compose-ai-tools/commit/cf3e9a0b233242af8707da49a6425666c3001eb0))
+* **cli:** read freshness from the renderer that owns the preview's output ([#3793](https://github.com/yschimke/compose-ai-tools/issues/3793)) ([8e1b2d4](https://github.com/yschimke/compose-ai-tools/commit/8e1b2d47b0728b193340ccf454c7b9a5d49cf521))
+* **cli:** refuse a pre-permutation hold that could not be cleared ([#3791](https://github.com/yschimke/compose-ai-tools/issues/3791)) ([ec9fd2a](https://github.com/yschimke/compose-ai-tools/commit/ec9fd2abdf601908671db80792169ca516b8d8e2))
+* **cli:** resolve @PreviewParameter rows before serve counts modules ([#3800](https://github.com/yschimke/compose-ai-tools/issues/3800)) ([cdac7f8](https://github.com/yschimke/compose-ai-tools/commit/cdac7f8debf54457572634d91151f3ad1bc9154f))
+* **cli:** resolve exact preview ids before treating a selector as a row ([#3798](https://github.com/yschimke/compose-ai-tools/issues/3798)) ([8a747c9](https://github.com/yschimke/compose-ai-tools/commit/8a747c922c02d8cf50eb942e1595ea78e47e384a))
+* **cli:** scope the exact-id row gate to --id, not the substring selectors ([#3799](https://github.com/yschimke/compose-ai-tools/issues/3799)) ([e1d2bfb](https://github.com/yschimke/compose-ai-tools/commit/e1d2bfbbaa56a32722c9a7940a381145c6cb99a5))
+* **daemon:** make preview/rows work on the production desktop host ([#3792](https://github.com/yschimke/compose-ai-tools/issues/3792)) ([afdf50d](https://github.com/yschimke/compose-ai-tools/commit/afdf50dac6f4cd4bdc362fb989f466a17ebd6a30))
+* **serve:** make site isolation an allowlist, not a chase ([#3797](https://github.com/yschimke/compose-ai-tools/issues/3797)) ([6f86fb1](https://github.com/yschimke/compose-ai-tools/commit/6f86fb13861265f5a11a8db2074fae7412bc2772))
+
+## [1.2.0](https://github.com/yschimke/compose-ai-tools/compare/v1.1.0...v1.2.0) (2026-08-13)
+
+
+### Features
+
+* **cli:** check a11y for each --permutations variant, at its own configuration ([#3776](https://github.com/yschimke/compose-ai-tools/issues/3776)) ([a9d672f](https://github.com/yschimke/compose-ai-tools/commit/a9d672fedc35c1159150872e223a86485eb0d74f))
+* **cli:** pin one compose-preview version for every entrypoint ([#3771](https://github.com/yschimke/compose-ai-tools/issues/3771)) ([b4bf8f9](https://github.com/yschimke/compose-ai-tools/commit/b4bf8f9d0bb0925fd94277ed227e05c6f8ade09d))
+* **daemon:** address @PreviewParameter rows, not just value 0 ([#3759](https://github.com/yschimke/compose-ai-tools/issues/3759)) ([3716267](https://github.com/yschimke/compose-ai-tools/commit/3716267294163cd3f76dc90e3b02228f8fef5735))
+* **pages:** serve whole design pages as addressable SVG, not screen backdrops ([#3750](https://github.com/yschimke/compose-ai-tools/issues/3750)) ([0b0c206](https://github.com/yschimke/compose-ai-tools/commit/0b0c2063ebad22732d37c0c144cea605069b8382))
+* **serve:** fold the default render into the component row, and flow a long axis into columns ([#3755](https://github.com/yschimke/compose-ai-tools/issues/3755)) ([ce6f2b8](https://github.com/yschimke/compose-ai-tools/commit/ce6f2b8456cebe9ba33018c37b40d693e137c36f))
+* **serve:** fold the viewer's disclosures, and navigate a component by the catalog tree ([#3748](https://github.com/yschimke/compose-ai-tools/issues/3748)) ([1affb54](https://github.com/yschimke/compose-ai-tools/commit/1affb54e60383966b6ef53e6fd0523a6d1d64383))
+* **serve:** list a catalog's design pages in its navigation tree ([#3756](https://github.com/yschimke/compose-ai-tools/issues/3756)) ([d6c3198](https://github.com/yschimke/compose-ai-tools/commit/d6c3198df9d9bfb7d02004ebfd16d24a8a687e50))
+* **serve:** list every @PreviewParameter row, not just value 0 ([#3772](https://github.com/yschimke/compose-ai-tools/issues/3772)) ([5ab3844](https://github.com/yschimke/compose-ai-tools/commit/5ab38442869cc6f853f3efe85e39abf1876599e9))
+* **serve:** pin a catalog page to a delivery-branch revision ([#3758](https://github.com/yschimke/compose-ai-tools/issues/3758)) ([2690d0c](https://github.com/yschimke/compose-ai-tools/commit/2690d0c2d9ff37da2f70878ec3c2183989eb0844))
+
+
+### Bug Fixes
+
+* **a11y-report:** don't let same-named modules delete each other's renders ([#3770](https://github.com/yschimke/compose-ai-tools/issues/3770)) ([c5a69d9](https://github.com/yschimke/compose-ai-tools/commit/c5a69d93d5ed3343d1fb9d64d1f6e1ee9158ea86))
+* **a11y-report:** record every unchecked variant, not just whole functions ([#3767](https://github.com/yschimke/compose-ai-tools/issues/3767)) ([4d55b04](https://github.com/yschimke/compose-ai-tools/commit/4d55b04e31be6ffea985c2d50a45189422e5e3e4))
+* **build:** publish data-focus-connector-desktop for the bundle-render e2e ([#3782](https://github.com/yschimke/compose-ai-tools/issues/3782)) ([255aef8](https://github.com/yschimke/compose-ai-tools/commit/255aef8d2ed830dc2a92ddfb8ce286f398526df2))
+* **cli:** narrow the a11y daemon fan-out to the requested previews ([#3757](https://github.com/yschimke/compose-ai-tools/issues/3757)) ([d4c90a2](https://github.com/yschimke/compose-ai-tools/commit/d4c90a217b2d1c6632ceace134f083cd32b99f90))
+* **cli:** report the render error sidecar instead of guessing NO-SOURCE ([#3779](https://github.com/yschimke/compose-ai-tools/issues/3779)) ([348a24f](https://github.com/yschimke/compose-ai-tools/commit/348a24ffddc5441f038be4e0ffadb07063498001))
+* **daemon:** repair the Android harness lane broken by [#3759](https://github.com/yschimke/compose-ai-tools/issues/3759)'s test fixture ([#3765](https://github.com/yschimke/compose-ai-tools/issues/3765)) ([4980ff5](https://github.com/yschimke/compose-ai-tools/commit/4980ff55c73bc3bc60dd63f22d21502f4feab39a))
+* **renderer:** give each render JVM its own sandbox-library directory ([#3761](https://github.com/yschimke/compose-ai-tools/issues/3761)) ([ff5b62e](https://github.com/yschimke/compose-ai-tools/commit/ff5b62e79b23281ae2800054055459067972b66e))
+* **renderer:** keep the sandbox-library token out of worker JVMs ([#3766](https://github.com/yschimke/compose-ai-tools/issues/3766)) ([b0fb831](https://github.com/yschimke/compose-ai-tools/commit/b0fb831456463cf2e2b5eda1170cea9568dfe792))
+* **serve:** a pinned page must offer nothing rendered from today's code ([#3768](https://github.com/yschimke/compose-ai-tools/issues/3768)) ([0e8d07a](https://github.com/yschimke/compose-ai-tools/commit/0e8d07a119d2aaa780c8fad359af452bee006fd1))
+* **serve:** bound the pinned lane, and read a load through one commit ([#3773](https://github.com/yschimke/compose-ai-tools/issues/3773)) ([6c67cf0](https://github.com/yschimke/compose-ai-tools/commit/6c67cf0492720cae1ec43ccb2f201ad788b3e816))
+* **serve:** make a pinned revision authoritative about what it published ([#3769](https://github.com/yschimke/compose-ai-tools/issues/3769)) ([96ae741](https://github.com/yschimke/compose-ai-tools/commit/96ae741d12ed6b5db69c2afc4c3eea4328e99cc2))
+* **serve:** name both axes on a cross-product component's subtree rows ([#3753](https://github.com/yschimke/compose-ai-tools/issues/3753)) ([c5c1495](https://github.com/yschimke/compose-ai-tools/commit/c5c1495d9e6922a8e67a39610eace75f1df7d5f5))
+* **serve:** page a preview from the revision that published it ([#3775](https://github.com/yschimke/compose-ai-tools/issues/3775)) ([6093bb9](https://github.com/yschimke/compose-ai-tools/commit/6093bb9f12d3dbaa16414e4278d7fa8a3d853ee6))
+
+## [1.1.0](https://github.com/yschimke/compose-ai-tools/compare/v1.0.0...v1.1.0) (2026-08-12)
+
+
+### Features
+
+* **apply:** add fork-safe render/publish phase split ([#3736](https://github.com/yschimke/compose-ai-tools/issues/3736)) ([b574714](https://github.com/yschimke/compose-ai-tools/commit/b574714ea7816117639c3a1311dbf15949ee1c54))
+* **design-references:** publish variant bindings as secondary references ([#3732](https://github.com/yschimke/compose-ai-tools/issues/3732)) ([7b573ec](https://github.com/yschimke/compose-ai-tools/commit/7b573ecc31bcbe38bb47a982cb38c9e3f07ea8d3))
+* **serve:** grow the catalog tree down to components and their variants ([#3739](https://github.com/yschimke/compose-ai-tools/issues/3739)) ([95b53fd](https://github.com/yschimke/compose-ai-tools/commit/95b53fd706c8e883fdeba82132c9af0c2e932058))
+* **serve:** navigate a sectioned catalog as a tree, not a row of tabs ([#3735](https://github.com/yschimke/compose-ai-tools/issues/3735)) ([ee38eee](https://github.com/yschimke/compose-ai-tools/commit/ee38eeef2789cca2cc8d932caaf486649996c418))
+* **serve:** show whole design screens with the code laid over them ([#3714](https://github.com/yschimke/compose-ai-tools/issues/3714)) ([e9d71b1](https://github.com/yschimke/compose-ai-tools/commit/e9d71b141d9369234c99d8b012cc73c4d9ad8801))
+
+
+### Bug Fixes
+
+* **apply:** close publish-side escalation paths in the fork handoff ([#3737](https://github.com/yschimke/compose-ai-tools/issues/3737)) ([37ca1a3](https://github.com/yschimke/compose-ai-tools/commit/37ca1a308afe58210774991dd3c2123909857d46))
+* **apply:** tar the fork handoff so nested module paths can upload ([#3745](https://github.com/yschimke/compose-ai-tools/issues/3745)) ([c4d3ebf](https://github.com/yschimke/compose-ai-tools/commit/c4d3ebf3ee5ec53eefc8f500cf29cef418c2f97a))
+* **apply:** validate the handoff tarball and keep _pipelines outside it ([#3746](https://github.com/yschimke/compose-ai-tools/issues/3746)) ([10f91c7](https://github.com/yschimke/compose-ai-tools/commit/10f91c7d728cee4c9d3621f197997735becc1af9))
+* **cli:** narrow the Gradle render to the previews --id/--filter names ([#3734](https://github.com/yschimke/compose-ai-tools/issues/3734)) ([462a00c](https://github.com/yschimke/compose-ai-tools/commit/462a00ce4c0646829865450f81d0a80a9d37b97d))
+* **cli:** raise the default build timeout above what a cold render costs ([#3722](https://github.com/yschimke/compose-ai-tools/issues/3722)) ([9ffc3b9](https://github.com/yschimke/compose-ai-tools/commit/9ffc3b9cf573da2223f3a95ff5437548b88811c7))
+* **daemon:** compose recording frames under the preview's locale ([#3729](https://github.com/yschimke/compose-ai-tools/issues/3729)) ([f29f402](https://github.com/yschimke/compose-ai-tools/commit/f29f40229943cf2782eda034c702be463dd6f90e))
+* **daemon:** serialise the process-global localeTag override ([#3724](https://github.com/yschimke/compose-ai-tools/issues/3724)) ([e97bf82](https://github.com/yschimke/compose-ai-tools/commit/e97bf825eae9ba540deaf676d428a560b675315e))
+* **driver:** keep the no-arg discovery methods on the published artifact ([#3726](https://github.com/yschimke/compose-ai-tools/issues/3726)) ([d4d0303](https://github.com/yschimke/compose-ai-tools/commit/d4d0303f1d55751a7b25296e5a9b68b5fe8e54da))
+* **serve:** draw a real link-unfurl card instead of pointing at a phone render ([#3731](https://github.com/yschimke/compose-ai-tools/issues/3731)) ([b97b351](https://github.com/yschimke/compose-ai-tools/commit/b97b351db5faa3134af232df6bfbed2dac7b73e8))
+* **serve:** filter, focus and theme-lane corrections for the catalog tree ([#3740](https://github.com/yschimke/compose-ai-tools/issues/3740)) ([8d52a58](https://github.com/yschimke/compose-ai-tools/commit/8d52a5895ed6225cd845120734b823709a032ef9))
+
+## [1.0.0](https://github.com/yschimke/compose-ai-tools/compare/v0.19.61...v1.0.0) (2026-08-12)
+
+
+### Features
+
+* **overrides:** let a knob declare its value set, and render it as a picker ([#3712](https://github.com/yschimke/compose-ai-tools/issues/3712)) ([7c8c32e](https://github.com/yschimke/compose-ai-tools/commit/7c8c32e8d6e7ff06c3401e686b696474c59fb4b7))
+* **renderer-desktop:** drive @FocusedPreview with real focus and press on CMP desktop ([#3699](https://github.com/yschimke/compose-ai-tools/issues/3699)) ([ddd16e8](https://github.com/yschimke/compose-ai-tools/commit/ddd16e82ea9fde42ebb00e7df5c9da77606d5de9))
+* **serve:** exploded 3D view of a screen, one sheet per composable ([#3700](https://github.com/yschimke/compose-ai-tools/issues/3700)) ([d9abe80](https://github.com/yschimke/compose-ai-tools/commit/d9abe8050996160cd9ef5f87d6628681b73abc6b))
+* **serve:** split the catalog's comparison actions and name the design tool ([#3709](https://github.com/yschimke/compose-ai-tools/issues/3709)) ([122d747](https://github.com/yschimke/compose-ai-tools/commit/122d7472ac0b8a4656bea13e4d4bd236794acdc5))
+
+
+### Bug Fixes
+
+* **cloud-jdk:** honour a version pin over install-dir reuse, and absolutise discovered homes ([#3713](https://github.com/yschimke/compose-ai-tools/issues/3713)) ([0848728](https://github.com/yschimke/compose-ai-tools/commit/08487282475fe818d408ed3e707e70094250a31e))
+* **cloud-jdk:** reuse a JDK the box already has instead of downloading one ([#3707](https://github.com/yschimke/compose-ai-tools/issues/3707)) ([9bca82b](https://github.com/yschimke/compose-ai-tools/commit/9bca82b4608cca903a384d27d2e8b390262b536a))
+* **daemon:** run the press-settling frame under the preview's locale ([#3715](https://github.com/yschimke/compose-ai-tools/issues/3715)) ([2346b2f](https://github.com/yschimke/compose-ai-tools/commit/2346b2ff91cf543ad2d3ff7fda665414207318fa))
+* **daemon:** settle a pointer press before the next event can arrive ([#3711](https://github.com/yschimke/compose-ai-tools/issues/3711)) ([1922af5](https://github.com/yschimke/compose-ai-tools/commit/1922af5548851297a813ddbe911ae8514217bf11))
+* **figma-svg:** stop rastering content the vector model can represent ([#3693](https://github.com/yschimke/compose-ai-tools/issues/3693)) ([dafedc9](https://github.com/yschimke/compose-ai-tools/commit/dafedc9d7819b2ff12e5af74cfda73fdd5d14f64))
+* green up the four CI failures on main ([#3688](https://github.com/yschimke/compose-ai-tools/issues/3688)) ([5278cd0](https://github.com/yschimke/compose-ai-tools/commit/5278cd0a38bb33d31f088a1e22c28defaf578cee))
+* **render:** keep package-store libs out of a system-glibc render JVM ([#3701](https://github.com/yschimke/compose-ai-tools/issues/3701)) ([bd4a6a2](https://github.com/yschimke/compose-ai-tools/commit/bd4a6a25cb63ef5c3500aa1d191f7c55bbea1b86))
+* **render:** rank doctor verdicts, and stop non-skiko failures flooding the log ([#3708](https://github.com/yschimke/compose-ai-tools/issues/3708)) ([f1d62bf](https://github.com/yschimke/compose-ai-tools/commit/f1d62bfda6a0c18f32143874e50929b9fa233be6))
+* **render:** tighten the native-env pruning and its diagnosis ([#3703](https://github.com/yschimke/compose-ai-tools/issues/3703)) ([7906cef](https://github.com/yschimke/compose-ai-tools/commit/7906ceffa18f99e8f043ee8483d242d4144255de))
+* **samples:** make previews capture the state they claim ([#3691](https://github.com/yschimke/compose-ai-tools/issues/3691)) ([78138e1](https://github.com/yschimke/compose-ai-tools/commit/78138e13b7ff3083a71cf7af2871ab312fbd3073))
+* **serve:** correct the exploded 3D view's masks, shadows and bounds ([#3705](https://github.com/yschimke/compose-ai-tools/issues/3705)) ([6d2325d](https://github.com/yschimke/compose-ai-tools/commit/6d2325d492a357a5af14f01802b3eedb7c37bfc5))
+* **serve:** keep untagged renders in the primary theme lane so the state switcher finds them ([#3704](https://github.com/yschimke/compose-ai-tools/issues/3704)) ([e26aa19](https://github.com/yschimke/compose-ai-tools/commit/e26aa19409a3ed6b6d5ece4afb20a72eb50004b2))
+* **serve:** make link unfurling work in Slack and Google Chat ([#3717](https://github.com/yschimke/compose-ai-tools/issues/3717)) ([2467849](https://github.com/yschimke/compose-ai-tools/commit/2467849e838a5b841a5d3c33ac51498db9ba37f1))
+* **serve:** stop a knob edit spending the previous history entry to auto-enable Wasm ([#3719](https://github.com/yschimke/compose-ai-tools/issues/3719)) ([6685153](https://github.com/yschimke/compose-ai-tools/commit/6685153b17e49cf1f20414613c989bcfc6c9f711))
+* **serve:** stop HEAD probes and crawlers reaching the remaining live renders ([#3720](https://github.com/yschimke/compose-ai-tools/issues/3720)) ([355e49b](https://github.com/yschimke/compose-ai-tools/commit/355e49bfc3d505bfbcb050e3666edfc475ee389e))
+
+## [0.19.61](https://github.com/yschimke/compose-ai-tools/compare/v0.19.60...v0.19.61) (2026-08-11)
+
+
+### Bug Fixes
+
+* address missed Codex review findings ([#3683](https://github.com/yschimke/compose-ai-tools/issues/3683)) ([e3f46de](https://github.com/yschimke/compose-ai-tools/commit/e3f46de11888a297b7ae29617e3ef9d78077b45e))
+* **figma-svg:** exclude accessibility-only text ([#3685](https://github.com/yschimke/compose-ai-tools/issues/3685)) ([0d110d8](https://github.com/yschimke/compose-ai-tools/commit/0d110d87825de9d3c3d0a713008a46ce1513e31c))
+* **figma-svg:** preserve delegated draws and axis mirrors ([#3686](https://github.com/yschimke/compose-ai-tools/issues/3686)) ([61c92a0](https://github.com/yschimke/compose-ai-tools/commit/61c92a0752bdb724c15e5caec9a14c51b78e2710))
+* stage font installer for preview host image ([#3682](https://github.com/yschimke/compose-ai-tools/issues/3682)) ([4e5c9ae](https://github.com/yschimke/compose-ai-tools/commit/4e5c9ae7bf5430bebbb40231c7dc58fa92aa80db))
+
 ## [0.19.60](https://github.com/yschimke/compose-ai-tools/compare/v0.19.59...v0.19.60) (2026-08-11)
 
 

@@ -190,5 +190,12 @@
       "repo": "yschimke/cadence",
       "listed": false
     }
+  ],
+  "_sites_comment": "TOP-LEVEL SITES \u2014 a catalog above, additionally served on a hostname of its own where it presents as the only thing on the box: landing at /, links inside the domain, no front door, /status + /sitemap.xml scoped to it, /<other-system>/ 404. Same sessions and same baked pixels as the canonical /<system>/ path, so a site adds no catalog, no daemon and no render. Two prerequisites OUTSIDE this file: DNS for the name must point at the box, and Caddy must route it here with a certificate. Read at startup (--catalogs-file), so a change here needs a restart \u2014 the additive /admin/catalogs reconcile does not carry sites.",
+  "sites": [
+    {
+      "host": "m3.preview.coo.ee",
+      "system": "m3-catalog"
+    }
   ]
 }

@@ -149,6 +149,55 @@ class ServeSessionRegistry(
     suspendListeners += listener
   }
 
+  /**
+   * Observers notified when a session is **retired** ([unregister]), so a caller holding a
+   * last-known snapshot of it (see [peekHost]) can drop it.
+   *
+   * The snapshot advice in [peekHost] has no counterpart without this: a holder is told to keep
+   * facts across suspension, and then has no way to learn that the session it kept them for is
+   * gone. On a host with catalog churn — publish, serve, retire, repeat through the admin API —
+   * every retired catalog's snapshot is retained for the life of the process.
+   */
+  private val unregisterListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+  /** Register a retirement observer. See [unregisterListeners]. */
+  fun addUnregisterListener(listener: (sessionId: String) -> Unit) {
+    unregisterListeners += listener
+  }
+
+  /**
+   * A projection of a session's host that has to outlive its residency, captured and discarded as
+   * part of the registry's **own** transitions rather than alongside them.
+   *
+   * [addSuspendListener] cannot provide this, and the difference is the whole point. A suspend
+   * listener runs *after* the lock is released, so a reader can observe the moment in between:
+   * `peekHost` already null, [isKnownSession] still true, and no snapshot yet. And because a
+   * listener writes to storage the registry does not own, a retirement can be overtaken by a slower
+   * writer still holding the removed host, which resurrects the entry it just evicted.
+   *
+   * Both disappear when the capture and the transition are the same act. [capture] runs under the
+   * lock immediately before the host is detached, so "resident" and "snapshotted" are the only two
+   * states a reader can see; [discard] runs under the same lock as the removal, so nothing can be
+   * written back afterwards.
+   *
+   * The cost of that guarantee is the contract: both run **with the registry lock held**, so an
+   * implementation must do no I/O, must not block, and must never re-enter the registry.
+   */
+  interface SessionSnapshots {
+    /** Under the lock, immediately before [host] is detached from [sessionId]. */
+    fun capture(sessionId: String, host: ServeHost)
+
+    /** Under the lock, as [sessionId] is retired. */
+    fun discard(sessionId: String)
+  }
+
+  @Volatile private var snapshots: SessionSnapshots? = null
+
+  /** Install the [SessionSnapshots] hook. See its KDoc for the contract it must honour. */
+  fun setSessionSnapshots(snapshots: SessionSnapshots?) {
+    this.snapshots = snapshots
+  }
+
   // Wall-clock of the most recent acquire/lease/release across all sessions — the basis for the
   // server-level idle check ([idleMillis]) that the ephemeral exit-when-idle watchdog reads.
   @Volatile private var lastActivity: Long = clock()
@@ -209,6 +258,23 @@ class ServeSessionRegistry(
     host: ServeHost? = null,
     pinned: Boolean = false,
   ) {
+    // A session may never take one of the server's own top-level route names. Such a session is
+    // unreachable at its own landing anyway — Ktor scores a constant segment above `/{system}` —
+    // and it breaks the [ServeSites] interceptor's invariant that a reserved first segment is
+    // always a route: `/api/` matches no constant route, so it would fall to `/{system}/` and
+    // serve that session through a hostname published as one catalog.
+    //
+    // Enforced HERE rather than at each ingestion point because there are five of those (an
+    // upload, a `--bundles` directory, a `--bundle` argument, a catalog id, a revision ref) and
+    // fixing them one at a time is how the last two review rounds went. This is one of the two
+    // places a session id is ever bound to an entry — [entryFor] is the other (a ref forked on
+    // demand by [factory], which never passes through here), and it carries the same guard.
+    if (sessionId in ServeSites.RESERVED_SYSTEMS) {
+      System.err.println(
+        "serve: refusing session '$sessionId' — that name is one of the server's own routes"
+      )
+      return
+    }
     val replaced = lock.withLock {
       check(!closed) { "ServeSessionRegistry is closed" }
       val prior = sessions[sessionId]
@@ -230,8 +296,21 @@ class ServeSessionRegistry(
    * under that id.
    */
   fun unregister(sessionId: String): Boolean {
-    val removed = lock.withLock { sessions.remove(sessionId) }
+    val removed = lock.withLock {
+      val removed = sessions.remove(sessionId)
+      // Discarded under the SAME lock as the removal, so a concurrent detach either captured
+      // before this and is discarded here, or finds no entry to capture from at all. Outside the
+      // lock the two can interleave, and the slower writer resurrects what the retirement just
+      // evicted.
+      if (removed != null) snapshots?.let { runCatching { it.discard(sessionId) } }
+      removed
+    }
     removed?.host?.let { runCatching { it.close() } }
+    // Outside the lock and guarded, exactly like the suspend notification: a listener may re-enter
+    // the registry, and one that throws must not leave the session half-retired.
+    if (removed != null) {
+      unregisterListeners.forEach { listener -> runCatching { listener(sessionId) } }
+    }
     return removed != null
   }
 
@@ -338,6 +417,9 @@ class ServeSessionRegistry(
             !host.backgroundWorkActive &&
             now - entry.lastAccess >= idleTimeoutMillis
         ) {
+          // Under the lock, BEFORE the detach: this and `entry.host = null` are one transition,
+          // so no reader can catch the session detached with its snapshot not yet published.
+          snapshots?.let { runCatching { it.capture(id, host) } }
           entry.host = null
           entry.startedAt = null
           entry.closing = true
@@ -405,6 +487,12 @@ class ServeSessionRegistry(
     }
     for ((id, entry) in stale) {
       sessions.remove(id)
+      // The second removal path, and it has to discard too. Every suspended session is captured —
+      // a forked revision host included, which contributes an empty map since it is no catalog —
+      // so a GC that removed the entry without the snapshot would leak one per reclaimed revision
+      // and defeat exactly the bound this function exists to enforce. Under the same lock as the
+      // removal, like [unregister].
+      snapshots?.let { runCatching { it.discard(id) } }
       runCatching { entry.state?.reclaim?.invoke() }
     }
     stale.size
@@ -446,11 +534,20 @@ class ServeSessionRegistry(
     hosts.forEach { runCatching { it.close() } }
   }
 
-  /** Existing entry, or one forked via [factory]. Caller holds [lock]. */
+  /**
+   * Existing entry, or one forked via [factory]. Caller holds [lock].
+   *
+   * The reserved-name guard from [register] applies here too: a `--revisions` ref named after one
+   * of the server's own routes (`api`, `status`, …) would otherwise be forked on first request,
+   * never having passed through [register], and would then be served by `/{system}/` on a top-level
+   * site host — the exact leak the guard exists to prevent. Refusing the fork keeps the invariant
+   * "no session is ever named after a rooted route" true for every entry in [sessions].
+   */
   private fun entryFor(sessionId: String): Entry? {
     sessions[sessionId]?.let {
       return it
     }
+    if (sessionId in ServeSites.RESERVED_SYSTEMS) return null
     // Hold the lock across the build so racing first-callers for one id can't build twice. A build
     // is
     // slow, but a shared dev/CI server has few tenants and correctness beats build concurrency.

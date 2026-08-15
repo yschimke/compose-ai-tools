@@ -43,6 +43,16 @@
 #       to requested target
 #     The fix is to copy the system Java trust store over Temurin's.
 #
+# Nothing is downloaded for a major this box already has — where "has" means a
+# full JDK, compiler included, since a JRE is no use as a Gradle toolchain.
+# Reuse is checked in two places: this script's own install dir, and then the
+# JDKs actually present — `java` on PATH, `$JAVA_HOME`, and the directories
+# Gradle scans for toolchains. That second check is the difference between working and dead on a
+# container provisioned by something else: a Nix-installed Temurin symlinked
+# into `/usr/lib/jvm` is a perfectly good JDK 17, and going to Adoptium for
+# another one fails outright where github.com is gated per repository. See
+# `discover_jdk_home`.
+#
 # Usage:
 #   scripts/setup-cloud-jdk.sh [PRIMARY_INSTALL_DIR]
 #
@@ -52,10 +62,22 @@
 #                     JAVA_HOME is printed on stdout for
 #                     `export JAVA_HOME=$(scripts/setup-cloud-jdk.sh)`.
 #   JDK17_VERSION     pin the primary's Temurin tag (back-compat alias for the
-#                     primary major when it is 17; default: latest GA).
+#                     primary major when it is 17; default: latest GA). A pinned
+#                     tag names a specific build, so it also opts that major out
+#                     of reusing whatever JDK happens to be on the box.
 #   JDK17_DIR         primary install dir (default: /opt/jdk<primary>, or arg 1).
 #   JDK<major>_DIR    install dir for a specific major (default: /opt/jdk<major>).
 #   JDK<major>_VERSION pin a specific major's Temurin tag (default: latest GA).
+#   CLOUD_JDK_REUSE_EXISTING
+#                     `0` to always download, even when a JDK of that major is
+#                     already installed elsewhere (default: reuse).
+#   CLOUD_JDK_SEARCH_DIRS
+#                     space-separated globs searched for existing JDKs
+#                     (default: "/usr/lib/jvm/* /opt/jdk* /opt/*jdk*
+#                     $HOME/.sdkman/candidates/java/*").
+#   CLOUD_JDK_JVM_LINK_DIR
+#                     where the toolchain symlinks are written
+#                     (default: /usr/lib/jvm).
 #
 # Output: prints the absolute JAVA_HOME of the PRIMARY JDK on stdout.
 # Additional majors are best-effort: a major Adoptium hasn't published yet
@@ -93,10 +115,19 @@ fix_truststore() {
     return 0
   fi
   # Only swap if the Temurin store differs (idempotent re-runs are a no-op).
+  # A JDK we did not install may live somewhere unwritable — a Nix/Guix store
+  # path is read-only by design — so the copy is best-effort. A JDK whose trust
+  # store we cannot replace is still perfectly good for compiling and rendering;
+  # only Java-side HTTPS through the MITM proxy is affected, and whatever
+  # provisioned that JDK owns its trust store. Failing the whole run over it
+  # would be the wrong trade.
   if ! cmp -s "$system_truststore" "$dest"; then
     cp -f "$dest" "$dest.adoptium-orig" 2>/dev/null || true
-    cp -f "$system_truststore" "$dest"
-    echo "[setup-cloud-jdk] swapped $dest <- $system_truststore (trusts proxy CA)" >&2
+    if cp -f "$system_truststore" "$dest" 2>/dev/null; then
+      echo "[setup-cloud-jdk] swapped $dest <- $system_truststore (trusts proxy CA)" >&2
+    else
+      echo "[setup-cloud-jdk] WARNING: could not write $dest (read-only JDK?); leaving its trust store as-is" >&2
+    fi
   fi
 }
 
@@ -113,7 +144,11 @@ fix_truststore() {
 link_into_jvm_dir() {
   local jdk="$1"
   local major="$2"
-  local jvm_dir="/usr/lib/jvm"
+  # Overridable so the self-test can point this at a fixture. It must never
+  # write into the machine's real /usr/lib/jvm: replacing a live `temurin-17`
+  # with a path that is deleted when the test exits leaves a dangling toolchain
+  # link behind, and on an unprivileged runner the `ln` just fails.
+  local jvm_dir="${CLOUD_JDK_JVM_LINK_DIR:-/usr/lib/jvm}"
   local link="$jvm_dir/temurin-$major"
   if [[ ! -d "$jvm_dir" ]]; then
     mkdir -p "$jvm_dir" 2>/dev/null || {
@@ -147,6 +182,97 @@ install_dir_for() {
   else
     echo "${!var:-/opt/jdk${major}}"
   fi
+}
+
+# The feature major of the JDK at <java_home> (17, 21, 8, …), or nothing (rc 1).
+#
+# Read from `release` (`JAVA_VERSION="17.0.19"`) — every JDK since 9 ships it,
+# and it costs no process. Falls back to running `java -version` for an install
+# that lacks the file. `1.8.0_412` normalises to 8, so a legacy JDK is never
+# mistaken for major "1".
+jdk_major_of() {
+  local home="$1" v=""
+  if [[ -r "$home/release" ]]; then
+    v="$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' "$home/release" | head -n 1)"
+  fi
+  if [[ -z "$v" && -x "$home/bin/java" ]]; then
+    v="$("$home/bin/java" -version 2>&1 | sed -n '1s/.*version "\([^"]*\)".*/\1/p')"
+  fi
+  [[ -n "$v" ]] || return 1
+  case "$v" in
+    1.*) printf '%s' "$(printf '%s' "$v" | cut -d. -f2)" ;;
+    *) printf '%s' "${v%%[.+_-]*}" ;;
+  esac
+}
+
+# Echo the JAVA_HOME of a JDK of <major> that is already on this box, or nothing
+# (rc 1). Checks the active `java`, then `$JAVA_HOME`, then the locations Gradle
+# itself scans for toolchains.
+#
+# This is what stops the script downloading a JDK the container already has. The
+# old reuse check looked only at its own install dir (`/opt/jdk<major>`), so a
+# box whose JDK 17 lives anywhere else — a Nix-provisioned Temurin symlinked to
+# `/usr/lib/jvm/temurin-17`, say, which is exactly what the coo.ee/env
+# bootstrap produces — was treated as having no JDK 17 at all. It then went to
+# Adoptium for one, and in a sandbox that gates github.com per-repository the
+# fetch 403s and the whole setup aborts. A JDK that is present, on PATH, and of
+# the right major is the answer to the question being asked.
+#
+# A JRE is not an answer to this question. Gradle needs a *compiler* for a
+# toolchain, so a `java` of the right major with no `bin/javac` beside it must
+# not short-circuit the download — it would hand back a JAVA_HOME that fails
+# later, at compile time, where the cause is much harder to see.
+discover_jdk_home() {
+  local major="$1" cand home
+  if command -v java >/dev/null 2>&1; then
+    home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+    if is_jdk_of_major "$home" "$major"; then
+      printf '%s' "$home"
+      return 0
+    fi
+  fi
+  # `/usr/lib/jvm/*` covers both distro JDKs and the symlink farm this script's
+  # own `link_into_jvm_dir` (and other provisioners) maintain there. Overridable
+  # via CLOUD_JDK_SEARCH_DIRS (space-separated, globs allowed) for a layout none
+  # of these cover — and so the self-test can search a fixture instead of the
+  # machine it runs on.
+  local dirs="${CLOUD_JDK_SEARCH_DIRS:-/usr/lib/jvm/* /opt/jdk* /opt/*jdk* $HOME/.sdkman/candidates/java/*}"
+  # Deliberately unquoted: $dirs must both word-split and glob-expand here.
+  # shellcheck disable=SC2086
+  for cand in "${JAVA_HOME:-}" $dirs; do
+    if [[ -n "$cand" ]] && is_jdk_of_major "$cand" "$major"; then
+      # Absolute, always. This value is printed as JAVA_HOME (the script's stated
+      # contract) and handed to `ln -s`, where a relative target would be resolved
+      # against the *link's* directory — so a relative CLOUD_JDK_SEARCH_DIRS entry
+      # would otherwise produce /usr/lib/jvm/temurin-N -> vendor/jdks/… and dangle.
+      [[ "$cand" == /* ]] || cand="$PWD/$cand"
+      printf '%s' "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Whether the JDK at <dir> is exactly the build named by Temurin tag <tag>.
+#
+# Compared against `IMPLEMENTOR_VERSION` (`Temurin-17.0.20+8`) rather than
+# `JAVA_VERSION` (`17.0.20`), because the build number and the vendor are the
+# whole point of a pin: `17.0.20+7`, or some other vendor's 17.0.20, is not the
+# build that was asked for. Strict on purpose — an install this cannot identify
+# counts as a mismatch and is re-downloaded, since being wrong the other way
+# means silently running something other than the pinned build.
+installed_matches_tag() {
+  local dir="$1" tag="$2" want impl
+  want="${tag#jdk-}"
+  impl="$(sed -n 's/^IMPLEMENTOR_VERSION="\(.*\)"$/\1/p' "$dir/release" 2>/dev/null | head -n 1)"
+  [[ -n "$impl" && "$impl" == "Temurin-$want" ]]
+}
+
+# Whether <dir> is a full JDK (java *and* javac) of <major>.
+is_jdk_of_major() {
+  local dir="$1" major="$2"
+  [[ -x "$dir/bin/java" && -x "$dir/bin/javac" ]] || return 1
+  [[ "$(jdk_major_of "$dir" || true)" == "$major" ]]
 }
 
 # Resolve a pinned Temurin tag for a major, if the caller set JDK<major>_VERSION
@@ -228,11 +354,29 @@ resolve_latest_tag() {
 # non-zero on failure. All human-readable logging goes to stderr.
 install_major() {
   local major="$1"
-  local install_dir
+  local install_dir tag
   install_dir="$(install_dir_for "$major")"
+  # Trailing slashes stripped before anything derives a path from this. With
+  # `JDK17_DIR=/opt/jdk17/`, "${install_dir}.incoming.$$" lands *inside* the
+  # install dir — and the replace step then deletes the staged JDK along with
+  # the old one, leaving the machine with neither.
+  while [[ "$install_dir" == */ && "$install_dir" != "/" ]]; do
+    install_dir="${install_dir%/}"
+  done
+  tag="$(pinned_tag_for "$major")"
 
   # Reuse an existing install; just make sure its trust store + symlink are set.
-  if [[ -x "$install_dir/bin/java" ]]; then
+  #
+  # Two things bypass this. `CLOUD_JDK_REUSE_EXISTING=0` means "always
+  # download", so it has to reach the install dir too — otherwise the escape
+  # hatch could never refresh the very install this script placed, which is the
+  # one people actually want to redo. And a pinned JDK<major>_VERSION names a
+  # *specific* build: handing back a different one that happens to be sitting in
+  # the directory is exactly what the pin exists to prevent. An install already
+  # matching the pin is still reused — re-downloading a build we have would make
+  # every session pay for the pin.
+  if [[ "${CLOUD_JDK_REUSE_EXISTING:-1}" != "0" && -x "$install_dir/bin/java" ]] &&
+    { [[ -z "$tag" ]] || installed_matches_tag "$install_dir" "$tag"; }; then
     echo "[setup-cloud-jdk] reusing existing JDK $major at $install_dir" >&2
     fix_truststore "$install_dir"
     link_into_jvm_dir "$install_dir" "$major"
@@ -240,8 +384,24 @@ install_major() {
     return 0
   fi
 
-  local tag
-  tag="$(pinned_tag_for "$major")"
+  # Nothing in *our* install dir — but the box may already have this major
+  # somewhere else, and downloading a second copy of a JDK that is already on
+  # PATH is both wasteful and, in a sandbox that blocks Adoptium, fatal.
+  #
+  # Skipped when the caller pinned a tag for this major (JDK<major>_VERSION):
+  # that names a specific build, so "some JDK 17" is not what was asked for.
+  # `CLOUD_JDK_REUSE_EXISTING=0` forces a download unconditionally.
+  if [[ -z "$tag" && "${CLOUD_JDK_REUSE_EXISTING:-1}" != "0" ]]; then
+    local found
+    if found="$(discover_jdk_home "$major")" && [[ -n "$found" ]]; then
+      echo "[setup-cloud-jdk] JDK $major already present at $found — reusing it (no download)" >&2
+      fix_truststore "$found"
+      link_into_jvm_dir "$found" "$major"
+      echo "$found"
+      return 0
+    fi
+  fi
+
   if [[ -z "$tag" ]]; then
     tag="$(resolve_latest_tag "$major")" || tag=""
   fi
@@ -258,11 +418,8 @@ install_major() {
   echo "[setup-cloud-jdk] major=$major tag=$tag arch=$jdk_arch" >&2
   echo "[setup-cloud-jdk] downloading $url" >&2
 
-  # Download to a temp file *before* creating the install dir, so a failed
-  # fetch does not leave an empty /opt/jdk<major> behind masquerading as an
-  # install. `rmdir` (not `rm -rf`) cleans up on the later failure paths: it
-  # only succeeds on an empty directory, so a caller-supplied dir that already
-  # had contents is never destroyed.
+  # Download to a temp file *before* touching the install dir, so a failed fetch
+  # does not leave an empty /opt/jdk<major> behind masquerading as an install.
   local tmp
   tmp="$(mktemp)"
   if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
@@ -271,18 +428,53 @@ install_major() {
     return 1
   fi
 
-  mkdir -p "$install_dir"
-  if ! tar -xzf "$tmp" --strip-components=1 -C "$install_dir"; then
+  # Extracted into a staging directory, then swapped in — never unpacked over a
+  # populated install dir. Untarring on top would leave stale files from the
+  # previous JDK behind, and a failed extract would leave a working install
+  # half-overwritten. The install dir is only replaced once the new tree has
+  # been validated.
+  local staging="${install_dir}.incoming.$$"
+  rm -rf "$staging"
+  mkdir -p "$staging"
+  if ! tar -xzf "$tmp" --strip-components=1 -C "$staging"; then
     rm -f "$tmp"
+    rm -rf "$staging"
     echo "[setup-cloud-jdk] WARNING: extract failed for JDK $major ($url); skipping" >&2
-    rmdir "$install_dir" 2>/dev/null || true
     return 1
   fi
   rm -f "$tmp"
 
-  if [[ ! -x "$install_dir/bin/java" ]]; then
-    echo "[setup-cloud-jdk] WARNING: expected $install_dir/bin/java after extract (JDK $major) — skipping" >&2
-    rmdir "$install_dir" 2>/dev/null || true
+  if [[ ! -x "$staging/bin/java" ]]; then
+    echo "[setup-cloud-jdk] WARNING: expected bin/java after extract (JDK $major) — skipping" >&2
+    rm -rf "$staging"
+    return 1
+  fi
+
+  # Only ever replaces an empty directory or something that looks like a JDK.
+  # `install_dir` is caller-supplied (JDK<major>_DIR), and `rm -rf` on whatever
+  # a caller happened to name is not a risk worth taking to save a re-download.
+  if [[ -e "$install_dir" ]]; then
+    if [[ -d "$install_dir" && ( -x "$install_dir/bin/java" || -z "$(ls -A "$install_dir")" ) ]]; then
+      rm -rf "$install_dir"
+    else
+      echo "[setup-cloud-jdk] WARNING: $install_dir exists and is not a JDK; refusing to replace it" >&2
+      rm -rf "$staging"
+      return 1
+    fi
+  fi
+  # The removal has to have *worked*. `rm -rf` on a mount point empties it and
+  # then fails to unlink the root, and `mv SRC DIR` on a surviving directory
+  # means "move SRC *into* DIR" — which succeeds, nests the JDK one level down,
+  # and would have this function report a healthy install with no bin/java in it.
+  if [[ -e "$install_dir" ]]; then
+    echo "[setup-cloud-jdk] WARNING: could not clear $install_dir (a mount point?); leaving it alone" >&2
+    rm -rf "$staging"
+    return 1
+  fi
+  mkdir -p "$(dirname "$install_dir")"
+  if ! mv "$staging" "$install_dir" || [[ ! -x "$install_dir/bin/java" ]]; then
+    echo "[setup-cloud-jdk] WARNING: could not move the new JDK $major into $install_dir" >&2
+    rm -rf "$staging"
     return 1
   fi
 

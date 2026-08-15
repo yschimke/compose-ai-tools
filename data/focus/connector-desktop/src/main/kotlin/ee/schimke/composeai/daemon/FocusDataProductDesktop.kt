@@ -29,10 +29,18 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * a `LaunchedEffect`-driven focus walk that observes [FocusController.activeFocus] and dispatches
  * `FocusManager.moveFocus(...)` on every transition.
  *
- * Only the daemon path (`renderNow.overrides.focus`) wires through here today — CMP Desktop doesn't
- * have a per-capture `@FocusedPreview` plugin path (issue #1205). The constructor seeds the
- * controller via a `DisposableEffect` so a single-frame render driven by the daemon picks up the
- * requested focus target.
+ * Two paths wire through here, exactly as on Android:
+ * - **Daemon path** (`renderNow.overrides.focus`): [FocusPreviewOverrideExtension] plans the
+ *   extension and the constructor seeds the controller via a `DisposableEffect`.
+ * - **Plugin path** (`@FocusedPreview` / `composePreviewRenderAll`): the desktop renderer's
+ *   `renderFocusPreview` wraps content with a seedless extension and flips [FocusController] itself
+ *   per capture, so the `LaunchedEffect` re-walks on each transition (issue #3672).
+ *
+ * The press half of `@FocusedPreview(pressed = true)` is **not** here, unlike the Android
+ * connector's `dispatchIndirectPress`. Desktop has no indirect-pointer channel; the renderer
+ * dispatches an ordinary pointer down onto the focused element through the test host's injection
+ * API, which is a capability only the render host has (nothing inside composition can synthesise
+ * it). See `renderFocusPreview` for the rationale.
  *
  * Runs in the [DataExtensionPhase.OuterEnvironment] phase so the input-mode flip happens before the
  * user-environment phase reaches preview content.
@@ -73,10 +81,17 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
           // `moveFocus(Enter)` lands the owner on an internal root that sits *before* the first
           // focusable, so the first walk needs `tabIndex + 1` Next steps to land on button
           // `tabIndex`. Subsequent calls walk only the delta.
+          //
+          // Exception: a root carrying `focusProperties { onEnter = { initialFocus.requestFocus()
+          // } }.focusGroup()` has already had `Enter` place focus on the chosen child, so the extra
+          // step advances past it. `@FocusedPreview(enterPlacesFocus = true)` opts into the shorter
+          // walk — kept in step with the Android connector, which owns the same rule.
+          val enterPlacesFocus = cap.enterPlacesFocus
           val from = lastIndex.value
           if (from < 0) {
             focusManager.moveFocus(ComposeFocusDirection.Enter)
-            repeat(tabIndex + 1) { focusManager.moveFocus(ComposeFocusDirection.Next) }
+            val steps = if (enterPlacesFocus) tabIndex else tabIndex + 1
+            repeat(steps) { focusManager.moveFocus(ComposeFocusDirection.Next) }
           } else if (tabIndex > from) {
             repeat(tabIndex - from) { focusManager.moveFocus(ComposeFocusDirection.Next) }
           }

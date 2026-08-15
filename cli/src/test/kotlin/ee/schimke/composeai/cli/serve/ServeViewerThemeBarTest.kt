@@ -8,12 +8,12 @@ import kotlin.test.assertTrue
  * The single-preview viewer's **toolbar controls**: the Theme chips and the Background/Transparent
  * pair the catalog grid already carried.
  *
- * Both are deliberately the *same* controls as the grid's — same markup, same choice values, same
- * `bg-toggle.js` — so a visitor moving between the two pages meets one control rather than two that
- * behave alike but drift apart. What is viewer-specific is the wiring: the chips are the visible
- * face of `#cp-theme`, which stays in the DOM as the axis's single state holder (viewer.js, the
- * sticky script and URL hydration all read and write it) but is visually removed so the page never
- * shows two controls for one value.
+ * Both are deliberately the *same* controls as the grid's — same markup, same choice values, the
+ * same `<cp-bg-toggle>` element — so a visitor moving between the two pages meets one control
+ * rather than two that behave alike but drift apart. What is viewer-specific is the wiring: the
+ * chips are the visible face of `#cp-theme`, which stays in the DOM as the axis's single state
+ * holder (viewer.js, the sticky script and URL hydration all read and write it) but is visually
+ * removed so the page never shows two controls for one value.
  */
 class ServeViewerThemeBarTest {
 
@@ -42,7 +42,8 @@ class ServeViewerThemeBarTest {
     val html = viewer(ServePreview("plain.Button", "Button"))
     assertTrue(
       html.contains(
-        "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">"
+        "<span class=\"cp-theme cp-theme-bar\" id=\"cp-theme-bar\" role=\"group\"" +
+          " aria-label=\"Preview theme\">"
       ),
       html,
     )
@@ -114,13 +115,15 @@ class ServeViewerThemeBarTest {
   fun `the viewer offers the same Transparent toggle as the grid, and one Fit width toggle`() {
     val html = viewer(ServePreview("plain.Button", "Button"))
     // A two-state axis with a default is ONE aria-pressed button, not a pair whose other half is
-    // always a no-op. Both toolbars emit the identical Transparent button.
-    val transparent = """class="cp-bg-btn cp-bg-toggle" aria-pressed="false""""
+    // always a no-op. Both toolbars emit the identical `<cp-bg-toggle>`; the button itself (and its
+    // resting `aria-pressed="false"`) is rendered by the element — see
+    // `cli/serve-web/test/bgToggle.test.ts`.
+    val transparent = "<cp-bg-toggle label="
     assertTrue(html.contains(transparent), html)
     assertTrue(
       ServeWeb.landingPage("compose-m3", listOf(ServePreview("a", "A")), token = "t")
         .contains(transparent),
-      "the grid's toggle must be the same button, or bg-toggle.js is wiring two shapes",
+      "the grid's toggle must be the same element, or the two bars are wiring two shapes",
     )
     assertTrue(html.contains("""class="cp-bg-btn cp-zoom-toggle" aria-pressed="false""""), html)
     assertFalse(html.contains("data-zoom-mode="), "the Fit screen / Fit width pair is one toggle")

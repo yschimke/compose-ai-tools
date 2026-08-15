@@ -284,6 +284,31 @@ interface RenderHost {
    */
   fun recordingScriptEventDescriptors(): List<DataExtensionDescriptor> = emptyList()
 
+  /**
+   * The `@PreviewParameter` rows of [previewId] — the ids a client can actually render
+   * (issue #3749).
+   *
+   * On the renderer-agnostic surface because the *answer* is only obtainable here: `previews.json`
+   * carries one entry per parameterized function (discovery reads bytecode and can't instantiate a
+   * provider), so the row set exists nowhere until something holding the consumer classpath
+   * enumerates it. The daemon is that something.
+   *
+   * **Enumeration is gated on the preview actually declaring a provider.** Implementations resolve
+   * the discovery metadata first and return an empty list for an ordinary preview *without*
+   * touching a classloader or the render sandbox — which is the overwhelming majority of calls, and
+   * on Android would otherwise mean a pointless sandbox round-trip per preview. "No rows" and "one
+   * implicit row" are the same answer to a caller: render the bare id.
+   *
+   * Throws [IllegalArgumentException] for an unknown previewId and [UnsupportedOperationException]
+   * (the default) for a host that can't enumerate — [JsonRpcServer] maps those to `InvalidParams`
+   * and `MethodNotFound` respectively.
+   */
+  fun previewParameterRows(previewId: String): List<PreviewParameterRow> =
+    throw UnsupportedOperationException(
+      "preview-parameter row enumeration unsupported by " +
+        (this::class.simpleName ?: this::class.java.name)
+    )
+
   companion object {
     /**
      * Monotonic id source shared across [JsonRpcServer] (which assigns ids to incoming render
@@ -308,9 +333,49 @@ sealed interface RenderRequest {
     val payload: String = "",
   ) : RenderRequest
 
+  /**
+   * Enumerate a `@PreviewParameter` provider's rows — the ids `renderNow` can then address
+   * (issue #3749).
+   *
+   * A [RenderRequest] rather than a host-side call because on Android the answer is only obtainable
+   * *inside* the Robolectric sandbox: the provider class lives on the sandbox classloader, and its
+   * values routinely touch Android APIs that are only real in there. This rides the same queue
+   * [Render] does, so it inherits the sandbox's single-threaded dispatch and the
+   * no-mid-render-cancellation invariant for free.
+   *
+   * [payload] is the same `;`-delimited `key=value` shape [Render] uses, carrying at minimum
+   * `className` and `previewParameterProvider` (plus an optional `previewParameterLimit`). A String
+   * keeps the crossing `java.*`-only, which is what the sandbox classloader boundary requires — see
+   * `DaemonHostBridge`'s package KDoc.
+   *
+   * The reply posted back on the per-id result queue is a `java.util.List<String>` of row labels in
+   * provider order, for the same reason.
+   */
+  data class ParameterRows(val id: Long = RenderHost.nextRequestId(), val payload: String = "") :
+    RenderRequest
+
   /** Singleton poison pill. */
   data object Shutdown : RenderRequest
 }
+
+/**
+ * One `@PreviewParameter` row of a parameterized preview, as reported by
+ * [RenderHost.previewParameterRows].
+ *
+ * [id] is the addressable previewId — `<baseId>_<label>`, the same stem the fan-out renderer writes
+ * to disk — so a client lists rows and renders one without constructing ids itself.
+ */
+data class PreviewParameterRow(
+  /** Zero-based position in the provider's value sequence. */
+  val index: Int,
+  /**
+   * The row token: a derived label (`Dark`) or `PARAM_<index>` when no label could be derived or
+   * two values collided. See docs/RENDER_FILENAMES.md.
+   */
+  val label: String,
+  /** The addressable previewId for this row. */
+  val id: String,
+)
 
 /**
  * Result of a single render. Backend-agnostic shape — fields are protocol concerns (id, classloader

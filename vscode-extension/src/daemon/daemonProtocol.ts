@@ -727,6 +727,36 @@ export interface RenderNowResult {
     rejected: { id: string; reason: string }[];
 }
 
+/**
+ * `preview/rows` — enumerate a preview's `@PreviewParameter` rows (PROTOCOL.md
+ * § 5, issue #3749). Discovery emits base ids only (it reads bytecode and
+ * cannot instantiate a provider), so this is the only way to learn that a
+ * screen whose states come from a provider has more than one.
+ */
+export interface PreviewRowsParams {
+    previewId: string;
+}
+
+export interface PreviewRow {
+    /** 0-based position in the provider's value sequence. */
+    index: number;
+    /** Row token: a derived label ("Dark") or the positional `PARAM_<index>`. */
+    label: string;
+    /** `<baseId>_<label>` — pass straight back to `renderNow`. */
+    id: string;
+}
+
+export interface PreviewRowsResult {
+    previewId: string;
+    /**
+     * Empty for an ordinary preview — that is a normal answer, not an error,
+     * and means "render the bare id". The daemon derives it from discovery
+     * metadata without enumerating anything, which is what makes this cheap
+     * enough to call for every preview a client lists.
+     */
+    rows: PreviewRow[];
+}
+
 // Daemon → client notifications (PROTOCOL.md § 6)
 
 /**

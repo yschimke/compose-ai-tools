@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -212,5 +213,214 @@ class PlaygroundSeedResolverTest {
     // survives into the name and nothing traversal-shaped reaches the staging dir.
     assertEquals("passwd.kt", PlaygroundSeedResolver.fileNameFor("../../etc/passwd"))
     assertEquals("Snippet.kt", PlaygroundSeedResolver.fileNameFor("a/b/../"))
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // Cleaning: the handoff a visitor actually gets when they click "playground" from a catalog
+  // card. Everything above pins how the source is *found*; this pins what lands in the editor.
+  // -----------------------------------------------------------------------------------------
+
+  private val stickerFile =
+    """
+    @file:CatalogGroup(name = "Buttons", section = "Actions")
+
+    package ee.schimke.m3catalog.sections
+
+    import androidx.compose.material3.Button
+    import androidx.compose.material3.Text
+    import androidx.compose.runtime.Composable
+    import ee.schimke.composeai.preview.CatalogComponent
+    import ee.schimke.composeai.preview.CatalogGroup
+    import ee.schimke.m3catalog.CatalogModes
+    import ee.schimke.m3catalog.Sticker
+    import ee.schimke.m3catalog.counted
+    import ee.schimke.m3catalog.generated.resources.Res
+    import ee.schimke.m3catalog.generated.resources.label_filled
+    import org.jetbrains.compose.resources.stringResource
+
+    @CatalogComponent(id = "Button/Filled", caption = "Highest emphasis.")
+    @CatalogModes
+    @Composable
+    fun FilledButton() = Sticker {
+      val c = counted(stringResource(Res.string.label_filled))
+      Button(onClick = c.onClick) { Text(c.label) }
+    }
+    """
+      .trimIndent()
+
+  private val usageRules =
+    """
+    {
+      "scaffoldAnnotationPackages": ["ee.schimke.composeai.preview", "ee.schimke.m3catalog"],
+      "stringsPath": "src/main/composeResources/values/strings.xml",
+      "scaffolds": {
+        "Sticker": {
+          "kind": "RENAME",
+          "renameTo": "MaterialTheme",
+          "addImport": "androidx.compose.material3.MaterialTheme"
+        },
+        "counted": { "kind": "INLINE", "members": { "label": "${'$'}0", "onClick": "{}" } }
+      }
+    }
+    """
+      .trimIndent()
+
+  private val stringsXml = """<resources><string name="label_filled">Filled</string></resources>"""
+
+  /** The catalog's source ref, with the anchor discovery records inside the sticker's body. */
+  private val anchored =
+    m3.copy(bodyLine = stickerFile.lines().indexOfFirst { it.contains("val c =") } + 1)
+
+  private fun cleaningResolver() =
+    resolver(
+      locate = { _, _ -> anchored },
+      body = { url ->
+        when {
+          url.endsWith(PlaygroundSeedResolver.USAGE_RULES_FILE) -> usageRules.toByteArray()
+          url.endsWith("strings.xml") -> stringsXml.toByteArray()
+          else -> stickerFile.toByteArray()
+        }
+      },
+    )
+
+  @Test
+  fun `the handoff seeds usage code, not the sticker`() {
+    val seed = assertNotNull(cleaningResolver().seed("m3-catalog", "sections.FilledButton"))
+    assertTrue(seed.cleaned)
+    assertEquals(emptyList(), seed.residue)
+    assertEquals(
+      """
+      import androidx.compose.material3.Button
+      import androidx.compose.material3.MaterialTheme
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.tooling.preview.Preview
+
+      @Preview
+      @Composable
+      fun FilledButton() = MaterialTheme {
+        Button(onClick = {}) { Text("Filled") }
+      }
+      """
+        .trimIndent(),
+      seed.text,
+    )
+  }
+
+  /**
+   * One cold key, many callers, one GitHub read.
+   *
+   * The panel is one click on a page anyone browsing a catalog is already on, so a popular preview
+   * after a restart or a TTL expiry can have a dozen viewers arrive together — each otherwise
+   * performing its own 10 s-connect / 10 s-read GET for the same file.
+   */
+  @Test
+  fun `concurrent first reads of one preview fetch it once`() {
+    val reads = java.util.concurrent.atomic.AtomicInteger()
+    val start = java.util.concurrent.CountDownLatch(1)
+    val resolver =
+      resolver(
+        locate = { _, _ -> anchored },
+        body = { url ->
+          if (url.endsWith(".kt")) {
+            reads.incrementAndGet()
+            // Hold the fetch open so every other caller is definitely inside seed() while it runs;
+            // without this the test could pass by the threads simply not overlapping.
+            Thread.sleep(150)
+          }
+          when {
+            url.endsWith(PlaygroundSeedResolver.USAGE_RULES_FILE) -> usageRules.toByteArray()
+            url.endsWith("strings.xml") -> stringsXml.toByteArray()
+            else -> stickerFile.toByteArray()
+          }
+        },
+      )
+    val threads =
+      (1..8).map {
+        Thread {
+          start.await()
+          resolver.seed("m3-catalog", "sections.FilledButton")
+        }
+      }
+    threads.forEach { it.start() }
+    start.countDown()
+    threads.forEach { it.join(10_000) }
+    assertEquals(1, reads.get(), "the source file was read once per caller instead of once")
+  }
+
+  /**
+   * The two outcomes that never reach the cache — a failed fetch, and a success dropped because the
+   * cache is full — must still be shared with the callers waiting on the same flight. Signalling
+   * only through the cache left each of them repeating the same round trip, sequentially, which is
+   * the pile-up the coalescing exists to prevent.
+   */
+  @Test
+  fun `a failed fetch is shared with waiters rather than retried by each`() {
+    val reads = java.util.concurrent.atomic.AtomicInteger()
+    val start = java.util.concurrent.CountDownLatch(1)
+    val resolver =
+      resolver(
+        locate = { _, _ -> anchored },
+        body = { url ->
+          if (url.endsWith(".kt")) {
+            reads.incrementAndGet()
+            Thread.sleep(150)
+            null // the source could not be read: never cached, so nothing to wake waiters with
+          } else null
+        },
+      )
+    val threads =
+      (1..6).map {
+        Thread {
+          start.await()
+          assertNull(resolver.seed("m3-catalog", "sections.FilledButton"))
+        }
+      }
+    threads.forEach { it.start() }
+    start.countDown()
+    threads.forEach { it.join(10_000) }
+    assertEquals(1, reads.get(), "each waiter repeated the failed fetch instead of sharing it")
+  }
+
+  /** One rules file per catalog, not per card: browsing a group must not re-ask GitHub for it. */
+  @Test
+  fun `the rules file is fetched once per catalog ref`() {
+    val resolver = cleaningResolver()
+    resolver.seed("m3-catalog", "sections.FilledButton")
+    resolver.seed("m3-catalog", "sections.TonalButton")
+    assertEquals(1, fetched.count { it.endsWith(PlaygroundSeedResolver.USAGE_RULES_FILE) })
+    assertEquals(1, fetched.count { it.endsWith("strings.xml") })
+  }
+
+  /** A catalog that declares nothing still loses this repo's annotations. */
+  @Test
+  fun `a catalog with no rules file falls back to generic cleaning`() {
+    val resolver =
+      resolver(
+        locate = { _, _ -> anchored },
+        body = { url ->
+          if (url.endsWith(PlaygroundSeedResolver.USAGE_RULES_FILE)) null
+          else stickerFile.toByteArray()
+        },
+      )
+    val seed = assertNotNull(resolver.seed("m3-catalog", "sections.FilledButton"))
+    assertTrue(seed.cleaned)
+    assertFalse(seed.text.contains("@CatalogComponent"), seed.text)
+    assertTrue(seed.text.contains("Sticker {"), "generic rules must not invent a rename")
+    // Empty, and correctly so: residue reports *declared* scaffolding that survived a rule. Under
+    // generic rules the catalog's own package was never declared as scaffolding, so `Sticker` is an
+    // ordinary reference that keeps its import — noisy, but not a gap in anyone's rules.
+    assertEquals(emptyList(), seed.residue)
+    assertTrue(seed.text.contains("import ee.schimke.m3catalog.Sticker"), seed.text)
+  }
+
+  /** No anchor ⇒ no cleaning, and no request for rules describing a declaration we cannot name. */
+  @Test
+  fun `a manifest with no anchor seeds verbatim and asks for no rules`() {
+    val seed = assertNotNull(resolver(body = { stickerFile.toByteArray() }).seed("m3", "p"))
+    assertFalse(seed.cleaned)
+    assertFalse(seed.sliced)
+    assertEquals(stickerFile, seed.text)
+    assertTrue(fetched.none { it.endsWith(PlaygroundSeedResolver.USAGE_RULES_FILE) })
   }
 }

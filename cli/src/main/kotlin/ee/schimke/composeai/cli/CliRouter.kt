@@ -39,7 +39,7 @@ internal object CliRouter {
         ),
       "capture" to listOf("render-matrix", "record", "bundle"),
       "share" to listOf("serve", "share-preview"),
-      "setup" to listOf("update", "init-script"),
+      "setup" to listOf("update", "init-script", "pin"),
     )
 
   /** Pseudo-commands that aren't backed by a `Command` class but are valid flat verbs. */
@@ -76,7 +76,7 @@ internal object CliRouter {
   }
 
   fun route(args: Array<String>): Route {
-    val commandIndex = CliFlags.findCommandIndex(args)
+    val commandIndex = findCommandIndex(args, KNOWN_FLAT + GROUP_NAMES)
     if (commandIndex < 0) {
       return if ("--help" in args || "-h" in args) Route.TopUsage(full = "--all" in args)
       else Route.NoCommand
@@ -86,7 +86,7 @@ internal object CliRouter {
     val rest = args.toMutableList().apply { removeAt(commandIndex) }
 
     if (command in GROUP_NAMES) {
-      val subIndex = CliFlags.findCommandIndex(rest.toTypedArray())
+      val subIndex = findCommandIndex(rest.toTypedArray(), subcommandsOf(command).toSet())
       val sub = if (subIndex >= 0) rest[subIndex] else null
       if (sub != null && sub in subcommandsOf(command)) {
         val subArgs = rest.toMutableList().apply { removeAt(subIndex) }
@@ -97,5 +97,37 @@ internal object CliRouter {
     }
 
     return if (command in KNOWN_FLAT) Route.Run(command, rest) else Route.Unknown(command)
+  }
+
+  /**
+   * Locate a command while preserving the historical unknown-command result for ordinary
+   * positionals. There is one recoverable ambiguity: an unknown option before the command may have
+   * a separate value, and [CliFlags.findCommandIndex] necessarily mistakes that value for the
+   * command because the option is absent from its value-consuming registry. When that exact shape
+   * occurs, continue to the first known command token so per-command validation can report the real
+   * problem (`--fitler Foo render` warns about `--fitler`, rather than claiming `Foo` is a
+   * command).
+   */
+  private fun findCommandIndex(args: Array<String>, candidates: Set<String>): Int {
+    val first = CliFlags.findCommandIndex(args)
+    if (first < 0 || args[first] in candidates) return first
+
+    val previous = args.getOrNull(first - 1) ?: return first
+    val previousFlag = previous.substringBefore('=')
+    val firstCouldBeUnknownFlagValue =
+      previous.startsWith("-") && '=' !in previous && previousFlag !in CliFlags.VALUE_FLAGS
+    if (!firstCouldBeUnknownFlagValue) return first
+
+    var index = first + 1
+    while (index < args.size) {
+      val arg = args[index]
+      when {
+        arg in CliFlags.VALUE_FLAGS -> index += 2
+        arg.startsWith("-") -> index++
+        arg in candidates -> return index
+        else -> index++
+      }
+    }
+    return first
   }
 }

@@ -136,9 +136,22 @@ tasks.register("functionalTestWithAndroid") {
 //       api :data-preview-overrides-core
 //     implementation :data-deviceframe-connector (device-art bezel compositing — post-capture)
 //       api :data-deviceframe-core
+//     implementation :data-focus-connector-desktop (drives @FocusedPreview focus/press on desktop)
+//       api :data-focus-core
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
 //     implementation :svg-preview-runtime (Skia loadSvgPainter kind=SVG render path)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
+//
+// Keep this in sync with the real graph — a missing entry does not fail at configuration time, it
+// fails inside the e2e as `Could not find ee.schimke.composeai:<artifact>` while Gradle resolves
+// the synthetic project's renderer classpath out of `~/.m2`. To re-derive the closure:
+//   ./gradlew :renderer-desktop:dependencies --configuration runtimeClasspath \
+//     | grep -oE "project '?:[A-Za-z0-9:._-]+'?" | sort -u
+// (Gradle 9.7 quotes the path — `project ':data-focus-core'`. The quotes are optional in the
+// pattern so this keeps working if a future Gradle drops them; note the pipeline exits 0 on no
+// match, so an empty result means the format moved, not that the list is complete.)
+// Every project it prints belongs below. Both e2e jobs here are push-to-main/nightly only (skipped
+// on PRs), so drift lands on `main` before anything notices.
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
     ":renderer-desktop",
@@ -150,6 +163,8 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-displayfilter-core",
     ":data-deviceframe-connector",
     ":data-deviceframe-core",
+    ":data-focus-connector-desktop",
+    ":data-focus-core",
     ":daemon:core",
     ":renderer-xr-client",
     ":data-layoutinspector-core",

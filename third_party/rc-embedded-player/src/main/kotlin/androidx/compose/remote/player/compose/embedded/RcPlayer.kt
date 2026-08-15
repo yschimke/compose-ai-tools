@@ -56,6 +56,8 @@ import androidx.compose.remote.core.operations.layout.LayoutComponent
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.utilities.AnimatedFloatExpression
 import androidx.compose.remote.core.operations.utilities.NanMap
+import androidx.compose.remote.creation.compose.action.LambdaAction
+import androidx.compose.remote.creation.compose.action.PendingIntentAction
 import androidx.compose.remote.creation.compose.capture.CapturedDocument
 import androidx.compose.remote.player.compose.ExperimentalRemotePlayerApi
 import androidx.compose.remote.player.core.platform.AndroidRemoteContext
@@ -416,16 +418,15 @@ public fun RcPlayer(
             LocalRemoteActionHandler provides onAction,
             LocalRemoteNamedActionHandler provides
                 { name, value ->
-                    // LOCAL DELTA (compose-ai-tools) — see PROVENANCE.md.
-                    // Upstream routes `LambdaAction`/`PendingIntentAction` named actions to the
-                    // `lambdas` / `pendingIntents` maps here. Neither is reachable from the
-                    // published alpha we build against: `LambdaAction` does not exist in
-                    // remote-creation-compose 1.0.0-alpha15, and `PendingIntentAction` is
-                    // `internal` there, so `parseId` cannot be called from outside the module.
-                    // Dropped rather than reimplemented: both are *interactive click dispatch*,
-                    // and this vendored copy exists to render static captured documents for the
-                    // rc-compare lane, which never fires an action. Restore this block when the
-                    // pinned alpha exposes the two types.
+                    val lambdaId = LambdaAction.parseId(name)
+                    if (lambdaId != null) {
+                        lambdas[lambdaId]?.invoke()
+                    } else {
+                        val pendingIntentId = PendingIntentAction.parseId(name)
+                        if (pendingIntentId != null) {
+                            pendingIntents[pendingIntentId]?.send()
+                        }
+                    }
                     onNamedAction(name, value, stateUpdater)
                 },
             LocalRcCustomPlugins provides customPlugins,
@@ -485,10 +486,8 @@ public fun RcPlayer(
         onAction = onAction,
         onNamedAction = onNamedAction,
         customPlugins = customPlugins,
-        // LOCAL DELTA (compose-ai-tools) — see PROVENANCE.md. Upstream forwards
-        // `capturedDocument.lambdas` / `.pendingIntents`; neither property exists on
-        // `CapturedDocument` in remote-creation-compose 1.0.0-alpha15. Same reasoning as the
-        // named-action handler above: interactive dispatch, unused by the render lane.
+        lambdas = capturedDocument.lambdas,
+        pendingIntents = capturedDocument.pendingIntents,
     )
 }
 

@@ -30,6 +30,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
+    "pin" to { a -> PinCommand(a).run() },
     "version" to { _ -> println("compose-preview $BUNDLE_VERSION") },
     "help" to { a -> printUsage(full = "--all" in a) },
   )
@@ -49,7 +50,15 @@ fun main(args: Array<String>) {
   }
 
   when (val route = CliRouter.route(args)) {
-    is CliRouter.Route.Run -> COMMANDS.getValue(route.command).invoke(route.args)
+    is CliRouter.Route.Run -> {
+      for (flag in CliFlagValidation.unknownFlags(route.command, route.args)) {
+        System.err.println(
+          "compose-preview: warning: unrecognised option '$flag' for '${route.command}' " +
+            "(ignored)"
+        )
+      }
+      COMMANDS.getValue(route.command).invoke(route.args)
+    }
     is CliRouter.Route.GroupUsage -> {
       printGroupUsage(route.group)
       exitProcess(if (route.isError) 1 else 0)
@@ -118,11 +127,12 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · diff-semantics · devices · extensions · history · profile
       capture   render-matrix · record · bundle
       share     serve · share-preview
-      setup     update · init-script
+      setup     update · init-script · pin
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
-    Common options: --module <name>, --filter <pattern>, --id <exact>, --json,
-      --output <path>, --verbose/-v. Full list under `help --all`.
+    Common options: --module <name>, --filter <pattern>, --id <exact>,
+      --preview <ref>, --json, --output <path>, --verbose/-v. Full list under
+      `help --all`.
     """
       .trimIndent()
   )
@@ -196,6 +206,11 @@ private fun printFullUsage() {
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses
                        internally.
+      pin              Show or set the project's compose-preview version pin — one version,
+                       honoured by the CLI, the VS Code extension and the install / apply
+                       GitHub actions. `pin` reports; `pin <version>` / `pin --cli` writes
+                       `composePreview.version` into gradle.properties; `pin --remove` clears
+                       it.
       version          Print the installed bundle version and exit
       help             Show this help message
 
@@ -208,15 +223,35 @@ private fun printFullUsage() {
 
     Options:
       --module <name>      Target module (default: auto-detect all)
-      --filter <pattern>   Case-insensitive substring match on preview id
-      --id <exact>         Exact match on preview id
+      --filter <pattern>   Case-insensitive substring match on preview id. Narrows the Gradle
+                           render itself, not just the printed rows: only the matching
+                           previews are rendered, and only in the modules that declare them.
+                           Previews outside the match keep whatever PNG the last run wrote.
+      --id <exact>         Exact match on preview id (narrows the render like --filter)
+      --preview <ref>      Preview reference — the loose selector, honoured by render, show,
+                           list, show-resources, a11y, render-matrix and serve. Selects a
+                           preview when the reference equals its id, equals
+                           `<className>.<functionName>`, equals its bare function name, or is
+                           a case-insensitive substring of its id (the --filter rule). It may
+                           therefore match several previews — `--preview Foo` also takes
+                           `FooBar`; reach for --id when exactly one is meant. Combining the
+                           three intersects them — every selector you pass has to match — on
+                           every command that selects a *set*, render-matrix and serve
+                           included. Narrows the Gradle render like --id / --filter on the
+                           preview render commands; show-resources filters its output only,
+                           since the resource render task is not scoped by any of the three.
+                           `record` is the exception, because it needs exactly one preview:
+                           --id beats --preview beats --filter — a fixed order, not the order
+                           you typed them — and it resolves that one alone, in stages,
+                           erroring on an ambiguous reference. So `record --filter Foo --id
+                           Bar` records Bar. `history --preview` is a different flag again: an
+                           exact
+                           preview-id filter over archived entries.
       --json               Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy a single matched preview to this path (render; the PNG, or the
                            .svg under --format svg)
-      --preview <ref>      record: preview to record — an id, a `Class.function` reference, or a
-                           unique substring of an id
       --script <path>      record: JSON array of RecordingScriptEvent driving the session
       --out <path>         record: write the encoded recording here (extension auto-selects the
                            format unless --format is set)
@@ -245,7 +280,7 @@ private fun printFullUsage() {
                            `--json` is set so escape sequences don't pollute captured output.
       --progress           Print per-task milestone/heartbeat lines to stderr
       --verbose, -v        Show full Gradle build output (implies --progress)
-      --timeout <seconds>  Gradle build timeout (default: 300)
+      --timeout <seconds>  Gradle build timeout (default: 600)
       --fail-on <level>    a11y: exit non-zero on 'errors' or 'warnings' (default: mirror Gradle)
       --with-extension <id>
                            Enable a data extension for this run (repeatable; comma-separated

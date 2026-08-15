@@ -276,8 +276,33 @@ export interface PreviewRenderError {
      * the heuristic finds no app frame (deep framework throw).
      */
     topAppFrame?: PreviewRenderErrorTopFrame | null;
+    /**
+     * One actionable sentence when the render died loading a *native*
+     * library (missing `libGL.so.1`, or a package-store library pulled
+     * into a system-glibc JVM) rather than running the preview itself.
+     * Absent for an ordinary preview throw. This failure class takes out
+     * every preview in the module with the same cause, so the card shows
+     * it in place of the near-useless
+     * `NoClassDefFoundError: Could not initialize class org.jetbrains.skia.Surface`.
+     */
+    diagnosis?: string | null;
+    /**
+     * Which JVM drew the preview, and what it would have searched for
+     * native libraries. Absent on sidecars from an older renderer.
+     */
+    runtime?: PreviewRenderErrorRuntime | null;
     /** Full stack trace as it would appear in `Throwable.printStackTrace()`. */
     stackTrace: string;
+}
+
+export interface PreviewRenderErrorRuntime {
+    /** `java.home` of the JVM that ran the render. */
+    javaHome?: string;
+    javaVersion?: string;
+    javaVendor?: string;
+    osArch?: string;
+    /** `LD_LIBRARY_PATH` as inherited by the render process; empty when none. */
+    ldLibraryPath?: string;
 }
 
 export interface PreviewRenderErrorTopFrame {

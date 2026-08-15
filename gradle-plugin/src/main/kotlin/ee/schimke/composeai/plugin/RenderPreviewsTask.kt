@@ -221,6 +221,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val deviceFrameDevice: Property<String>
 
+  /**
+   * `"true"` to render with the Compose runtime's rewritten `SlotTable` (the "link buffer"
+   * composer), forwarded to the desktop renderer JVM as `composeai.render.linkBufferComposer`. See
+   * [composeAiLinkBufferComposer] for the resolver shared with the Android Test task and both
+   * daemons, and `ee.schimke.composeai.data.render.LinkBufferComposer` for what the renderer does
+   * with it. `@Input` so flipping the composer re-renders instead of reporting UP-TO-DATE against
+   * PNGs drawn by the other one — which is the entire point of the flag.
+   */
+  @get:Input abstract val linkBufferComposer: Property<String>
+
   @get:Classpath abstract val renderClasspath: ConfigurableFileCollection
 
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
@@ -248,7 +258,30 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   @get:org.gradle.api.tasks.Optional @get:Input abstract val renderJavaExecutable: Property<String>
 
+  /**
+   * The `composeai.render.nativeEnv` mode ([RenderNativeEnv.SYS_PROP_MODE]) this execution renders
+   * under, as a declared input.
+   *
+   * A task input rather than a bare `System.getProperty` read inside the action, because the task
+   * is `@CacheableTask` and a failed render still writes outputs (the `.error.json` sidecars). A
+   * run with `-Dcomposeai.render.nativeEnv=inherit` that failed every preview would otherwise stay
+   * UP-TO-DATE — or be restored from the cache — after the override was dropped, so the fix would
+   * never get a chance to run.
+   *
+   * `LD_LIBRARY_PATH` itself is deliberately *not* declared: it differs between every developer
+   * machine and CI, so keying outputs on it would cost build-cache sharing to catch a case the
+   * `--rerun` guidance in `docs/DESKTOP_NATIVE_DEPS.md` already covers (a failed render is an
+   * up-to-date output whatever the environment reason).
+   */
+  @get:org.gradle.api.tasks.Optional @get:Input abstract val nativeEnvMode: Property<String>
+
+  @get:Inject protected abstract val providerFactory: org.gradle.api.provider.ProviderFactory
+
   init {
+    // Conventioned here rather than at each registration site: three tasks register this type
+    // (desktop render, Lottie, SVG) and a site that forgot it would silently go back to reading
+    // the property at execution time, i.e. back to the staleness this input exists to prevent.
+    nativeEnvMode.convention(providerFactory.systemProperty(RenderNativeEnv.SYS_PROP_MODE))
     // Explicit empty default so the desktop `composePreviewRender` registration (which never sets
     // `includeKinds`) has a configured value for this non-optional `@Input` rather than relying on
     // the managed-`SetProperty` implicit empty convention — keeps "render every kind" the default
@@ -430,10 +463,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
       )
     }
 
+    // What environment the render JVM starts with — decided once for the execution so the pooled
+    // and forked lanes can never disagree about it (see [RenderNativeEnv]).
+    val nativeEnv = renderNativeEnv()
+
     // One warm renderer for this whole task execution, closed before the action returns so no
     // process outlives the build. Created here rather than held on the task so nothing
     // process-shaped is on a field the configuration cache would try to store.
-    val lane = RenderLane(openWorkerPool())
+    val lane = RenderLane(openWorkerPool(nativeEnv), nativeEnv)
     try {
       renderCaptures(manifest, manifestOutputFiles, previewsRoot, outDir, mainClass, lane)
     } finally {
@@ -515,6 +552,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           outputFile = outputFile,
           scroll = capture.scroll,
           animation = capture.animation,
+          focus = capture.focus,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
           lane = lane,
         )
@@ -555,6 +593,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture? = null,
+    focus: FocusCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
     lane: RenderLane,
   ) {
@@ -568,6 +607,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         outputFile = outputFile,
         scroll = scroll,
         animation = animation,
+        focus = focus,
         fanoutSiblingStems = fanoutSiblingStems,
       )
     val overridesSeed =
@@ -600,6 +640,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // Fork on a JDK new enough for the consumer's bytecode when the plugin raised it (see
       // [RenderJvmSelection]); otherwise leave the default (Gradle daemon JVM).
       renderJavaExecutable.orNull?.let { executable = it }
+      // Same environment the pooled worker gets: package-store libraries pruned when this JVM is
+      // not itself from the store, so a hybrid sandbox can't kill every preview with a glibc
+      // mismatch (see [RenderNativeEnv]). Untouched on every other host.
+      RenderNativeEnv.rewritten(lane.nativeEnv, environment)?.let { environment = it }
       classpath = renderClasspath
       this.mainClass.set(mainClass)
       // Run the render JVM as a macOS "background agent" (LSUIElement) so it never claims a Dock
@@ -619,6 +663,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // composite the render into a device-art bezel (reading the cache the task action filled).
       // Empty string disables it (DeviceFrameConfig treats blank as "off").
       systemProperty("composeai.deviceframe.device", deviceFrameDevice.get())
+      // The rewritten-SlotTable opt-in. Has to reach the renderer as a launch property because the
+      // runtime latches the flag at the first composition — see `LinkBufferComposer`.
+      systemProperty("composeai.render.linkBufferComposer", linkBufferComposer.get())
       // Forward the `@PreviewParameter` row exclusions so `PreviewRowFilter` can drop fan-out
       // members
       // by label — the rows don't exist until the subprocess has enumerated the provider, so this
@@ -662,8 +709,31 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * task: a live pool on a task field is exactly the kind of state the configuration cache cannot
    * store.
    */
-  private class RenderLane(val pool: DesktopRenderWorkerPool?) {
+  private class RenderLane(
+    val pool: DesktopRenderWorkerPool?,
+    /** The render JVM's environment decision, applied by whichever lane serves a capture. */
+    val nativeEnv: RenderNativeEnv.Decision,
+  ) {
     val fallbackNoticePrinted = java.util.concurrent.atomic.AtomicBoolean(false)
+  }
+
+  /**
+   * Decide what `LD_LIBRARY_PATH` the render JVM starts with, and say so in the log when it differs
+   * from what the daemon inherited — a silent environment edit is exactly the kind of thing that
+   * makes the *next* native-loading bug undiagnosable.
+   */
+  private fun renderNativeEnv(): RenderNativeEnv.Decision {
+    val decision =
+      RenderNativeEnv.decide(
+        renderJavaExecutable = renderJavaExecutable.orNull,
+        daemonJavaHome = System.getProperty("java.home"),
+        ldLibraryPath = System.getenv(RenderNativeEnv.VAR),
+        mode = nativeEnvMode.orNull,
+      )
+    if (decision is RenderNativeEnv.Decision.Sanitized) {
+      logger.info("composePreviewRender: ${decision.explanation}")
+    }
+    return decision
   }
 
   /**
@@ -674,7 +744,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * that fails to start or speaks the wrong protocol — is handled per capture inside the pool,
    * which reports `Unusable` and lets the caller fork that one.
    */
-  private fun openWorkerPool(): DesktopRenderWorkerPool? {
+  private fun openWorkerPool(nativeEnv: RenderNativeEnv.Decision): DesktopRenderWorkerPool? {
     if (!DesktopRenderWorkerPool.isEnabled()) return null
     val cp = renderClasspath.files.toList()
     if (cp.isEmpty()) return null
@@ -698,6 +768,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // the `Render failed …` line beside an error sidecar — so without this they would vanish the
       // moment a capture went warm.
       stderrSink = { line -> logger.lifecycle("composePreviewRender: $line") },
+      // The forked lane's environment, verbatim — a worker that saw a different LD_LIBRARY_PATH
+      // from the fork it replaces could load a different libskiko, which is precisely the
+      // divergence this pool must never introduce.
+      nativeEnv = nativeEnv,
     )
   }
 
@@ -736,6 +810,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     add("-Dapple.awt.UIElement=true")
     add("-Dcomposeai.displayfilter.filters=${displayFilterFilters.get()}")
     add("-Dcomposeai.deviceframe.device=${deviceFrameDevice.get()}")
+    // A pooled worker composes on a warm JVM, so the opt-in has to be on its command line: by the
+    // time a render request arrives the worker may already have latched the runtime's default.
+    add("-Dcomposeai.render.linkBufferComposer=${linkBufferComposer.get()}")
     if (deviceFrameDevice.get().isNotBlank()) {
       add("-Dcomposeai.deviceframe.cacheDir=${DeviceArtPrefetch.defaultCacheDir().absolutePath}")
     }
@@ -763,6 +840,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture?,
+    focus: FocusCapture?,
     fanoutSiblingStems: List<String>,
   ): List<String> =
     listOf(
@@ -847,7 +925,59 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // subprocess has no manifest, so without this it treats every `<stem>_*` file as its
       // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
       fanoutSiblingStems.joinToString("|"),
+      // 29th–32nd — wrapped-axis content-size bounds. Not plumbed from this task (the plugin has
+      // no size-mode input; the daemon's `compose-preview serve` / `bundle render` path is what
+      // sets them), but the renderer reads them positionally, so the focus tail below has to sit
+      // *after* four placeholders rather than sliding into their slots. `0` is the renderer's
+      // "no bound" sentinel — the same value a missing arg decodes to.
+      "0",
+      "0",
+      "0",
+      "0",
+      // 33rd–38th — `@FocusedPreview` per-capture drive (issue #3672). Only the DESKTOP renderer
+      // reads these: the Android lane gets the same state from the manifest it already loads, and
+      // ignores argv entirely. `-1` / empty means "no focus intent", which is what every preview
+      // without the annotation sends, so those captures stay byte-identical on the undriven path.
+      // Discovery has always emitted `@FocusedPreview` captures on every target — desktop simply
+      // dropped the state on the floor and rendered the resting frame N times, one per requested
+      // index. Forwarding it is what makes a CMP focused / pressed sticker real input rather than
+      // a hand-emitted interaction.
+      (focus?.tabIndex ?: -1).toString(),
+      focusTraversalPrefix(preview, focus).joinToString("|"),
+      (focus?.step ?: 0).toString(),
+      (focus?.enterPlacesFocus ?: false).toString(),
+      (focus?.pressed ?: false).toString(),
+      (focus?.overlay ?: false).toString(),
     )
+}
+
+/**
+ * Every traversal direction a capture's walk has to apply, in order — steps 1..N of the preview's
+ * `@FocusedPreview(traverse = [...])` up to and including [focus]'s own step. Empty for an
+ * indexed-mode (or absent) focus capture.
+ *
+ * Only the **desktop** renderer needs this. The Android renderer keeps one composition alive across
+ * a preview's captures and flips the focus controller per step, so each capture inherits where the
+ * previous one left focus. The desktop renderer runs one process per capture, so a step has no
+ * predecessor to inherit from and must replay the walk from the start; passing only `Previous` for
+ * step 3 of `[Next, Next, Previous]` would render step 1's frame under step 3's name.
+ *
+ * Internal (not private) so [FocusTraversalPrefixTest] can pin the ordering without a Gradle task
+ * instance.
+ */
+internal fun focusTraversalPrefix(preview: PreviewInfo, focus: FocusCapture?): List<String> {
+  val step = focus?.step ?: return emptyList()
+  if (focus.direction == null) return emptyList()
+  return preview.captures
+    .mapNotNull { it.focus }
+    .filter { it.direction != null && (it.step ?: 0) <= step }
+    .sortedBy { it.step ?: 0 }
+    // One entry per step, not one per capture row. `captures` is the *cross product* of the
+    // scroll / clock-timing / focus fan-outs, so a traversal crossed with two timings carries each
+    // step twice. Replaying that literally would send `Next` four times for step 2 and land the
+    // capture past the element its `_FOCUS_step2_Next` suffix names.
+    .distinctBy { it.step }
+    .mapNotNull { it.direction?.name }
 }
 
 private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)

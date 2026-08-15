@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -77,6 +78,32 @@ class ServeCatalogsConfigTest {
     assertTrue(problems.any { it.contains("invalid repo") }, problems.toString())
     assertTrue(problems.any { it.contains("unknown group 'nope'") }, problems.toString())
     assertTrue(problems.any { it.contains("duplicate catalog system 'dupe'") }, problems.toString())
+  }
+
+  @Test
+  fun `a catalog named after one of the server's own routes is reported`() {
+    // `api` is a perfectly good slug, so the id regex accepts it — but the registry refuses to name
+    // a session after a rooted route, so such a catalog is scheduled for loading and then fails at
+    // registration. That is a runtime error where the operator should have got the ordinary
+    // malformed-entry warning and a skip, so the rule belongs in validation, which the startup
+    // filter, `problems()` and the admin add all share.
+    val config =
+      ServeCatalogsConfig.parse(
+        """
+        { "catalogs": [ { "system": "api" }, { "system": "status" }, { "system": "wear-m3" } ] }
+        """
+          .trimIndent()
+      )
+
+    val problems = config.problems()
+    assertEquals(2, problems.size, problems.toString())
+    for (reserved in listOf("api", "status")) {
+      assertTrue(
+        problems.any { it.contains("'$reserved' is one of the server's own routes") },
+        problems.toString(),
+      )
+    }
+    assertNull(ServeCatalogsConfig.validateEntry(ServeCatalogsConfig.Entry(system = "wear-m3")))
   }
 
   @Test

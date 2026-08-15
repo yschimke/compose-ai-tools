@@ -5,6 +5,12 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.designpages.DesignPage
+import ee.schimke.composeai.designpages.PageFrame
+import ee.schimke.composeai.designpages.PageImage
+import ee.schimke.composeai.designpages.PageNode
+import ee.schimke.composeai.designpages.PageNodeConfidence
+import ee.schimke.composeai.designpages.PageNodeLink
 import java.awt.Color
 import java.awt.GradientPaint
 import java.awt.RenderingHints
@@ -54,6 +60,32 @@ class ServeWebFixtureTest {
   }
 
   private fun assetText(name: String): String = ServeWebAssets.load(name)!!.bytes.decodeToString()
+
+  /**
+   * One node of the design-page fixture.
+   *
+   * No geometry: the SVG below is the geometry, and the viewer measures the `data-node-id` element
+   * rather than reading a rectangle out of the manifest.
+   */
+  private fun pageNode(
+    nodeId: String,
+    name: String,
+    code: String? = null,
+    previewId: String? = null,
+    link: PageNodeLink = PageNodeLink.MANIFEST,
+    confidence: PageNodeConfidence? = if (code == null) null else PageNodeConfidence.HIGH,
+    depth: Int = 3,
+  ) =
+    PageNode(
+      nodeId = nodeId,
+      name = name,
+      depth = depth,
+      ref = "figma:ocdacdEsnHipMJD3egzxKb/$nodeId",
+      code = code,
+      previewId = previewId,
+      link = link,
+      confidence = confidence,
+    )
 
   private val token = "demo-token-fixture"
   private val moduleLabel = ":samples:cmp"
@@ -249,7 +281,7 @@ class ServeWebFixtureTest {
   // A catalog whose components carry baked non-default STATES (checkbox checked/unchecked, radio
   // selected/unselected), each in light + dark, tagged via the `state`/`theme` metadata the
   // `previews/variants.json` manifest carries. The landing folds each component to ONE (default)
-  // card; the viewer grows the `<nav class="cp-states">` switcher to the component's other
+  // card; the viewer grows its `.cp-axes-tree` subtree reaching the component's other
   // same-theme states. Captured so the visual-diff bot covers the state toggle end-to-end.
   private val statefulPreviews =
     listOf(
@@ -302,6 +334,72 @@ class ServeWebFixtureTest {
         theme = "dark",
       ),
     )
+
+  /**
+   * A component with a WIDE state axis — the published m3-catalog's `iconbutton-outlined` bakes one
+   * render per size × width × shape, which is what pushed the switcher past the point where showing
+   * every chip was worth the fold it cost. Sized to that real shape (22 states) rather than a token
+   * few, so the capture shows what the OPEN subtree actually costs on the catalog that motivated
+   * this — the case a smaller fixture would have flattered. Past [ServeWeb]'s inline threshold the
+   * rows arrive folded behind the title bar's `State · …` toggle, so this is the fixture that
+   * captures the *collapsed* axes disclosure for the visual-diff bot; `serve-viewer-states.html`
+   * (two states) keeps the expanded case.
+   */
+  private val wideStatePreviews =
+    listOf(
+        "default",
+        "disabled",
+        "xs",
+        "xs-narrow",
+        "xs-square",
+        "xs-wide",
+        "s",
+        "s-narrow",
+        "s-square",
+        "s-wide",
+        "m",
+        "m-narrow",
+        "m-square",
+        "m-wide",
+        "l",
+        "l-narrow",
+        "l-square",
+        "l-wide",
+        "xl",
+        "xl-narrow",
+        "xl-square",
+        "xl-wide",
+      )
+      .flatMap { state ->
+        listOf("light", "dark").map { theme ->
+          ServePreview(
+            "iconbutton-outlined__ideal__${state}__$theme",
+            "Icon Button Outlined · ${state.replace('-', ' ')} ($theme)",
+            state = state,
+            theme = theme,
+          )
+        }
+      }
+
+  /**
+   * A component baking state × props as a full CROSS-PRODUCT — every state also rendered RTL. This
+   * is the shape whose subtree cannot be labelled one axis at a time: the row that resets the state
+   * and the row that resets the props are both "Default" unless each names both coordinates. No
+   * committed catalog had it, which is exactly why the ambiguity reached review unseen, so it gets
+   * a fixture of its own and the visual-diff bot carries it from here.
+   */
+  private val crossProductPreviews =
+    listOf("default", "pressed", "disabled").flatMap { state ->
+      listOf<String?>(null, "rtl").map { direction ->
+        ServePreview(
+          "button-filled__ideal__${state}__light" + if (direction == null) "" else "__$direction",
+          "Button · Filled",
+          state = state,
+          theme = "light",
+          props = direction?.let { jsonProps("direction" to it) },
+        )
+      }
+    }
 
   // A trusted-catalog preview that declares author knobs (a `label` string + an accent `color`) —
   // the `compose/overrides` payload PR #2281 added across the M3 catalog. On a live catalog session
@@ -425,10 +523,9 @@ class ServeWebFixtureTest {
   // render, an ar-XB pseudo-locale, and a 2× font-scale — each in light + dark, tagged via the
   // `props` metadata the `previews/variants.json` manifest now carries (the i18n/a11y axes the
   // compose-m3 catalog folds via `variants`). The landing folds each component to ONE (default)
-  // card; the viewer grows a second `<nav class="cp-states" aria-label="Component variant">`
-  // switcher to the component's other same-theme variants. Captured so the visual-diff bot covers
-  // the variant fold + switcher end-to-end (the fix for the "duplicate RTL/locale tiles" the
-  // imported M3 tabs showed).
+  // card; the viewer's `.cp-axes-tree` subtree reaches them, listing the props axis beside the
+  // state axis under one component row. Captured so the visual-diff bot covers the variant fold
+  // end-to-end (the fix for the "duplicate RTL/locale tiles" the imported M3 tabs showed).
   private val variantPreviews =
     listOf(
       ServePreview(
@@ -535,6 +632,12 @@ class ServeWebFixtureTest {
         // "try in playground" on the summary line — the catalog-level half of the handoff, captured
         // so its placement in that run of actions is diffed like any other pixel.
         playgroundHref = "/playground?catalog=compose-m3",
+        // Published design pages on a catalog with NO navigation tree — the one shape that still
+        // offers them as a header chip, because there is no tree to list them in. Captured so that
+        // fallback keeps a baseline of its own, next to `landingGrouped`, which has a tree and so
+        // lists these by name instead.
+        designPages =
+          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -836,8 +939,33 @@ class ServeWebFixtureTest {
         version = version,
         // meshcore-mobile is the catalog that really publishes Figma-backed design references, so
         // it is the one whose landing offers the design-parity view — captured here so the
-        // visual-diff bot covers the new summary-line action.
+        // visual-diff bot covers the new summary-line action, named after the design tool the
+        // references came from.
         hasParityView = true,
+        designToolLabel = "Figma",
+      )
+    // …and the SAME catalog as a **top-level site** ([ServeSites]): rooted on a hostname of its
+    // own, so it presents as the only thing on the server. Captured beside `landingPath` because
+    // the difference between the two IS the feature and it is entirely visual — no back button (no
+    // front door to return to on this hostname), and every link rooted rather than prefixed. One
+    // fixture keeps the site chrome under the visual-diff bot from here on, so a later change to
+    // the landing can't quietly regress the site presentation.
+    val landingSite =
+      ServeWeb.landingPage(
+        "meshcore-mobile",
+        previews,
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        isPublic = true,
+        // The two lines that make it a site: no home index to link back to, no path prefix, and
+        // the session carried by the ORIGIN rather than a `?session=` on every href.
+        hasHomeIndex = false,
+        basePath = "",
+        sessionInOrigin = true,
+        version = version,
+        hasParityView = true,
+        designToolLabel = "Figma",
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -860,6 +988,32 @@ class ServeWebFixtureTest {
     // alternatives (with the unavailable `CMP JVM` listed as such), the "compare players →" step
     // out to the player wall, and the SVG toggle for whatever the chip is showing. Every other
     // viewer fixture has one or two lanes and so shoots a degenerate version of the row.
+    // The delivery branch's publish history, as the store reads it off the branch's commit feed.
+    // Shaped like the real thing: several regenerations a day, each stamping the source commit it
+    // was rendered from, newest first.
+    val catalogRevisions =
+      listOf(
+        ServeCatalogRevision.Revision(
+          "46440dd86c24b2da6054ccab587e59fba4b15c7e",
+          "2026-08-13T09:42:57Z",
+          "0b0c2063",
+        ),
+        ServeCatalogRevision.Revision(
+          "41c7a15fd21f52e7c6a959a0c441eb600ca46d4f",
+          "2026-08-13T07:10:54Z",
+          "b34eff53",
+        ),
+        ServeCatalogRevision.Revision(
+          "421350e5cae04212a193cc8137be1c337a9d5396",
+          "2026-08-12T15:42:44Z",
+          "7b573ecc",
+        ),
+        ServeCatalogRevision.Revision(
+          "4f7c1ae06b177603984734dc4fa3c0ea365e71e0",
+          "2026-08-12T09:05:11Z",
+          null,
+        ),
+      )
     val viewerRcPlayers =
       ServeWeb.viewerPage(
         ServePreview(
@@ -880,6 +1034,37 @@ class ServeWebFixtureTest {
         // needs sidecars this host doesn't carry, so it is the "(unavailable)" option.
         enabledRcPlayers = listOf("js", "cmp-wasm", "java", "cmp-android"),
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+      )
+    // The same rich viewer, PINNED. Captured as the twin of [viewerRcPlayers] because that is the
+    // page where the rule is visible: every lane above renders the catalog's current code, so a pin
+    // must leave none of them on the page — no Live toggle, no renderer combo, no SVG toggle or
+    // download, no inspection layers — while the stage keeps the publish the banner names.
+    val viewerPinnedLanes =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "appcard__ideal__default__compact",
+          "App card",
+          section = "Cards",
+          componentId = "AppCard",
+        ),
+        token,
+        sessionId = "remote-m3",
+        basePath = "/remote-m3",
+        canApplyOverrides = false,
+        canRenderOverrides = true,
+        hasLiveStream = true,
+        hasSvgExport = true,
+        hasRemoteComposeDoc = true,
+        hasA11yOverlay = true,
+        hasDesignAnnotations = true,
+        enabledRcPlayers = listOf("js", "cmp-wasm", "java", "cmp-android"),
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+        revisions =
+          ServeWeb.CatalogRevisions(
+            pinned = catalogRevisions[1].commit,
+            revisions = catalogRevisions,
+            repo = "yschimke/compose-ai-tools",
+          ),
       )
     // The Wear counterpart of [viewerPath]: a screen served under a Wear system path. Its Size
     // panel must offer the watch shapes (not Pixel phones / a foldable / a tablet) and drop the
@@ -964,6 +1149,33 @@ class ServeWebFixtureTest {
         hasA11yOverlay = true,
         hasDesignAnnotations = true,
       )
+    // An SVG-exporting viewer opened straight into the **exploded 3D** view: the `3D` chip pressed
+    // beside the SVG one, and the Exploded 3D group in the overrides drawer holding the camera
+    // axes. Its stage is stubbed by the harness with the committed
+    // `_render-placeholder-exploded.svg` — which `ExplodedSvgFixtureTest` generates from the
+    // layered placeholder through the production renderer — so the PNG the visual-diff bot posts
+    // shows the real projection, not a stand-in drawing.
+    val viewerExploded =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfileCardPreview", "Profile card"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        hasSvgExport = true,
+        hasScrollExport = true,
+      )
+    // A viewer offering the **Source** chip: the usage code behind the card, on the stage in place
+    // of the render. Its own fixture rather than a flag on `viewer` because the chip changes the
+    // control row, and the `source-panel` state below — which is where the panel is actually drawn
+    // — needs a page that carries the chip to press.
+    val viewerSource =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfileCardPreview", "Profile card"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        usageHref = "/usage/com.example.ProfileCardPreview",
+      )
     // A daemon-backed viewer for a preview detected to support one-handed gesture hints
     // (`@GestureHintPreview`) on an Android-backed session (`gesturesRenderable = true`): the
     // "Detected features" group shows the "Show gesture hints" control. Captured so the visual-diff
@@ -999,7 +1211,10 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         hasHomeIndex = true,
-        hasFormatComparison = true,
+        // Both comparison actions, so the golden captures the split summary line ("compare SVG ·
+        // compare RC players") the visual-diff bot shoots.
+        hasSvgComparison = true,
+        hasRcComparison = true,
         version = version,
       )
     // The catalog-theme sync: a served system's pages are framed in ITS colours, not the built-in
@@ -1203,6 +1418,9 @@ class ServeWebFixtureTest {
         version = version,
         displayTitle = "Compose Material 3",
         hasReferenceFor = { it.startsWith("button-filled") },
+        // The catalog names its design tool, so the page's way back out to the whole-catalog
+        // comparison table is captured with the same wording as the link that leads here.
+        designToolLabel = "Figma",
       )
     val referenceComparison =
       ServeWeb.referenceComparisonPage(
@@ -1312,8 +1530,173 @@ class ServeWebFixtureTest {
                   "unit" to "sp",
                 ),
             ),
+            // The resolved-container layer. Before the THEME toggle existed this annotation loaded,
+            // got a box and a legend row built for it, and was then hidden by CSS with no control
+            // able to reveal it — so the fixture carries one to keep that reachable.
+            DesignAnnotation(
+              kind = AnnotationKind.THEME,
+              bounds = AnnotationBounds(x = 12, y = 12, width = 196, height = 48),
+              label = "fill #FF6750A4 · radius 20.0dp · border 1.0dp #FF79747E",
+              role = "Button",
+              detail =
+                mapOf(
+                  "background" to "#FF6750A4",
+                  "cornerRadius" to "20.0dp",
+                  "borderColor" to "#FF79747E",
+                  "borderWidth" to "1.0dp",
+                ),
+            ),
           ),
       )
+    // The same comparison, PINNED to an older publish (issue #3723) — the state a shared permalink
+    // opens in. Captured because it is where the feature is visible: the banner naming the
+    // revision and the way back to the live catalog, above a revision list opened on the publish
+    // being shown.
+    val referenceComparisonPinned =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+        revisions =
+          ServeWeb.CatalogRevisions(
+            pinned = catalogRevisions[2].commit,
+            revisions = catalogRevisions,
+            repo = "yschimke/compose-ai-tools",
+          ),
+      )
+    // The unpinned twin, on the viewer: the revision list folded away, which is all an ordinary
+    // page view of a catalog with a publish history shows.
+    val viewerRevisions =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        revisions =
+          ServeWeb.CatalogRevisions(
+            revisions = catalogRevisions,
+            repo = "yschimke/compose-ai-tools",
+          ),
+      )
+    // The same page with the revision menu popped open. The control is a `<details>` menu that
+    // ships closed, so a screenshot of the page above only ever captures its trigger — and the list
+    // of publishes, the part a change to this feature is most likely to break visually, would never
+    // be diffed. Forcing the disclosure open is the whole difference between the two fixtures; the
+    // markup inside it is the server's own.
+    val viewerRevisionsOpen =
+      viewerRevisions.replace(
+        "<details class=\"cp-revisions\">",
+        "<details class=\"cp-revisions\" open>",
+      )
+    assertFalse(
+      viewerRevisionsOpen == viewerRevisions,
+      "the revision menu's <details> tag changed shape — update this fixture's open-state rewrite",
+    )
+    // The design page's inlined export. Run through the real [SvgSanitizer] rather than pasted in
+    // whole, so the golden HTML is what the server would actually emit — including anything the
+    // sanitizer strips.
+    val designPageSvg =
+      checkNotNull(
+        SvgSanitizer.sanitize(
+          """
+          <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
+            <rect width="1200" height="800" fill="#F7F2FA"/>
+            <g data-node-id="1:9"><rect x="40" y="32" width="1120" height="64" rx="16" fill="#EADDFF"/></g>
+            <g data-node-id="1:1"><circle cx="180" cy="300" r="90" fill="#6750A4"/></g>
+            <g data-node-id="1:2"><rect x="330" y="210" width="180" height="180" rx="36" fill="#6750A4"/></g>
+            <g data-node-id="1:3"><path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/></g>
+            <g data-node-id="1:4"><rect x="840" y="255" width="240" height="90" rx="45" fill="#6750A4"/></g>
+            <g data-node-id="1:5"><rect x="330" y="500" width="180" height="180" rx="90" fill="#6750A4"/></g>
+            <g data-node-id="1:6"><rect x="600" y="500" width="180" height="180" fill="#6750A4"/></g>
+          </svg>
+          """
+            .trimIndent()
+        )
+      )
+
+    // A design page: one specimen sheet of the kit, inlined as SVG, with the node id of every
+    // component on it. The mix is the point: two `manifest` links whose previews this catalog
+    // publishes, one `convention` (low-confidence name match), one `manifest` link to a preview
+    // that ISN'T published (outline, no render), one node the manifest names that the export does
+    // not carry, and two `unlinked` — the sheet's own header and a shape no code implements, which
+    // is the finding the surface exists to surface.
+    val designPageFixture =
+      DesignPage(
+        id = "shape",
+        name = "Shape",
+        nodeId = "58548:7093",
+        frame = PageFrame(width = 1200.0, height = 800.0),
+        image = PageImage(uri = "shape.svg"),
+        nodes =
+          listOf(
+            pageNode("1:9", ".Header", link = PageNodeLink.UNLINKED, depth = 2),
+            pageNode(
+              "1:1",
+              "Shape=Circle",
+              code = "ui/Shapes.kt#CircleShape",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            pageNode(
+              "1:2",
+              "Shape=Square",
+              code = "ui/Shapes.kt#SquareShape",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            pageNode(
+              "1:3",
+              "Shape=Triangle",
+              code = "ui/Shapes.kt#TriangleShape",
+              link = PageNodeLink.CONVENTION,
+              confidence = PageNodeConfidence.LOW,
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            pageNode(
+              "1:4",
+              "Shape=Pill",
+              code = "ui/Shapes.kt#PillShape",
+              previewId = "com.example.NotInThisCatalog",
+            ),
+            pageNode("1:6", "Shape=Ghost-ish", link = PageNodeLink.UNLINKED),
+            pageNode(
+              "1:404",
+              "Shape=Flattened",
+              code = "ui/Shapes.kt#FlowerShape",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+          ),
+      )
+
+    val designPageHtml =
+      ServeWeb.designPage(
+        moduleLabel = "compose-m3",
+        page = designPageFixture,
+        svg = designPageSvg,
+        fileKey = "ocdacdEsnHipMJD3egzxKb",
+        // Everything except the pill, so the fixture covers a node the producer mapped but this
+        // catalog cannot draw.
+        renderablePreviewIds = setOf("com.example.ProfileCardPreview"),
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+      )
+
+    val designPageIndex =
+      ServeWeb.designPagesIndexPage(
+        moduleLabel = "compose-m3",
+        pages = listOf(designPageFixture),
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+      )
+
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
     // the header's Theme control lists every configured theme (issue #2881) — the baked Light/Dark
     // pair plus each declared theme — instead of only Light/Dark. Picking a declared theme
@@ -1427,7 +1810,7 @@ class ServeWebFixtureTest {
         declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog")),
         canRenderThemeFor = { true },
       )
-    // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
+    // The default-state viewer for that catalog: renders the `.cp-axes-tree` subtree of
     // links to the component's other same-theme states, the current (Default) state marked active.
     val viewerStates =
       ServeWeb.viewerPage(
@@ -1436,6 +1819,68 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         siblings = statefulPreviews,
+      )
+    // Every disclosure at once, on the shape that motivated them: a state axis and a theme set both
+    // wide enough to arrive FOLDED, plus sibling components so the nav toggle is there too. The
+    // chips sit behind the title bar's `State · Default` / `Theme · Day` toggles, and the render
+    // starts where three wrapped chip rows used to.
+    val viewerAxesFolded =
+      ServeWeb.viewerPage(
+        wideStatePreviews.first(),
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        siblings = wideStatePreviews + statefulPreviews,
+        declaredThemes =
+          listOf(
+            ServeTheme("Baseline Light", "com.example.BaselineLightThemeCatalog"),
+            ServeTheme("Baseline Dark", "com.example.BaselineDarkThemeCatalog"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog"),
+          ),
+      )
+    // The cross-product viewer, entered on `pressed + RTL` — the render that has a non-default
+    // value on BOTH axes, and so the only one from which a single-axis label is ambiguous. Its
+    // subtree names both coordinates on every row and can walk either axis without leaving the
+    // other behind.
+    val viewerCrossProduct =
+      ServeWeb.viewerPage(
+        crossProductPreviews.first { it.state == "pressed" && it.props != null },
+        token,
+        sessionId = "compose-m3",
+        siblings = crossProductPreviews,
+      )
+    // The tree at full depth. `synthesizeGroups` only divides a catalog with at least two families
+    // and one family holding more than one card, and the variant/state fixtures above are each a
+    // single component — so neither of them renders a tree at all, and the component and variant
+    // rows would go uncaptured. This mixes them: a Button family of two cards (one carrying the
+    // props axis), plus Checkbox and Radio button carrying the state axis.
+    val treeDepthPreviews =
+      variantPreviews +
+        listOf(
+          ServePreview(
+            "button-outlined__ideal__default__light",
+            "Button · Outlined (light)",
+            state = "default",
+            theme = "light",
+          ),
+          ServePreview(
+            "button-outlined__ideal__default__dark",
+            "Button · Outlined (dark)",
+            state = "default",
+            theme = "dark",
+          ),
+        ) +
+        statefulPreviews
+    val landingTreeDepth =
+      ServeWeb.landingPage(
+        "compose-m3",
+        treeDepthPreviews,
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
       )
     // A catalog whose component carries baked PROPS-axis variants (RTL / pseudo-locale / large
     // font): the landing folds the eight renders to ONE (default) card, the variants reachable via
@@ -1474,6 +1919,11 @@ class ServeWebFixtureTest {
         isPublic = true,
         hasHomeIndex = true,
         version = version,
+        // The design file's own pages, listed by name at the foot of the outline tree — the shape
+        // m3-catalog is in, and the surface that replaced the header's "N pages" chip. Captured
+        // here so the branch has a visual baseline of its own.
+        designPages =
+          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
       )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
@@ -1782,6 +2232,9 @@ class ServeWebFixtureTest {
     // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
     // regeneration below and the sync assertion further down, so a fixture can never be written
     // by one and forgotten by the other.
+    // The card rasters the fixture page below frames. Drawn once and reused by both the golden and
+    // the committed PNGs, so the two can't end up describing different pictures.
+    val unfurlCards = socialCardFixtures()
     val renderedGoldens =
       listOf(
         "serve-landing.html" to landing,
@@ -1798,8 +2251,11 @@ class ServeWebFixtureTest {
         "serve-viewer-theme-overflow.html" to viewerThemeOverflow,
         "serve-viewer-focus.html" to viewerFocus,
         "serve-viewer-inspect.html" to viewerInspect,
+        "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
+        "serve-viewer-source.html" to viewerSource,
         "serve-landing-path.html" to landingPath,
+        "serve-landing-site.html" to landingSite,
         "serve-viewer-path.html" to viewerPath,
         "serve-viewer-rc-players.html" to viewerRcPlayers,
         "serve-viewer-wear-screen.html" to viewerWearScreen,
@@ -1809,6 +2265,12 @@ class ServeWebFixtureTest {
         "serve-format-compare.html" to formatComparison,
         "serve-rc-lanes.html" to rcLanesComparison,
         "serve-reference-compare.html" to referenceComparison,
+        "serve-reference-compare-pinned.html" to referenceComparisonPinned,
+        "serve-viewer-revisions.html" to viewerRevisions,
+        "serve-viewer-revisions-open.html" to viewerRevisionsOpen,
+        "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,
+        "serve-design-page.html" to designPageHtml,
+        "serve-design-page-index.html" to designPageIndex,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
         "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,
@@ -1816,8 +2278,11 @@ class ServeWebFixtureTest {
         "serve-landing-states.html" to landingStates,
         "serve-landing-sections.html" to landingSections,
         "serve-viewer-states.html" to viewerStates,
+        "serve-viewer-axes-folded.html" to viewerAxesFolded,
+        "serve-viewer-cross-product.html" to viewerCrossProduct,
         "serve-status.html" to serveStatus,
         "serve-landing-variants.html" to landingVariants,
+        "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,
         "serve-landing-grouped.html" to landingGrouped,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
@@ -1827,6 +2292,9 @@ class ServeWebFixtureTest {
         "serve-playground-uncompilable.html" to playgroundUncompilable,
         "serve-doc-lottie.html" to docLottie,
         "serve-doc-remotecompose.html" to docRemoteCompose,
+        // Not a served page: a frame around the drawn link-unfurl cards, so that raster surface is
+        // screenshotted and diffed on every PR like the pages are. See [socialCardPage].
+        "serve-social-card.html" to socialCardPage(unfurlCards),
       )
 
     // Normalise once, here, so the regeneration below and the sync assertion further down cannot
@@ -1838,10 +2306,12 @@ class ServeWebFixtureTest {
       goldens.forEach { (name, html) -> File(pagesDir, name).writeText(html) }
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       File(pagesDir, "_render-placeholder.svg").writeText(renderPlaceholderSvg())
+      unfurlCards.forEach { (name, card) -> File(pagesDir, name).writeBytes(card.bytes) }
       return
     }
 
     assertGoldensInSync(pagesDir, goldens)
+    assertUnfurlCardsInSync(pagesDir, unfurlCards)
     // The parity page's load-bearing claims, asserted rather than left to the pixel diff. A
     // comment on Switch (whose code never moved in this window) is one-sided design movement, so
     // it must reach the "needs a look" band; Button moved on both sides and must NOT, because that
@@ -2012,10 +2482,25 @@ class ServeWebFixtureTest {
         "the $name page carries the palette",
       )
     }
+    // One assist chip per comparable format, each deep-linking the format it names, rather than a
+    // single "compare formats" text link that hid what this catalog can actually compare.
     assertTrue(
-      landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&
-        landingThemed.contains(">compare formats</a>"),
-      "a catalog with alternate formats exposes the subtle comparison link",
+      landingThemed.contains(
+        "<a class=\"cp-action-chip\" href=\"/compare?format=svg&amp;session=compose-m3\">" +
+          "compare SVG</a>"
+      ) &&
+        landingThemed.contains(
+          "<a class=\"cp-action-chip\" href=\"/compare?format=rc&amp;session=compose-m3\">" +
+            "compare RC players</a>"
+        ),
+      "a catalog with alternate formats links each one separately: $landingThemed",
+    )
+    // …and the design-parity action is named after the tool it compares against.
+    assertTrue(
+      landingPath.contains(
+        "<a class=\"cp-action-chip\" href=\"/meshcore-mobile/parity\">compare to Figma</a>"
+      ),
+      "a Figma-specified catalog offers 'compare to Figma' rather than the feature's name",
     )
     assertTrue(
       formatComparison.contains("data-compare-format=\"svg\"") &&
@@ -2400,81 +2885,169 @@ class ServeWebFixtureTest {
         landingVariants.contains("fontscale-2.0"),
       "props variants are folded out of the variant landing grid",
     )
-    // The default-render viewer renders the variant switcher, marking Default active and linking
-    // the
-    // same-theme RTL sibling, never the dark render.
+    // The default-render viewer renders the component subtree, marking Default active and linking
+    // the same-theme RTL sibling, never the dark render.
     val variantNav =
-      viewerVariants.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+      viewerVariants.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
-      variantNav.contains("aria-current=\"page\">Default</a>") &&
+      variantNav.contains("cp-tree-component cp-tree-link\" role=\"treeitem\"") &&
+        variantNav.contains("aria-current=\"page\">Button") &&
         variantNav.contains("/p/button-filled__ideal__default__light__direction-rtl") &&
         variantNav.contains(">RTL</a>"),
-      "the viewer variant switcher marks Default active and links the same-theme RTL variant",
+      "the viewer subtree marks Default active and links the same-theme RTL variant",
     )
     assertFalse(
       variantNav.contains("__dark__direction-rtl"),
-      "the variant switcher stays within the current theme",
+      "the subtree stays within the current theme",
     )
-    // A sectioned catalog renders a tab bar (role=tablist) with one tab per section, in authored
-    // order (Themes → Components → Screens), each carrying its card count; a flat catalog shows
-    // none.
+    // A sectioned catalog renders a navigation TREE (role=tree) with one row per section, in
+    // authored order (Themes → Components → Screens), each carrying its card count; a flat catalog
+    // shows none.
     assertTrue(
-      landingSections.contains("class=\"cp-tabs\"") && landingSections.contains("role=\"tablist\""),
-      "a sectioned catalog renders the tab bar",
+      landingSections.contains("class=\"cp-tree\"") && landingSections.contains("role=\"tree\""),
+      "a sectioned catalog renders the navigation tree",
     )
+    // Keyed on the row's OWN id rather than on `data-tab`, which the tree's group rows also carry
+    // (they name the section they jump into) — matching those would report each section once per
+    // group it holds.
     val tabOrder =
-      Regex("data-tab=\"([a-z0-9-]+)\"").findAll(landingSections).map { it.groupValues[1] }.toList()
+      Regex("id=\"cp-tab-([a-z0-9-]+)\"")
+        .findAll(landingSections)
+        .map { it.groupValues[1] }
+        .toList()
     assertEquals(
       listOf("themes", "components", "screens"),
       tabOrder,
-      "tabs are ordered by authored catalogOrder, not id-sorted",
+      "section rows are ordered by authored catalogOrder, not id-sorted",
     )
-    // Each section is a role=tabpanel keyed by its slug, and the first tab opens selected.
+    // Each section is a labelled region keyed by its slug, and the first row opens selected.
     assertTrue(
-      landingSections.contains("id=\"cp-panel-themes\" role=\"tabpanel\"") &&
-        landingSections.contains("id=\"cp-panel-components\" role=\"tabpanel\"") &&
-        landingSections.contains("id=\"cp-panel-screens\" role=\"tabpanel\""),
-      "each section renders a tabpanel",
+      landingSections.contains("id=\"cp-panel-themes\" role=\"region\"") &&
+        landingSections.contains("id=\"cp-panel-components\" role=\"region\"") &&
+        landingSections.contains("id=\"cp-panel-screens\" role=\"region\""),
+      "each section renders a labelled region",
     )
     assertTrue(
       landingSections.contains(
         "id=\"cp-tab-themes\" href=\"#cp-panel-themes\" data-tab=\"themes\"" +
           " aria-controls=\"cp-panel-themes\" aria-selected=\"true\""
       ),
-      "the first tab is selected and its anchor targets its panel",
+      "the first section row is selected and its anchor targets its panel",
     )
-    // The `group` renders as a sub-heading inside a tab — including the same "Device" group name
-    // reused across the Components and Screens sections (scoped per tab, not merged).
+    // Selected ⇒ expanded: one section's contents show at a time, which is the same statement its
+    // panel makes, rather than a second piece of state that could disagree with it.
+    assertTrue(
+      Regex("id=\"cp-tab-themes\"[^>]* aria-selected=\"true\" aria-expanded=\"true\"")
+        .containsMatchIn(landingSections) &&
+        Regex("id=\"cp-tab-components\"[^>]* aria-selected=\"false\" aria-expanded=\"false\"")
+          .containsMatchIn(landingSections),
+      "the selected section row is the expanded one and the rest are collapsed",
+    )
+    // The second level: each named group is a row under its section, pointing at the sub-group
+    // divider's anchor — including the same "Device" group name reused across the Components and
+    // Screens sections, which stays scoped per section (two distinct anchors, not one).
+    assertTrue(
+      landingSections.contains("data-group=\"cp-group-themes-foundation\"") &&
+        landingSections.contains("data-group=\"cp-group-components-contacts\"") &&
+        landingSections.contains("data-group=\"cp-group-screens-scanner\""),
+      "each named group is a tree row pointing at its sub-group anchor",
+    )
+    assertTrue(
+      landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-components-device\">") &&
+        landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-screens-device\">"),
+      "a group name reused across sections gets one anchor per section, not a shared one",
+    )
+    // The `group` still renders as a sub-heading inside its section — the tree navigates to those
+    // headings, it does not replace them.
     assertTrue(
       landingSections.contains("<h3 class=\"cp-group-head\">Foundation</h3>") &&
         landingSections.contains("<h3 class=\"cp-group-head\">Contacts</h3>") &&
         landingSections.contains("<h3 class=\"cp-group-head\">Scanner</h3>"),
-      "component groups render as sub-headings within their section tab",
+      "component groups render as sub-headings within their section",
     )
     assertEquals(
       2,
       Regex("<h3 class=\"cp-group-head\">Device</h3>").findAll(landingSections).count(),
-      "a group name reused across sections stays scoped per tab (one sub-heading each)",
+      "a group name reused across sections stays scoped per section (one sub-heading each)",
     )
-    // The tab JS is wired (adds cp-js, drives the tabs); a flat catalog's script omits all of it.
+    // The tree JS is wired (adds cp-js, drives the sections, wires the group rows and the
+    // scroll-spy); a flat catalog's script omits all of it.
     assertTrue(
       landingSections.contains("classList.add(\"cp-js\")") &&
-        landingSections.contains("querySelectorAll(\".cp-tab\")"),
-      "the sectioned landing wires the tab-switching script",
+        landingSections.contains("querySelectorAll(\".cp-tab\")") &&
+        landingSections.contains("querySelectorAll(\".cp-tree-group\")") &&
+        landingSections.contains("new IntersectionObserver"),
+      "the sectioned landing wires the tree script",
     )
     assertTrue(
       landingSections.contains("localStorage.getItem(\"cp-tab:meshcore-mobile\")") &&
         landingSections.contains("localStorage.setItem(\"cp-tab:meshcore-mobile\", current)"),
-      "the selected tab persists per catalog and is restored when returning from a preview",
+      "the selected section persists per catalog and is restored when returning from a preview",
     )
-    // `role="tablist"` (the tab bar) and `classList.add("cp-js")` (the tab script) appear ONLY when
-    // tabs are rendered — the shared stylesheet's `.cp-tabs` / `html.cp-js` rules are on every
-    // page,
-    // so this checks the markup/script, not the CSS.
+    // Three things the tree has to get right around the sticky toolbar and shared links, each of
+    // which fails silently — the surface still looks correct while being unusable.
+    assertTrue(
+      landingSections.contains("setProperty(\"--cp-sticky-tools\"") &&
+        assetText("serve.css").contains("scroll-margin-top: calc(var(--cp-sticky-tools, 64px)"),
+      "the toolbar's measured height offsets the sticky tree and every scroll target",
+    )
+    assertTrue(
+      landingSections.contains("if (!stop && firstShown) firstShown.tabIndex = 0;"),
+      "a filter that hides the selected section moves the tree's tab stop to a visible branch",
+    )
+    assertTrue(
+      landingSections.contains("function hashTarget()") &&
+        landingSections.contains("decodeURIComponent(id)") &&
+        landingSections.contains("initialTab = current;"),
+      "a shared #cp-group-… link selects the section that holds it, non-ASCII slugs included",
+    )
+    // Back must resolve an entry the way loading it fresh would, so the same resolver runs on pop —
+    // and it has to be registered AFTER the shared `?tab=` restore to get the last word.
+    assertTrue(
+      landingSections.contains("var popped = hashTarget();") &&
+        landingSections.indexOf("var popped = hashTarget();") >
+          landingSections.indexOf("var poppedTab = urlParam(\"tab\")"),
+      "Back/Forward re-applies the fragment's precedence over ?tab=",
+    )
+    // No roving `tabindex` in the served markup: with no JS the arrow keys never bind, so baking
+    // `-1` into every row but the first would strand the rest of the navigation for a keyboard.
     assertFalse(
-      landingThemed.contains("role=\"tablist\"") ||
-        landingThemed.contains("classList.add(\"cp-js\")"),
-      "a flat (section-less) catalog renders no tab bar and no tab script",
+      Regex("<a class=\"cp-tab\"[^>]*tabindex").containsMatchIn(landingSections) ||
+        Regex("<a class=\"cp-tree-group\"[^>]*tabindex").containsMatchIn(landingSections),
+      "the tree's tab stops are applied by script, not baked into the markup",
+    )
+    assertTrue(
+      landingSections.contains("panel.scrollIntoView({ block: \"start\" })"),
+      "selecting a section scrolls to its panel when the toolbar would hide it",
+    )
+    assertTrue(
+      landingSections.contains("if (expanded !== \"true\") return;"),
+      "Right does nothing on a tree leaf rather than acting as a second Down",
+    )
+    // The fragment has to travel with the selection: `cpUrlState` preserves whatever hash is
+    // already on the URL, and the hash outranks `?tab=` on load, so a stale one silently sends the
+    // next visitor to the wrong section.
+    assertTrue(
+      landingSections.contains("function setFragment(id)") &&
+        landingSections.contains("setFragment(id);") &&
+        landingSections.contains("setFragment(\"\");"),
+      "navigating replaces the fragment, and choosing a section clears it",
+    )
+    // A `role="group"` has to hang off the treeitem whose `aria-expanded` governs it. The row is an
+    // <a> (so it stays a real link) inside a `role="none"` <li>, so the tie is `aria-owns`.
+    assertTrue(
+      landingSections.contains("aria-owns=\"cp-tree-children-components\"") &&
+        landingSections.contains(
+          "<ul class=\"cp-tree-children\" id=\"cp-tree-children-components\""
+        ),
+      "a section row owns its group of sub-group rows",
+    )
+    // `role="tree"` (the nav) and `classList.add("cp-js")` (the section script) appear ONLY when
+    // sections are rendered — the shared stylesheet's `.cp-tree` / `html.cp-js` rules are on every
+    // page, so this checks the markup/script, not the CSS.
+    assertFalse(
+      landingThemed.contains("role=\"tree\"") || landingThemed.contains("classList.add(\"cp-js\")"),
+      "a flat (section-less) catalog renders no navigation tree and no section script",
     )
     // The state landing folds each component's non-default states out: checkbox + radio yield ONE
     // card each (two total), and no `unchecked`/`unselected` card is emitted.
@@ -2487,13 +3060,14 @@ class ServeWebFixtureTest {
       landingStates.contains("unchecked") || landingStates.contains("unselected"),
       "non-default states are folded out of the state landing grid",
     )
-    // The default-state viewer renders the state switcher, marking Default active and linking the
-    // same-theme unchecked sibling.
-    val statesNav = viewerStates.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    // The default-state viewer renders the component subtree, marking Default active and linking
+    // the same-theme unchecked sibling.
+    val statesNav =
+      viewerStates.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
-      statesNav.contains("aria-current=\"page\">Default</a>") &&
+      statesNav.contains("aria-current=\"page\">Checkbox") &&
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
-      "the viewer state switcher marks Default active and links the same-theme sibling",
+      "the viewer subtree marks Default active and links the same-theme sibling",
     )
     // A section-less catalog gains SYNTHESIZED family sub-group dividers (as <h2 cp-group-head>)
     // over
@@ -2505,9 +3079,114 @@ class ServeWebFixtureTest {
         landingGrouped.contains("<h2 class=\"cp-group-head\">FAB</h2>"),
       "a section-less catalog renders synthesized family sub-group dividers",
     )
+    // A section-less catalog now gets an OUTLINE tree over the same flat grid: its synthesized
+    // families are the top level, so the two levels of structure it does have (family, then
+    // component) are navigable instead of invisible. No sections means no panels to switch, so
+    // these rows carry no `data-tab` and the script emits none of the section machinery.
+    assertTrue(
+      landingGrouped.contains("role=\"tree\"") &&
+        landingGrouped.contains("aria-label=\"Catalog contents\"") &&
+        landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\">"),
+      "a section-less catalog renders an outline tree over its synthesized families",
+    )
+    // The design file's pages are a BRANCH OF THE TREE, not a chip in the header row: one row per
+    // page, named, under a row that leads to the index. Always open (`aria-expanded="true"` that
+    // nothing reflects) and carrying no `data-group`, because these rows navigate away rather than
+    // scrolling to something on this page — which is what the click handler's `if (!id) return`
+    // and `reflectTree`'s matching guard rely on.
+    assertTrue(
+      landingGrouped.contains(
+        "<a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\" href=\"/pages\"" +
+          " aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">" +
+          "Pages<span class=\"cp-tree-count\">2</span></a>"
+      ) &&
+        landingGrouped.contains(
+          "<a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\" href=\"/pages/shape\">Shape</a>"
+        ) &&
+        landingGrouped.contains(">Typography</a>"),
+      "a catalog's design pages are listed by name at the foot of its tree",
+    )
+    assertTrue(
+      !landingGrouped.contains("class=\"cp-action-chip\" href=\"/pages\""),
+      "a catalog with a tree offers its pages there, not as a header chip as well",
+    )
+    // …and the fallback: no tree to list them in (too few previews to synthesize families from)
+    // means the chip is the only route, so it stays.
+    assertTrue(
+      !landingPublic.contains("cp-tree-pages") &&
+        landingPublic.contains("class=\"cp-action-chip\" href=\"/pages\">2 pages</a>"),
+      "a catalog with no tree keeps the header chip, or its pages would be unreachable",
+    )
+    // `reflectTree` walks every expandable row on every open/close; the Pages branch is expandable
+    // and names no target, so without this guard it would be collapsed by the first component
+    // click. Asserted on the emitted script because that is the only place it exists.
+    assertTrue(
+      landingGrouped.contains("if (!id) return;"),
+      "the tree script leaves an always-open branch alone",
+    )
+    // The tree's two deepest levels. A component row jumps to its card (an in-page `data-group`);
+    // a variant row has nowhere on the page to go — the grid folds those renders out — so it is a
+    // plain link to the viewer, and carries no `data-group` at all.
+    assertTrue(
+      landingTreeDepth.contains(
+        "<a class=\"cp-tree-component cp-tree-link\" role=\"treeitem\"" +
+          " href=\"#cp-card-button-filled__ideal__default__light\""
+      ),
+      "each component is a row pointing at its own grid card",
+    )
+    val variantRows =
+      Regex("<a class=\"cp-tree-variant cp-tree-link\"[^>]*>([^<]+)</a>")
+        .findAll(landingTreeDepth)
+        .map { it.groupValues[1] }
+        .toList()
+    assertTrue(
+      variantRows.containsAll(listOf("Default", "RTL", "Locale ar-XB", "Font 2.0×", "Unchecked")),
+      "primary-axis variants (props and state) each become a row: $variantRows",
+    )
+    assertTrue(
+      landingTreeDepth.contains(
+        "href=\"/p/button-filled__ideal__default__light__direction-rtl?session=compose-m3\""
+      ),
+      "a variant row links to the viewer rather than jumping within the page",
+    )
+    // Theme is SECONDARY — the card swaps it in place — so it never becomes a row, and neither the
+    // dark twin of a component nor a `__dark` variant appears in the tree.
     assertFalse(
-      landingGrouped.contains("role=\"tablist\""),
-      "synthesized family grouping renders no tab bar (it is a flat grouped grid, not tabs)",
+      Regex("<a class=\"cp-tree-(component|variant)[^>]*(Dark|__dark)")
+        .containsMatchIn(landingTreeDepth),
+      "theme stays a secondary axis and earns no tree row",
+    )
+    // A filter that hides a card must hide the row pointing at it, at EVERY level and in both tree
+    // modes — otherwise a search leaves rows that scroll to nothing.
+    assertTrue(
+      landingTreeDepth.contains("treeComponents.forEach(function (c) {") &&
+        landingGrouped.contains("treeComponents.forEach(function (c) {") &&
+        landingGrouped.contains("treeGroups.forEach(function (g) {"),
+      "the search filter follows the tree down to its component rows, outline trees included",
+    )
+    // A `role="tree"` is one tab stop. Nothing established that until the first arrow press, so
+    // every visible row sat in the tab order until then.
+    assertTrue(
+      landingTreeDepth.contains("function syncTabStops()") &&
+        landingTreeDepth.contains("cpTreeStops = syncTabStops;") &&
+        landingTreeDepth.contains("if (cpTreeStops) cpTreeStops();"),
+      "the tree keeps a single roving tab stop, re-synced whenever the filter moves rows",
+    )
+    // A `#cp-card-…` fragment can name a component in any group, not just the one the server
+    // expanded — its own row has to open along with it.
+    assertTrue(
+      landingTreeDepth.contains("var owner = parentRow(row);"),
+      "landing on a component's fragment opens the group that holds it",
+    )
+    // Cards are jump targets now, so they need the clearance sections and sub-groups already have.
+    assertTrue(
+      assetText("serve.css").contains(".cp-card { scroll-margin-top:"),
+      "a card cleared the sticky toolbar when a component row jumps to it",
+    )
+    assertFalse(
+      landingGrouped.contains("data-tab=") ||
+        landingGrouped.contains("localStorage.getItem(\"cp-tab:"),
+      "an outline tree switches no panels, so it emits no section machinery",
     )
     // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
     // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.
@@ -2839,7 +3518,7 @@ class ServeWebFixtureTest {
       "themed catalog shows the theme toggle",
     )
     assertTrue(
-      landingThemed.contains("class=\"cp-card\" data-swap=\"1\"") &&
+      Regex("class=\"cp-card\"[^>]*data-swap=\"1\"").containsMatchIn(landingThemed) &&
         landingThemed.contains("data-l-src=") &&
         landingThemed.contains("data-d-src="),
       "a paired component renders one swap card carrying both themes' baked render",
@@ -2893,7 +3572,18 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       landingThemed.contains("id=\"cp-search\""),
-      "the search box shows alongside the theme toggle on a themed catalog",
+      "the search box shows on a themed catalog",
+    )
+    assertTrue(
+      landingThemed
+        .substringAfter("class=\"cp-catalog-menu\"")
+        .substringBefore("</aside>")
+        .contains("id=\"cp-search\""),
+      "a catalog menu leads with its filter",
+    )
+    assertFalse(
+      landingThemed.contains("id=\"cp-count\""),
+      "the menu filter does not repeat the preview count",
     )
     // The combined filter composes search with theme: on a themed catalog the script still persists
     // the theme choice, so search didn't displace the theme half.
@@ -3104,6 +3794,7 @@ class ServeWebFixtureTest {
     assertTrue(
       openLive.contains(
         "id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
+          "data-default-lane-label=\"Live preview\" " +
           "title=\"Static snapshot — click for the live, interactive preview\">"
       ),
       "live preview remains an ordinary toggle when no GitHub sign-in prompt is required",
@@ -3587,12 +4278,13 @@ class ServeWebFixtureTest {
         .contains(".cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }"),
       "stage/overrides/nav stack full-width and drop their min-width on a phone",
     )
-    // Usability: on mobile the two drawers become bottom sheets reachable from a sticky toggle bar
+    // Usability: on mobile the two drawers become bottom sheets reachable from a sticky toggle row
     // (so overrides + the component list are one tap away, not a long scroll below a tall preview),
-    // with a scrim behind the open sheet.
+    // with a scrim behind the open sheet. The row that sticks is the title row, which is where all
+    // four disclosures now live.
     assertTrue(
-      assetText("serve.css").contains(".cp-viewer-bar { position: sticky; top: 0;"),
-      "the drawer toggle bar is sticky on mobile",
+      assetText("serve.css").contains(".cp-preview-head { position: sticky; top: 0;"),
+      "the disclosure row is sticky on mobile",
     )
     assertTrue(
       assetText("serve.css").contains(".cp-viewer.cp-controls-open .cp-controls,") &&
@@ -3683,6 +4375,10 @@ class ServeWebFixtureTest {
         refreshUrl = "/compose-m3/refresh",
       )
     assertTrue(landing.contains("class=\"cp-prov cp-disclosure\""), "the provenance details render")
+    assertTrue(
+      landing.indexOf("class=\"cp-prov cp-disclosure\"") > landing.indexOf("id=\"cp-grid\""),
+      "catalog details follow the catalog content",
+    )
     // Links to the delivery branch and the regenerating workflow.
     assertTrue(
       landing.contains(
@@ -4119,9 +4815,11 @@ class ServeWebFixtureTest {
     // A knob edit has a dedicated handler (onKnobEdited) that drives whichever transport is live —
     // here the carried daemon via /render (canRenderOverrides). The Wasm tier also honours named
     // knobs now, so the handler picks the iframe when Wasm is active (see the wasm-only case
-    // below).
+    // below). Matched without the parameter list: the handler's *existence* is the contract here,
+    // and pinning its arity broke this when it grew one.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited()"),
+      assetText("viewer.js").contains("function onKnobEdited(") &&
+        assetText("viewer.js").contains("function knobRoute()"),
       "knob edits have a dedicated, transport-aware handler",
     )
     assertTrue(
@@ -4227,7 +4925,7 @@ class ServeWebFixtureTest {
     // posts the override patch (with the knob) to the iframe, or auto-enables Wasm from the
     // snapshot.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited()") &&
+      assetText("viewer.js").contains("function onKnobEdited(") &&
         assetText("viewer.js").contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
       "a knob edit routes to the Wasm iframe when that tier is active",
     )
@@ -4329,7 +5027,9 @@ class ServeWebFixtureTest {
       "the URL field is taken out of the flow rather than given a third of the line",
     )
     assertTrue(
-      assetText("viewer.js").contains("function refreshLinks()") &&
+      // Matched without the parameter list — the helper's existence is the contract, not its
+      // arity, which grew a `skipUrlSync` opt-out for the wasm auto-enable path.
+      assetText("viewer.js").contains("function refreshLinks(") &&
         assetText("viewer.js").contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
     )
@@ -4486,7 +5186,7 @@ class ServeWebFixtureTest {
     // Two components × two themes → two swap cards, each carrying both themes' render.
     assertEquals(
       2,
-      Regex("class=\"cp-card\" data-swap=\"1\"").findAll(pairedHtml).count(),
+      Regex("class=\"cp-card\"[^>]*data-swap=\"1\"").findAll(pairedHtml).count(),
       "each paired component is one swap card (two components → two cards, not four)",
     )
     assertTrue(
@@ -4547,7 +5247,7 @@ class ServeWebFixtureTest {
     // one.
     assertEquals(
       2,
-      Regex("class=\"cp-card\" data-swap=\"1\"").findAll(html).count(),
+      Regex("class=\"cp-card\"[^>]*data-swap=\"1\"").findAll(html).count(),
       "the dark-state and light-state toggles stay separate swap cards",
     )
     // Both states survive: each state's light+dark ids appear as swap-card data (none dropped).
@@ -4637,13 +5337,47 @@ class ServeWebFixtureTest {
    * regenerated on a branch *before* merging `main`, where `main` then changed the markup for
    * everything (drift across unrelated pages, on a line nobody on the branch edited).
    */
+  /**
+   * The committed unfurl-card rasters still match what [ServeSocialCard] draws today.
+   *
+   * Compared with a tolerance rather than by bytes — see [meanPixelDifference] for why an exact
+   * comparison would fail across JDK builds for a reason nobody could act on. The threshold is
+   * generous against antialiasing noise and nowhere near what a real change costs: moving the
+   * headline, changing a colour, or dropping a thumbnail all shift whole regions.
+   */
+  private fun assertUnfurlCardsInSync(
+    pagesDir: File,
+    cards: List<Pair<String, ServeSocialCard.Card>>,
+  ) {
+    val problems = cards.mapNotNull { (name, card) ->
+      val file = File(pagesDir, name)
+      if (!file.isFile) return@mapNotNull "$name: missing"
+      val committed = ImageIO.read(file) ?: return@mapNotNull "$name: not a readable PNG"
+      val drawn = ImageIO.read(java.io.ByteArrayInputStream(card.bytes))!!
+      val difference = meanPixelDifference(committed, drawn)
+      if (difference <= UNFURL_CARD_TOLERANCE) null
+      else
+        "$name: differs from the drawn card (mean channel difference " +
+          "${"%.2f".format(difference)} > $UNFURL_CARD_TOLERANCE)"
+    }
+    if (problems.isEmpty()) return
+    fail(
+      "the committed link-unfurl cards are out of sync with ServeSocialCard:\n  " +
+        problems.joinToString("\n  ") +
+        "\n\nRegenerate with UPDATE_SERVE_WEB_FIXTURES=true — and look at the result, because " +
+        "these are what a shared link shows in Slack, iMessage and search results."
+    )
+  }
+
   private fun assertGoldensInSync(pagesDir: File, goldens: List<Pair<String, String>>) {
     // Every page loads at least one hashed asset, so a golden without the placeholder means
     // `stableAssetHrefs` stopped matching what `ServeWeb` emits — the URL shape changed, or the
     // digest format did. Say so directly instead of letting it surface as 36 files of "drift",
     // which is the failure this normalisation exists to stop being noise.
     val unnormalised =
-      goldens.filterNot { (_, html) -> STABLE_ASSET_PREFIX in html }.map { it.first }
+      goldens
+        .filterNot { (name, html) -> name in ASSETLESS_GOLDENS || STABLE_ASSET_PREFIX in html }
+        .map { it.first }
     if (unnormalised.isNotEmpty()) {
       fail(
         "no `$STABLE_ASSET_PREFIX` href in: ${unnormalised.joinToString(", ")}.\n" +
@@ -4739,6 +5473,167 @@ class ServeWebFixtureTest {
    * [renderPlaceholderSvg] uses for its vector counterpart — making the bytes a pure function of
    * this code.
    */
+  // --- The link-unfurl card as a captured visual surface ----------------------------------------
+
+  /**
+   * The two shapes of unfurl card ([ServeSocialCard]) this server draws, named for their fixture
+   * files: the front door's (a shelf of catalogs) and a single catalog landing's.
+   *
+   * Composed from the harness's own committed placeholder artwork rather than a real render, for
+   * the same reason every other fixture is: the picture has to be identical on every machine that
+   * regenerates it. [placeholderWatchPng] exists so the front door's card exercises the *two*-hero
+   * shelf with artwork of differing aspect — a phone beside a square face — which is the layout
+   * rule most likely to break silently.
+   */
+  private fun socialCardFixtures(): List<Pair<String, ServeSocialCard.Card>> {
+    val cards = ServeSocialCard()
+    val phone = ServeHeroImages.Hero(placeholderPng(), "phone.png", "\"phone\"", 200, 420)
+    val watch = ServeHeroImages.Hero(placeholderWatchPng(), "watch.png", "\"watch\"", 240, 240)
+    val systems =
+      listOf(
+        ServeWeb.HomeSystem(
+          system = "compose-m3",
+          title = "Compose Material 3",
+          subtitle = null,
+          previewCount = 42,
+          trust = null,
+          heroPreviewId = null,
+        ),
+        ServeWeb.HomeSystem(
+          system = "wear-m3",
+          title = "Wear Compose Material 3",
+          subtitle = null,
+          previewCount = 18,
+          trust = null,
+          heroPreviewId = null,
+        ),
+      )
+    return listOfNotNull(
+      cards
+        .cardFor(
+          ServeSocialCard.Spec(
+            title = ServeWeb.HOME_TITLE,
+            subtitle = ServeWeb.homeCardSubtitle(systems),
+            heroes = listOf(phone, watch),
+          )
+        )
+        ?.let { "_social-card-home.png" to it },
+      cards
+        .cardFor(
+          ServeSocialCard.Spec(
+            title = "Wear Compose Material 3",
+            subtitle = ServeWeb.catalogCardSubtitle(18),
+            heroes = listOf(watch),
+          )
+        )
+        ?.let { "_social-card-catalog.png" to it },
+    )
+  }
+
+  /**
+   * A page whose whole content is those cards at 1:1, so the harness screenshots them and the
+   * visual-diff bot comments on any change to the card's layout, palette or type — the same
+   * automatic coverage every other serve surface gets.
+   *
+   * Hand-written rather than rendered by [ServeWeb], because the card is not a page: it is a raster
+   * served off `/social/`, and the only way to put a raster in front of a DOM screenshotter is to
+   * frame it in one. The frame is deliberately plain and identical in both themes — the card itself
+   * is always dark (an unfurl raster has no `prefers-color-scheme`), so a themed frame would imply
+   * a variation that does not exist.
+   */
+  private fun socialCardPage(cards: List<Pair<String, ServeSocialCard.Card>>): String {
+    val figures =
+      cards.joinToString("\n") { (file, card) ->
+        """
+        <figure>
+          <img src="$file" width="${card.width}" height="${card.height}" alt="Unfurl card">
+          <figcaption>$file — ${card.width}×${card.height}</figcaption>
+        </figure>
+        """
+          .trimIndent()
+          .prependIndent("    ")
+      }
+    return """
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Link unfurl cards — compose-preview</title>
+        <style>
+          body { margin: 0; padding: 32px; background: #6e6a75; color: #ffffff;
+            font: 14px/1.4 system-ui, sans-serif; display: grid; gap: 32px; justify-items: start; }
+          figure { margin: 0; display: grid; gap: 8px; }
+          img { display: block; max-width: 100%; height: auto; border-radius: 12px; }
+          figcaption { font-variant-numeric: tabular-nums; opacity: 0.85; }
+        </style>
+      </head>
+      <body>
+$figures
+      </body>
+    </html>
+    """
+      .trimIndent()
+  }
+
+  /**
+   * Mean absolute per-channel difference between two images, or [Double.MAX_VALUE] when they aren't
+   * even the same size.
+   *
+   * The card goldens are compared with a tolerance rather than byte-for-byte, unlike the HTML ones.
+   * They are *rasterized text*, and font hinting and antialiasing differ slightly between JDK
+   * builds — an exact comparison would fail on a contributor's machine for a reason no one could
+   * act on. A layout, palette or copy change moves whole regions and clears this threshold by
+   * orders of magnitude, so the drift guard still does its job.
+   */
+  private fun meanPixelDifference(a: BufferedImage, b: BufferedImage): Double {
+    if (a.width != b.width || a.height != b.height) return Double.MAX_VALUE
+    var total = 0L
+    for (y in 0 until a.height) {
+      for (x in 0 until a.width) {
+        val p = a.getRGB(x, y)
+        val q = b.getRGB(x, y)
+        for (shift in intArrayOf(16, 8, 0)) {
+          total += Math.abs(((p shr shift) and 0xff) - ((q shr shift) and 0xff)).toLong()
+        }
+      }
+    }
+    return total.toDouble() / (a.width.toLong() * a.height * 3)
+  }
+
+  private fun placeholderPng(): ByteArray {
+    val file = File.createTempFile("placeholder", ".png")
+    try {
+      writePlaceholderPng(file)
+      return file.readBytes()
+    } finally {
+      file.delete()
+    }
+  }
+
+  /** A square, watch-shaped companion to [writePlaceholderPng], in the same flat M3 style. */
+  private fun placeholderWatchPng(): ByteArray {
+    val size = 240
+    val img = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+    val g = img.createGraphics()
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    g.color = Color(0x14, 0x12, 0x18)
+    g.fillRect(0, 0, size, size)
+    g.color = Color(0x21, 0x1F, 0x26)
+    g.fill(Ellipse2D.Float(8f, 8f, 224f, 224f))
+    g.color = Color(0xD0, 0xBC, 0xFF)
+    g.fill(RoundRectangle2D.Float(70f, 60f, 100f, 18f, 18f, 18f))
+    g.color = Color(0xCA, 0xC4, 0xD0)
+    g.fill(RoundRectangle2D.Float(56f, 96f, 128f, 14f, 14f, 14f))
+    g.fill(RoundRectangle2D.Float(66f, 122f, 108f, 14f, 14f, 14f))
+    g.color = Color(0x4F, 0x37, 0x8B)
+    g.fill(RoundRectangle2D.Float(78f, 154f, 84f, 32f, 32f, 32f))
+    g.dispose()
+    val out = java.io.ByteArrayOutputStream()
+    ImageIO.write(img, "png", out)
+    return out.toByteArray()
+  }
+
   private fun writePlaceholderPng(file: File) {
     val w = 200
     val h = 420
@@ -4783,6 +5678,25 @@ class ServeWebFixtureTest {
   private companion object {
     /** What the goldens carry in place of a real content hash. See [stableAssetHrefs]. */
     const val STABLE_ASSET_PREFIX = "/assets/serve/fixture/"
+
+    /**
+     * Goldens that legitimately load none of the server's hashed assets, and so are exempt from the
+     * normalisation check above. An explicit list rather than a "no assets ⇒ fine" rule, because
+     * the whole point of that check is to notice when a *page* stops matching the URL shape
+     * [stableAssetHrefs] rewrites.
+     *
+     * Only the unfurl-card frame is here: it is not a served page at all, just a `<figure>` around
+     * the committed card rasters so the harness screenshots them (see [socialCardPage]).
+     */
+    val ASSETLESS_GOLDENS = setOf("serve-social-card.html")
+
+    /**
+     * Mean per-channel difference (0..255) tolerated between a committed unfurl card and a freshly
+     * drawn one. Sized to absorb font-rasterization differences between JDK builds — those move a
+     * fraction of a level averaged over 756,000 pixels — while a layout or palette change moves
+     * whole regions and lands orders of magnitude above it.
+     */
+    const val UNFURL_CARD_TOLERANCE = 1.5
 
     /**
      * `/assets/serve/<size-hex>-<16 hex digits>/` — the exact shape [ServeWebAssets.href] builds

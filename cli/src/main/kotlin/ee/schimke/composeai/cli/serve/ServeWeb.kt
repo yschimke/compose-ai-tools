@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
+import ee.schimke.composeai.designpages.DesignPage
+import ee.schimke.composeai.designpages.PageNode
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -33,8 +36,79 @@ object ServeWeb {
    * utility/error pages leave it null and get an honest text-only card. Kept explicit rather than
    * derived here because only the HTTP layer knows the externally visible scheme/host (notably when
    * Caddy terminates TLS).
+   *
+   * [imageWidth]/[imageHeight] are the image's real pixel dimensions, read from the PNG's IHDR by
+   * the caller. Advertising them is not decoration: without them an unfurler has to download the
+   * image and measure it before it can lay out a card, and both Slack and Google drop the image
+   * rather than block on that when the fetch is slow or the measure fails. They also decide which
+   * card the page gets — see [twitterCard], which stops claiming a large-image card for a thumbnail
+   * that cannot fill one.
    */
-  data class UnfurlMetadata(val pageUrl: String, val imageUrl: String? = null)
+  data class UnfurlMetadata(
+    val pageUrl: String,
+    val imageUrl: String? = null,
+    val imageWidth: Int? = null,
+    val imageHeight: Int? = null,
+  )
+
+  /**
+   * The narrower edge a `summary_large_image` card needs before it is worth asking for.
+   *
+   * Slack and Twitter/X both fall back to the small card for an image below roughly this size, and
+   * Google recommends 512² as the floor for a preview image — so a page that asks for the large
+   * card with a 300×210 component render gets the small one anyway, having first told the fetcher
+   * something untrue. A single component preview genuinely is a thumbnail; asking for `summary` and
+   * getting a clean square beats asking for a banner and getting a broken one.
+   */
+  private const val LARGE_CARD_MIN_EDGE = 320
+
+  /**
+   * The narrowest and widest **aspect** (width ÷ height) worth claiming a `summary_large_image`
+   * for.
+   *
+   * Size was never the whole story. Every consumer lays the large card out in a slot of roughly
+   * 1.91:1 and fits the image to it by cropping, so what the card actually shows is a 1.91:1 window
+   * onto the picture — and the further the picture's own aspect is from that, the less of it
+   * survives. A catalog hero is the worst case in this codebase and it is not a near miss:
+   * `compose-m3`'s is 1078×2399, an aspect of **0.45**, so the window keeps a horizontal band
+   * through the middle of a phone screenshot and throws away 78% of the image. On that particular
+   * render the surviving band was the empty half of an app scaffold — the front door unfurled as a
+   * strip of blank dark pixels, at full card size, having passed the min-edge test comfortably.
+   *
+   * The band is the set of shapes whose crop still leaves roughly two thirds of the picture.
+   * Cropping an image of aspect `a` into a 1.91 slot keeps `a / 1.91` of its height when it is
+   * taller than the slot, and `1.91 / a` of its width when it is wider — so 1.25 and 2.4 are the
+   * points either side where a third of the image starts to disappear. A 4:3 screenshot (1.33)
+   * survives that comfortably; a square watch face (1.0, barely half kept) and a portrait phone
+   * screenshot (0.45, a quarter kept) do not, and both are genuinely better served by `summary`,
+   * which shows the whole image beside the text instead of a slice of it.
+   *
+   * This is a floor for *raw artwork*. The pages that matter most — the front door and each catalog
+   * landing — don't rely on it, because they advertise a drawn [ServeSocialCard] at exactly
+   * 1200×630 (1.90) rather than a render, and so are inside the band by construction.
+   */
+  private const val LARGE_CARD_MIN_ASPECT = 1.25
+
+  private const val LARGE_CARD_MAX_ASPECT = 2.4
+
+  /**
+   * `twitter:card` for an unfurl — the large-image card only when there is an image *and* we know
+   * it can fill one: big enough on both edges ([LARGE_CARD_MIN_EDGE]) and close enough in shape to
+   * the slot it will be cropped into ([LARGE_CARD_MIN_ASPECT]..[LARGE_CARD_MAX_ASPECT]).
+   *
+   * An image whose dimensions we couldn't read keeps the large card: unknown size is not evidence
+   * of a small or badly-shaped image, and the fetcher measures it itself in that case.
+   */
+  private fun twitterCard(unfurl: UnfurlMetadata): String {
+    if (unfurl.imageUrl == null) return "summary"
+    val w = unfurl.imageWidth
+    val h = unfurl.imageHeight
+    if (w == null || h == null) return "summary_large_image"
+    if (w < LARGE_CARD_MIN_EDGE || h < LARGE_CARD_MIN_EDGE) return "summary"
+    val aspect = w.toDouble() / h
+    return if (aspect in LARGE_CARD_MIN_ASPECT..LARGE_CARD_MAX_ASPECT) "summary_large_image"
+    else "summary"
+  }
 
   /** Aggregate engagement metrics surfaced by the live server UI/API. */
   data class PreviewEngagement(val views: Long = 0)
@@ -52,6 +126,36 @@ object ServeWeb {
    */
   private fun viewerViewCountHtml(views: Long): String =
     if (views <= 0) "" else "<span class=\"cp-viewer-engage\">${formatViews(views)}</span>"
+
+  /**
+   * A title-bar disclosure toggle: a [label] naming the axis it folds, plus the [value] that axis
+   * currently holds. Both halves matter. A bare "State" would make the reader open the row to learn
+   * what they are looking at — the very cost the fold was meant to remove — so a closed toggle
+   * reads "State · M wide" and the row underneath is genuinely optional.
+   *
+   * Shares `.cp-drawer-toggle` with the two drawer toggles it now sits beside, so the four
+   * disclosures on this page cannot drift apart visually; `aria-expanded` + `aria-controls` are
+   * what make it a disclosure rather than four buttons that happen to look alike.
+   *
+   * [valueId] labels the value span when something client-side has to keep it current (the theme,
+   * which changes without a page load).
+   */
+  private fun disclosureToggleHtml(
+    id: String,
+    controls: String,
+    label: String,
+    value: String,
+    open: Boolean,
+    valueId: String? = null,
+  ): String {
+    val valueIdAttr = valueId?.let { " id=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    return "<button type=\"button\" class=\"cp-drawer-toggle cp-axis-toggle\"" +
+      " id=\"${WebEscaping.htmlEscape(id)}\" aria-expanded=\"$open\"" +
+      " aria-controls=\"${WebEscaping.htmlEscape(controls)}\">" +
+      "<span class=\"cp-toggle-label\">${WebEscaping.htmlEscape(label)}</span>" +
+      "<span class=\"cp-toggle-value\"$valueIdAttr>${WebEscaping.htmlEscape(value)}</span>" +
+      "</button>"
+  }
 
   private fun formatViews(views: Long): String =
     "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
@@ -104,6 +208,11 @@ object ServeWeb {
    * are **token-only** — no `&session=`. When it's the root-mounted default/legacy `?session=` form
    * ([basePath] empty) it falls back to [queryString]. In [isPublic] mode the token is dropped
    * either way (may return empty — wrap with [querySuffix]).
+   *
+   * A **top-level site** ([ServeSites]) is the third case and needs no code here: it is rooted like
+   * the legacy form but carries its session in the ORIGIN, so its pages pass a null session id to
+   * this function (see each page's `linkSessionId`) while keeping the real one for the per-catalog
+   * storage keys and the dark-first lookup.
    */
   private fun linkQuery(
     token: String,
@@ -182,6 +291,161 @@ object ServeWeb {
       .trimIndent() + "\n"
   }
 
+  /**
+   * What a page knows about the **published revisions** of the catalog it is showing: which one it
+   * is pinned to (null ⇒ the current one), the branch's recent history, and the repo those commits
+   * live in.
+   *
+   * Carried as data rather than as prebuilt HTML because each page addresses itself differently — a
+   * viewer link is `/p/<id>`, a comparison's is `/compare/<id>?reference=…` — so the page that owns
+   * the URL shape is the one that must build the destinations. See [revisionsHtml].
+   */
+  data class CatalogRevisions(
+    val pinned: String? = null,
+    val revisions: List<ServeCatalogRevision.Revision> = emptyList(),
+    val repo: String? = null,
+  ) {
+    /** Nothing to say: no history to offer and no pin to announce. */
+    val isEmpty: Boolean
+      get() = pinned == null && revisions.isEmpty()
+
+    companion object {
+      val NONE = CatalogRevisions()
+    }
+  }
+
+  /**
+   * The revision control: the pin banner (when the page is showing an older publish) above the list
+   * of publishes it can move between.
+   *
+   * This is the whole answer to "a published URL keeps changing under me" (issue #3723). The
+   * delivery branch carries one commit per publish, so the versions already exist — what was
+   * missing was a way to *name* one from the page and a way to *reach* the others. [hrefFor] builds
+   * this same page at a given pin (null ⇒ the live one), which is what makes both halves one
+   * control rather than a banner and an unrelated menu.
+   *
+   * A revision is shown by its publish date and the **source** commit it was rendered from where
+   * the subject recorded one, falling back to the delivery sha. That ordering is deliberate: the
+   * delivery sha is a publish marker, while the source sha is the change someone is actually
+   * looking for when they go back a version.
+   */
+  internal fun revisionsHtml(revisions: CatalogRevisions, hrefFor: (String?) -> String): String {
+    if (revisions.isEmpty) return ""
+    val pinned = revisions.pinned
+    val current = revisions.revisions.firstOrNull()?.commit
+    val banner =
+      if (pinned == null) ""
+      else {
+        val entry = revisions.revisions.firstOrNull { it.commit == pinned }
+        val shaLink =
+          ServeCatalogRevision.treeUrl(revisions.repo, pinned)?.let { url ->
+            "<a href=\"${WebEscaping.htmlEscape(url)}\" target=\"_blank\" rel=\"noopener noreferrer\">" +
+              "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code></a>"
+          } ?: "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code>"
+        val published =
+          entry
+            ?.date
+            ?.takeIf { it.isNotBlank() }
+            ?.let { ", published ${WebEscaping.htmlEscape(prettyDate(it))}" }
+            .orEmpty()
+        """
+        <section class="cp-pinned" role="note" aria-label="Pinned revision">
+          <span class="cp-pinned-icon" aria-hidden="true">⚓</span>
+          <span>Pinned to catalog revision $shaLink$published — these pixels cannot change.</span>
+          <a class="cp-pinned-current" href="${WebEscaping.htmlEscape(hrefFor(null))}">view current</a>
+        </section>
+        """
+          .trimIndent()
+      }
+    if (revisions.revisions.isEmpty()) return "$banner\n"
+    val rows =
+      revisions.revisions.joinToString("\n            ") { revision ->
+        val isCurrent = revision.commit == current
+        // A pin is what the page URL says; with no pin the page is showing the branch tip, so that
+        // is the row marked. One row is marked either way, and never two.
+        val selected = if (pinned == null) isCurrent else revision.commit == pinned
+        val href = hrefFor(revision.commit.takeUnless { isCurrent })
+        val date =
+          revision.date.takeIf { it.isNotBlank() }?.let { prettyDate(it) } ?: revision.short
+        val label = revision.sourceSha ?: revision.short
+        val mark = if (selected) " aria-current=\"true\"" else ""
+        val currentTag = if (isCurrent) "<span class=\"cp-revision-tag\">current</span>" else ""
+        // `nofollow` because these are the same page over and over: a crawler that walked them
+        // would index a dozen near-duplicates of every preview, and the version worth indexing is
+        // the live one. The pages stay perfectly shareable — a link someone pastes is followed by
+        // a person and unfurled by a fetcher, neither of which is a crawl.
+        "<a class=\"cp-revision\" rel=\"nofollow\" href=\"${WebEscaping.htmlEscape(href)}\"$mark>" +
+          "<span class=\"cp-revision-date\">${WebEscaping.htmlEscape(date)}</span>" +
+          "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(label)}</code>$currentTag</a>"
+      }
+    // The trigger names the revision the page is *on* — the pin when there is one, the tip
+    // otherwise — so the closed menu already answers "which version am I looking at?", which was
+    // the question the flat wall of chips answered only by making the reader hunt for the
+    // highlighted one. Its accessible name is that visible text, deliberately: an `aria-label` here
+    // would override the date, sha and current/pinned state and announce the control as bare
+    // "Revision".
+    //
+    // It looks like a menu button and is a plain disclosure, which is what the ARIA says too. No
+    // `role="menu"`/`menuitem`: those promise the menu keyboard model — arrow-key navigation, Esc
+    // to dismiss, managed focus — and nothing here implements it, so the roles would describe
+    // behaviour a keyboard user does not get. `<details>` + a list of links gives real disclosure
+    // and ordinary Tab order for free; the `<nav>` is what names the list for a screen reader.
+    val shown = revisions.revisions.firstOrNull { it.commit == (pinned ?: current) }
+    val shownDate =
+      shown?.date?.takeIf { it.isNotBlank() }?.let { prettyDate(it) }
+        ?: pinned?.let { ServeCatalogRevision.short(it) }
+        ?: shown?.short
+        ?: ""
+    val shownSha =
+      shown?.sourceSha ?: shown?.short ?: pinned?.let { ServeCatalogRevision.short(it) }
+    val shownTag =
+      if (pinned == null) "<span class=\"cp-revision-tag\">current</span>"
+      else "<span class=\"cp-revision-tag cp-revision-tag--pinned\">pinned</span>"
+    return banner +
+      """
+      <details class="cp-revisions">
+        <summary class="cp-revisions-btn">
+          <span class="cp-revisions-key">Revision</span>
+          <span class="cp-revision-date">${WebEscaping.htmlEscape(shownDate)}</span>
+          ${shownSha?.let { "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(it)}</code>" }.orEmpty()}
+          $shownTag
+          <span class="cp-revisions-caret" aria-hidden="true">▾</span>
+        </summary>
+        <div class="cp-revisions-menu">
+          <nav class="cp-revision-list" aria-label="Published revisions">
+            $rows
+          </nav>
+          <p class="cp-revision-note">Every publish of this design system is a commit on its
+          delivery branch. Opening one pins this page — and the pixels on it — to that publish for
+          good.</p>
+        </div>
+      </details>
+      """
+        .trimIndent() +
+      "\n"
+  }
+
+  /**
+   * Add `at=<sha>` to a link, or return it unchanged when the page carries no pin. One helper
+   * because a pinned page has to pin *everything* it links — the render, the reference, its sibling
+   * variants — and a single missed suffix is a panel quietly showing the present next to the past.
+   *
+   * Callers pass either a bare query suffix (empty, or already `?…`) or a whole URL that may or may
+   * not carry a query, so the separator is chosen from what the string actually contains rather
+   * than from whether it is empty. Getting that wrong is not a cosmetic slip: a public server
+   * builds token-free links, so `/<system>/p/<id>` has no `?` at all, and appending `&at=<sha>`
+   * folds the pin into the *path* — the URL 404s and every revision in the menu is a dead link.
+   */
+  private fun withPin(link: String, pinned: String?): String {
+    val pin = pinned?.takeIf { it.isNotBlank() } ?: return link
+    val param = "${ServeCatalogRevision.PARAM}=${WebEscaping.urlEncodeSegment(pin)}"
+    return when {
+      !link.contains('?') -> "$link?$param"
+      link.endsWith('?') || link.endsWith('&') -> "$link$param"
+      else -> "$link&$param"
+    }
+  }
+
   /** Canonical source repo, used for the "source" / branch / workflow links. */
   private const val SOURCE_REPO = "yschimke/compose-ai-tools"
 
@@ -193,6 +457,23 @@ object ServeWeb {
    * the session lapse. Cheap at this rate: one empty POST per open tab per four minutes.
    */
   internal const val PRESENCE_INTERVAL_SECONDS = 240
+
+  /**
+   * How many rows the viewer's component subtree shows inline before folding behind its title-bar
+   * toggle — counting the component row, which is itself a render (the default one), not just its
+   * children. Lower than the chip rows this replaced needed, because a tree spends a whole line per
+   * render where a chip row wrapped several onto one: four rows is about the point past which the
+   * list costs more of the fold than the render it sits above.
+   */
+  private const val AXIS_ROWS_INLINE = 4
+
+  /**
+   * How many theme chips the viewer bar shows inline before folding. Lower than [AXIS_CHIPS_INLINE]
+   * because the bar is capped at a single non-wrapping row: past a handful the chips ellipsise into
+   * stubs and the group scrolls within itself, which is worse than a toggle that spells the current
+   * theme out in full.
+   */
+  private const val THEME_CHIPS_INLINE = 4
 
   // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
   private const val UI_MODE_NIGHT_MASK = 0x30
@@ -311,16 +592,38 @@ object ServeWeb {
    * BODY, which spent a whole row — plus its margin — restating the header's own job and pushed the
    * thing the page exists to show (the render) further below the fold on every viewer.
    */
-  private fun siteHeader(navSuffix: String, action: String = "", breadcrumb: String = ""): String {
+  private fun siteHeader(
+    navSuffix: String,
+    action: String = "",
+    breadcrumb: String = "",
+    /**
+     * The catalog this page belongs to, named in the bar itself.
+     *
+     * The header used to say only "compose-preview" on every page of every system, so the one fact
+     * a visitor most needs — *which design system am I looking at* — lived solely in the page's own
+     * `<h1>` and scrolled away with it. The bar is pinned, so the name belongs here: it stays
+     * legible while you are deep in a grid or a viewer, and it distinguishes two tabs open on two
+     * catalogs, which the mark alone never could.
+     *
+     * Empty on the pages that belong to no catalog (the front door, `/status`, a shared document),
+     * which keep the bare brand.
+     */
+    siteName: String = "",
+  ): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
+    val name =
+      siteName
+        .takeIf { it.isNotBlank() }
+        ?.let { "\n          <span class=\"cp-site-catalog\">${WebEscaping.htmlEscape(it)}</span>" }
+        ?: ""
     return """
       <header class="cp-site-header">
         <div class="cp-site-lead">
           <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
             <span class="cp-site-mark" aria-hidden="true">◇</span>
             <span>compose-preview</span>
-          </a>$crumb
+          </a>$name$crumb
         </div>
         <div class="cp-site-status">
           <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
@@ -449,6 +752,13 @@ object ServeWeb {
   data class FigmaSpec(val url: String, val label: String? = null)
 
   /**
+   * A published design page as the catalog's **navigation** needs it: what to call it, and the id
+   * its URL carries. Deliberately not the whole [DesignPage] — the landing lists these, it does not
+   * draw them, and a page's node list is megabytes of manifest the tree has no use for.
+   */
+  data class PageLink(val id: String, val name: String)
+
+  /**
    * The row under the viewer's title holding the per-preview provenance links: "source" (where the
    * preview is declared), "report an issue" (a prefilled bug against the repo that owns it), and
    * "figma spec" (the node this preview is specified by, when the catalog names one). They share
@@ -541,6 +851,13 @@ object ServeWeb {
   data class CatalogProvenance(
     val repo: String,
     val branch: String,
+    /**
+     * The delivery-branch commit this catalog was fetched at, when the store could resolve it — the
+     * revision every permalink on this catalog's pages pins to ([ServeCatalogRevision]). Null for
+     * an uploaded bundle, and for a catalog whose branch advertisement couldn't be read; the pages
+     * then simply offer no permalink.
+     */
+    val commit: String? = null,
     val generatedAt: String? = null,
     val toolVersion: String? = null,
     val designParityVersion: String? = null,
@@ -580,6 +897,16 @@ object ServeWeb {
         "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">catalog</span> " +
           "<a href=\"$branchUrl\">$GITHUB_ICON $repo@$branch</a></span>"
       )
+      // Which publish is on screen. The branch link above names a moving target by construction, so
+      // without this the strip could say where a catalog came from but not *when* — and a visitor
+      // reading a rendering they want to cite had nothing to cite it by.
+      ServeCatalogRevision.treeUrl(prov.repo, prov.commit)?.let { url ->
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">revision</span> " +
+            "<a href=\"${WebEscaping.htmlEscape(url)}\"><code>" +
+            "${WebEscaping.htmlEscape(ServeCatalogRevision.short(prov.commit!!))}</code></a></span>"
+        )
+      }
       prov.generatedAt
         ?.takeIf { it.isNotBlank() }
         ?.let {
@@ -708,6 +1035,16 @@ object ServeWeb {
   }
 
   /**
+   * Stable, catalog-specific prefix for the viewer's remembered disclosures (see
+   * `viewer-drawers.js`). `localStorage` is per-ORIGIN, and one host serves many catalogs under
+   * different base paths — so an unscoped key would let "I folded this catalog's thirty-state axis"
+   * also fold a normally-inline axis on every unrelated catalog beside it. Same scoping the theme
+   * and section keys already carry, for the same reason.
+   */
+  private fun foldStorageScope(sessionId: String?, basePath: String): String =
+    WebEscaping.urlEncodeSegment(basePath.trim('/').ifBlank { sessionId ?: "default" })
+
+  /**
    * The flattened id with its theme token stripped — the key that pairs a component's light and
    * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
    * to `button-filled__ideal__default`, so the Light/Dark control can swap the card between the two
@@ -746,9 +1083,9 @@ object ServeWeb {
   /**
    * Whether [p] is a **non-default** component state render (`unchecked`, `pressed`, `disabled`,
    * `unselected`, …) — a render the grid folds out so each component shows a single (default) card,
-   * with its other states reachable via the viewer's [state switcher][stateSwitcherHtml]. Keyed off
-   * the catalog's `state` metadata (from `variants.json`), not the id: a stateless preview / plain
-   * bundle screen has `state == null` and is treated as default (always shown).
+   * with its other states reachable via the viewer's [component subtree][componentSubtreeHtml].
+   * Keyed off the catalog's `state` metadata (from `variants.json`), not the id: a stateless
+   * preview / plain bundle screen has `state == null` and is treated as default (always shown).
    */
   private fun isNonDefaultState(p: ServePreview): Boolean = p.state != null && p.state != "default"
 
@@ -757,7 +1094,7 @@ object ServeWeb {
    * (`{"locale":"ar-XB"}`, `{"direction":"rtl"}`, `{"fontScale":"2.0"}`,
    * `{"content":"icon+label"}`, …) the grid folds out so a component shows ONE card (its default
    * render) instead of a card per variant, with the folded variants reachable via the viewer's
-   * [variant switcher] [variantSwitcherHtml]. Keyed off the catalog's `props` metadata (from
+   * [component subtree][componentSubtreeHtml]. Keyed off the catalog's `props` metadata (from
    * `variants.json`), not the id: a propless preview (a plain bundle screen, or a design-system
    * default) has empty props and is treated as default (always shown).
    */
@@ -798,49 +1135,63 @@ object ServeWeb {
   private fun stateInvariantKey(p: ServePreview): String = stateInvariantKey(p.id, p.state)
 
   /**
-   * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
-   * component's baked states *in the same theme* (one link per distinct state, the default state
-   * first, the current one marked `aria-current="page"`). No daemon, no JS state machine — each
-   * link is a normal navigation to a sibling `/p/<id>` page, so it works with scripting off.
+   * The switcher's grouping key: [stateInvariantKey] with the theme segment dropped too
+   * ([baseKey]), so a component's renders group by *what they are* and the theme is left to
+   * [themeLane] alone.
    *
-   * Siblings are drawn from [all] (the host's whole preview list, which still carries the
-   * non-default states the grid folds out) by [stateInvariantKey] + [ServePreview.theme]: renders
-   * that differ *only* in state, holding the theme and any other variant axis (content / size /
-   * props) fixed, so a component that also varies on a non-state axis doesn't cross-link its axes.
-   * Returns the empty string when fewer than two states share this key — nothing to toggle.
+   * Dropping the theme from the key rather than relying on it is what makes an **untagged** render
+   * group with its themed siblings. A catalog does not necessarily tag both modes: a component
+   * whose non-default states come from `@OverrideVariant` publishes its dark cells as `…__xs__dark`
+   * (the `uiMode` is a `@Preview` param the synthetic capture inherits) but its light cells as a
+   * bare `…__xs`, while the default render still carries the full `…__default__light`. Keyed on the
+   * id including the theme, those two never met: the light default keyed
+   * `button-filled__ideal__light` and the light `xs` cell keyed `button-filled__ideal`, so the
+   * viewer offered no state switcher at all on the light lane — the lane the grid links to — and
+   * the whole size/shape matrix was reachable only by hand-typing an id. Both now key
+   * `button-filled__ideal` and [themeLane] keeps light and dark apart.
    */
-  private fun stateSwitcherHtml(
-    current: ServePreview,
-    all: List<ServePreview>,
-    basePath: String,
-    q: String,
-  ): String {
-    val key = stateInvariantKey(current)
-    // One preview per distinct state, first appearance wins, restricted to the current variant
-    // (same
-    // key) and theme so the switcher never jumps the visitor across a non-state axis or light/dark.
-    val byState = LinkedHashMap<String, ServePreview>()
-    for (p in all) {
-      if (stateInvariantKey(p) != key || p.theme != current.theme) continue
-      byState.putIfAbsent(p.state ?: "default", p)
-    }
-    if (byState.size < 2) return ""
-    // Default state leads; the rest keep catalog order (a stable sort preserves first appearance).
-    val ordered = byState.entries.sortedBy { if (it.key == "default") 0 else 1 }
-    val links =
-      ordered.joinToString("\n") { (_, p) ->
-        val href = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
-        val active = if (p.id == current.id) " aria-current=\"page\"" else ""
-        "<a class=\"cp-state-btn\" href=\"$href\"$active>${WebEscaping.htmlEscape(stateLabel(p.state))}</a>"
-      }
-    return """
-      <nav class="cp-states" aria-label="Component state">
-        <span class="cp-axis-label">State</span>
-        $links
-      </nav>
-      """
-      .trimIndent()
-  }
+  private fun switcherStateKey(p: ServePreview): String =
+    themeStrippedKey(stateInvariantKey(p), p.theme)
+
+  /**
+   * The props-family counterpart of [switcherStateKey], normalised the same way and for the same
+   * reason: a themed default (`button__ideal__default__light`) and an untagged props sibling
+   * (`button__ideal__default__content-icon-label`) resolve to one lane but would otherwise key
+   * apart, and the family check runs first — so the lane agreeing would never get to matter and the
+   * folded variant would stay unreachable.
+   */
+  private fun switcherPropsKey(p: ServePreview): String =
+    themeStrippedKey(propsFamilyKey(p), p.theme)
+
+  /**
+   * [id] with its theme segment dropped ([baseKey]) — but **only when the render declares a
+   * theme**.
+   *
+   * The guard is what keeps a state from being read as a theme. `baseKey` finds the last
+   * `light`/`dark` token positionally, and a component may legitimately name a *state* `dark`
+   * (`toggle__ideal__dark` with `state = "dark"`, no theme at all). Stripping that would key the
+   * state apart from its own siblings; asking only renders that actually carry a theme to give it
+   * up cannot.
+   */
+  private fun themeStrippedKey(id: String, theme: String?): String =
+    if (theme == null) id else baseKey(id)
+
+  /**
+   * The light/dark **lane** a render belongs to for switcher grouping — its declared
+   * [ServePreview.theme], else the `__light`/`__dark` token in its id ([cardTheme]), else the
+   * system's primary lane (dark for a dark-first system, light otherwise).
+   *
+   * The fallback is the point: an untagged render is not theme-*less* in any way a visitor
+   * experiences, it is simply the mode the catalog draws by default, and the switcher has to put it
+   * in that lane or it strands there alone. Compared as a resolved string rather than a nullable so
+   * the relation is symmetric — an untagged sibling reaches the primary-lane default and the
+   * primary-lane default reaches it back.
+   *
+   * The id is read **state-stripped**, so the token scan cannot pick up a state named `light` or
+   * `dark` and lane an unthemed render away from its own siblings.
+   */
+  private fun themeLane(p: ServePreview, darkFirst: Boolean): String =
+    p.theme ?: cardTheme(stateInvariantKey(p)) ?: if (darkFirst) "dark" else "light"
 
   /**
    * Canonical JSON for a props value. Objects sort their keys recursively, while arrays preserve
@@ -918,51 +1269,6 @@ object ServeWeb {
     baseKey(stateInvariantKey(propsFamilyKey(p), p.state))
 
   /**
-   * The viewer's **variant switcher**: a `<nav>` of plain links from [current] to its component's
-   * baked props-axis variants (an RTL render, a pseudo-locale, a large-font render, an icon+label
-   * render) in the SAME theme and state, the default first, the current one marked
-   * `aria-current="page"`. The props analogue of [stateSwitcherHtml]: the grid folds these variants
-   * out ([hasNonDefaultProps]) so a component shows one card, and this keeps them reachable. Drawn
-   * from [all] (the host's whole preview list) by [propsFamilyKey] + theme + state so a component
-   * that also varies on state or theme doesn't cross those axes. Empty when fewer than two variants
-   * share the family — nothing to switch.
-   */
-  private fun variantSwitcherHtml(
-    current: ServePreview,
-    all: List<ServePreview>,
-    basePath: String,
-    q: String,
-  ): String {
-    val key = propsFamilyKey(current)
-    val curState = current.state ?: "default"
-    // One preview per distinct props signature, first appearance wins, restricted to the current
-    // family + theme + state so the switcher never jumps the visitor across a non-props axis.
-    val byVariant = LinkedHashMap<String, ServePreview>()
-    for (p in all) {
-      if (propsFamilyKey(p) != key) continue
-      if (p.theme != current.theme) continue
-      if ((p.state ?: "default") != curState) continue
-      byVariant.putIfAbsent(propsSignature(p.props), p)
-    }
-    if (byVariant.size < 2) return ""
-    // The default (empty props) leads; the rest keep catalog order (a stable sort preserves it).
-    val ordered = byVariant.entries.sortedBy { if (it.key == "") 0 else 1 }
-    val links =
-      ordered.joinToString("\n") { (_, p) ->
-        val href = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
-        val active = if (p.id == current.id) " aria-current=\"page\"" else ""
-        "<a class=\"cp-state-btn\" href=\"$href\"$active>${WebEscaping.htmlEscape(propsLabel(p.props))}</a>"
-      }
-    return """
-      <nav class="cp-states" aria-label="Component variant">
-        <span class="cp-axis-label">Variant</span>
-        $links
-      </nav>
-      """
-      .trimIndent()
-  }
-
-  /**
    * One grid card: a component that may carry a baked `light` and/or `dark` variant (a pair the
    * Light/Dark control [swaps][GridCard.swappable] in place) and/or a theme-neutral render. [order]
    * preserves first-seen position so the grid keeps catalog order.
@@ -979,6 +1285,16 @@ object ServeWeb {
     /** The variant shown by default (server-side): light, else dark, else the neutral render. */
     val default: ServePreview
       get() = light ?: dark ?: neutral!!
+
+    /**
+     * The render the grid actually paints, which on a **dark-first** system is the dark one —
+     * [default] prefers light regardless, and `swapCard` has always opened on the system's own
+     * lane. Anything describing the card to a visitor has to agree with the pixels beside it: a
+     * tree built from [default] would label a dark-first catalog's cards from their light twins and
+     * send every variant link into the light lane while the card next to it is showing dark.
+     */
+    fun rendered(darkFirst: Boolean): ServePreview =
+      if (darkFirst) (dark ?: light ?: neutral!!) else default
   }
 
   /**
@@ -1035,8 +1351,14 @@ object ServeWeb {
   private fun isThemeSpecimen(p: ServePreview): Boolean =
     p.fixedTheme || p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
 
-  /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
-  private class LandingGroup(val name: String?) {
+  /**
+   * One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards.
+   *
+   * [slug] is the group's half of the `cp-group-<section>-<group>` anchor the navigation tree jumps
+   * to, assigned by [buildSections] and unique within its section. Empty for a synthesized flat
+   * group ([synthesizeGroups]), which has no tree above it to be jumped to from.
+   */
+  private class LandingGroup(val name: String?, var slug: String = "") {
     val cards = mutableListOf<GridCard>()
   }
 
@@ -1103,16 +1425,598 @@ object ServeWeb {
           n++
         }
         val section = LandingSection(name, slug)
+        // Group slugs are scoped to their section, so the same group name reused across two
+        // sections (meshcore-mobile's "Device" appears under both Components and Screens) still
+        // yields two distinct anchors rather than one that swallows both.
+        val usedGroupSlugs = HashSet<String>()
         acc.groups.values
           .sortedBy { g -> g.cards.minOf { ord(it) } }
           .forEach { g ->
-            val ordered = LandingGroup(g.name)
+            var gslug = g.name?.let { sectionSlug(it) } ?: "ungrouped"
+            var gn = 2
+            while (!usedGroupSlugs.add(gslug)) {
+              gslug = "${g.name?.let { sectionSlug(it) } ?: "ungrouped"}-$gn"
+              gn++
+            }
+            val ordered = LandingGroup(g.name, gslug)
             ordered.cards.addAll(g.cards.sortedBy { ord(it) })
             section.groups.add(ordered)
           }
         section
       }
   }
+
+  /**
+   * The catalog's **navigation tree**: one row per section, each expanding to its named sub-groups,
+   * standing beside the grid rather than above it.
+   *
+   * This replaces the row of section tabs. The tabs showed only the top level of a structure that
+   * is two deep — a catalog's groups (Foundation, Contacts, Scanner, …) existed solely as headings
+   * you had to scroll a panel to find, so the only way to learn what a section *contained* was to
+   * open it and read. The tree publishes both levels at once: every group in the selected section
+   * is a destination you can see and click, and the selected one is marked as you scroll.
+   *
+   * The DOM contract the section rows carry is deliberately unchanged from the tab bar —
+   * `.cp-tab[data-tab]`, `#cp-tab-<slug>`, `aria-controls`, `aria-selected`, and the
+   * `href="#cp-panel-<slug>"` fallback — because that is what [catalogFilterScript]'s section
+   * switching, the remembered-tab key, and the `?tab=` URL param all key off. What is new is the
+   * nesting: a `role="group"` list of `.cp-tree-group` links, each pointing at its
+   * `#cp-group-<section>-<group>` anchor on the sub-group divider the grid already emits.
+   *
+   * A section is **expanded exactly when it is selected**, which is the same statement its panel
+   * makes — one section's contents at a time, rather than a second piece of state that can disagree
+   * with which panel is showing. While a search is active the script spans every section (that is
+   * the existing tab behaviour), so the tree expands every section that still holds a match. With
+   * no JS nothing collapses at all: `html.cp-js` gates the collapse, so a no-JS client sees the
+   * full outline over the full stack of panels, and every row is a working in-page anchor.
+   *
+   * Sections whose groups are all unnamed render as leaves — there is nothing to list under them.
+   */
+  private fun catalogTreeHtml(
+    sections: List<LandingSection>,
+    components: (GridCard) -> TreeComponent,
+    /** The design-pages branch ([pagesBranchHtml]), appended after the sections. Empty ⇒ none. */
+    pagesBranch: String = "",
+  ): String = buildString {
+    append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog sections\">\n")
+    append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog sections\">\n")
+    sections.forEachIndexed { i, sec ->
+      val selected = if (i == 0) "true" else "false"
+      val named = sec.groups.filter { it.name != null }
+      append("<li class=\"cp-tree-node\" role=\"none\">\n")
+      val childrenId = "cp-tree-children-${sec.slug}"
+      append("  <a class=\"cp-tab\" role=\"treeitem\" id=\"cp-tab-${sec.slug}\"")
+      append(" href=\"#cp-panel-${sec.slug}\" data-tab=\"${sec.slug}\"")
+      append(" aria-controls=\"cp-panel-${sec.slug}\" aria-selected=\"$selected\"")
+      // `aria-owns` because the markup cannot nest the group inside the treeitem: the row has to
+      // be an <a> to stay a real link (the no-JS path), and the <li> that does contain both is
+      // `role="none"`. Without this the `role="group"` would hang off the tree rather than off the
+      // section whose `aria-expanded` governs it, so a screen reader could not report the group
+      // rows as that section's children.
+      if (named.isNotEmpty()) append(" aria-expanded=\"$selected\" aria-owns=\"$childrenId\"")
+      // No `tabindex` in the served markup, deliberately. The roving tab stop is a tree-widget
+      // behaviour and the tree is only a widget once its script runs — baking `-1` into every row
+      // but the first would leave a no-JS client (where the arrow keys never bind) unable to reach
+      // any section past the first by keyboard, in the very mode where the rows are its only
+      // navigation. `reflectTabs()` applies the indices on init instead.
+      append(">")
+      append(WebEscaping.htmlEscape(sec.name))
+      append("<span class=\"cp-tab-count\">${sec.count}</span></a>\n")
+      if (named.isNotEmpty()) {
+        append("  <ul class=\"cp-tree-children\" id=\"$childrenId\" role=\"group\">\n")
+        named.forEachIndexed { gi, g ->
+          // The first group of the first section opens with the page, so a visitor lands on a tree
+          // that is already showing components rather than one that has to be prised open before
+          // it says anything a tab bar didn't.
+          appendGroupRow(
+            g,
+            sec.slug,
+            groupAnchorId(sec.slug, g.slug),
+            i == 0 && gi == 0,
+            components,
+          )
+        }
+        append("  </ul>\n")
+      }
+      append("</li>\n")
+    }
+    append(pagesBranch)
+    append("</ul>\n</nav>\n")
+  }
+
+  /**
+   * The **outline** tree, for a catalog whose previews declare no `section` — the shape most
+   * published design systems are in, m3-catalog included, where the inventory comes from
+   * `@CatalogComponent(group = …)` and nothing ever names a section.
+   *
+   * Until now those catalogs got no tree at all: [buildSections] returned empty, the landing fell
+   * back to a flat grid, and the two levels of structure the catalog *did* have (family group, then
+   * component) stayed invisible. Here the groups ARE the top level. There are no panels to switch —
+   * the flat grid shows everything at once — so every row is purely a jump, which is also why these
+   * rows carry no `data-tab`.
+   */
+  private fun catalogOutlineTreeHtml(
+    groups: List<LandingGroup>,
+    components: (GridCard) -> TreeComponent,
+    /** The design-pages branch ([pagesBranchHtml]), appended after the groups. Empty ⇒ none. */
+    pagesBranch: String = "",
+  ): String = buildString {
+    append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog contents\">\n")
+    append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog contents\">\n")
+    groups.forEachIndexed { i, g ->
+      // The group row IS the top-level node here, so it carries `cp-tree-node` itself rather than
+      // being wrapped in one — the wrapper is what the filter hides, and a second <li> around an
+      // <li> is not a list.
+      appendGroupRow(g, null, flatGroupAnchorId(g.slug), i == 0, components, "cp-tree-node")
+    }
+    append(pagesBranch)
+    append("</ul>\n</nav>\n")
+  }
+
+  /**
+   * The tree's **Pages** branch: the design file's own pages, listed by name under one row that
+   * leads to the index.
+   *
+   * This used to be an action chip in the header row, beside "compare SVG" and "download all". A
+   * chip could only say *how many* pages there were — the names, which are the thing you actually
+   * choose between, were a page away — and it sat in a row of one-off actions while being the one
+   * entry there that is a place. The tree is where this catalog's places already live, so it goes
+   * in the tree, at the foot: a page is a view of the *design file*, not part of the catalog's own
+   * inventory, and it should not push that inventory down the column.
+   *
+   * Two things make it unlike every other branch, and both are deliberate:
+   * - **It carries no `data-group`.** Every other row names an id on this page and is intercepted
+   *   into a scroll; these rows are real navigations, so the click handler's `if (!id) return`
+   *   leaves them to the browser. It is the same treatment a variant row already gets.
+   * - **It is always open.** `aria-expanded="true"` is written once and never reflected — with a
+   *   handful of pages there is nothing to gain by hiding their names behind a twisty, and the open
+   *   state is what makes the branch worth having over the chip it replaces. [catalogTreeScript]
+   *   skips reflecting a row that names no target, which is what keeps it open.
+   */
+  private fun pagesBranchHtml(pages: List<PageLink>, basePath: String, q: String): String {
+    if (pages.isEmpty()) return ""
+    return buildString {
+      append("<li class=\"cp-tree-node cp-tree-pages\" role=\"none\">\n")
+      append("  <a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\"")
+      append(" href=\"${WebEscaping.htmlEscape("$basePath/pages$q")}\"")
+      append(" aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">")
+      append("Pages<span class=\"cp-tree-count\">${pages.size}</span></a>\n")
+      append("  <ul class=\"cp-tree-children cp-tree-components\" id=\"cp-tree-pages-list\"")
+      append(" role=\"group\">\n")
+      pages.forEach { page ->
+        // The page id reaches the URL as one path segment, and the name is free text authored in
+        // the design file — so one is encoded and the other escaped.
+        val href = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}$q"
+        append("    <li role=\"none\"><a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\"")
+        append(" href=\"${WebEscaping.htmlEscape(href)}\">")
+        append("${WebEscaping.htmlEscape(page.name)}</a></li>\n")
+      }
+      append("  </ul>\n</li>\n")
+    }
+  }
+
+  /**
+   * The anchor on a synthesized flat sub-group divider — no section owns it, so it stands alone.
+   */
+  private fun flatGroupAnchorId(groupSlug: String) = "cp-group-$groupSlug"
+
+  /** A component row and the primary-axis variants beneath it. */
+  private class TreeComponent(
+    val label: String,
+    val anchorId: String,
+    val variants: List<TreeVariant>,
+    val href: String,
+  )
+
+  /**
+   * One group row plus its component rows (and each component's variants).
+   *
+   * Expansion follows the same discipline as a section: **a group is open exactly when it is the
+   * current one**, and a component likewise. That is what keeps the tree a navigation aid rather
+   * than a wall — compose-m3's 84 components across twenty families would otherwise all be rows at
+   * once — and it matches what the grid beside it is doing, which shows one section at a time.
+   */
+  private fun StringBuilder.appendGroupRow(
+    group: LandingGroup,
+    tabSlug: String?,
+    anchor: String,
+    open: Boolean,
+    components: (GridCard) -> TreeComponent,
+    /** Extra class for the row's `<li>` — the outline tree's groups are its top-level nodes. */
+    liClass: String = "",
+  ) {
+    val childrenId = "cp-tree-of-$anchor"
+    val tabAttr = tabSlug?.let { " data-tab=\"$it\"" } ?: ""
+    val expanded = if (open) "true" else "false"
+    val li =
+      if (liClass.isEmpty()) "<li role=\"none\">" else "<li class=\"$liClass\" role=\"none\">"
+    append("    $li<a class=\"cp-tree-group cp-tree-link\" role=\"treeitem\"")
+    append(" href=\"#$anchor\"$tabAttr data-group=\"$anchor\"")
+    if (group.cards.isNotEmpty()) {
+      append(" aria-expanded=\"$expanded\" aria-owns=\"$childrenId\"")
+    }
+    append(">")
+    append(WebEscaping.htmlEscape(group.name ?: "Ungrouped"))
+    append("<span class=\"cp-tree-count\">${group.cards.size}</span></a>\n")
+    if (group.cards.isEmpty()) {
+      append("</li>\n")
+      return
+    }
+    append("      <ul class=\"cp-tree-children cp-tree-components\" id=\"$childrenId\"")
+    append(" role=\"group\">\n")
+    group.cards.forEach { card ->
+      val c = components(card)
+      appendComponentRow(
+        label = c.label,
+        // On the landing every row is an in-page jump: the component row and the synthetic Default
+        // row both target the card the grid is already showing, which is what `data-group` drives.
+        href = "#${c.anchorId}",
+        rowAttrs = "$tabAttr data-group=\"${c.anchorId}\"",
+        defaultHref = "#${c.anchorId}",
+        defaultRowAttrs = "$tabAttr data-group=\"${c.anchorId}\"",
+        variants = c.variants,
+        variantsId = "cp-tree-of-${c.anchorId}",
+        indent = "        ",
+      )
+    }
+    append("      </ul>\n    </li>\n")
+  }
+
+  /**
+   * One component row plus its variant children — the tree's leaf shape, shared by the landing's
+   * whole-catalog tree and the viewer's single-component subtree so the two cannot drift into
+   * looking like different things.
+   *
+   * What differs between the two callers is only where the rows *point* and whether they start
+   * open. On the landing they are in-page jumps to a card in the grid beside them, and a component
+   * ships collapsed because eighty-four of them are on screen at once. In the viewer each row is a
+   * real navigation to that render's own page, the list is open (there is exactly one component),
+   * and [currentHref] marks the render being viewed.
+   */
+  private fun StringBuilder.appendComponentRow(
+    label: String,
+    href: String,
+    variants: List<TreeVariant>,
+    variantsId: String,
+    defaultHref: String,
+    rowAttrs: String = "",
+    defaultRowAttrs: String = "",
+    /** Collapsed by default; the viewer's subtree opens, having only one component to show. */
+    collapsed: Boolean = true,
+    /**
+     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref].
+     *
+     * The landing needs it: there the component row is an in-page jump to a card, not a render, so
+     * without this row the default has no entry of its own. The viewer does not, because there the
+     * component row IS the default render — a `Default` child beneath it would be a second row with
+     * the same href and the same destination, which is the duplication this flag exists to avoid.
+     */
+    syntheticDefaultRow: Boolean = true,
+    /** The row whose href matches is `aria-current="page"` — the render on screen. */
+    currentHref: String? = null,
+    indent: String = "        ",
+  ) {
+    fun current(target: String) = if (target == currentHref) " aria-current=\"page\"" else ""
+    // The component row can itself be current — in the viewer it IS the default render, the rows
+    // under it being the other ones. Nothing double-marks, because a caller that folds the default
+    // into this row also drops it from [variants]; a caller that keeps a synthetic Default row
+    // (the landing) passes no [currentHref] at all.
+    append("$indent<li role=\"none\"><a class=\"cp-tree-component cp-tree-link\"")
+    append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(href)}\"$rowAttrs")
+    if (variants.isNotEmpty()) {
+      append(" aria-expanded=\"${!collapsed}\" aria-owns=\"$variantsId\"")
+    }
+    append(current(href))
+    append(">")
+    append(WebEscaping.htmlEscape(label))
+    if (variants.isNotEmpty()) {
+      // +1 for the default render either way: the landing lists it as the synthetic child row
+      // below, the viewer folds it into this row.
+      append("<span class=\"cp-tree-count\">${variants.size + 1}</span>")
+    }
+    append("</a>\n")
+    if (variants.isNotEmpty()) {
+      append("$indent  <ul class=\"cp-tree-children cp-tree-variants\" id=\"$variantsId\"")
+      append(" role=\"group\">\n")
+      // The default render leads, so the list reads as "the component, then how else it renders"
+      // rather than starting at an exceptional state.
+      if (syntheticDefaultRow) {
+        append("$indent    <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+        append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(defaultHref)}\"$defaultRowAttrs")
+        append("${current(defaultHref)}>Default</a></li>\n")
+      }
+      variants.forEach { v ->
+        // A variant is folded out of the grid, so unlike the rows above it has nowhere on the
+        // landing page to jump to — its href is a real navigation, left to the browser.
+        append("$indent    <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+        append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(v.href)}\"${current(v.href)}>")
+        append(WebEscaping.htmlEscape(v.label))
+        append("</a></li>\n")
+      }
+      append("$indent  </ul>\n")
+    }
+    append("$indent</li>\n")
+  }
+
+  /** The id of the sub-group divider a tree row jumps to — its section's slug, then its own. */
+  private fun groupAnchorId(sectionSlug: String, groupSlug: String) =
+    "cp-group-$sectionSlug-$groupSlug"
+
+  /**
+   * The id of the grid card a component row jumps to. Preview ids are already slug-shaped
+   * (`button-filled__ideal__default__light`), but they are catalog data rather than something this
+   * page mints, so anything outside the HTML-id alphabet is folded to `-`.
+   */
+  private fun cardAnchorId(previewId: String) =
+    "cp-card-" +
+      previewId
+        .map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '-' }
+        .joinToString("")
+
+  /**
+   * One anchor per card, minted once for the whole page.
+   *
+   * Two things depend on this happening in a single place. The grid and the tree must not compute
+   * the anchor differently — they name the same element. And the anchors have to be **injective**:
+   * [cardAnchorId] folds everything outside the HTML-id alphabet to `-`, and a preview id may
+   * legitimately contain `/`, `?`, `#` or a space, so `Foo/Bar` and `Foo?Bar` would otherwise mint
+   * one id for two cards and `getElementById` would send both rows — and both fragment URLs — to
+   * whichever card came first. A collision takes a numeric suffix, exactly as the group slugs do.
+   */
+  private fun mintCardAnchors(cards: List<GridCard>): Map<String, String> {
+    val used = HashSet<String>()
+    val out = LinkedHashMap<String, String>()
+    cards.forEach { card ->
+      val base = cardAnchorId(card.default.id)
+      var candidate = base
+      var n = 2
+      while (!used.add(candidate)) {
+        candidate = "$base-$n"
+        n++
+      }
+      out[card.default.id] = candidate
+    }
+    return out
+  }
+
+  /** One **primary-axis** variant of a component: a distinct state or props render. */
+  /** [axis] is `"state"` or `"props"` — which of the two primary axes this row varies. */
+  private class TreeVariant(val label: String, val href: String, val axis: String = "state")
+
+  /**
+   * The viewer's **component subtree**: the same tree the catalog navigates by, filtered to the one
+   * component on screen.
+   *
+   * This replaced two rows of chips — a `State` row and a `Variant` row — that were the viewer's
+   * own second opinion about the component's axes. They keyed identically to [primaryVariants], so
+   * they always listed the same renders the tree does; they simply said it in a different shape, in
+   * a different place, with the two axes torn apart into rows that never named their relationship.
+   * A subtree says it once, in the shape the reader already learned on the landing page: the
+   * component, then every render under it, the current one marked.
+   *
+   * Returns "" when the component has no second render — the same silence the chip rows kept, so a
+   * single-state component grows no navigation it cannot use.
+   */
+  /** The component's default render in [current]'s theme lane, or [current] when it has none. */
+  private fun componentDefault(
+    current: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): ServePreview {
+    val key = componentKey(current)
+    val lane = themeLane(current, darkFirst)
+    return all.firstOrNull {
+      componentKey(it) == key &&
+        themeLane(it, darkFirst) == lane &&
+        !isNonDefaultState(it) &&
+        !hasNonDefaultProps(it)
+    } ?: current
+  }
+
+  /**
+   * Every render of [current]'s component reachable in ONE hop from where the reader is standing.
+   *
+   * Two sets, unioned. [primaryVariants] from the component's default is the canonical set the
+   * landing tree draws — one axis at a time, which is what keeps that tree navigable across a whole
+   * catalog. But a component may bake state × props as a CROSS-PRODUCT, and that set holds one axis
+   * at its default while walking the other: from `RTL` it offers no `pressed + RTL`, and since the
+   * grid folds both axes out, the combination would be reachable from nowhere at all. So the rows
+   * relative to [current] — its states holding its props fixed, its props holding its state fixed,
+   * exactly how the chip switchers this replaced were keyed — are unioned in, and lead, because
+   * they are the moves from *here*.
+   *
+   * Deduped by href, so a component with only one axis (nearly all of them) gets exactly the
+   * canonical list and nothing doubles up.
+   */
+  private fun componentRenderRows(
+    current: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+    href: (ServePreview) -> String,
+  ): List<TreeVariant> {
+    val lane = themeLane(current, darkFirst)
+    // Collected as previews, not as finished rows: whether a row can be labelled by ONE axis is a
+    // property of the whole set (see [variantLabel]), so nothing can be named until both passes
+    // have run.
+    val rows = LinkedHashMap<String, Pair<ServePreview, String>>()
+    // This render's own state axis, holding its props fixed.
+    val stateKey = switcherStateKey(current)
+    val byState = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherStateKey(p) != stateKey || themeLane(p, darkFirst) != lane) continue
+      byState.putIfAbsent(p.state ?: "default", p)
+    }
+    // …and its props axis, holding its state fixed.
+    val propsKey = switcherPropsKey(current)
+    val curState = current.state ?: "default"
+    val byProps = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherPropsKey(p) != propsKey || themeLane(p, darkFirst) != lane) continue
+      if ((p.state ?: "default") != curState) continue
+      byProps.putIfAbsent(propsSignature(p.props), p)
+    }
+    if (byState.size > 1) {
+      byState.entries
+        .sortedBy { if (it.key == "default") 0 else 1 }
+        .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "state") }
+    }
+    if (byProps.size > 1) {
+      byProps.entries
+        .sortedBy { if (it.key == "") 0 else 1 }
+        .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "props") }
+    }
+    // Then the component's canonical set, for everything the two axes above did not already reach.
+    primaryVariantPreviews(componentDefault(current, all, darkFirst), all, darkFirst).forEach {
+      (p, axis) ->
+      rows.putIfAbsent(href(p), p to axis)
+    }
+    // Both axes in play ⇒ every row names both coordinates. Otherwise a row that resets the state
+    // and a row that resets the props are both "Default", and the render on screen is labelled by
+    // whichever pass reached it first — `Pressed` for something that is Pressed AND RTL.
+    val crossProduct = byState.size > 1 && byProps.size > 1
+    return rows.values.map { (p, axis) ->
+      TreeVariant(variantLabel(p, axis, crossProduct), href(p), axis)
+    }
+  }
+
+  /**
+   * Whether this component varies on [axis] (`"state"` or `"props"`), which is what lets the folded
+   * disclosure name the axes it put away. Derived from [componentRenderRows] rather than
+   * re-deriving the axis rules, so the toggle can never claim an axis the subtree underneath it
+   * does not offer.
+   */
+  private fun componentHasAxis(
+    preview: ServePreview,
+    siblings: List<ServePreview>,
+    darkFirst: Boolean,
+    axis: String,
+  ): Boolean = componentRenderRows(preview, siblings, darkFirst) { it.id }.any { it.axis == axis }
+
+  private fun componentSubtreeHtml(
+    preview: ServePreview,
+    siblings: List<ServePreview>,
+    basePath: String,
+    q: String,
+    darkFirst: Boolean,
+  ): String {
+    fun href(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
+    // The subtree hangs off the component's DEFAULT render, whichever of its renders is on screen:
+    // arriving on `disabled` must not re-root the tree at `disabled` and hide the rest. Held to the
+    // current theme lane so navigating within a dark catalog stays dark, exactly as the chip rows
+    // and the component nav already do.
+    val default = componentDefault(preview, siblings, darkFirst)
+    val rows = componentRenderRows(preview, siblings, darkFirst, ::href)
+    // The render ON SCREEN is always a row, even when neither axis set would have listed it. A
+    // catalog can carry a variant whose axis lives only in its id — `…__default__light__
+    // content-icon-label` with no `props` metadata — and such a render belongs to no axis, so a
+    // subtree built from the axes alone would show the reader every render of this component
+    // except the one they are looking at, with nothing marked current. A tree that says "this
+    // component's renders" has to contain the page it is drawn on.
+    val withCurrent =
+      if (rows.any { it.href == href(preview) } || preview.id == default.id) rows
+      else rows + TreeVariant(previewDisplayName(preview), href(preview), "props")
+    // The DEFAULT render is the component row, not a child of it. Both pointed at the same href —
+    // the same page, reached two ways, one line apart — and the child said "Default" directly under
+    // a row already naming that render. Folding it up leaves the tree saying each render once: the
+    // component, then the ways it differs.
+    val variants = withCurrent.filterNot { it.href == href(default) }
+    if (variants.isEmpty()) return ""
+    return buildString {
+        append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
+        append("  <ul class=\"cp-tree-list\" role=\"tree\">\n")
+        appendComponentRow(
+          label = previewDisplayName(default),
+          href = href(default),
+          variants = variants,
+          variantsId = "cp-axes-tree-variants",
+          defaultHref = href(default),
+          // One component, already chosen — a collapsed subtree would be a disclosure inside a
+          // disclosure, and the outer one is the control that decides whether any of this shows.
+          collapsed = false,
+          syntheticDefaultRow = false,
+          currentHref = href(preview),
+          indent = "    ",
+        )
+        append("  </ul>\n</nav>")
+      }
+      .trimEnd()
+  }
+
+  /**
+   * A component's primary-axis variants — the renders the grid folds out so a component shows one
+   * card, listed here so the tree can offer them without a visit to the viewer to discover they
+   * exist.
+   *
+   * **Primary** is `state` (disabled, pressed, checked) and `props` (with icon, RTL, large font):
+   * axes where the variant is a different *thing to look at*. Theme, breakpoint, fontScale and
+   * locale are **secondary** — a different rendering of the same thing — and stay out of the tree,
+   * theme because the card already swaps it in place, the rest because they multiply every row by a
+   * matrix nobody navigates by.
+   *
+   * The viewer's own subtree ([componentSubtreeHtml]) is built from this same function, so the two
+   * cannot offer different sets: one definition of what a component's renders are, drawn twice.
+   */
+  private fun primaryVariants(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+    href: (ServePreview) -> String,
+  ): List<TreeVariant> =
+    primaryVariantRows(default, all, darkFirst).map { (p, axis) ->
+      TreeVariant(variantLabel(p, axis, crossProduct = false), href(p), axis)
+    }
+
+  private fun primaryVariantRows(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): List<Pair<ServePreview, String>> {
+    val lane = themeLane(default, darkFirst)
+    val defaultState = default.state ?: "default"
+    val rows = mutableListOf<Pair<ServePreview, String>>()
+    // States first: the axis a component varies on most, and the one a reviewer looks for.
+    val stateKey = switcherStateKey(default)
+    val seenStates = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherStateKey(p) != stateKey) continue
+      if (themeLane(p, darkFirst) != lane) continue
+      if (!hasNonDefaultProps(p) && isNonDefaultState(p)) {
+        seenStates.putIfAbsent(p.state!!, p)
+      }
+    }
+    seenStates.forEach { (_, p) -> rows.add(p to "state") }
+    // Then the props axis, held at the component's default state so a row never crosses two axes.
+    val propsKey = switcherPropsKey(default)
+    val seenProps = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherPropsKey(p) != propsKey) continue
+      if (themeLane(p, darkFirst) != lane) continue
+      if ((p.state ?: "default") != defaultState) continue
+      if (hasNonDefaultProps(p)) seenProps.putIfAbsent(propsSignature(p.props), p)
+    }
+    seenProps.forEach { (_, p) -> rows.add(p to "props") }
+    return rows
+  }
+
+  /**
+   * A row's label. Normally it names only the axis the row moves along — a component varies on one
+   * axis and repeating the other's default on every row would be noise. But when BOTH axes are in
+   * play the single label is ambiguous rather than terse: from `pressed + RTL`, the row resetting
+   * the state (`default + RTL`) and the row resetting the props (`pressed + default`) are both
+   * "Default", two different renders wearing one name. Naming both coordinates is what tells them
+   * apart, and it also stops a cross-product row being labelled by whichever axis pass happened to
+   * reach it first.
+   */
+  private fun variantLabel(p: ServePreview, axis: String, crossProduct: Boolean): String =
+    if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
+    else "${stateLabel(p.state)} · ${propsLabel(p.props)}"
+
+  /** [primaryVariants] as previews paired with the axis each varies, before they are labelled. */
+  private fun primaryVariantPreviews(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): List<Pair<ServePreview, String>> = primaryVariantRows(default, all, darkFirst)
 
   /** Prettier display names for a few component families whose bare title-case reads badly. */
   private val FAMILY_DISPLAY_NAMES =
@@ -1286,26 +2190,28 @@ object ServeWeb {
    * Emitted identically on the landing grid and on the single-preview viewer — the `<html>` class
    * it drives (`cp-bg-transparent`) already backs both `.cp-imgwrap` and `.cp-stage`, and the
    * pre-paint script in [document] already restores the choice on every page, so the viewer was
-   * simply missing the control rather than the behaviour. `bg-toggle.js` wires both.
+   * simply missing the control rather than the behaviour.
+   *
+   * The button itself is rendered by the `<cp-bg-toggle>` Lit element in `serve-components.js`
+   * (source: `cli/serve-web/src/components/BgToggle.ts`), not here — one source of truth for markup
+   * a JS-only control owns. `serve.css` gives the element `display: contents`, so the button stays
+   * the toolbar's own flex item and lays out exactly as the bare button did.
    */
   private fun bgPickerHtml(title: String): String =
-    "<button type=\"button\" class=\"cp-bg-btn cp-bg-toggle\" aria-pressed=\"false\"" +
-      " title=\"${WebEscaping.htmlEscape(title)}\">Transparent</button>"
+    "<cp-bg-toggle label=\"${WebEscaping.htmlEscape(title)}\"></cp-bg-toggle>"
 
   /**
    * The search box for the landing grid: a text input that filters cards to those whose label or id
-   * contains the typed text, plus a live result count. Progressive enhancement — the server emits
-   * every card and [catalogFilterScript] does the hiding, so a no-JS client still sees the full
-   * grid. Shown whenever the module has previews (independent of the theme toggle, which only
-   * appears for per-theme catalogs). [count] seeds the total for the "N of M" readout.
+   * contains the typed text. Progressive enhancement — the server emits every card and
+   * [catalogFilterScript] does the hiding, so a no-JS client still sees the full grid. Shown
+   * whenever the module has previews (independent of the theme toggle, which only appears for
+   * per-theme catalogs).
    */
-  private fun searchBoxHtml(count: Int): String =
+  private fun searchBoxHtml(): String =
     """
     <div class="cp-searchbar">
       <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
         autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-      <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="$count"></span>
-      ${bgPickerHtml("Show the transparent checkerboard behind each preview")}
     </div>
     """
       .trimIndent()
@@ -1330,6 +2236,8 @@ object ServeWeb {
     hasThemes: Boolean,
     hasTabs: Boolean,
     hasGroups: Boolean,
+    /** Whether a navigation tree is rendered at all — sectioned catalogs AND outline ones. */
+    hasTree: Boolean,
     themeStorageKey: String,
     tabStorageKey: String,
     /**
@@ -1792,9 +2700,22 @@ object ServeWeb {
     // the tab-only machinery below.
     val groupDecls =
       if (hasGroups) "\n      var navGroups = document.querySelectorAll(\".cp-subgroup\");" else ""
+    // Declared HERE rather than in the tree script, which is spliced in further down: `reflectTabs`
+    // runs the moment it is defined and touches `treeGroups`, and a `var` assigned later would only
+    // be hoisted, not set.
+    val treeDecls =
+      if (!hasTree) ""
+      else
+        "\n      var treeGroups = document.querySelectorAll(\".cp-tree-group\");" +
+          "\n      var treeComponents = document.querySelectorAll(\".cp-tree-component\");" +
+          "\n      var treeLinks = document.querySelectorAll(\".cp-tree-link\");" +
+          // The tree's own roving-tab-stop pass, published so `apply()` can call it from outside
+          // the tree script's closure once the filter has changed which rows are on screen.
+          "\n      var cpTreeStops = null;"
     val tabDecls =
       if (hasTabs)
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
+          "\n      var treeGroups = document.querySelectorAll(\".cp-tree-group\");" +
           "\n      var tabSections = document.querySelectorAll(\".cp-section\");" +
           "\n      var current = tabBtns.length ? tabBtns[0].getAttribute(\"data-tab\") : null;" +
           "\n      try {" +
@@ -1810,10 +2731,33 @@ object ServeWeb {
           "\n        if (t.getAttribute(\"data-tab\") === urlTab) current = urlTab;" +
           "\n      });" +
           "\n      var initialTab = current;" +
+          // Selection, expansion and the tree's single tab stop are one statement: the selected
+          // section is the open one and the one Tab lands on. The exception is a live search, which
+          // spans every section — so every branch that still holds a match opens, because the rows
+          // the matches sit under must not be the rows you cannot see.
           "\n      function reflectTabs() {" +
+          "\n        var searching = !!(input && input.value.trim());" +
+          "\n        var stop = null;" +
+          "\n        var firstShown = null;" +
           "\n        tabBtns.forEach(function (t) {" +
-          "\n          t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n          var on = t.getAttribute(\"data-tab\") === current;" +
+          "\n          t.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");" +
+          "\n          if (t.hasAttribute(\"aria-expanded\"))" +
+          "\n            t.setAttribute(\"aria-expanded\", on || searching ? \"true\" : \"false\");" +
+          "\n          var node = t.closest(\".cp-tree-node\");" +
+          "\n          var shown = !(node && node.hidden);" +
+          // The stop belongs to the selected row only while that row is on screen, so a filtered-
+          // out section does not keep a claim on it that the fallback below then duplicates.
+          "\n          t.tabIndex = on && shown ? 0 : -1;" +
+          "\n          if (shown && !firstShown) firstShown = t;" +
+          "\n          if (on && shown) stop = t;" +
           "\n        });" +
+          "\n        treeGroups.forEach(function (g) { g.tabIndex = -1; });" +
+          // A filter can hide the selected section outright — search for something only another
+          // section matches and `current` is off screen. Its row would still hold the tree's only
+          // tab stop, so Tab would skip the whole navigation. Hand the stop to the first branch
+          // still showing instead.
+          "\n        if (!stop && firstShown) firstShown.tabIndex = 0;" +
           "\n      }" +
           "\n      reflectTabs();" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
@@ -1835,6 +2779,36 @@ object ServeWeb {
       if (hasTabs)
         "\n        tabSections.forEach(function (s) { s.hidden = !s.querySelector(\".cp-card:not([hidden])\"); });"
       else ""
+    // The tree tracks what the grid just did: a group row disappears with the sub-group it points
+    // at, so a filter never leaves a destination that scrolls to nothing. Section rows are hidden
+    // ONLY while searching — outside a search every section but the current one is empty by
+    // construction (its cards are filtered out by tab), and hiding those rows would delete the
+    // navigation instead of filtering it. Re-reflecting last picks up the expansion a search opens.
+    val treePost =
+      if (!hasTree) ""
+      else
+      // Component rows first: each follows the card it points at, so a search never leaves a row
+      // that scrolls to something hidden. Then the group rows follow their sub-group, which by
+      // now has collapsed if the filter emptied it.
+      "\n        treeComponents.forEach(function (c) {" +
+          "\n          var card = document.getElementById(c.getAttribute(\"data-group\"));" +
+          "\n          if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);" +
+          "\n        });" +
+          "\n        treeGroups.forEach(function (g) {" +
+          "\n          var sub = document.getElementById(g.getAttribute(\"data-group\"));" +
+          "\n          if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);" +
+          "\n        });" +
+          (if (hasTabs)
+            "\n        tabBtns.forEach(function (t) {" +
+              "\n          var node = t.closest(\".cp-tree-node\");" +
+              "\n          var sec = document.getElementById(t.getAttribute(\"aria-controls\"));" +
+              "\n          if (node) node.hidden = q !== \"\" && !!(sec && sec.hidden);" +
+              "\n        });" +
+              "\n        reflectTabs();"
+          else "") +
+          // Last word on the roving tab stop: the rows that just appeared or vanished change which
+          // one should hold it, and `reflectTabs` only ever knew about sections and groups.
+          "\n        if (cpTreeStops) cpTreeStops();"
     val tabWiring =
       if (hasTabs)
         "\n      tabBtns.forEach(function (t) {" +
@@ -1848,6 +2822,17 @@ object ServeWeb {
           "\n        });" +
           "\n      });"
       else ""
+    // The tree's own behaviour: its group rows, its keyboard, and the scroll-spy that keeps the
+    // row you are looking at marked. Spliced in at the same indent as the rest, and empty for a
+    // flat catalog — which has no tree. Emitted AFTER [popWiring] on purpose: `onPop` is a plain
+    // `popstate` listener, so the tree's fragment-precedence handler has to register second to get
+    // the last word over the shared `?tab=` restore.
+    val treeWiring =
+      if (!hasTree) ""
+      else
+        catalogTreeScript(tabStorageKey, hasTabs).lines().joinToString("") {
+          if (it.isEmpty()) "\n" else "\n      $it"
+        }
     // Back / Forward: re-read the whole selection off the URL and re-apply it in place — no
     // reload, so nothing is re-fetched that the page already has. A history entry that carries no
     // param for a control falls back to what THIS page load resolved to, never to the
@@ -1887,7 +2872,7 @@ object ServeWeb {
       function urlParam(n) { return urlState ? urlState.get(n) : ""; }
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
-      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$tabDecls
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$treeDecls$tabDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
@@ -1902,7 +2887,7 @@ object ServeWeb {
           if ($shownCond) shown++;
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost
+        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost$treePost
       }
       if (input) input.addEventListener("input", function () {
         // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -1911,8 +2896,373 @@ object ServeWeb {
         replaceUrl({ q: input.value.trim() });
         apply();
       });
-      $themeWiring$tabWiring$popWiring
+      $themeWiring$tabWiring$popWiring$treeWiring
       apply();$presenceWiring
+    })();
+    """
+      .trimIndent()
+  }
+
+  /**
+   * The navigation tree's behaviour, spliced into [catalogFilterScript]'s IIFE so it closes over
+   * the selection it shares with the grid (`current`, `reflectTabs`, `apply`, `pushUrl`) instead of
+   * keeping a second copy that could disagree with which panel is showing.
+   *
+   * Three things the flat tab bar had no need of:
+   * * **group rows** — a jump within the catalog: select the section, then scroll its sub-group
+   *   divider into view. The bare `#cp-group-…` href stays as the no-JS fallback, because following
+   *   it with JS present would land on a divider inside a panel the section switching still has
+   *   hidden.
+   * * **keyboard** — the tree pattern's roving focus (Down/Up walk the *visible* rows, Right opens
+   *   a collapsed section, Left climbs from a group back to its section, Home/End jump the ends).
+   *   The tab bar never implemented its own pattern's arrow keys; a tree that publishes two levels
+   *   is where not having them starts to cost something.
+   * * **scroll-spy** — the row for the sub-group on screen is marked `aria-current`, so the tree
+   *   says where you *are* and not merely where you last clicked. Additive: with no
+   *   `IntersectionObserver` the marking simply follows clicks.
+   */
+  private fun catalogTreeScript(tabStorageKey: String, hasTabs: Boolean): String {
+    // Section switching only exists for a catalog that HAS sections. An outline tree (a
+    // section-less catalog) hides nothing and remembers nothing — every row is purely a jump — so
+    // the pieces that talk to `current` / `selectTab` are spliced out rather than guarded at
+    // runtime, and its script never mentions a tab.
+    val selectOwningTab =
+      if (hasTabs) "\n        selectTab(row.getAttribute(\"data-tab\"));" else ""
+    val tabRows = if (hasTabs) ".cp-tab, " else ""
+    // The rows a `#cp-panel-<slug>` fragment could name, and the three operations that only mean
+    // something when sections exist. An outline tree gets inert stand-ins rather than `if
+    // (hasTabs)`
+    // scattered through the body.
+    val tabHelpers =
+      if (hasTabs)
+        """
+        var tabBtnsForHash = tabBtns;
+        function selectTab(slug) {
+          if (!slug || slug === current) return;
+          current = slug;
+          try { localStorage.setItem("$tabStorageKey", current); } catch (e) {}
+          reflectTabs();
+          pushUrl({ tab: current });
+          apply();
+        }
+        function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
+        function applyLandingTab(landing) {
+          if (!landing.tab || landing.tab === current) return;
+          current = landing.tab;
+          initialTab = current;
+          reflectTabs();
+        }
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+      else
+        """
+        var tabBtnsForHash = [];
+        function selectCollapsedTab() {}
+        function applyLandingTab() {}
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+    val popPrecedence =
+      if (!hasTabs) ""
+      else
+        """
+
+        // Back / Forward has to resolve an entry the same way loading it fresh would. The shared pop
+        // handler reads `?tab=` only, so returning to an entry whose fragment and query disagree —
+        // `?tab=components#cp-group-themes-foundation`, which a fresh load resolves to Themes —
+        // would land on Components with the fragment's target hidden. This runs after that handler
+        // (registered later, and `onPop` is a plain listener) and re-applies the precedence.
+        if (window.cpUrlState) {
+          window.cpUrlState.onPop(function () {
+            var popped = hashTarget();
+            if (!popped || popped.tab === current) return;
+            current = popped.tab;
+            reflectTabs();
+            apply();
+            if (popped.row) markGroup(popped.row);
+          });
+        }
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+    val sectionClicks =
+      if (!hasTabs) ""
+      else
+        """
+
+        // Choosing a whole section retires any group fragment: the row you clicked is the statement
+        // of where you are, and a leftover `#cp-group-…` from another section would outrank it on
+        // the next load. It also has to honour the promise its own `href="#cp-panel-…"` makes — the
+        // shared handler prevents the default navigation and only swaps which panel is hidden, so
+        // from halfway down a long section the scroll simply stayed where it was. Registered after
+        // that handler, so the panel is already showing when this measures it, and it only scrolls
+        // when the panel is actually behind the sticky toolbar.
+        tabBtns.forEach(function (t) {
+          t.addEventListener("click", function () {
+            setFragment("");
+            var panel = document.getElementById(t.getAttribute("aria-controls"));
+            if (!panel) return;
+            var clearance = tools ? tools.getBoundingClientRect().height : 0;
+            if (panel.getBoundingClientRect().top < clearance) {
+              panel.scrollIntoView({ block: "start" });
+            }
+          });
+        });
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+    return """
+    (function () {
+      var tree = document.getElementById("cp-tabs");
+      if (!tree) return;
+      // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+      // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
+      // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+      // and the static fallback in the stylesheet only covers the unwrapped case.
+      // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
+      // machinery alone, which would have left an outline tree permanently expanded.
+      document.documentElement.classList.add("cp-js");
+      var tools = document.querySelector(".cp-catalog-tools");
+      if (tools) {
+        var syncTools = function () {
+          var h = Math.round(tools.getBoundingClientRect().height);
+          if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+        };
+        syncTools();
+        if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+        else window.addEventListener("resize", syncTools);
+      }
+      $tabHelpers
+      // The row pointing at an id, found by COMPARING attribute values rather than by building a
+      // selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop viewer
+      // already follows).
+      function rowFor(id) {
+        var found = null;
+        treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
+        return found;
+      }
+      function markGroup(row) {
+        treeGroups.forEach(function (g) {
+          if (g === row) g.setAttribute("aria-current", "true");
+          else g.removeAttribute("aria-current");
+        });
+      }
+      // Which group and which component are open. One of each: a tree that opened every branch it
+      // was ever asked about would end up listing every component in the catalog, which is the
+      // wall the grid already is. The server marks the first group open, so the page arrives
+      // showing components rather than needing to be prised open first.
+      var openGroup = null;
+      var openCard = null;
+      treeLinks.forEach(function (r) {
+        if (r.classList.contains("cp-tree-group") && r.getAttribute("aria-expanded") === "true") {
+          openGroup = r.getAttribute("data-group");
+        }
+      });
+      function parentRow(row) {
+        var list = row.closest("ul.cp-tree-children");
+        return list ? list.previousElementSibling : null;
+      }
+      function reflectTree() {
+        treeLinks.forEach(function (r) {
+          if (!r.hasAttribute("aria-expanded")) return;
+          var id = r.getAttribute("data-group");
+          // A branch that names no in-page target is not one of the two this tracks — the Pages
+          // branch owns destinations that are elsewhere, and is written open once and left open.
+          if (!id) return;
+          var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
+          r.setAttribute("aria-expanded", on ? "true" : "false");
+        });
+      }
+      function openRow(row) {
+        var id = row.getAttribute("data-group");
+        if (row.classList.contains("cp-tree-group")) {
+          openGroup = id;
+          openCard = null;
+        } else if (row.classList.contains("cp-tree-component")) {
+          openCard = id;
+          // And the group that HOLDS it. A click can only reach a component whose group is already
+          // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
+          // on whichever group the server expanded would scroll to the card while keeping its own
+          // row, and every variant under it, collapsed out of the tree.
+          var owner = parentRow(row);
+          if (owner && owner.classList.contains("cp-tree-group")) {
+            openGroup = owner.getAttribute("data-group");
+          }
+        }
+        reflectTree();
+        syncTabStops();
+      }
+      // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+      // preserves whatever hash is already there when it rewrites the query. So a click that moves
+      // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+      // WERE. `replaceState`, not push: a jump inside the page is a scroll, not a place to come
+      // Back to.
+      function setFragment(id) {
+        var url = location.pathname + location.search + (id ? "#" + id : "");
+        try { history.replaceState(history.state, "", url); } catch (e) {}
+      }
+      // Every row that names an in-page destination. A VARIANT row is the exception: the grid
+      // folds those renders out, so it has nowhere here to jump to — it carries a plain `/p/<id>`
+      // href and is left to the browser.
+      treeLinks.forEach(function (row) {
+        row.addEventListener("click", function (e) {
+          var id = row.getAttribute("data-group");
+          if (!id) return;
+          var target = document.getElementById(id);
+          if (!target) return;
+          e.preventDefault();
+          openRow(row);$selectOwningTab
+          setFragment(id);
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (row.classList.contains("cp-tree-group")) markGroup(row);
+        });
+      });
+      // Keyboard: the tree pattern's roving focus. Visibility is read off layout rather than walked
+      // by hand — a collapsed branch is `display: none`, so `offsetParent` already answers "can the
+      // visitor reach this row", across all four levels and the filter's hiding at once.
+      function visibleRows() {
+        var rows = [];
+        tree.querySelectorAll("$tabRows.cp-tree-link").forEach(function (r) {
+          if (r.offsetParent !== null) rows.push(r);
+        });
+        return rows;
+      }
+      function focusRow(el) {
+        if (!el) return;
+        visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
+        el.focus();
+      }
+      // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
+      // Nothing established that until a first arrow press called `focusRow`, so every visible row
+      // sat in the normal tab order until then — the whole point of the pattern, lost on the one
+      // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
+      // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
+      function syncTabStops() {
+        var rows = visibleRows();
+        if (!rows.length) return;
+        var stop = null;
+        rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
+        if (!stop) stop = rows[0];
+        rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
+      }
+      cpTreeStops = syncTabStops;
+      tree.addEventListener("keydown", function (e) {
+        var items = visibleRows();
+        var at = items.indexOf(document.activeElement);
+        if (at === -1) return;
+        var key = e.key;
+        var next = null;
+        if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
+        else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
+        else if (key === "Home") next = items[0];
+        else if (key === "End") next = items[items.length - 1];
+        else if (key === "ArrowRight") {
+          // Right opens a collapsed parent, steps into an expanded one's first child, and does
+          // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
+          // second Arrow Down, walking the visitor across siblings when they asked to expand
+          // something that cannot expand.
+          var expanded = items[at].getAttribute("aria-expanded");
+          if (expanded === "false") {
+            e.preventDefault();
+            if (items[at].classList.contains("cp-tree-link")) openRow(items[at]);
+            else selectCollapsedTab(items[at]);
+            return;
+          }
+          if (expanded !== "true") return;
+          next = items[Math.min(at + 1, items.length - 1)];
+        } else if (key === "ArrowLeft") {
+          // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
+          // and the only way back up once the levels are four deep. The `data-group` test excludes
+          // the always-open Pages branch: closing it is not offered, and without the test Left on
+          // that row would clear `openCard` and collapse whichever component IS open.
+          if (
+            items[at].getAttribute("aria-expanded") === "true" &&
+            items[at].getAttribute("data-group")
+          ) {
+            e.preventDefault();
+            if (items[at].classList.contains("cp-tree-group")) openGroup = null;
+            else openCard = null;
+            reflectTree();
+            return;
+          }
+          next = parentRow(items[at]);
+        } else return;
+        if (!next) return;
+        e.preventDefault();
+        focusRow(next);
+      });
+      // What the URL's fragment names, or null when it names nothing this page has.
+      //
+      // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+      // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+      // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+      // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+      // escape sequence throws, and is simply not a fragment this page knows.
+      function hashTarget() {
+        var id = location.hash ? location.hash.slice(1) : "";
+        try { id = decodeURIComponent(id); } catch (e) { return null; }
+        if (!id) return null;
+        var tab = null;
+        var row = null;
+        treeLinks.forEach(function (g) {
+          if (!row && g.getAttribute("data-group") === id) {
+            tab = g.getAttribute("data-tab");
+            row = g;
+          }
+        });
+        if (!row) {
+          tabBtnsForHash.forEach(function (t) {
+            if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
+          });
+        }
+        return row || tab ? { tab: tab, row: row, id: id } : null;
+      }
+      syncTabStops();
+      var landing = hashTarget();
+      if (landing) {
+        if (landing.row) openRow(landing.row);
+        applyLandingTab(landing);
+        setTimeout(function () {
+          var el = document.getElementById(landing.id);
+          if (el) el.scrollIntoView({ block: "start" });
+          if (landing.row && landing.row.classList.contains("cp-tree-group")) markGroup(landing.row);
+        }, 0);
+      }$sectionClicks$popPrecedence
+      // Scroll-spy: mark the group whose cards are on screen, so the tree says where you are rather
+      // than only where you last clicked. Additive — with no `IntersectionObserver` the marking
+      // simply follows clicks.
+      if (window.IntersectionObserver) {
+        var onScreen = [];
+        var spy = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            var at = onScreen.indexOf(en.target);
+            if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
+            else if (at !== -1) onScreen.splice(at, 1);
+          });
+          // The highest sub-group still in the band is the one being read.
+          var top = null;
+          onScreen.forEach(function (el) {
+            if (el.hidden) return;
+            if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+          });
+          if (top) markGroup(rowFor(top.id));
+        // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
+        // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
+        // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
+        // marked at all on first paint, since a catalog's first sub-group starts a header, a
+        // provenance strip and a toolbar down the page.
+        }, { rootMargin: "-64px 0px -20% 0px" });
+        document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
+      }
     })();
     """
       .trimIndent()
@@ -2331,10 +3681,9 @@ object ServeWeb {
           .joinToString("\n")
       }
     return document(
-      title = "Design systems — compose-preview",
-      unfurlTitle = "Compose previews",
-      unfurlDescription =
-        "Browse ${systems.size} published Compose design system and app catalogs.",
+      title = "$HOME_TITLE — compose-preview",
+      unfurlTitle = HOME_TITLE,
+      unfurlDescription = homeUnfurlDescription(systems.size),
       unfurl = unfurl,
       navSuffix = suffix,
       headerAction = headerAction,
@@ -2342,6 +3691,57 @@ object ServeWeb {
       body = body + about,
     )
   }
+
+  /**
+   * What the front door calls itself, in its `<title>`, its `og:title` and the headline of its
+   * unfurl card ([ServeSocialCard]).
+   *
+   * One constant because the three used to disagree: the tab said "Design systems" while the card
+   * said "Compose previews", so a link's name changed depending on which of the two an unfurler
+   * happened to prefer — and several fall back to `<title>` when they distrust the Open Graph
+   * block. The product name is not lost by naming the *page* here: it is in `og:site_name`, in the
+   * `<title>` suffix, and drawn on the card itself as the wordmark.
+   */
+  const val HOME_TITLE = "Design systems"
+
+  /** The front door's `og:description`. */
+  fun homeUnfurlDescription(systemCount: Int): String =
+    "Browse $systemCount published Compose design system and app catalogs."
+
+  /**
+   * The line under the headline on the front door's unfurl card.
+   *
+   * Deliberately *not* [homeUnfurlDescription]: every client that shows the card also shows the
+   * description beside it, so repeating the sentence in the picture wastes the only line the card
+   * has. A stat line is the thing a reader can't get from the text around it.
+   *
+   * Both counts change only when a catalog is published or republished, which is what
+   * [ServeSocialCard.Spec] requires of anything that reaches its cache key — a per-request value
+   * here (a view tally, a timestamp) would mint an uncacheable card on every visit.
+   */
+  fun homeCardSubtitle(systems: List<HomeSystem>): String {
+    val previews = systems.sumOf { it.previewCount }
+    return "${systems.size} ${if (systems.size == 1) "catalog" else "catalogs"} · " +
+      "$previews ${if (previews == 1) "preview" else "previews"}"
+  }
+
+  /**
+   * The line under the headline on a catalog's unfurl card; the heading is already the headline.
+   */
+  fun catalogCardSubtitle(previewCount: Int): String =
+    "$previewCount Compose ${if (previewCount == 1) "preview" else "previews"}"
+
+  /**
+   * A catalog's display name: what it calls itself, falling back to the module label. Shared by
+   * [landingPage] and by the caller that builds that page's unfurl card, so the headline drawn on
+   * the card cannot drift from the heading on the page it advertises.
+   */
+  fun catalogHeading(displayTitle: String?, moduleLabel: String): String =
+    displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+
+  /** A catalog page's `og:description`, and the text under its card's headline. */
+  fun catalogUnfurlDescription(previewCount: Int, heading: String): String =
+    "$previewCount Compose previews in $heading"
 
   /**
    * One publisher-grouped section of the front page: its heading, its cards, and its count noun.
@@ -2418,6 +3818,17 @@ object ServeWeb {
      * span.
      */
     version: String? = null,
+    /**
+     * The catalog whose colours and name this page wears, when it is served on a **top-level site**
+     * ([ServeSites]). A site hostname publishes one design system, so its `/status` and its 404 are
+     * that system's pages too — carrying the palette and the theme key here is what makes the
+     * *whole* hostname one skin rather than a themed catalog with unthemed chrome bolted beside it.
+     * Empty (the default) on the main host, where these pages belong to no catalog and keep the
+     * built-in chrome.
+     */
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
   ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
@@ -2426,11 +3837,17 @@ object ServeWeb {
       unfurl = unfurl,
       version = version,
       navSuffix = suffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
       body =
         """
         <h1 class="cp-head">Not found</h1>
         <p class="cp-sub">${WebEscaping.htmlEscape(message)}</p>
-        <a class="cp-back" href="/$suffix">← All design systems</a>
+        <a class="cp-back" href="/$suffix">${
+          // On a site there is no index of systems to go back to — `/` is this catalog.
+          if (siteName.isBlank()) "← All design systems" else "← Back"
+        }</a>
         """
           .trimIndent(),
     )
@@ -2620,9 +4037,44 @@ object ServeWeb {
                 WebEscaping.htmlEscape(seed.fileName)
               }</a>"""
           } ?: WebEscaping.htmlEscape(seed.fileName)
-        // Which of the two it is matters to a reader: told "the whole file" while looking at one
-        // function, they would go hunting for the rest of it.
-        if (seed.sliced)
+        // Which of the three it is matters to a reader, and they promise different things. A
+        // cleaned seed is usage code — the catalog's annotations, sticker frame, click tally and
+        // knobs resolved away — so it may say "ready to Run"; the other two may not.
+        if (seed.cleaned && !seed.scaffoldsDeclared) {
+          // Cleaned, but by the generic rules alone: this catalog has not said what its own helpers
+          // mean, so only the shared annotations came off and its `Sticker`/`counted`/knob calls
+          // are
+          // still in the buffer. Claiming "the sticker frame and knobs are gone, press Run" here
+          // would be describing a different seed than the one on screen.
+          """
+
+          <p id="pg-seed" class="cp-sub">Opened from $where — <code>${
+              WebEscaping.htmlEscape(seed.previewId)
+            }</code> in <code>${WebEscaping.htmlEscape(seed.catalog)}</code>, with the catalog
+            annotations removed. <code>${
+              WebEscaping.htmlEscape(seed.catalog)
+            }</code> has not declared what its own helpers mean in plain Compose, so the ones this
+            preview uses are still here and will not resolve against the published catalog — delete
+            them or replace them with your own values.</p>"""
+        } else if (seed.cleaned) {
+          val caveat =
+            if (seed.residue.isEmpty()) ""
+            else {
+              val names =
+                seed.residue.joinToString(", ") { "<code>${WebEscaping.htmlEscape(it)}</code>" }
+              " Some of this catalog's own helpers ($names) had no plain-Compose form to rewrite " +
+                "to, so they are still here and will not resolve — delete them or replace them " +
+                "with your own values."
+            }
+          """
+
+          <p id="pg-seed" class="cp-sub">Opened from $where — <code>${
+              WebEscaping.htmlEscape(seed.previewId)
+            }</code> in <code>${WebEscaping.htmlEscape(seed.catalog)}</code>, rewritten as the
+            plain Compose that produces this render. The catalog's annotations, sticker frame and
+            variant knobs are not code you need in order to use the component, so they are gone.
+            Press Run.$caveat</p>"""
+        } else if (seed.sliced)
           """
 
           <p id="pg-seed" class="cp-sub">Opened from $where — the declaration of
@@ -3498,6 +4950,17 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
     /** Running server version (`BUNDLE_VERSION`), shown in the minimal footer. */
     version: String? = null,
+    /**
+     * The catalog whose colours and name this page wears, when it is served on a **top-level site**
+     * ([ServeSites]). A site hostname publishes one design system, so its `/status` and its 404 are
+     * that system's pages too — carrying the palette and the theme key here is what makes the
+     * *whole* hostname one skin rather than a themed catalog with unthemed chrome bolted beside it.
+     * Empty (the default) on the main host, where these pages belong to no catalog and keep the
+     * built-in chrome.
+     */
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
   ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
@@ -3695,13 +5158,19 @@ object ServeWeb {
         .trimIndent()
 
     return document(
-      title = "Server status — compose-preview",
+      // A site's status is that app's status, so its tab says so rather than naming the box.
+      title =
+        if (siteName.isBlank()) "Server status — compose-preview"
+        else "Status — ${WebEscaping.htmlEscape(siteName)}",
       body = body,
       unfurlDescription =
         "Live catalog, render-daemon, and deployment status for this compose-preview server.",
       unfurl = unfurl,
       version = version,
       navSuffix = suffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
     )
   }
 
@@ -3923,8 +5392,16 @@ object ServeWeb {
      * `&session=` param (the path carries the session). Empty ⇒ links are exactly as before.
      */
     basePath: String = "",
-    /** Whether this session has at least one SVG or Remote Compose format to compare. */
-    hasFormatComparison: Boolean = false,
+    /**
+     * Whether this session can compare a render against its SVG export — gates the "compare SVG"
+     * action, which deep-links the comparison page's `svg` format.
+     */
+    hasSvgComparison: Boolean = false,
+    /**
+     * Whether this session can compare a render against Remote Compose output — gates the "compare
+     * RC players" action, which deep-links the comparison page's `rc` format.
+     */
+    hasRcComparison: Boolean = false,
     /**
      * Whether this catalog has a design-parity view to link to — it maps at least one preview to a
      * design reference, or it publishes a `parity/activity.json` feed. False (the default) omits
@@ -3932,6 +5409,20 @@ object ServeWeb {
      * catalog's landing is unchanged.
      */
     hasParityView: Boolean = false,
+    /**
+     * The design pages this catalog publishes ([ServeDesignPages]), in publication order. Listed by
+     * name in the navigation tree ([pagesBranchHtml]); a catalog with no tree to put them in falls
+     * back to a header action chip. Empty (the default) offers neither, so a catalog that publishes
+     * no pages is unchanged.
+     */
+    designPages: List<PageLink> = emptyList(),
+    /**
+     * The design tool this catalog is specified by ("Figma", …), from its references' provider or
+     * its parity feed — names the parity action after the thing it compares against ("compare to
+     * Figma") rather than after the internal feature. Null (no identifiable tool) keeps the generic
+     * "design parity" label. See [designToolLabel].
+     */
+    designToolLabel: String? = null,
     /**
      * Per-preview thumbnail content-crop lookup — frames a card's render to its component box (a
      * Wear sticker on a 454² watch canvas shows just the component). Returns null for a card that
@@ -4059,13 +5550,24 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
     /** Human catalog title from catalog.json; [moduleLabel] remains the stable technical id. */
     displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val themeLeaseUrl =
       if (themeRenderBurstCapacity > 1) "$basePath/api/theme-render-lease$q" else ""
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val catalogId =
       if (heading == moduleLabel) ""
       else "<p class=\"cp-catalog-id\">${WebEscaping.htmlEscape(moduleLabel)}</p>"
@@ -4087,6 +5589,7 @@ object ServeWeb {
           it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
         }
       )
+    val cardAnchors = mintCardAnchors(groups)
     val renderFailureSummary =
       previews
         .mapNotNull { it.renderFailure }
@@ -4160,7 +5663,7 @@ object ServeWeb {
       renderedVariant(card).let { if (themeOverridable(it)) renderSrc(it) else "" }
     fun cardViews(card: GridCard): Long =
       listOfNotNull(card.light, card.dark, card.neutral).sumOf { engagement[it.id]?.views ?: 0L }
-    fun swapCard(card: GridCard): String {
+    fun swapCard(card: GridCard, anchor: String): String {
       val l = card.light!!
       val d = card.dark!!
       // Default to the light render (dark-first systems open dark); the JS re-swaps to the sticky
@@ -4175,7 +5678,7 @@ object ServeWeb {
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
-        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
+        <a class="cp-card"$anchor data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
           data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(lightLabel)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
@@ -4193,7 +5696,7 @@ object ServeWeb {
         """
         .trimIndent()
     }
-    fun singleCard(p: ServePreview): String {
+    fun singleCard(p: ServePreview, anchor: String): String {
       val idSeg = WebEscaping.urlEncodeSegment(p.id)
       val label = WebEscaping.htmlEscape(gridDisplayName(p))
       val src = renderSrc(p)
@@ -4215,7 +5718,7 @@ object ServeWeb {
                 "</pre></details>"
             } ?: ""
         return """
-          <details class="cp-card cp-card--render-failed">
+          <details class="cp-card cp-card--render-failed"$anchor>
             <summary>
               <div class="cp-imgwrap cp-render-failure">
                 <span class="cp-render-failure-mark">!</span>
@@ -4240,7 +5743,7 @@ object ServeWeb {
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
-          <a class="cp-card"$bgAttr href="$basePath/p/$idSeg$q">
+          <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
               ${thumbImg(src, label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
@@ -4253,8 +5756,13 @@ object ServeWeb {
           """
         .trimIndent()
     }
-    fun cardHtml(card: GridCard): String =
-      if (card.swappable) swapCard(card) else singleCard(card.default)
+    // Every card carries the anchor its tree row jumps to. Derived from the default render's id
+    // rather than from position, so a row keeps pointing at the same component as the catalog
+    // grows.
+    fun cardHtml(card: GridCard): String {
+      val anchor = " id=\"${cardAnchors.getValue(card.default.id)}\""
+      return if (card.swappable) swapCard(card, anchor) else singleCard(card.default, anchor)
+    }
     val cards =
       if (groups.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
@@ -4272,24 +5780,44 @@ object ServeWeb {
     // Any `.cp-subgroup` dividers present (authored tabs OR synthesized flat groups) → the filter
     // script must collapse an emptied sub-group on search, independent of the tab machinery.
     val hasGroups = hasTabs || synthGroups != null
-    val tabBar =
-      if (!hasTabs) ""
-      else
-        buildString {
-          append(
-            "<nav class=\"cp-tabs\" id=\"cp-tabs\" role=\"tablist\" aria-label=\"Catalog sections\">\n"
-          )
-          sections.forEachIndexed { i, sec ->
-            val selected = if (i == 0) "true" else "false"
-            append("  <a class=\"cp-tab\" role=\"tab\" id=\"cp-tab-${sec.slug}\"")
-            append(" href=\"#cp-panel-${sec.slug}\" data-tab=\"${sec.slug}\"")
-            append(" aria-controls=\"cp-panel-${sec.slug}\" aria-selected=\"$selected\">")
-            append(
-              "${WebEscaping.htmlEscape(sec.name)}<span class=\"cp-tab-count\">${sec.count}</span></a>\n"
-            )
-          }
-          append("</nav>\n")
+    // Slugs for the synthesized families, so an outline row has an anchor to jump to. Assigned
+    // here rather than in [synthesizeGroups] because only the tree needs them.
+    if (synthGroups != null) {
+      val used = HashSet<String>()
+      synthGroups.forEach { g ->
+        var slug = g.name?.let { sectionSlug(it) } ?: "ungrouped"
+        var n = 2
+        val base = slug
+        while (!used.add(slug)) {
+          slug = "$base-$n"
+          n++
         }
+        g.slug = slug
+      }
+    }
+    // The component row for a card: its grid label, the card's own anchor, and the primary-axis
+    // variants the grid folded out from under it. Built from the render the grid actually paints,
+    // which on a dark-first system is the dark one.
+    fun treeComponent(card: GridCard): TreeComponent {
+      val shown = card.rendered(darkFirst)
+      return TreeComponent(
+        label = gridDisplayName(shown),
+        anchorId = cardAnchors.getValue(card.default.id),
+        variants = primaryVariants(shown, previews, darkFirst) { viewerHref(it) },
+        href = viewerHref(shown),
+      )
+    }
+    // The design file's pages, listed at the foot of whichever tree this catalog has. A catalog
+    // with no tree (too few previews to synthesize families from, and no authored sections) has
+    // nowhere to put them and keeps the header chip instead — see the action row below.
+    val hasTree = hasTabs || synthGroups != null
+    val pagesBranch = if (hasTree) pagesBranchHtml(designPages, basePath, q) else ""
+    val tabBar =
+      when {
+        hasTabs -> catalogTreeHtml(sections, ::treeComponent, pagesBranch)
+        synthGroups != null -> catalogOutlineTreeHtml(synthGroups, ::treeComponent, pagesBranch)
+        else -> ""
+      }
     // The grid body: either the tabbed section panels (id=cp-grid, so the search box's
     // aria-controls
     // + the filter script still target it) or the plain flat grid. The flat form reproduces the
@@ -4303,7 +5831,7 @@ object ServeWeb {
         buildString {
           append("<div class=\"cp-grid-groups\" id=\"cp-grid\">\n")
           synthGroups.forEach { g ->
-            append("<div class=\"cp-subgroup\">\n")
+            append("<div class=\"cp-subgroup\" id=\"${flatGroupAnchorId(g.slug)}\">\n")
             if (g.name != null)
               append("<h2 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h2>\n")
             append("<div class=\"cp-cards\">\n")
@@ -4318,11 +5846,16 @@ object ServeWeb {
         buildString {
           append("<div class=\"cp-sections\" id=\"cp-grid\">\n")
           sections.forEach { sec ->
-            append("<section class=\"cp-section\" id=\"cp-panel-${sec.slug}\" role=\"tabpanel\"")
+            // `role="region"`, not `tabpanel`: the navigation above is a tree, and a tabpanel with
+            // no tab to own it is a role that describes a relationship the page no longer has.
+            append("<section class=\"cp-section\" id=\"cp-panel-${sec.slug}\" role=\"region\"")
             append(" aria-labelledby=\"cp-tab-${sec.slug}\" data-section=\"${sec.slug}\">\n")
             append("<h2 class=\"cp-section-head\">${WebEscaping.htmlEscape(sec.name)}</h2>\n")
             sec.groups.forEach { g ->
-              append("<div class=\"cp-subgroup\">\n")
+              // The tree's group rows jump here, so a named group carries the anchor id the row
+              // links to; an unnamed one has no row and needs none.
+              val anchor = if (g.name == null) "" else " id=\"${groupAnchorId(sec.slug, g.slug)}\""
+              append("<div class=\"cp-subgroup\"$anchor>\n")
               if (g.name != null)
                 append("<h3 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h3>\n")
               append("<div class=\"cp-cards\">\n")
@@ -4334,6 +5867,16 @@ object ServeWeb {
           append("</div>")
         }
       }
+    // A tree stands BESIDE what it navigates. Its filter is part of that navigation, so the two
+    // share one sidebar and remain together when the menu becomes sticky. A small catalog with no
+    // tree keeps the filter in the toolbar above its flat grid.
+    val sidebarSearch = if (tabBar.isEmpty() || previews.isEmpty()) "" else searchBoxHtml() + "\n"
+    val navAndGrid =
+      if (tabBar.isEmpty()) "$tabBar$gridBlock"
+      else
+        "<div class=\"cp-catalog-body\">\n" +
+          "<aside class=\"cp-catalog-menu\" aria-label=\"Catalog menu\">\n" +
+          "$sidebarSearch$tabBar</aside>\n$gridBlock\n</div>"
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
     val about = if (isPublic) "\n" + aboutSection() else ""
@@ -4344,7 +5887,7 @@ object ServeWeb {
     // catalog page's own heading and grid then start at the top of the content column.
     val back = if (hasHomeIndex) backButton(token, isPublic) else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
-    // link), shown under the header for a served design-system catalog.
+    // link) closes the catalog instead of interrupting the route from its heading to its content.
     val prov = provenance?.let { provenanceSection(it, refreshUrl) + "\n" } ?: ""
     // The Theme control shows when there is more than one theme to choose between: a baked
     // light/dark pair to swap, and/or the app-declared themes this session can re-render under. A
@@ -4357,7 +5900,7 @@ object ServeWeb {
     // Search + empty-state + the combined filter script are shown whenever there are previews to
     // filter, independent of the theme axis.
     val hasPreviews = previews.isNotEmpty()
-    val searchBox = if (hasPreviews) searchBoxHtml(previews.size) + "\n" else ""
+    val searchBox = if (hasPreviews && tabBar.isEmpty()) searchBoxHtml() + "\n" else ""
     val emptyState =
       if (hasPreviews)
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
@@ -4376,10 +5919,11 @@ object ServeWeb {
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n${scriptTag("url-state.js")}\n${scriptTag("bg-toggle.js")}\n<script>${catalogFilterScript(
+        "\n${scriptTag("url-state.js")}\n${scriptTag("serve-components.js")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
+          tabBar.isNotEmpty(),
           themeStorageKey(sessionId, basePath),
           tabStorageKey(sessionId, basePath),
           themeBaseJs,
@@ -4393,7 +5937,7 @@ object ServeWeb {
     val liveScript =
       catalogLiveScript(
         basePath = basePath,
-        query = linkQuery(token, sessionId, basePath, isPublic),
+        query = linkQuery(token, linkSessionId, basePath, isPublic),
         cards =
           orderedCards.map { card ->
             fun streamable(p: ServePreview) = if (canStreamLiveFor(p.id)) p.id else ""
@@ -4407,49 +5951,117 @@ object ServeWeb {
     val liveNote =
       if (liveScript.isEmpty()) ""
       else " · <span class=\"cp-live-note\">hold a card for a live session</span>"
-    val formatLink =
-      if (hasFormatComparison)
-        " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
-      else ""
-    // Joins the same run of catalog-level actions as "compare formats" rather than becoming a tab:
-    // parity is a property OF this catalog, and the grid stays the page's subject.
-    val parityLink =
-      if (hasParityView)
-        " · <a class=\"cp-format-link\" href=\"$basePath/parity$q\">design parity</a>"
-      else ""
-    // Subtle by placement, not by styling: it joins the summary line's existing run of
-    // catalog-level actions rather than becoming a button competing with the grid. Absent on a host
-    // with no playground lane, so it never reads as an offer this server cannot keep.
-    val playgroundLink =
-      playgroundHref
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
-          " · <a class=\"cp-format-link\" href=\"${WebEscaping.htmlEscape(it)}\">" +
-            "try in playground</a>"
-        } ?: ""
+    // ---- The catalog's actions
+    // -------------------------------------------------------------------
+    //
+    // A row of M3 assist chips under the summary line, in place of the run of 0.75rem muted text
+    // links this line used to end with (`… · compare formats · design parity · try in playground`).
+    // Those were the page's only routes to the comparison and parity views, and they were styled to
+    // disappear: smaller than the body copy, grey until hovered, and separated by interpuncts that
+    // read as one sentence rather than as several destinations. A chip is the M3 vocabulary this
+    // page already speaks (the theme toggle right below it is the same shape), and it makes each
+    // route a thing you can see and hit.
+    fun actionChip(href: String, label: String): String =
+      "<a class=\"cp-action-chip\" href=\"${WebEscaping.htmlEscape(href)}\">" +
+        "${WebEscaping.htmlEscape(label)}</a>"
+
+    // One action per comparison a visitor might actually want, rather than a single "compare
+    // formats" that made them discover the format switcher to find out what this catalog can even
+    // compare. Each deep-links the comparison page's own `?format=` so the landing already answers
+    // "compare *what*", and a catalog carrying only one of them shows only that one.
+    fun compareChip(format: String, label: String): String {
+      val query =
+        listOf("format=$format", linkQuery(token, linkSessionId, basePath, isPublic))
+          .filter { it.isNotEmpty() }
+          .joinToString("&")
+      return actionChip("$basePath/compare?$query", label)
+    }
+    val actionChips =
+      listOfNotNull(
+          compareChip("svg", "compare SVG").takeIf { hasSvgComparison },
+          compareChip("rc", "compare RC players").takeIf { hasRcComparison },
+          // Named after the design tool it compares against when the catalog identifies one —
+          // "compare to Figma" says what the page is for, where "design parity" only named the
+          // feature.
+          hasParityView
+            .takeIf { it }
+            ?.let {
+              actionChip(
+                "$basePath/parity$q",
+                designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
+              )
+            },
+          // Pages live in the navigation tree, which is where this catalog's other *places* are.
+          // This chip is the fallback for a catalog too small to have a tree at all: without it
+          // the pages would be published and unreachable. The count is in the label because one
+          // page and thirty are different offers.
+          designPages
+            .takeIf { it.isNotEmpty() && !hasTree }
+            ?.let {
+              actionChip("$basePath/pages$q", "${it.size} ${if (it.size == 1) "page" else "pages"}")
+            },
+          playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
+        )
+        .joinToString("\n          ")
+    val transparentAction =
+      if (hasPreviews) bgPickerHtml("Show the transparent checkerboard behind each preview") else ""
+    val catalogActions =
+      listOf(actionChips, transparentAction).filter { it.isNotBlank() }.joinToString("\n          ")
+    val primaryActions =
+      catalogActions
+        .takeIf { it.isNotBlank() }
+        ?.let { "<div class=\"cp-catalog-actions\">\n          $it\n        </div>\n" } ?: ""
+    val downloadAction =
+      "\n<div class=\"cp-catalog-download\">" +
+        actionChip("$basePath/bundle.zip$q", "download all (.zip)") +
+        "</div>\n"
+    val titleRow =
+      "<div class=\"cp-catalog-title\">" +
+        "<h1 class=\"cp-head cp-catalog-head\">${WebEscaping.htmlEscape(heading)}" +
+        "${compactTrustBadge(trust)}</h1>$catalogId</div>"
+    val tools =
+      (themeToggle + searchBox)
+        .takeIf { it.isNotBlank() }
+        ?.let { "<div class=\"cp-catalog-tools\">\n$it</div>\n" } ?: ""
     return document(
       title = "$heading — compose-preview",
       unfurlTitle = heading,
-      unfurlDescription = "${previews.size} Compose previews in $heading",
+      unfurlDescription = catalogUnfurlDescription(previews.size, heading),
       unfurl = unfurl,
       navSuffix = navSuffix,
       headerBreadcrumb = back,
       version = version,
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       declaredThemes = declaredThemeChips,
       body =
         """
-        <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
-        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
-        $renderFailureSummary<div class="cp-catalog-tools">
-        $themeToggle$searchBox</div>
-        $tabBar$gridBlock$emptyState$filterScript$liveScript$about
+        $titleRow
+        ${degradeBanner(degradations)}<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
+        $primaryActions$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction$prov$about
         """
           .trimIndent(),
     )
   }
+
+  /**
+   * Display name for a design reference's `source.provider` token — `figma` → `Figma`.
+   *
+   * Null for a provider that names no design tool (a checked-in `png`, an `svg`, an `html` mock, or
+   * the default `file`), so a caller falls back to neutral wording instead of inventing a vendor
+   * the catalog never claimed. Only tokens we can name are mapped: an unknown provider is not
+   * title-cased into a plausible-looking product name.
+   */
+  fun designToolLabel(provider: String?): String? =
+    when (provider?.trim()?.lowercase()) {
+      "figma" -> "Figma"
+      "sketch" -> "Sketch"
+      "penpot" -> "Penpot"
+      "framer" -> "Framer"
+      else -> null
+    }
 
   /** PNG↔native-format and PNG↔design-reference comparison page for one served session. */
   fun comparisonPage(
@@ -4483,11 +6095,22 @@ object ServeWeb {
      */
     version: String? = null,
     displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     // Native-format rows retain the catalog's one-default-card presentation. A design reference,
     // however, names one exact preview state/props mapping, so that referenced variant must remain
     // independently visible instead of being folded out with the landing-page variants.
@@ -4501,6 +6124,13 @@ object ServeWeb {
     // whose `.rc` sidecar never reached this box, so it turns the format on by itself.
     val hasRc = comparablePreviews.any { hasRemoteComposeFor(it.id) } || rcCompare != null
     val hasReference = comparablePreviews.any { referencesFor(it.id).isNotEmpty() }
+    // Name the design lane after the tool the references actually came from ("PNG ↔ Figma"), the
+    // same wording the catalog's own action uses, so the two read as one route rather than two
+    // features. A catalog whose references are plain PNGs/mocks keeps the neutral label.
+    val referenceToolLabel =
+      comparablePreviews.firstNotNullOfOrNull { preview ->
+        referencesFor(preview.id).firstNotNullOfOrNull { designToolLabel(it.source.provider) }
+      } ?: "Design reference"
     val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
@@ -4526,7 +6156,7 @@ object ServeWeb {
       val reference = preview?.let { referencesFor(it.id).firstOrNull() } ?: return ""
       val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
       val detailQuery =
-        linkQuery(token, sessionId, basePath, isPublic).let { query ->
+        linkQuery(token, linkSessionId, basePath, isPublic).let { query ->
           listOf(query, "reference=${WebEscaping.urlEncodeSegment(reference.id)}")
             .filter { it.isNotEmpty() }
             .joinToString("&")
@@ -4595,7 +6225,8 @@ object ServeWeb {
       if (hasReference)
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"reference\" " +
-            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ Design reference</button>"
+            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ " +
+            "${WebEscaping.htmlEscape(referenceToolLabel)}</button>"
         )
     }
     val themeControls =
@@ -4629,7 +6260,7 @@ object ServeWeb {
         """
           .trimIndent()
     val rcLanes = rcCompare?.let {
-      rcLanesSection(it, previews, previewIdsByCard, token, sessionId, basePath, isPublic)
+      rcLanesSection(it, previews, previewIdsByCard, token, linkSessionId, basePath, isPublic)
     }
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
@@ -4647,6 +6278,8 @@ object ServeWeb {
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Compare formats"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       // The PNG ↔ Remote Compose comparison plays the document in a canvas on this page and
       // *scores*
@@ -4703,12 +6336,13 @@ object ServeWeb {
     previews: List<ServePreview>,
     previewIdsByCard: Map<String, List<String>>,
     token: String,
-    sessionId: String?,
+    /** The id links must carry as `?session=`, or null when the URL already implies it. */
+    linkSessionId: String?,
     basePath: String,
     isPublic: Boolean,
   ): String? {
     if (manifest.lanes.isEmpty() || manifest.rows.isEmpty()) return null
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val previewsById = previews.associateBy { it.id }
     fun asset(name: String): String =
       if (name.isEmpty()) "" else "$basePath/${ServeRcCompare.DIRECTORY}/$name$q"
@@ -4862,13 +6496,34 @@ $rows
      */
     referenceAnnotations: List<DesignAnnotation> = emptyList(),
     actualAnnotations: List<DesignAnnotation> = emptyList(),
+    /**
+     * The catalog's published revisions and which one this page is pinned to. This is the page the
+     * permalink feature was raised against (issue #3723): a comparison URL names a preview and a
+     * reference, both of which are republished, so without a pin it describes whatever the pair
+     * happens to be when the link is opened.
+     */
+    revisions: CatalogRevisions = CatalogRevisions.NONE,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
-    val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
-    val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+    val heading = catalogHeading(displayTitle, moduleLabel)
+    // Both panels take the pin, or neither does. A pinned render scored against the current mock
+    // would be a comparison across time rather than between the two sides.
+    val assetQuery = withPin(q, revisions.pinned)
+    val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$assetQuery"
+    val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$assetQuery"
     // One toggle per kind, offered only when some panel actually carries that kind — a control that
     // reveals nothing is worse than no control. The payload rides inline rather than behind a fetch
     // so the layers are there on first paint, like the rest of this page's data.
@@ -4876,8 +6531,16 @@ $rows
     val annotationControls =
       if (annotated.isEmpty()) ""
       else {
+        // Every kind [AnnotationKind.KNOWN] admits needs an entry here. A kind that loads and gets
+        // a box built for it but has no toggle is drawn into a layer CSS keeps permanently hidden —
+        // which is what happened to THEME: `ServeAnnotationStore` accepts it, `format-compare.js`
+        // builds its box and legend row, and nothing could ever reveal either.
         val toggles =
-          listOf(AnnotationKind.LAYOUT to "Layout", AnnotationKind.TYPOGRAPHY to "Typography")
+          listOf(
+              AnnotationKind.LAYOUT to "Layout",
+              AnnotationKind.TYPOGRAPHY to "Typography",
+              AnnotationKind.THEME to "Theme",
+            )
             .filter { (kind, _) -> annotated.any { it.kind == kind } }
             .joinToString("\n") { (kind, label) ->
               "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +
@@ -4903,23 +6566,25 @@ $rows
         ?.let { " · revision ${WebEscaping.htmlEscape(it)}" }
         .orEmpty()
     val referenceChoices = (references + reference).distinctBy { it.id }
+    // This page at a given pin (null ⇒ the live catalog), keeping the reference it is showing. Both
+    // the revision control and the sibling-reference picker below build their links through it, so
+    // moving between revisions and moving between references never drop each other.
+    val pageHref: (String?, String) -> String = { pin, referenceId ->
+      val query =
+        listOfNotNull(
+            linkQuery(token, linkSessionId, basePath, isPublic).takeIf { it.isNotEmpty() },
+            "reference=${WebEscaping.urlEncodeSegment(referenceId)}",
+          )
+          .joinToString("&")
+      withPin("$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}?$query", pin)
+    }
+    val revisionsBlock = revisionsHtml(revisions) { pin -> pageHref(pin, reference.id) }
     val referencePicker =
       if (referenceChoices.size <= 1) ""
       else {
-        val baseQuery = linkQuery(token, sessionId, basePath, isPublic)
         val links =
           referenceChoices.joinToString("\n") { choice ->
-            val query =
-              listOf(
-                  baseQuery.takeIf { it.isNotEmpty() },
-                  "reference=${WebEscaping.urlEncodeSegment(choice.id)}",
-                )
-                .filterNotNull()
-                .joinToString("&")
-            val href =
-              WebEscaping.htmlEscape(
-                "$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}?${query}"
-              )
+            val href = WebEscaping.htmlEscape(pageHref(revisions.pinned, choice.id))
             val current = if (choice.id == reference.id) " aria-current=\"page\"" else ""
             "<a class=\"cp-reference-choice\" href=\"$href\"$current>${WebEscaping.htmlEscape(choice.label)}</a>"
           }
@@ -4940,11 +6605,14 @@ $rows
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/compare$q", heading, "Design comparison"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       body =
         """
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
+          $revisionsBlock
           $referencePicker
           <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
           <div class="cp-reference-grid">
@@ -4959,6 +6627,333 @@ $rows
         </div>
         ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * The catalog's **Pages** index: one card per published design page.
+   *
+   * Only rendered when the catalog published at least one, so an ordinary catalog never grows an
+   * empty tab. Each card leads with the design's own drawing and states the coverage number the
+   * whole surface exists to surface — how many of the sheet's components this catalog implements.
+   */
+  fun designPagesIndexPage(
+    moduleLabel: String,
+    pages: List<DesignPage>,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
+  ): String {
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = catalogHeading(displayTitle, moduleLabel)
+    val cards =
+      pages.joinToString("\n") { page ->
+        val id = WebEscaping.urlEncodeSegment(page.id)
+        // Counted against what a catalog could actually implement, not against every node on the
+        // sheet: a private component and a variant-set container are furniture, and counting them
+        // reports a complete family as one short. See `DesignPage.coverageGaps`.
+        val linked = page.linked.size
+        """
+        <a class="cp-page-card" href="$basePath/pages/$id$q">
+          <img loading="lazy" alt="" src="$basePath/pages/$id.svg$q">
+          <strong>${WebEscaping.htmlEscape(page.name)}</strong>
+          <span class="cp-page-count">$linked of ${page.coverageTotal} components implemented</span>
+        </a>
+        """
+          .trimIndent()
+      }
+    return document(
+      title = "$heading — pages",
+      unfurlTitle = "$heading pages",
+      unfurlDescription = "Pages of the design file, with each component linked back to its code",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Pages"),
+      themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
+      body =
+        """
+        <h1 class="cp-head cp-catalog-head">Pages${compactTrustBadge(trust)}</h1>
+        <p class="cp-sub">Whole pages of the design file, with each component on them linked back
+        to the code that implements it.</p>
+        <div class="cp-page-cards">
+        $cards
+        </div>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * One **design page**: the sheet itself as inlined SVG, an outline over every component node on
+   * it, and — behind a toggle — this catalog's own renders standing in for the design's drawing.
+   *
+   * ## Why the SVG is inlined rather than shown in an `<img>`
+   *
+   * Because an `<img>` is a picture and this needs to be a document. The entire feature is *take
+   * the design's own drawing of `Shape=Circle` out of the sheet and put our `Shape/Circle` render
+   * in the hole it leaves* — which means reaching a specific element inside the export, and nothing
+   * can reach inside an `<img>`. Inlining is what makes the sheet addressable; `data-node-id`,
+   * which the importer asks Figma for explicitly, is what names the elements.
+   *
+   * That is also why [svg] is interpolated **unescaped**, the only place on this server where
+   * third-party markup is. It is not raw: [ServeDesignPageStore] runs it through [SvgSanitizer] at
+   * load — allowlisted elements and attributes, no script, no `foreignObject`, no off-document URL
+   * — and the store refuses a page whose export does not survive that. Escaping it instead would
+   * print the markup as text; there is no third option that keeps the feature.
+   *
+   * ## Geometry
+   *
+   * There isn't any, here or in the manifest. The SVG knows where its own nodes are, so
+   * `design-page.js` measures each `[data-node-id]` element and places the outline over it. A
+   * recorded rectangle would be a second answer to that question, and a worse one — Figma's export
+   * box includes effect bleed, so it and the drawn shape disagree on anything with a shadow.
+   *
+   * ## Trust
+   *
+   * [page] is third-party data — layer names are free text authored in the design file — so every
+   * interpolation goes through [WebEscaping.htmlEscape], and the Figma deep link is reassembled
+   * from a validated key + node id by [ServeFigmaSpec.url] rather than taken from the manifest.
+   */
+  fun designPage(
+    moduleLabel: String,
+    page: DesignPage,
+    /** Sanitized export markup, inlined as-is. See the doc comment — this is deliberate. */
+    svg: String,
+    /** The file key the manifest declared, already validated. Empty ⇒ no design-tool deep links. */
+    fileKey: String = "",
+    /**
+     * Preview ids this session can actually render. A node the producer mapped to a preview this
+     * catalog doesn't publish keeps its outline (the mapping is still true) but gets no render and
+     * no link — better than a card that can only 404.
+     */
+    renderablePreviewIds: Set<String> = emptySet(),
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
+  ): String {
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = catalogHeading(displayTitle, moduleLabel)
+
+    /** The preview this node can be drawn with on this session, or null. */
+    fun renderable(node: PageNode): String? =
+      node.renderablePreviewId?.takeIf { it in renderablePreviewIds }
+
+    // Which unlinked nodes are actually missing components. `data-cp-gap` is what the "only what we
+    // don't implement" filter keys on — NOT `data-link="unlinked"`, which also catches the sheet's
+    // private furniture and its variant-set containers. Filtering on the latter is what made a
+    // fully-implemented Shape page report `.Header`, `.Header` and `Shape Set` as work to do.
+    val gaps = page.coverageGaps.toSet()
+
+    // A hit area per node, and nothing else: no resting outline, no colour, no fill. The sheet is
+    // the content here, so a mark is something the reader asks for — by pointing at a component,
+    // or by turning the whole layer on — rather than the page's opening statement.
+    //
+    // An `<a>`, because pointing and going are now split. POINTING describes: the node's detail
+    // lands under the sheet as the pointer sweeps, so a reader can read several components without
+    // committing to any of them. CLICKING goes there.
+    //
+    // A control that navigates should BE a link, and making it one is not a formality: the middle
+    // click, the modifier click and the status-bar preview all start working, the destination is
+    // announced instead of a pressed state that was never true, and the sheet still navigates with
+    // no script at all.
+    val outlines =
+      page.nodes.joinToString("\n") { node ->
+        val label =
+          if (node.isUnlinked) "${node.name} — no code behind this"
+          else "${node.name} — ${node.code.orEmpty()}"
+        // A node with code goes to its preview; one without goes to the design file, which is the
+        // only link it has.
+        val href =
+          renderable(node)?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+            ?: ServeFigmaSpec.url(fileKey, node.nodeId)
+        val tag = if (href == null) "span" else "a"
+        val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+        "<$tag class=\"cp-page-node\" " +
+          "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
+          (if (node in gaps) " data-cp-gap" else "") +
+          hrefAttr +
+          " " +
+          "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
+          "title=\"${WebEscaping.htmlEscape(label)}\"><span class=\"cp-visually-hidden\">" +
+          "${WebEscaping.htmlEscape(label)}</span></$tag>"
+      }
+
+    // The renders live in an inert `<template>` and are adopted when the lane that needs them is
+    // entered. The page now OPENS on that lane, so on a live catalog this is a daemon render per
+    // node on first paint — `loading="lazy"` is what keeps that bounded, since a specimen sheet is
+    // tall and most of it is below the fold. The template still earns its place: a reader who flips
+    // to the spec and never flips back pays for nothing, and every URL in it stays server-built and
+    // server-escaped (reading one out of the DOM into `img.src` is CodeQL's `js/xss-through-dom`).
+    val renders =
+      page.nodes
+        .mapNotNull { node ->
+          val previewId = renderable(node) ?: return@mapNotNull null
+          "<img class=\"cp-page-render\" alt=\"\" loading=\"lazy\" " +
+            "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
+            "src=\"$basePath/render/${WebEscaping.urlEncodeSegment(previewId)}.png$q\">"
+        }
+        .joinToString("\n")
+
+    // The way out of the diff lane, one anchor per scoreable node, riding the same inert template
+    // trick as the renders. `?mode=spec&specView=diff` is the viewer's own deep link into the full
+    // Figma comparison — the diff map, the triptych, the wipe — so the sheet's number and the view
+    // it opens are the same instrument.
+    //
+    // An ANCHOR the script clicks, rather than a URL in a data attribute the script reads and
+    // assigns to `location`. That assignment is the taint path (`js/xss-through-dom`) the renders
+    // already avoid, and the destination here is built from a preview id that came off a design
+    // file. Cloning a server-built, server-escaped element has no sink in it at all.
+    val diffLinks =
+      page.nodes
+        .mapNotNull { node ->
+          val previewId = renderable(node) ?: return@mapNotNull null
+          val sep = if (q.isEmpty()) "?" else "&"
+          "<a class=\"cp-page-diff-link\" tabindex=\"-1\" aria-hidden=\"true\" " +
+            "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
+            "href=\"$basePath/p/${WebEscaping.urlEncodeSegment(previewId)}$q${sep}mode=spec&amp;specView=diff\"></a>"
+        }
+        .joinToString("\n")
+
+    // The audit list, and now also the source the selection strip is cloned from — which is why
+    // every row is a link wherever it can be. A node with code goes to its preview; a node without
+    // goes to the design file, built from the node's own id rather than parsed out of its `ref`
+    // (the two are the same thing by definition, but `ref` is optional and this deep link is the
+    // only link an unlinked node has).
+    val rows =
+      page.nodes.joinToString("\n") { node ->
+        val previewId = renderable(node)
+        val href =
+          previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+            ?: ServeFigmaSpec.url(fileKey, node.nodeId)
+        val tag = if (href == null) "div" else "a"
+        val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+        val code = node.code
+        val detail = if (code != null) WebEscaping.htmlEscape(code) else "no code behind this"
+        "<$tag class=\"cp-page-row\" data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
+          (if (node in gaps) " data-cp-gap" else "") +
+          " " +
+          "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\"$hrefAttr>" +
+          "<span class=\"cp-page-dot\" aria-hidden=\"true\"></span>" +
+          "<span class=\"cp-page-row-name\">${WebEscaping.htmlEscape(node.name)}</span>" +
+          "<span class=\"cp-page-row-code\">$detail</span></$tag>"
+      }
+
+    val linked = page.linked.size
+    // Counted against what a catalog could actually implement, not against every node on the sheet:
+    // a private component and a variant-set container are furniture, and counting them reports a
+    // complete family as one short. See `DesignPage.coverageGaps`.
+    val total = page.coverageTotal
+    val figmaLink =
+      ServeFigmaSpec.url(fileKey, page.nodeId)
+        ?.let {
+          " · <a href=\"${WebEscaping.htmlEscape(it)}\" rel=\"noreferrer noopener\">Open in Figma</a>"
+        }
+        .orEmpty()
+    // A specimen sheet is wider than it is tall, the opposite of the phone screens this surface
+    // used
+    // to show — so the stage's aspect ratio is the sheet's own, from the export's viewBox. The
+    // design decides the shape of the box, not the stylesheet.
+    //
+    // Locale.ROOT, not `"%.4f".format(…)`: under a comma-decimal default locale the latter emits
+    // `aspect-ratio:1,1843`, which is not CSS at all, and the stage would collapse on a box whose
+    // LANG happened to be de_DE.
+    val aspect = String.format(java.util.Locale.ROOT, "%.4f", page.frame.width / page.frame.height)
+
+    return document(
+      title = "${page.name} — page",
+      unfurlTitle = "$heading — ${page.name}",
+      unfurlDescription = "$linked of $total components on this page are implemented",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/pages$q", heading, page.name),
+      themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
+      body =
+        """
+        <div id="cp-design-page">
+          <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
+          <p class="cp-sub">$linked of $total components implemented$figmaLink</p>
+          <div class="cp-page-controls">
+            <div class="cp-page-lane" role="radiogroup" aria-label="What the sheet shows">
+              <label><input type="radio" name="cp-page-lane" value="code" data-cp-page-lane checked>
+                <span>Our renders</span></label>
+              <label><input type="radio" name="cp-page-lane" value="design" data-cp-page-lane>
+                <span>Design spec</span></label>
+              <label><input type="radio" name="cp-page-lane" value="diff" data-cp-page-lane>
+                <span>Diff %</span></label>
+            </div>
+            <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
+            <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
+          </div>
+          <div class="cp-page-legend" hidden>
+            <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>
+            <span data-link="manifest"><i class="cp-page-swatch" style="color:#0969da"></i> design-map</span>
+            <span data-link="convention"><i class="cp-page-swatch" style="color:#bf8700"></i> name match</span>
+            <span data-link="unlinked"><i class="cp-page-swatch" style="color:#cf222e;border-style:dashed"></i> not implemented</span>
+          </div>
+          <div class="cp-page-layout">
+            <div class="cp-page-stage" style="--cp-page-aspect:$aspect">
+              $svg
+              <template data-cp-page-render-source>$renders</template>
+              <template data-cp-page-diff-links>$diffLinks</template>
+              $outlines
+              <div class="cp-page-tip" data-cp-page-tip hidden aria-live="polite"></div>
+            </div>
+            <details class="cp-page-nodes">
+              <summary>$linked of $total components implemented</summary>
+              <div class="cp-page-list">
+              $rows
+              </div>
+            </details>
+          </div>
+        </div>
+        ${scriptTag("format-compare.js")}
+        ${scriptTag("design-page.js")}
         """
           .trimIndent(),
     )
@@ -5004,12 +6999,28 @@ $rows
     displayTitle: String? = null,
     /** Whether a preview carries a design reference — decides "compare" vs "open" on a link. */
     hasReferenceFor: (String) -> Boolean = { false },
+    /**
+     * The design tool this catalog is specified by ("Figma", …) — names the whole-catalog compare
+     * link. Null keeps the neutral "design references" wording. See [designToolLabel].
+     */
+    designToolLabel: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
     fun esc(s: String) = WebEscaping.htmlEscape(s)
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val coverage = dashboard.coverage
 
     /**
@@ -5334,6 +7345,26 @@ $rows
           .trimIndent()
       }
 
+    // The catalog landing sends every design-tool question here ("compare to Figma"), so this page
+    // owes a way back out to the side-by-side table of ALL mapped components — the comparison
+    // page's `reference` format. Offered only when something is mapped; a feed-only catalog (no
+    // references) would land on an empty table.
+    val compareAllLink =
+      if (coverage.mapped == 0) ""
+      else {
+        val query =
+          listOf("format=reference", linkQuery(token, linkSessionId, basePath, isPublic))
+            .filter { it.isNotEmpty() }
+            .joinToString("&")
+        val against = designToolLabel?.let(::esc) ?: "the design references"
+        // The same assist chip the catalog landing uses for its actions, so the route on and the
+        // route back are the same affordance rather than a chip in one direction and a grey text
+        // link in the other.
+        "\n        <div class=\"cp-catalog-actions\">" +
+          "<a class=\"cp-action-chip\" href=\"$basePath/compare?$query\">" +
+          "compare every mapped component against $against</a></div>"
+      }
+
     val parityScripts = buildString {
       if (dashboard.comparisons.any { it.referenceId != null })
         append(scriptTag("format-compare.js"))
@@ -5397,11 +7428,13 @@ $rows
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Design parity"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       body =
         """
         <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
         <p class="cp-sub">How this catalog's code and its design file have moved, and how far apart
-          they are.</p>
+          they are.</p>$compareAllLink
         $sourcesStrip
         <div class="cp-status-grid">
         $stats
@@ -5433,6 +7466,12 @@ $rows
     preview: ServePreview,
     token: String,
     sessionId: String? = null,
+    /**
+     * The catalog this preview belongs to, named in the header bar ([siteHeader]). The viewer
+     * computes no heading of its own — its `<h1>` is the preview — so the name is supplied by the
+     * caller, which is also the only place that knows the catalog's published title.
+     */
+    catalogName: String = "",
     canApplyOverrides: Boolean = false,
     /**
      * Whether the "Live (stream)" toggle is offered — the daemon live lane, distinct from
@@ -5652,6 +7691,19 @@ $rows
      * catalog never recorded; the affordance is then omitted rather than offered dead.
      */
     playgroundHref: String? = null,
+    /**
+     * `/usage/<id>` for this preview — the plain-Compose usage code the **Source** chip shows, or
+     * null when this host cannot derive one and the chip is omitted rather than offered dead.
+     *
+     * A URL, not the snippet: the panel fetches it on first press, so a visitor who never opens the
+     * panel costs the host nothing (deriving a snippet is a GitHub read on a cold cache).
+     *
+     * Deliberately independent of [playgroundHref]. Reading the code is useful wherever a catalog
+     * can be browsed; only *running* it needs a host that can compile that catalog, which most of
+     * the public deployment's catalogs have none. So a preview commonly offers Source without
+     * offering the playground, and the panel links onward to the editor only when there is one.
+     */
+    usageHref: String? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
@@ -5692,9 +7744,57 @@ $rows
      * Only honoured alongside [historyInlineJson]: with no payload there is nothing to link.
      */
     historyLocalRenders: Boolean = false,
+    /**
+     * The catalog's published revisions and which one this page is pinned to ([CatalogRevisions]).
+     *
+     * A pin makes the viewer a **reader of one publish**: the stage shows that revision's baked
+     * pixels and every control that would re-render is refused, because the daemon renders today's
+     * code and answering a request for the past with the present is precisely the failure a
+     * permalink exists to prevent. Empty ⇒ the viewer behaves exactly as it always has.
+     */
+    revisions: CatalogRevisions = CatalogRevisions.NONE,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // A pin turns off every lane that would *produce* something, for one reason that covers all of
+    // them: they run the catalog's current code. A knob edit, a declared theme, a live stream, the
+    // in-browser Wasm app, the SVG export, a Remote Compose player, the inspection layers, a
+    // full-page scroll capture, the downloadable bundle — each would answer a request for an old
+    // publish with today's output, under a URL whose entire promise is that it cannot change.
+    //
+    // The line is "produced on demand" vs. "published bytes", not "interactive" vs. "static": a
+    // baked PNG and a published design reference are both files on the branch at that commit, so
+    // both pin (see `specRasterUrl` below, which takes the pin rather than being dropped). An SVG
+    // is not — it is exported by the daemon per request — so it goes, however static it looks.
+    //
+    // The names are shadowed rather than threaded through the hundred-odd uses below so the rule
+    // holds by construction: there is no path through this function where a pinned page reads the
+    // un-pinned flag.
+    val pinned = revisions.pinned
+    @Suppress("NAME_SHADOWING") val canApplyOverrides = canApplyOverrides && pinned == null
+    @Suppress("NAME_SHADOWING") val canRenderOverrides = canRenderOverrides && pinned == null
+    @Suppress("NAME_SHADOWING") val hasLiveStream = hasLiveStream && pinned == null
+    @Suppress("NAME_SHADOWING") val wasmSrc = wasmSrc?.takeIf { pinned == null }
+    @Suppress("NAME_SHADOWING") val hasSvgExport = hasSvgExport && pinned == null
+    @Suppress("NAME_SHADOWING") val hasScrollExport = hasScrollExport && pinned == null
+    @Suppress("NAME_SHADOWING") val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null
+    @Suppress("NAME_SHADOWING")
+    val enabledRcPlayers = if (pinned == null) enabledRcPlayers else emptyList()
+    @Suppress("NAME_SHADOWING") val hasA11yOverlay = hasA11yOverlay && pinned == null
+    @Suppress("NAME_SHADOWING") val hasDesignAnnotations = hasDesignAnnotations && pinned == null
+    @Suppress("NAME_SHADOWING")
+    val executableBundleHref = executableBundleHref?.takeIf { pinned == null }
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val displayName = previewDisplayName(preview)
@@ -5710,7 +7810,8 @@ $rows
     val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
-    val viewerTheme = previewTheme(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
+    val viewerDarkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+    val viewerTheme = previewTheme(preview, viewerDarkFirst)
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
     // this session.
@@ -5749,13 +7850,24 @@ $rows
         "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
+    // The exploded 3D toggle — the layered figma-svg tilted back and pulled apart into one sheet
+    // per level of composable nesting ([ExplodedSvg]). It sits beside the SVG toggle because it is
+    // a view *of* that export rather than a separate renderer lane, and is gated on the same
+    // per-preview [hasSvgExport]: with no layered export there is nothing to pull apart, so the
+    // control is omitted rather than offered dead.
+    val explodeToggle =
+      if (hasSvgExport)
+        "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
+          "aria-pressed=\"false\" title=\"Explode the vector render into one layer per " +
+          "composable\">3D</button>"
+      else ""
     val svgMatch =
       if (hasSvgExport) {
         val compareQuery =
           listOf(
               "format=svg",
               "preview=${WebEscaping.urlEncodeSegment(preview.id)}",
-              linkQuery(token, sessionId, basePath, isPublic),
+              linkQuery(token, linkSessionId, basePath, isPublic),
             )
             .filter { it.isNotEmpty() }
             .joinToString("&")
@@ -5800,20 +7912,26 @@ $rows
         null -> null
         else -> "Spec"
       }
+    // Pinned, not dropped: a design reference is a published file on the delivery branch like the
+    // baked render is, so the spec lane is one of the few produced-on-demand-looking surfaces that
+    // genuinely has a historical answer. Comparing this publish's render against this publish's
+    // spec is also the comparison a pinned page is *for*.
     val specRasterUrl = designReference?.let {
-      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png$q"
+      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png${withPin(q, pinned)}"
     }
     // The focused Reference / Diff / Actual page for this exact mapping — the same link the
     // comparison grid offers, so the picker's neighbour steps from "look at the spec" to "diff it".
     val specCompareHref = designReference?.let { reference ->
       val query =
         listOf(
-            linkQuery(token, sessionId, basePath, isPublic),
+            linkQuery(token, linkSessionId, basePath, isPublic),
             "reference=${WebEscaping.urlEncodeSegment(reference.id)}",
           )
           .filter { it.isNotEmpty() }
           .joinToString("&")
-      "$basePath/compare/$idSeg${querySuffix(query)}"
+      // Carries the pin, so stepping out to the focused comparison keeps the publish you were
+      // reading rather than silently landing on the live one.
+      withPin("$basePath/compare/$idSeg${querySuffix(query)}", pinned)
     }
     // The four ways to look at the render/spec pair, offered on the stage itself the moment the
     // spec lane is up. The lane used to be a flip — spec on the stage instead of the render — which
@@ -5831,9 +7949,10 @@ $rows
         "slider" to ("Slider" to "One frame, wiped between the spec and the render"),
       )
     // The spec lane's *carrier*, not a control: `data-spec-src` is the raster viewer.js paints onto
-    // the stage when the picker selects `spec`, the comparison group beside it chooses how that
-    // pair is drawn, and the trailing link is the step out to the focused comparison page. The lane
-    // has no chip of its own — it is one `<option>` in [laneSelectHtml] like every other renderer.
+    // the stage when the lane is entered, the comparison group beside it chooses how that pair is
+    // drawn, and the trailing link is the step out to the focused comparison page. Entering the
+    // lane is [specChipHtml]'s job — a chip of its own on the bar, not an `<option>` inside the
+    // renderer combo.
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
@@ -5893,15 +8012,50 @@ $rows
           add(ViewerLane("rc:${backend.wire}", backend.label, backend.wire in rcEnabled))
         }
       if (wasmSrc != null) add(ViewerLane("wasm", "In browser (Wasm)", true))
-      if (specRasterUrl != null && specProviderLabel != null)
-        add(
-          ViewerLane(
-            "spec",
-            if (specProviderLabel == "Figma") "Figma spec" else "Design spec",
-            true,
-          )
-        )
     }
+    // The **design-spec chip** — the imported reference, promoted OUT of the renderer combo and
+    // onto
+    // the row as a control of its own.
+    //
+    // It used to be one `<option>` among the players ("Figma spec", after five Remote Compose
+    // backends and the Wasm app), which put the one lane that answers a different *question* behind
+    // the same menu as the ones that answer "which engine drew this?". Very few catalogs publish
+    // references at all, so on the ones that do it is the most interesting thing on the page and it
+    // was the least visible. As a chip it is one click from rest, it says which tool the spec came
+    // from ("Figma") instead of a generic label, and — like the Live chip beside it — its
+    // `aria-pressed` reports whether the spec is currently on the stage. viewer.js drives both from
+    // the same lane state, so the chip and the combo cannot disagree.
+    val specChipHtml =
+      if (specRasterUrl == null || specProviderLabel == null) ""
+      else {
+        val label = if (specProviderLabel == "Figma") "Figma" else "Design spec"
+        val tip = "Put the imported $specProviderLabel spec on the stage instead of the render"
+        "<button type=\"button\" id=\"cp-spec-chip\" class=\"cp-spec-chip\" " +
+          "aria-pressed=\"false\" data-spec-chip-label=\"${WebEscaping.htmlEscape(label)}\" " +
+          "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
+      }
+    val usageAvailable = !usageHref.isNullOrBlank()
+    // The **Source chip** — the usage code behind this card, on the same row and for the same
+    // reason the design-spec chip is there rather than inside the renderer combo: that combo is
+    // headed "Switch renderer", and source is not a renderer. It answers a third question again,
+    // beside "which engine drew this?" (the combo) and "what was it specified as?" (the spec chip):
+    // *what do I type to get this?*
+    //
+    // Offered whenever this host can resolve a preview's source at all. It is deliberately NOT
+    // gated on the playground being able to compile the catalog — reading the code is useful on
+    // every host that can browse one, and most of the public deployment's catalogs cannot be
+    // compiled here.
+    val sourceChipHtml =
+      if (!usageAvailable) ""
+      else {
+        val tip = "Show the plain Compose that produces this render"
+        "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip\" " +
+          "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
+          "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\" " +
+          "title=\"${WebEscaping.htmlEscape(tip)}\">Source</button>"
+      }
     val defaultLane = if (enabledRcPlayers.isEmpty()) "png" else "rc:$defaultRcBackend"
     // Rendered only when there is genuinely something to switch *to*: a single-lane preview keeps
     // the chip on its own rather than growing a combo box with one entry in it.
@@ -5931,10 +8085,12 @@ $rows
           "<option value=\"${lane.value}\"$disabledAttr>" +
             "${WebEscaping.htmlEscape(text)}</option>"
         }
-    // The chip's opening label: the lane it opens on when a combo box is there to disambiguate, and
-    // the plain "Live preview" invitation when the chip is the only control on the row.
+    // The chip's opening label: the lane it opens on whenever something else on the row can put a
+    // different lane on the stage (the renderer combo, or the design-spec chip), and the plain
+    // "Live preview" invitation when this chip is the only lane control there is — with nothing to
+    // disambiguate against, the invitation reads better than "Snapshot".
     val primaryLaneLabel =
-      if (laneSelectHtml.isEmpty()) "Live preview"
+      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty()) "Live preview"
       else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     // The step from "look at one player" to "look at them all": the format-comparison page, focused
     // on this preview and opened on its Remote Compose lane. A subtle text link rather than another
@@ -5946,7 +8102,7 @@ $rows
           listOf(
               "format=rc",
               "preview=${WebEscaping.urlEncodeSegment(preview.id)}",
-              linkQuery(token, sessionId, basePath, isPublic),
+              linkQuery(token, linkSessionId, basePath, isPublic),
             )
             .filter { it.isNotEmpty() }
             .joinToString("&")
@@ -5956,6 +8112,19 @@ $rows
       }
     // The stage image the Spec lane paints into: a sibling of the snapshot `<img>`, left `hidden`
     // (and src-less) until the lane is entered, so a viewer that never opens it costs no request.
+    // The Source panel: a sibling of the snapshot `<img>` on the stage, left empty and `hidden`
+    // until the chip is pressed. The code is fetched then, from `/usage/<id>` — a preview most
+    // visitors look at without ever opening this, and the snippet costs a GitHub read on a cold
+    // cache, so a page load must not pay for one.
+    //
+    // Server-rendered empty (rather than created by the script) so the panel has a stable place in
+    // the stage and the layout does not jump the first time it is opened — the same reason the
+    // inspection legend is rendered empty.
+    val sourcePanelHtml =
+      if (!usageAvailable) ""
+      else
+        "<div class=\"cp-source-panel\" id=\"cp-source-panel\" role=\"region\" " +
+          "aria-label=\"Usage source\" hidden></div>"
     val specImg =
       if (specRasterUrl == null) ""
       else
@@ -5989,6 +8158,15 @@ $rows
           "<span>Render</span></label></div>" +
           "</div>"
       }
+    // The Source lane's hidden mode radio. It is not a render lane, but it joins the same radio
+    // group as the rest so it inherits every mechanism they get for free: `?mode=source` in the
+    // URL, restore on load, and Back/Forward through the lane. Without it `currentMode()` — which
+    // reads the checked radio — would keep reporting the snapshot while the panel was on the stage.
+    val sourceModeInput =
+      if (!usageAvailable) ""
+      else
+        "<input type=\"radio\" name=\"cp-mode\" value=\"source\" id=\"cp-source-toggle\" " +
+          "tabindex=\"-1\">"
     val specModeInput =
       if (specRasterUrl == null) ""
       else
@@ -6059,7 +8237,13 @@ $rows
         "\""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
-        "aria-pressed=\"false\"$liveToggleTitleAttr$liveToggleDis>\n" +
+        "aria-pressed=\"false\" " +
+        // What the chip goes back to naming when it leaves the design-spec lane on a preview with
+        // no renderer combo. `laneLabelText()` reads the combo's options for this everywhere else;
+        // with no combo there is nothing to read, and without this the chip would come back from
+        // the spec lane calling a static snapshot "Live preview".
+        "data-default-lane-label=\"${WebEscaping.htmlEscape(primaryLaneLabel)}\"" +
+        "$liveToggleTitleAttr$liveToggleDis>\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span id=\"cp-live-toggle-label\">" +
         "${WebEscaping.htmlEscape(primaryLaneLabel)}</span>\n" +
@@ -6217,6 +8401,15 @@ $rows
     // and every existing lane (daemon re-render, Wasm ?uiMode, URL state, the catalog-scoped sticky
     // key) keeps working untouched. Day/Night rather than Light/Dark to match the labels the select
     // used; a dark-first (Wear) system offers Night alone, as its select did.
+    // …and, like the axes rows above, the bar FOLDS once a catalog declares enough themes that the
+    // chips stop fitting. Eight chips is the published compose-m3 shape: they ellipsise to stubs
+    // ("Light Medi…", "Dark Hig…") and the group scrolls within itself, so the row is spending full
+    // width to show names it has already truncated. Behind the title-bar toggle the *current*
+    // theme's full name is always readable and the chips are one click away. Under
+    // [THEME_CHIPS_INLINE] — a plain light/dark catalog, or one with a theme or two — the bar shows
+    // as it always has.
+    val themeChipCount = (if (wearAlwaysDark) 1 else 2) + viewerDeclaredThemes.size
+    val themeOpen = themeChipCount <= THEME_CHIPS_INLINE
     val themeBarHtml =
       themeChipsHtml(
           builtIns =
@@ -6226,9 +8419,28 @@ $rows
           indent = "          ",
         )
         .let {
-          "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">\n" +
+          "<span class=\"cp-theme cp-theme-bar\" id=\"cp-theme-bar\" role=\"group\"" +
+            " aria-label=\"Preview theme\"${if (themeOpen) "" else " hidden"}>\n" +
             "          $it\n        </span>"
         }
+    // The theme toggle's *value* is seeded server-side from the lane this preview is baked in, then
+    // kept in sync client-side (viewer-drawers.js mirrors whichever chip `viewer.js` marks pressed)
+    // — the theme is picked without a page load, so a server-rendered label alone would go stale on
+    // the first click.
+    val themeToggle =
+      disclosureToggleHtml(
+        id = "cp-theme-toggle",
+        controls = "cp-theme-bar",
+        label = "Theme",
+        // Exactly the select's own default rule (`daySelected = viewerTheme != "dark"`), not its
+        // inverse: a preview with neither a uiMode nor a light/dark id token has a null
+        // [viewerTheme] and opens on Day, so anything other than an explicit dark lane is Day here
+        // too. Testing for "light" instead would label every untagged preview Night, contradicting
+        // the selected option beside it until the mutation observer got round to fixing it.
+        value = if (viewerTheme == "dark") "Night" else "Day",
+        open = themeOpen,
+        valueId = "cp-theme-toggle-value",
+      )
     // Inspection layers (see inspect.js): what the frame is MADE OF, drawn client-side over the
     // pixels the server already sent — the accessibility focus map, the resolved typography, the
     // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
@@ -6437,32 +8649,85 @@ $rows
       else
         "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
           "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
+    // The right-hand overrides drawer's toggle, which now sits with the other three disclosures in
+    // the title bar rather than alone at the end of the viewer bar. Server-side it is the one that
+    // starts expanded (`cp-controls-open` on .cp-viewer below); the drawer script collapses it on a
+    // phone, where the preview leads and the drawer opens as a bottom sheet.
+    val controlsToggle =
+      "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-controls-toggle\" " +
+        "aria-expanded=\"true\" aria-controls=\"cp-controls\">⚙ Overrides</button>"
     // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
     // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
     // change so a re-render in the opposite theme doesn't clash with a stale backing color.
     val bgThemeAttr = viewerTheme?.let { " data-bg-theme=\"$it\"" } ?: ""
-    // The component-state switcher: plain links to this component's other baked states (same
-    // theme).
-    // Empty for a single-state component / a stateless preview, so nothing renders there.
-    val stateSwitcher = stateSwitcherHtml(preview, siblings, basePath, q)
-    // The variant switcher: links to this component's props-axis variants (RTL / locale / fontScale
-    // / content) folded out of the grid, in the same theme + state. Empty when the component has no
-    // such variants, so a plain / state-only catalog is unchanged. Concatenated after the state
-    // switcher (both empty ⇒ the interpolation stays "", preserving the section-less golden).
-    val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q)
-    val switchers =
-      listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
+    // The component's renders, as a SUBTREE of the catalog tree filtered to this component: the
+    // component row and every primary-axis render under it, the one on screen marked. This replaced
+    // two rows of chips — a `State` row and a `Variant` row — that keyed identically to the tree's
+    // own [primaryVariants] and so always listed the same renders, only in a second shape, in a
+    // second place, with the two axes torn apart into rows that never named their relationship.
+    // Empty for a component with no second render, exactly as the chip rows were.
+    val axesTree = componentSubtreeHtml(preview, siblings, basePath, q, viewerDarkFirst)
+    // The axes DISCLOSURE. A component with a wide axis (the published m3-catalog's
+    // `iconbutton-outlined` bakes ~30 states) is a long list, and its only load-bearing fact —
+    // "which render am I on" — fits in the toggle's own label. So the subtree folds behind one
+    // control in the title bar that names the current render, and opens on demand. Inline up to
+    // [AXIS_ROWS_INLINE] rows: a two- or three-render component is a short list that reads better
+    // shown than hidden behind a click.
+    // `+ 1` for the component row, which is itself a render — the default one. Counting only the
+    // children would make the threshold drift the moment the default was folded up into that row:
+    // a five-render component would count four and open, having counted five and folded the day
+    // before, for no reason a reader could see.
+    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size
+    val axisOpen = axisRows <= AXIS_ROWS_INLINE
+    // What the toggle says when it is closed. The subtree folds BOTH axes, so it names both the
+    // axes it folded and the values they hold — a component that varies on state *and* props (RTL,
+    // a locale, a font scale) would otherwise lose the variant it is on the moment the tree went
+    // away, which is exactly the cost this fold is not allowed to have. State leads, as the axis a
+    // reader navigates most; either half drops out when the component does not vary on it.
+    val hasStateAxis =
+      axesTree.isNotBlank() && componentHasAxis(preview, siblings, viewerDarkFirst, "state")
+    val hasPropsAxis =
+      axesTree.isNotBlank() && componentHasAxis(preview, siblings, viewerDarkFirst, "props")
+    val axisName =
+      listOfNotNull("State".takeIf { hasStateAxis }, "Variant".takeIf { hasPropsAxis })
+        .joinToString(" · ")
+    val axisValue =
+      listOfNotNull(
+          stateLabel(preview.state).takeIf { hasStateAxis },
+          propsLabel(preview.props).takeIf { hasPropsAxis },
+        )
+        .joinToString(" · ")
+    val axesToggle =
+      if (axesTree.isBlank()) ""
+      else
+        disclosureToggleHtml(
+          id = "cp-axes-toggle",
+          controls = "cp-axes",
+          label = axisName,
+          value = axisValue,
+          open = axisOpen,
+        )
+    val axesBlock =
+      if (axesTree.isBlank()) ""
+      else
+        "<div class=\"cp-axes\" id=\"cp-axes\"${if (axisOpen) "" else " hidden"}>\n" +
+          "$axesTree\n      </div>"
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
-    // alternatives, the two subtle "go compare this elsewhere" links, then the SVG format toggle
-    // for whatever the chip is currently showing.
+    // alternatives, the design-spec chip (top level, not an option inside the combo), the two
+    // subtle
+    // "go compare this elsewhere" links, then the SVG format toggle for whatever the chip is
+    // currently showing.
     val primaryControls =
       listOf(
           liveToggleHtml,
           laneSelectHtml,
+          specChipHtml,
+          sourceChipHtml,
           comparePlayersLink,
           specSelector,
           svgFmtToggle,
+          explodeToggle,
           svgMatch,
         )
         .filter { it.isNotBlank() }
@@ -6482,6 +8747,12 @@ $rows
           WebEscaping.htmlEscape("$basePath/history/render/{blob}.png$q") +
           "\""
       } else ""
+    // The revision control, and the attribute that makes the pin reach the pixels: `viewer.js`
+    // appends `at=<sha>` to every render request it builds, so the stage, the export links and the
+    // Copy PNG button all read the same publish the banner names.
+    val revisionsBlock = revisionsHtml(revisions) { pin -> withPin("$basePath/p/$idSeg$q", pin) }
+    val pinnedAttr =
+      revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
     // break out is neutralised. The payload itself is server-built from the catalog's own manifest.
     val historyInlineHtml =
@@ -6501,6 +8772,7 @@ $rows
           rcModeInput,
           rcWasmModeInput,
           specModeInput,
+          sourceModeInput,
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
@@ -6530,6 +8802,17 @@ $rows
         playgroundHref,
         executableBundleHref,
       )
+    // Every disclosure the page has, in one group, at the end of the identity row: the component
+    // list, the state/variant axes, the theme chips, the overrides drawer. They were scattered —
+    // two on the viewer bar, two implicit in rows that were simply always open — which is why the
+    // page had no single answer to "what can I put away". Ordered as the surfaces they own read on
+    // the page (left column, then the two rows below the title, then the right column), and each
+    // closed one still names its current value, so folding a row never costs the fact it carried.
+    val headToggles =
+      listOf(navToggle, axesToggle, themeToggle, controlsToggle).filter { it.isNotBlank() }
+    val headTogglesHtml =
+      if (headToggles.isEmpty()) ""
+      else "\n        <span class=\"cp-head-toggles\">${headToggles.joinToString("")}</span>"
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
@@ -6537,10 +8820,10 @@ $rows
       <div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
         <code class="cp-preview-id" title="$idText">$idText</code>
-        ${viewerViewCountHtml(engagement.views)}
+        ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
       </div>
-      ${degradeBanner(degradations)}
-      $switchers
+      $revisionsBlock${degradeBanner(degradations)}
+      $axesBlock
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
@@ -6549,16 +8832,14 @@ $rows
         </span>
       </div>
       <div class="cp-viewer-bar">
-        $navToggle
         $themeBarHtml
         ${bgPickerHtml("Show the transparent checkerboard behind the preview")}
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
@@ -6579,7 +8860,7 @@ $rows
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           $themeSelectorHtml
           $sizeControlsHtml
-          ${scrollGroupHtml(hasScrollExport, hasSvgExport)}
+          ${exportShapeGroupsHtml(hasScrollExport, hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -6587,26 +8868,11 @@ $rows
                 <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off"$wasmDis>
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
-                     accepts can still be typed in. -->
+                     accepts can still be typed in — so this is the OPEN form of the same value
+                     set an author declares with `previewOverrideChoice`, rendered through the
+                     same helper rather than hand-written twice. -->
                 <datalist id="cp-localeTag-list">
-                  <option value="en-XA" label="Accented (pseudo)"></option>
-                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
-                  <option value="ar" label="Arabic (RTL)"></option>
-                  <option value="he" label="Hebrew (RTL)"></option>
-                  <option value="fa" label="Persian (RTL)"></option>
-                  <option value="en-US"></option>
-                  <option value="en-GB"></option>
-                  <option value="de-DE"></option>
-                  <option value="fr-FR"></option>
-                  <option value="es-ES"></option>
-                  <option value="pt-BR"></option>
-                  <option value="ru-RU"></option>
-                  <option value="ja-JP"></option>
-                  <option value="ko-KR"></option>
-                  <option value="zh-CN"></option>
-                  <option value="zh-Hant-TW"></option>
-                  <option value="hi-IN"></option>
-                  <option value="th-TH"></option>
+                  ${datalistOptionsHtml(LOCALE_PRESETS, indent = "                  ")}
                 </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
@@ -6633,7 +8899,7 @@ $rows
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       ${scriptTag("url-state.js")}
-      ${scriptTag("bg-toggle.js")}
+      ${scriptTag("serve-components.js")}
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
@@ -6659,6 +8925,7 @@ $rows
           "Component",
         ),
       themeCss = themeCss,
+      siteName = catalogName,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       declaredThemes = if (overridesLive) viewerDeclaredThemes else emptyList(),
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
@@ -6779,6 +9046,8 @@ $rows
      * door, `/status`, a shared document): those never pin a scheme.
      */
     themeStorageKey: String = "",
+    /** The catalog this page belongs to, named in the header bar. See [siteHeader]. */
+    siteName: String = "",
     /**
      * Declared themes whose resolved mode lets the head script paint correctly before first draw.
      */
@@ -6801,13 +9070,23 @@ $rows
           WebEscaping.htmlEscape(unfurlDescription ?: "Compose preview rendered by compose-preview")
         val pageUrl = WebEscaping.htmlEscape(unfurl.pageUrl)
         val imageUrl = unfurl.imageUrl?.let(WebEscaping::htmlEscape)
+        // Only when both are known: a card given one axis has to measure the image anyway, and a
+        // half-declared size is the one input an unfurler can't sanity-check against the pixels.
+        val dimensionsHtml =
+          if (unfurl.imageWidth == null || unfurl.imageHeight == null) ""
+          else
+            """
+
+            <meta property="og:image:width" content="${unfurl.imageWidth}">
+            <meta property="og:image:height" content="${unfurl.imageHeight}">"""
+              .trimIndent()
         val imageHtml =
           if (imageUrl == null) ""
           else
             """
             <meta property="og:image" content="$imageUrl">
             <meta property="og:image:type" content="image/png">
-            <meta property="og:image:alt" content="$metaTitle">
+            <meta property="og:image:alt" content="$metaTitle">$dimensionsHtml
             """
               .trimIndent()
         val twitterImageHtml =
@@ -6825,7 +9104,7 @@ $rows
         <meta property="og:description" content="$description">
         <meta property="og:url" content="$pageUrl">
         $imageHtml
-        <meta name="twitter:card" content="${if (imageUrl == null) "summary" else "summary_large_image"}">
+        <meta name="twitter:card" content="${twitterCard(unfurl)}">
         <meta name="twitter:title" content="$metaTitle">
         <meta name="twitter:description" content="$description">
         $twitterImageHtml
@@ -6852,6 +9131,7 @@ $rows
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
+${ServeSiteIcon.linkTags().prependIndent("        ")}
         <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -6859,7 +9139,7 @@ $rows
         ${pageThemeScript(themeStorageKey, declaredThemes)}
       </head>
       <body>
-        ${siteHeader(navSuffix, headerAction, headerBreadcrumb)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName)}
         <main class="cp-main">
         $body
         </main>$footerBlock
@@ -6956,6 +9236,69 @@ $rows
   }
 
   /**
+   * The drawer groups that shape the *export* rather than the render — Scroll and Exploded 3D —
+   * joined into one slot so a session that offers neither contributes nothing at all. (Interpolated
+   * separately, an absent group left a blank line in every viewer that can't export SVG, which is
+   * most of them.)
+   */
+  private fun exportShapeGroupsHtml(hasScrollExport: Boolean, hasSvgExport: Boolean): String =
+    listOf(scrollGroupHtml(hasScrollExport, hasSvgExport), explodeGroupHtml(hasSvgExport))
+      .filter { it.isNotBlank() }
+      .joinToString("\n          ")
+
+  /**
+   * The overrides drawer's "Exploded 3D" group: the camera and separation knobs behind the viewer
+   * bar's **3D** toggle.
+   *
+   * The toggle alone is the whole feature for most visitors — the defaults are the readable preset
+   * — so the axes live in the drawer rather than on the bar, next to the other things that shape an
+   * export. They are `<input type="range">` rather than numbers because nobody knows what tilt they
+   * want in degrees; they know it when they see it, and the SVG re-projects per drag.
+   *
+   * Every knob carries `data-cp-default`, which is what lets the viewer JS omit an untouched axis
+   * from the URL (so the common link stays `?exploded=1`) and reset it on a Back that drops the
+   * param. The values must therefore stay equal to `ExplodedSvg.Options`' own defaults; the fixture
+   * test is what notices when they drift apart.
+   *
+   * Empty when the session can't export SVG at all — there is no layered vector to pull apart.
+   */
+  private fun explodeGroupHtml(hasSvgExport: Boolean): String {
+    if (!hasSvgExport) return ""
+    fun slider(
+      id: String,
+      label: String,
+      min: String,
+      max: String,
+      step: String,
+      default: String,
+      unit: String,
+      hint: String,
+    ): String =
+      """
+      <label class="cp-explode-row" title="$hint">$label
+        <input id="cp-explode-$id" class="cp-explode-knob" type="range" min="$min" max="$max"
+          step="$step" value="$default" data-cp-default="$default" data-cp-unit="$unit" disabled>
+        <output id="cp-explode-$id-value" class="cp-explode-value">$default$unit</output>
+      </label>
+      """
+        .trimIndent()
+    return """
+      <details class="cp-group" data-cp-group="explode">
+        <summary>Exploded 3D</summary>
+        <div class="cp-group-body">
+          ${slider("tilt", "Lean", "0", "75", "1", "28", "°", "How far the layers lean away from you; 0 is face-on").prependIndent("          ").trimStart()}
+          ${slider("spin", "Spin", "-80", "80", "1", "-16", "°", "How far the layers are turned in their own plane").prependIndent("          ").trimStart()}
+          ${slider("gap", "Separation", "0", "600", "5", "0", "", "Distance between layers; 0 derives one from the preview's size").prependIndent("          ").trimStart()}
+          ${slider("depth", "Layers", "1", "16", "1", "6", "", "Composables nested deeper than this fold into the last layer").prependIndent("          ").trimStart()}
+          <div class="cp-knobs-head">One layer per level of composable nesting, from the
+            <code>compose/figma-svg</code> export. Rides the SVG link and download.</div>
+        </div>
+      </details>
+      """
+      .trimIndent()
+  }
+
+  /**
    * The overrides drawer's Scroll group: "Full page (scroll)", which points the copyable /
    * downloadable PNG and SVG exports at the full-page `?scroll=long` render of a scrolling preview
    * (a tall Wear capsule / grown LazyColumn) instead of the viewport-sized image. It's an override
@@ -6993,6 +9336,42 @@ $rows
    * skipped. Empty if the resource is somehow absent — a font knob's datalist then carries only its
    * declared [PreviewOverrideDeclaration.suggestions].
    */
+  /**
+   * The locale field's **value set** — the tags worth offering, each with the name the picker
+   * shows.
+   *
+   * Open rather than exhaustive: these drop down for quick picking, and any valid BCP-47 tag the
+   * server accepts stays typeable, which is why the control remains an `<input list>` rather than
+   * becoming a `<select>`. Declared here as data so it renders through the same
+   * [datalistOptionsHtml] an author-declared value set does instead of being hand-written HTML —
+   * the labels are the whole reason a bare tag list is a poor control, and they were previously
+   * spelled out inline where nothing could reuse them.
+   *
+   * Pseudolocales lead (they are the reason to reach for this control at all), then the real RTL
+   * languages, then common tags.
+   */
+  private val LOCALE_PRESETS: List<PreviewOverrideOption> =
+    listOf(
+      PreviewOverrideOption("en-XA", "Accented (pseudo)"),
+      PreviewOverrideOption("ar-XB", "Bidi / RTL (pseudo)"),
+      PreviewOverrideOption("ar", "Arabic (RTL)"),
+      PreviewOverrideOption("he", "Hebrew (RTL)"),
+      PreviewOverrideOption("fa", "Persian (RTL)"),
+      PreviewOverrideOption("en-US"),
+      PreviewOverrideOption("en-GB"),
+      PreviewOverrideOption("de-DE"),
+      PreviewOverrideOption("fr-FR"),
+      PreviewOverrideOption("es-ES"),
+      PreviewOverrideOption("pt-BR"),
+      PreviewOverrideOption("ru-RU"),
+      PreviewOverrideOption("ja-JP"),
+      PreviewOverrideOption("ko-KR"),
+      PreviewOverrideOption("zh-CN"),
+      PreviewOverrideOption("zh-Hant-TW"),
+      PreviewOverrideOption("hi-IN"),
+      PreviewOverrideOption("th-TH"),
+    )
+
   private val googleFontFamilies: List<String> by lazy {
     ServeWeb::class
       .java
@@ -7015,7 +9394,49 @@ $rows
     val seen = LinkedHashSet<String>()
     suggestions.forEach { if (it.isNotBlank()) seen.add(it) }
     if (googleFonts) seen.addAll(googleFontFamilies)
-    return seen.joinToString("\n") { "<option value=\"${WebEscaping.htmlEscape(it)}\"></option>" }
+    return datalistOptionsHtml(seen.map { PreviewOverrideOption(it) })
+  }
+
+  /**
+   * `<option>`s for a **`<datalist>`** — the open form of a value set, where the field stays
+   * free-text and the options are a shortlist.
+   *
+   * A value whose label differs from it carries `label=`, which is what lets the locale presets
+   * read "Accented (pseudo)" while seeding `en-XA`; a self-labelling value emits the bare `value=`
+   * a font family always did, so a font knob's markup is unchanged.
+   */
+  private fun datalistOptionsHtml(
+    options: List<PreviewOverrideOption>,
+    /**
+     * Leading whitespace for each line after the first. A template interpolation only indents where
+     * the `$…` sits, so a multi-line block otherwise lands flush against the margin — invisible in
+     * a browser, but the viewer pages are checked in as golden fixtures and read by humans there.
+     */
+    indent: String = "",
+  ): String =
+    options.joinToString("\n$indent") { o ->
+      val value = WebEscaping.htmlEscape(o.value)
+      if (o.label == o.value) "<option value=\"$value\"></option>"
+      else "<option value=\"$value\" label=\"${WebEscaping.htmlEscape(o.label)}\"></option>"
+    }
+
+  /**
+   * `<option>`s for a **`<select>`** — the closed form, where [selected] is the value the control
+   * opens on.
+   *
+   * A [selected] outside the set is emitted as an extra leading option rather than dropped. The set
+   * is what the *author* declared, and a render can still be reached carrying something else (a
+   * hand-written `knob.size=xxl`, a link from before a value was renamed); showing it keeps the
+   * control honest about what is on screen, where silently snapping to the first option would lie.
+   */
+  private fun selectOptionsHtml(options: List<PreviewOverrideOption>, selected: String): String {
+    val known = options.any { it.value == selected }
+    val all = if (known) options else listOf(PreviewOverrideOption(selected)) + options
+    return all.joinToString("\n") { o ->
+      val active = if (o.value == selected) " selected" else ""
+      "<option value=\"${WebEscaping.htmlEscape(o.value)}\"$active>" +
+        "${WebEscaping.htmlEscape(o.label)}</option>"
+    }
   }
 
   private fun overrideKnobsHtml(
@@ -7063,19 +9484,37 @@ $rows
         if (bool) {
           val checked = if (value == "true" || value == "1") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
+        } else if (d.optionsExhaustive && d.options.isNotEmpty()) {
+          // A CLOSED value set (`previewOverrideChoice`): every value is on screen and nothing else
+          // is expressible, so this is a `<select>` rather than a field the visitor has to already
+          // know the vocabulary for. `xs`/`s`/`m`/`l`/`xl` was previously a text box showing `s` —
+          // the current value was visible, the alternatives were not.
+          //
+          // The viewer JS needs no branch for it: it reads `.value` / `.disabled` off the control
+          // and only special-cases `type === "checkbox"`, which a `<select>` (`select-one`) is not.
+          """
+          <label>${label}
+            <select $attrs$dis>
+          ${selectOptionsHtml(d.options, overrideValueText(d.current ?: d.default))}
+            </select>
+          </label>
+          """
+            .trimIndent()
         } else {
           val inputType = if (d.type == "int" || d.type == "float") "number" else "text"
           // Any knob that carries discovered options — a font knob (declared via
           // `previewOverrideFont` / `catalogOverrideFont`, with autocomplete suggestions and/or the
-          // Google Fonts flag) or any other knob with declared `suggestions` (e.g. `theme.colors`)
-          // —
-          // renders as a combobox "like Locale": a free-text `<input list>` bound to a `<datalist>`
-          // (declared names first, then, for a font knob, the full fonts.google.com list). Any knob
-          // with no options stays a plain text/number input.
-          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty()
+          // Google Fonts flag), a non-exhaustive value set, or any other knob with declared
+          // `suggestions` (e.g. `theme.colors`) — renders as a combobox "like Locale": a free-text
+          // `<input list>` bound to a `<datalist>` (declared names first, then, for a font knob,
+          // the
+          // full fonts.google.com list). Any knob with no options stays a plain text/number input.
+          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty() || d.options.isNotEmpty()
           if (hasOptions) {
             val listId = "cp-dl-" + wireKey.replace(Regex("[^A-Za-z0-9_-]"), "-")
-            val options = fontDatalistOptions(d.suggestions, d.googleFonts)
+            val options =
+              if (d.options.isNotEmpty()) datalistOptionsHtml(d.options)
+              else fontDatalistOptions(d.suggestions, d.googleFonts)
             """
             <label>${label}
               <input type="$inputType" $attrs value="$value" list="$listId"$dis>

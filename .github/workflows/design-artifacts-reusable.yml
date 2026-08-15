@@ -272,10 +272,12 @@ on:
         required: false
       figma_token:
         description: >-
-          Optional read-only Figma personal access token (`file_content:read`), used only to render
-          `figma:<fileKey>/<nodeId>` entries in the calling repo''s design-map.json into published
-          design references. Absent, those entries are skipped with a warning and every other
-          reference still publishes.
+          Optional read-only Figma personal access token (`file_content:read`). Two consumers, both
+          read-only: rendering `figma:<fileKey>/<nodeId>` entries in the calling repo''s
+          design-map.json into published design references. It is NOT used by the design-page lane
+          — a repo imports its own pages on its own cadence and commits the result, so publishing
+          them needs no credential at all. Absent, reference entries are skipped with a warning;
+          everything else still publishes.
         required: false
 
 permissions: {}
@@ -1132,6 +1134,27 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --source-repo "${{ github.repository }}" \
             --ref "${{ github.ref_name }}"
+
+      # Design pages: whole specimen sheets of the design file, cached as SVG, with the node id of
+      # every component on them linked back to the catalog component that implements it. Feeds the
+      # preview server's `/<system>/pages/` surface (`ServeDesignPages.kt`).
+      #
+      # NO NETWORK, and that is the design. The import is the calling repo's own job — it runs on
+      # the design file's cadence rather than the catalog's, and commits `design/pages/` — so this
+      # step only re-keys and copies what is already in the checkout. A fork, a token-less run and
+      # an offline republish therefore all produce the same pages as a credentialled one.
+      #
+      # A repo that has never heard of the feature has no `design/pages/`, and the emitter is a
+      # no-op for it. Fail-soft like the reference lane: a page whose export can't be copied is
+      # dropped with a warning rather than costing the catalog its render.
+      - name: Publish design pages
+        if: ${{ inputs.publish || inputs.upload-out }}
+        run: |
+          set -euo pipefail
+          node compose-ai-tools/scripts/design-artifacts/emit-design-pages.mjs \
+            --out "$GITHUB_WORKSPACE/out" \
+            --repo "$GITHUB_WORKSPACE" \
+            --spec "${{ inputs.spec }}"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored

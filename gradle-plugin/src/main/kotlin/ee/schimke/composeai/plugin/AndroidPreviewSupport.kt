@@ -1212,6 +1212,14 @@ internal object AndroidPreviewSupport {
         { dependencyConfigName },
         previewOutputDir,
         extension,
+        activeCompilationSourceFiles =
+          project
+            .files(listOfNotNull(variant.sources.java?.all, variant.sources.kotlin?.all))
+            .asFileTree
+            .matching {
+              include("**/*.kt")
+              include("**/*.java")
+            },
       ) {
         // Lazy `tasks.matching` rather than strict `dependsOn(taskName)` so KMP-Android modules
         // (where `compileDebugKotlin` doesn't exist — only `compileDebugKotlinAndroid` does)
@@ -2649,6 +2657,10 @@ internal object AndroidPreviewSupport {
         // The instant the render JVM pins its wall clock to (default `10:10`), so a preview showing
         // the time doesn't diff on every run. `PreviewClock` reads it in the forked render JVM.
         val fixedTime = composeAiFixedTime(project, extension)
+        // Whether this render uses the Compose runtime's rewritten `SlotTable`. Read by
+        // `LinkBufferComposer` inside the Robolectric sandbox, so like the two above it has to be
+        // forwarded onto the forked render JVM rather than resolved on the Gradle one.
+        val linkBufferComposer = composeAiLinkBufferComposer(project, extension)
         // Static system properties (Robolectric modes + the path-bearing composeai.*
         // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
         // preview daemon can replay the same set when launching its own JVM. The
@@ -2664,6 +2676,7 @@ internal object AndroidPreviewSupport {
             fontsFailOnFallback = fontsFailOnFallback.get(),
             hostTheme = hostTheme.get(),
             fixedTime = fixedTime.get(),
+            linkBufferComposer = linkBufferComposer.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
@@ -3181,6 +3194,7 @@ internal object AndroidPreviewSupport {
         renderBackend.set("desktop")
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
+        linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
         // Honour the same `--preview` / `--preview-id` / `--exclude-preview-id` selection (issue
         // #2977) so a filtered Android workflow doesn't render every Lottie asset. This is a
@@ -3229,6 +3243,7 @@ internal object AndroidPreviewSupport {
         renderBackend.set("desktop")
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
+        linkBufferComposer.set(composeAiLinkBufferComposer(project, extension))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
         // Honour the preview filters (issue #2977), same as the Lottie task above — filter over the
         // full manifest, then restrict to `kind=SVG`, so filtered Android workflows don't render
@@ -3372,6 +3387,7 @@ internal object AndroidPreviewSupport {
     // forwards it — `PreviewClock` reads it there, so without this line a daemon render of a
     // clock-bearing screen would drift while the batch render stayed fixed.
     val daemonFixedTime = composeAiFixedTime(project, extension)
+    val daemonLinkBufferComposer = composeAiLinkBufferComposer(project, extension)
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
     // mustn't capture `project`. The cheap-signal set used to be collected at task-action
     // time so newly-added subproject scripts were seen on the same run, but doing it
@@ -3543,6 +3559,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.svg.background", daemonSvgBackground)
       this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       this.systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
+      this.systemProperties.put("composeai.render.linkBufferComposer", daemonLinkBufferComposer)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(

@@ -157,6 +157,21 @@ data class AmbientCapture(
 /** Renderer-side mirror of the plugin's `GestureHintCapture`. */
 @Serializable data class GestureHintCapture(val showHints: Boolean = true)
 
+/** Renderer-side mirror of the plugin's `PermissionGrantCaptureState`. */
+@Serializable
+enum class PermissionGrantCaptureState {
+  GRANTED,
+  DENIED,
+}
+
+/**
+ * Renderer-side mirror of the plugin's `PermissionsCapture` (`@PermissionPreview`, issue #3676).
+ * Keys are full Android permission constant strings; the map is exhaustive — anything absent is
+ * denied for the render, so grants never leak between previews sharing a sandbox.
+ */
+@Serializable
+data class PermissionsCapture(val grants: Map<String, PermissionGrantCaptureState> = emptyMap())
+
 /** Renderer-side mirror of the plugin's `LauncherWidgetCaptureResizeOrder`. */
 @Serializable
 enum class LauncherWidgetCaptureResizeOrder {
@@ -292,6 +307,12 @@ data class RenderPreviewCapture(
   val focusGif: FocusGifCapture? = null,
   val ambient: AmbientCapture? = null,
   val gestureHint: GestureHintCapture? = null,
+  /**
+   * `null` → no runtime-permission override. Set when the preview carries `@PermissionPreview`.
+   * Unlike the other capture-scoped overrides this one is applied *before* `setContent` — see
+   * [RobolectricRenderTest]'s `permissionsExtension`.
+   */
+  val permissions: PermissionsCapture? = null,
   val launcherWidget: LauncherWidgetCapture? = null,
   /**
    * `null` → not an app-tour step. Set on every capture of a `kind=APP_TOUR` preview: the

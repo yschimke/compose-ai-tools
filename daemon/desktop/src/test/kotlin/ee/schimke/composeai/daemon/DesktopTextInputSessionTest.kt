@@ -149,6 +149,36 @@ class DesktopTextInputSessionTest {
   }
 
   @Test
+  fun mouse_drag_selects_from_the_press_even_with_no_render_between_down_and_move() {
+    withTextField { session ->
+      session.render(requestId = RenderHost.nextRequestId())
+
+      // Issue #3697 — the shape a *browser* drag actually has. The viewer defers the press until
+      // the first pointermove (so a tap stays a click), then sends `pointerDown` and the first
+      // `pointerMove` back to back with nothing in between. Every other drag test here renders
+      // between the two, which quietly settled the press and hid the race.
+      session.dispatch(pointer(InteractiveInputKind.POINTER_DOWN, DRAG_START_X, "mouse"))
+      session.dispatch(pointer(InteractiveInputKind.POINTER_MOVE, DRAG_END_X, "mouse"))
+      session.render(requestId = RenderHost.nextRequestId())
+      // Then on past the end of the text, which is what makes a lost press *visible*: the caret
+      // starts at the end of the seed, so a selection anchored on the caret instead of on the
+      // press collapses to nothing here rather than merely selecting the wrong span.
+      session.dispatch(pointer(InteractiveInputKind.POINTER_MOVE, DRAG_PAST_END_X, "mouse"))
+      session.render(requestId = RenderHost.nextRequestId())
+      session.dispatch(pointer(InteractiveInputKind.POINTER_UP, DRAG_PAST_END_X, "mouse"))
+      session.render(requestId = RenderHost.nextRequestId())
+
+      assertEquals(
+        "a drag that presses at the start of the text and ends past its end must select the " +
+          "whole seed — anything shorter means the press position was dropped and the selection " +
+          "anchored on the pre-existing caret instead",
+        TEXT_FIELD_SEED,
+        TextFieldProbe.widestSelection,
+      )
+    }
+  }
+
+  @Test
   fun touch_drag_does_not_select_text() {
     withTextField { session ->
       session.render(requestId = RenderHost.nextRequestId())
@@ -245,6 +275,12 @@ class DesktopTextInputSessionTest {
     /** Inside the first glyph, and inside the field's single line of text at density 1. */
     const val DRAG_START_X = 2
     const val DRAG_END_X = 40
+
+    /**
+     * Past the right edge of the seed's glyphs but still inside the field, so a drag that ends here
+     * resolves to the last text offset.
+     */
+    const val DRAG_PAST_END_X = 200
     const val TEXT_BASELINE_Y = 12
   }
 }

@@ -1,0 +1,29 @@
+{
+    "name": "compose-preview-serve-web",
+    "private": true,
+    "version": "0.0.0",
+    "description": "Lit components for the `compose-preview serve` web surfaces. Built to a bundle committed under cli/src/main/resources/.../serve/assets/ so the Gradle build stays node-free.",
+    "license": "Apache-2.0",
+    "type": "module",
+    "scripts": {
+        "build": "tsc -p tsconfig.json && node esbuild.mjs",
+        "watch": "node esbuild.mjs --watch",
+        "typecheck": "tsc -p tsconfig.json",
+        "test": "node --import tsx ./node_modules/mocha/bin/mocha.js \"test/**/*.test.ts\"",
+        "format": "prettier --write --tab-width 4 package.json tsconfig.json esbuild.mjs \"src/**/*.ts\" \"test/**/*.ts\"",
+        "format:check": "prettier --check --tab-width 4 package.json tsconfig.json esbuild.mjs \"src/**/*.ts\" \"test/**/*.ts\"",
+        "verify": "npm run typecheck && npm run test && npm run build && node scripts/check-committed-bundle.mjs"
+    },
+    "devDependencies": {
+        "@happy-dom/global-registrator": "^20.9.0",
+        "@types/mocha": "^10.0.0",
+        "@types/node": "^24.0.0",
+        "esbuild": "^0.28.1",
+        "happy-dom": "^20.9.0",
+        "lit": "^3.2.0",
+        "mocha": "^11.0.0",
+        "prettier": "^3.8.3",
+        "tsx": "^4.19.0",
+        "typescript": "^7.0.0"
+    }
+}

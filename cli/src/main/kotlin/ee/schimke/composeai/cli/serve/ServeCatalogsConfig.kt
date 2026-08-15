@@ -46,6 +46,12 @@ data class ServeCatalogsConfig(
   val groups: List<Group> = emptyList(),
   /** The catalogs to serve, in front-page order. */
   val catalogs: List<Entry> = emptyList(),
+  /**
+   * **Top-level sites** ([ServeSites]): hostnames that serve one of the [catalogs] as if it were
+   * the only thing on the box. Config rather than code for the same reason the catalog set is — a
+   * new vhost is a DNS record plus a line here, not an image rebuild.
+   */
+  val sites: List<Site> = emptyList(),
 ) {
   /** One front-page section: its stable [id], the [heading] shown, and its count [noun]. */
   @Serializable
@@ -70,6 +76,13 @@ data class ServeCatalogsConfig(
      */
     val attributionRepos: List<String> = emptyList(),
   )
+
+  /**
+   * One top-level site: a [host] that serves [system] at its root. The system must be one of this
+   * config's [catalogs] — a site is a second door onto a catalog already being served, never a way
+   * to publish one.
+   */
+  @Serializable data class Site(val host: String, val system: String)
 
   /**
    * The declared group for [Entry.group], or null when the entry claims none / names an unknown.
@@ -98,7 +111,27 @@ data class ServeCatalogsConfig(
         add("catalog '${entry.system}' names unknown group '${entry.group}'")
       }
     }
+    val served = catalogs.map { it.system }.toSet()
+    val seenHosts = mutableSetOf<String>()
+    for (site in sites) {
+      val host = ServeSites.normalizeHost(site.host)
+      when {
+        host == null -> add("site host '${site.host}' is not a hostname")
+        !seenHosts.add(host) -> add("duplicate site host '$host'")
+      }
+      if (site.system !in served) {
+        add("site '${site.host}' names '${site.system}', which no catalog entry serves")
+      }
+    }
   }
+
+  /** The configured [sites] as a lookup, dropping entries [problems] already reported. */
+  fun siteMap(onProblem: (String) -> Unit = {}): ServeSites =
+    ServeSites.of(
+      sites.map { it.host to it.system },
+      knownSystems = catalogs.map { it.system }.toSet(),
+      onProblem = onProblem,
+    )
 
   companion object {
     /** The count noun a section uses when its group declares none. */
@@ -148,6 +181,13 @@ data class ServeCatalogsConfig(
     fun validateEntry(entry: Entry): String? =
       when {
         !SYSTEM_RE.matches(entry.system) -> "invalid catalog system id '${entry.system}'"
+        // A slug-shaped id can still be one of the server's own top-level routes, which the
+        // registry refuses to name a session ([ServeSessionRegistry.register]) — so the entry
+        // would parse, validate, be scheduled for loading, and then fail at registration with a
+        // runtime error instead of the ordinary malformed-entry warning. Say so here, where the
+        // three callers (startup filtering, `problems()`, the admin add) all read it.
+        entry.system in ServeSites.RESERVED_SYSTEMS ->
+          "catalog system id '${entry.system}' is one of the server's own routes"
         entry.repo != null && !REPO_RE.matches(entry.repo) ->
           "catalog '${entry.system}' has an invalid repo '${entry.repo}'"
         entry.attributionRepos.any { !REPO_RE.matches(it) } ->

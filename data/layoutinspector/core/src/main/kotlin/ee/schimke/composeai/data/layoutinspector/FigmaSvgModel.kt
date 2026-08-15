@@ -160,6 +160,9 @@ data class FigmaSvgVector(
    */
   val scaleX: Double = 1.0,
   val scaleY: Double = 1.0,
+  /** The captured graphics-layer mirrors this vector around the corresponding placed axis. */
+  val flipX: Boolean = false,
+  val flipY: Boolean = false,
   /**
    * True when the paths were recorded from the node's own draw lambda rather than an `ImageVector`
    * — which also decides what coordinate space [viewportWidth]/[viewportHeight] are in, and so how
@@ -937,6 +940,8 @@ data class FigmaSvgModel(
       fillBounds: Boolean,
       scaleX: Double = 1.0,
       scaleY: Double = 1.0,
+      flipX: Boolean = false,
+      flipY: Boolean = false,
     ): FigmaSvgVector? {
       if (viewportWidth <= 0f || viewportHeight <= 0f) return null
       val emittable =
@@ -965,6 +970,8 @@ data class FigmaSvgModel(
           fillBounds = fillBounds,
           scaleX = scaleX,
           scaleY = scaleY,
+          flipX = flipX,
+          flipY = flipY,
           fromDrawCapture = fromDrawCapture,
           // A draw capture is imperative chrome (a slider groove, a progress arc), never an
           // `ImageVector` — so it can't be a Material icon whatever its name says.
@@ -1014,8 +1021,12 @@ data class FigmaSvgModel(
       // — the render draws those measured values at `× scale`, so each is scaled into drawn space
       // before it is used (issue #2615). Identity (`1.0`) for the overwhelming majority of nodes,
       // where every expression below is unchanged.
-      val scaleX = transform?.scaleX?.toDouble() ?: 1.0
-      val scaleY = transform?.scaleY?.toDouble() ?: 1.0
+      // Geometry magnitudes shrink/grow with the layer; a negative captured axis additionally
+      // mirrors vector content but must never turn lengths (corner radii, text sizes) negative.
+      val signedScaleX = transform?.scaleX?.toDouble() ?: 1.0
+      val signedScaleY = transform?.scaleY?.toDouble() ?: 1.0
+      val scaleX = abs(signedScaleX)
+      val scaleY = abs(signedScaleY)
       // A corner radius is a single length against a box scaled on both axes; with the uniform
       // scale Wear's edge transform applies, the mean is exactly that scale.
       val scaleMean = (scaleX + scaleY) / 2.0
@@ -1106,8 +1117,10 @@ data class FigmaSvgModel(
           layoutWidth = painted?.let { it.right - it.left } ?: size.width,
           layoutHeight = painted?.let { it.bottom - it.top } ?: size.height,
           fillBounds = hasFillBoundsContentScale(),
-          scaleX = transform?.scaleX?.toDouble() ?: 1.0,
-          scaleY = transform?.scaleY?.toDouble() ?: 1.0,
+          scaleX = scaleX,
+          scaleY = scaleY,
+          flipX = signedScaleX < 0.0,
+          flipY = signedScaleY < 0.0,
         )
         ?.let { vec ->
           val box = painted ?: bounds
@@ -1229,10 +1242,31 @@ data class FigmaSvgModel(
       // isolated render, which the frame crop can't provide, so a drawn container stays fully
       // vector
       // (its children/text are preserved as editable layers) rather than double-render.
+      // Nothing for the vector model to emit: no captured vector, no fill, no border, and no text
+      // of its own. Only then is a bare `drawsContent` evidence that the pixels would otherwise be
+      // lost — see [hasDelegatedDrawOnly]. The text check has to include the *modifier* projection,
+      // not just [BuildContext.textByNodeId]: a Wear picker separator is a `Text` under
+      // `clearAndSetSemantics`, so it has no semantics text to match and its glyph arrives from the
+      // layout capture alone — rastering it emits the separator twice, once as pixels and once as
+      // the live `<text>`.
+      //
+      // The fill/border question is whether a token *paints*, not whether one is present. A fully
+      // transparent border is dropped when the stroke is built below (a `Switch` on-track carries
+      // `borderColor` at alpha 0) and an unparseable colour never becomes one, so counting either
+      // as content would leave the node with no stroke and no raster — an empty layer where the
+      // delegated pixels used to be.
+      val paintsFill =
+        tokens?.backgroundGradient.paints(ctx) ||
+          tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }.paints()
+      val paintsBorder =
+        tokens?.borderGradient.paints(ctx) ||
+          tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }.paints()
+      val nothingElseToDraw =
+        vectorGraphic == null && !paintsFill && !paintsBorder && modifierText(ctx) == null
       val background =
         if (
           ctx.captureCanvasDraws &&
-            hasCustomDraw() &&
+            (hasCustomDraw() || hasDelegatedDrawOnly(nothingElseToDraw)) &&
             children.isEmpty() &&
             ctx.textByNodeId[nodeId] == null
         ) {
@@ -2092,6 +2126,33 @@ data class FigmaSvgModel(
      */
     private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any { it.isCustomDraw() }
 
+    /**
+     * The v16 capability bit: the live modifier-node chain contains a `DrawModifierNode`.
+     *
+     * This is how a *delegated* draw shows up at all — Material 3's wavy indicators hide theirs
+     * behind a `CacheDrawModifierNode` whose element exposes no inspectable `onDraw`, so
+     * [hasCustomDraw] cannot see it and the node would export as an empty layer.
+     *
+     * It is deliberately **not** folded into [hasCustomDraw]. The bit is true of most drawn nodes —
+     * every `Icon`, every token-backed background — so on its own it says nothing about whether the
+     * export can represent the node. Treating it as a custom draw sent every vector-backed icon and
+     * every drawn leaf down the raster fallback, which is what turned editable `<path>`s and labels
+     * into `<image>` crops (#3686).
+     *
+     * So it earns a raster only where the vector model would otherwise emit *nothing at all*: the
+     * caller has already established a leaf with no text, and [otherwiseEmpty] adds that there is
+     * no captured vector and no fill or border token to draw either.
+     */
+    private fun LayoutInspectorNode.hasDelegatedDrawOnly(otherwiseEmpty: Boolean): Boolean =
+      drawsContent && otherwiseEmpty
+
+    /** A colour token counts as content only if it actually puts pixels on the canvas. */
+    private fun FigmaSvgColor?.paints(): Boolean = this != null && opacity > 0.0
+
+    /** …and so does a gradient: every stop transparent paints exactly as much as no gradient. */
+    private fun LayoutInspectorGradient?.paints(ctx: BuildContext): Boolean =
+      this != null && colors.any { argbToColor(it, ctx.colorNames).paints() }
+
     private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
       name in DRAW_MODIFIERS && !placeholder
 
@@ -2323,6 +2384,13 @@ data class FigmaSvgModel(
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
       val nodesWithModifierText = mutableSetOf<String>()
+      // …and the same, counting the whole subtree. An accessibility-only wrapper (Material 3's date
+      // cells) sets `SemanticsProperties.Text` to a sentence for the screen reader while a `Text`
+      // *child* draws the glyph; matching the wrapper and painting its label would double the text.
+      // The distinguishing question is whether anything below the matched node already draws real
+      // text, not whether the capture recorded typography — a Wear picker separator clears its
+      // semantics too, and there its string is the only copy of the visible content.
+      val nodesWithModifierTextBelow = mutableSetOf<String>()
       // Every layout node the (already retired-pruned) tree still carries, for the identity match
       // a coordinate-less semantics node falls back to — see [isNoGeometry].
       val layoutNodeIds = mutableSetOf<String>()
@@ -2337,9 +2405,9 @@ data class FigmaSvgModel(
       // tolerance for anything else.
       fun collect(n: LayoutInspectorNode, depth: Int, clip: LayoutInspectorBounds?) {
         layoutNodeIds += n.nodeId
-        if (
+        val ownsModifierText =
           n.modifiers.any { modifier -> modifier.properties["layoutText"]?.isNotBlank() == true }
-        ) {
+        if (ownsModifierText) {
           nodesWithModifierText += n.nodeId
         }
         val candidateBounds =
@@ -2376,6 +2444,10 @@ data class FigmaSvgModel(
             clip?.let { intersectBounds(own, it) } ?: own
           } else clip
         n.children.forEach { collect(it, depth + 1, childClip) }
+        // Post-order: a node counts as covered once anything in its subtree draws real text.
+        if (ownsModifierText || n.children.any { it.nodeId in nodesWithModifierTextBelow }) {
+          nodesWithModifierTextBelow += n.nodeId
+        }
       }
       // The rendered window clips everything, whether or not any composable asked it to.
       collect(layoutRoot, 0, layoutRoot.bounds)
@@ -2426,11 +2498,11 @@ data class FigmaSvgModel(
           val chosen = bestId
           // TextLayoutResult is visual ground truth despite being exposed through a semantics
           // action. Plain SemanticsProperties.Text is accessibility data and may be overridden or
-          // merged, so it is only a compatibility fallback for old layout captures that have no
-          // modifier text projection.
+          // merged, so it is only a compatibility fallback for old layout captures where nothing in
+          // the matched subtree already projects the text itself.
           val content =
             measuredContent
-              ?: legacySemanticsContent?.takeUnless { chosen in nodesWithModifierText }
+              ?: legacySemanticsContent?.takeUnless { chosen in nodesWithModifierTextBelow }
           if (
             chosen != null &&
               content != null &&

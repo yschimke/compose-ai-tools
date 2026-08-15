@@ -4,6 +4,9 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -17,6 +20,7 @@
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span>compose-preview</span>
     </a>
+    <span class="cp-site-catalog">compose-m3</span>
     <a class="cp-back" href="/">← All design systems</a>
   </div>
   <div class="cp-site-status">
@@ -49,28 +53,72 @@
   </nav>
 </header>
         <main class="cp-main">
-                <h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-        <p class="cp-sub">14 preview(s) ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
-        <div class="cp-catalog-tools">
-        <div class="cp-toolbar">
+                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1></div>
+        <p class="cp-sub">14 preview(s)</p>
+        <div class="cp-catalog-actions">
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
+        </div>
+<div class="cp-catalog-tools">
+<div class="cp-toolbar">
   <span class="cp-theme" role="group" aria-label="Preview theme">
     <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
   </span>
 </div>
+</div>
+<div class="cp-catalog-body">
+<aside class="cp-catalog-menu" aria-label="Catalog menu">
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="14"></span>
-  <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
 </div>
-</div>
-        <div class="cp-grid-groups" id="cp-grid">
-<div class="cp-subgroup">
+<nav class="cp-tree" id="cp-tabs" aria-label="Catalog contents">
+<ul class="cp-tree-list" role="tree" aria-label="Catalog contents">
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-button" data-group="cp-group-button" aria-expanded="true" aria-owns="cp-tree-of-cp-group-button">Button<span class="cp-tree-count">3</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-button" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-filled__ideal__default__light" data-group="cp-card-button-filled__ideal__default__light">Button filled (light)</a>
+        </li>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-outlined__ideal__default__light" data-group="cp-card-button-outlined__ideal__default__light">Button outlined (light)</a>
+        </li>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-tonal__ideal__default__light" data-group="cp-card-button-tonal__ideal__default__light">Button tonal (light)</a>
+        </li>
+      </ul>
+    </li>
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-card" data-group="cp-group-card" aria-expanded="false" aria-owns="cp-tree-of-cp-group-card">Card<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-card" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-elevated__ideal__default__light" data-group="cp-card-card-elevated__ideal__default__light">Card elevated (light)</a>
+        </li>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-filled__ideal__default__light" data-group="cp-card-card-filled__ideal__default__light">Card filled (light)</a>
+        </li>
+      </ul>
+    </li>
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-fab" data-group="cp-group-fab" aria-expanded="false" aria-owns="cp-tree-of-cp-group-fab">FAB<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-fab" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-fab__ideal__default__light" data-group="cp-card-fab__ideal__default__light">FAB (light)</a>
+        </li>
+      </ul>
+    </li>
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-badge" data-group="cp-group-badge" aria-expanded="false" aria-owns="cp-tree-of-cp-group-badge">Badge<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-badge" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-badge__ideal__default__light" data-group="cp-card-badge__ideal__default__light">Badge (light)</a>
+        </li>
+      </ul>
+    </li>
+<li class="cp-tree-node cp-tree-pages" role="none">
+  <a class="cp-tree-pages-row cp-tree-link" role="treeitem" href="/pages" aria-expanded="true" aria-owns="cp-tree-pages-list">Pages<span class="cp-tree-count">2</span></a>
+  <ul class="cp-tree-children cp-tree-components" id="cp-tree-pages-list" role="group">
+    <li role="none"><a class="cp-tree-page cp-tree-link" role="treeitem" href="/pages/shape">Shape</a></li>
+    <li role="none"><a class="cp-tree-page cp-tree-link" role="treeitem" href="/pages/type">Typography</a></li>
+  </ul>
+</li>
+</ul>
+</nav>
+</aside>
+<div class="cp-grid-groups" id="cp-grid">
+<div class="cp-subgroup" id="cp-group-button">
 <h2 class="cp-group-head">Button</h2>
 <div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-button-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
   data-l-id="button-filled__ideal__default__light" data-l-label="Button filled (light)"
   data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
@@ -85,7 +133,7 @@
     
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-button-outlined__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-outlined__ideal__default__light.png" data-l-href="/p/button-outlined__ideal__default__light"
   data-l-id="button-outlined__ideal__default__light" data-l-label="Button outlined (light)"
   data-d-src="/render/button-outlined__ideal__default__dark.png" data-d-href="/p/button-outlined__ideal__default__dark"
@@ -100,7 +148,7 @@
     
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-button-tonal__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-tonal__ideal__default__light.png" data-l-href="/p/button-tonal__ideal__default__light"
   data-l-id="button-tonal__ideal__default__light" data-l-label="Button tonal (light)"
   data-d-src="/render/button-tonal__ideal__default__dark.png" data-d-href="/p/button-tonal__ideal__default__dark"
@@ -117,10 +165,10 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-card">
 <h2 class="cp-group-head">Card</h2>
 <div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-card-elevated__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/card-elevated__ideal__default__light.png" data-l-href="/p/card-elevated__ideal__default__light"
   data-l-id="card-elevated__ideal__default__light" data-l-label="Card elevated (light)"
   data-d-src="/render/card-elevated__ideal__default__dark.png" data-d-href="/p/card-elevated__ideal__default__dark"
@@ -135,7 +183,7 @@
     
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-card-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/card-filled__ideal__default__light.png" data-l-href="/p/card-filled__ideal__default__light"
   data-l-id="card-filled__ideal__default__light" data-l-label="Card filled (light)"
   data-d-src="/render/card-filled__ideal__default__dark.png" data-d-href="/p/card-filled__ideal__default__dark"
@@ -152,10 +200,10 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-fab">
 <h2 class="cp-group-head">FAB</h2>
 <div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-fab__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/fab__ideal__default__light.png" data-l-href="/p/fab__ideal__default__light"
   data-l-id="fab__ideal__default__light" data-l-label="FAB (light)"
   data-d-src="/render/fab__ideal__default__dark.png" data-d-href="/p/fab__ideal__default__dark"
@@ -172,10 +220,10 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-badge">
 <h2 class="cp-group-head">Badge</h2>
 <div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-badge__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/badge__ideal__default__light.png" data-l-href="/p/badge__ideal__default__light"
   data-l-id="badge__ideal__default__light" data-l-label="Badge (light)"
   data-d-src="/render/badge__ideal__default__dark.png" data-d-href="/p/badge__ideal__default__dark"
@@ -193,9 +241,10 @@
 </div>
 </div>
 </div>
+</div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/url-state.js"></script>
-<script src="/assets/serve/fixture/bg-toggle.js"></script>
+<script src="/assets/serve/fixture/serve-components.js"></script>
 <script>    (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");
@@ -211,6 +260,10 @@
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
       if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
       var navGroups = document.querySelectorAll(".cp-subgroup");
+      var treeGroups = document.querySelectorAll(".cp-tree-group");
+      var treeComponents = document.querySelectorAll(".cp-tree-component");
+      var treeLinks = document.querySelectorAll(".cp-tree-link");
+      var cpTreeStops = null;
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -318,6 +371,15 @@ applyThemeChoice();
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
         navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
+        treeComponents.forEach(function (c) {
+          var card = document.getElementById(c.getAttribute("data-group"));
+          if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);
+        });
+        treeGroups.forEach(function (g) {
+          var sub = document.getElementById(g.getAttribute("data-group"));
+          if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
+        });
+        if (cpTreeStops) cpTreeStops();
       }
       if (input) input.addEventListener("input", function () {
         // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -344,8 +406,255 @@ applyThemeChoice();
           apply();
         });
       }
+      (function () {
+        var tree = document.getElementById("cp-tabs");
+        if (!tree) return;
+        // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+        // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
+        // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+        // and the static fallback in the stylesheet only covers the unwrapped case.
+        // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
+        // machinery alone, which would have left an outline tree permanently expanded.
+        document.documentElement.classList.add("cp-js");
+        var tools = document.querySelector(".cp-catalog-tools");
+        if (tools) {
+          var syncTools = function () {
+            var h = Math.round(tools.getBoundingClientRect().height);
+            if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+          };
+          syncTools();
+          if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+          else window.addEventListener("resize", syncTools);
+        }
+        var tabBtnsForHash = [];
+        function selectCollapsedTab() {}
+        function applyLandingTab() {}
+        // The row pointing at an id, found by COMPARING attribute values rather than by building a
+        // selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop viewer
+        // already follows).
+        function rowFor(id) {
+          var found = null;
+          treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
+          return found;
+        }
+        function markGroup(row) {
+          treeGroups.forEach(function (g) {
+            if (g === row) g.setAttribute("aria-current", "true");
+            else g.removeAttribute("aria-current");
+          });
+        }
+        // Which group and which component are open. One of each: a tree that opened every branch it
+        // was ever asked about would end up listing every component in the catalog, which is the
+        // wall the grid already is. The server marks the first group open, so the page arrives
+        // showing components rather than needing to be prised open first.
+        var openGroup = null;
+        var openCard = null;
+        treeLinks.forEach(function (r) {
+          if (r.classList.contains("cp-tree-group") && r.getAttribute("aria-expanded") === "true") {
+            openGroup = r.getAttribute("data-group");
+          }
+        });
+        function parentRow(row) {
+          var list = row.closest("ul.cp-tree-children");
+          return list ? list.previousElementSibling : null;
+        }
+        function reflectTree() {
+          treeLinks.forEach(function (r) {
+            if (!r.hasAttribute("aria-expanded")) return;
+            var id = r.getAttribute("data-group");
+            // A branch that names no in-page target is not one of the two this tracks — the Pages
+            // branch owns destinations that are elsewhere, and is written open once and left open.
+            if (!id) return;
+            var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
+            r.setAttribute("aria-expanded", on ? "true" : "false");
+          });
+        }
+        function openRow(row) {
+          var id = row.getAttribute("data-group");
+          if (row.classList.contains("cp-tree-group")) {
+            openGroup = id;
+            openCard = null;
+          } else if (row.classList.contains("cp-tree-component")) {
+            openCard = id;
+            // And the group that HOLDS it. A click can only reach a component whose group is already
+            // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
+            // on whichever group the server expanded would scroll to the card while keeping its own
+            // row, and every variant under it, collapsed out of the tree.
+            var owner = parentRow(row);
+            if (owner && owner.classList.contains("cp-tree-group")) {
+              openGroup = owner.getAttribute("data-group");
+            }
+          }
+          reflectTree();
+          syncTabStops();
+        }
+        // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+        // preserves whatever hash is already there when it rewrites the query. So a click that moves
+        // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+        // WERE. `replaceState`, not push: a jump inside the page is a scroll, not a place to come
+        // Back to.
+        function setFragment(id) {
+          var url = location.pathname + location.search + (id ? "#" + id : "");
+          try { history.replaceState(history.state, "", url); } catch (e) {}
+        }
+        // Every row that names an in-page destination. A VARIANT row is the exception: the grid
+        // folds those renders out, so it has nowhere here to jump to — it carries a plain `/p/<id>`
+        // href and is left to the browser.
+        treeLinks.forEach(function (row) {
+          row.addEventListener("click", function (e) {
+            var id = row.getAttribute("data-group");
+            if (!id) return;
+            var target = document.getElementById(id);
+            if (!target) return;
+            e.preventDefault();
+            openRow(row);
+            setFragment(id);
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+            if (row.classList.contains("cp-tree-group")) markGroup(row);
+          });
+        });
+        // Keyboard: the tree pattern's roving focus. Visibility is read off layout rather than walked
+        // by hand — a collapsed branch is `display: none`, so `offsetParent` already answers "can the
+        // visitor reach this row", across all four levels and the filter's hiding at once.
+        function visibleRows() {
+          var rows = [];
+          tree.querySelectorAll(".cp-tree-link").forEach(function (r) {
+            if (r.offsetParent !== null) rows.push(r);
+          });
+          return rows;
+        }
+        function focusRow(el) {
+          if (!el) return;
+          visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
+          el.focus();
+        }
+        // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
+        // Nothing established that until a first arrow press called `focusRow`, so every visible row
+        // sat in the normal tab order until then — the whole point of the pattern, lost on the one
+        // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
+        // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
+        function syncTabStops() {
+          var rows = visibleRows();
+          if (!rows.length) return;
+          var stop = null;
+          rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
+          if (!stop) stop = rows[0];
+          rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
+        }
+        cpTreeStops = syncTabStops;
+        tree.addEventListener("keydown", function (e) {
+          var items = visibleRows();
+          var at = items.indexOf(document.activeElement);
+          if (at === -1) return;
+          var key = e.key;
+          var next = null;
+          if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
+          else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
+          else if (key === "Home") next = items[0];
+          else if (key === "End") next = items[items.length - 1];
+          else if (key === "ArrowRight") {
+            // Right opens a collapsed parent, steps into an expanded one's first child, and does
+            // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
+            // second Arrow Down, walking the visitor across siblings when they asked to expand
+            // something that cannot expand.
+            var expanded = items[at].getAttribute("aria-expanded");
+            if (expanded === "false") {
+              e.preventDefault();
+              if (items[at].classList.contains("cp-tree-link")) openRow(items[at]);
+              else selectCollapsedTab(items[at]);
+              return;
+            }
+            if (expanded !== "true") return;
+            next = items[Math.min(at + 1, items.length - 1)];
+          } else if (key === "ArrowLeft") {
+            // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
+            // and the only way back up once the levels are four deep. The `data-group` test excludes
+            // the always-open Pages branch: closing it is not offered, and without the test Left on
+            // that row would clear `openCard` and collapse whichever component IS open.
+            if (
+              items[at].getAttribute("aria-expanded") === "true" &&
+              items[at].getAttribute("data-group")
+            ) {
+              e.preventDefault();
+              if (items[at].classList.contains("cp-tree-group")) openGroup = null;
+              else openCard = null;
+              reflectTree();
+              return;
+            }
+            next = parentRow(items[at]);
+          } else return;
+          if (!next) return;
+          e.preventDefault();
+          focusRow(next);
+        });
+        // What the URL's fragment names, or null when it names nothing this page has.
+        //
+        // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+        // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+        // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+        // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+        // escape sequence throws, and is simply not a fragment this page knows.
+        function hashTarget() {
+          var id = location.hash ? location.hash.slice(1) : "";
+          try { id = decodeURIComponent(id); } catch (e) { return null; }
+          if (!id) return null;
+          var tab = null;
+          var row = null;
+          treeLinks.forEach(function (g) {
+            if (!row && g.getAttribute("data-group") === id) {
+              tab = g.getAttribute("data-tab");
+              row = g;
+            }
+          });
+          if (!row) {
+            tabBtnsForHash.forEach(function (t) {
+              if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
+            });
+          }
+          return row || tab ? { tab: tab, row: row, id: id } : null;
+        }
+        syncTabStops();
+        var landing = hashTarget();
+        if (landing) {
+          if (landing.row) openRow(landing.row);
+          applyLandingTab(landing);
+          setTimeout(function () {
+            var el = document.getElementById(landing.id);
+            if (el) el.scrollIntoView({ block: "start" });
+            if (landing.row && landing.row.classList.contains("cp-tree-group")) markGroup(landing.row);
+          }, 0);
+        }
+        // Scroll-spy: mark the group whose cards are on screen, so the tree says where you are rather
+        // than only where you last clicked. Additive — with no `IntersectionObserver` the marking
+        // simply follows clicks.
+        if (window.IntersectionObserver) {
+          var onScreen = [];
+          var spy = new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) {
+              var at = onScreen.indexOf(en.target);
+              if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
+              else if (at !== -1) onScreen.splice(at, 1);
+            });
+            // The highest sub-group still in the band is the one being read.
+            var top = null;
+            onScreen.forEach(function (el) {
+              if (el.hidden) return;
+              if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+            });
+            if (top) markGroup(rowFor(top.id));
+          // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
+          // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
+          // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
+          // marked at all on first paint, since a catalog's first sub-group starts a header, a
+          // provenance strip and a toolbar down the page.
+          }, { rootMargin: "-64px 0px -20% 0px" });
+          document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
+        }
+      })();
       apply();
     })();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>
+
 <details class="cp-about cp-disclosure">
   <summary>
     <span class="cp-about-title">About this preview server</span>

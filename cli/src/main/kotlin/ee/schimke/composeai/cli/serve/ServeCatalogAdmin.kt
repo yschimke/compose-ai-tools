@@ -31,6 +31,11 @@ class ServeCatalogAdmin(
   private val load: (system: String, repo: String) -> String?,
   /** Drop a registered catalog's session (and its daemon), if any. */
   private val unload: (system: String) -> Unit,
+  /**
+   * The top-level sites this server publishes ([ServeSites]), so a catalog a hostname depends on
+   * cannot be retired out from under it. Empty by default — a server with no sites is unaffected.
+   */
+  private val sites: ServeSites = ServeSites.EMPTY,
   /** Group table for resolving [ServeCatalogsConfig.Entry.group]; seeded from the config file. */
   groups: List<ServeCatalogsConfig.Group> = emptyList(),
   private val onLog: (String) -> Unit = { System.err.println(it) },
@@ -184,6 +189,16 @@ class ServeCatalogAdmin(
 
   /** Retire [system] — its session is dropped and the entry removed from the config file. */
   fun unregister(system: String): Result {
+    // A site is a hostname pointing at this catalog, and retiring it would strand that hostname:
+    // its root 404s immediately (the mapping still routes, the session is gone), and after a
+    // restart `ServeSites.of` drops the now-unserved mapping so the host falls THROUGH to the
+    // global front door — a domain published as one app quietly becoming an index of every other.
+    // Fail closed instead: drop the site first, then retire.
+    sites.hostFor(system)?.let { host ->
+      return Result.Conflict(
+        "catalog '$system' is published as the top-level site '$host'; remove the site first"
+      )
+    }
     if (!tracker.remove(system)) {
       return Result.Conflict("catalog '$system' is not published here")
     }

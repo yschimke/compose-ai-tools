@@ -15,6 +15,7 @@ import kotlin.test.fail
  */
 class CliFlagsRegistryTest {
   private val flagCallSite = Regex("""flagValue(?:sAll)?\(\s*"(--[a-z][a-z-]*)"""")
+  private val membershipCallSite = Regex(""""(--[a-z][a-z-]*)"\s+(?:in|!in)\s+(?:args|rawArgs)""")
 
   @Test
   fun `every flagValue call site is classified in CliFlags`() {
@@ -43,6 +44,26 @@ class CliFlagsRegistryTest {
   }
 
   @Test
+  fun `flags read by commands are present in a command allowlist`() {
+    val used =
+      mainSources()
+        .flatMap { file ->
+          val source = file.readText()
+          (flagCallSite.findAll(source) + membershipCallSite.findAll(source)).map {
+            it.groupValues[1]
+          }
+        }
+        .toSortedSet()
+
+    val unclassified = used - CliFlagValidation.ALL
+    assertEquals(
+      emptySet(),
+      unclassified,
+      "Flags read by commands but absent from every per-command allowlist",
+    )
+  }
+
+  @Test
   fun `findCommandIndex skips value flags and their values`() {
     assertEquals(0, CliFlags.findCommandIndex(arrayOf("show")))
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--module", ":app", "show")))
@@ -50,6 +71,14 @@ class CliFlagsRegistryTest {
     // Regression: a global-position value flag that used to be unclassified mis-detected its value
     // as the command.
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--since", "2024", "history", "list")))
+    assertEquals(
+      2,
+      CliFlags.findCommandIndex(arrayOf("--repo", "/tmp/project", "history-manifest")),
+    )
+    assertEquals(
+      2,
+      CliFlags.findCommandIndex(arrayOf("--replicas-per-daemon", "2", "mcp", "serve")),
+    )
     // --force takes a required reason; the space form must skip the reason (ForceFlagTest pins that
     // `--force <reason>` is supported), or the reason is mistaken for the command.
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--force", "edit didn't reflect", "render")))
@@ -65,6 +94,7 @@ class CliFlagsRegistryTest {
     // --images is optional-value (bare --images means auto): a bare token after it is the command,
     // not its value.
     assertEquals(1, CliFlags.findCommandIndex(arrayOf("--images", "show")))
+    assertEquals(1, CliFlags.findCommandIndex(arrayOf("--contact-sheet", "render-matrix")))
   }
 
   @Test

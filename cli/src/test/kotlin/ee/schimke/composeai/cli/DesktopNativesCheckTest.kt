@@ -133,6 +133,75 @@ class DesktopNativesCheckTest {
   }
 
   @Test
+  fun `store libs on a system JVM's path are reported even though every lib resolves`() {
+    // Issue #3690: nothing is *missing* — the store dir supplies all four libs — but the render
+    // JVM is an Ubuntu JDK, so loading them drags the store's glibc into a system-glibc process
+    // and every preview dies. The old check called this `ok`.
+    val result =
+      DesktopNativesCheck.evaluateDesktopNatives(
+        osName = "Linux",
+        renderJavaHome = "/usr/lib/jvm/java-21-openjdk-amd64",
+        ldLibraryPath = "/root/.cache/coo-ee/desktop-gl/lib",
+        exists = { it.startsWith("/root/.cache/coo-ee/desktop-gl/lib/") },
+        // The path is a symlink farm; only the resolved target admits it is a store.
+        canonicalize = { "/nix/store/6ljs-cooee-desktop-gl/lib" },
+      )
+
+    assertTrue(result.missing.isEmpty())
+    assertTrue(result.glibcSkew)
+    assertFalse(result.ok)
+
+    val check = DesktopNativesCheck.interpret(result, inClaudeCloud = true)
+    assertEquals("warning", check.status)
+    assertTrue(check.detail!!.contains("GLIBC_"))
+    assertTrue(check.remediation!!.commands.any { it.contains("--stop") })
+  }
+
+  @Test
+  fun `a missing lib outranks a glibc skew, so doctor still reports an error`() {
+    // Both conditions on one box. The skew is survivable — the plugin prunes the store dirs for
+    // its own render JVM — while a library the loader cannot find at all means nothing renders by
+    // any route. Reporting the warning would exit 0 on a project whose previews cannot render.
+    val result =
+      DesktopNativesCheck.evaluateDesktopNatives(
+        osName = "Linux",
+        renderJavaHome = "/usr/lib/jvm/java-21-openjdk-amd64",
+        ldLibraryPath = "/root/.cache/coo-ee/desktop-gl/lib",
+        // The store dir supplies everything except libGL, so the skew *and* a missing lib.
+        exists = {
+          it.startsWith("/root/.cache/coo-ee/desktop-gl/lib/") && !it.endsWith("libGL.so.1")
+        },
+        canonicalize = { "/nix/store/6ljs-cooee-desktop-gl/lib" },
+      )
+
+    assertTrue(result.glibcSkew)
+    assertEquals(listOf("libGL.so.1"), result.missing.map { it.soname })
+
+    val check = DesktopNativesCheck.interpret(result, inClaudeCloud = true)
+    assertEquals("error", check.status)
+    assertTrue(check.message.contains("libGL.so.1"))
+    // The skew is not dropped on the floor — fixing the missing lib would otherwise leave a
+    // second, differently-shaped failure waiting behind it.
+    assertTrue(check.detail!!.contains("package-store"))
+  }
+
+  @Test
+  fun `store libs on a store JVM's path are the documented fix, not a warning`() {
+    val result =
+      DesktopNativesCheck.evaluateDesktopNatives(
+        osName = "Linux",
+        renderJavaHome = "/nix/store/abc123-temurin-bin-17.0.19",
+        ldLibraryPath = "/root/.cache/coo-ee/desktop-gl/lib",
+        exists = { it.startsWith("/root/.cache/coo-ee/desktop-gl/lib/") },
+        canonicalize = { "/nix/store/6ljs-cooee-desktop-gl/lib" },
+      )
+
+    assertFalse(result.glibcSkew)
+    assertTrue(result.ok)
+    assertEquals("ok", DesktopNativesCheck.interpret(result, inClaudeCloud = true).status)
+  }
+
+  @Test
   fun `interpret reports where each lib resolved when healthy`() {
     val result = evaluate(javaHome = "/usr/lib/jvm/temurin-21", ldLibraryPath = null)
 

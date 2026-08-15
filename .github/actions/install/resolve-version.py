@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Resolve a compose-preview CLI version from action inputs.
 
-Reads INPUT_VERSION from the environment ("latest" | "catalog" |
+Reads INPUT_VERSION from the environment ("latest" | "pin" | "catalog" |
 literal) and prints the bare version string (no leading "v") on stdout.
-CATALOG_PATH and CATALOG_KEY are honoured when INPUT_VERSION="catalog".
+CATALOG_PATH and CATALOG_KEY are honoured when INPUT_VERSION is "catalog"
+or "pin"; PROPERTIES_PATH is honoured when it is "pin".
 GITHUB_TOKEN, when set, authenticates the releases API call.
+
+"pin" is the cross-entrypoint mode (issue #3738): it reads the same project
+version pin the `compose-preview` CLI and the VS Code extension read, so one
+value in the consumer's repo drives the CLI on a developer's machine, the
+extension in their editor, and this action in CI. "catalog" remains the
+narrower "read exactly this catalog key" mode.
 
 Kept as a separate script (rather than inline Python in action.yml)
 so the catalog parser is testable in isolation and the YAML stays
@@ -16,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tomllib
 import urllib.error
@@ -167,31 +175,120 @@ def latest_version() -> str:
     )
 
 
-def catalog_version() -> str:
+def catalog_version(required: bool = True) -> str | None:
     path = os.environ.get("CATALOG_PATH") or "gradle/libs.versions.toml"
     key = os.environ.get("CATALOG_KEY") or "composePreviewCli"
     try:
         with open(path, "rb") as fh:
             cat = tomllib.load(fh)
     except FileNotFoundError:
+        if not required:
+            return None
         fail(f"version catalog not found: {path}")
     except OSError as exc:
+        if not required:
+            return None
         fail(f"could not read {path}: {exc}")
     except tomllib.TOMLDecodeError as exc:
+        if not required:
+            return None
         fail(f"could not parse {path}: {exc}")
     versions = cat.get("versions") or {}
     value = versions.get(key)
     if value is None:
+        if not required:
+            return None
         fail(f"version key {key!r} not found in {path} [versions]")
     if not isinstance(value, str):
+        if not required:
+            return None
         fail(f"version key {key!r} in {path} is not a string: {value!r}")
-    return value.lstrip("v")
+    value = value.strip().lstrip("v")
+    if not value:
+        if not required:
+            return None
+        fail(f"version key {key!r} in {path} is empty")
+    return value
+
+
+# `gradle.properties` key holding the project version pin. Kept in lockstep with
+# the CLI's `VERSION_PIN_PROPERTY` and the extension's `versionPin.ts`.
+PIN_PROPERTY = "composePreview.version"
+
+# Matches a non-comment `composePreview.version` assignment, in all three forms a
+# Java properties file allows: `key=v`, `key : v`, and bare `key v`. The CLI reads
+# this file through `java.util.Properties`, which accepts all three — recognising
+# fewer of them here is exactly the cross-entrypoint skew the pin exists to
+# eliminate (the CLI would inject the pin while CI reported the project unpinned).
+# A full properties parse would also need escape and continuation handling, but a
+# version pin is a bare token on one line, so this stays a scan. Kept in lockstep
+# with `VersionPin.kt`, `versionPin.ts` and `check-skew.py`.
+_PIN_RE = re.compile(
+    r"^[ \t]*"
+    + re.escape(PIN_PROPERTY)
+    + r"(?:[ \t]*[=:][ \t]*|[ \t]+)(\S+)[ \t]*$",
+    re.MULTILINE,
+)
+
+
+def properties_version() -> str | None:
+    """Read `composePreview.version` from the workspace's `gradle.properties`.
+
+    Returns None (not a failure) when the file or the key is absent — the pin
+    has a documented fallback chain, and "not pinned here" is an ordinary state.
+
+    Takes the **last** assignment when the file has duplicates, matching what
+    `Properties.load` resolves on the CLI side.
+    """
+    path = os.environ.get("PROPERTIES_PATH") or "gradle.properties"
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    matches = _PIN_RE.findall(text)
+    if not matches:
+        return None
+    return matches[-1].strip().lstrip("v") or None
+
+
+def pin_version() -> str:
+    """Resolve the project version pin the CLI and VS Code extension also read.
+
+    Precedence mirrors `VersionPin.kt` / `versionPin.ts`, minus the two sources
+    that have no meaning inside a composite action (a CLI flag, and the
+    `COMPOSE_PREVIEW_VERSION` environment variable — which on a runner is just
+    the `version:` input by another name):
+
+    1. `gradle.properties` → `composePreview.version`
+    2. the version catalog's `[versions] composePreviewCli`
+
+    Fails when neither pins a version: a workflow that asked for `version: pin`
+    said the project is pinned, so silently installing `latest` instead would
+    reintroduce exactly the skew the pin exists to prevent (issue #1920).
+    """
+    from_properties = properties_version()
+    if from_properties:
+        return from_properties
+    from_catalog = catalog_version(required=False)
+    if from_catalog:
+        return from_catalog
+    catalog_path = os.environ.get("CATALOG_PATH") or "gradle/libs.versions.toml"
+    catalog_key = os.environ.get("CATALOG_KEY") or "composePreviewCli"
+    fail(
+        "version: pin, but this project pins no compose-preview version. Set "
+        f"`{PIN_PROPERTY}=<version>` in gradle.properties (`compose-preview pin "
+        f"<version>` writes it), or add `{catalog_key}` to [versions] in "
+        f"{catalog_path}."
+    )
 
 
 def main() -> None:
     inp = (os.environ.get("INPUT_VERSION") or "latest").strip()
     if inp == "latest":
         print(latest_version())
+    elif inp == "pin":
+        print(pin_version())
     elif inp == "catalog":
         print(catalog_version())
     else:

@@ -365,6 +365,13 @@ export function mappingGaps({
   if (referenceManifest) {
     const published = new Set(
       (referenceManifest.references ?? [])
+        // Only a PRIMARY answers "does this component have its reference?". Every record of an
+        // entry — the default binding and each of its size/state cells — carries the same `code`
+        // handle, so counting secondaries would let a surviving `size=l` cell mask a missing
+        // default render: the gap would go quiet precisely when the binding it exists to protect
+        // is the one that failed. A manifest written before tiers existed carries no `tier`, and
+        // every record in it was a primary.
+        .filter((r) => (r?.tier ?? "primary") === "primary")
         .map((r) => r?.source?.attributes?.code)
         .filter((code) => typeof code === "string"),
     );

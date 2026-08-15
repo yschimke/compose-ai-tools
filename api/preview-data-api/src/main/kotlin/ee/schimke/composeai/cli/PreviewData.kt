@@ -263,6 +263,17 @@ data class CaptureResult(
   val optional: Boolean = false,
   /** `@PreviewParameter` coordinate that distinguishes this capture from its siblings. */
   val parameterLabel: String? = null,
+  /**
+   * The **addressable id** of this `@PreviewParameter` row — `<previewId>_<row>`, the id `--id` /
+   * `--filter` / `--preview` select on and the daemon renders on (issue #3819). Null for any
+   * capture that isn't a provider row (an ordinary preview, a time/scroll fan-out frame, a data
+   * product artefact).
+   *
+   * Deliberately separate from [parameterLabel], which is a lossy human coordinate (`PARAM_3` reads
+   * as `parameter 3`) and can never be turned back into a selector. Both come from one derivation —
+   * `PreviewParameterFanout` — so what a consumer is shown is what it can ask for.
+   */
+  val parameterRowId: String? = null,
 )
 
 /**

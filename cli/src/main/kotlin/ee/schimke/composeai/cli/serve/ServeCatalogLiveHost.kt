@@ -170,11 +170,18 @@ class ServeCatalogLiveHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 
+  // Backdrops ride the baked staging dir, so a live-lane catalog shows the same screens — with its
+  // overlay renders coming from the live daemon rather than the baked PNGs.
+  override fun designPages(): ServeDesignPageStore = baked.designPages()
+
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
     baked.annotationsForPreview(previewId)
 
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     baked.annotationsForReference(referenceId)
+
+  override fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
+    baked.tagIndexForPreview(previewId)
 
   // The catalog's published player comparison rides the baked staging dir, so it stays reachable
   // when a live daemon fronts this session.
@@ -855,6 +862,11 @@ class ServeCatalogLiveHost(
     if (daemonIdForOverrideRender(previewId, overrides) != null) return null
     return baked.bakedRender(previewId, overrides)
   }
+
+  // Unconditional, unlike [bakedRender] above: this measures the *published* pixels, and an unfurl
+  // card always points at the override-free render regardless of what the live lane could produce.
+  override fun bakedRenderSize(previewId: String): Pair<Int, Int>? =
+    baked.bakedRenderSize(previewId)
 
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     renderInternal(previewId, overrides, leased = false)

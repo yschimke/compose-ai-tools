@@ -86,17 +86,27 @@ class ServePerPreviewLiveHost(
 
   override val label: String = baked.label
 
+  // The published pixels' size, which is what an unfurl card advertises — the live lane never
+  // changes it, and asking the baked host costs a PNG header read.
+  override fun bakedRenderSize(previewId: String): Pair<Int, Int>? =
+    baked.bakedRenderSize(previewId)
+
   override fun designReferencesFor(previewId: String): List<DesignReference> =
     baked.designReferencesFor(previewId)
 
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 
+  override fun designPages(): ServeDesignPageStore = baked.designPages()
+
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
     baked.annotationsForPreview(previewId)
 
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     baked.annotationsForReference(referenceId)
+
+  override fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
+    baked.tagIndexForPreview(previewId)
 
   // The catalog's published player comparison rides the baked staging dir, so it stays reachable
   // when a live daemon fronts this session.
