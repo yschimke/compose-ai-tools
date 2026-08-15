@@ -30,14 +30,14 @@ class RcDocumentCapabilitiesTest {
   fun `document with no state supports nothing`() {
     val caps = roundTrip(doc(RcTextData(1, "10:08")))
     assertTrue(caps.namedValues.isEmpty())
-    assertFalse(caps.supportsThemeOverride)
+    assertFalse(caps.supportsThemeProvider)
     assertFalse(caps.supportsUiMode)
-    assertNull(caps.declaredTheme)
   }
 
   @Test
-  fun `colour-typed named state carries a theme override`() {
-    // The shape every themeable remote-m3 document has: `USER:WearM3.<role>` colour slots.
+  fun `colour-typed named state carries a palette override`() {
+    // The shape every themeable remote-m3 document has: `USER:WearM3.<role>` colour slots, which is
+    // what `ServeThemeReplay` seeds a provider's colours into.
     val caps =
       roundTrip(
         doc(
@@ -49,13 +49,13 @@ class RcDocumentCapabilitiesTest {
       setOf("USER:WearM3.surfaceContainer", "USER:WearM3.onSurface"),
       caps.colorNamedValues,
     )
-    assertTrue(caps.supportsThemeOverride)
+    assertTrue(caps.supportsThemeProvider)
     // A palette swap is not a light/dark request; nothing here selects between captured colours.
     assertFalse(caps.supportsUiMode)
   }
 
   @Test
-  fun `non-colour named state does not carry a theme override`() {
+  fun `non-colour named state does not carry a palette override`() {
     // The shape every homeassistant-remotecompose document has: entity state, no colour slots.
     val caps =
       roundTrip(
@@ -64,7 +64,7 @@ class RcDocumentCapabilitiesTest {
           RcNamedVariable(2, RcNamedVariable.STRING_TYPE, "USER:sensor.living_room_temp.state"),
         )
       )
-    assertFalse(caps.supportsThemeOverride)
+    assertFalse(caps.supportsThemeProvider)
     assertTrue(caps.supportsNamedValue("USER:light.kitchen.is_on"))
     assertEquals(RcNamedVariable.INT_TYPE, caps.namedValueType("USER:light.kitchen.is_on"))
     // Declared but not drivable today — string seeds don't reach the alpha player's StateUpdater.
@@ -76,40 +76,71 @@ class RcDocumentCapabilitiesTest {
   }
 
   @Test
-  fun `ColorTheme operations carry both a theme override and uiMode`() {
-    // The second colour-theming mechanism. No published catalog emits this yet — the fixture is
-    // what keeps the branch honest until one does, so the check can't silently regress to
-    // named-state-only and go unnoticed.
+  fun `ColorTheme carries uiMode but not a palette override`() {
+    // No published catalog emits `ColorTheme` yet — this fixture is what keeps the branch honest
+    // until one does. It must NOT claim palette support: the colours live in the op, so a
+    // provider's seeds have no named slot to land on and would return unchanged pixels.
     val caps = roundTrip(doc(colorTheme(group = 7), colorTheme(group = 8)))
     assertEquals(setOf(7, 8), caps.colorThemeGroups)
-    assertTrue(caps.supportsThemeOverride)
+    assertTrue(caps.supportsUiMode)
+    assertFalse(caps.supportsThemeProvider)
+  }
+
+  @Test
+  fun `theme-gated sections carry uiMode with no ColorTheme at all`() {
+    // `Theme` is a running section marker, not a document-wide pin: the player skips operations
+    // whose section disagrees with the requested theme. A document bracketing a light run and a
+    // dark run therefore answers `uiMode` with no `ColorTheme` anywhere.
+    val caps =
+      roundTrip(
+        doc(
+          RcTheme(RcTheme.LIGHT),
+          RcTextData(1, "light copy"),
+          RcTheme(RcTheme.DARK),
+          RcTextData(2, "dark copy"),
+        )
+      )
+    assertEquals(setOf(RcTheme.LIGHT, RcTheme.DARK), caps.themeGatedSections)
+    assertTrue(caps.supportsUiMode)
+    assertTrue(caps.colorThemeGroups.isEmpty())
+  }
+
+  @Test
+  fun `a single specific section still gates content`() {
+    val caps = roundTrip(doc(RcTextData(1, "always"), RcTheme(RcTheme.DARK), RcTextData(2, "dark")))
+    assertEquals(setOf(RcTheme.DARK), caps.themeGatedSections)
     assertTrue(caps.supportsUiMode)
   }
 
   @Test
-  fun `a document pinning its own theme does not respond to uiMode`() {
-    val caps = roundTrip(doc(colorTheme(group = 7), RcTheme(RcTheme.DARK)))
-    assertEquals(RcTheme.DARK, caps.declaredTheme)
-    // It still has colour state to override outright; it just won't follow a light/dark request.
-    assertTrue(caps.supportsThemeOverride)
-    assertFalse(caps.supportsUiMode)
-  }
-
-  @Test
-  fun `an unspecified theme leaves the choice to the player`() {
-    for (theme in listOf(RcTheme.SYSTEM, RcTheme.UNSPECIFIED)) {
-      val caps = roundTrip(doc(colorTheme(group = 7), RcTheme(theme)))
-      assertTrue(caps.supportsUiMode, "theme=$theme should defer to the player")
+  fun `unspecified and system sections gate nothing`() {
+    // `isThemeVisible` shows an UNSPECIFIED section under every request, so it filters nothing.
+    for (theme in listOf(RcTheme.UNSPECIFIED, RcTheme.SYSTEM)) {
+      val caps = roundTrip(doc(RcTheme(theme), RcTextData(1, "copy")))
+      assertTrue(caps.themeGatedSections.isEmpty(), "theme=$theme should gate nothing")
+      assertFalse(caps.supportsUiMode, "theme=$theme should not carry uiMode")
     }
   }
 
   @Test
-  fun `ColorTheme without named state still reports theme support`() {
-    // The regression this guards: a check written only against remote-m3 would look at
-    // `colorNamedValues`, find it empty, and report a themeable document as un-themeable.
-    val caps = roundTrip(doc(colorTheme(group = 1)))
-    assertTrue(caps.colorNamedValues.isEmpty())
-    assertTrue(caps.supportsThemeOverride)
+  fun `a trailing marker with no content after it gates nothing`() {
+    val caps = roundTrip(doc(RcTextData(1, "copy"), RcTheme(RcTheme.DARK)))
+    assertTrue(caps.themeGatedSections.isEmpty())
+    assertFalse(caps.supportsUiMode)
+  }
+
+  @Test
+  fun `a document can carry both axes independently`() {
+    val caps =
+      roundTrip(
+        doc(
+          RcNamedVariable(1, RcNamedVariable.COLOR_TYPE, "USER:WearM3.onSurface"),
+          RcTheme(RcTheme.DARK),
+          RcTextData(2, "dark copy"),
+        )
+      )
+    assertTrue(caps.supportsThemeProvider)
+    assertTrue(caps.supportsUiMode)
   }
 
   @Test
