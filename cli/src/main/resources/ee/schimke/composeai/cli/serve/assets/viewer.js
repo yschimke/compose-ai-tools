@@ -81,10 +81,11 @@
   // stage without that code having to know this cap exists.
   //
   // The observed box is the BODY, not the stage or its parent. ResizeObserver reports size, not
-  // position, and the strip is inserted immediately before `.cp-viewer` — a sibling of it, so the
-  // stage's own container merely moves down and never changes size. Only an ancestor containing
-  // both the insertion point and the stage grows, and the body is the one element guaranteed to be
-  // that for any future insertion too.
+  // position, and the strip is inserted as a SIBLING of `.cp-viewer` — immediately before it on a
+  // desktop and immediately after it on a phone (see `place` in viewer-history.js) — so the
+  // stage's own container merely moves, and never changes size, on either side. Only an ancestor
+  // containing both the insertion point and the stage grows, and the body is the one element
+  // guaranteed to be that for either side and for any future insertion too.
   if (typeof ResizeObserver === "function" && document.body) {
     new ResizeObserver(function () {
       // Coalesce to a frame: an insertion can fire the observer mid-layout, and measuring then
