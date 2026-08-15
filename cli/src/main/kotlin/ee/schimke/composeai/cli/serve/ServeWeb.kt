@@ -8566,17 +8566,37 @@ $rows
     //
     // Not an `<option>` inside the renderer combo, for the same reason the spec chip is not: that
     // combo is headed "Switch renderer" and this is not a renderer — it is the same render, moving.
-    // What to call one capture. The annotation's own caption when it declared one — that names the
+    // What to call each capture. The annotation's own caption when it declared one — that names the
     // property the reader is being shown, which is the whole point of the recording — falling back
-    // to its kind, and only then to a position. A bare "Capture 2" is a poor label, but it is
-    // honest, and it only appears when the annotation said nothing to be honest about.
-    fun motionLabel(capture: ServeMotion, index: Int): String =
-      capture.caption?.takeIf { it.isNotBlank() }
-        ?: when (capture.kind) {
-          "interaction" -> "Interaction"
-          "animation" -> "Animation"
-          else -> "Capture ${index + 1}"
+    // to its kind, and only then to a bare "Capture". A weak label is honest; it appears only when
+    // the annotation said nothing to be honest about.
+    //
+    // Numbered ONLY where a label would otherwise repeat. Two caption-less interaction captures are
+    // permitted by the manifest and are what the annotation defaults produce, and they used to give
+    // the picker two buttons both reading "Interaction" — no way, by eye or by screen reader, to
+    // tell which recording either one selects. Numbering unconditionally would instead put a "1"
+    // on every single-capture preview, which is a count nobody asked for; this numbers a run only
+    // when there is a run to disambiguate, and it catches duplicate *captions* too.
+    val motionLabels: List<String> = run {
+      val base = motionCaptures.map { capture ->
+        capture.caption?.takeIf { it.isNotBlank() }
+          ?: when (capture.kind) {
+            "interaction" -> "Interaction"
+            "animation" -> "Animation"
+            else -> "Capture"
+          }
+      }
+      val totals = base.groupingBy { it }.eachCount()
+      val seen = mutableMapOf<String, Int>()
+      base.map { label ->
+        if (totals[label] == 1) label
+        else {
+          val n = (seen[label] ?: 0) + 1
+          seen[label] = n
+          "$label $n"
         }
+      }
+    }
     // Session-scoped like every other asset link on this page. Deliberately NOT pin-carrying: the
     // route reads the bytes straight off the delivery branch the session is holding, so a `pin`
     // param would name a publish the handler has no way to honour — a link that quietly lies about
@@ -8593,7 +8613,7 @@ $rows
         val buttons =
           motionCaptures
             .mapIndexed { index, capture ->
-              val label = motionLabel(capture, index)
+              val label = motionLabels[index]
               "<button type=\"button\" class=\"cp-motion-view\" " +
                 "data-motion-id=\"${WebEscaping.htmlEscape(capture.id)}\" " +
                 "data-motion-src=\"${WebEscaping.htmlEscape(motionSrc(capture))}\" " +
@@ -8616,7 +8636,7 @@ $rows
       else {
         val tip =
           if (motionCaptures.size == 1)
-            "Play this preview's recorded interaction \u2014 ${motionLabel(motionCaptures[0], 0)}"
+            "Play this preview's recorded interaction \u2014 ${motionLabels[0]}"
           else "Play this preview's recorded interactions (${motionCaptures.size})"
         "<button type=\"button\" id=\"cp-motion-chip\" class=\"cp-spec-chip cp-motion-chip\" " +
           "aria-pressed=\"false\" aria-controls=\"cp-motion-img\" " +

@@ -3992,6 +3992,32 @@ class ServeWebFixtureTest {
       assetText("viewer.js").contains("if (m !== \"motion\") closeMotion();"),
       "every transition out of motion closes the lane",
     )
+    // Two caption-less captures of the SAME kind — permitted by the manifest, and what the
+    // annotation defaults produce. Both buttons used to read "Interaction", leaving no way by eye
+    // or by screen reader to tell which recording either one selects.
+    val sameKind =
+      ServeWeb.viewerPage(
+        plain.copy(
+          motion =
+            listOf(
+              ServeMotion(id = "card__a", kind = "interaction"),
+              ServeMotion(id = "card__b", kind = "interaction"),
+            )
+        ),
+        token,
+        sessionId = "compose-m3",
+      )
+    assertTrue(
+      sameKind.contains(">Interaction 1</button>") && sameKind.contains(">Interaction 2</button>"),
+      "a repeated fallback label is numbered so the two buttons can be told apart",
+    )
+    // …and a lone capture is NOT numbered: "Interaction 1" on a preview with one recording is a
+    // count of something nobody was choosing between.
+    assertTrue(
+      view.contains(">Press</button>") && !view.contains(">Press 1</button>"),
+      "a label that stands alone keeps its plain form",
+    )
+
     // A pinned page is a permalink, and the rule it holds to is that a pinned request is never
     // answered with CURRENT bytes. `/motion/` reads the branch tip the session is holding and has
     // no revision to resolve against, so the axis is withdrawn there rather than playing today's
@@ -4214,8 +4240,18 @@ class ServeWebFixtureTest {
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
     assertTrue(
       assetText("viewer.js").contains("var onWasm = wasmActive();") &&
-        assetText("viewer.js").contains("!onWasm && !onRc && !onSpec &&"),
+        assetText("viewer.js").contains("!onWasm && !onRc && !onFixedFrame &&"),
       "server-only controls are gated off while the Wasm lane is active",
+    )
+    // `onFixedFrame` is ONE predicate covering both lanes that put a frame on the stage the server
+    // did not just render — the imported spec raster and a published capture. Asserted here because
+    // it was briefly half-propagated: `canServerRender` used it while the theme select and the
+    // Remote Compose knobs still gated on a spec-only flag, so overrides stayed live over a
+    // recording while the code read as though the lane were gated.
+    assertTrue(
+      assetText("viewer.js").contains("var onFixedFrame = specActive() || motionActive();") &&
+        !assetText("viewer.js").contains("var onSpec = specActive();"),
+      "one fixed-frame predicate gates the override families, not a spec-only flag beside it",
     )
     assertTrue(
       assetText("viewer.js").contains("hasDeclaredThemes && !onWasm"),

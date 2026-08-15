@@ -2227,16 +2227,17 @@
     var onRcCanvas = rcActive();
     var onRcWasm = rcWasmActive();
     var onRc = onRcCanvas || onRcWasm;
-    // The spec lane shows a fixed imported raster: no override re-points it, so every control that
-    // would re-render is as dead here as it is in the Wasm / RC canvas lanes.
-    var onSpec = specActive();
-    // A capture is a finished recording: no override re-points it either, so the same controls are
-    // as dead here as on the spec lane. Folded in beside it rather than given a branch of its own,
-    // because the question these gates actually ask is "is the stage showing a fixed frame this
-    // server did not just render?" — and both lanes answer yes. Left enabled, changing theme or
-    // font scale would re-render the HIDDEN snapshot underneath, or flip a static catalog into
-    // Wasm, while the recording on screen went on saying something else.
-    var onFixedFrame = onSpec || motionActive();
+    // The two lanes that put a FIXED frame on the stage — an imported raster, or a finished
+    // recording. Neither is re-pointed by an override, so every control that would re-render is as
+    // dead here as it is in the Wasm / RC canvas lanes: left enabled, editing one re-renders the
+    // HIDDEN snapshot underneath, or flips a static catalog into Wasm, while what is on screen goes
+    // on saying something else.
+    //
+    // ONE predicate, consumed by every override family below. It was briefly `onSpec` plus a
+    // motion-only addition on two of them, which is the worst of both: the theme select and the
+    // Remote Compose knobs stayed live over a recording while the code read as though the lane were
+    // gated. If a family is dead on a fixed frame it is dead on both lanes, and it says so here.
+    var onFixedFrame = specActive() || motionActive();
     var canServerRender =
       !onWasm && !onRc && !onFixedFrame &&
       (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
@@ -2271,11 +2272,12 @@
       // `!irReplay`: a declared provider theme substitutes a wrapper composable around the preview,
       // which needs a composition to wrap. Day/Night is NOT gated the same way — the player can
       // derive its paint theme from the host at draw time, so that axis stays offered.
-      var canProviderTheme = !fixedTheme && hasDeclaredThemes && !onWasm && !onRc && !onSpec &&
+      var canProviderTheme = !fixedTheme && hasDeclaredThemes && !onWasm && !onRc &&
+        !onFixedFrame &&
         (!irReplay || replayThemes) && (!staticSnapshot || canRenderOverrides);
       // Wear has no day/night axis, but Night (Default) must remain selectable when provider
       // themes are offered so the visitor can clear a chosen provider and return to the app.
-      var canDefaultTheme = !fixedTheme && !onRc && !onSpec &&
+      var canDefaultTheme = !fixedTheme && !onRc && !onFixedFrame &&
         ((!alwaysDark && (canServerRender || !!wasmSrc)) || (alwaysDark && canProviderTheme));
       Array.prototype.forEach.call(themeChoice.options, function (option) {
         option.disabled = option.value.indexOf("theme:") === 0 ? !canProviderTheme : !canDefaultTheme;
@@ -2292,7 +2294,7 @@
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
       var onBrowserRc = rcActive() || rcWasmActive();
       el.disabled = onBrowserRc ? false
-        : (onWasm || onSpec || !(!staticSnapshot || canRenderOverrides));
+        : (onWasm || onFixedFrame || !(!staticSnapshot || canRenderOverrides));
       // A *string* seed doesn't land on the server lane: the Android player's
       // `setUserLocalString` reaches `RemoteComposeState.overrideData` and stops there, so the
       // render comes back unchanged (the server reports it dropped). The browser RC lanes drive a
@@ -2316,7 +2318,7 @@
       if (!el.hasAttribute("data-base-disabled")) {
         el.setAttribute("data-base-disabled", el.disabled ? "1" : "0");
       }
-      el.disabled = el.getAttribute("data-base-disabled") === "1";
+      el.disabled = el.getAttribute("data-base-disabled") === "1" || onFixedFrame;
       gateForIrReplay(el, irReplay && !onWasm, IR_WHY_RECOMPOSE);
     });
   }
@@ -3067,6 +3069,11 @@
       // A lane change re-renders through enterMode; otherwise the restored overrides go out over
       // whichever transport is already up. Either way nothing reloads.
       if (wanted !== mode) setMode(wanted);
+      // Same lane, and Motion is the one where that still means something changed: it carries no
+      // overrides for onControlsChanged() to push and no transport to push them over, but a
+      // restored entry can name a different capture. hydrateFromUrl() has already pressed that
+      // button, so without this the picker would describe a recording that is not on screen.
+      else if (wanted === "motion") playMotion();
       else onControlsChanged();
     });
   }
