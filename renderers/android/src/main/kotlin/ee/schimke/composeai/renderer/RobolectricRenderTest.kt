@@ -1537,7 +1537,15 @@ abstract class RobolectricRenderTestBase(
                   .thenBy { if (it is CaptureRenderJob && it.capture.animation != null) 1 else 0 }
               )
           var captureIndex = 0
-          jobs.forEach { job ->
+          jobs.forEachIndexed { jobIndex, job ->
+            // Pixel settling advances the shared paused clock. It is safe only for the final job
+            // in this composition; otherwise a later still/product/GIF would start after its
+            // requested time. Explicitly timed jobs are snapshots and must also remain exact.
+            val settleStillFrame =
+              shouldAdvanceClockForVisualSettling(
+                advanceTimeMillis = job.advanceTimeMillis,
+                hasFollowingJobs = jobIndex < jobs.lastIndex,
+              )
             // When the job has no explicit `advanceTimeMillis`, default
             // to `CAPTURE_ADVANCE_MS` *or* the current virtual time —
             // whichever is later. Internal advances (e.g. the
@@ -1645,13 +1653,14 @@ abstract class RobolectricRenderTestBase(
               scroll != null &&
                 scroll.mode == ScrollMode.LONG &&
                 scroll.axis == ScrollAxis.VERTICAL &&
-                handleLongCapture(
+                handleLongCaptureInternal(
                   rule = rule,
                   scroll = scroll,
                   previewId = preview.id,
                   heightDp = heightDp,
                   isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                   outputFile = outputFile,
+                  settleFrames = settleStillFrame,
                 )
             if (forceLongFlatten) {
               rule.runOnUiThread {
@@ -1826,14 +1835,13 @@ abstract class RobolectricRenderTestBase(
               // only a changing preview spends the five-sample budget. Explicit time-sampled
               // captures stay single-shot: advancing their clock would change the frame the
               // annotation asked for. Animated/GIF paths were handled above and never reach here.
-              if (job.advanceTimeMillis == null) {
+              if (settleStillFrame) {
                 val visuallySettled =
                   captureVisuallySettledFrame(
                     file = outputFile,
                     role = "preview still",
                     advanceFrame = {
                       rule.mainClock.advanceTimeByFrame()
-                      rule.waitForIdle()
                       currentTime += VISUAL_SETTLE_FRAME_MS
                     },
                   ) { candidate ->
@@ -2282,7 +2290,16 @@ public fun handleLongCapture(
   heightDp: Int,
   isRound: Boolean,
   outputFile: File,
-): Boolean = handleLongCaptureInternal(rule, scroll, previewId, heightDp, isRound, outputFile)
+): Boolean =
+  handleLongCaptureInternal(
+    rule,
+    scroll,
+    previewId,
+    heightDp,
+    isRound,
+    outputFile,
+    settleFrames = true,
+  )
 
 /**
  * Drives `@ScrollingPreview(modes = [END])` — the mode that produces an ordinary single-frame PNG
@@ -2336,6 +2353,7 @@ private fun handleLongCaptureInternal(
   heightDp: Int,
   isRound: Boolean,
   outputFile: File,
+  settleFrames: Boolean,
 ): Boolean {
   val density = rule.activity.resources.displayMetrics.density
   val viewportLayoutPx = (heightDp * density).toInt().coerceAtLeast(1)
@@ -2400,25 +2418,30 @@ private fun handleLongCaptureInternal(
         maxScrollPx = scroll.maxScrollPx,
       ) { scrolledPx ->
         val sliceFile = File(slicesDir, "slice_${slices.size}.png")
-        val visuallySettled =
-          captureVisuallySettledFrame(
-            file = sliceFile,
-            role = "scroll LONG slice",
-            advanceFrame = {
-              rule.mainClock.advanceTimeByFrame()
-              rule.waitForIdle()
-            },
-          ) { candidate ->
-            stableDialogCrop.captureFrame(
-              rule = rule,
-              file = candidate,
-              roborazziOptions = sliceRoborazziOptions,
+        if (settleFrames) {
+          val visuallySettled =
+            captureVisuallySettledFrame(
+              file = sliceFile,
+              role = "scroll LONG slice",
+              advanceFrame = { rule.mainClock.advanceTimeByFrame() },
+            ) { candidate ->
+              stableDialogCrop.captureFrame(
+                rule = rule,
+                file = candidate,
+                roborazziOptions = sliceRoborazziOptions,
+              )
+            }
+          if (!visuallySettled) {
+            System.err.println(
+              "@ScrollingPreview(LONG) on '$previewId': slice ${slices.size} did not become " +
+                "visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
             )
           }
-        if (!visuallySettled) {
-          System.err.println(
-            "@ScrollingPreview(LONG) on '$previewId': slice ${slices.size} did not become " +
-              "visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
+        } else {
+          stableDialogCrop.captureFrame(
+            rule = rule,
+            file = sliceFile,
+            roborazziOptions = sliceRoborazziOptions,
           )
         }
         slices += SliceCapture(scrolledPx, sliceFile)
@@ -2452,25 +2475,30 @@ private fun handleLongCaptureInternal(
     // bar, FAB — whatever animates in at scroll-end) is always
     // present. Generic over layout: not Wear-specific.
     val finalFrameFile = File(slicesDir, "final_frame.png")
-    val visuallySettled =
-      captureVisuallySettledFrame(
-        file = finalFrameFile,
-        role = "scroll LONG final",
-        advanceFrame = {
-          rule.mainClock.advanceTimeByFrame()
-          rule.waitForIdle()
-        },
-      ) { candidate ->
-        stableDialogCrop.captureFrame(
-          rule = rule,
-          file = candidate,
-          roborazziOptions = sliceRoborazziOptions,
+    if (settleFrames) {
+      val visuallySettled =
+        captureVisuallySettledFrame(
+          file = finalFrameFile,
+          role = "scroll LONG final",
+          advanceFrame = { rule.mainClock.advanceTimeByFrame() },
+        ) { candidate ->
+          stableDialogCrop.captureFrame(
+            rule = rule,
+            file = candidate,
+            roborazziOptions = sliceRoborazziOptions,
+          )
+        }
+      if (!visuallySettled) {
+        System.err.println(
+          "@ScrollingPreview(LONG) on '$previewId': final frame did not become visually " +
+            "quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
         )
       }
-    if (!visuallySettled) {
-      System.err.println(
-        "@ScrollingPreview(LONG) on '$previewId': final frame did not become visually " +
-          "quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
+    } else {
+      stableDialogCrop.captureFrame(
+        rule = rule,
+        file = finalFrameFile,
+        roborazziOptions = sliceRoborazziOptions,
       )
     }
 
@@ -2523,6 +2551,15 @@ private const val POST_SCROLL_SETTLE_MS = 1000L
 public const val VISUAL_SETTLE_MAX_SAMPLES = 5
 internal const val VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES = 3
 internal const val VISUAL_SETTLE_FRAME_MS = 16L
+
+/**
+ * Whether visual settling may advance a preview's paused clock without changing another requested
+ * output. Timed captures are exact snapshots, and any following job shares this same clock.
+ */
+internal fun shouldAdvanceClockForVisualSettling(
+  advanceTimeMillis: Long?,
+  hasFollowingJobs: Boolean,
+): Boolean = advanceTimeMillis == null && !hasFollowingJobs
 
 /**
  * Captures [file] twice and returns immediately if both decoded frames have identical pixels. After

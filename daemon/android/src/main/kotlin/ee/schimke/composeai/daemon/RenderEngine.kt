@@ -722,28 +722,35 @@ class RenderEngine(
               "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
             )
             trace.section("render:captureRoboImage") {
-              val visuallySettled =
-                ee.schimke.composeai.renderer.captureVisuallySettledFrame(
-                  file = outputFile,
-                  role = "daemon preview still",
-                  advanceFrame = {
-                    rule.mainClock.advanceTimeByFrame()
-                    rule.waitForIdle()
-                  },
-                ) { candidate ->
-                  resolveRenderedCaptureRoot(rule)
-                    .interaction
-                    .captureRoboImage(
-                      file = candidate,
-                      roborazziOptions = roborazziOptions,
-                    )
+              fun capture(candidate: File) {
+                resolveRenderedCaptureRoot(rule)
+                  .interaction
+                  .captureRoboImage(
+                    file = candidate,
+                    roborazziOptions = roborazziOptions,
+                  )
+              }
+
+              // An explicit captureAdvanceMs selects an exact animation phase. Sampling later
+              // frames would silently move that snapshot by 16–64ms, so only default-timed daemon
+              // stills use adaptive settling.
+              if (spec.captureAdvanceMs == null) {
+                val visuallySettled =
+                  ee.schimke.composeai.renderer.captureVisuallySettledFrame(
+                    file = outputFile,
+                    role = "daemon preview still",
+                    advanceFrame = { rule.mainClock.advanceTimeByFrame() },
+                    capture = ::capture,
+                  )
+                if (!visuallySettled) {
+                  System.err.println(
+                    "compose-ai-daemon: [render] frame did not become visually quiescent after " +
+                      "${ee.schimke.composeai.renderer.VISUAL_SETTLE_MAX_SAMPLES} samples; " +
+                      "using the latest frame."
+                  )
                 }
-              if (!visuallySettled) {
-                System.err.println(
-                  "compose-ai-daemon: [render] frame did not become visually quiescent after " +
-                    "${ee.schimke.composeai.renderer.VISUAL_SETTLE_MAX_SAMPLES} samples; " +
-                    "using the latest frame."
-                )
+              } else {
+                capture(outputFile)
               }
             }
             System.err.println(
