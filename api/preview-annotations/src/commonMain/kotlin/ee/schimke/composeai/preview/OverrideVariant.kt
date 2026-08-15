@@ -47,6 +47,19 @@ package ee.schimke.composeai.preview
  * so a desktop catalog has no reason to keep a hand-written wrapper for a variant that differs only
  * by a knob.
  *
+ * Interaction states are addressable variants too. They use real harness input rather than a
+ * preview-only `MutableInteractionSource`:
+ * ```
+ * @OverrideVariant(name = "hovered", interaction = VariantInteraction.Hovered)
+ * @OverrideVariant(name = "focused", interaction = VariantInteraction.Focused)
+ * @OverrideVariant(name = "pressed", interaction = VariantInteraction.Pressed)
+ * @Composable
+ * fun FilledButton() = Button(onClick = {}) { Text("Button") }
+ * ```
+ *
+ * Each produces its own `_VARIANT_<name>` preview id. [interactionIndex] selects among multiple
+ * interactive nodes; it defaults to the first.
+ *
  * ## Hoisting a whole matrix onto one annotation
  *
  * `@Target` includes `ANNOTATION_CLASS`, so a set of variants that several components share can be
@@ -88,6 +101,18 @@ annotation class OverrideVariant(
    * so keep it slug-friendly (lowercase, no spaces) and unique across the function's variants.
    */
   val name: String,
+  /**
+   * Optional real input state to drive before this variant is captured. Unlike a knob seed, this
+   * goes through Compose's focus / pointer input paths, so the component's own interaction source
+   * and indication produce the pixels. [Focused] and [Pressed] use the same focus walk as
+   * [FocusedPreview]; [Hovered] targets the component without focusing it.
+   */
+  val interaction: VariantInteraction = VariantInteraction.None,
+  /**
+   * Zero-based target: tab order for [VariantInteraction.Focused]/[VariantInteraction.Pressed],
+   * interactive-semantics order for [VariantInteraction.Hovered].
+   */
+  val interactionIndex: Int = 0,
   /** Boolean knob seeds, each `"key=true"` / `"key=false"` (or `"key#index=…"`). */
   val booleans: Array<String> = [],
   /** String knob seeds, each `"key=value"` (or `"key#index=value"`). */
@@ -99,3 +124,11 @@ annotation class OverrideVariant(
   /** Colour knob seeds, each `"key=#AARRGGBB"` (or `#RRGGBB`; or `"key#index=…"`). */
   val colors: Array<String> = [],
 )
+
+/** Harness-driven state for an addressable [OverrideVariant]. */
+enum class VariantInteraction {
+  None,
+  Hovered,
+  Focused,
+  Pressed,
+}

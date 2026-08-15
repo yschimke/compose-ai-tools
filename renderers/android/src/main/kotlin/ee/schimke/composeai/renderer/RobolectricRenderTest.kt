@@ -10,6 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Constraints
@@ -41,9 +44,9 @@ import ee.schimke.composeai.daemon.LauncherWidgetExtension
 import ee.schimke.composeai.daemon.PermissionsOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
-import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.GestureOverride
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
@@ -92,6 +95,55 @@ private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
   when (this) {
     ScrollAxis.VERTICAL -> ProductScrollAxis.VERTICAL
     ScrollAxis.HORIZONTAL -> ProductScrollAxis.HORIZONTAL
+  }
+
+private fun driveHover(rule: AndroidComposeTestRule<*, ComponentActivity>, targetIndex: Int) {
+  val targets = rule.onAllNodes(interactiveNodeMatcher()).fetchSemanticsNodes()
+  val target = targets.getOrNull(targetIndex)
+  if (target == null) {
+    System.err.println(
+      "@OverrideVariant hover: no interactive node at index $targetIndex; " +
+        "capturing the undriven state."
+    )
+    return
+  }
+  val bounds = target.boundsInRoot
+  val x = bounds.center.x
+  val y = bounds.center.y
+  val content = rule.activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+  val view = content?.getChildAt(0) ?: rule.activity.window.decorView
+  val now = android.os.SystemClock.uptimeMillis()
+  fun event(action: Int) =
+    android.view.MotionEvent.obtain(now, now, action, x, y, 0).also {
+      it.source = android.view.InputDevice.SOURCE_MOUSE
+    }
+  rule.runOnUiThread {
+    event(android.view.MotionEvent.ACTION_HOVER_ENTER).let {
+      try {
+        view.dispatchGenericMotionEvent(it)
+      } finally {
+        it.recycle()
+      }
+    }
+    event(android.view.MotionEvent.ACTION_HOVER_MOVE).let {
+      try {
+        view.dispatchGenericMotionEvent(it)
+      } finally {
+        it.recycle()
+      }
+    }
+  }
+  org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+    .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+}
+
+private fun interactiveNodeMatcher() =
+  SemanticsMatcher("has an interactive action") { node ->
+    val config = node.config
+    config.getOrNull(SemanticsActions.OnClick) != null ||
+      config.getOrNull(SemanticsActions.SetProgress) != null ||
+      config.getOrNull(SemanticsActions.SetText) != null ||
+      config.getOrNull(SemanticsActions.RequestFocus) != null
   }
 
 /**
@@ -168,7 +220,8 @@ object PreviewManifestLoader {
         }
         .map { entry ->
           // `expandParameterProvider` already isolates provider-load failures; this outer guard is
-          // belt-and-suspenders so any *other* unexpected throw while expanding one entry drops just
+          // belt-and-suspenders so any *other* unexpected throw while expanding one entry drops
+          // just
           // that entry rather than failing the whole shard's `@Parameters` load (issue #2493).
           entry to
             runCatching { expandParameterProvider(entry) }
@@ -320,7 +373,8 @@ object PreviewManifestLoader {
     // Row filter (`--exclude-preview-row` → `composeai.preview.rowExclude`). Applied here, after
     // labelling: the id filters above ran over the DISCOVERED entries, where this parameterized
     // preview is a single row with no per-value id, so a label is the only handle on one value. The
-    // stale fan-out cleanup below still keys on the FULL row set, so a skipped row keeps its previous
+    // stale fan-out cleanup below still keys on the FULL row set, so a skipped row keeps its
+    // previous
     // PNG on disk exactly as a filtered-out preview does.
     val keptRows =
       PreviewFilter.keptRowIndices(
@@ -465,17 +519,18 @@ object PreviewManifestLoader {
    *
    * Deliberately built from the **declared** entries rather than the expanded rows, and so from the
    * FULL manifest rather than the filtered selection: a `@Preview(name = "Dark")` sibling that a
-   * `--preview-id` filter dropped is never expanded, so its fan-out rows (`Foo_Dark_<label>.png` and
-   * their companions) appear in no expected-name set, yet they all match the swept preview's `Foo_*`
-   * prefix. Protecting the declared stem covers the sibling's whole fan-out without requiring it to
-   * have been expanded, which is what makes good on the loader's promise that a filtered-out preview
-   * keeps its existing artifacts.
+   * `--preview-id` filter dropped is never expanded, so its fan-out rows (`Foo_Dark_<label>.png`
+   * and their companions) appear in no expected-name set, yet they all match the swept preview's
+   * `Foo_*` prefix. Protecting the declared stem covers the sibling's whole fan-out without
+   * requiring it to have been expanded, which is what makes good on the loader's promise that a
+   * filtered-out preview keeps its existing artifacts.
    *
-   * Mirrors the plugin's `fanoutSiblingStems`, which computes the same list for the desktop renderer
-   * (that subprocess has no manifest, so the plugin passes the stems on the command line). The
-   * same-extension restriction is load-bearing in both: the sweep only ever deletes files belonging
-   * to an [templateFile]-extension output, so shielding a different-extension sibling's stem would
-   * strand a genuinely stale `Foo_Dark.png` from before that sibling's capture became a GIF.
+   * Mirrors the plugin's `fanoutSiblingStems`, which computes the same list for the desktop
+   * renderer (that subprocess has no manifest, so the plugin passes the stems on the command line).
+   * The same-extension restriction is load-bearing in both: the sweep only ever deletes files
+   * belonging to an [templateFile]-extension output, so shielding a different-extension sibling's
+   * stem would strand a genuinely stale `Foo_Dark.png` from before that sibling's capture became a
+   * GIF.
    */
   private fun fanoutSiblingStems(
     declaredOutputFiles: List<File>,
@@ -574,7 +629,6 @@ object PreviewManifestLoader {
     }
     return null
   }
-
 }
 
 /**
@@ -661,8 +715,7 @@ abstract class RobolectricRenderTestBase(
     // Round crop fires for ordinary Compose @Preview captures with a round device, matching
     // Layoutlib / Android Studio. Tile and notification captures have their own surface renderers
     // and are intentionally left out of this Studio @Preview parity mask.
-    val isRound =
-      isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE
+    val isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE
 
     // AS-parity default: previews render with `LocalInspectionMode = true`,
     // matching Android Studio's `@Preview` behaviour, so a preview that
@@ -747,14 +800,17 @@ abstract class RobolectricRenderTestBase(
     // Drop any named-override knobs a prior preview declared so this preview's `previewOverride*`
     // lookups accumulate a clean set (drained into the overrides sidecar below).
     ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
-    // Same for the Remote Compose knob declarations (reflectively — the alpha-gated connector may be
-    // absent), so preview B doesn't serialize the Remote Compose knobs preview A declared in the same
+    // Same for the Remote Compose knob declarations (reflectively — the alpha-gated connector may
+    // be
+    // absent), so preview B doesn't serialize the Remote Compose knobs preview A declared in the
+    // same
     // JVM into its `renders/<stem>.remotecompose.json` sidecar.
     clearRemoteComposeDeclarations()
     // Seed any `@OverrideVariant` values onto the controller so this synthetic variant preview's
     // `previewOverride*` reads resolve to the flipped knob(s). Replaces the whole seed map, so an
     // ordinary preview (null overrides → empty map) clears the prior variant's seeds — no leakage
-    // between previews. Same `ControllerPreviewOverrideHost` seam the daemon's `renderNow.overrides`
+    // between previews. Same `ControllerPreviewOverrideHost` seam the daemon's
+    // `renderNow.overrides`
     // lane feeds; here the batch render owns the controller lifecycle directly.
     ee.schimke.composeai.overrides.PreviewOverrideController.set(overrideSeedMap(preview))
     // Arm the per-preview downloadable-font tracker so a face that falls back to Roboto during THIS
@@ -792,7 +848,8 @@ abstract class RobolectricRenderTestBase(
         )
       }
       // A downloadable font that couldn't be resolved rendered in the platform fallback (Roboto) —
-      // wrong typeface for a branded preview. By default that's fatal (throw → the catch below drops
+      // wrong typeface for a branded preview. By default that's fatal (throw → the catch below
+      // drops
       // the PNG and writes `.error.json`, same as any render failure). With
       // `-Dcomposeai.fonts.failOnFallback=false` keep the PNG and record the fell-back faces in a
       // non-fatal `<png>.warnings.json` instead.
@@ -803,7 +860,11 @@ abstract class RobolectricRenderTestBase(
       // Coil requests that didn't resolve are never fatal — a blank image is a legitimate thing to
       // capture (an offline/empty state), and the renderer can't conjure bytes the sandbox can't
       // reach. They ride in the same warnings sidecar so the blank is diagnosable.
-      RenderWarningsSidecar.writeOrDelete(pngFile, fontFallbacks, CoilLoadDiagnostics.drainPreview())
+      RenderWarningsSidecar.writeOrDelete(
+        pngFile,
+        fontFallbacks,
+        CoilLoadDiagnostics.drainPreview(),
+      )
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
       writeIrSidecar(pngFile, preview.id)
@@ -811,7 +872,8 @@ abstract class RobolectricRenderTestBase(
       // `renders/<stem>.overrides.json` sidecar `BundlePreviewTask.resolvePreviewOverrides` packs.
       writeOverridesSidecar(pngFile)
       // Same, for Remote Compose named-value knobs declared through `LocalRemoteComposeHost`:
-      // `renders/<stem>.remotecompose.json`, packed by `BundlePreviewTask.resolvePreviewRemoteCompose`.
+      // `renders/<stem>.remotecompose.json`, packed by
+      // `BundlePreviewTask.resolvePreviewRemoteCompose`.
       writeRemoteComposeSidecar(pngFile)
     } catch (e: Throwable) {
       System.err.println(
@@ -902,8 +964,8 @@ abstract class RobolectricRenderTestBase(
   }
 
   /**
-   * Write the Remote Compose named-value knobs the preview declared through `LocalRemoteComposeHost`
-   * as the `renders/<stem>.remotecompose.json` sidecar
+   * Write the Remote Compose named-value knobs the preview declared through
+   * `LocalRemoteComposeHost` as the `renders/<stem>.remotecompose.json` sidecar
    * `BundlePreviewTask.resolvePreviewRemoteCompose` packs. An empty / absent set deletes any stale
    * sidecar. Read **reflectively** so this renderer never hard-depends on the alpha-gated
    * `:data-remotecompose-connector` (`RemoteComposeController` is only on the classpath when the
@@ -947,7 +1009,9 @@ abstract class RobolectricRenderTestBase(
     try {
       if (json == null) {
         if (sidecar.isFile && !sidecar.delete()) {
-          System.err.println("Failed to delete stale remotecompose sidecar: ${sidecar.absolutePath}")
+          System.err.println(
+            "Failed to delete stale remotecompose sidecar: ${sidecar.absolutePath}"
+          )
         }
         return
       }
@@ -1193,8 +1257,7 @@ abstract class RobolectricRenderTestBase(
           val reduceMotionLocal =
             if (annotationReduceMotion || scrollCaptureInProgress) WearReduceMotionLocal.get()
             else null
-          val reduceMotionState =
-            androidx.compose.runtime.mutableStateOf(annotationReduceMotion)
+          val reduceMotionState = androidx.compose.runtime.mutableStateOf(annotationReduceMotion)
           // @AnimatedPreview(showCurves = true): capture the slot table
           // by wrapping the composition in `InspectablePreviewContent`,
           // which seeds parameter information collection and snapshots
@@ -1348,102 +1411,102 @@ abstract class RobolectricRenderTestBase(
               }
             }
             withReduceMotion {
-            CompositionLocalProvider(values = providedValues) {
-              if (focusExtension != null) {
-                capturedView = androidx.compose.ui.platform.LocalView.current
-              }
-              val previewBody: @Composable () -> Unit = {
-                val core: @Composable () -> Unit = {
-                  MeasuredWrapBox(
-                    wrapWidth = wrapWidth,
-                    wrapHeight = wrapHeight,
-                    onMeasured = { measured = it },
-                  ) {
-                    strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+              CompositionLocalProvider(values = providedValues) {
+                if (focusExtension != null) {
+                  capturedView = androidx.compose.ui.platform.LocalView.current
+                }
+                val previewBody: @Composable () -> Unit = {
+                  val core: @Composable () -> Unit = {
+                    MeasuredWrapBox(
+                      wrapWidth = wrapWidth,
+                      wrapHeight = wrapHeight,
+                      onMeasured = { measured = it },
+                    ) {
+                      strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                    }
+                  }
+                  if (applySystemBars) {
+                    SystemBarsFrame(uiMode = params.uiMode) { core() }
+                  } else {
+                    core()
                   }
                 }
-                if (applySystemBars) {
-                  SystemBarsFrame(uiMode = params.uiMode) { core() }
-                } else {
-                  core()
+                val curveOrPlain: @Composable () -> Unit = {
+                  if (animationCurveCapture != null) {
+                    InspectablePreviewContent(animationCurveCapture, previewBody)
+                  } else {
+                    previewBody()
+                  }
                 }
-              }
-              val curveOrPlain: @Composable () -> Unit = {
-                if (animationCurveCapture != null) {
-                  InspectablePreviewContent(animationCurveCapture, previewBody)
-                } else {
-                  previewBody()
+                val focusOrPlain: @Composable () -> Unit = {
+                  if (focusExtension != null) {
+                    focusExtension.AroundComposable { curveOrPlain() }
+                  } else {
+                    curveOrPlain()
+                  }
                 }
-              }
-              val focusOrPlain: @Composable () -> Unit = {
-                if (focusExtension != null) {
-                  focusExtension.AroundComposable { curveOrPlain() }
-                } else {
-                  curveOrPlain()
+                // `@GestureHintPreview` — installs `LocalGestureRegistry` /
+                // `LocalOneHandedGestureEnabled` and force-shows the hint, same
+                // `DataExtensionPhase.OuterEnvironment` seam as ambient.
+                val gestureHintOrPlain: @Composable () -> Unit = {
+                  if (gestureHintExtension != null) {
+                    gestureHintExtension.AroundComposable { focusOrPlain() }
+                  } else {
+                    focusOrPlain()
+                  }
                 }
-              }
-              // `@GestureHintPreview` — installs `LocalGestureRegistry` /
-              // `LocalOneHandedGestureEnabled` and force-shows the hint, same
-              // `DataExtensionPhase.OuterEnvironment` seam as ambient.
-              val gestureHintOrPlain: @Composable () -> Unit = {
-                if (gestureHintExtension != null) {
-                  gestureHintExtension.AroundComposable { focusOrPlain() }
-                } else {
-                  focusOrPlain()
+                val ambientOrPlain: @Composable () -> Unit = {
+                  if (ambientExtension != null) {
+                    ambientExtension.AroundComposable { gestureHintOrPlain() }
+                  } else {
+                    gestureHintOrPlain()
+                  }
                 }
-              }
-              val ambientOrPlain: @Composable () -> Unit = {
-                if (ambientExtension != null) {
-                  ambientExtension.AroundComposable { gestureHintOrPlain() }
-                } else {
-                  gestureHintOrPlain()
+                // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
+                // `Box.size(...)` constrains the visible viewport before any inner
+                // override applies — the cell footprint is the launcher chrome, not
+                // the preview's own surface chemistry. Matches the connector's
+                // `DataExtensionPhase.OuterEnvironment` ordering.
+                val launcherWidgetOrPlain: @Composable () -> Unit = {
+                  if (launcherWidgetExtension != null) {
+                    launcherWidgetExtension.AroundComposable { ambientOrPlain() }
+                  } else {
+                    ambientOrPlain()
+                  }
                 }
-              }
-              // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
-              // `Box.size(...)` constrains the visible viewport before any inner
-              // override applies — the cell footprint is the launcher chrome, not
-              // the preview's own surface chemistry. Matches the connector's
-              // `DataExtensionPhase.OuterEnvironment` ordering.
-              val launcherWidgetOrPlain: @Composable () -> Unit = {
-                if (launcherWidgetExtension != null) {
-                  launcherWidgetExtension.AroundComposable { ambientOrPlain() }
-                } else {
-                  ambientOrPlain()
-                }
-              }
-              // `@PermissionPreview` — the grants were already seeded into Robolectric when the
-              // extension was constructed above; this wrap is what scopes the connector's
-              // query tracking to this preview (`PermissionsController.beginRender`) and clears
-              // the override on dispose so the next preview in the sandbox starts clean. Same
-              // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
-              val permissionsOrPlain: @Composable () -> Unit = {
-                if (permissionsExtension != null) {
-                  // `Around` (not `AroundComposable`): the permissions extension implements the
-                  // raw `AroundComposableHook`, because it needs the context's `previewId` to
-                  // scope query tracking — the convenience `AroundComposableExtension` base the
-                  // gesture / launcher-widget extensions use drops the context.
-                  permissionsExtension.Around(
-                    ExtensionComposeContext(
-                      extensionId = PermissionsOverrideExtension.ID,
-                      previewId = preview.id,
-                      renderMode = null,
-                    )
-                  ) {
+                // `@PermissionPreview` — the grants were already seeded into Robolectric when the
+                // extension was constructed above; this wrap is what scopes the connector's
+                // query tracking to this preview (`PermissionsController.beginRender`) and clears
+                // the override on dispose so the next preview in the sandbox starts clean. Same
+                // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
+                val permissionsOrPlain: @Composable () -> Unit = {
+                  if (permissionsExtension != null) {
+                    // `Around` (not `AroundComposable`): the permissions extension implements the
+                    // raw `AroundComposableHook`, because it needs the context's `previewId` to
+                    // scope query tracking — the convenience `AroundComposableExtension` base the
+                    // gesture / launcher-widget extensions use drops the context.
+                    permissionsExtension.Around(
+                      ExtensionComposeContext(
+                        extensionId = PermissionsOverrideExtension.ID,
+                        previewId = preview.id,
+                        renderMode = null,
+                      )
+                    ) {
+                      launcherWidgetOrPlain()
+                    }
+                  } else {
                     launcherWidgetOrPlain()
                   }
-                } else {
-                  launcherWidgetOrPlain()
                 }
-              }
-              val pseudoOrPlain: @Composable () -> Unit = {
-                if (pseudolocaleExtension != null) {
-                  pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
-                } else {
-                  permissionsOrPlain()
+                val pseudoOrPlain: @Composable () -> Unit = {
+                  if (pseudolocaleExtension != null) {
+                    pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
+                  } else {
+                    permissionsOrPlain()
+                  }
                 }
+                keyboardExtension.AroundComposable { pseudoOrPlain() }
               }
-              keyboardExtension.AroundComposable { pseudoOrPlain() }
-            }
             }
           }
           // With `mainClock.autoAdvance = false` the clock stays at 0
@@ -1524,6 +1587,16 @@ abstract class RobolectricRenderTestBase(
                 org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
                   .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
               }
+            }
+
+            // Addressable hovered `@OverrideVariant`: send a real mouse hover to the requested
+            // interactive semantics node without walking focus first. A mouse press is not used —
+            // it would combine Hovered and Pressed, and focusing merely to find the target would
+            // combine Hovered and Focused.
+            capture?.hover?.let { hover ->
+              driveHover(rule, hover.targetIndex)
+              rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+              currentTime += FocusController.SETTLE_MS
             }
 
             // @ScrollingPreview(END): drive the first scrollable on the
@@ -1950,7 +2023,8 @@ abstract class RobolectricRenderTestBase(
       addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
       if (isRound) add("round")
       // The frame decides, not the request — shared with the daemon's two qualifier builders
-      // (`RenderEngine.applyPreviewQualifiers`, `RobolectricHost`) so a preview rendered through the
+      // (`RenderEngine.applyPreviewQualifiers`, `RobolectricHost`) so a preview rendered through
+      // the
       // plugin and the same preview rendered through the daemon land on the same `Configuration`.
       // There is no separate request on this lane: `device = "spec:…,orientation=portrait"` is
       // already resolved into these dimensions by `DeviceDimensions`.
@@ -2199,7 +2273,12 @@ public fun driveScrollingPreviewToEnd(
   rule: AndroidComposeTestRule<*, ComponentActivity>,
   scroll: ScrollCapture,
 ): Boolean {
-  val result = driveScrollToEnd(rule = rule, axis = scroll.axis.toProductAxis(), maxScrollPx = scroll.maxScrollPx)
+  val result =
+    driveScrollToEnd(
+      rule = rule,
+      axis = scroll.axis.toProductAxis(),
+      maxScrollPx = scroll.maxScrollPx,
+    )
   if (result is ScrollDriveResult.NoScrollable) return false
   settlePostScrollAnimations(rule)
   return true
@@ -2416,11 +2495,7 @@ private fun handleGifCaptureInternal(
   fun captureFrame(delayMs: Int) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
     captureDecodableFrame(frameFile, role = "scroll GIF") { f ->
-      stableDialogCrop.captureFrame(
-        rule = rule,
-        file = f,
-        roborazziOptions = frameRoborazziOptions,
-      )
+      stableDialogCrop.captureFrame(rule = rule, file = f, roborazziOptions = frameRoborazziOptions)
     }
     frameFiles += frameFile
     frameDelays += delayMs
@@ -2760,11 +2835,7 @@ private fun handleAnimatedCapture(
   fun captureFrame(virtualTimeMs: Long) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
     captureDecodableFrame(frameFile, role = "animation") { f ->
-      stableDialogCrop.captureFrame(
-        rule = rule,
-        file = f,
-        roborazziOptions = frameRoborazziOptions,
-      )
+      stableDialogCrop.captureFrame(rule = rule, file = f, roborazziOptions = frameRoborazziOptions)
     }
     frameFiles += frameFile
     frameTimes += virtualTimeMs
@@ -3069,8 +3140,9 @@ private fun overrideSeedMap(
 
 /**
  * Maps the renderer-side [GestureHintCapture] (read from `previews.json`) onto the connector's
- * `protocol.GestureOverride` wire shape — only the `showHints` immediate-mode flag; `@GestureHintPreview`
- * carries no invoke / enabled dimensions (those are daemon-interactive concerns).
+ * `protocol.GestureOverride` wire shape — only the `showHints` immediate-mode flag;
+ * `@GestureHintPreview` carries no invoke / enabled dimensions (those are daemon-interactive
+ * concerns).
  */
 private fun GestureHintCapture.toGestureOverride(): GestureOverride =
   GestureOverride(showHints = showHints)

@@ -129,6 +129,9 @@ data class FocusCapture(
   val pressed: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `HoverCapture`. */
+@Serializable data class HoverCapture(val targetIndex: Int = 0)
+
 /** Renderer-side mirror of the plugin's `FocusGifCapture`. */
 @Serializable
 data class FocusGifCapture(
@@ -271,10 +274,10 @@ data class RenderPreviewEntry(
   val captures: List<RenderPreviewCapture> = listOf(RenderPreviewCapture()),
   /**
    * Non-null on a synthetic `@OverrideVariant` preview: the `previewOverride*` values the renderer
-   * seeds via `PreviewOverrideController.set(...)` before composing this entry, so the same function
-   * renders once more with the knob(s) flipped. `null` on an ordinary preview (defaults resolve).
-   * Uses the canonical [ee.schimke.composeai.data.overrides.OverrideVariantSpec] so every backend
-   * shares one seed→value mapping.
+   * seeds via `PreviewOverrideController.set(...)` before composing this entry, so the same
+   * function renders once more with the knob(s) flipped. `null` on an ordinary preview (defaults
+   * resolve). Uses the canonical [ee.schimke.composeai.data.overrides.OverrideVariantSpec] so every
+   * backend shares one seed→value mapping.
    */
   val overrides: ee.schimke.composeai.data.overrides.OverrideVariantSpec? = null,
   /**
@@ -304,6 +307,7 @@ data class RenderPreviewCapture(
   val scroll: ScrollCapture? = null,
   val animation: AnimationCapture? = null,
   val focus: FocusCapture? = null,
+  val hover: HoverCapture? = null,
   val focusGif: FocusGifCapture? = null,
   val ambient: AmbientCapture? = null,
   val gestureHint: GestureHintCapture? = null,

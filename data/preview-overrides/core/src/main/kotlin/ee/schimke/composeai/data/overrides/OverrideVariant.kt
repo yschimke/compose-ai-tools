@@ -56,11 +56,16 @@ data class OverrideSeed(
  * A named override variant sourced from an `@OverrideVariant` annotation. Discovery emits one extra
  * synthetic preview per variant carrying this on `PreviewInfo.overrides`; each render backend seeds
  * [toNamedOverrides] onto the `PreviewOverrideController` (batch) or into `RenderSpec.overrides`
- * (daemon) before composing. [name] is the `_VARIANT_<name>` render-output tag and the variant's
- * catalog `state`.
+ * (daemon) before composing. [interaction] records the real harness state discovery materialized
+ * onto the capture. [name] is the `_VARIANT_<name>` render-output tag and catalog `state`.
  */
 @Serializable
-data class OverrideVariantSpec(val name: String, val seeds: List<OverrideSeed> = emptyList()) {
+data class OverrideVariantSpec(
+  val name: String,
+  val seeds: List<OverrideSeed> = emptyList(),
+  val interaction: OverrideVariantInteraction? = null,
+  val interactionIndex: Int = 0,
+) {
   /**
    * The seed map (keyed by [OverrideSeed.seedKey]) this variant applies — the exact shape
    * `PreviewOverrides.namedOverrides` / `PreviewOverrideController.set(...)` take. Unparseable
@@ -75,6 +80,13 @@ data class OverrideVariantSpec(val name: String, val seeds: List<OverrideSeed> =
     }
     return out
   }
+}
+
+@Serializable
+enum class OverrideVariantInteraction {
+  Hovered,
+  Focused,
+  Pressed,
 }
 
 /**

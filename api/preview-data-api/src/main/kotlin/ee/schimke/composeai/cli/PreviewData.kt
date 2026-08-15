@@ -102,7 +102,7 @@ data class Capture(
    */
   val optional: Boolean = false,
   /**
-   * Presence markers for the two per-capture **detected-feature** annotations discovery emits: a
+   * Presence markers for per-capture **detected-feature** annotations discovery emits: a
    * `@FocusedPreview` capture carries a `focus` (or `focusGif`) block, and a `@GestureHintPreview`
    * one carries `gestureHint`. Modelled here only as opaque [JsonElement]s — the serve layer needs
    * to know *whether* a preview supports keyboard focus / one-handed gestures (to gate the viewer's
@@ -112,6 +112,7 @@ data class Capture(
    */
   val focus: JsonElement? = null,
   val focusGif: JsonElement? = null,
+  val hover: JsonElement? = null,
   val gestureHint: JsonElement? = null,
 )
 

@@ -553,6 +553,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           scroll = capture.scroll,
           animation = capture.animation,
           focus = capture.focus,
+          hover = capture.hover,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
           lane = lane,
         )
@@ -594,6 +595,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     scroll: ScrollCapture?,
     animation: AnimationCapture? = null,
     focus: FocusCapture? = null,
+    hover: ee.schimke.composeai.discovery.HoverCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
     lane: RenderLane,
   ) {
@@ -608,6 +610,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         scroll = scroll,
         animation = animation,
         focus = focus,
+        hover = hover,
         fanoutSiblingStems = fanoutSiblingStems,
       )
     val overridesSeed =
@@ -841,6 +844,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     scroll: ScrollCapture?,
     animation: AnimationCapture?,
     focus: FocusCapture?,
+    hover: ee.schimke.composeai.discovery.HoverCapture?,
     fanoutSiblingStems: List<String>,
   ): List<String> =
     listOf(
@@ -948,6 +952,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
       (focus?.enterPlacesFocus ?: false).toString(),
       (focus?.pressed ?: false).toString(),
       (focus?.overlay ?: false).toString(),
+      // 39th — addressable `@OverrideVariant(interaction = Hovered)` target. Kept separate from
+      // focus so hovering never has to focus a node merely to discover where to send the pointer.
+      (hover?.targetIndex ?: -1).toString(),
     )
 }
 

@@ -187,12 +187,16 @@ class DiscoveryFunctionalTest {
         @Target(AnnotationTarget.FUNCTION)
         annotation class OverrideVariant(
             val name: String,
+            val interaction: VariantInteraction = VariantInteraction.None,
+            val interactionIndex: Int = 0,
             val booleans: Array<String> = [],
             val strings: Array<String> = [],
             val ints: Array<String> = [],
             val floats: Array<String> = [],
             val colors: Array<String> = [],
         )
+
+        enum class VariantInteraction { None, Hovered, Focused, Pressed }
         """
           .trimIndent()
       )
@@ -210,10 +214,18 @@ class DiscoveryFunctionalTest {
         import androidx.compose.ui.tooling.preview.Preview
         import androidx.compose.ui.unit.dp
         import ee.schimke.composeai.preview.OverrideVariant
+        import ee.schimke.composeai.preview.VariantInteraction
 
         @Preview
         @OverrideVariant(name = "off", booleans = ["checked=false"])
         @OverrideVariant(name = "labelled", strings = ["label=Hi", "sub#1=Two"])
+        @OverrideVariant(name = "hovered", interaction = VariantInteraction.Hovered)
+        @OverrideVariant(
+            name = "focused",
+            interaction = VariantInteraction.Focused,
+            interactionIndex = 1,
+        )
+        @OverrideVariant(name = "pressed", interaction = VariantInteraction.Pressed)
         @Composable
         fun TogglePreview() {
             Box(modifier = Modifier.size(50.dp)) { Text("Toggle") }
@@ -236,7 +248,7 @@ class DiscoveryFunctionalTest {
       )
     val toggles = manifest.previews.filter { it.functionName == "TogglePreview" }
     // Base preview + one synthetic seeded preview per `@OverrideVariant`.
-    assertThat(toggles).hasSize(3)
+    assertThat(toggles).hasSize(6)
 
     val base = toggles.single { it.overrides == null }
     assertThat(base.captures.single().renderOutput).doesNotContain("_VARIANT_")
@@ -256,6 +268,20 @@ class DiscoveryFunctionalTest {
         OverrideSeed(key = "label", index = null, kind = OverrideSeedKind.STRING, raw = "Hi"),
         OverrideSeed(key = "sub", index = 1, kind = OverrideSeedKind.STRING, raw = "Two"),
       )
+
+    val hovered = toggles.single { it.overrides?.name == "hovered" }
+    assertThat(hovered.overrides!!.seeds).isEmpty()
+    assertThat(hovered.overrides!!.interaction).isEqualTo(OverrideVariantInteraction.Hovered)
+    assertThat(hovered.captures.single().hover).isEqualTo(HoverCapture(targetIndex = 0))
+    assertThat(hovered.captures.single().focus).isNull()
+
+    val focused = toggles.single { it.overrides?.name == "focused" }
+    assertThat(focused.captures.single().focus).isEqualTo(FocusCapture(tabIndex = 1))
+    assertThat(focused.captures.single().hover).isNull()
+
+    val pressed = toggles.single { it.overrides?.name == "pressed" }
+    assertThat(pressed.captures.single().focus)
+      .isEqualTo(FocusCapture(tabIndex = 0, pressed = true))
   }
 
   /**
