@@ -50,7 +50,9 @@ import androidx.compose.ui.unit.Density
  */
 
 internal class ComposeLocalPaint {
-  var color: Int = 0
+  // Match android.graphics.Paint's default. Remote Compose paint bundles may set only a color
+  // filter (Icon tint does this), and SrcIn needs an opaque source color to produce any pixels.
+  var color: Int = Color.Black.toArgb()
   var isColorSet: Boolean = false
   var strokeWidth: Float = 1f
   var isStrokeWidthSet: Boolean = false
