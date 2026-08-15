@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -213,6 +214,7 @@ class ServeCatalogChangeFeedTest {
   @Test
   fun `feed addresses are bounded and expired addresses are evicted`() {
     var clock = 1_000L
+    val reads = AtomicInteger()
     val history = CatalogFeedHistory("Demo", listOf(newRevision, oldRevision), emptyList())
     val service =
       ServeCatalogChangeFeed(
@@ -221,7 +223,7 @@ class ServeCatalogChangeFeedTest {
         idleTimeoutMillis = 100,
         pollIntervalMillis = 10_000,
         now = { clock },
-        source = CatalogFeedSource { _, _ -> history },
+        source = CatalogFeedSource { _, _ -> reads.incrementAndGet().let { history } },
         onLog = {},
         startScheduler = false,
       )
@@ -229,9 +231,14 @@ class ServeCatalogChangeFeedTest {
       repeat(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES) {
         service.request("demo", "https://$it.example/demo")
       }
+      await { reads.get() == ServeCatalogChangeFeed.MAX_FEED_ADDRESSES }
       assertEquals(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES, service.stateCount())
       service.request("demo", "https://overflow.example/demo")
       assertEquals(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES, service.stateCount())
+      assertTrue(
+        service.isActive("demo", "https://overflow.example/demo"),
+        "a full set of forged origins cannot lock out the next real feed origin",
+      )
 
       clock += 101
       service.request("demo", "https://replacement.example/demo")
@@ -303,6 +310,34 @@ class ServeCatalogChangeFeedTest {
     assertFalse(
       commands.any { it.first() == "log" || it.first() == "show" || it.first() == "ls-tree" }
     )
+  }
+
+  @Test
+  fun `lazy blob fetch failures abort the refresh instead of publishing deletions`() {
+    val root = tempDir()
+    val repo =
+      File(root, "demo").apply {
+        mkdirs()
+        File(this, "HEAD").writeText("ref: refs/heads/main\n")
+      }
+    val head = "c".repeat(40)
+    val source =
+      GitCatalogFeedSource(root) { _, args ->
+        when (args.first()) {
+          "rev-parse" -> CatalogFeedGitResult(0, "$head\n", "")
+          "log" ->
+            CatalogFeedGitResult(
+              0,
+              "$head\u001f2026-08-15T12:30:00Z\u001fregenerate catalog\n",
+              "",
+            )
+          "show" -> CatalogFeedGitResult(128, "", "fatal: unable to access promisor remote")
+          else -> CatalogFeedGitResult(0, "", "")
+        }
+      }
+
+    assertFailsWith<IllegalStateException> { source.read(config(), null) }
+    assertTrue(repo.isDirectory)
   }
 
   @Test

@@ -5,6 +5,7 @@ import {
   bundleCapturedSemantics,
   candidatePreviewBundle,
   capturedPreviewIds,
+  daemonPreviewCellsByFunction,
   daemonPreviewIdsByFunction,
 } from "./bundle-previews.mjs";
 
@@ -103,6 +104,21 @@ test("daemonPreviewIdsByFunction folds a supplement, primary winning on a repeat
 test("daemonPreviewIdsByFunction falls back to the id when a preview names no function", () => {
   const ids = daemonPreviewIdsByFunction([{ previews: [{ id: "Bare" }] }]);
   assert.deepEqual(ids.get("Bare"), ["Bare"]);
+});
+
+test("daemonPreviewCellsByFunction preserves the parameters that identify fan-out axes", () => {
+  const cells = daemonPreviewCellsByFunction([
+    {
+      previews: [
+        { id: "Filled_Light", functionName: "Filled", params: { uiMode: 16 } },
+        { id: "Filled_Dark", functionName: "Filled", params: { uiMode: 32 } },
+      ],
+    },
+  ]);
+  assert.deepEqual(cells.get("Filled"), [
+    { id: "Filled_Light", params: { uiMode: 16 } },
+    { id: "Filled_Dark", params: { uiMode: 32 } },
+  ]);
 });
 
 // --- capturedPreviewIds: what came back at all, not what came back as a PNG ------------------

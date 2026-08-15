@@ -42,6 +42,16 @@
  * the serve host instead of lost.
  */
 export function daemonPreviewIdsByFunction(bundles) {
+  return new Map(
+    [...daemonPreviewCellsByFunction(bundles)].map(([fn, previews]) => [
+      fn,
+      previews.map((preview) => preview.id),
+    ]),
+  );
+}
+
+/** Function fan-outs with the render parameters that identify each preview's effective axis cell. */
+export function daemonPreviewCellsByFunction(bundles) {
   const out = new Map();
   const seen = new Set();
   for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
@@ -50,7 +60,10 @@ export function daemonPreviewIdsByFunction(bundles) {
       if (seen.has(preview.id)) continue;
       seen.add(preview.id);
       const fn = preview.functionName ?? preview.id;
-      out.set(fn, [...(out.get(fn) ?? []), preview.id]);
+      out.set(fn, [
+        ...(out.get(fn) ?? []),
+        { id: preview.id, params: preview.params ?? {} },
+      ]);
     }
   }
   return out;

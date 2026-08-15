@@ -114,21 +114,21 @@ function bundleEntryFor(bundle, previewId, renderOutput) {
  * The theme is read off the sibling **still** rather than off the motion artifact, deliberately: a
  * capture's own id carries the same `_Dark` / `_Light` suffix, but re-deriving it here would be a
  * second implementation of the mode-naming rule that `catalog-themes.mjs` already owns, and the two
- * would eventually disagree about a catalog with unusual mode names. Matching positionally against
- * the images the join already resolved keeps one rule. When `motionPreview` names a separate
- * function, its filenames necessarily have different stems. In that case [previewIds] and
- * [motionPreviewIds] describe the two functions' equivalent fan-outs in discovery order; the join
- * maps the motion id to the corresponding still id before reading the still's resolved theme.
+ * would eventually disagree about a catalog with unusual mode names. Matching the discovery
+ * parameters against the images the join already resolved keeps one rule. When `motionPreview`
+ * names a separate function, its filenames necessarily have different stems. In that case
+ * [motionPreviewCells] describe the two functions' fan-outs with their preview parameters; the join
+ * maps equal axis cells even when declaration order differs, and declines ambiguous cells.
  *
  * @param {Array<{path: string, theme?: string}>} images the component's baked stills.
  * @param {Array<{path: string, previewId?: string, kind: string, caption?: string}>} artifacts from [motionArtifactsFor].
- * @param {string[]} previewIds ids emitted by the component's static preview function.
- * @param {string[]} motionPreviewIds ids emitted by its motion preview function.
+ * @param {Array<{id: string, params?: object}>} previewCells static preview fan-out cells.
+ * @param {Array<{id: string, params?: object}>} motionPreviewCells motion preview fan-out cells.
  * @returns {Array<object>} one motion entry per artifact, theme-tagged where it could be resolved.
  */
-export function foldMotion(images, artifacts, previewIds = [], motionPreviewIds = []) {
+export function foldMotion(images, artifacts, previewCells = [], motionPreviewCells = []) {
   if (!artifacts?.length) return [];
-  const correspondingStillIds = equivalentFanOut(previewIds, motionPreviewIds);
+  const correspondingStillIds = equivalentFanOut(previewCells, motionPreviewCells);
   return artifacts.map((artifact) => {
     const { previewId, ...published } = artifact;
     const theme = themeForArtifact(
@@ -144,14 +144,45 @@ export function foldMotion(images, artifacts, previewIds = [], motionPreviewIds 
 }
 
 /**
- * Map equivalent cells of two separately named functions' preview fan-outs. Only an equal-length
- * fan-out is safe to join positionally; otherwise leave the artifacts untagged rather than attach
- * a confidently wrong theme.
+ * Map equivalent cells of two separately named functions' preview fan-outs. Duplicate or unmatched
+ * parameter sets stay untagged rather than attaching a confidently wrong theme.
  */
-function equivalentFanOut(previewIds, motionPreviewIds) {
-  if (previewIds.length === 0 || previewIds.length !== motionPreviewIds.length)
-    return new Map();
-  return new Map(motionPreviewIds.map((id, index) => [id, previewIds[index]]));
+function equivalentFanOut(previewCells, motionPreviewCells) {
+  if (previewCells.length === 0 || motionPreviewCells.length === 0) return new Map();
+  const stillByAxis = uniqueCellsByAxis(previewCells);
+  const motionByAxis = uniqueCellsByAxis(motionPreviewCells);
+  const joined = new Map();
+  for (const [axis, motion] of motionByAxis) {
+    const still = stillByAxis.get(axis);
+    if (still && motion) joined.set(motion.id, still.id);
+  }
+  return joined;
+}
+
+function uniqueCellsByAxis(cells) {
+  const unique = new Map();
+  for (const cell of cells) {
+    if (!cell?.id) continue;
+    const axis = stableJson(renderParams(cell.params ?? {}));
+    unique.set(axis, unique.has(axis) ? null : cell);
+  }
+  return unique;
+}
+
+function renderParams(params) {
+  const { name: _name, group: _group, ...rendering } = params;
+  return rendering;
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, child]) => `${JSON.stringify(key)}:${stableJson(child)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 /**

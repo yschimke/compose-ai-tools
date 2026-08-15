@@ -178,8 +178,14 @@ test("foldMotion joins a separately named motion function's fan-out to the still
     foldMotion(
       images,
       artifacts,
-      ["Progress_Light", "Progress_Dark"],
-      ["ProgressMotion_Light", "ProgressMotion_Dark"],
+      [
+        { id: "Progress_Light", params: { uiMode: 16, name: "Light" } },
+        { id: "Progress_Dark", params: { uiMode: 32, name: "Dark" } },
+      ],
+      [
+        { id: "ProgressMotion_Light", params: { uiMode: 16, name: "Motion light" } },
+        { id: "ProgressMotion_Dark", params: { uiMode: 32, name: "Motion dark" } },
+      ],
     ),
     [
       { path: "previews/ProgressMotion_Light.apng", kind: "animation", theme: "light" },
@@ -188,7 +194,37 @@ test("foldMotion joins a separately named motion function's fan-out to the still
   );
 });
 
-test("foldMotion does not guess when separate function fan-outs differ", () => {
+test("foldMotion joins separate fan-outs by axis when declaration order differs", () => {
+  const images = [
+    { path: "previews/Progress_Light.png", theme: "light" },
+    { path: "previews/Progress_Dark.png", theme: "dark" },
+  ];
+  const artifacts = [
+    { path: "previews/ProgressMotion_Dark.apng", previewId: "Motion_Dark", kind: "animation" },
+    { path: "previews/ProgressMotion_Light.apng", previewId: "Motion_Light", kind: "animation" },
+  ];
+
+  assert.deepEqual(
+    foldMotion(
+      images,
+      artifacts,
+      [
+        { id: "Progress_Light", params: { uiMode: 16 } },
+        { id: "Progress_Dark", params: { uiMode: 32 } },
+      ],
+      [
+        { id: "Motion_Dark", params: { uiMode: 32 } },
+        { id: "Motion_Light", params: { uiMode: 16 } },
+      ],
+    ),
+    [
+      { path: "previews/ProgressMotion_Dark.apng", kind: "animation", theme: "dark" },
+      { path: "previews/ProgressMotion_Light.apng", kind: "animation", theme: "light" },
+    ],
+  );
+});
+
+test("foldMotion does not guess when separate function fan-out axes differ", () => {
   assert.deepEqual(
     foldMotion(
       [{ path: "previews/Progress_Dark.png", theme: "dark" }],
@@ -199,8 +235,11 @@ test("foldMotion does not guess when separate function fan-outs differ", () => {
           kind: "animation",
         },
       ],
-      ["Progress_Light", "Progress_Dark"],
-      ["ProgressMotion_Dark"],
+      [
+        { id: "Progress_Light", params: { uiMode: 16 } },
+        { id: "Progress_Dark", params: { uiMode: 32 } },
+      ],
+      [{ id: "ProgressMotion_Dark", params: { fontScale: 1.5 } }],
     ),
     [{ path: "previews/ProgressMotion_Dark.apng", kind: "animation" }],
   );

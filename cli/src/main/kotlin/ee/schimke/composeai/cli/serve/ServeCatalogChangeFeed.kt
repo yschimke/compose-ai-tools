@@ -92,14 +92,22 @@ internal constructor(
         if (!states.containsKey(key) && !makeRoomFor(key, at)) {
           null
         } else {
-          states.computeIfAbsent(key) {
-            State().apply {
-              loadCached(key)?.let { (cachedHead, cachedXml) ->
-                head = cachedHead
-                xml = cachedXml
+          val selected =
+            states.computeIfAbsent(key) {
+              State().apply {
+                loadCached(key)?.let { (cachedHead, cachedXml) ->
+                  head = cachedHead
+                  xml = cachedXml
+                }
               }
             }
-          }
+          val wasActive = selected.activeUntil > at
+          selected.activeUntil = at + idleTimeoutMillis
+          // Selection, renewal and cold activation are one atomic state-map operation. Otherwise a
+          // full map can evict an expired entry after this request selects it but before its lease
+          // is renewed, leaving a worker attached to a State that tick() can no longer see.
+          if (!wasActive) enqueue(key, config, selected)
+          selected
         }
       }
         ?: run {
@@ -109,11 +117,6 @@ internal constructor(
             building = false,
           )
         }
-    val wasActive = state.activeUntil > at
-    state.activeUntil = at + idleTimeoutMillis
-    // Requests are a lease-renewal signal, not a polling clock. Only a cold activation queues a
-    // remote check; while active, the scheduler owns the refresh cadence.
-    if (!wasActive) enqueue(key, config, state)
     return Result(
       xml = state.xml ?: CatalogFeedXml.empty(config.system, cleanBase, cleanQuery),
       building = state.building.get(),
@@ -122,7 +125,9 @@ internal constructor(
 
   /**
    * Bound request-derived origins and their durable XML documents. Expired entries normally stay
-   * warm, but become least-recently-used eviction candidates once the small address cap is full.
+   * warm, but become least-recently-used eviction candidates once the small address cap is full. If
+   * every entry is active, replace the oldest idle worker rather than returning a permanent empty
+   * feed: a burst of forged Host values must not lock the real feed origin out for a week.
    */
   private fun makeRoomFor(key: Key, at: Long): Boolean {
     if (states.size < MAX_FEED_ADDRESSES) return true
@@ -134,7 +139,12 @@ internal constructor(
       if (states.remove(oldKey, oldState)) cacheDir(oldKey).deleteRecursively()
       if (states.size < MAX_FEED_ADDRESSES) return true
     }
-    return states.containsKey(key)
+    val oldestActive =
+      states.entries.filter { !it.value.building.get() }.minByOrNull { it.value.activeUntil }
+    if (oldestActive != null && states.remove(oldestActive.key, oldestActive.value)) {
+      cacheDir(oldestActive.key).deleteRecursively()
+    }
+    return states.size < MAX_FEED_ADDRESSES || states.containsKey(key)
   }
 
   /** One activity pass. Package-visible so lease expiry is deterministic in tests. */
@@ -380,12 +390,26 @@ internal class GitCatalogFeedSource(
   }
 
   private fun snapshot(dir: File, commit: String): CatalogSnapshot {
-    val catalog = git(dir, listOf("show", "$commit:catalog.json")).stdout.takeIf { it.isNotBlank() }
-    val references =
-      git(dir, listOf("show", "$commit:references/index.json")).stdout.takeIf { it.isNotBlank() }
+    val catalog = optionalBlob(dir, commit, "catalog.json")
+    val references = optionalBlob(dir, commit, "references/index.json")
     val tree = git(dir, listOf("ls-tree", "-r", commit, "--", "images", "references"))
-    val blobs = if (tree.ok) parseTree(tree.stdout) else emptyMap()
+    check(tree.ok) { tree.stderr.ifBlank { "could not read catalog tree at $commit" } }
+    val blobs = parseTree(tree.stdout)
     return CatalogSnapshot.parse(catalog, references, blobs)
+  }
+
+  private fun optionalBlob(dir: File, commit: String, path: String): String? {
+    val result = git(dir, listOf("show", "$commit:$path"))
+    if (result.ok) return result.stdout.takeIf { it.isNotBlank() }
+    // An older catalog may legitimately predate either manifest. Every other failure includes
+    // partial-clone network errors: treating those as an absent file would persist false deletions
+    // and then suppress the retry via knownHead.
+    val missing =
+      result.stderr.contains("does not exist in") ||
+        result.stderr.contains("exists on disk, but not in") ||
+        result.stderr.contains("Path '$path' does not exist")
+    check(missing) { result.stderr.ifBlank { "could not read $path at $commit" } }
+    return null
   }
 
   companion object {

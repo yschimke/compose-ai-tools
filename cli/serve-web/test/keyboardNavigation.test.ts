@@ -11,9 +11,11 @@ describe("power-user keyboard navigation", () => {
           <nav class="cp-catalog-menu">
             <a class="cp-tree-component" href="#cp-card-button">Button</a>
             <a class="cp-tree-component" href="#cp-card-switch">Switch</a>
+            <a class="cp-tree-component" href="#cp-card-caf%C3%A9">Café</a>
           </nav>
           <a id="cp-card-button" class="cp-card" href="/catalog/p/button"><span class="cp-label">Button</span></a>
           <a id="cp-card-switch" class="cp-card" href="/catalog/p/switch"><span class="cp-label">Switch</span></a>
+          <a id="cp-card-café" class="cp-card" href="/catalog/p/cafe"><span class="cp-label">Café</span></a>
           <div id="cp-axes" class="cp-axes-tree"><a class="cp-tree-component" href="/catalog/p/button">Button default</a><a class="cp-tree-variant" href="/catalog/p/button-dark">Dark</a></div>
           <div class="cp-preview-primary">
             <button id="cp-live-toggle" type="button" aria-pressed="false">Snapshot</button>
@@ -55,10 +57,20 @@ describe("power-user keyboard navigation", () => {
         const componentItems = Array.from(
             document.querySelectorAll(".cp-command-item span"),
         ).map((item) => item.textContent);
-        assert.deepEqual(componentItems, ["Button", "Switch"]);
+        assert.deepEqual(
+            componentItems,
+            ["Button", "Switch", "Café"],
+            "encoded tree fragments dedupe against their Unicode card ids",
+        );
 
-        document.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        const cafeCommand = Array.from(
+            document.querySelectorAll<HTMLButtonElement>(".cp-command-item"),
+        ).find((item) => item.textContent?.startsWith("Café"))!;
+        cafeCommand.click();
+        assert.equal(
+            document.querySelector("[role='dialog']"),
+            null,
+            "fragment component commands close the palette before scrolling",
         );
 
         const traversed: string[] = [];
