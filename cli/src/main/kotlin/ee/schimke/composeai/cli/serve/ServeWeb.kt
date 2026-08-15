@@ -4794,7 +4794,11 @@ object ServeWeb {
     val isRemoteComposeDoc = doc.formatId == ServeDocFormats.REMOTE_COMPOSE.id
     // Only the Remote Compose lane paints into a canvas the vendored faces matter for; the Lottie
     // player draws SVG and its page is byte-identical to before.
-    val rcFontsScript = if (isRemoteComposeDoc) scriptTag("rc-fonts.js") + "\n        " else ""
+    // `window.cpRcFonts` ships in the component bundle now, so an `.rc` permalink loads the bundle
+    // where it used to load `rc-fonts.js`. Emitted BEFORE the inline player script, which reads
+    // the global as it starts the lane.
+    val rcFontsScript =
+      if (isRemoteComposeDoc) scriptTag("serve-components.js") + "\n        " else ""
     return document(
       title = "${doc.name} — compose-preview",
       unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
@@ -4856,8 +4860,9 @@ object ServeWeb {
         else ->
           // The vendored generic-family faces must be *loaded*, not merely declared, before the
           // player paints: canvas silently falls back for an unloaded face and never repaints
-          // (see `rc-fonts.js`). `cpRcFonts` is absent only if that script failed to load, in which
-          // case the lane still renders — in the fallback face, as it did before.
+          // (see `cli/serve-web/src/rcFonts.ts`). `cpRcFonts` is absent only if the component
+          // bundle failed to load, in which case the lane still renders — in the fallback face, as
+          // it did before.
           """
           var fonts = window.cpRcFonts ? window.cpRcFonts.ready() : Promise.resolve();
           Promise.all([fonts, fetch(raw).then(function (r) { return r.arrayBuffer(); })]).then(function (r) {
@@ -6414,7 +6419,7 @@ object ServeWeb {
           ${rcLanes.orEmpty()}
         </div>
         ${scriptTag("url-state.js")}
-        ${if (hasRc) scriptTag("rc-fonts.js") else ""}
+        ${if (hasRc) scriptTag("serve-components.js") else ""}
         ${if (rcLanes != null) scriptTag("rc-lanes.js") else ""}
         ${scriptTag("format-compare.js")}
         """
@@ -9022,7 +9027,7 @@ $rows
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
-      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}$compareScriptTags${scriptTag("viewer.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
+      $compareScriptTags${scriptTag("viewer.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """
         .trimIndent()
         .lineSequence()
