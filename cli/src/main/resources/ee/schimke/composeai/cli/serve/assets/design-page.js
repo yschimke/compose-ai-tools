@@ -72,7 +72,9 @@
       // and nothing to hide. Skipping leaves the row in the list, which is the honest state.
       if (!entry) continue;
       entry.overlay.appendChild(image);
+      entry.image = image;
       standIn(image, entry.target);
+      takeInk(entry);
     }
     renderSource.remove();
     renderSource = null;
@@ -141,11 +143,135 @@
       style.top = pct(rect.top - box.top, box.height);
       style.width = pct(rect.width, box.width);
       style.height = pct(rect.height, box.height);
+      placeRender(entry, rect);
     }
   }
 
   function pct(value, span) {
     return (value / span) * 100 + "%";
+  }
+
+  // ---- ink-fitting: our DRAWN pixels onto the design's DRAWN box ------------------------------
+  //
+  // The two halves of the swap are boxes of different kinds, and that is the whole of this section.
+  // A design node's box is measured off the export, so it is the tight bounds of the shape Figma
+  // drew. A render is a fixed canvas — the preview's own size — with the component sitting inside
+  // it and transparent margin around. Dropping one into the other with `object-fit: contain` fits
+  // CANVAS to INK, so the margin is spent inside the design's slot and our component comes out
+  // smaller, by however much of its canvas it doesn't fill and by however far the two boxes differ
+  // in aspect. On this catalog's Shape page that ran from 4% (a circle, which nearly fills its
+  // canvas) to 42% (a semicircle, whose canvas is square and whose slot is 1.6:1) — read as
+  // "everything scales when you flip the lane", which is precisely the reading the two lanes exist
+  // to make impossible.
+  //
+  // So the render's ink box is measured too, and INK is fitted to INK. Uniformly and centred, never
+  // stretched: the aspect our render actually has is a finding about our code, and a fit that
+  // squashed it to the design's box would report every component as the right shape.
+  //
+  // MEASURED, not declared — the same reasoning as the node boxes above. The server knows a
+  // component's layout box (`ServeThumbCrop`) and could send it, but that box is the layout's, not
+  // the drawing's: it misses a shadow or a focus ring bleeding outside the component, which the
+  // design side's bounds — being ink — include. Reading the pixels asks both sides the same
+  // question.
+  var INK_ALPHA = 16;
+  // The scan is capped rather than run at native size. A render can be a full phone screen, and
+  // the answer is a box: sampling it at 512 on the long side costs one `drawImage` and bounds the
+  // work per node, while the worst error it can introduce is a couple of source pixels on an edge.
+  var MAX_INK_SIDE = 512;
+
+  // The tight bounds of an image's non-transparent pixels, in its own pixels — the browser-side
+  // twin of `ServeThumbCrop.pngAlphaBounds`, down to the alpha threshold. Null when there is
+  // nothing to measure or nothing to measure with: no canvas, a tainted one (a cross-origin
+  // render), or an image that is transparent all the way through. Every one of those falls back to
+  // the plain `contain` this lane had before.
+  function inkBounds(image) {
+    var nw = image.naturalWidth;
+    var nh = image.naturalHeight;
+    if (!(nw > 0 && nh > 0)) return null;
+    var scale = Math.min(1, MAX_INK_SIDE / Math.max(nw, nh));
+    var cw = Math.max(1, Math.round(nw * scale));
+    var ch = Math.max(1, Math.round(nh * scale));
+    var canvas = document.createElement("canvas");
+    canvas.width = cw;
+    canvas.height = ch;
+    var context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(image, 0, 0, cw, ch);
+    var data;
+    try {
+      data = context.getImageData(0, 0, cw, ch).data;
+    } catch (e) {
+      return null;
+    }
+    function rowHasInk(y) {
+      for (var x = 0, i = y * cw * 4 + 3; x < cw; x++, i += 4) {
+        if (data[i] >= INK_ALPHA) return true;
+      }
+      return false;
+    }
+    function columnHasInk(x, top, bottom) {
+      for (var y = top; y <= bottom; y++) {
+        if (data[(y * cw + x) * 4 + 3] >= INK_ALPHA) return true;
+      }
+      return false;
+    }
+    // Walked in from the four edges rather than swept whole: a component usually fills most of its
+    // canvas, so each walk stops within a few rows or columns and the common case never touches
+    // the interior at all.
+    var top = 0;
+    while (top < ch && !rowHasInk(top)) top++;
+    if (top >= ch) return null; // fully transparent
+    var bottom = ch - 1;
+    while (bottom > top && !rowHasInk(bottom)) bottom--;
+    var left = 0;
+    while (left < cw && !columnHasInk(left, top, bottom)) left++;
+    var right = cw - 1;
+    while (right > left && !columnHasInk(right, top, bottom)) right--;
+    var back = 1 / scale;
+    return {
+      x: left * back,
+      y: top * back,
+      width: (right - left + 1) * back,
+      height: (bottom - top + 1) * back,
+      imageWidth: nw,
+      imageHeight: nh,
+    };
+  }
+
+  function takeInk(entry) {
+    function read() {
+      entry.ink = inkBounds(entry.image);
+      // Just this slot. The node's box hasn't moved — only what we now know about the image has —
+      // and re-running the whole measure per arriving render is dozens of layout reads for one
+      // placement.
+      var rect = entry.target.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) placeRender(entry, rect);
+    }
+    if (entry.image.complete && entry.image.naturalWidth > 0) read();
+    else entry.image.addEventListener("load", read);
+  }
+
+  // Placed in PERCENTAGES of the slot, for the same reason the slots themselves are: the node box
+  // and the image's ink box scale together with the stage, so the four numbers are constants and a
+  // resize only has to re-measure.
+  function placeRender(entry, rect) {
+    var image = entry.image;
+    if (!image) return;
+    var ink = entry.ink;
+    var style = image.style;
+    if (!ink || ink.width <= 0 || ink.height <= 0) {
+      // Back to the stylesheet's `inset: 0` + `object-fit: contain`.
+      style.left = "";
+      style.top = "";
+      style.width = "";
+      style.height = "";
+      return;
+    }
+    var scale = Math.min(rect.width / ink.width, rect.height / ink.height);
+    style.width = pct(ink.imageWidth * scale, rect.width);
+    style.height = pct(ink.imageHeight * scale, rect.height);
+    style.left = pct((rect.width - ink.width * scale) / 2 - ink.x * scale, rect.width);
+    style.top = pct((rect.height - ink.height * scale) / 2 - ink.y * scale, rect.height);
   }
 
   // A muted overlay is also taken out of the tab order and the accessibility tree. CSS alone can't

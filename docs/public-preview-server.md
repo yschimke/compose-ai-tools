@@ -1404,6 +1404,50 @@ nodes and on a live catalog each one is a daemon render, so the box is asked onl
 the sheet actually on screen — and a reader who flips to the spec and never flips back still pays
 for nothing.
 
+### The slot is filled by the component, not by the canvas
+
+The two halves of the flip are boxes of different kinds, and getting that wrong is what made the
+lane control read as a zoom control. A design node's box is measured off the export, so it is the
+tight bounds of the shape Figma drew. A render is a fixed canvas — the preview's own size — with
+the component sitting inside it and transparent margin around. Dropping one into the other with
+`object-fit: contain` fits **canvas to ink**: the margin is spent inside the design's slot, and our
+component comes out smaller by however much of its canvas it doesn't fill, and by however far the
+two boxes differ in aspect.
+
+On the M3 kit's own Shape page that ran from 4% (a circle, which nearly fills its canvas) to 42%
+(a semicircle, whose canvas is square and whose slot is 1.6:1). Every shape was geometrically
+correct and every shape was drawn small, so flipping the lane scaled the whole sheet — the one
+reading two clean frames in one layout exist to make impossible.
+
+![The Shape page's renders before and after ink-fitting, against the design's own drawing](design/evidence/serve-design-page/ink-fit-shape-page.png)
+
+It is not a shape-page quirk. A chip is a fixed canvas with a great deal of margin around it, so
+the same sheet flipped a chip to 57% of the size the kit drew it:
+
+![A filter chip and an input chip, before and after, against the kit's own drawing](design/evidence/serve-design-page/ink-fit-chips.png)
+
+So the render's ink box is measured too, and **ink is fitted to ink**: `design-page.js` reads the
+image's non-transparent bounds once it loads — the browser-side twin of `ServeThumbCrop`'s
+`pngAlphaBounds`, down to the alpha threshold — and writes the four numbers that put those pixels
+on the design's. Uniformly and centred, **never stretched**: the aspect our render actually has is
+a finding about our code, and a fit that squashed it to the design's box would report every
+component as the right shape. The M3 pentagon still lands 3% short vertically after the change,
+because it *is* 3% flatter than the kit's.
+
+Measured rather than declared, for the same reason the node boxes are. The server knows a
+component's layout box and could send it, but that box is the layout's and not the drawing's — it
+misses a shadow or a focus ring bleeding outside the component, which the design side's bounds,
+being ink, include. Reading the pixels asks both sides the same question. An image that can't be
+measured — a canvas read the browser refuses, an image that is transparent all the way through —
+falls back to the plain `contain` this lane had before, so the degraded case is the old case.
+
+The hit area had to stop being a `border` for any of it to land. A border is layout: it shrinks the
+padding box, which is what the render's `inset: 0` resolves against, so the 2px transparent border
+that keeps the outline layer from nudging anything was also drawing every render 4px narrower and
+shorter than its node — a uniform ~4% on a sheet this size, worse the smaller the node. It is an
+`outline` with `outline-offset: -2px` now: paint only, drawn exactly where the inner border drew
+it, and out of the geometry entirely.
+
 ### There is no geometry in the manifest, and that is deliberate
 
 The SVG knows where its own nodes are. `design-page.js` measures each `[data-node-id]` element and
