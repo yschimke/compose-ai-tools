@@ -409,6 +409,67 @@ describe("<cp-rc-lanes>", () => {
         assert.equal(chipsIn(rows()[0]).length, 2, "the picker still measures");
     });
 
+    it("subscribes to Back once per connection, not once per lifetime", async () => {
+        // `onPop` is a `popstate` listener on `window`, so a reconnect that re-subscribes without
+        // unsubscribing stacks one callback per prior life: every Back then clears the rows and
+        // restarts the diff work once per connection the element has ever had.
+        //
+        // Counted at the listener, not at the end state: four stacked callbacks all compute the
+        // same reference and leave the same chips behind, so only the subscription itself shows it.
+        const live = new Set<unknown>();
+        const add = window.addEventListener.bind(window);
+        const remove = window.removeEventListener.bind(window);
+        window.addEventListener = ((
+            type: string,
+            fn: unknown,
+            ...rest: unknown[]
+        ) => {
+            if (type === "popstate") live.add(fn);
+            return add(type as never, fn as never, ...(rest as []));
+        }) as never;
+        window.removeEventListener = ((
+            type: string,
+            fn: unknown,
+            ...rest: unknown[]
+        ) => {
+            if (type === "popstate") live.delete(fn);
+            return remove(type as never, fn as never, ...(rest as []));
+        }) as never;
+        // The real `serve-chrome.js` global, in the one shape this element uses. Without it
+        // `urlState()` is null and the whole Back path — including the leak — is unreachable.
+        window.cpUrlState = {
+            get: () => "",
+            push: () => {},
+            replace: () => {},
+            sync: () => {},
+            onPop: (callback: () => void) => {
+                window.addEventListener("popstate", callback);
+                return () => window.removeEventListener("popstate", callback);
+            },
+        };
+        try {
+            await mount();
+            assert.equal(live.size, 1, "one subscription on first connect");
+            const element = document.querySelector(
+                "cp-rc-lanes",
+            ) as HTMLElement;
+            const parent = element.parentNode as HTMLElement;
+            for (let i = 0; i < 3; i++) {
+                element.remove();
+                parent.insertBefore(element, parent.firstChild);
+                await flush();
+            }
+            assert.equal(live.size, 1, "still one after three reconnects");
+            element.remove();
+            await flush();
+            assert.equal(live.size, 0, "and none once it is gone for good");
+        } finally {
+            window.addEventListener = add as never;
+            window.removeEventListener = remove as never;
+            delete window.cpUrlState;
+        }
+    });
+
     it("survives a payload it cannot read", async () => {
         // The table is fully server-rendered, so a broken model costs the numbers and nothing else.
         document.body.innerHTML = `

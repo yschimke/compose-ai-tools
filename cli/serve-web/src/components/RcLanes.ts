@@ -173,10 +173,15 @@ export class RcLanes extends LitElement {
                 button.removeEventListener("click", onClick),
             );
         }
-        urlState()?.onPop(() => {
+        // Unsubscribed with the rest: `onPop` is a `popstate` listener on `window`, so without
+        // this a detached-and-reinserted element would stack one callback per connection — every
+        // Back would then clear the rows and restart the diff work once per prior life — and a
+        // permanently detached one would keep writing into a table it no longer observes.
+        const offPop = urlState()?.onPop(() => {
             this.reference = referenceFrom(location.search, this.laneIds);
             this.apply();
         });
+        if (offPop) this.cleanups.push(offPop);
 
         window.cpRcLanes = this.api;
         this.apply();

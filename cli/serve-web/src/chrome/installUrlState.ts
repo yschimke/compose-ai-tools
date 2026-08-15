@@ -90,7 +90,14 @@ export const urlStateApi: UrlState = {
     push: (values) => apply(values, false),
     replace: (values) => apply(values, true),
     sync,
-    onPop: (callback) => window.addEventListener("popstate", callback),
+    // Returns its own unsubscribe. `serve-chrome.js` is the sole owner of this global now that
+    // `url-state.js` is gone, so there is no legacy caller to keep a `void` return for — and a
+    // subscriber that can outlive its subscription (a custom element that is detached and
+    // reinserted) needs one, or every reconnection stacks another callback on the same event.
+    onPop: (callback) => {
+        window.addEventListener("popstate", callback);
+        return () => window.removeEventListener("popstate", callback);
+    },
 };
 
 /**
