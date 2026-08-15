@@ -1124,7 +1124,7 @@
     "functionName": "LoadingPreview",
     "module": "samples:android",
     "renderBasename": "LoadingPreview_Loading_Spinner-fb8f5c2a.png",
-    "sha256": "1b1ef610a80d1875b17e5e18d3bde390f17779f244d3a88fe967fb79b9020f30",
+    "sha256": "8c00aada1598859c51bd8b53e36d3f000422adb86e6bba68582c89da25eeb8e2",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewsKt.PhoneGreetingPreview_Phone": {
@@ -3164,7 +3164,7 @@
     "functionName": "DisabledRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "DisabledRemoteButton_width_200dp_height_200dp_dpi_320-6a5fcde6.png",
-    "sha256": "377c4e690d97c21fe7a84f42d37809db139cd76605f04713970b533f209aae34",
+    "sha256": "62a12cb3aa8c73aaf05261ab023bd43ece074b6a2a91a2bc44773511d8425fdd",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.ExtraSmallRemoteIconButton_width=200dp,height=200dp,dpi=320": {
@@ -3212,7 +3212,7 @@
     "functionName": "IconLabelSecondaryRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "IconLabelSecondaryRemoteButton_width_320dp_height_240dp_dpi_320-2f89a268.png",
-    "sha256": "2de44f86d850b13844e19e96e4a3979b69e126330c8cd7aaae0ce7fce0ec03dd",
+    "sha256": "e166fd6dd759bfd5bec56ad43846d60d4c0bf921a33ab23fd0577e41d82f32b9",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressMotionRemote_width=200dp,height=200dp,dpi=320": {
@@ -3228,7 +3228,7 @@
     "functionName": "IndeterminateCircularProgressRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
-    "sha256": "4db09c882efba902cd21b121375ba36dcd14e6828e6b6005a6602c47b7c53ce4",
+    "sha256": "8f874315e61e501c161a6f44f10a4c729a08b22deea89f67d612d6ce9f24878d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
@@ -3644,7 +3644,7 @@
     "functionName": "IndeterminateCircularProgressSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "IndeterminateCircularProgressSticker-08fc79fa.png",
-    "sha256": "9241375e804ba45388b755e0119aadb593552349bf8d5b3f3ef44fed27636ea5",
+    "sha256": "018b341e3447d73ed1011390e90cdf4997a533fabf5a3fb64166dce5a3a29c26",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker": {
@@ -3700,7 +3700,7 @@
     "functionName": "ScalingListSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ScalingListSticker_Extra_Large_Round-a552f068.png",
-    "sha256": "bb56f65446f3fc1d7a272ee3b6c053e15ca7e90704977b6997814d01737234e4",
+    "sha256": "fb752e47f833a13a906315b8712eb2c0f216b931b65d854947f60b304982b407",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large Round": {
@@ -3708,7 +3708,7 @@
     "functionName": "ScalingListSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ScalingListSticker_Large_Round-58cc4bcc.png",
-    "sha256": "ef2ec0dad12cbe6edacda6813806b6adab49b9eca0e9f5da4d9a5ca253a50bd7",
+    "sha256": "465e089604a522991b6d1f9020e1cbbcfeab8f167b5320c9223bdf9ece482547",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Small Round": {
@@ -3716,7 +3716,7 @@
     "functionName": "ScalingListSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ScalingListSticker_Small_Round-4e49f384.png",
-    "sha256": "3216ece915edfde7ef00c7d79f4c82e2679bd03eca0c2e4efb392f115dfffe25",
+    "sha256": "c9ed2ffddc384ba405a4f1b25adddb811dd0618bebf9491cd28c12e93b2ce039",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn": {
@@ -3748,7 +3748,7 @@
     "functionName": "TimeTextScaffoldTemplate",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TimeTextScaffoldTemplate_Extra_Large_Round-7a8d053e.png",
-    "sha256": "69f1507bea25d5591fd9c354d1f146233d46e72399bb6258187f1a55314849fd",
+    "sha256": "de77c6cef22a141327c0b57b34f81d3c9090dfc20cc7a373f6427705b690b8a1",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large Round": {
@@ -3756,7 +3756,7 @@
     "functionName": "TimeTextScaffoldTemplate",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TimeTextScaffoldTemplate_Large_Round-954aa5b2.png",
-    "sha256": "e895853f2c9ef4b3c6e7cb24fbdf86f89bcefae7b32d5a3d82178a0620ed407e",
+    "sha256": "6dbdf734fd4239a4ccaecd6d36806b63dbcbbd0f8a92901ad04287f9f87c96df",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Small Round": {
@@ -3764,7 +3764,7 @@
     "functionName": "TimeTextScaffoldTemplate",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TimeTextScaffoldTemplate_Small_Round-d20653fc.png",
-    "sha256": "8a16a989c7e0d0fb3af8f56cf9e280a0284883a531bdebe1b4cf5986f9cbc9cc",
+    "sha256": "82cccdf98be7979cd37edf34872ac603481af5b2114304db0a2dbf410c0ce3ed",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker": {
@@ -4100,7 +4100,7 @@
     "functionName": "ActivityListDeviceMatrixPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x-56fd4ccb.png",
-    "sha256": "c4a94a715e9904d9e9ac6b5af733edb357ba37dc6b74304f65f2f5caf0f6843a",
+    "sha256": "e3cbda3d6ea48a4290c2751187e596ec589c6b618c1c7ae0174519b60d91d80c",
     "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
   },
   "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.ActivityListDeviceMatrixPreview_Activity list \u00b7 XL Round 240dp": {
@@ -4108,7 +4108,7 @@
     "functionName": "ActivityListDeviceMatrixPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListDeviceMatrixPreview_Activity_list_XL_Round_240dp-f001d04a.png",
-    "sha256": "f4023483f16ce8adaf53183596924acc1399f5182f7712a9c913a7ea1056f7ea",
+    "sha256": "c4206a77a9c47ea298d4baea631f7651a9db517c6d14e74f6e1e40dc5c7dcaa5",
     "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
   },
   "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_Custom Round 385dp 2.25x": {
@@ -4188,7 +4188,7 @@
     "functionName": "GestureGalleryPreview",
     "module": "samples:wear",
     "renderBasename": "GestureGalleryPreview_Devices_Large_Round-67656b37.png",
-    "sha256": "89862a72ee0e099571c9a3f8e9dc28748542c194381e37e3bb146f8bf36828bd",
+    "sha256": "2a28fce3ae05d7b1b519d7e0fe7d77c3c53763e18a42c52b8d55c55177a71e8b",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PageGestureScreenPreview_Devices - Large Round": {
@@ -4196,7 +4196,7 @@
     "functionName": "PageGestureScreenPreview",
     "module": "samples:wear",
     "renderBasename": "PageGestureScreenPreview_Devices_Large_Round-c9dbc2c3.png",
-    "sha256": "a0d75ecef629756a96410b8f285a94d3c63687d3f660d255db55250c17d2b234",
+    "sha256": "8c957bcb0503eefd5a03c9a0732f6ff55a0a8c057a0587d676f90529da57ee14",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PageIndicatorStickerPreview": {
@@ -4204,7 +4204,7 @@
     "functionName": "PageIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "PageIndicatorStickerPreview-77a9301c.png",
-    "sha256": "0e43864ad59307f1997ce10d8ebbb09e37465dece435dc32e7f694c13bf79e19",
+    "sha256": "a375e6c990b81312ad42c22ca2c377e6803eeb39f21d705f0e8b5e2ed36c1be4",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round": {
@@ -4228,7 +4228,7 @@
     "functionName": "ScrollGestureScreenPreview",
     "module": "samples:wear",
     "renderBasename": "ScrollGestureScreenPreview_Devices_Large_Round-940cb46d.png",
-    "sha256": "7cbbdc9a88cee41579c77714e14283c257681866834c48814f076ce229858e26",
+    "sha256": "7ed04bbed534ad8e6f462feda3617a8d40c0139c44786e7dfefbf6b774513bdf",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview": {
@@ -4236,7 +4236,7 @@
     "functionName": "ScrollIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "ScrollIndicatorStickerPreview-836176d6.png",
-    "sha256": "1e5cdf40b596945f0c48580391018d349dde518567bb1c320f6f1497b11a702d",
+    "sha256": "22f41501a4220d02803dbe000de47f3281cffacaf1c8e4123afe63ab5c201996",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoaded_wearos_small_round": {
@@ -4268,7 +4268,7 @@
     "functionName": "ActivityListFontScalesPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListFontScalesPreview_Fonts_Large-11543d6b.png",
-    "sha256": "ec3c5a7a98d7911bb19b132619095eb76d551b986966bb8a3d7ed56e3c5d5d20",
+    "sha256": "25d346f56fd6f417fe2f26094144d8e287ed2512b482037e60f770c82b888703",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Larger": {
@@ -4276,7 +4276,7 @@
     "functionName": "ActivityListFontScalesPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListFontScalesPreview_Fonts_Larger-ce47033b.png",
-    "sha256": "dd11b1f9f75752e9d91ac88e2c97769df9b60f03db72d38fdcfb405f66060f66",
+    "sha256": "47446ee4106c1f81645ca3063ac18934b347fd7ce1599910acc6b3a503e33ce0",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Largest": {
@@ -4284,7 +4284,7 @@
     "functionName": "ActivityListFontScalesPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListFontScalesPreview_Fonts_Largest-5951aa63.png",
-    "sha256": "7414fc5df492f693c6f255719599cbae9ce4a77a6f874498cafd110e1bc7edd7",
+    "sha256": "a836c136d525255fa363b6f1491a6d51b5a9cc3ef89a71c7b269e5518289039c",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Medium": {
@@ -4292,7 +4292,7 @@
     "functionName": "ActivityListFontScalesPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListFontScalesPreview_Fonts_Medium-fc79daec.png",
-    "sha256": "e188ccb262202b425a0f1a0eb1a80d091a10ae37ea484245849ef8bf6074acfd",
+    "sha256": "b467e6e7689635d26fe6ca3103aeabad95ffce74cd75d1cbf38bd7ac650e639c",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Normal": {
@@ -4300,7 +4300,7 @@
     "functionName": "ActivityListFontScalesPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListFontScalesPreview_Fonts_Normal-e724390d.png",
-    "sha256": "57280b0568c8d1be08d9744896ffd702352c96e3380ab168eeccb8f4c10f1249",
+    "sha256": "8e4a476a2da7748ffc4949e0bd70f948c80bb7c5b31b1ba6cb7d0960ab3e4142",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Small": {
@@ -4308,7 +4308,7 @@
     "functionName": "ActivityListFontScalesPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListFontScalesPreview_Fonts_Small-7c0b58ce.png",
-    "sha256": "1335823aa89b965689fdd7c9d88dc2c39c23633cd18df8e98711681ccabfb8a7",
+    "sha256": "b07193137d1a09a17245267a43939604ff7af7fd1533f7b8cdb121e23bd4dab8",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round": {
@@ -4324,7 +4324,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round-5304b86a.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "65d2caa2784131e8fe4e829e12e67753654f1a2a6cc875f07c0e476e08c7b2de",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -4332,7 +4332,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_long.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "65d2caa2784131e8fe4e829e12e67753654f1a2a6cc875f07c0e476e08c7b2de",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
@@ -4348,7 +4348,7 @@
     "functionName": "ActivityListPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListPreview_Devices_Large_Round-e1600e4b.png",
-    "sha256": "5f9e73b11f71a8d76888048dd99ca061f6ecada4c065605fab3fbe42305c6c16",
+    "sha256": "e07784bcb0374fbd95c3a2e6b0ecd50630eec6df6bf2671c200b822229c6942b",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Small Round": {
@@ -4356,7 +4356,7 @@
     "functionName": "ActivityListPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListPreview_Devices_Small_Round-c156fceb.png",
-    "sha256": "57280b0568c8d1be08d9744896ffd702352c96e3380ab168eeccb8f4c10f1249",
+    "sha256": "8e4a476a2da7748ffc4949e0bd70f948c80bb7c5b31b1ba6cb7d0960ab3e4142",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round": {
@@ -4388,7 +4388,7 @@
     "functionName": "CircularProgressIndicatorPreview",
     "module": "samples:wear",
     "renderBasename": "CircularProgressIndicatorPreview_Devices_Large_Round-7c93b36b.png",
-    "sha256": "96d5052437d77a5d291d450a05a1bd9ad4ecc3bb3e9558c39e61b58f03183e51",
+    "sha256": "4a866062d659f1237eac1af5da19f8c0e2aa8ac3cad5e66636e3ccc2261765a8",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Small Round": {
@@ -4396,7 +4396,7 @@
     "functionName": "CircularProgressIndicatorPreview",
     "module": "samples:wear",
     "renderBasename": "CircularProgressIndicatorPreview_Devices_Small_Round-39c1ab95.png",
-    "sha256": "db99f08046c7235f255cb810cb4d73631a5a2108f2087e0e205d148207c784d9",
+    "sha256": "75083d34139eeaee55b985758a2058d5f3366149617aba85d6a0cb78b45beb56",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round": {
@@ -4412,7 +4412,7 @@
     "functionName": "WearAppSystemClockPreview",
     "module": "samples:wear",
     "renderBasename": "WearAppSystemClockPreview_Devices_Large_Round-ec8363cf.png",
-    "sha256": "5f9e73b11f71a8d76888048dd99ca061f6ecada4c065605fab3fbe42305c6c16",
+    "sha256": "e07784bcb0374fbd95c3a2e6b0ecd50630eec6df6bf2671c200b822229c6942b",
     "sourceFile": "src/main/kotlin/com/example/samplewear/SystemClockPreviews.kt"
   },
   "samples:wear/com.example.samplewear.TileImagePreviewsKt.DrawableImageTilePreview_Drawable Image": {
@@ -4476,7 +4476,7 @@
     "functionName": "ActivityListRealDeviceMatrixPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp-934d83d6.png",
-    "sha256": "6e1de72aaf76f01d54a1d7ac16f2af298951e15597d6b2079ebf0086a01b50c4",
+    "sha256": "90225494d62096aa39ef43a1f2c24ca1a763db2915eea9cbe39f330a0fc332ab",
     "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt"
   },
   "samples:wear/com.example.samplewear.WearRealDevicePreviewsKt.ActivityListRealDeviceMatrixPreview_Galaxy Watch 7 44mm \u00b7 480px @340dpi \u00b7 225dp": {
@@ -4484,7 +4484,7 @@
     "functionName": "ActivityListRealDeviceMatrixPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_7_44mm_480px_340dpi_225dp-2cd4c861.png",
-    "sha256": "8156050385a9b19f24f6e0fd58ffbb6dfba758f4a6f402546dec172b6ce8448d",
+    "sha256": "300836a335e92f57dcc20274c194f055c9b501c994405c5cb0329d762a024412",
     "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt"
   },
   "samples:wear/com.example.samplewear.WearRealDevicePreviewsKt.ActivityListRealDeviceMatrixPreview_Pixel Watch 3 45mm \u00b7 456px @320dpi \u00b7 228dp": {
@@ -4492,7 +4492,7 @@
     "functionName": "ActivityListRealDeviceMatrixPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListRealDeviceMatrixPreview_Pixel_Watch_3_45mm_456px_320dpi_228dp-7763fc86.png",
-    "sha256": "4e083aa300e731422dc6717761d7a89fb5c3b250bb7e74b73c709151e1e90c93",
+    "sha256": "a317496e8abd47fb8ccc33465352d324fce03788359d723563edf4cb436870ce",
     "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt"
   },
   "samples:wear/com.example.samplewear.WearRealDevicePreviewsKt.ActivityListRealDeviceMatrixPreview_Pixel Watch \u00b7 450px @320dpi \u00b7 225dp": {
@@ -4500,7 +4500,7 @@
     "functionName": "ActivityListRealDeviceMatrixPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListRealDeviceMatrixPreview_Pixel_Watch_450px_320dpi_225dp-9ca08611.png",
-    "sha256": "345472989088fe459726a97bc30cc0c394124159673a9f0387c6d612cf0467f2",
+    "sha256": "dd9f44a50fb187b7b3c74be3e74f145a0f4599fd38a55c55f1db18ba9db7c6ab",
     "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt"
   },
   "samples:wear/com.example.samplewear.WearRealDevicePreviewsKt.WearRealDeviceMatrixPreview_Galaxy Watch 5 44mm \u00b7 450px @340dpi \u00b7 211dp": {
@@ -4548,7 +4548,7 @@
     "functionName": "GlimmerListItemFocused",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListItemFocused_Glimmer_Focused-0677c8d3.png",
-    "sha256": "7379d5b4f6c3a0d91e6722b2ab782fbab32171c3932049e385f1210ed0a553b7",
+    "sha256": "8649917f087aac8b23b6bf29a200de02bd44da01e81482f1be2087007ee155b1",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed": {
@@ -4556,7 +4556,7 @@
     "functionName": "GlimmerListItemPressed",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListItemPressed_Glimmer_Pressed-2221a813.png",
-    "sha256": "f01cc1f76098e40c30aad52e24c5d00d361add14260ecb75bb832c826a83875c",
+    "sha256": "3fbc3e14575fda3c83f042c7ce9caa7cac530b5df65fff4dfbd225df9c5d7405",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk": {
@@ -4564,7 +4564,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
-    "sha256": "9626d1c8328d7e99b7b9d82479ea72dfd0852c708654e19b549cb2b8c24a6566",
+    "sha256": "1c5de46e757d614cc2c7ebd2b91a548b9e1da99495e69a812f7c61b2de7321e7",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#1": {
@@ -4572,7 +4572,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
-    "sha256": "0626162f16de40fbaf4c70b3d851d32ce93efd92d7d11d379c88deb4bb7f0d3d",
+    "sha256": "9b859accc1043037c77d75e333038227a581730ea8b31d66b5d61d3be6b322ee",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuBusy_Busy": {
