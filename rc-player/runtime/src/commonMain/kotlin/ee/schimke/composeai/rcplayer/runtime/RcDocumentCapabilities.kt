@@ -73,18 +73,27 @@ public data class RcDocumentCapabilities(
   /**
    * The [RcNamedVariable] type declared for [name], or null when the document declares no such.
    *
-   * An unqualified name is also tried in the `USER:` domain, because that is the round trip a
-   * request actually makes: `ServeOverrides` parses `rc.shaderColor` to the bare key `shaderColor`,
-   * the replay applies it through `setUserLocal*`, and the player prefixes `USER:` on the way in —
-   * so the captured declaration reads `USER:shaderColor`. Matching only the exact string would
-   * report every ordinary `rc.` override as unsupported, which is the false refusal this class
-   * exists to prevent. An explicitly namespaced name is left alone.
+   * A name with no namespace is resolved **only** in the `USER:` domain, never as a literal. That
+   * is the round trip a request actually makes: `ServeOverrides` parses `rc.shaderColor` to the
+   * bare key `shaderColor`, and both `RcJvmRenderer.applySeeds` and the daemon's `setUserLocal*`
+   * qualify it to `USER:shaderColor` before applying. Matching the raw key first would answer for a
+   * declaration the seed can never reach — and report its type instead of the reachable one when a
+   * document declares both. An explicitly namespaced name is matched exactly.
    */
   public fun namedValueType(name: String): Int? =
-    namedValues[name] ?: namedValues[userQualified(name)]
+    namedValues[if (name.contains(':')) name else "USER:" + name]
 
-  /** Whether a seed for [name] has anything in this document to land on. */
-  public fun supportsNamedValue(name: String): Boolean = namedValueType(name) != null
+  /**
+   * Whether the document **declares** [name] — not whether a seed for it currently drives anything.
+   *
+   * The two differ, and the type is what separates them: `RcPlayerState.setNamedValue` accepts
+   * string, float, colour, int and long, and throws for the image and float-array types, which no
+   * serve override grammar can construct a seed for either. A caller that needs drivability rather
+   * than declaration reads [namedValueType] and decides against that setter's range, which is
+   * deliberately not duplicated here — a copy would be free to drift from the setter it claims to
+   * describe, the same failure this class exists to remove.
+   */
+  public fun declaresNamedValue(name: String): Boolean = namedValueType(name) != null
 
   public companion object {
     /** Read the capability surface off an already-decoded [document]. */

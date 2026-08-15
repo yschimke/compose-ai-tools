@@ -74,14 +74,14 @@ class RcDocumentCapabilitiesTest {
         )
       )
     assertFalse(caps.supportsThemeProvider)
-    assertTrue(caps.supportsNamedValue("USER:light.kitchen.is_on"))
+    assertTrue(caps.declaresNamedValue("USER:light.kitchen.is_on"))
     assertEquals(RcNamedVariable.INT_TYPE, caps.namedValueType("USER:light.kitchen.is_on"))
     // Declared but not drivable today — string seeds don't reach the alpha player's StateUpdater.
     assertEquals(
       RcNamedVariable.STRING_TYPE,
       caps.namedValueType("USER:sensor.living_room_temp.state"),
     )
-    assertFalse(caps.supportsNamedValue("USER:light.hallway.is_on"))
+    assertFalse(caps.declaresNamedValue("USER:light.hallway.is_on"))
   }
 
   @Test
@@ -116,10 +116,36 @@ class RcDocumentCapabilitiesTest {
     // the player prefixes `USER:` — so the captured declaration is `USER:shaderColor`. Matching
     // only the exact string would reject every ordinary `rc.` override.
     val caps = roundTrip(doc(RcNamedVariable(1, RcNamedVariable.COLOR_TYPE, "USER:shaderColor")))
-    assertTrue(caps.supportsNamedValue("shaderColor"))
+    assertTrue(caps.declaresNamedValue("shaderColor"))
     assertEquals(RcNamedVariable.COLOR_TYPE, caps.namedValueType("shaderColor"))
-    assertTrue(caps.supportsNamedValue("USER:shaderColor"))
-    assertFalse(caps.supportsNamedValue("somethingElse"))
+    assertTrue(caps.declaresNamedValue("USER:shaderColor"))
+    assertFalse(caps.declaresNamedValue("somethingElse"))
+  }
+
+  @Test
+  fun `a bare declaration is not reachable by a bare request`() {
+    // A request always arrives qualified, so a document declaring the raw key has nothing the seed
+    // can reach — and when both exist, the qualified one is the answer.
+    val bareOnly = roundTrip(doc(RcNamedVariable(1, RcNamedVariable.FLOAT_TYPE, "shaderColor")))
+    assertFalse(bareOnly.declaresNamedValue("shaderColor"))
+
+    val both =
+      roundTrip(
+        doc(
+          RcNamedVariable(1, RcNamedVariable.FLOAT_TYPE, "shaderColor"),
+          RcNamedVariable(2, RcNamedVariable.COLOR_TYPE, "USER:shaderColor"),
+        )
+      )
+    assertEquals(RcNamedVariable.COLOR_TYPE, both.namedValueType("shaderColor"))
+  }
+
+  @Test
+  fun `declaration is not drivability`() {
+    // `RcPlayerState.setNamedValue` throws for the image type; the class reports the declaration
+    // and its type and leaves that judgement to the caller, so the name says "declares".
+    val caps = roundTrip(doc(RcNamedVariable(1, RcNamedVariable.IMAGE_TYPE, "USER:photo")))
+    assertTrue(caps.declaresNamedValue("photo"))
+    assertEquals(RcNamedVariable.IMAGE_TYPE, caps.namedValueType("photo"))
   }
 
   @Test
