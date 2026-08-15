@@ -2735,7 +2735,7 @@ class ServeWebFixtureTest {
       rcLanesComparison.contains("id=\"cp-rc-lanes\"") &&
         rcLanesComparison.contains("data-rc-lanes=\"1\"") &&
         rcLanesComparison.contains(">Remote Compose players</button>") &&
-        rcLanesComparison.contains(ServeWebAssets.href("rc-lanes.js")),
+        rcLanesComparison.contains("<cp-rc-lanes></cp-rc-lanes>"),
       "a catalog with a published rc-compare manifest gets the player wall, not the in-browser lane",
     )
     assertEquals(

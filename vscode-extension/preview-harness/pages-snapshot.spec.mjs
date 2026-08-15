@@ -311,7 +311,6 @@ const SERVE_ASSETS = [
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
     ["spec-compare.js", "text/javascript"],
-    ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
     ["design-page.js", "text/javascript"],
@@ -1739,6 +1738,29 @@ const FIXTURE_STATES = [
             await page.click('[data-rc-ref="baked"]');
             await page.waitForFunction(
                 () => document.querySelector(".cp-rc-row .cp-rc-score") !== null,
+            );
+        },
+    },
+    {
+        // The player wall's OTHER diff path, and the only one with no coverage of any kind: picking
+        // a player as the reference means nothing was precomputed, so the two renders are decoded
+        // onto a canvas and diffed here. `diff-baked` above never reaches that code — it replays
+        // the offline run's PNGs — so an in-browser pass that threw, or produced no image at all,
+        // would leave every shot in this suite unchanged.
+        //
+        // The harness serves ONE placeholder for every `/rc-compare/` URL, so the honest numbers
+        // here are 0.00%: what this holds is the pipeline (load → canvas → getImageData → diff →
+        // data URL → an `<img>` that renders) and the status line that admits an in-browser number
+        // is not the build's measurement. The arithmetic is `pixelDiff.test.ts`'s job, down to the
+        // bytes of the red overlay.
+        fixture: "serve-rc-lanes",
+        suffix: "diff-player",
+        apply: async (page) => {
+            await page.click('[data-rc-ref="cmp-jvm"]');
+            await page.waitForFunction(
+                () =>
+                    document.querySelectorAll(".cp-rc-row .cp-rc-diffslot:not([hidden]) img")
+                        .length > 0,
             );
         },
     },

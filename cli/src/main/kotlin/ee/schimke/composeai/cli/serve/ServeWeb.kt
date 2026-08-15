@@ -6732,7 +6732,6 @@ object ServeWeb {
           ${rcLanes.orEmpty()}
         </div>
         ${if (hasRc) scriptTag("serve-components.js") else ""}
-        ${if (rcLanes != null) scriptTag("rc-lanes.js") else ""}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
@@ -6884,6 +6883,12 @@ $rows
         </div>
         <p id="cp-rc-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
         <script type="application/json" id="cp-rc-model">${ServeRcCompare.encodeClientModel(model)}</script>
+        <!-- Picks the reference, measures the rows and fills in the chips. Emitted LAST in this
+             section, immediately after the model it reads: `format-compare.js` calls
+             `window.cpRcLanes.filter()` on its very first pass, so the element has to be able to
+             set itself up the moment the tag upgrades rather than one parse later. Renders
+             nothing; `serve.css` hides the tag. -->
+        <cp-rc-lanes></cp-rc-lanes>
       </section>
       """
       .trimIndent()
