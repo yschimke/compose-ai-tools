@@ -51,6 +51,23 @@ test.beforeAll(async ({ request }) => {
 // closed). Expand it before touching a `.cp-knob`, since Playwright refuses to
 // fill a control inside a closed <details> ("element is not visible").
 async function openOverridesGroup(page) {
+  // TWO things are shut, not one. The knobs live in a `<details>` group inside the overrides
+  // DRAWER, and the drawer is a column of the viewer that `.cp-viewer.cp-controls-open` reveals —
+  // #3893 stopped serving that class, so the drawer now starts closed at every width and
+  // `.cp-viewer:not(.cp-controls-open) .cp-controls { display: none }` hides the group whatever
+  // its own `open` says. Opening only the group left every knob resolvable and invisible, which is
+  // exactly what these tests then timed out on.
+  //
+  // The drawer is opened the way a reader opens it, through its toggle, so this keeps testing the
+  // control rather than the class it happens to set today; the group is still forced, because it
+  // is the server that decides which groups start expanded and that is not what these tests are
+  // about.
+  const viewer = page.locator(".cp-viewer");
+  const open = await viewer.evaluate((v) =>
+    v.classList.contains("cp-controls-open"),
+  );
+  if (!open) await page.locator("#cp-controls-toggle").click();
+  await expect(viewer).toHaveClass(/cp-controls-open/);
   await page
     .locator('details.cp-group[data-cp-group="overrides"]')
     .evaluate((d) => {

@@ -2034,8 +2034,20 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   .cp-catalog-tools .cp-toolbar { flex: none; min-width: 0; position: relative; }
   .cp-catalog-tools .cp-searchbar, .cp-catalog-actions .cp-searchbar {
     flex: 1 1 auto; min-width: 0; }
-  .cp-search { min-height: 40px; padding: 8px 14px; }
-  .cp-catalog-tools .cp-catalog-actions { flex: none; margin: 0; position: relative; }
+  /* `min-width: 0` on the FIELD as well as its wrapper, and a zero basis. A flex item's automatic
+     minimum size is its content's, and an `<input>`'s content width is its `size` attribute — 20
+     characters — so on a 320px screen, where the pill and the `⋯` leave the wrapper about 100px,
+     the field kept its 260px basis, overflowed and put a horizontal scrollbar under the whole
+     page. The wrapper shrinking does not make its contents shrink. */
+  .cp-search { min-height: 40px; padding: 8px 14px; min-width: 0; flex-basis: 0; }
+  /* The actions row is `position: relative` in BOTH shapes it takes: nested in the sticky toolbar
+     when the catalog has a Theme control, and standing on its own when it does not — a catalog
+     with a single theme publishes no Theme control, so there this row IS the toolbar. Scoping this
+     under `.cp-catalog-tools` left that second (and commoner) shape with no positioned ancestor at
+     all, so its `⋯` panel measured from the initial containing block and opened past the bottom of
+     the page rather than under its button. */
+  .cp-catalog-actions { position: relative; }
+  .cp-catalog-tools .cp-catalog-actions { flex: none; margin: 0; }
   /* Each group is a menu here: the summary is the control, and the chips beside it are the panel
      it opens, on an M3 menu surface under the row. */
   .cp-catalog-theme, .cp-actions-menu { display: block; }
@@ -2043,11 +2055,18 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   .cp-catalog-theme > summary::-webkit-details-marker,
   .cp-actions-menu > summary::-webkit-details-marker { display: none; }
   .cp-catalog-theme + .cp-theme, .cp-actions-panel {
-    display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+    display: none; position: absolute; top: calc(100% + 6px); z-index: 50;
     width: max-content; max-width: min(280px, calc(100vw - 28px)); padding: 8px;
     border-radius: var(--md-sys-shape-corner-medium);
     background: var(--md-sys-color-surface-container-high);
     box-shadow: var(--md-sys-elevation-level2); }
+  /* Each panel hangs off the edge its button is nearest, because `max-width` caps how wide a panel
+     is and says nothing about where it starts: the Theme pill leads the row, so a right-anchored
+     panel grew leftwards out of a ~150px box and the first characters of every theme name fell off
+     the screen (measured at `left: -9px` with this catalog's short labels alone, and a qualified
+     `Group · Name` is far wider). The `⋯` is last, so that one is right-anchored. */
+  .cp-catalog-theme + .cp-theme { left: 0; }
+  .cp-actions-panel { right: 0; }
   /* A menu is a column of full-width rows, not a wrapping chip row: the panel is the only place
      these chips appear on a phone, so each gets its own line and its own hit target. */
   .cp-catalog-theme[open] + .cp-theme, .cp-actions-menu[open] + .cp-actions-panel {
