@@ -447,7 +447,12 @@ for (const record of records) {
 async function scoreReferences() {
   const published = records.filter((record) => record.rastered !== false);
   if (published.length === 0) return;
-  const scorer = await openScorer({ executablePath: EXEC, log: warn });
+  // Reported through `note`, NEVER `warn` — including for a primary, which is why this does not go
+  // through `warnFor`. `--strict` gates on `warnings`, and its contract is about references that
+  // were DROPPED: a run whose every reference rasterised and published, and which merely lacks an
+  // optional score because the box had no Chromium, has published everything it was asked to.
+  // Failing it would make the enhancement a liability on exactly the runs that are gated hardest.
+  const scorer = await openScorer({ executablePath: EXEC, log: note });
   // Absent a browser the manifest simply carries no `match`, and the viewer computes it live on
   // lane entry exactly as it does today. `openScorer` has already said why.
   if (!scorer) return;
@@ -463,7 +468,8 @@ async function scoreReferences() {
           path.join(OUT, sticker),
         );
       } catch (error) {
-        warnFor(record, `${record.id}: could not be scored (${error.message})`);
+        // A note for the same reason, and for a primary too: the reference itself published fine.
+        note(`${record.id}: could not be scored (${error.message})`);
       }
       if (match) {
         record.match = match;

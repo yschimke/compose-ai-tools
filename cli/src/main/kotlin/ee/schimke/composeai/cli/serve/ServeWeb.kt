@@ -8238,7 +8238,7 @@ $rows
         // number that is usually high is still the thing a reader came for, and suppressing it
         // would make its absence ambiguous with "not scored". The BAND only picks the colour, so a
         // quiet 99.7% and a loud 85.8% read differently without either being hidden.
-        val match = designReference?.match
+        val match = designReference.match
         val band = match?.let { specMatchBand(it.percent) }
         val label = if (match == null) name else "$name ${WebEscaping.formatPercent(match.percent)}"
         val tip =

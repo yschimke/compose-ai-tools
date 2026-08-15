@@ -60,6 +60,10 @@
   // render changed underneath (a new theme, a new knob) must.
   var framesKey = "";
   var frames = null;
+  // The live match the current [frames] scored, so re-entering the lane against an unchanged pair
+  // restores the verdict rather than leaving the baked one on the chip beside a readout still
+  // showing the live number. Cleared with the frames it describes.
+  var framesMatch = null;
   var pending = 0;
 
   function api() {
@@ -171,6 +175,10 @@
     }
     if (key === framesKey && frames) {
       drawWipe();
+      // The readout still holds this pair's live numbers (nothing cleared it), so the chip has to
+      // come back to the same ones. Without this an override-bearing page re-entering the lane
+      // showed the PUBLISHED score beside the live readout — two numbers for one comparison.
+      if (framesMatch !== null) setChipVerdict(framesMatch);
       return;
     }
     var generation = ++pending;
@@ -206,6 +214,7 @@
                 "% pixels differ" +
                 geometry
             );
+            framesMatch = result.percent;
             setChipVerdict(result.percent);
           });
       })
@@ -213,6 +222,7 @@
         if (generation !== pending) return;
         frames = null;
         framesKey = "";
+        framesMatch = null;
         setScore("Comparison unavailable");
       });
   }
@@ -336,17 +346,24 @@
       if (preferred && !chosen) {
         view = preferred;
         preferred = "";
-        // Written to the address bar like any other view choice, so the lane a chip click landed on
-        // is the lane a reload or a shared link comes back to.
-        if (window.cpUrlState) {
-          window.cpUrlState.replace({ specView: view === DEFAULT_VIEW ? "" : view });
-        }
+        // Deliberately NOT written to the address bar here. viewer.js calls this from inside
+        // `enterMode`'s spec branch — before its closing `syncUrl()`, and therefore while the
+        // current history entry is still the lane being LEFT. Writing now would stamp a
+        // lane-scoped `specView` onto the outgoing render entry, so Back would land on a PNG URL
+        // carrying it and the popstate reconciliation would push a clean entry over the top,
+        // discarding Forward. `syncUrl` already re-emits `specView` from `view()` on every sync,
+        // in the same push that records `mode=spec` — which is exactly where it belongs.
       }
       apply();
     },
     /** The spec lane has been left: put the stage back and stop offering the comparison. */
     close: function () {
       open = false;
+      // Abandon any comparison still in flight. `close()` puts the published verdict back, and a
+      // normalisation or score that resolves afterwards would otherwise still pass its generation
+      // check and paint a live — possibly override-specific — number onto the chip while the
+      // published render is back on the stage.
+      pending++;
       setChipVerdict(null);
       apply();
     }
