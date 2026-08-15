@@ -90,7 +90,9 @@ data class UsageRules(
      * by remember { mutableStateOf(…) }` needs four, including the `getValue`/`setValue` the `by`
      * delegation reads and which nothing in the snippet mentions by name.
      *
-     * Applies to every kind, alongside [addImport]; see [imports].
+     * Applies alongside [addImport] to every kind that emits a replacement — RENAME, SUBSTITUTE,
+     * DESTRUCTURE, INLINE; see [imports]. DROP and UNWRAP write no new code, so an import declared
+     * on one of those has nothing to serve.
      */
     @SerialName("addImports") val addImports: List<String> = emptyList(),
     /** [Kind.SUBSTITUTE] only: what the call reads as, with `$0`, `$1`… for its arguments. */

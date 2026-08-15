@@ -634,6 +634,54 @@ class PlaygroundSourceCleanerTest {
   }
 
   /**
+   * The other kind that emits a replacement, and the one nobody had exercised: INLINE's member
+   * templates are arbitrary Kotlin, so a rule can perfectly well inline a symbol that needs an
+   * import. `applyInline` was not even handed the import set — the same omission as the plural
+   * field, one layer up.
+   */
+  @Test
+  fun `an inlined member contributes the imports its rule declares`() {
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "counted" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.INLINE,
+                members = mapOf("label" to "\$0", "onClick" to "{ Log.d(\"tap\") }"),
+                addImport = "android.util.Log",
+              )
+          )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Button
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.counted
+
+      @Composable
+      fun ButtonSticker() {
+        val c = counted("Filled")
+        Button(onClick = c.onClick) { Text(c.label) }
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun ButtonSticker"), rules)
+      )
+    assertTrue(
+      result.text.contains("""Button(onClick = { Log.d("tap") }) { Text("Filled") }"""),
+      result.text,
+    )
+    assertTrue(result.text.contains("import android.util.Log"), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  /**
    * The `$known-gaps` entry m3-catalog's `compose-usage.json` carried: `toggleable` and friends
    * return `Pair<T, (T) -> Unit>` destructured into a value and a setter, and the plain reading is
    * real state rather than a value. Roughly 18 stickers were affected.

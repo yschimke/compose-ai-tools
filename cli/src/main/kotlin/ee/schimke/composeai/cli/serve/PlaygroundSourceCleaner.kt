@@ -341,7 +341,7 @@ object PlaygroundSourceCleaner {
     // plain by the time the state declaration quotes it. Parsed-only by design — see
     // [UsageRules.Kind.DESTRUCTURE].
     if (parser != null) out = applyDestructureParsed(out, rules, addedImports, parser)
-    out = applyInline(out, rules)
+    out = applyInline(out, rules, addedImports)
     out = applyDrop(out, rules, residue)
     out = applyRename(out, rules, addedImports)
     if (isEntry) out = stampPreview(out, rules, addedImports)
@@ -790,7 +790,11 @@ object PlaygroundSourceCleaner {
    * `val c = counted("Filled")` + `c.onClick` + `c.label` → `{}` + `"Filled"`, with the binding
    * line deleted.
    */
-  private fun applyInline(text: String, rules: UsageRules): String {
+  private fun applyInline(
+    text: String,
+    rules: UsageRules,
+    addedImports: MutableSet<String>,
+  ): String {
     var out = text
     for ((name, scaffold) in rules.scaffolds) {
       if (scaffold.kind != UsageRules.Kind.INLINE) continue
@@ -813,6 +817,7 @@ object PlaygroundSourceCleaner {
         for ((member, replacement) in replacements) {
           out = replaceWord(out, "${binding.name}.$member", replacement)
         }
+        addedImports.addAll(scaffold.imports)
       }
     }
     return out
