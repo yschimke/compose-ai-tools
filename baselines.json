@@ -2695,6 +2695,14 @@
     "sha256": "4f60ce5d7c1ff1bfc81be27a57ec234186e0c1e8dadc0259aac50de660e39dcb",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark#1": {
+    "captureLabel": "",
+    "functionName": "SwitchOn",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOn_Dark-d0f22b72.apng",
+    "sha256": "35e0b1980bd9dfceaabdb1ef2974375592bd850674631af3216ec60e28fc9a17",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark_VARIANT_off": {
     "captureLabel": "",
     "functionName": "SwitchOn",
@@ -2709,6 +2717,14 @@
     "module": "samples:design-catalog-m3",
     "renderBasename": "SwitchOn_Light-c16813d5.png",
     "sha256": "56653f06167a33c39267c576b1daa0f99ba9c49ea70d819f782baba07530f43c",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light#1": {
+    "captureLabel": "",
+    "functionName": "SwitchOn",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SwitchOn_Light-c16813d5.apng",
+    "sha256": "98b9b62496818f8f2f9e46b0310c8025953029dcd894d0c9ff09e84e51b08948",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light_VARIANT_off": {
