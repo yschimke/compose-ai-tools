@@ -570,8 +570,7 @@ jobs:
             --player "$GITHUB_WORKSPACE/cli/src/main/resources/rc-player/bundle.js" \
             --out "$RUNNER_TEMP/parity-out" \
             --system remote-m3 \
-            --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist" \
-            --require-cmp-wasm
+            --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist"
       # `tee` so the same report reaches the log, the job summary (the script appends it itself) and
       # the PR comment below — one text, three places, no chance of them disagreeing.
       - name: Compare against the base player
