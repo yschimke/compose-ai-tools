@@ -72,6 +72,14 @@ If the automatic chain ever leaves a release half-published (e.g. Maven Central 
 
 Both fallbacks share the same concurrency group as the primary path, so they can't race each other. The final upload step is idempotent — it uploads onto an existing Release (or creates one if none exists).
 
+**One exception: npm.** Neither fallback can publish `@yschimke/compose-design-map`, because both
+enter through `release.yml` and the npm trusted publisher is bound to `release-please.yml` (see the
+trusted-publishing note under "What the `release.yml` workflow does" — npm permits one binding per
+package). If `publish-design-map` failed, re-run *that job* in the original **Release PR** run
+instead: Actions → the run → **Re-run failed jobs**. An `E404 Not Found - PUT` from `npm publish`
+means the OIDC token did not match the trusted publisher, not that the package or version is
+missing.
+
 If the GitHub Release is public but `compose-preview update` still selects the
 previous version, check the original **Release PR** run's
 `verify-maven-readiness` job. Re-run that failed job after Central recovers, or
@@ -95,7 +103,7 @@ republishing the release.
    - `compose-preview-<ver>.{zip,tar.gz}` — the CLI; tarball already implementation-bundles `:mcp` and the desktop renderer.
    - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-4. Publishes **`@yschimke/compose-design-map`** (the `design-map/` package — the annotations→`design-map.json` projection) to **npm**, at the tag's version. Uses npm Trusted Publishing (OIDC), so there is no npm token to rotate; provenance is attached except on a `workflow_dispatch` recovery, where the ref no longer names the built tree. Like the marketplace publishes it is tolerated rather than blocking, and it skips a version already on npm, so re-dispatching a tag is safe.
+4. Publishes **`@yschimke/compose-design-map`** (the `design-map/` package — the annotations→`design-map.json` projection) to **npm**, at the tag's version. Uses npm Trusted Publishing (OIDC), so there is no npm token to rotate; provenance is attached automatically. Like the marketplace publishes it is tolerated rather than blocking, and it skips a version already on npm, so re-running it is safe. Unlike the other steps, its recovery is **re-running the failed job in the original release run**, not a `workflow_dispatch` of `release.yml` — see the trusted-publisher note below.
 5. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Alongside `release.yml`, the automatic release chain starts
@@ -136,11 +144,24 @@ Required secrets on the repository:
 `GITHUB_TOKEN` is provided automatically and is used by the `release` job to upload assets onto the GitHub Release.
 
 npm needs **no secret**: `@yschimke/compose-design-map` publishes over OIDC Trusted Publishing,
-configured once on npmjs.com against this repository and the `release.yml` workflow filename. That
-binding is to the filename — renaming `release.yml` breaks npm publishing until the trusted
-publisher is reconfigured. The package's committed version is a placeholder (`0.0.0`); the release
-job stamps the tag onto it, exactly as `build-vscode-extension` does for the extension, so nothing
-in the tree needs bumping.
+configured once on npmjs.com against this repository and the **`release-please.yml`** workflow
+filename — the workflow that *starts* the run, not `release.yml`, which merely contains the
+`npm publish`. npm matches the OIDC token's entry-point workflow, so a `workflow_call` chain is
+validated against the caller; binding it to `release.yml` matches nothing and npm answers the
+publish with a bare `E404 Not Found - PUT` (it falls back to the empty `NODE_AUTH_TOKEN` and the
+registry will not admit that a package exists to an anonymous writer). The binding is to the
+filename — renaming `release-please.yml` breaks npm publishing until the trusted publisher is
+reconfigured. `id-token: write` is required on **both** ends of the chain: the `release` job in
+`release-please.yml` and `publish-design-map` in `release.yml`.
+
+npm allows only **one** trusted publisher per package, so the automatic chain owns the binding and
+a `workflow_dispatch` of `release.yml` cannot authenticate to npm — that dispatch remains the
+recovery path for Maven Central and the GitHub Release assets, but for npm the recovery is to
+**re-run the failed `publish-design-map` job in the original `release-please.yml` run** (Actions →
+the run → "Re-run failed jobs"). The step skips a version already on npm, so it is idempotent.
+
+The package's committed version is a placeholder (`0.0.0`); the release job stamps the tag onto it,
+exactly as `build-vscode-extension` does for the extension, so nothing in the tree needs bumping.
 
 Marketplace publishes are idempotent on re-runs: if the version is already published (e.g. on a `workflow_dispatch` retry for an existing tag), the step logs the "already published" message and exits 0 rather than failing.
 

@@ -333,8 +333,14 @@ jobs:
     # Same posture as `publish-vscode-extension`: a registry outage must not strand the drafted
     # release, since `finalize-release` gates on this whole run succeeding. Unlike the VSIX there is
     # no GitHub Release asset to fall back on, so a tolerated failure here means the version simply
-    # is not on npm — recover by re-dispatching this workflow for the tag, which republishes
-    # idempotently (the step below skips a version that is already up).
+    # is not on npm — recover by RE-RUNNING THIS FAILED JOB in the original `release-please.yml`
+    # run, which republishes idempotently (the step below skips a version that is already up).
+    #
+    # Not by re-dispatching release.yml for the tag: npm's Trusted Publisher matches the OIDC
+    # token's ENTRY-POINT workflow, which is `release-please.yml` for the automatic chain and
+    # `release.yml` for a dispatch — and npm allows only one binding per package. A dispatched
+    # run therefore cannot authenticate to npm no matter how the tag resolves. Re-running the
+    # job keeps the entry point (and the tag) exactly as they were. See docs/RELEASING.md.
     continue-on-error: true
     permissions:
       contents: read
@@ -368,6 +374,9 @@ jobs:
           # npm's provenance generator would attest a commit that did not produce the tarball. A
           # package with no attestation is a gap, one with a false attestation is a lie. The
           # workflow_call path runs on the release commit the tag names, so provenance stays on.
+          # Belt and braces only: a dispatched run is not the entry point npm's Trusted Publisher
+          # is bound to (see the job comment), so it fails to authenticate before provenance is
+          # ever generated. Kept so the flag is right if the binding ever moves to this file.
           IS_RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
         working-directory: design-map
         run: |
