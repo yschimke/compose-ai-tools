@@ -2,8 +2,10 @@ package com.example.designcatalogm3.shared
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -179,6 +182,18 @@ class CatalogInteractivityTest {
       // Asserted on the inserted character rather than a full string, so the test doesn't also pin
       // where the caret happens to start — the point is that the field's value moved at all.
       onNodeWithText("Z", substring = true).assertExists()
+    }
+
+  @Test
+  fun `the shape morph slider moves on both lanes`() =
+    onBothLanes("shape-morph") {
+      onNodeWithText("50%", substring = true).assertExists()
+      onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress)).performSemanticsAction(
+        SemanticsActions.SetProgress
+      ) {
+        it(1f)
+      }
+      onNodeWithText("100%", substring = true).assertExists()
     }
 
   @Test

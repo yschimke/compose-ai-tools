@@ -87,6 +87,7 @@ compose-material3-catalog = "1.5.0-alpha25"
 # as on Skiko. (This artifact itself declares foundation/ui `1.11.0-beta03`; the `1.11.1` ref above
 # is newer, so Gradle's conflict resolution keeps one coherent 1.11.1 Compose graph.)
 compose-multiplatform-material3 = "1.11.0-alpha07"
+graphics-shapes = "1.1.0"
 # Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Tracks the same Compose
 # minor as `compose-multiplatform`: 2.2.x is built against JetBrains Compose foundation 1.11.0, which
 # is what the 1.11 line above now ships. (On the old 1.10.3 floor this was held at 2.1.0 precisely so
@@ -337,6 +338,7 @@ jetbrains-compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "
 jetbrains-compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose-multiplatform" }
 jetbrains-compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "compose-multiplatform" }
 jetbrains-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-multiplatform-material3" }
+graphics-shapes = { module = "androidx.graphics:graphics-shapes", version.ref = "graphics-shapes" }
 jetbrains-compose-components-ui-tooling-preview = { module = "org.jetbrains.compose.components:components-ui-tooling-preview", version.ref = "compose-multiplatform" }
 jetbrains-compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
 compottie = { module = "io.github.alexzhirkevich:compottie", version.ref = "compottie" }

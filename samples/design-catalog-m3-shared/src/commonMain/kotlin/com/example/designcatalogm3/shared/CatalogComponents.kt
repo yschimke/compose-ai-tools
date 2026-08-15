@@ -2,6 +2,7 @@
 
 package com.example.designcatalogm3.shared
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
@@ -48,11 +50,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.CornerRounding
+import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.RoundedPolygon
+import androidx.graphics.shapes.star
 import com.example.designcatalogm3.shared.generated.resources.Res
 import com.example.designcatalogm3.shared.generated.resources.card_elevated
 import com.example.designcatalogm3.shared.generated.resources.card_filled
@@ -172,6 +181,7 @@ fun CatalogComponent(id: String) {
     "switch-on" -> StatefulSwitch(catalogOverrideBoolean("checked", true))
     "radiobutton-selected" -> StatefulRadioButton(catalogOverrideBoolean("selected", true))
     "slider" -> Box(Modifier.width(220.dp)) { StatefulSlider(catalogOverrideFloat("value", 0.5f)) }
+    "shape-morph" -> ShapeMorphViewer()
     "chip-filter-selected" ->
       StatefulFilterChip(
         catalogOverrideBoolean("selected", true),
@@ -380,6 +390,7 @@ val catalogComponentIds: List<String> =
     "switch-on",
     "radiobutton-selected",
     "slider",
+    "shape-morph",
     "chip-filter-selected",
     "chip-assist",
     "card-elevated",
@@ -466,6 +477,63 @@ fun StatefulSlider(initial: Float) {
   var value by remember { mutableFloatStateOf(initial) }
   Slider(value = value, onValueChange = { value = it })
 }
+
+/**
+ * Material expressive shape interpolation, shared by the desktop preview and the Wasm catalog.
+ *
+ * The first frame is pinned to the midpoint so its screenshot is deterministic. Every lane exposes
+ * the same stateful slider and redraws the [Morph] without a server round trip. [Morph]
+ * intentionally accepts [androidx.graphics.shapes.RoundedPolygon] rather than an arbitrary Compose
+ * `Shape`, so the two endpoints retain the feature information needed for a stable match.
+ */
+@Composable
+fun ShapeMorphViewer() {
+  val initial = catalogOverrideFloat("progress", 0.5f).coerceIn(0f, 1f)
+  var progress by remember(initial) { mutableFloatStateOf(initial) }
+  val morph = remember {
+    val rounding = CornerRounding(radius = 0.12f, smoothing = 0.45f)
+    Morph(
+      start = RoundedPolygon(numVertices = 4, rounding = rounding).normalized(),
+      end =
+        RoundedPolygon.star(numVerticesPerRadius = 9, innerRadius = 0.72f, rounding = rounding)
+          .normalized(),
+    )
+  }
+  val fill = MaterialTheme.colorScheme.primary
+  val outline = MaterialTheme.colorScheme.onSurface
+
+  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Canvas(Modifier.size(180.dp)) {
+      val path = morph.toComposePath(progress)
+      path.transform(Matrix().apply { scale(size.width, size.height) })
+      drawPath(path, color = fill)
+      drawPath(path, color = outline, style = Stroke(width = 1.dp.toPx()))
+    }
+    Slider(value = progress, onValueChange = { progress = it }, modifier = Modifier.width(220.dp))
+    Text("Square → Rounded 9-point star · ${(progress * 100).toInt()}%")
+  }
+}
+
+/** Convert the matched cubic segments to a Compose path without a platform-specific adapter. */
+private fun Morph.toComposePath(progress: Float): Path =
+  Path().also { path ->
+    var first = true
+    forEachCubic(progress) { cubic ->
+      if (first) {
+        path.moveTo(cubic.anchor0X, cubic.anchor0Y)
+        first = false
+      }
+      path.cubicTo(
+        cubic.control0X,
+        cubic.control0Y,
+        cubic.control1X,
+        cubic.control1Y,
+        cubic.anchor1X,
+        cubic.anchor1Y,
+      )
+    }
+    path.close()
+  }
 
 @Composable
 fun StatefulFilterChip(initial: Boolean, label: String = "Filter") {

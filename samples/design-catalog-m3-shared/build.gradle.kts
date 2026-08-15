@@ -62,6 +62,7 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.material3)
       @Suppress("DEPRECATION") implementation(compose.ui)
+      implementation(libs.graphics.shapes)
       // Compose Multiplatform string resources: the catalog's component labels resolve from
       // `commonMain/composeResources/values*/strings.xml`, so a `localeTag` override (or the
       // `en-XA`/`ar-XB` pseudolocale) renders translated / pseudolocalised copy through the
