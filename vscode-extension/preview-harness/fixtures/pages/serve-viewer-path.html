@@ -53,12 +53,21 @@
 </header>
         <main class="cp-main">
               <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ trusted</span></h1>
+        <h1 class="cp-head cp-preview-title">Profile screen</h1>
         <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <div class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><details class="cp-theme-menu">
+  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+    <span class="cp-toggle-label">Theme</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
+    <span class="cp-theme-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+  </span></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
       </div>
-
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Snapshot" title="Static snapshot — this session has no live lane to switch to" disabled>
@@ -67,6 +76,8 @@
           </button>
 <button type="button" id="cp-spec-chip" class="cp-spec-chip" aria-pressed="false" data-spec-chip-label="Figma" data-spec-chip-tip="Put the imported Figma spec on the stage instead of the render" title="Put the imported Figma spec on the stage instead of the render">Figma</button>
 <span class="cp-spec-lane" id="cp-spec-lane" data-spec-src="/meshcore-mobile/reference/contact-chat-figma.png?token=demo-token-fixture" data-spec-label="Figma"><span class="cp-spec-views" id="cp-spec-views" role="group" aria-label="Design comparison" hidden><button type="button" class="cp-spec-view" data-cp-spec-view="spec" aria-pressed="true" title="The imported design reference on its own">Spec</button><button type="button" class="cp-spec-view" data-cp-spec-view="diff" aria-pressed="false" title="Highlight every pixel where the render and the spec disagree">Diff</button><button type="button" class="cp-spec-view" data-cp-spec-view="triptych" aria-pressed="false" title="Spec, diff and render side by side">Triptych</button><button type="button" class="cp-spec-view" data-cp-spec-view="slider" aria-pressed="false" title="One frame, wiped between the spec and the render">Slider</button></span><span class="cp-spec-score" id="cp-spec-score" role="status" aria-live="polite" hidden></span><a class="cp-format-link cp-spec-diff" href="/meshcore-mobile/compare/com.example.ProfileScreenPreview?token=demo-token-fixture&amp;reference=contact-chat-figma" title="Compare this render against the imported design spec — Contact chat">spec diff →</a></span>
+<cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
+<button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
@@ -74,25 +85,18 @@
 <input type="radio" name="cp-mode" value="spec" id="cp-spec-toggle" tabindex="-1">
         </span>
       </div>
-      <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-        </span>
-        <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-      </div>
 
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="meshcore-mobile">
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="meshcore-mobile">
               <aside class="cp-nav" id="cp-nav" aria-label="Components">
         <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
         <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+
         <ul class="cp-nav-list" id="cp-nav-list">
-        <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
+        <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
+<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
 <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.CardPreview?token=demo-token-fixture" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.CardPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Card</span></a></li>
 <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.DialogPreview?token=demo-token-fixture" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.DialogPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Dialog</span></a></li>
 <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ListScreenPreview?token=demo-token-fixture" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ListScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">List screen</span></a></li>
-<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
 <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.SettingsScreenPreview?token=demo-token-fixture" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Settings screen</span></a></li>
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>

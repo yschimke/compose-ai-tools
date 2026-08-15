@@ -3921,6 +3921,7 @@ class ServeHttpServer(
     val host = sessions.peekHost(selectedSessionId(sessionInPath))
     val pools =
       host?.let { runCatching { it.daemonPoolStats() }.getOrDefault(emptyList()) }.orEmpty()
+    val allRunning = sessions.runningDaemons().filter { it.hasLiveStream }
     val dto =
       DaemonStatusDto(
         // Counted from real subprocesses, not from `daemonStarted`: that is a host-level flag a
@@ -3932,6 +3933,10 @@ class ServeHttpServer(
         pooled = pools.sumOf { it.open },
         poolCapacity = pools.sumOf { it.maxOpen },
         activeStreams = host?.let { runCatching { it.activeStreamCount() }.getOrDefault(0) } ?: 0,
+        overallRunning = allRunning.size,
+        overallActiveStreams = allRunning.sumOf { it.activeStreams },
+        liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
+        liveSeatsAvailable = if (liveSeats.unbounded) -1 else liveSeats.availablePermits(),
       )
     call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
     call.respondText(
@@ -6500,6 +6505,10 @@ private data class DaemonStatusDto(
   val pooled: Int,
   val poolCapacity: Int,
   val activeStreams: Int,
+  val overallRunning: Int,
+  val overallActiveStreams: Int,
+  val liveSeatsTotal: Int,
+  val liveSeatsAvailable: Int,
 )
 
 @Serializable

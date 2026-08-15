@@ -2382,11 +2382,11 @@ class ServeWebFixtureTest {
     )
     // A resolved comment is still shown (it is history) but visually stood down.
     assertTrue(parity.contains("cp-parity-entry--resolved"), "resolved comments render greyed")
-    // The overrides drawer defaults OPEN (`cp-controls-open` on the viewer, its toggle expanded)…
+    // The overrides drawer defaults closed so the preview leads.
     assertTrue(
-      viewer.contains("class=\"cp-viewer cp-controls-open\"") &&
-        viewer.contains("id=\"cp-controls-toggle\" aria-expanded=\"true\""),
-      "the overrides drawer defaults open",
+      viewer.contains("class=\"cp-viewer\"") &&
+        viewer.contains("id=\"cp-controls-toggle\" aria-expanded=\"false\""),
+      "the overrides drawer defaults closed",
     )
     // …and the component nav drawer defaults CLOSED (present, but its toggle collapsed and the
     // viewer element itself carries no `cp-nav-open` class), while still linking each sibling to
@@ -2397,8 +2397,8 @@ class ServeWebFixtureTest {
     assertTrue(
       viewer.contains("id=\"cp-nav\"") &&
         viewer.contains("id=\"cp-nav-toggle\" aria-expanded=\"false\"") &&
-        viewer.contains("class=\"cp-viewer cp-controls-open\"") &&
-        !viewer.contains("class=\"cp-viewer cp-controls-open cp-nav-open\""),
+        viewer.contains("class=\"cp-viewer\"") &&
+        !viewer.contains("class=\"cp-viewer cp-nav-open\""),
       "the component nav drawer defaults closed",
     )
     assertTrue(
@@ -3221,15 +3221,17 @@ class ServeWebFixtureTest {
     // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
     // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.
     val collapsedNav =
-      viewerNavCollapsed.substringAfter("id=\"cp-nav-list\"").substringBefore("</ul>")
+      viewerNavCollapsed.substringAfter("<aside class=\"cp-nav\"").substringBefore("</aside>")
     assertEquals(
       3,
-      Regex("class=\"cp-nav-item\"").findAll(collapsedNav).count(),
+      Regex("class=\"cp-nav-item\"|class=\"cp-tree-component cp-tree-link\"")
+        .findAll(collapsedNav)
+        .count(),
       "the component nav lists one entry per component, not per baked variant",
     )
     assertEquals(
       1,
-      Regex("href=\"[^\"]*button-filled").findAll(collapsedNav).count(),
+      Regex(">Button · Filled[^<]*<").findAll(collapsedNav).count(),
       "the multi-variant component appears exactly once in the nav",
     )
     // Theme preservation: viewing a DARK preview, the collapsed nav links each OTHER component to
@@ -3574,11 +3576,11 @@ class ServeWebFixtureTest {
     // filter axis), so a light-on-transparent Wear render stays readable — while a non-dark-first
     // viewer with no theme token leaves the stage on its default (light).
     assertTrue(
-      viewerGestures.contains("cp-controls-open\" data-bg-theme=\"dark\""),
+      viewerGestures.contains("class=\"cp-viewer\" data-bg-theme=\"dark\""),
       "a Wear (dark-first) viewer tags the stage dark even without a __dark token",
     )
     assertFalse(
-      viewerFocus.contains("cp-controls-open\" data-bg-theme="),
+      viewerFocus.contains("class=\"cp-viewer\" data-bg-theme="),
       "a non-dark-first viewer with no theme token leaves the stage default (light)",
     )
     // The stage only follows the Theme choice when the control can actually re-render: on a static
@@ -4011,25 +4013,12 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `the viewer toolbar stays one row however many themes a catalog declares`() {
+  fun `theme choices use a dropdown and secondary actions stay in the renderer row`() {
     val css = assetText("serve.css")
     assertTrue(
-      css.contains(".cp-viewer-bar { display: flex; flex-wrap: nowrap;"),
-      "the bar cannot grow a second line and push the stage down",
-    )
-    assertTrue(
-      css.contains(".cp-viewer-bar > * { flex: none; }") &&
-        css.contains(".cp-theme-bar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0;"),
-      "the theme group is the bar's only elastic member, so it absorbs the squeeze alone",
-    )
-    assertTrue(
-      css.contains("overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;") &&
-        css.contains(
-          ".cp-theme-bar .cp-theme-btn { display: inline-block; flex: 0 1 auto; min-width: 7em;"
-        ) &&
-        css.contains("overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"),
-      "chips shrink (ellipsising) to a floor that keeps them tellable apart, and only past that " +
-        "does the group scroll within itself",
+      css.contains(".cp-theme-menu-panel { position: absolute;") &&
+        css.contains(".cp-theme-menu-panel .cp-theme-bar { display: flex; flex-direction: column;"),
+      "theme choices render in an anchored dropdown",
     )
     // Eight theme chips beside four fixed controls — the published compose-m3 shape, and what the
     // committed `serve-viewer-theme-overflow` golden captures for the visual-diff bot.
@@ -4046,8 +4035,12 @@ class ServeWebFixtureTest {
     assertEquals(
       1,
       crowded.split("class=\"cp-theme cp-theme-bar\"").size - 1,
-      "one theme group on the bar, not one per theme",
+      "the dropdown contains one theme choice group",
     )
+    assertFalse(crowded.contains("class=\"cp-viewer-bar\""), "the old horizontal row is gone")
+    val rendererRow =
+      crowded.substringAfter("<div class=\"cp-preview-primary\"").substringBefore("</div>")
+    assertTrue(rendererRow.contains("<cp-bg-toggle") && rendererRow.contains("Fit width"))
   }
 
   @Test
@@ -5164,15 +5157,12 @@ class ServeWebFixtureTest {
   @Test
   fun `trust badge renders trusted and unverified variants and is absent for a live module`() {
     val trusted = ServeWeb.landingPage(moduleLabel, previews, token, trust = "branch:repo@b")
-    assertTrue(trusted.contains("cp-badge--trusted"), "expected a trusted badge")
-    assertTrue(trusted.contains("✓ trusted"))
-    assertTrue(trusted.contains("producer trust: branch:repo@b"))
+    assertFalse(trusted.contains("class=\"cp-badge"), "trusted catalogs carry no badge")
 
     val unverified = ServeWeb.viewerPage(previews.first(), token, trust = "unverified")
     assertTrue(unverified.contains("cp-badge--unverified"), "expected an unverified badge")
 
-    // A live daemon-backed module carries no trust verdict → no badge element (the CSS still
-    // defines `.cp-badge`, so check for the rendered `class="cp-badge…` span, not the bare string).
+    // A live daemon-backed module carries no trust verdict → no badge element.
     assertTrue(!ServeWeb.landingPage(moduleLabel, previews, token).contains("class=\"cp-badge"))
   }
 

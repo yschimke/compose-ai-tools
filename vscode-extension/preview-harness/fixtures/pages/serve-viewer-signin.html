@@ -53,34 +53,37 @@
 </header>
         <main class="cp-main">
               <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+        <h1 class="cp-head cp-preview-title">Card</h1>
         <code class="cp-preview-id" title="com.example.CardPreview">com.example.CardPreview</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <div class="cp-head-toggles"><details class="cp-theme-menu">
+  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+    <span class="cp-toggle-label">Theme</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
+    <span class="cp-theme-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+  </span></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
       </div>
-
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <a id="cp-live-signin" class="cp-live-toggle cp-live-signin" href="/auth/github/start?return=%2Fp%2FCardPreview" data-github-repo="yschimke/compose-ai-tools" title="Sign in with GitHub (yschimke/compose-ai-tools) to enable Live preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span>Live preview — sign in</span>
           </a>
+<cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
+<button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
 <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
         </span>
       </div>
-      <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-        </span>
-        <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-      </div>
 
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
+      <div class="cp-viewer" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 

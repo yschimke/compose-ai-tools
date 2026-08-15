@@ -232,30 +232,23 @@ object ServeWeb {
   /**
    * Producer-trust badge for a bundle/catalog session ([BundleVerifier.summary]); empty for a live
    * daemon-backed module (trust applies to detached bundles/catalogs, not the operator's own served
-   * module). A non-`unverified` verdict reads as trusted (green ✓); `unverified` is amber (⚠).
+   * module). Positive trust is intentionally silent; only an unverified producer earns a visible
+   * warning badge.
    */
   private fun trustBadge(trust: String?): String {
-    if (trust.isNullOrBlank()) return ""
-    val unverified = trust == "unverified"
-    val cls = if (unverified) "cp-badge cp-badge--unverified" else "cp-badge cp-badge--trusted"
-    val icon = if (unverified) "⚠" else "✓"
-    val label = WebEscaping.htmlEscape(trust)
-    return " <span class=\"$cls\" title=\"producer trust: $label\">$icon $label</span>"
+    if (trust != "unverified") return ""
+    return " <span class=\"cp-badge cp-badge--unverified\" " +
+      "title=\"producer trust: unverified\">⚠ untrusted</span>"
   }
 
   /**
-   * A compact trust badge for a home-index card: the icon + a one-word verdict (`trusted` /
-   * `unverified`) rather than the full basis string, which is too long for a narrow card title. The
-   * full basis is kept in the `title` tooltip and shown in full on the system's own landing.
+   * The viewer's compact producer warning. Trusted catalogs carry no badge; an unverified one is
+   * called out consistently with the home index.
    */
   private fun compactTrustBadge(trust: String?): String {
-    if (trust.isNullOrBlank()) return ""
-    val unverified = trust == "unverified"
-    val cls = if (unverified) "cp-badge cp-badge--unverified" else "cp-badge cp-badge--trusted"
-    val icon = if (unverified) "⚠" else "✓"
-    val word = if (unverified) "unverified" else "trusted"
-    val full = WebEscaping.htmlEscape(trust)
-    return " <span class=\"$cls\" title=\"producer trust: $full\">$icon $word</span>"
+    if (trust != "unverified") return ""
+    return " <span class=\"cp-badge cp-badge--unverified\" " +
+      "title=\"producer trust: unverified\">⚠ untrusted</span>"
   }
 
   /**
@@ -329,34 +322,42 @@ object ServeWeb {
    * delivery sha is a publish marker, while the source sha is the change someone is actually
    * looking for when they go back a version.
    */
-  internal fun revisionsHtml(revisions: CatalogRevisions, hrefFor: (String?) -> String): String {
+  private fun revisionBannerHtml(
+    revisions: CatalogRevisions,
+    hrefFor: (String?) -> String,
+  ): String {
+    val pinned = revisions.pinned ?: return ""
+    val entry = revisions.revisions.firstOrNull { it.commit == pinned }
+    val shaLink =
+      ServeCatalogRevision.treeUrl(revisions.repo, pinned)?.let { url ->
+        "<a href=\"${WebEscaping.htmlEscape(url)}\" target=\"_blank\" rel=\"noopener noreferrer\">" +
+          "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code></a>"
+      } ?: "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code>"
+    val published =
+      entry
+        ?.date
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ", published ${WebEscaping.htmlEscape(prettyDate(it))}" }
+        .orEmpty()
+    return """
+      <section class="cp-pinned" role="note" aria-label="Pinned revision">
+        <span class="cp-pinned-icon" aria-hidden="true">⚓</span>
+        <span>Pinned to catalog revision $shaLink$published — these pixels cannot change.</span>
+        <a class="cp-pinned-current" href="${WebEscaping.htmlEscape(hrefFor(null))}">view current</a>
+      </section>
+      """
+      .trimIndent()
+  }
+
+  internal fun revisionsHtml(
+    revisions: CatalogRevisions,
+    includeBanner: Boolean = true,
+    hrefFor: (String?) -> String,
+  ): String {
     if (revisions.isEmpty) return ""
     val pinned = revisions.pinned
     val current = revisions.revisions.firstOrNull()?.commit
-    val banner =
-      if (pinned == null) ""
-      else {
-        val entry = revisions.revisions.firstOrNull { it.commit == pinned }
-        val shaLink =
-          ServeCatalogRevision.treeUrl(revisions.repo, pinned)?.let { url ->
-            "<a href=\"${WebEscaping.htmlEscape(url)}\" target=\"_blank\" rel=\"noopener noreferrer\">" +
-              "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code></a>"
-          } ?: "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code>"
-        val published =
-          entry
-            ?.date
-            ?.takeIf { it.isNotBlank() }
-            ?.let { ", published ${WebEscaping.htmlEscape(prettyDate(it))}" }
-            .orEmpty()
-        """
-        <section class="cp-pinned" role="note" aria-label="Pinned revision">
-          <span class="cp-pinned-icon" aria-hidden="true">⚓</span>
-          <span>Pinned to catalog revision $shaLink$published — these pixels cannot change.</span>
-          <a class="cp-pinned-current" href="${WebEscaping.htmlEscape(hrefFor(null))}">view current</a>
-        </section>
-        """
-          .trimIndent()
-      }
+    val banner = if (includeBanner) revisionBannerHtml(revisions, hrefFor) else ""
     if (revisions.revisions.isEmpty()) return "$banner\n"
     val rows =
       revisions.revisions.joinToString("\n            ") { revision ->
@@ -401,14 +402,18 @@ object ServeWeb {
     val shownTag =
       if (pinned == null) "<span class=\"cp-revision-tag\">current</span>"
       else "<span class=\"cp-revision-tag cp-revision-tag--pinned\">pinned</span>"
+    val triggerContent =
+      if (pinned == null) shownTag
+      else
+        """<span class="cp-revisions-key">Revision</span>
+          <span class="cp-revision-date">${WebEscaping.htmlEscape(shownDate)}</span>
+          ${shownSha?.let { "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(it)}</code>" }.orEmpty()}
+          $shownTag"""
     return banner +
       """
       <details class="cp-revisions">
         <summary class="cp-revisions-btn">
-          <span class="cp-revisions-key">Revision</span>
-          <span class="cp-revision-date">${WebEscaping.htmlEscape(shownDate)}</span>
-          ${shownSha?.let { "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(it)}</code>" }.orEmpty()}
-          $shownTag
+          $triggerContent
           <span class="cp-revisions-caret" aria-hidden="true">▾</span>
         </summary>
         <div class="cp-revisions-menu">
@@ -3352,19 +3357,23 @@ object ServeWeb {
         el.hidden = false;
         // "not running" is a normal resting state, not a fault — a catalog nobody has rendered on
         // simply has no process yet. Word it so it doesn't read as an error.
-        var label = state.running
-          ? "Render server: connected"
-          : "Render server: not running";
         var count = state.instances || 0;
-        if (state.running) {
-          label += " \u00b7 " + count + (count === 1 ? " instance" : " instances");
-          if (state.activeStreams > 0) label += ", " + state.activeStreams + " live";
-        }
-        el.textContent = label;
+        var catalogDetail = state.running
+          ? count + (count === 1 ? " instance" : " instances") +
+            ", " + (state.activeStreams || 0) + " live"
+          : "not running (starts on demand)";
+        if (state.poolCapacity > 0)
+          catalogDetail += ", pool " + state.pooled + "/" + state.poolCapacity;
+        var overallDetail = (state.overallRunning || 0) + " catalogs running, " +
+          (state.overallActiveStreams || 0) + " live streams";
+        if (state.liveSeatsTotal > 0)
+          overallDetail += ", " + (state.liveSeatsTotal - state.liveSeatsAvailable) + "/" +
+            state.liveSeatsTotal + " seats used";
+        el.innerHTML = '<span class="cp-daemon-dot" aria-hidden="true"></span>' + count;
         el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
-        el.title = state.pooled
-          ? state.pooled + " of " + state.poolCapacity + " pooled daemons resident"
-          : "";
+        el.setAttribute("aria-label", "Render server: " + catalogDetail +
+          ". Overall server: " + overallDetail + ".");
+        el.title = "This catalog: " + catalogDetail + "\nOverall server: " + overallDetail;
       }
       function pollDaemons() {
         if (!daemonUrl || document.visibilityState !== "visible") return;
@@ -8408,8 +8417,6 @@ $rows
     // theme's full name is always readable and the chips are one click away. Under
     // [THEME_CHIPS_INLINE] — a plain light/dark catalog, or one with a theme or two — the bar shows
     // as it always has.
-    val themeChipCount = (if (wearAlwaysDark) 1 else 2) + viewerDeclaredThemes.size
-    val themeOpen = themeChipCount <= THEME_CHIPS_INLINE
     val themeBarHtml =
       themeChipsHtml(
           builtIns =
@@ -8420,7 +8427,7 @@ $rows
         )
         .let {
           "<span class=\"cp-theme cp-theme-bar\" id=\"cp-theme-bar\" role=\"group\"" +
-            " aria-label=\"Preview theme\"${if (themeOpen) "" else " hidden"}>\n" +
+            " aria-label=\"Preview theme\">\n" +
             "          $it\n        </span>"
         }
     // The theme toggle's *value* is seeded server-side from the lane this preview is baked in, then
@@ -8428,19 +8435,17 @@ $rows
     // — the theme is picked without a page load, so a server-rendered label alone would go stale on
     // the first click.
     val themeToggle =
-      disclosureToggleHtml(
-        id = "cp-theme-toggle",
-        controls = "cp-theme-bar",
-        label = "Theme",
-        // Exactly the select's own default rule (`daySelected = viewerTheme != "dark"`), not its
-        // inverse: a preview with neither a uiMode nor a light/dark id token has a null
-        // [viewerTheme] and opens on Day, so anything other than an explicit dark lane is Day here
-        // too. Testing for "light" instead would label every untagged preview Night, contradicting
-        // the selected option beside it until the mutation observer got round to fixing it.
-        value = if (viewerTheme == "dark") "Night" else "Day",
-        open = themeOpen,
-        valueId = "cp-theme-toggle-value",
-      )
+      """
+      <details class="cp-theme-menu">
+        <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+          <span class="cp-toggle-label">Theme</span>
+          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Night" else "Day"}</span>
+          <span class="cp-theme-caret" aria-hidden="true">▾</span>
+        </summary>
+        <div class="cp-theme-menu-panel">$themeBarHtml</div>
+      </details>
+      """
+        .trimIndent()
     // Inspection layers (see inspect.js): what the frame is MADE OF, drawn client-side over the
     // pixels the server already sent — the accessibility focus map, the resolved typography, the
     // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
@@ -8636,26 +8641,11 @@ $rows
         """
           .trimIndent()
           .replace("\n", "\n          ")
-    // Left-hand component nav drawer (default closed) and its toggle — only when the session
-    // carries
-    // sibling previews to move between. The right-hand overrides drawer (.cp-controls) is always
-    // present and defaults open (the `cp-controls-open` class on .cp-viewer).
-    // The theme the viewer is showing: the preview's explicit light/dark token, else the dark-first
-    // (Wear) default. Drives both the stage backing (below) and the collapsed component nav's link
-    // theme, so navigating from a dark preview stays dark.
-    val navDrawer = navDrawerHtml(preview, siblings, basePath, q, viewerTheme)
-    val navToggle =
-      if (navDrawer.isEmpty()) ""
-      else
-        "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
-          "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
-    // The right-hand overrides drawer's toggle, which now sits with the other three disclosures in
-    // the title bar rather than alone at the end of the viewer bar. Server-side it is the one that
-    // starts expanded (`cp-controls-open` on .cp-viewer below); the drawer script collapses it on a
-    // phone, where the preview leads and the drawer opens as a bottom sheet.
+    // The overrides drawer is opt-in: the preview leads at every width, and the toggle opens the
+    // controls only when they are needed.
     val controlsToggle =
       "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-controls-toggle\" " +
-        "aria-expanded=\"true\" aria-controls=\"cp-controls\">⚙ Overrides</button>"
+        "aria-expanded=\"false\" aria-controls=\"cp-controls\">⚙ Overrides</button>"
     // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
     // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
@@ -8668,51 +8658,12 @@ $rows
     // second place, with the two axes torn apart into rows that never named their relationship.
     // Empty for a component with no second render, exactly as the chip rows were.
     val axesTree = componentSubtreeHtml(preview, siblings, basePath, q, viewerDarkFirst)
-    // The axes DISCLOSURE. A component with a wide axis (the published m3-catalog's
-    // `iconbutton-outlined` bakes ~30 states) is a long list, and its only load-bearing fact —
-    // "which render am I on" — fits in the toggle's own label. So the subtree folds behind one
-    // control in the title bar that names the current render, and opens on demand. Inline up to
-    // [AXIS_ROWS_INLINE] rows: a two- or three-render component is a short list that reads better
-    // shown than hidden behind a click.
-    // `+ 1` for the component row, which is itself a render — the default one. Counting only the
-    // children would make the threshold drift the moment the default was folded up into that row:
-    // a five-render component would count four and open, having counted five and folded the day
-    // before, for no reason a reader could see.
-    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size
-    val axisOpen = axisRows <= AXIS_ROWS_INLINE
-    // What the toggle says when it is closed. The subtree folds BOTH axes, so it names both the
-    // axes it folded and the values they hold — a component that varies on state *and* props (RTL,
-    // a locale, a font scale) would otherwise lose the variant it is on the moment the tree went
-    // away, which is exactly the cost this fold is not allowed to have. State leads, as the axis a
-    // reader navigates most; either half drops out when the component does not vary on it.
-    val hasStateAxis =
-      axesTree.isNotBlank() && componentHasAxis(preview, siblings, viewerDarkFirst, "state")
-    val hasPropsAxis =
-      axesTree.isNotBlank() && componentHasAxis(preview, siblings, viewerDarkFirst, "props")
-    val axisName =
-      listOfNotNull("State".takeIf { hasStateAxis }, "Variant".takeIf { hasPropsAxis })
-        .joinToString(" · ")
-    val axisValue =
-      listOfNotNull(
-          stateLabel(preview.state).takeIf { hasStateAxis },
-          propsLabel(preview.props).takeIf { hasPropsAxis },
-        )
-        .joinToString(" · ")
-    val axesToggle =
-      if (axesTree.isBlank()) ""
+    val navDrawer = navDrawerHtml(preview, siblings, basePath, q, viewerTheme, axesTree)
+    val navToggle =
+      if (navDrawer.isEmpty()) ""
       else
-        disclosureToggleHtml(
-          id = "cp-axes-toggle",
-          controls = "cp-axes",
-          label = axisName,
-          value = axisValue,
-          open = axisOpen,
-        )
-    val axesBlock =
-      if (axesTree.isBlank()) ""
-      else
-        "<div class=\"cp-axes\" id=\"cp-axes\"${if (axisOpen) "" else " hidden"}>\n" +
-          "$axesTree\n      </div>"
+        "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
+          "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
     // alternatives, the design-spec chip (top level, not an option inside the combo), the two
     // subtle
@@ -8729,6 +8680,9 @@ $rows
           svgFmtToggle,
           explodeToggle,
           svgMatch,
+          bgPickerHtml("Show the transparent checkerboard behind the preview"),
+          "<button type=\"button\" class=\"cp-bg-btn cp-zoom-toggle\" aria-pressed=\"false\" " +
+            "title=\"Show the preview at full width instead of fitting it to the screen\">Fit width</button>",
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
@@ -8750,7 +8704,9 @@ $rows
     // The revision control, and the attribute that makes the pin reach the pixels: `viewer.js`
     // appends `at=<sha>` to every render request it builds, so the stage, the export links and the
     // Copy PNG button all read the same publish the banner names.
-    val revisionsBlock = revisionsHtml(revisions) { pin -> withPin("$basePath/p/$idSeg$q", pin) }
+    val revisionHref: (String?) -> String = { pin -> withPin("$basePath/p/$idSeg$q", pin) }
+    val revisionMenu = revisionsHtml(revisions, includeBanner = false, hrefFor = revisionHref)
+    val revisionBanner = revisionBannerHtml(revisions, revisionHref)
     val pinnedAttr =
       revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
@@ -8809,10 +8765,10 @@ $rows
     // the page (left column, then the two rows below the title, then the right column), and each
     // closed one still names its current value, so folding a row never costs the fact it carried.
     val headToggles =
-      listOf(navToggle, axesToggle, themeToggle, controlsToggle).filter { it.isNotBlank() }
+      listOf(navToggle, themeToggle, revisionMenu, controlsToggle).filter { it.isNotBlank() }
     val headTogglesHtml =
       if (headToggles.isEmpty()) ""
-      else "\n        <span class=\"cp-head-toggles\">${headToggles.joinToString("")}</span>"
+      else "\n        <div class=\"cp-head-toggles\">${headToggles.joinToString("")}</div>"
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
@@ -8822,8 +8778,7 @@ $rows
         <code class="cp-preview-id" title="$idText">$idText</code>
         ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
       </div>
-      $revisionsBlock${degradeBanner(degradations)}
-      $axesBlock
+      $revisionBanner${degradeBanner(degradations)}
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
@@ -8831,13 +8786,8 @@ $rows
       $modeInputs
         </span>
       </div>
-      <div class="cp-viewer-bar">
-        $themeBarHtml
-        ${bgPickerHtml("Show the transparent checkerboard behind the preview")}
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-      </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
+      <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
@@ -8957,6 +8907,7 @@ $rows
      * same theme-preserving behaviour as the state/variant switchers.
      */
     theme: String?,
+    axesTree: String = "",
   ): String {
     // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
     // reads as a list of components, not of every baked state/theme/props/size permutation
@@ -8978,11 +8929,15 @@ $rows
             else -> it.default
           }
         }
+        .sortedBy { if (componentKey(it) == componentKey(preview)) 0 else 1 }
     // Nothing to navigate to when the collapsed list is empty or holds only the current component.
     val currentKey = componentKey(preview)
-    if (representatives.none { componentKey(it) != currentKey }) return ""
+    if (axesTree.isBlank() && representatives.none { componentKey(it) != currentKey }) return ""
+    val listRepresentatives =
+      if (axesTree.isBlank()) representatives
+      else representatives.filterNot { componentKey(it) == currentKey }
     val items =
-      representatives.joinToString("\n") { p ->
+      listRepresentatives.joinToString("\n") { p ->
         val segItem = WebEscaping.urlEncodeSegment(p.id)
         val labelItem = WebEscaping.htmlEscape(previewDisplayName(p))
         val idItem = WebEscaping.htmlEscape(p.id)
@@ -9003,6 +8958,7 @@ $rows
       <aside class="cp-nav" id="cp-nav" aria-label="Components">
         <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
         <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+        ${if (axesTree.isBlank()) "" else "<div class=\"cp-nav-current\">$axesTree</div>"}
         <ul class="cp-nav-list" id="cp-nav-list">
         $items
         </ul>

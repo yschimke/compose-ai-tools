@@ -53,14 +53,44 @@
 </header>
         <main class="cp-main">
               <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Icon Button Outlined · default (light) <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+        <h1 class="cp-head cp-preview-title">Icon Button Outlined · default (light)</h1>
         <code class="cp-preview-id" title="iconbutton-outlined__ideal__default__light">iconbutton-outlined__ideal__default__light</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-axes-toggle" aria-expanded="false" aria-controls="cp-axes"><span class="cp-toggle-label">State</span><span class="cp-toggle-value">Default</span></button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="false" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <div class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><details class="cp-theme-menu">
+  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+    <span class="cp-toggle-label">Theme</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
+    <span class="cp-theme-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineLightThemeCatalog" data-theme-mode="light">Baseline Light</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineDarkThemeCatalog" data-theme-mode="dark">Baseline Dark</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" data-theme-mode="dark">Brand Dark</button>
+  </span></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
       </div>
 
-      <div class="cp-axes" id="cp-axes" hidden>
-<nav class="cp-tree cp-axes-tree" aria-label="Component renders">
+      <div class="cp-preview-primary" aria-label="Preview renderer">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
+            <span class="cp-live-dot" aria-hidden="true"></span>
+            <span id="cp-live-toggle-label">Live preview</span>
+          </button>
+<cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
+<button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
+        <span class="cp-mode-hint" id="cp-mode-hint"></span>
+        <span class="cp-modes-inputs" aria-hidden="true">
+      <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
+        </span>
+      </div>
+
+      <div class="cp-viewer" data-bg-theme="light" data-preview-id="iconbutton-outlined__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
+              <aside class="cp-nav" id="cp-nav" aria-label="Components">
+        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
+        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+        <div class="cp-nav-current"><nav class="cp-tree cp-axes-tree" aria-label="Component renders">
   <ul class="cp-tree-list" role="tree">
     <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__default__light?token=demo-token-fixture&amp;session=compose-m3" aria-expanded="true" aria-owns="cp-axes-tree-variants" aria-current="page">Icon Button Outlined · default (light)<span class="cp-tree-count">22</span></a>
       <ul class="cp-tree-children cp-tree-variants" id="cp-axes-tree-variants" role="group">
@@ -88,38 +118,9 @@
       </ul>
     </li>
   </ul>
-</nav>
-      </div>
-      <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
-            <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
-          </button>
-        <span class="cp-mode-hint" id="cp-mode-hint"></span>
-        <span class="cp-modes-inputs" aria-hidden="true">
-      <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
-        </span>
-      </div>
-      <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme" hidden>
-          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineLightThemeCatalog" data-theme-mode="light">Baseline Light</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineDarkThemeCatalog" data-theme-mode="dark">Baseline Dark</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" data-theme-mode="dark">Brand Dark</button>
-        </span>
-        <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-      </div>
-
-      <div class="cp-viewer cp-controls-open" data-bg-theme="light" data-preview-id="iconbutton-outlined__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
-              <aside class="cp-nav" id="cp-nav" aria-label="Components">
-        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
-        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+</nav></div>
         <ul class="cp-nav-list" id="cp-nav-list">
-        <li><a class="cp-nav-item" href="/p/iconbutton-outlined__ideal__default__light?token=demo-token-fixture&session=compose-m3" aria-current="page" title="iconbutton-outlined__ideal__default__light" data-search="Icon Button Outlined · default (light) iconbutton-outlined__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/iconbutton-outlined__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Icon Button Outlined · default (light)</span></a></li>
-<li><a class="cp-nav-item" href="/p/checkbox__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__default__light" data-search="Checkbox · Checked (light) checkbox__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Checked (light)</span></a></li>
+        <li><a class="cp-nav-item" href="/p/checkbox__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__default__light" data-search="Checkbox · Checked (light) checkbox__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Checked (light)</span></a></li>
 <li><a class="cp-nav-item" href="/p/radiobutton__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__default__light" data-search="Radio · Selected (light) radiobutton__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Selected (light)</span></a></li>
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>

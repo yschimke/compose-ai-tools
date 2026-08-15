@@ -204,7 +204,8 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    `space-between` their absence slid the nav between centred and hard-right from page to page.
    A `1fr auto 1fr` grid pins the brand left and the nav right whatever the middle holds. */
 .cp-site-header { min-height: 56px; margin-bottom: 14px; padding: 4px 0 8px;
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; }
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: 18px; }
 /* The lead slot: the brand, then this page's breadcrumb / back link. Navigation belongs in the
    navigation bar — as the body's first line it spent a whole row (plus its margin) restating
    where you are, and on the viewer that row is the difference between the render being on screen
@@ -1059,6 +1060,23 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    the row it belongs to. */
 .cp-head-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin-left: auto; align-self: center; }
+.cp-head-toggles .cp-revisions { margin: 0; font-size: inherit; }
+.cp-head-toggles .cp-revisions-btn { min-height: 34px; padding: 6px 14px; }
+.cp-theme-menu { position: relative; }
+.cp-theme-menu > summary { list-style: none; }
+.cp-theme-menu > summary::-webkit-details-marker { display: none; }
+.cp-theme-menu[open] > summary { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
+.cp-theme-caret { font-size: 0.85em; opacity: 0.7; }
+.cp-theme-menu[open] .cp-theme-caret { transform: rotate(180deg); }
+.cp-theme-menu-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+  width: max-content; max-width: min(360px, calc(100vw - 32px)); padding: 8px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level2); }
+.cp-theme-menu-panel .cp-theme-bar { display: flex; flex-direction: column; align-items: stretch;
+  gap: 2px; overflow: visible; padding: 0; }
+.cp-theme-menu-panel .cp-theme-btn { min-width: 12em; width: 100%; text-align: left; }
 /* The axis toggles are the drawer toggle's compact sibling: same pill, same selected language,
    but two-part — the axis it folds, then the value that axis currently holds. Four full-size
    drawer pills on the title row of a 1100px laptop wrap; at this size they don't. */
@@ -1381,6 +1399,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-high); color: inherit; }
 .cp-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cp-nav-current { padding-bottom: 8px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.cp-nav-current .cp-axes-tree { margin: 0; max-width: none; }
+.cp-nav-current .cp-axes-tree .cp-tree-variants { columns: auto; }
 /* M3 navigation-drawer item: 56dp tall, full-round, `secondary-container` when it is the page. */
 .cp-nav-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 14px;
   border-radius: var(--md-sys-shape-corner-full);
@@ -1983,17 +2004,20 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 /* Render-server badge (see ServeWeb.presenceScript). Catalogs open their daemon on first real use,
    so "not running" is a normal resting state — styled as neutral information, not a fault. */
 .cp-daemon-status {
-  display: inline-block;
-  padding: 3px 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+  min-width: 38px; justify-content: center;
+  padding: 3px 8px;
   border-radius: var(--md-sys-shape-corner-full);
   font-size: var(--md-sys-typescale-label-medium-size);
   letter-spacing: var(--md-sys-typescale-label-medium-tracking);
   line-height: 1.6;
-  border: 1px solid currentColor;
-  opacity: 0.7;
+  border: 0;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
 }
+.cp-daemon-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .cp-daemon-status[data-cp-daemon-running="1"] {
-  opacity: 1;
+  background: light-dark(#d7f0dd, #0d3a1c); color: light-dark(#10521f, #86dc9d);
 }
 /* The `display` above outranks the UA's `[hidden] { display: none }`, so the badge has to opt back
    out explicitly — otherwise the reserved slot paints an empty pill before the first poll answers
