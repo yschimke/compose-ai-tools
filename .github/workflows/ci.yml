@@ -1205,6 +1205,13 @@ jobs:
       # kept the public host's playground pinned to one catalog with the Android modes off.
       - name: Run deploy compose env-passthrough tests
         run: ./deploy/image/test-compose-env-passthrough.sh
+      # The version-control config overlay is opt-in, so nothing exercises it on the way to a
+      # release — a wrong source path or mount target is found on a box, after a restart, serving a
+      # stale catalog set. Every failure mode is silent: a missing source makes Docker create an
+      # empty directory at the mount point, and a dropped `:ro` lets the admin API write back into
+      # the git working tree.
+      - name: Run deploy config-mount tests
+        run: ./deploy/image/test-deploy-config-mount.sh
       # A sandbox profile the docs recommend but the image cannot launch is silent in the posture
       # this image ships in: a repo-access-gated host admits the playground before it looks at the
       # jail, so a missing binary logs a preflight warning and serves UNCONTAINED rather than

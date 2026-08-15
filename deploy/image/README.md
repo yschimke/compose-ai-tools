@@ -66,6 +66,96 @@ DOMAIN=preview.example.com ./setup.sh
 Pin a version with `IMAGE_TAG=0.16.33` in `.env` (a bare tag; defaults to the
 `latest` tag when unset).
 
+### Serving a catalog on its own hostname
+
+A published catalog can additionally be served on a hostname of its own, where it presents as the
+whole server — `m3.preview.coo.ee` shows what `preview.coo.ee/m3-catalog/` shows, with the catalog's
+landing at `/` and no front door. What that changes about the pages is
+[docs/public-preview-server.md](../../docs/public-preview-server.md#top-level-sites-one-catalog-on-a-hostname-of-its-own);
+what it takes to stand one up is three things, in two places.
+
+**1. DNS.** A `CNAME` to the box's existing hostname is the simplest form and is what
+`m3.preview.coo.ee` uses — it is a subdomain, so there is no apex-CNAME problem, the IP stays in one
+place, and an `AAAA` added later is inherited for free:
+
+```
+m3.preview.coo.ee.  CNAME  preview.coo.ee.
+```
+
+An `A` record straight to the host IP works identically; it is just a second copy of the IP to keep
+in step. Let it resolve before the restart below — Caddy needs it to answer the HTTP-01 challenge,
+which follows the alias without caring that it is one.
+
+**2. `.env` on the box** — **both** variables, because they configure different processes:
+
+```bash
+SERVE_SITES=m3.preview.coo.ee=m3-catalog   # the app: which catalog this Host means
+SITE_DOMAINS=m3.preview.coo.ee             # Caddy: match the name AND get a cert for it
+```
+
+Multiple sites are comma-separated in `SERVE_SITES`, space- or comma-separated in `SITE_DOMAINS`.
+**Certificates need no configuration beyond that second line** — `SITE_DOMAINS` lands on the
+Caddyfile's site-address line beside `{$DOMAIN}`, and Caddy provisions and renews a Let's Encrypt
+cert per name from there. Omit it and the site is configured in the app and unreachable at the edge:
+Caddy never matches the hostname, so it never requests a cert for it. Keep the two in step — a name
+in one and not the other is either a site nothing routes to or a hostname the app doesn't recognise.
+
+**3. Recreate both services.** `./rollout.sh` won't do it: it rolls `preview` only when the *image*
+changes, and `caddy` isn't rollable at all (fixed 80/443 ports). An env change needs a recreate:
+
+```bash
+docker compose up -d          # preview picks up SERVE_SITES, caddy picks up SITE_DOMAINS
+curl -sI https://m3.preview.coo.ee/ | head -1                            # 200 — catalog landing at /
+curl -sI https://m3.preview.coo.ee/m3-catalog/p/button-filled | head -1  # 308 → /p/button-filled
+curl -sI https://m3.preview.coo.ee/wear-m3/ | head -1                    # 404 — neighbours unreachable
+```
+
+Sites are read **at startup**, so this is a restart either way; the additive `/admin/catalogs`
+reconcile does not carry them. GitHub sign-in is deliberately not offered on a site host (the
+`cp_gh_state` cookie is host-only and this box pins a callback origin), so its live and playground
+surfaces stay snapshot-only.
+
+> `catalogs.json`'s `"sites"` key says the same thing as durable config — but on this image that
+> file is a volume the box seeds once and never overwrites, so committing a site to
+> `deploy/preview.coo.ee/catalogs.json` does **not** deliver it: `publish-config-to-box.sh`
+> reconciles catalogs, groups and producers, not `sites`. Either set `SERVE_SITES` as above and
+> accept that `.env` is untracked, or adopt the overlay below and let the committed file be the
+> source of truth.
+
+### Config from version control (`docker-compose.deploy-config.yml`)
+
+`/config/catalogs.json` and `/config/producers.json` live on the `preview_config` **named volume**,
+seeded on first boot and never overwritten (#2879 / #2897) so an image roll can't stomp a runtime
+edit. The cost is that config the box has never seen cannot arrive by `git pull` — only by a
+hand-edit or by the additive admin reconcile, which is blind to `sites`.
+
+The opt-in overlay in this directory makes the committed deployment config authoritative instead:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.deploy-config.yml up -d
+```
+
+or set `COMPOSE_FILE=docker-compose.yml:docker-compose.deploy-config.yml` in `.env` so every later
+`docker compose` here picks it up. It bind-mounts the two files read-only from `DEPLOY_CONFIG_DIR`
+(default `../preview.coo.ee`, the same variable `publish-config-to-box.sh` uses), so deploying
+config becomes `git pull && docker compose up -d` and `sites` rides along with everything else.
+
+Read-only does **not** break the admin API: `ServeCatalogAdmin.persist()` fails soft, so
+`POST /admin/catalogs` still registers and serves the catalog and only reports back
+`"warning": "not persisted: …"`. In steady state the reconcile never reaches that path — every entry
+it POSTs is already in the file the box booted from, so the admin API answers `409`, which the
+script counts as success. What you give up is a runtime edit outliving a restart, which is the
+point: that edit is drift from `main`.
+
+> **Diff before adopting this on a box that has been running.** The volume file is a superset
+> whenever anyone added a catalog or a trusted producer directly on the host, and the overlay swaps
+> it wholesale — anything on the box and not in git stops being served at the next restart, with
+> nothing logged. Compare first, and commit whatever is missing:
+> ```bash
+> curl -sH "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" https://<host>/admin/catalogs
+> docker compose exec preview cat /config/catalogs.json
+> ```
+
 ### GitHub auth on `preview.coo.ee`
 
 To keep catalog browsing public while requiring GitHub sign-in for live sessions and playground,
@@ -432,6 +522,7 @@ docker run -d --restart always -p 8080:8080 \
 | `Dockerfile` | Downloads the released CLI and carries the published Maven modules + live-render daemons. |
 | `entrypoint.sh` | Maps `$PORT`/`$SERVE_TOKEN` onto serve flags; generous `--timeout`. |
 | `docker-compose.yml` + `Caddyfile` | Pull the image + Caddy auto-HTTPS + zero-downtime (`rollout`) / Watchtower auto-updates + the `hook` instant-roll webhook. |
+| `docker-compose.deploy-config.yml` + `test-deploy-config-mount.sh` | Opt-in overlay serving a deployment's `catalogs.json` / `producers.json` read-only from version control instead of the volume (see *Config from version control*), and its offline self-test (run by `ci.yml`). |
 | `rollout.sh` | Poll loop / one-shot that pulls `preview` and rolls it via docker-rollout. |
 | `deploy-hook.sh` | Token-gated `POST /__hooks/rollout` webhook (the `hook` service) that runs `rollout.sh` on demand — instant roll on publish. |
 | `docker-rollout` | Vendored [docker-rollout](https://github.com/wowu/docker-rollout) CLI plugin (adds `docker rollout`). |
