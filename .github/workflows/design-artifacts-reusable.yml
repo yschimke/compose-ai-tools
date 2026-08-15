@@ -914,9 +914,14 @@ jobs:
           # and the verifier's `parseArgs` is strict — an older checkout would die with
           # ERR_PARSE_ARGS_UNKNOWN_OPTION before verifying anything, turning a pin into a broken
           # publish. Same capability-probe shape the CLI checks above use, for the same reason.
+          # Capture the usage text first and test it separately. The probe prints usage and exits
+          # 2 by design, and this step runs under `pipefail`, so `node … | grep -q` would carry
+          # node's 2 through the pipeline and read as "unsupported" on EVERY driver — silently
+          # disabling the exemption the flag exists to deliver.
           verifier=compose-ai-tools/scripts/design-artifacts/verify-shard-renders.mjs
+          verifier_usage=$(node "$verifier" 2>&1 || true)
           spec_arg=()
-          if node "$verifier" 2>&1 | grep -q -- '--spec'; then
+          if grep -q -- '--spec' <<<"$verifier_usage"; then
             spec_arg=(--spec "${{ inputs.spec }}")
           else
             echo "::notice title=Driver predates --spec::the pinned driver-ref's verify-shard-renders.mjs has no --spec; no-sticker previews will not be exempted."
