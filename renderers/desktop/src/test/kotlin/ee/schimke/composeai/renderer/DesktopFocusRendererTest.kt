@@ -34,10 +34,11 @@ class DesktopFocusRendererTest {
     name: String,
     focus: DesktopFocusIntent?,
     functionName: String = "FocusableButtonRow",
+    hoverIndex: Int? = null,
   ): Pair<File, Boolean> {
     val out = File(tempFolder.newFolder(name), "$name.png")
     val drove =
-      if (focus == null) {
+      if (focus == null && hoverIndex == null) {
         renderPreview(
           className = fixtureClass,
           functionName = functionName,
@@ -70,6 +71,7 @@ class DesktopFocusRendererTest {
           previewArgs = emptyList(),
           localeTag = null,
           focus = focus,
+          hoverIndex = hoverIndex,
         )
       }
     // Keep the captures for the PR's visual evidence (build dir, not committed).
@@ -165,6 +167,15 @@ class DesktopFocusRendererTest {
     val pressed =
       bytes(render("desktop-focus-press", DesktopFocusIntent(tabIndex = 0, pressed = true)).first)
     assertNotEquals("pressed capture must differ from the focused one", focused, pressed)
+  }
+
+  /** Hover uses a real mouse move and must not need a focus walk to change the component state. */
+  @Test
+  fun hoveredCaptureDiffersFromUndrivenCapture() {
+    val plain = bytes(render("desktop-hover-none", null).first)
+    val (hovered, drove) = render("desktop-hover-0", null, hoverIndex = 0)
+    assertTrue("hover must find the first interactive node", drove)
+    assertNotEquals("hovered capture must differ from the undriven one", plain, bytes(hovered))
   }
 
   /**

@@ -255,6 +255,7 @@ fun main(args: Array<String>) {
   val focusEnterPlacesFocus = args.getOrNull(35)?.toBoolean() ?: false
   val focusPressed = args.getOrNull(36)?.toBoolean() ?: false
   val focusOverlay = args.getOrNull(37)?.toBoolean() ?: false
+  val hoverIndex = args.getOrNull(38)?.toIntOrNull()?.takeIf { it >= 0 }
   val focusIntent: DesktopFocusIntent? =
     when {
       focusDirections.isNotEmpty() ->
@@ -476,7 +477,7 @@ fun main(args: Array<String>) {
           fontScale = fontScale,
         )
       } else if (
-        focusIntent != null &&
+        (focusIntent != null || hoverIndex != null) &&
           scrollDispatchMode != DesktopScrollMode.LONG &&
           scrollDispatchMode != DesktopScrollMode.GIF
       ) {
@@ -508,6 +509,7 @@ fun main(args: Array<String>) {
             previewArgs = previewArgs,
             localeTag = localeTag,
             focus = focusIntent,
+            hoverIndex = hoverIndex,
             scrollToEnd = scrollDispatchMode == DesktopScrollMode.END,
             scrollAxis = scrollAxis,
             scrollMaxScrollPx = scrollMaxScrollPx,

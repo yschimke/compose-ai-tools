@@ -269,6 +269,9 @@ data class FocusCapture(
   val pressed: Boolean = false,
 )
 
+/** Hover state driven by a real pointer move without first focusing the target. */
+@Serializable data class HoverCapture(val targetIndex: Int = 0)
+
 /**
  * `@FocusedPreview(gif = true)` capture state. Carries the per-step focus instructions discovery
  * built from `[indices]` / `[traverse]`; the renderer drives each step through the same
@@ -347,8 +350,8 @@ data class GestureHintCapture(
 
 /**
  * Per-preview Android runtime-permission grant state discovered from a `@PermissionPreview`
- * annotation (issue #3676). Non-null when the annotation contributed at least one usable entry;
- * the renderer builds `:data-permissions-connector`'s `PermissionsOverrideExtension` from it, whose
+ * annotation (issue #3676). Non-null when the annotation contributed at least one usable entry; the
+ * renderer builds `:data-permissions-connector`'s `PermissionsOverrideExtension` from it, whose
  * construction seeds Robolectric's `ShadowApplication` grant set **before** the first composition
  * pass — the same controller daemon-driven `renderNow.overrides.permissions` drives through the
  * connector's planner.
@@ -674,6 +677,8 @@ data class Capture(
   val animation: AnimationCapture? = null,
   /** `null` → no focus drive. Set when the preview carries a `@FocusedPreview` annotation. */
   val focus: FocusCapture? = null,
+  /** `null` → no pointer-hover drive. */
+  val hover: HoverCapture? = null,
   /**
    * `null` → no focus-driven GIF. Set when the preview carries `@FocusedPreview(gif = true)`.
    * Mutually exclusive with [focus] on the same capture — the GIF capture owns its steps inline.
@@ -908,15 +913,19 @@ data class OverrideSeed(
 
 /**
  * A named override variant sourced from an `@OverrideVariant` annotation. Discovery emits one extra
- * synthetic [PreviewInfo] per variant (per multipreview member), carrying these [seeds] on
- * [PreviewInfo.overrides]; the renderer seeds them via `PreviewOverrideController.set(...)` before
- * composing, so the same preview function renders once more with the knob(s) flipped. [name] is the
- * `_VARIANT_<name>` render-output tag and the variant's catalog `state`.
+ * synthetic [PreviewInfo] per variant (per multipreview member), carrying these [seeds] and an
+ * optional real [interaction] on [PreviewInfo.overrides]. Discovery materializes the interaction
+ * onto the variant's capture; renderers seed knob values via `PreviewOverrideController.set(...)`
+ * before composing. [name] is the `_VARIANT_<name>` render-output tag and catalog `state`.
  */
 @Serializable
 data class OverrideVariantSpec(
   val name: String,
   val seeds: List<OverrideSeed>,
+  /** Real harness state, when this variant is more than a named knob seed. */
+  val interaction: OverrideVariantInteraction? = null,
+  /** Zero-based target among the preview's interactive nodes. */
+  val interactionIndex: Int = 0,
   /**
    * The **full axis assignment** this variant represents, when it came from a `@PreviewAxis` cross
    * product rather than a hand-written `@OverrideVariant` — `[size=xs, shape=square]`.
@@ -933,6 +942,13 @@ data class OverrideVariantSpec(
    */
   val props: List<CatalogVariantProp> = emptyList(),
 )
+
+@Serializable
+enum class OverrideVariantInteraction {
+  Hovered,
+  Focused,
+  Pressed,
+}
 
 @Serializable
 data class PreviewInfo(

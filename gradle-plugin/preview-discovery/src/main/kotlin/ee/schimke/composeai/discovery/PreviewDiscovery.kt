@@ -1527,11 +1527,11 @@ object PreviewDiscovery {
    * filename of the form `<readable>-<digest>`:
    *
    * 1. **`<readable>`** — the last dotted segment of the preview id (function name plus any
-   *    `@Preview(name = …)` variant suffix), with every run of non-alphanumeric characters collapsed
-   *    to a single `_`. So `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round`
-   *    contributes `ActivityListPreview_Devices_Large_Round`. Capped at [MAX_READABLE_STEM] chars so
-   *    a stem plus its structural suffixes stays inside the 255-byte `NAME_MAX` every mainstream
-   *    filesystem enforces.
+   *    `@Preview(name = …)` variant suffix), with every run of non-alphanumeric characters
+   *    collapsed to a single `_`. So `com.example.PreviewsKt.ActivityListPreview_Devices - Large
+   *    Round` contributes `ActivityListPreview_Devices_Large_Round`. Capped at [MAX_READABLE_STEM]
+   *    chars so a stem plus its structural suffixes stays inside the 255-byte `NAME_MAX` every
+   *    mainstream filesystem enforces.
    * 2. **`-<digest>`** — [RENDER_STEM_DIGEST_CHARS] hex chars of `sha256(preview.id)`, taken over
    *    the id verbatim. `-` is an unambiguous delimiter here: [sanitiseSegment] collapses it inside
    *    a segment, so it can never occur in `<readable>`.
@@ -1546,15 +1546,16 @@ object PreviewDiscovery {
    *   shortest-unique-suffix walk read every sibling, so an unrelated addition silently renamed
    *   existing PNGs — which breaks commit-pinned render URLs and makes base-vs-head visual diffing
    *   see a rename as delete + add.
-   * - *Collision-free.* Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get distinct
-   *   digests. The old positional `_<idx>` tiebreaker minted names without checking them against
-   *   real stems, so a preview genuinely named `Foo_bar_1` could be silently overwritten.
-   * - *Case-safe.* `Foo_Dark` and `Foo_dark` are distinct ids, so they get distinct digests and stay
-   *   distinct files on the case-insensitive filesystems (APFS, NTFS) where the readable parts alone
-   *   would collide.
+   * - *Collision-free.* Distinct ids that sanitise identically (`Foo_bar` vs `Foo-bar`) get
+   *   distinct digests. The old positional `_<idx>` tiebreaker minted names without checking them
+   *   against real stems, so a preview genuinely named `Foo_bar_1` could be silently overwritten.
+   * - *Case-safe.* `Foo_Dark` and `Foo_dark` are distinct ids, so they get distinct digests and
+   *   stay distinct files on the case-insensitive filesystems (APFS, NTFS) where the readable parts
+   *   alone would collide.
    * - *Suffix-safe.* Structural suffixes are appended after the whole stem, so a preview named
    *   `Logo_animated` lands on `Logo_animated-<digestA>.png` while `Logo`'s Lottie sidecar lands on
-   *   `Logo-<digestB>_animated.png`. The digest separates the two namespaces that used to share `_`.
+   *   `Logo-<digestB>_animated.png`. The digest separates the two namespaces that used to share
+   *   `_`.
    * - *Reserved-name-safe.* A preview named `CON` or `NUL` becomes `CON-<digest>`, which is not a
    *   Windows reserved device name.
    *
@@ -1650,18 +1651,17 @@ object PreviewDiscovery {
     previews: List<PreviewInfo>,
     indices: Set<Int>,
     digestChars: Int,
-  ): List<PreviewInfo> =
-    previews.mapIndexed { i, preview ->
-      if (i !in indices) preview
-      else {
-        val suffix = "-${idDigest(preview.id, digestChars)}"
-        preview.copy(
-          captures =
-            preview.captures.map { it.copy(renderOutput = tagLeaf(it.renderOutput, suffix)) },
-          dataProducts = preview.dataProducts.map { it.copy(output = tagLeaf(it.output, suffix)) },
-        )
-      }
+  ): List<PreviewInfo> = previews.mapIndexed { i, preview ->
+    if (i !in indices) preview
+    else {
+      val suffix = "-${idDigest(preview.id, digestChars)}"
+      preview.copy(
+        captures =
+          preview.captures.map { it.copy(renderOutput = tagLeaf(it.renderOutput, suffix)) },
+        dataProducts = preview.dataProducts.map { it.copy(output = tagLeaf(it.output, suffix)) },
+      )
     }
+  }
 
   /**
    * `dir/stem.ext` → `dir/stem<suffix>.ext`, leaving the directory and the full extension alone.
@@ -1726,9 +1726,9 @@ object PreviewDiscovery {
    *
    * Only the tied previews are touched, so one freak pair cannot lengthen an unrelated preview's
    * filename — and because the replacement is still a pure function of the id, the result stays
-   * stable under reordering. That is the property the old positional `_<idx>` tiebreaker lacked:
-   * it indexed into the manifest, so it both churned on reordering and could mint a name that
-   * collided with a real preview's.
+   * stable under reordering. That is the property the old positional `_<idx>` tiebreaker lacked: it
+   * indexed into the manifest, so it both churned on reordering and could mint a name that collided
+   * with a real preview's.
    */
   private fun disambiguateDigestTies(
     stems: List<String>,
@@ -1738,8 +1738,7 @@ object PreviewDiscovery {
     // `Foo_Dark-<d>.png` and `Foo_dark-<d>.png` do. Grouping case-sensitively here would let a
     // case-only pair that also tied on the digest slip through the backstop and overwrite. The
     // stems themselves keep their original casing — only the tie test folds.
-    val tied =
-      stems.groupingBy { it.lowercase() }.eachCount().filterValues { it > 1 }.keys
+    val tied = stems.groupingBy { it.lowercase() }.eachCount().filterValues { it > 1 }.keys
     if (tied.isEmpty()) return stems
     return stems.mapIndexed { i, stem ->
       if (stem.lowercase() !in tied) stem
@@ -2085,9 +2084,10 @@ object PreviewDiscovery {
   /**
    * Derives a synthetic override-variant preview from a rendered [base]: same function, a
    * `_VARIANT_<name>`-suffixed id + render outputs, the [spec]'s seeds carried on
-   * [PreviewInfo.overrides] for the renderer to apply, and no data products (a state variant
-   * doesn't re-emit the heavy scroll/animation products). The unchanged `functionName` is what lets
-   * the design-catalog fold merge the variant image back under its primary sticker.
+   * [PreviewInfo.overrides] for the renderer to apply, any requested harness interaction stamped
+   * onto its capture, and no data products (a state variant doesn't re-emit the heavy
+   * scroll/animation products). The unchanged `functionName` is what lets the design-catalog fold
+   * merge the variant image back under its primary sticker.
    */
   private fun overrideVariantPreview(base: PreviewInfo, spec: OverrideVariantSpec): PreviewInfo {
     val tag = "_VARIANT_${spec.name}"
@@ -2095,7 +2095,30 @@ object PreviewDiscovery {
       id = base.id + tag,
       overrides = spec,
       captures =
-        base.captures.map { it.copy(renderOutput = insertRenderTag(it.renderOutput, tag)) },
+        base.captures.map { capture ->
+          val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
+          when (spec.interaction) {
+            OverrideVariantInteraction.Focused ->
+              tagged.copy(
+                focus = FocusCapture(tabIndex = spec.interactionIndex),
+                focusGif = null,
+                hover = null,
+              )
+            OverrideVariantInteraction.Pressed ->
+              tagged.copy(
+                focus = FocusCapture(tabIndex = spec.interactionIndex, pressed = true),
+                focusGif = null,
+                hover = null,
+              )
+            OverrideVariantInteraction.Hovered ->
+              tagged.copy(
+                focus = null,
+                focusGif = null,
+                hover = HoverCapture(targetIndex = spec.interactionIndex),
+              )
+            null -> tagged
+          }
+        },
       dataProducts = emptyList(),
     )
   }
@@ -2113,8 +2136,8 @@ object PreviewDiscovery {
    * Reads `@OverrideVariant` annotations (repeatable — direct instances or the synthetic
    * `.Container` holder Kotlin generates for the repeated case) into one [OverrideVariantSpec]
    * each. Each per-type array entry is `"key=value"` / `"key#index=value"`; the array it lives in
-   * fixes its [OverrideSeedKind]. A variant that names no parseable seed is dropped (it would
-   * render identically to the base).
+   * fixes its [OverrideSeedKind]. A variant that names neither a parseable seed nor a harness
+   * interaction is dropped (it would render identically to the base).
    *
    * Variants may be **hoisted onto a multi-preview-style annotation class** so a matrix several
    * components share is declared once (`@Target` includes `ANNOTATION_CLASS`; see `OverrideVariant`
@@ -2157,8 +2180,20 @@ object PreviewDiscovery {
           readOverrideSeeds(pv.getValue("ints"), OverrideSeedKind.INT) +
           readOverrideSeeds(pv.getValue("floats"), OverrideSeedKind.FLOAT) +
           readOverrideSeeds(pv.getValue("colors"), OverrideSeedKind.COLOR)
-      if (seeds.isEmpty()) continue
-      val spec = OverrideVariantSpec(name = name, seeds = seeds)
+      val interaction =
+        (pv.getValue("interaction") as? AnnotationEnumValue)
+          ?.valueName
+          ?.takeUnless { it == "None" }
+          ?.let { runCatching { OverrideVariantInteraction.valueOf(it) }.getOrNull() }
+      if (seeds.isEmpty() && interaction == null) continue
+      val interactionIndex = ((pv.getValue("interactionIndex") as? Int) ?: 0).coerceAtLeast(0)
+      val spec =
+        OverrideVariantSpec(
+          name = name,
+          seeds = seeds,
+          interaction = interaction,
+          interactionIndex = interactionIndex,
+        )
       val existing = specs.putIfAbsent(name, spec)
       // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once
       // flattened by ClassGraph and once by the explicit meta-annotation walk — is the common case

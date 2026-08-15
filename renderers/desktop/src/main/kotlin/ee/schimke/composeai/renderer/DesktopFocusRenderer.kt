@@ -10,12 +10,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
@@ -144,7 +148,8 @@ fun renderFocusPreview(
   wrapHeight: Boolean,
   previewArgs: List<Any?>,
   localeTag: String?,
-  focus: DesktopFocusIntent,
+  focus: DesktopFocusIntent? = null,
+  hoverIndex: Int? = null,
   /**
    * `@ScrollingPreview(END)` on the same capture: drive the scrollable to its content end *before*
    * walking focus, so a capture carrying both intents documents both. Without this the focus branch
@@ -163,6 +168,7 @@ fun renderFocusPreview(
   maxHeightPx: Int? = null,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
+  require(focus != null || hoverIndex != null) { "focus or hover intent required" }
   val clazz = Class.forName(className)
   // Reflection + wrapper resolution are [renderPreview]'s, not near-copies: an overload lookup
   // without its `argsMatch` filter can pick a same-arity-but-wrong-types sibling, and a wrapper
@@ -263,13 +269,14 @@ fun renderFocusPreview(
           // `LaunchedEffect`-driven `moveFocus` walk — live in `:data-focus-connector-desktop`, the
           // same seam the daemon's `renderNow.overrides.focus` path uses. Nothing about the walk is
           // reimplemented here; the renderer only decides *when* to flip the controller.
-          FocusOverrideExtension().AroundComposable {
+          val framed: @Composable () -> Unit = {
             if (shouldApplySystemBars(showSystemUi, device, kind = null)) {
               SystemBarsFrame(uiMode = uiMode) { wrapped() }
             } else {
               wrapped()
             }
           }
+          if (focus != null) FocusOverrideExtension().AroundComposable(framed) else framed()
         }
       }
 
@@ -309,41 +316,47 @@ fun renderFocusPreview(
       // Indexed mode is one flip (the index is absolute). Traversal mode flips once per replayed
       // step, each settling before the next, so the walk accumulates exactly as it does on the
       // Android renderer's long-lived composition — see [DesktopFocusIntent.directions].
-      val steps = if (focus.directions.isEmpty()) 1 else focus.directions.size
-      repeat(steps) { index ->
-        FocusController.set(focus.toOverride(index))
-        // `waitForIdle()` before the clock advance, not after: the walk lives in a
-        // `LaunchedEffect`, and whether its coroutine has been *dispatched* by the time we advance
-        // is not something a fixed window can guarantee. Skipping this made the capture a race the
-        // CI render lost while the local one won — the walk landed after the settle, so the node
-        // was focused (the `landed` probe below said so) but its indication had never been given a
-        // frame to fade in, and the published sticker looked exactly like the untouched button.
-        waitForIdle()
-        mainClock.advanceTimeBy(FocusController.SETTLE_MS)
-      }
-
-      // Focus is on a node before the indication is drawn, so probing for it is a precondition,
-      // not the settle. Wait for the walk to land, then give the state layer its own full window —
-      // Material's focus indicator crossfades over ~150 ms and a capture taken mid-fade documents
-      // a weaker state than the component actually has.
-      landed = awaitFocusLanded(this, mainClock)
-      if (landed) {
-        mainClock.advanceTimeBy(FocusController.SETTLE_MS)
-        if (focus.pressed) {
-          // A real pointer down on the focused element. `performTouchInput { down(center) }` goes
-          // through the scene's ordinary hit-testing dispatch, so `Modifier.clickable` raises
-          // `PressInteraction.Press` on its own interaction source — the component's wiring, not
-          // ours. Touch rather than mouse deliberately: a mouse press would also raise
-          // `HoverInteraction.Enter`, and a sticker labelled "pressed" should not be documenting
-          // hover as well.
-          onAllNodes(isFocused()).onFirst().performTouchInput { down(center) }
-          // Press indication is animated (Material's state layer crossfade plus the ripple's own
-          // growth), and `clickable` additionally delays the press emission when the composable
-          // sits in a scrollable ancestor. Two settle windows cover both.
-          mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+      if (focus != null) {
+        val steps = if (focus.directions.isEmpty()) 1 else focus.directions.size
+        repeat(steps) { index ->
+          FocusController.set(focus.toOverride(index))
+          waitForIdle()
           mainClock.advanceTimeBy(FocusController.SETTLE_MS)
         }
-        focusedBounds = focusedNodeBounds(this)
+
+        // Focus is on a node before the indication is drawn, so probing for it is a precondition,
+        // not the settle. Wait for the walk to land, then give the state layer its own full window.
+        landed = awaitFocusLanded(this, mainClock)
+        if (landed) {
+          mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+          if (focus.pressed) {
+            // A real pointer down on the focused element. `performTouchInput { down(center) }` goes
+            // through the scene's ordinary hit-testing dispatch, so `Modifier.clickable` raises
+            // `PressInteraction.Press` on its own interaction source — the component's wiring, not
+            // ours. Touch rather than mouse deliberately: a mouse press would also raise
+            // `HoverInteraction.Enter`, and a sticker labelled "pressed" should not be documenting
+            // hover as well.
+            onAllNodes(isFocused()).onFirst().performTouchInput { down(center) }
+            mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+            mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+          }
+          focusedBounds = focusedNodeBounds(this)
+        }
+      } else {
+        // Hover is positional input, not a focus walk: find the requested interactive semantics
+        // node and move a mouse into its centre. This raises HoverInteraction.Enter without also
+        // producing FocusInteraction.Focus (or the extra hover a mouse press would add).
+        val matcher = interactiveNodeMatcher()
+        val targets = onAllNodes(matcher).fetchSemanticsNodes()
+        val index = hoverIndex ?: 0
+        if (index in targets.indices) {
+          onAllNodes(matcher)[index].performMouseInput { moveTo(center) }
+          waitForIdle()
+          mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+          landed = true
+        }
+      }
+      if (landed) {
         captureFocusFrame(
           provider = this,
           outputFile = outputFile,
@@ -366,8 +379,13 @@ fun renderFocusPreview(
 
   if (!landed) {
     System.err.println(
-      "@FocusedPreview on $className.$functionName: nothing took focus " +
-        "(${focus.describe()}) — falling back to the undriven capture."
+      if (focus != null) {
+        "@FocusedPreview on $className.$functionName: nothing took focus " +
+          "(${focus.describe()}) — falling back to the undriven capture."
+      } else {
+        "@OverrideVariant hover on $className.$functionName: no interactive node at index " +
+          "${hoverIndex ?: 0} — falling back to the undriven capture."
+      }
     )
     return false
   }
@@ -376,7 +394,7 @@ fun renderFocusPreview(
   // capture preserved as `<basename>.raw.png`. Same review aid (and same drawing) as the Android
   // path's `FocusOverlay`; the bounds come from the semantics tree here rather than from
   // `AndroidComposeView.focusOwner`, because desktop has no `View` to reflect into.
-  if (focus.overlay) {
+  if (focus?.overlay == true) {
     focusedBounds?.let {
       FocusOverlayDesktop.apply(it, outputFile, focus.documentedOverride(), fileSystem)
     }
@@ -385,6 +403,15 @@ fun renderFocusPreview(
   writePreviewOverridesSidecar(outputFile, fileSystem)
   return true
 }
+
+private fun interactiveNodeMatcher() =
+  SemanticsMatcher("has an interactive action") { node ->
+    val config = node.config
+    config.getOrNull(SemanticsActions.OnClick) != null ||
+      config.getOrNull(SemanticsActions.SetProgress) != null ||
+      config.getOrNull(SemanticsActions.SetText) != null ||
+      config.getOrNull(SemanticsActions.RequestFocus) != null
+  }
 
 private fun DesktopFocusIntent.describe(): String =
   when {

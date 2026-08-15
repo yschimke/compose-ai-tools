@@ -10,6 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Constraints
@@ -92,6 +95,55 @@ private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
   when (this) {
     ScrollAxis.VERTICAL -> ProductScrollAxis.VERTICAL
     ScrollAxis.HORIZONTAL -> ProductScrollAxis.HORIZONTAL
+  }
+
+private fun driveHover(rule: AndroidComposeTestRule<*, ComponentActivity>, targetIndex: Int) {
+  val targets = rule.onAllNodes(interactiveNodeMatcher()).fetchSemanticsNodes()
+  val target = targets.getOrNull(targetIndex)
+  if (target == null) {
+    System.err.println(
+      "@OverrideVariant hover: no interactive node at index $targetIndex; " +
+        "capturing the undriven state."
+    )
+    return
+  }
+  val bounds = target.boundsInRoot
+  val x = bounds.center.x
+  val y = bounds.center.y
+  val content = rule.activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+  val view = content?.getChildAt(0) ?: rule.activity.window.decorView
+  val now = android.os.SystemClock.uptimeMillis()
+  fun event(action: Int) =
+    android.view.MotionEvent.obtain(now, now, action, x, y, 0).also {
+      it.source = android.view.InputDevice.SOURCE_MOUSE
+    }
+  rule.runOnUiThread {
+    event(android.view.MotionEvent.ACTION_HOVER_ENTER).let {
+      try {
+        view.dispatchGenericMotionEvent(it)
+      } finally {
+        it.recycle()
+      }
+    }
+    event(android.view.MotionEvent.ACTION_HOVER_MOVE).let {
+      try {
+        view.dispatchGenericMotionEvent(it)
+      } finally {
+        it.recycle()
+      }
+    }
+  }
+  org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+    .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+}
+
+private fun interactiveNodeMatcher() =
+  SemanticsMatcher("has an interactive action") { node ->
+    val config = node.config
+    config.getOrNull(SemanticsActions.OnClick) != null ||
+      config.getOrNull(SemanticsActions.SetProgress) != null ||
+      config.getOrNull(SemanticsActions.SetText) != null ||
+      config.getOrNull(SemanticsActions.RequestFocus) != null
   }
 
 /**
@@ -1536,6 +1588,16 @@ abstract class RobolectricRenderTestBase(
               }
             }
 
+            // Addressable hovered `@OverrideVariant`: send a real mouse hover to the requested
+            // interactive semantics node without walking focus first. A mouse press is not used —
+            // it would combine Hovered and Pressed, and focusing merely to find the target would
+            // combine Hovered and Focused.
+            capture?.hover?.let { hover ->
+              driveHover(rule, hover.targetIndex)
+              rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+              currentTime += FocusController.SETTLE_MS
+            }
+
             // @ScrollingPreview(END): drive the first scrollable on the
             // requested axis to the end of its content before a single
             // capture.
@@ -2432,11 +2494,7 @@ private fun handleGifCaptureInternal(
   fun captureFrame(delayMs: Int) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
     captureDecodableFrame(frameFile, role = "scroll GIF") { f ->
-      stableDialogCrop.captureFrame(
-        rule = rule,
-        file = f,
-        roborazziOptions = frameRoborazziOptions,
-      )
+      stableDialogCrop.captureFrame(rule = rule, file = f, roborazziOptions = frameRoborazziOptions)
     }
     frameFiles += frameFile
     frameDelays += delayMs
@@ -2776,11 +2834,7 @@ private fun handleAnimatedCapture(
   fun captureFrame(virtualTimeMs: Long) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
     captureDecodableFrame(frameFile, role = "animation") { f ->
-      stableDialogCrop.captureFrame(
-        rule = rule,
-        file = f,
-        roborazziOptions = frameRoborazziOptions,
-      )
+      stableDialogCrop.captureFrame(rule = rule, file = f, roborazziOptions = frameRoborazziOptions)
     }
     frameFiles += frameFile
     frameTimes += virtualTimeMs

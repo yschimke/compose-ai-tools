@@ -129,6 +129,9 @@ data class FocusCapture(
   val pressed: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `HoverCapture`. */
+@Serializable data class HoverCapture(val targetIndex: Int = 0)
+
 /** Renderer-side mirror of the plugin's `FocusGifCapture`. */
 @Serializable
 data class FocusGifCapture(
@@ -304,6 +307,7 @@ data class RenderPreviewCapture(
   val scroll: ScrollCapture? = null,
   val animation: AnimationCapture? = null,
   val focus: FocusCapture? = null,
+  val hover: HoverCapture? = null,
   val focusGif: FocusGifCapture? = null,
   val ambient: AmbientCapture? = null,
   val gestureHint: GestureHintCapture? = null,
