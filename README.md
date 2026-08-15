@@ -564,6 +564,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-rc-lanes-diff-baked/dark](renders/serve-rc-lanes-diff-baked.dark.png) |
 | `light` | ![serve-rc-lanes-diff-baked/light](renders/serve-rc-lanes-diff-baked.light.png) |
 
+## serve-rc-lanes-diff-player
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-rc-lanes-diff-player/dark](renders/serve-rc-lanes-diff-player.dark.png) |
+| `light` | ![serve-rc-lanes-diff-player/light](renders/serve-rc-lanes-diff-player.light.png) |
+
 ## serve-reference-compare
 
 | Theme | Capture |
