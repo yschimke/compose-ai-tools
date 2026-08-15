@@ -27,8 +27,7 @@
   // ServeProjectHistory. Exactly one of the two is ever present.
   var blobUrl = root.getAttribute("data-history-blob-url");
   var previewId = root.getAttribute("data-preview-id");
-  var bar = document.querySelector(".cp-viewer-bar");
-  if (!previewId || !bar) return;
+  if (!previewId) return;
   // `repo` is DOM text and is interpolated into every link's href below. Linking out rather than
   // swapping the stage moved that sink from `img.src` to `a.href` — it did not remove it.
   //
@@ -206,7 +205,14 @@
 
     if (made < 2) return;
     wrap.appendChild(list);
-    bar.parentNode.insertBefore(wrap, bar.nextSibling);
+    // Anchored to the STAGE, immediately above it — not to whatever row happens to sit there.
+    // This used to insert itself after `.cp-viewer-bar` and bail out when that element was
+    // missing, so when #3893 folded that bar's controls into the title row and stopped emitting
+    // it, this script started returning at its second line and the timeline silently stopped
+    // drawing on every viewer page. `.cp-viewer` is the stage's own container: it is what the
+    // strip describes, it is what the strip must stay above, and it is the one element here that
+    // cannot be reorganised out from under this without the page having no viewer at all.
+    root.parentNode.insertBefore(wrap, root);
   }
 
   // An inline payload lets a fixture (and any offline viewer) render the strip without reaching
