@@ -687,7 +687,19 @@ class ServeWebFixtureTest {
         // fallback keeps a baseline of its own, next to `landingGrouped`, which has a tree and so
         // lists these by name instead.
         designPages =
-          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
+          listOf(
+            // Sections on one page and none on the other, on purpose: the pane has to render both
+            // a branch and a leaf, and a golden that only ever held one shape would not say so.
+            ServeWeb.PageLink(
+              "shape",
+              "Shape",
+              listOf(
+                ServeWeb.PageSection("1:20", "Corner radius"),
+                ServeWeb.PageSection("1:21", "Shape scale"),
+              ),
+            ),
+            ServeWeb.PageLink("type", "Typography"),
+          ),
         parityIssues = parityIssues,
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
@@ -2046,7 +2058,19 @@ class ServeWebFixtureTest {
         // m3-catalog is in, and the surface that replaced the header's "N pages" chip. Captured
         // here so the branch has a visual baseline of its own.
         designPages =
-          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
+          listOf(
+            // Sections on one page and none on the other, on purpose: the pane has to render both
+            // a branch and a leaf, and a golden that only ever held one shape would not say so.
+            ServeWeb.PageLink(
+              "shape",
+              "Shape",
+              listOf(
+                ServeWeb.PageSection("1:20", "Corner radius"),
+                ServeWeb.PageSection("1:21", "Shape scale"),
+              ),
+            ),
+            ServeWeb.PageLink("type", "Typography"),
+          ),
       )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
@@ -3256,13 +3280,28 @@ class ServeWebFixtureTest {
     // Each page is one row, named, carrying `data-search` so the one filter below the switch can
     // narrow them the way it narrows components — the pages used to be the only list in this
     // column the filter could not reach.
+    // A page WITH sections is a branch — the row still leads to the whole sheet, and the sections
+    // it is divided into hang under it, each landing on that node's anchor in the page view.
     assertTrue(
       landingGrouped.contains(
-        "<a class=\"cp-tree-page cp-tree-link\" href=\"/pages/shape\" data-search=\"Shape\">Shape</a>"
+        "<a class=\"cp-tree-page cp-tree-link\" href=\"/pages/shape\" data-search=\"Shape\"" +
+          " aria-expanded=\"true\" aria-controls=\"cp-page-sections-shape\">Shape"
       ) &&
-        landingGrouped.contains("data-search=\"Typography\">Typography</a>") &&
-        landingGrouped.contains("<a class=\"cp-pane-all\" href=\"/pages\">All pages</a>"),
-      "a catalog's design pages are named rows in the Pages pane, each filterable",
+        landingGrouped.contains(
+          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape#cp-node-1-20\"" +
+            " data-search=\"Corner radius\">Corner radius</a>"
+        ) &&
+        landingGrouped.contains("data-search=\"Shape scale\">Shape scale</a>"),
+      "a page's major sections hang under it, each linking to that node's anchor",
+    )
+    // …and a page with NO sections stays a leaf: named, filterable, and carrying neither a twisty
+    // nor an empty child list. Both shapes in one golden, so neither can regress unnoticed.
+    assertTrue(
+      landingGrouped.contains(
+        "<a class=\"cp-tree-page cp-tree-link\" href=\"/pages/type\"" +
+          " data-search=\"Typography\">Typography</a>"
+      ) && landingGrouped.contains("<a class=\"cp-pane-all\" href=\"/pages\">All pages</a>"),
+      "a page with no sections stays a plain filterable row, and the index link survives",
     )
     // The pane the switch reveals ships hidden, and the tree keeps the column when it is showing.
     assertTrue(

@@ -136,7 +136,13 @@
 </div>
 <div class="cp-pane cp-pane-pages" id="cp-pane-pages" role="tabpanel" aria-labelledby="cp-pane-tab-pages" hidden>
 <ul class="cp-page-list">
-  <li><a class="cp-tree-page cp-tree-link" href="/pages/shape" data-search="Shape">Shape</a></li>
+  <li class="cp-page-branch">
+    <a class="cp-tree-page cp-tree-link" href="/pages/shape" data-search="Shape" aria-expanded="true" aria-controls="cp-page-sections-shape">Shape<span class="cp-tree-count">2</span></a>
+    <ul class="cp-tree-children cp-page-sections" id="cp-page-sections-shape">
+      <li><a class="cp-tree-variant cp-tree-link" href="/pages/shape#cp-node-1-20" data-search="Corner radius">Corner radius</a></li>
+      <li><a class="cp-tree-variant cp-tree-link" href="/pages/shape#cp-node-1-21" data-search="Shape scale">Shape scale</a></li>
+    </ul>
+  </li>
   <li><a class="cp-tree-page cp-tree-link" href="/pages/type" data-search="Typography">Typography</a></li>
 </ul>
 <p class="cp-pane-empty" id="cp-pages-empty" hidden>No pages match.</p>
@@ -295,6 +301,7 @@
       var cpTreeStops = null;
       var paneTabs = document.querySelectorAll(".cp-pane-tab");
       var pageRows = document.querySelectorAll("#cp-pane-pages .cp-tree-page");
+      var sectionRows = document.querySelectorAll("#cp-pane-pages .cp-tree-variant");
       var pagesEmpty = document.getElementById("cp-pages-empty");
       var pane = urlParam("pane") === "pages" ? "pages" : "components";
       function reflectPanes() {
@@ -430,10 +437,25 @@ applyThemeChoice();
         });
         if (cpTreeStops) cpTreeStops();
         var pagesShown = 0;
+        sectionRows.forEach(function (sec) {
+          var hay = (sec.getAttribute("data-search") || "").toLowerCase();
+          var keep = paneQ === "" || hay.indexOf(paneQ) !== -1;
+          if (sec.parentElement) sec.parentElement.hidden = !keep;
+        });
         pageRows.forEach(function (p) {
           var hay = (p.getAttribute("data-search") || "").toLowerCase();
-          var keep = paneQ === "" || hay.indexOf(paneQ) !== -1;
+          var own = paneQ === "" || hay.indexOf(paneQ) !== -1;
+          var list = p.nextElementSibling;
+          var kept = list
+            ? Array.prototype.some.call(list.children, function (li) { return !li.hidden; })
+            : false;
+          var keep = own || kept;
+          if (own && list) {
+            Array.prototype.forEach.call(list.children, function (li) { li.hidden = false; });
+          }
           if (p.parentElement) p.parentElement.hidden = !keep;
+          if (p.hasAttribute("aria-expanded") && paneQ !== "")
+            p.setAttribute("aria-expanded", keep ? "true" : "false");
           if (keep) pagesShown++;
         });
         if (pagesEmpty) pagesEmpty.hidden = pagesShown !== 0;
@@ -453,6 +475,15 @@ applyThemeChoice();
           // rather than leaving the catalog. No navigation: the grid re-points its own images.
           pushUrl({ theme: theme });
           apply();
+        });
+      });
+      pageRows.forEach(function (p) {
+        if (!p.hasAttribute("aria-expanded")) return;
+        p.addEventListener("click", function (e) {
+          if (e.offsetX > 14) return;
+          e.preventDefault();
+          var open = p.getAttribute("aria-expanded") !== "true";
+          p.setAttribute("aria-expanded", open ? "true" : "false");
         });
       });
       paneTabs.forEach(function (t) {
