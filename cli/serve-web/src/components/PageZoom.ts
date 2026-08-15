@@ -95,7 +95,10 @@ export class PageZoom extends LitElement {
         this.startPan(event);
     private readonly onPointerMove = (event: PointerEvent) =>
         this.movePan(event);
-    private readonly onPointerUp = (event: PointerEvent) => this.endPan(event);
+    private readonly onPointerUp = (event: PointerEvent) =>
+        this.endPan(event, true);
+    private readonly onPointerCancel = (event: PointerEvent) =>
+        this.endPan(event, false);
     private readonly onDragStart = (event: Event) => {
         // An overlay is an `<a>`, and a browser answers a drag on one by dragging
         // the LINK — a ghost image follows the cursor and the pan never starts.
@@ -105,6 +108,11 @@ export class PageZoom extends LitElement {
         if (zoomed(this.view)) event.preventDefault();
     };
     private readonly onClickCapture = (event: MouseEvent) => {
+        // A keyboard activation (`detail === 0`) is never the click a drag produces, so
+        // it must never be the one the guard spends. Without this, a pan that ended in
+        // `pointercancel` — which produces no click at all — leaves the flag armed, and
+        // the next Enter or Space on a zoom button or a slot link silently does nothing.
+        if (event.detail === 0) return;
         if (!this.swallowClick) return;
         this.swallowClick = false;
         event.preventDefault();
@@ -114,6 +122,16 @@ export class PageZoom extends LitElement {
         this.reveal(event.target as Element | null);
     };
     private readonly onKeyDown = (event: KeyboardEvent) => this.escape(event);
+    private readonly onFocusOut = () => {
+        // Deferred a frame: `focusout` fires BEFORE the next element takes focus, so
+        // reading `activeElement` now would answer `<body>` even when focus is moving
+        // between two of these buttons.
+        setTimeout(() => {
+            if (!zoomed(this.view) && !this.contains(document.activeElement)) {
+                this.hidden = true;
+            }
+        }, 0);
+    };
     private readonly onPageKeyDown = (event: KeyboardEvent) =>
         this.shortcut(event);
     private readonly onResize = () => {
@@ -158,7 +176,7 @@ export class PageZoom extends LitElement {
         this.stage.addEventListener("focus", this.onFocusCapture, true);
         window.addEventListener("pointermove", this.onPointerMove);
         window.addEventListener("pointerup", this.onPointerUp);
-        window.addEventListener("pointercancel", this.onPointerUp);
+        window.addEventListener("pointercancel", this.onPointerCancel);
         // On the DOCUMENT, and in the CAPTURE phase. Document, because a reader who
         // zoomed with the mouse has focus on nothing in particular (the stage is not
         // focusable) and a listener on this page's own subtree would never see the
@@ -175,6 +193,7 @@ export class PageZoom extends LitElement {
         // every component overlay on the sheet is a real anchor in the tab order.
         this.page = this.closest<HTMLElement>("#cp-design-page") ?? this.stage;
         this.page.addEventListener("keydown", this.onPageKeyDown);
+        this.addEventListener("focusout", this.onFocusOut);
         // A resize moves the pan limits with the stage — a sheet panned to its right
         // edge in a wide window is panned past it in a narrow one — and it moves the
         // reader's place, which `rescale` is what preserves. Both signals are wired:
@@ -199,10 +218,11 @@ export class PageZoom extends LitElement {
         this.stage?.removeEventListener("focus", this.onFocusCapture, true);
         window.removeEventListener("pointermove", this.onPointerMove);
         window.removeEventListener("pointerup", this.onPointerUp);
-        window.removeEventListener("pointercancel", this.onPointerUp);
+        window.removeEventListener("pointercancel", this.onPointerCancel);
         window.removeEventListener("resize", this.onResize);
         document.removeEventListener("keydown", this.onKeyDown, true);
         this.page?.removeEventListener("keydown", this.onPageKeyDown);
+        this.removeEventListener("focusout", this.onFocusOut);
         this.observer?.disconnect();
         this.observer = null;
         super.disconnectedCallback();
@@ -306,8 +326,13 @@ export class PageZoom extends LitElement {
         this.stage?.style.setProperty("--cp-page-zoom", String(scale));
         this.stage?.classList.toggle("cp-page-zoomed", zoomed(this.view));
         // At 1:1 there is nothing to reset, and a permanent control would be chrome
-        // over the drawing.
-        this.hidden = !zoomed(this.view);
+        // over the drawing — but NOT while the reader is standing on it. Pressing
+        // Reset (or `-` until the sheet is back at 1:1) with the button focused would
+        // otherwise delete the focused element from under them, and the browser drops
+        // focus to `<body>`: the reader loses the sheet entirely. The bar waits for
+        // focus to leave (see `onFocusOut`) and hides then.
+        this.hidden =
+            !zoomed(this.view) && !this.contains(document.activeElement);
         this.percent = Math.round(scale * 100);
     }
 
@@ -582,14 +607,19 @@ export class PageZoom extends LitElement {
         );
     }
 
-    private endPan(event: PointerEvent): void {
+    /**
+     * `clicks` says whether this sequence can still produce one. A `pointercancel` —
+     * the browser taking the gesture over — never does, so arming the guard there would
+     * leave it primed for something else entirely to spend.
+     */
+    private endPan(event: PointerEvent, clicks: boolean): void {
         const pan = this.panning;
         if (!pan || event.pointerId !== pan.id) return;
         // A pan that MOVED must not also navigate: the pointer came up over an
         // overlay, and that overlay links to a preview page. Under the threshold it
         // was a click that wobbled, and swallowing that would break clicking a
         // component while zoomed in.
-        if (pan.moved > DRAG_SLOP) this.swallowClick = true;
+        if (clicks && pan.moved > DRAG_SLOP) this.swallowClick = true;
         if (pan.held && this.stage?.hasPointerCapture?.(event.pointerId)) {
             this.stage.releasePointerCapture(event.pointerId);
         }

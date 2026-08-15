@@ -2520,7 +2520,12 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
     0 0 0 calc(2px / var(--cp-page-zoom, 1)) #fff,
     0 0 0 calc(4px / var(--cp-page-zoom, 1)) var(--cp-page-node-color, #2da44e);
 }
+/* The badge's SIZE and its INSET both, or the score walks away from the corner it marks: `right`
+   and `bottom` resolve inside the transformed layer, so a 2 px inset paints 24 px in at 12x and 48
+   at the cap — far enough to sit over the middle of the component it is scoring. */
 .cp-page-diff-on .cp-page-score {
+  right: calc(2px / var(--cp-page-zoom, 1));
+  bottom: calc(2px / var(--cp-page-zoom, 1));
   transform: scale(calc(1 / var(--cp-page-zoom, 1)));
   transform-origin: 100% 100%;
 }

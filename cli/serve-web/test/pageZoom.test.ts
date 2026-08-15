@@ -174,6 +174,19 @@ function wheel(
     return event.defaultPrevented;
 }
 
+/** happy-dom has no `PointerEvent`; a `MouseEvent` with a pointer id stands in. */
+function pointer(type: string, x: number, y: number, id = 1): void {
+    const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: x,
+        clientY: y,
+        button: 0,
+    });
+    Object.defineProperty(event, "pointerId", { value: id });
+    const target = type === "pointerdown" ? el(".cp-page-stage") : window;
+    target.dispatchEvent(event);
+}
+
 function percent(): number {
     return parseInt(el("[data-cp-page-zoom-level]").textContent ?? "", 10);
 }
@@ -626,6 +639,49 @@ describe("<cp-page-zoom>", () => {
             percent() > Math.round(framed.scale * 100),
             "the second drill went deeper from the settled view, not from a stale one",
         );
+    });
+
+    it("keeps the control in place while a keyboard reader is standing on it", async () => {
+        await mount();
+        const spot = el<HTMLElement>(".cp-page-node");
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        await flush();
+        const reset = el<HTMLButtonElement>("[data-cp-page-zoom-reset]");
+        reset.focus();
+        reset.click();
+        await flush();
+        // Back at 1:1 — but hiding the bar now would delete the focused element from
+        // under the reader, and the browser would drop focus to `<body>`.
+        assert.equal(percent(), 100);
+        assert.equal(el<HTMLElement>("cp-page-zoom").hidden, false);
+        assert.equal(document.activeElement, reset);
+        // It goes once focus has moved on.
+        spot.focus();
+        await new Promise((r) => setTimeout(r, 5));
+        assert.equal(el<HTMLElement>("cp-page-zoom").hidden, true);
+    });
+
+    it("never spends the drag guard on a keyboard click", async () => {
+        await mount();
+        const spot = el<HTMLElement>(".cp-page-node");
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        await flush();
+        // A pan the browser took over: it travels, then cancels. No click ever follows,
+        // so the guard must not be left armed for an unrelated keyboard activation.
+        pointer("pointerdown", 400, 400);
+        pointer("pointermove", 460, 430);
+        pointer("pointercancel", 460, 430);
+        let clicked = 0;
+        spot.addEventListener("click", () => clicked++);
+        // `detail: 0` is what Enter and Space produce.
+        spot.dispatchEvent(
+            new MouseEvent("click", { bubbles: true, detail: 0 }),
+        );
+        assert.equal(clicked, 1, "the keyboard activation was delivered");
     });
 
     it("is inert on a stage with no canvas to transform", async () => {

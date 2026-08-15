@@ -664,6 +664,15 @@ const FIXTURE_STATES = [
         suffix: "zoom-reset",
         apply: async (page) => {
             await page.click("[data-cp-page-zoom-reset]");
+            // The bar does NOT vanish under the pointer that just pressed it: hiding a
+            // focused button deletes the focused element, and the browser drops focus to
+            // `<body>` — a keyboard reader who pressed Reset would lose the sheet. It
+            // waits for focus to leave, which is what the blur below is.
+            await page.waitForFunction(() => {
+                const level = document.querySelector("[data-cp-page-zoom-level]");
+                return level && parseInt(level.textContent, 10) === 100;
+            });
+            await page.evaluate(() => document.activeElement?.blur());
             await page.waitForFunction(() => document.querySelector("cp-page-zoom").hidden);
             // Back to the IDENTITY, not merely to something small: a reset that left a residual
             // translate would look right in a screenshot and mis-place every overlay measured after
