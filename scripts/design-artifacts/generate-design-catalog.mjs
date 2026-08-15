@@ -45,6 +45,7 @@ import {
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants, variantLabel } from "./catalog-variants.mjs";
+import { foldMotion, motionArtifactsFor } from "./catalog-motion.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -639,6 +640,13 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         group: group.name,
         ideal: baked,
       };
+      // The component's animated captures, alongside (never inside) its stills — see
+      // catalog-motion.mjs for why `images[]` is the wrong home for a 114-frame recording. Read off
+      // the component's own `@Preview` function only: a state variant's motion capture is
+      // suppressed at discovery, so there is none to collect, and folding the variants' would
+      // publish duplicates of one script anyway.
+      const motion = foldMotion(baked, motionArtifactsFor(opts.motionBundle, component.preview));
+      if (motion.length > 0) source.motion = motion;
       // A group may declare a top-level `section` (the tab the preview server
       // buckets it under: Themes / Components / Screens / Animations / …). It sits
       // one level above `group`, which becomes the sub-heading inside a tab.
@@ -1042,6 +1050,10 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
     // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
     // gets declared even though no image of them exists to fold.
     previewIdsByFunction: daemonPreviewIdsByFunction([bundle, extraBundle]),
+    // The bundle motion artifacts are read from. The primary only: a motion capture is published
+    // by the module that owns the component, and a supplementary render exists to fill in stills
+    // the primary could not produce.
+    motionBundle: bundle,
   });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
