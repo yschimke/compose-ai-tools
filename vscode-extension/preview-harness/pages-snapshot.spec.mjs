@@ -1534,30 +1534,38 @@ const FIXTURE_STATES = [
         },
     },
     {
-        // The viewer's two in-page folds OPENED. The committed fixture captures the resting state
-        // — a wide state axis and a crowded theme bar both folded behind the title bar — so the
-        // rows themselves, which are what the toggles exist to reveal, would be diffed by nothing.
-        // This is also the only shot in which the toggles carry their expanded (tonal) treatment.
+        // The viewer's folds OPENED. The committed fixture captures the resting state — a crowded
+        // theme bar folded behind the title bar, and the state axis away in the closed component
+        // nav — so the rows themselves, which are what the toggles exist to reveal, would be
+        // diffed by nothing. This is also the only shot in which the theme toggle carries its
+        // expanded (tonal) treatment.
+        //
+        // The state axis used to be its own in-page fold behind `#cp-axes-toggle`. #3893 replaced
+        // that with the component nav's tree, whose variants are already `aria-expanded`, so what
+        // reveals those rows now is opening the nav — not a fold that no longer exists.
         fixture: "serve-viewer-axes-folded",
         suffix: "disclosures-open",
         apply: async (page) => {
-            await page.click("#cp-axes-toggle");
+            await page.click("#cp-nav-toggle");
             await page.click("#cp-theme-toggle");
-            await page.waitForSelector("#cp-axes:not([hidden])");
+            await page.waitForSelector(".cp-viewer.cp-nav-open");
             await page.waitForSelector("#cp-theme-bar:not([hidden])");
         },
     },
     {
-        // The cross-product subtree OPENED. Its whole claim is the row LABELS: with both axes in
+        // The cross-product subtree SHOWN. Its whole claim is the row LABELS: with both axes in
         // play, the row that resets the state and the row that resets the props are both "Default"
         // unless each names both coordinates, and the render on screen is labelled by whichever
-        // axis reached it first. That is invisible while the subtree is folded — and it arrives
-        // folded, being six rows — so without this shot the naming rule is diffed by nothing.
+        // axis reached it first. Without this shot the naming rule is diffed by nothing.
+        //
+        // Those rows used to sit behind `#cp-axes-toggle`. Since #3893 they are the component
+        // nav's variant tree, already expanded — so the fold to open is the nav itself, which is
+        // closed at the harness's 1024px width.
         fixture: "serve-viewer-cross-product",
         suffix: "subtree-open",
         apply: async (page) => {
-            await page.click("#cp-axes-toggle");
-            await page.waitForSelector("#cp-axes:not([hidden])");
+            await page.click("#cp-nav-toggle");
+            await page.waitForSelector(".cp-viewer.cp-nav-open");
         },
     },
     {
@@ -1566,11 +1574,12 @@ const FIXTURE_STATES = [
         // layout no baseline has ever held. Widened past that breakpoint first — the harness runs
         // at 1024 by default, where the list is already hidden and closing it would prove nothing.
         // States run in order against the SAME page, so this one re-folds what the state above
-        // opened; otherwise it would shoot two changes at once and diff neither cleanly.
+        // opened; otherwise it would shoot two changes at once and diff neither cleanly. The nav
+        // the state above opened is re-closed by the toggle click below, at the wider viewport
+        // where that is the change this shot is about.
         fixture: "serve-viewer-axes-folded",
         suffix: "nav-closed",
         apply: async (page) => {
-            await page.click("#cp-axes-toggle");
             await page.click("#cp-theme-toggle");
             await page.setViewportSize({ width: 1280, height: 900 });
             await page.click("#cp-nav-toggle");
