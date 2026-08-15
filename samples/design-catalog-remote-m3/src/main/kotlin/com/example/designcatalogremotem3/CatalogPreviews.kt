@@ -24,6 +24,7 @@ import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.RemoteFloat
 import androidx.compose.remote.creation.compose.state.RemoteString
+import androidx.compose.remote.creation.compose.state.animateRemoteFloat
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
@@ -76,11 +77,12 @@ import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 // (`androidx.wear.compose.remote.material3`) component surface — the port of Wear
 // Compose Material 3 to Remote Compose — so every sticker here has a Wear M3
 // parallel (declared per-component in `catalog.spec.json`'s `parallel` field, and
-// surfaced side-by-side by the branch's cross-system compare page). Only the two
-// non-component helpers are omitted, matching the spec: `RemoteContainerPainter`
-// (a painter factory, not a drawable component) and `RemoteTypographyTokens` (raw
-// token table behind `RemoteTypography`). The `remote-creation-compose` shader
-// sticker is the one Remote-only extra with no Wear M3 peer.
+// surfaced side-by-side by the branch's cross-system compare page). The two
+// non-component helpers are omitted: `RemoteContainerPainter` (a painter factory,
+// not a drawable component) and `RemoteTypographyTokens` (the raw token table).
+// `RemoteTimeText` has source samples in ComponentVariantPreviews.kt but no sticker:
+// the resolved player still rejects its DrawTextOnCircle opcode (57). The
+// `remote-creation-compose` shader sticker is the one Remote-only extra.
 // ---------------------------------------------------------------------------
 
 // `hostAction(...)` — the Remote Compose way to signal the *host*: it posts a payload out of the
@@ -106,7 +108,7 @@ import ee.schimke.composeai.daemon.rememberOverridableRemoteString
  * bare label it always has** — the counter is only reachable once a player dispatches a real touch.
  */
 @Composable
-private fun countedRemote(base: String): Pair<RemoteString, Action> = countedRemote(base.rs)
+internal fun countedRemote(base: String): Pair<RemoteString, Action> = countedRemote(base.rs)
 
 /**
  * [countedRemote] over a label that is itself a remote value — an overridable named string, say —
@@ -115,7 +117,7 @@ private fun countedRemote(base: String): Pair<RemoteString, Action> = countedRem
  * it demonstrates stays fully visible.
  */
 @Composable
-private fun countedRemote(base: RemoteString): Pair<RemoteString, Action> {
+internal fun countedRemote(base: RemoteString): Pair<RemoteString, Action> {
   val clicks = rememberMutableRemoteInt(0)
   val label = selectIfGt(clicks, 0.ri, base + " (" + clicks.toRemoteString() + ")", base)
   return label to valueChange(clicks, (clicks + 1).createReference())
@@ -130,16 +132,16 @@ private fun countedRemote(base: RemoteString): Pair<RemoteString, Action> {
  * colours and only a live tap moves it.
  */
 @Composable
-private fun toggledRemote(): Pair<RemoteFloat, Action> {
+internal fun toggledRemote(): Pair<RemoteFloat, Action> {
   val on = rememberMutableRemoteFloat(0f)
-  return on to valueChange(on, (1f.rf - on).createReference())
+  return animateRemoteFloat(on, duration = 0.45f) to valueChange(on, (1f.rf - on).createReference())
 }
 
 // A simple five-point star used by the icon stickers. Remote Compose has no bundled
 // icon set and `RemoteIcon` takes an `ImageVector`, so the catalog carries one
 // hand-built vector rather than depending on `material-icons`. `RemoteIcon` re-tints
 // it, so the path fill here is a placeholder.
-private val starIcon: ImageVector =
+internal val starIcon: ImageVector =
   ImageVector.Builder(
       name = "Star",
       defaultWidth = 24.dp,
@@ -595,7 +597,8 @@ fun VariableWidthRemote() = RemoteSticker {
   }
 }
 
-// NOTE: `RemoteTimeText` is intentionally NOT catalogued. It draws the time as
+// NOTE: `RemoteTimeText` is intentionally NOT stickered. Source samples live in
+// ComponentVariantPreviews.kt, but it draws the time as
 // *curved* text (a `DrawTextOnCircle` document op) that the Remote Compose player
 // bundled in the renderer can't replay ("Operation 57 is not supported for this
 // version" — an alpha writer/player version skew), so it fails the render outright.
