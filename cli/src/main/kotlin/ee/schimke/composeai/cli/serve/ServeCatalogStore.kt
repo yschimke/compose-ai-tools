@@ -1552,8 +1552,8 @@ class ServeCatalogStore(
   private fun writeTagIndex(base: String, staging: File) {
     val bytes =
       runCatching {
-          fetchCatalogAsset("$base${ServeTagIndexStore.DIRECTORY}/${ServeTagIndexStore.INDEX_FILE}")
-        }
+        fetchCatalogAsset("$base${ServeTagIndexStore.DIRECTORY}/${ServeTagIndexStore.INDEX_FILE}")
+      }
         .getOrNull() ?: return
     val manifest =
       runCatching { json.decodeFromString(TagIndexManifest.serializer(), bytes.decodeToString()) }
