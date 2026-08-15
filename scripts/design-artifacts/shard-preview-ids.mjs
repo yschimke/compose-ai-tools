@@ -358,23 +358,34 @@ export function verifyShardPlans(plans) {
  * otherwise would spend the operator's trust on a false alarm — the very thing that made the
  * original bug expensive.
  *
+ * **[exemptIds] covers the PARTIAL version of the same problem.** [semanticsRan] catches a semantics
+ * pass that produced nothing at all; the capture is also best-effort *per preview*, so one id's tree
+ * can be missing while the rest carry. That only matters for a preview with no render-side artifact
+ * to fall back on — and there is exactly one such class, the spec's `"capture": "none"` entries. A
+ * `ScrollMode.GIF` capture still leaves its `.gif` and a token sheet its `.catalog.json`, both
+ * written by the render itself, so neither depends on semantics succeeding. Passing the declared
+ * no-sticker ids here closes the window without a threshold and without guessing at preview shapes
+ * — see `noStickerPreviewNames` in `capture-mode.mjs`.
+ *
  * Extra ids are not a problem and are not reported: a merged bundle legitimately carries the whole
  * discovery set (exclusion leaves previews listed), and a shard rendering *more* than its share
  * costs time, not stickers.
  *
  * @param {Array<{index: number, previews: string[]}>} plans the uploaded per-shard plans.
  * @param {Iterable<string>} capturedIds ids the merged bundle captured.
- * @param {{semanticsRan?: boolean}} [opts] `semanticsRan: false` disarms the check — see above.
+ * @param {{semanticsRan?: boolean, exemptIds?: Iterable<string>}} [opts] `semanticsRan: false`
+ *   disarms the check; `exemptIds` are ids declared to export no sticker — see above.
  * @returns {{ok: boolean, problems: string[], notes: string[],
  *   missing: Array<{id: string, shard: number}>}} `missing` is sorted by shard then id; `problems`
  *   is empty iff every planned id came back or the check declined to judge.
  */
-export function verifyShardRenders(plans, capturedIds, { semanticsRan = true } = {}) {
+export function verifyShardRenders(plans, capturedIds, { semanticsRan = true, exemptIds } = {}) {
   const captured = new Set(capturedIds ?? []);
+  const exempt = new Set(exemptIds ?? []);
   const missing = [];
   for (const plan of [...(plans ?? [])].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0))) {
     for (const id of [...(plan?.previews ?? [])].sort()) {
-      if (!captured.has(id)) missing.push({ id, shard: plan?.index ?? 0 });
+      if (!captured.has(id) && !exempt.has(id)) missing.push({ id, shard: plan?.index ?? 0 });
     }
   }
   if (missing.length === 0) return { ok: true, problems: [], notes: [], missing };
