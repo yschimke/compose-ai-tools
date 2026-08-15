@@ -12,6 +12,7 @@ import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -462,13 +463,23 @@ class ServeStatusTest {
       assertTrue(whileIdle.contains("\"metaStale\":true"), whileIdle)
       assertTrue(whileIdle.contains("\"trusted\":1"), "the summary counts it: $whileIdle")
 
-      // The HTML page says "last known" instead of leaving the trust cell reading as untrusted.
+      // …and the HTML page marks the row "last known" rather than dropping the qualifier.
+      //
+      // Positive trust is deliberately SILENT since #3893 — a green tick beside every catalog is
+      // chrome nobody reads, and only the warning verdict carries information — so this used to
+      // assert `✓ trusted` and can't. What still has to hold, and is what the regression was
+      // actually about, is that suspending a catalog must not downgrade its verdict: the one
+      // catalog on this page is trusted, so the untrusted warning must be absent from the whole
+      // document even though its facts are now a snapshot rather than a live read.
       val htmlUrl = "http://127.0.0.1:${srv.port}/status"
       val html =
         client.newCall(Request.Builder().url(htmlUrl).build()).execute().use {
           it.body?.string() ?: ""
         }
-      assertTrue(html.contains("✓ trusted"), html)
+      assertFalse(
+        html.contains("untrusted"),
+        "a suspended trusted catalog is not downgraded: $html",
+      )
       assertTrue(html.contains("last known"), html)
     } finally {
       srv.stop()
