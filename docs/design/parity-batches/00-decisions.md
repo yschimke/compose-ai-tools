@@ -3,7 +3,10 @@
 **Issues:** none — this batch exists because writing code against an unsettled question is how the
 design doc accumulated three wrong pixel pipelines.
 **Depends on:** nothing.
-**Blocks:** [02](02-issue-index.md) (D2), [04](04-acceptance-schema.md) (D1), [05](05-acceptance-engines.md) (D1, D3).
+**Blocks:** [01](01-locator-and-report.md) (D2, D4), [03](03-element-selection.md) (D1),
+[04](04-acceptance-schema.md) (D1, D5), [05](05-acceptance-engines.md) (D1, D3, D5) — and 02 and 06
+transitively, through 01. **Every one is a hard prerequisite**; see the graph in
+[README](README.md#order), which this header must agree with.
 **Ships:** no user-visible change. Output is edits to
 [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) and to the affected issues.
 
@@ -15,7 +18,8 @@ been written against opposite readings.
 
 ## D1 — which plane the element tag index reports bounds in
 
-**Blocks:** 04 (the `plane` discriminant), 05 (the element gate), 03 (what a selection records).
+**Blocks:** 03 (what a selection records, and in which space), 04 (the `plane` discriminant),
+05 (the element gate).
 
 The design doc says the server publishes tag bounds already transformed into an acceptance's
 *canonical plane*. **Neither producer can do that.** The canonical plane is resolved per comparison,
@@ -40,7 +44,8 @@ deliberately rather than by accident.
 
 ## D2 — which surface carries the report form
 
-**Blocks:** 02 and 03 (both put things on "the page where you see the problem").
+**Blocks:** 01 directly — it decides which page the form is built on, and 01 builds it. 02 and 03
+inherit it, since both put things on "the page where you see the problem".
 
 [#3802](https://github.com/yschimke/compose-ai-tools/issues/3802) records that the form currently
 lives only on the viewer, whose always-available live number is `scoreSvgUrls` — PNG against the
@@ -74,7 +79,8 @@ acceptance semantics — a moved number and a changed verdict in one diff cannot
 
 ## D4 — the frame-vs-controls race in `refreshReportLink()`
 
-**Blocks:** 02 (small, but it is the difference between a correct locator and a subtly wrong one).
+**Blocks:** 01 directly — it is the difference between a correct locator and a subtly wrong one, and
+01 is where locators start being written. 02 inherits it, since the index only ever sees what 01 wrote.
 
 `refreshLinks()` fires the moment a control moves; provenance is recorded later, in the replacement
 image's `onload`. Between those moments the visible pixels are the *previous* frame, so a locator

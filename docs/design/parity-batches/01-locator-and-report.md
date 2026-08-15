@@ -50,6 +50,15 @@ Rules that are not negotiable, each because it has a silent failure mode:
   means a strict parser rejects the report while a permissive one silently discards the selection.
   Reserving them costs a line each here and a fixture; retrofitting them costs a version bump across
   three consumers.
+- **`bounds` cannot be a bare rectangle — it needs its space settled at the same time.** Three
+  coordinate spaces are in play and they do not agree: a tag selection's bounds come from the index in
+  **render pixels** ([D1](00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)), a
+  drag selection is in **display pixels**, and the acceptance contract wants the element baseline in
+  the **canonical plane**. Freeze a parser that accepts a naked rectangle and batch 03 will persist
+  whichever one it happened to have, so an element that never moved reports as *moved* the moment
+  those planes differ. Either require the comparison to convert into the resolved canonical plane
+  before serialising, or carry and validate a `space` discriminant — the same fix
+  `compose-preview-tags/v1` already needed for exactly this reason, which is the precedent to copy.
 
 ### 2. Emit it
 

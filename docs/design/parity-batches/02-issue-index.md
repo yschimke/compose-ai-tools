@@ -71,10 +71,13 @@ Traps:
   issue title, labels, state and URL, and the producer commits them to the delivery branch — so
   scanning a **private** source repo into a **public** catalog publishes private issue metadata, and
   it does so on the path where everything is working. Decide the policy before enabling private-source
-  reads: either require the delivery repository to be at least as restricted as every repo it scans,
-  or publish a reduced row (identity and state, no title or labels) for sources more private than the
-  destination. Make the check part of the producer, not a convention — the failure is silent, and by
-  the time anyone notices, the titles are in a git history.
+  reads: either **reader-set containment** — every account that can read the delivery repo can already
+  read every source it scans — or publish a reduced row (identity and state, no title or labels) for
+  any source that fails containment. **Comparing visibility levels is not sufficient**, and is the
+  tempting shortcut: two *private* repos with different collaborator sets pass a public-vs-private
+  check while destination-only readers gain the source's issue titles, labels and URLs. Make the check
+  part of the producer, not a convention — the failure is silent, and by the time anyone notices, the
+  titles are in a git history.
 - **The cron backstop is not optional** — but it only backstops the *trigger*, not the credential.
   Per-source-repo provisioning is real setup work, and an unwired repo has nothing else to fall back
   on. That will be the normal state for a while. Carrying the changed issue in the dispatch payload
