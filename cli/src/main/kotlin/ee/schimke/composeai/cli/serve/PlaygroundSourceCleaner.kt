@@ -511,7 +511,7 @@ object PlaygroundSourceCleaner {
       val to = scaffold.renameTo ?: continue
       if (!mentionsWord(out, name)) continue
       out = replaceWord(out, name, to)
-      scaffold.addImport?.let { addedImports.add(it) }
+      addedImports.addAll(scaffold.imports)
     }
     return out
   }
@@ -685,8 +685,7 @@ object PlaygroundSourceCleaner {
         if (start < 0 || end > out.length || start >= end) return out
         out = out.substring(0, start) + replacement + out.substring(end)
       }
-      scaffold.addImport?.let { addedImports.add(it) }
-      addedImports.addAll(scaffold.addImports)
+      addedImports.addAll(scaffold.imports)
     }
     return out
   }
@@ -744,7 +743,7 @@ object PlaygroundSourceCleaner {
       val (start, end, replacement) = edit
       if (start < 0 || end > out.length || start >= end) return out
       out = out.substring(0, start) + replacement.first + out.substring(end)
-      replacement.second.addImport?.let { addedImports.add(it) }
+      addedImports.addAll(replacement.second.imports)
     }
     return out
   }
@@ -781,7 +780,7 @@ object PlaygroundSourceCleaner {
         // call alone instead; the residue check below then reports it as an unwritten rule.
         if (rendered.contains(Regex("""\$\d"""))) break
         out = out.substring(0, call.start) + rendered + out.substring(call.argsEnd + 1)
-        scaffold.addImport?.let { addedImports.add(it) }
+        addedImports.addAll(scaffold.imports)
       }
     }
     return out
