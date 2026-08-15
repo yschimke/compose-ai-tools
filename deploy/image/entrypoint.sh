@@ -366,6 +366,10 @@ fi
 # boot snapshot until the container recycles). This is what lets a `design-artifacts.yml` regen
 # reach preview.coo.ee on its own — Watchtower only rolls the *image*, never the branch content.
 [[ -n "${SERVE_CATALOG_REFRESH:-}" ]] && args+=(--catalog-refresh-interval "${SERVE_CATALOG_REFRESH}")
+# RSS history is demand-activated: each feed request renews this inactivity lease. Once it expires,
+# its branch worker sleeps while retaining the generated XML + shallow Git cache under /config.
+[[ -n "${SERVE_CATALOG_FEED_IDLE:-}" ]] &&
+  args+=(--catalog-feed-idle-timeout "${SERVE_CATALOG_FEED_IDLE}")
 
 echo "entrypoint: compose-preview serve on 0.0.0.0:${PORT}" >&2
 exec compose-preview "${args[@]}"
