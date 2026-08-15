@@ -68,6 +68,8 @@ services:
       # serving — or trusting — another project's repos.
       - ../preview.coo.ee/catalogs.json:/config/catalogs.json:ro
       - ../preview.coo.ee/producers.json:/config/producers.json:ro
+      # Generated RSS plus the partial Git object cache survive preview-container recreation.
+      - catalog_feed_cache:/config/catalog-feeds
     expose:
       - "8080"
     # One warm Desktop daemon fits comfortably in a few GB; this cap just keeps a
@@ -97,5 +99,6 @@ services:
       - caddy_config:/config
 
 volumes:
+  catalog_feed_cache:
   caddy_data:
   caddy_config:
