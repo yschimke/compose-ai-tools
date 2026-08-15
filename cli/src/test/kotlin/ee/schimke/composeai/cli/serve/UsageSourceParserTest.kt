@@ -86,18 +86,6 @@ class UsageSourceParserTest {
     assertEquals("state.metrics", byName["counted"]?.receiver)
   }
 
-  /** Destructuring, which the `$known-gaps` entry in `compose-usage.json` is waiting on. */
-  @Test
-  fun `destructuring declarations are reported with their entries`() {
-    val facts =
-      assertNotNull(
-        parser?.facts("""fun x() { val (checked, onChange) = toggleable("on", true) }""")
-      )
-    val destructuring = assertNotNull(facts.destructurings.singleOrNull())
-    assertEquals(listOf("checked", "onChange"), destructuring.names)
-    assertEquals("""toggleable("on", true)""", destructuring.initializer)
-  }
-
   /**
    * Binding is Kotlin's rule, and it needs the callee's parameter names — the parse supplies
    * labels, not signatures. See `docs/design/PSI_PARSE_SPIKE.md`.

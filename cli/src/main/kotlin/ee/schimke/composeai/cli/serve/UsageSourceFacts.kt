@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The structure [PlaygroundSourceCleaner] used to guess at, read off a real parse.
+ * The call structure [PlaygroundSourceCleaner] used to guess at, read off a real parse.
  *
  * Produced by `:usage-source-psi` inside an isolated classloader (see [UsageSourceParser]) and
  * carried across as JSON, so no Kotlin frontend type ever reaches the CLI's own classpath.
@@ -20,15 +20,6 @@ import kotlinx.serialization.json.Json
 @Serializable
 data class UsageSourceFacts(
   @SerialName("calls") val calls: List<Call> = emptyList(),
-  @SerialName("destructurings") val destructurings: List<Destructuring> = emptyList(),
-  /**
-   * Every name **reference**, excluding argument labels.
-   *
-   * The exclusion is the point. `Switch(onCheckedChange = onCheckedChange)` writes that name twice
-   * and only the second is a reference; rebinding the first turns a label into an expression. PSI
-   * knows which is which, and a word scan does not.
-   */
-  @SerialName("references") val references: List<Reference> = emptyList(),
   /**
    * Set when the analyzer could not parse at all; the caller then behaves as if it had no facts.
    */
@@ -76,23 +67,6 @@ data class UsageSourceFacts(
     @SerialName("text") val text: String = "",
     @SerialName("start") val start: Int = -1,
     @SerialName("end") val end: Int = -1,
-  )
-
-  @Serializable
-  data class Reference(
-    @SerialName("name") val name: String = "",
-    @SerialName("start") val start: Int = -1,
-    @SerialName("end") val end: Int = -1,
-  )
-
-  @Serializable
-  data class Destructuring(
-    @SerialName("start") val start: Int,
-    @SerialName("end") val end: Int,
-    @SerialName("names") val names: List<String> = emptyList(),
-    @SerialName("initializer") val initializer: String = "",
-    @SerialName("initializerStart") val initializerStart: Int = -1,
-    @SerialName("initializerEnd") val initializerEnd: Int = -1,
   )
 
   /**

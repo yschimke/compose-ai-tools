@@ -134,8 +134,9 @@ The spike said yes, so the parse is now in the cleaner. The shape is the one the
 - **`:usage-source-psi`** — the parser, compiling `compileOnly` against `kotlin-compiler-embeddable`
   so the frontend is never a runtime dependency of anything in the main build. It exposes one method,
   `analyze(String): String`, returning JSON: calls (callee, offsets, arguments with their labels,
-  trailing-lambda ranges, receiver) and destructuring declarations. It reports **facts, never
-  decisions** — `ee.schimke.composeai.overrides` and `state.metrics` are the same tree shape, so it
+  trailing-lambda ranges, receiver). It also reported destructuring declarations and name
+  references, for the `DESTRUCTURE` kind below; both went when that kind did. It reports **facts,
+  never decisions** — `ee.schimke.composeai.overrides` and `state.metrics` are the same tree shape, so it
   hands over each receiver verbatim and lets the rules' allow-list do the classifying.
 - **Staged as `lib-usage-psi/`**, loaded together with the already-staged `lib-bta/` jars in a
   `URLClassLoader` parented to the platform loader — the same isolation the playground compiler uses.
@@ -165,8 +166,11 @@ positional slot — putting `{ … }` where `default` belongs. Filtered out, and
 A parse fixes the **machinery**. It does not move the ratio much on its own:
 
 - m3-catalog's 2 destructuring failures: **done**, and the ratio moved 3/10 → 4/10. The
-  `DESTRUCTURE` rule kind reads the facts' entries and initialiser; `compose-usage.json`'s
-  `$known-gaps` entry is retired.
+  `DESTRUCTURE` rule kind read the facts' entries and initialiser; `compose-usage.json`'s
+  `$known-gaps` entry is retired. **Since removed** — m3-catalog's helpers now return a
+  `MutableState` used through `by`, so the same snippets come out of an ordinary `SUBSTITUTE` rule
+  and the kind had no consumer left. The facts it needed (`destructurings`, `references`) went with
+  it.
 - The 2 conditional-`stringResource` failures become tractable for the same reason: the inliner can
   see the `if` rather than declining on a regex.
 - `CatalogFilledStars` (×4) still needs a substitution rule — no parse invents an icon.

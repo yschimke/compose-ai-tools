@@ -10,13 +10,10 @@ import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.psi.KtCallExpression
-import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtLambdaArgument
-import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtValueArgument
-import org.jetbrains.kotlin.psi.KtValueArgumentName
 
 /**
  * Parses Kotlin source and reports the **structure** the usage cleaner needs, as JSON.
@@ -61,8 +58,7 @@ class UsageSourceAnalyzer : AutoCloseable {
   }
 
   /**
-   * [source] → a JSON object of `calls` and `destructurings`, or `{"error":"…"}` if it could not be
-   * parsed at all.
+   * [source] → a JSON object of `calls`, or `{"error":"…"}` if it could not be parsed at all.
    *
    * Never throws across the reflective boundary: an exception here would surface in the caller as
    * an `InvocationTargetException` carrying a frontend-loaded class the caller cannot name. A JSON
@@ -79,26 +75,6 @@ class UsageSourceAnalyzer : AutoCloseable {
       json {
         arrayField("calls", PsiTreeUtil.findChildrenOfType(file, KtCallExpression::class.java)) {
           call(it)
-        }
-        arrayField(
-          "destructurings",
-          PsiTreeUtil.findChildrenOfType(file, KtDestructuringDeclaration::class.java),
-        ) {
-          destructuring(it)
-        }
-        // Name references, minus argument *labels*. `Switch(onCheckedChange = onCheckedChange)`
-        // mentions that name twice and only the second is a reference — rebinding the first turns
-        // the label into an expression and the call into nonsense. PSI separates them; a word scan
-        // cannot, which is how the first version of the DESTRUCTURE rule broke this exact call.
-        arrayField(
-          "references",
-          PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java).filter {
-            it.parent !is KtValueArgumentName
-          },
-        ) { reference ->
-          field("name", reference.getReferencedName())
-          number("start", reference.textRange.startOffset)
-          number("end", reference.textRange.endOffset)
         }
       }
     } catch (e: Throwable) {
@@ -146,15 +122,5 @@ class UsageSourceAnalyzer : AutoCloseable {
       number("start", expr?.textRange?.startOffset ?: -1)
       number("end", expr?.textRange?.endOffset ?: -1)
     }
-  }
-
-  private fun JsonWriter.destructuring(node: KtDestructuringDeclaration) {
-    number("start", node.textRange.startOffset)
-    number("end", node.textRange.endOffset)
-    arrayField("names", node.entries.map { it.name ?: "" }) { raw("\"" + escape(it) + "\"") }
-    val init = node.initializer
-    field("initializer", init?.text ?: "")
-    number("initializerStart", init?.textRange?.startOffset ?: -1)
-    number("initializerEnd", init?.textRange?.endOffset ?: -1)
   }
 }
