@@ -126,7 +126,27 @@ against a moving fixture baseline:
    byte-identical PNGs for all 196. So a capture that moves is a real change —
    take it seriously rather than re-running until it agrees.
 
-Suggested order, cheapest seam first: `backend-badge.js` (33 lines),
-`viewer-groups.js` (16), `rc-fonts.js` (50), then `url-state.js` itself — that
-one is the shared global every legacy script reads at IIFE time, so it wants its
-own change once more than one component here needs it.
+Ported so far: `bg-toggle.js` → `<cp-bg-toggle>`, `backend-badge.js` →
+`<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`.
+
+Next, cheapest seam first: `rc-fonts.js` (50 lines), `page-theme.js` (103), then
+`url-state.js` itself — that one is the shared global every legacy script reads
+at IIFE time, so it wants its own change once more than one component here needs
+it.
+
+Two shapes have shown up, and it is worth naming which one a script is before
+porting it:
+
+- **A control the server declares** (`<cp-bg-toggle>`): the element renders its
+  own markup, because the control is inert without JS and one source of truth
+  for the markup beats two.
+- **A behaviour over markup the server already rendered** (`<cp-backend-badge>`,
+  `<cp-group-memory>`): the element renders nothing structural. The badge is the
+  host itself so the `role="status"` live region stays in the served HTML — a
+  live region created by script with its text already in it is not announced —
+  and `<cp-group-memory>` is a page-level controller because `<details>` cannot
+  be a custom element and eight marker children would be worse than one.
+
+Whichever shape it is, the same rule holds for the elements the server emits:
+they are declared in the page's HTML, so a fixture regeneration and a pixel
+check are still part of the change.

@@ -20,12 +20,14 @@ internal object ServeWebAssets {
       "url-state.js" to "text/javascript; charset=utf-8",
       // The Lit component bundle, built from `cli/serve-web/` and committed here so the Gradle
       // build and the release chain stay node-free (`npm run verify` in that directory, wired into
-      // CI, fails if the committed bytes drift from the source). Carries every ported component —
-      // currently `<cp-bg-toggle>`, the Transparent toggle shared by the catalog grid and the
-      // viewer. Loaded whole rather than per-page: Lit is ~6 kB gzipped and an element whose tag
-      // isn't on the page costs nothing but its bytes, so splitting would buy less than it costs.
-      // The heavy per-page scripts selective loading exists for (`codemirror.js`, `viewer.js`,
-      // `format-compare.js`) are untouched and keep their own tags.
+      // CI, fails if the committed bytes drift from the source). Carries every ported component:
+      // `<cp-bg-toggle>` (the Transparent toggle shared by the catalog grid and the viewer),
+      // `<cp-backend-badge>` (the viewer stage's provenance badge, formerly `backend-badge.js`) and
+      // `<cp-group-memory>` (the control drawers' remembered open state, formerly
+      // `viewer-groups.js`). Loaded whole rather than per-page: Lit is ~6 kB gzipped and an element
+      // whose tag isn't on the page costs nothing but its bytes, so splitting would buy less than
+      // it costs. The heavy per-page scripts selective loading exists for (`codemirror.js`,
+      // `viewer.js`, `format-compare.js`) are untouched and keep their own tags.
       "serve-components.js" to "text/javascript; charset=utf-8",
       // The header's Settings menu and the Page theme setting it holds — whether the chrome follows
       // the selected preview theme or the OS. Loaded by every page, because the menu is in the site
@@ -43,10 +45,8 @@ internal object ServeWebAssets {
       // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
       // by a viewer whose host can produce at least one of them.
       "inspect.js" to "text/javascript; charset=utf-8",
-      "viewer-groups.js" to "text/javascript; charset=utf-8",
       "viewer-drawers.js" to "text/javascript; charset=utf-8",
       "viewer-history.js" to "text/javascript; charset=utf-8",
-      "backend-badge.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
       // The viewer's design-spec comparison views (diff / triptych / slider); loaded only by a
       // viewer whose catalog published a design reference for that exact preview. Builds on

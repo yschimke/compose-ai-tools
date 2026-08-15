@@ -662,6 +662,9 @@ html.cp-js .cp-section-head { display: none; }
    `display: contents` drops the wrapper out of layout entirely, so the .cp-bg-btn inside stays the
    toolbar's own flex item and the upgraded control lays out exactly as the bare button did. */
 cp-bg-toggle { display: contents; }
+/* `<cp-group-memory>` (serve-components.js) only wires the control drawers' remembered open
+   state; it has nothing to draw, and an inline box here would sit in the viewer's flow. */
+cp-group-memory { display: none; }
 /* …and the same filter chip for the theme chips and for the two standalone toggles that used to
    be segmented pairs — Transparent (<cp-bg-toggle>) and the viewer's Fit width (.cp-zoom-toggle).
    One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's
@@ -1856,7 +1859,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 /* The mode radios are kept in the DOM (the transport JS drives them) but visually removed —
    the single toggle above is the only visible mode control. */
 .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-/* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
+/* Backend badge flips its accent green when a live lane drives the stage (`<cp-backend-badge>`,
+   cli/serve-web/src/components/BackendBadge.ts). */
 .cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
 /* …and amber while that lane is still activating ("connecting…"), so the wait reads on the
    preview itself rather than in the controls footer. Declared after the green rule so it wins

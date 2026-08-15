@@ -14,7 +14,6 @@ class ServeWebAssetsTest {
         "serve.css",
         "url-state.js",
         "viewer.js",
-        "viewer-groups.js",
         "viewer-drawers.js",
         "format-compare.js",
         "catalog-live.js",
@@ -44,10 +43,14 @@ class ServeWebAssetsTest {
       html.contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
       html,
     )
+    // The provenance badge is a Lit element in `serve-components.js` now, so what the page owes it
+    // is the bundle plus the tag — its behaviour is covered by
+    // `cli/serve-web/test/backendBadge.test.ts`.
     assertTrue(
-      html.contains("""<script src="${ServeWebAssets.href("backend-badge.js")}"></script>"""),
+      html.contains("""<script src="${ServeWebAssets.href("serve-components.js")}"></script>"""),
       html,
     )
+    assertTrue(html.contains("<cp-backend-badge "), html)
     val svgHtml = ServeWeb.viewerPage(preview, token = "t", hasSvgExport = true)
     assertTrue(
       svgHtml.contains("""<script src="${ServeWebAssets.href("format-compare.js")}"></script>"""),
@@ -62,9 +65,7 @@ class ServeWebAssetsTest {
       listOf(
         "url-state.js",
         "viewer.js",
-        "viewer-groups.js",
         "viewer-drawers.js",
-        "backend-badge.js",
         "format-compare.js",
         "catalog-live.js",
       )) {

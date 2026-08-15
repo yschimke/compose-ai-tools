@@ -17,7 +17,7 @@
     return cls === "cp-nav-open" ? "cp-nav-toggle" : "cp-controls-toggle";
   }
   // Every fold on this page remembers itself per-visitor, the same way the override groups do
-  // (`cp-grp.<id>` in viewer-groups.js) — a reader who puts the component list or a wide state axis
+  // (`cp-grp.<id>` in `<cp-group-memory>`) — a reader who puts the component list or a wide state axis
   // away has said so about the *catalog*, not about one preview, and re-opening it on every
   // navigation would make the toggle worthless on exactly the catalogs that need it.
   // Scoped to the CATALOG, the way `cp-theme:<catalog>` and `cp-tab:<catalog>` already are:
