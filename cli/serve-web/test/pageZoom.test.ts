@@ -71,6 +71,16 @@ function stubLayout(): void {
     const stage = el<HTMLElement>(".cp-page-stage");
     // Read through to STAGE on every call, so a test can narrow the stage mid-run the
     // way an opening side panel does.
+    // A 1 px border, like the real stage's: the canvas is `inset: 0`, so it fills the
+    // INNER box and the clamp has to be built from that, not from the border box.
+    Object.defineProperty(stage, "clientWidth", {
+        configurable: true,
+        get: () => STAGE.width,
+    });
+    Object.defineProperty(stage, "clientHeight", {
+        configurable: true,
+        get: () => STAGE.height,
+    });
     stage.getBoundingClientRect = () =>
         ({
             ...STAGE,
@@ -169,18 +179,31 @@ function wheel(
         deltaY,
         deltaMode,
     });
+    // happy-dom's `WheelEvent` drops every MouseEvent field its init carries — the
+    // modifier AND the coordinates — so they have to be defined onto the event. Without
+    // the coordinates the zoom still scales but anchors on `NaN`, which is exactly the
+    // half of this gesture a scale-only assertion cannot see.
     Object.defineProperty(event, "ctrlKey", { value: ctrl });
+    Object.defineProperty(event, "clientX", { value: point.x });
+    Object.defineProperty(event, "clientY", { value: point.y });
     el(".cp-page-stage").dispatchEvent(event);
     return event.defaultPrevented;
 }
 
 /** happy-dom has no `PointerEvent`; a `MouseEvent` with a pointer id stands in. */
-function pointer(type: string, x: number, y: number, id = 1): void {
+function pointer(
+    type: string,
+    x: number,
+    y: number,
+    id = 1,
+    buttons = 1,
+): void {
     const event = new MouseEvent(type, {
         bubbles: true,
         clientX: x,
         clientY: y,
         button: 0,
+        buttons,
     });
     Object.defineProperty(event, "pointerId", { value: id });
     const target = type === "pointerdown" ? el(".cp-page-stage") : window;
@@ -682,6 +705,44 @@ describe("<cp-page-zoom>", () => {
             new MouseEvent("click", { bubbles: true, detail: 0 }),
         );
         assert.equal(clicked, 1, "the keyboard activation was delivered");
+    });
+
+    it("holds the sheet against the stage's inner edge, not its border", async () => {
+        await mount();
+        wheel({ x: 600, y: 400 }, -300, true);
+        await flush();
+        const scale = view().scale;
+        assert.ok(scale > 1.5, "zoomed enough to have somewhere to pan");
+        // Drag far past the right edge; the clamp is what stops it.
+        pointer("pointerdown", 900, 400);
+        pointer("pointermove", -4000, 400);
+        pointer("pointerup", -4000, 400);
+        await flush();
+        // The sheet's right edge lands ON the stage's inner edge. Clamping against the
+        // border box instead would allow 2 x (scale - 1) more travel — a blank strip
+        // where the drawing should be, tens of pixels wide at high zoom.
+        assert.ok(
+            Math.abs(view().x - (STAGE.width - STAGE.width * scale)) < 0.5,
+            `expected the pan to stop at the inner edge, got x=${view().x}`,
+        );
+    });
+
+    it("gives up a pan whose release it never saw", async () => {
+        await mount();
+        wheel({ x: 600, y: 400 }, -300, true);
+        await flush();
+        pointer("pointerdown", 600, 400);
+        // Released outside the window: no `pointerup`, no `pointercancel`. The next move
+        // arrives with no button held, and must not drag the sheet.
+        pointer("pointermove", 500, 400, 1, 0);
+        const parked = view();
+        pointer("pointermove", 200, 400, 1, 0);
+        await flush();
+        assert.deepEqual(
+            view(),
+            parked,
+            "the sheet stayed where the reader left it",
+        );
     });
 
     it("is inert on a stage with no canvas to transform", async () => {

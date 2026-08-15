@@ -285,15 +285,29 @@ export class PageZoom extends LitElement {
         void this.canvas.getBoundingClientRect();
     }
 
+    /**
+     * The box the canvas actually fills — the stage's INNER box, not its border box.
+     *
+     * `.cp-page-canvas` is `inset: 0`, so it fills the padding box, and the stage draws
+     * a 1 px border outside that. Clamping against the border box therefore allows
+     * `2 × (scale - 1)` pixels of extra travel: at 24x the sheet can be dragged some
+     * 46 px past its own edge, exposing a blank strip where the drawing should be.
+     *
+     * `clientWidth`/`clientHeight` are exactly that inner box. They answer 0 for an
+     * element with no layout yet (a page opened in a background tab), so the measured
+     * rect stands in — a slightly loose clamp beats no clamp at all.
+     */
     private stageBox(): Box {
-        return (
-            this.stage?.getBoundingClientRect() ?? {
-                left: 0,
-                top: 0,
-                width: 0,
-                height: 0,
-            }
-        );
+        const stage = this.stage;
+        if (!stage) return { left: 0, top: 0, width: 0, height: 0 };
+        const rect = stage.getBoundingClientRect();
+        const style = getComputedStyle(stage);
+        return {
+            left: rect.left + (parseFloat(style.borderLeftWidth) || 0),
+            top: rect.top + (parseFloat(style.borderTopWidth) || 0),
+            width: stage.clientWidth || rect.width,
+            height: stage.clientHeight || rect.height,
+        };
     }
 
     /** Commit a view: transform the canvas, publish the scale, show or hide this bar. */
@@ -591,6 +605,16 @@ export class PageZoom extends LitElement {
     private movePan(event: PointerEvent): void {
         const pan = this.panning;
         if (!pan || event.pointerId !== pan.id) return;
+        // The button came up somewhere this page never heard about — released outside
+        // the window before the drag had travelled far enough to take capture, so
+        // neither `pointerup` nor `pointercancel` reached us. Without this the next
+        // move on the same pointer id drags the sheet around with no button held, and
+        // `setPointerCapture` can throw for a pointer that is no longer active.
+        if (!(event.buttons & 1)) {
+            this.panning = null;
+            this.stage?.classList.remove("cp-page-panning");
+            return;
+        }
         const dx = event.clientX - pan.x;
         const dy = event.clientY - pan.y;
         pan.x = event.clientX;
@@ -598,7 +622,11 @@ export class PageZoom extends LitElement {
         pan.moved += Math.abs(dx) + Math.abs(dy);
         if (pan.moved > DRAG_SLOP && !pan.held) {
             pan.held = true;
-            this.stage?.setPointerCapture?.(event.pointerId);
+            try {
+                this.stage?.setPointerCapture?.(event.pointerId);
+            } catch {
+                // The pointer is gone; the pan still works off the window listeners.
+            }
             this.stage?.classList.add("cp-page-panning");
         }
         this.apply(
