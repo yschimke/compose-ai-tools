@@ -17,14 +17,14 @@
 //
 // The decisions live next door: `spec/views.ts` (who gets to pick the view — three sources compete
 // and they are not equal), `spec/verdict.ts` (what the chip and the readout say), `spec/wipe.ts`
-// (where the seam sits), `spec/sameOrigin.ts` (what may reach a canvas at all).
+// (where the seam sits), `dom/sameOrigin.ts` (what may reach a canvas at all).
 
 import { LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { whenParsed } from "../dom/whenParsed.js";
 import { compareApi, type NormalisedPair } from "../compare/api.js";
 import { urlState } from "../urlState.js";
-import { sameOrigin } from "../spec/sameOrigin.js";
+import { sameOrigin } from "../dom/sameOrigin.js";
 import {
     DEFAULT_VIEW,
     INITIAL,

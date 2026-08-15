@@ -42,9 +42,6 @@ internal object ServeWebAssets {
       // Opt-in site-wide power-user navigation. Separate from the Lit bundle because Settings is
       // on every page while only pages with Lit controls currently load serve-components.js.
       "keyboard-navigation.js" to "text/javascript; charset=utf-8",
-      // The grid's long-press live lane; loaded only by a catalog page whose session can actually
-      // stream (see [ServeWeb.catalogLiveScript]).
-      "catalog-live.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
       // The design page's node measuring and render-swap controls; loaded only by a

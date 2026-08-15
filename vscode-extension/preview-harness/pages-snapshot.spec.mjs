@@ -310,7 +310,6 @@ const SERVE_ASSETS = [
     ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
-    ["catalog-live.js", "text/javascript"],
     ["design-page.js", "text/javascript"],
 ];
 
@@ -1538,7 +1537,7 @@ const FIXTURE_STATES = [
         // A card actually streaming: the daemon's frames paint into a canvas overlaid on the
         // thumbnail's slot, the card takes an accent outline, and the hint becomes a "live"
         // readout. There is no daemon in the harness, so the socket is stubbed — everything else
-        // (the press timing, the overlay, the chip) is the real `catalog-live.js` doing its job.
+        // (the press timing, the overlay, the chip) is the real `<cp-catalog-live>` doing its job.
         fixture: "serve-landing-live",
         suffix: "live-card",
         apply: async (page) => {
@@ -1591,6 +1590,47 @@ const FIXTURE_STATES = [
             await page.waitForFunction(
                 () => document.querySelector(".cp-live-chip")?.textContent === "live",
             );
+        },
+    },
+    {
+        // A lane the server REFUSED: the card explains itself in place rather than silently going
+        // back to being a link, which would be indistinguishable from a press that never
+        // registered.
+        //
+        // Captured because nothing else renders this surface. The message is the one the viewer
+        // shows for the same close code, and the two drifted apart unnoticed for exactly as long as
+        // neither had a shot — a wording change here moved no baseline at all before this state
+        // existed.
+        fixture: "serve-landing-live",
+        suffix: "live-refused",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            // States run in order against ONE page, and `live-card` above leaves its session
+            // holding this very card — a press on a live card belongs to the canvas, so without
+            // this the gesture below never starts.
+            await page.keyboard.press("Escape");
+            await page.waitForSelector(".cp-card-live", { state: "detached" });
+            await page.evaluate(() => {
+                // 1006, a bare abnormal close — typically a proxy 502 on the WS upgrade, and the
+                // branch that fires most. It is also the longest of the four messages, so this shot
+                // is where the box's wrapping at card width is pinned.
+                window.WebSocket = class {
+                    constructor() {
+                        this.readyState = 1;
+                        setTimeout(() => this.onclose?.({ code: 1006 }), 0);
+                    }
+                    send() {}
+                    close() {}
+                };
+            });
+            const card = page.locator(".cp-grid .cp-card").first();
+            const box = await card.boundingBox();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+            await page.mouse.down();
+            await page.waitForSelector(".cp-live-error");
+            await page.mouse.up();
         },
     },
     {

@@ -5719,15 +5719,21 @@ object ServeWeb {
    * The grid's **long-press live lane**: hold a card and its preview starts streaming from the
    * session's render daemon in place, inside the card, instead of navigating to the viewer.
    *
-   * This emits the browser side's configuration and loads [ServeWebAssets] `catalog-live.js`. The
-   * per-card preview ids ride in a **server-emitted object literal**, in the grid's document order,
-   * rather than being read back off `data-` attributes — the same rule the themed-render URLs
-   * follow, so no id this page turns into a socket URL originates as DOM text. Each entry carries
-   * the card's light and dark ids (identical for a single-variant card, empty for one the session
-   * can't stream), so a card swapped to its dark render goes live on what is actually on screen.
+   * This emits the browser side's configuration and the `<cp-catalog-live>` element that reads it.
+   * The per-card preview ids ride in a **server-emitted object literal**, in the grid's document
+   * order, rather than being read back off `data-` attributes — the same rule the themed-render
+   * URLs follow, so no id this page turns into a socket URL originates as DOM text. Each entry
+   * carries the card's light and dark ids (identical for a single-variant card, empty for one the
+   * session can't stream), so a card swapped to its dark render goes live on what is actually on
+   * screen.
    *
-   * Empty — no config, no script tag — when no card can stream, which is every static bundle and
-   * every baked-only catalog. Those pages are byte-for-byte what they always were.
+   * The tag comes AFTER the config, so the element finds it the moment it upgrades; the components
+   * bundle is already loaded by then (it precedes the filter script above). The element defers to
+   * `DOMContentLoaded` if it upgrades early anyway, so the order is a nicety rather than a
+   * dependency.
+   *
+   * Empty — no config, no tag — when no card can stream, which is every static bundle and every
+   * baked-only catalog. Those pages are byte-for-byte what they always were.
    */
   private fun catalogLiveScript(
     basePath: String,
@@ -5745,7 +5751,7 @@ object ServeWeb {
         "query:${WebEscaping.jsString(query)}," +
         "signInHref:${WebEscaping.jsString(signInHref.orEmpty())}," +
         "holdMs:$LONG_PRESS_HOLD_MS,cards:[$entries]};"
-    return "\n<script>$config</script>\n${scriptTag("catalog-live.js")}"
+    return "\n<script>$config</script>\n<cp-catalog-live></cp-catalog-live>"
   }
 
   /** Landing page: the module's preview list, each card linking to its viewer. */
