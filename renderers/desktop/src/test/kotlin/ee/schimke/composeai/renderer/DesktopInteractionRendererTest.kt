@@ -49,6 +49,8 @@ class DesktopInteractionRendererTest {
     name: String,
     widthPx: Int = 90,
     heightPx: Int = 30,
+    wrapWidth: Boolean = false,
+    wrapHeight: Boolean = false,
   ): File {
     val outputFile = File(tempFolder.newFolder(name), "$name.${spec.format.name.lowercase()}")
     renderInteractionPreview(
@@ -64,6 +66,8 @@ class DesktopInteractionRendererTest {
       previewArgs = emptyList(),
       localeTag = null,
       spec = spec,
+      wrapWidth = wrapWidth,
+      wrapHeight = wrapHeight,
     )
     return outputFile
   }
@@ -154,6 +158,130 @@ class DesktopInteractionRendererTest {
     assertTrue(
       "the message should name the count so the script can be fixed: ${error?.message}",
       error?.message?.contains("3 clickable node(s)") == true,
+    )
+  }
+
+  @Test
+  fun `a wrapped capture is cropped to the composable, not to the device sandbox`() {
+    // The regression this whole capture-region change exists for. `ThreeCellSelector` is 90x30dp,
+    // and at density 1 in a 400x300 sandbox a wrapped render must publish 90x30 — the same size the
+    // single-frame path crops its sticker to. Before the wrap box reached this path every capture
+    // came out sandbox-sized, so a 137x84 switch shipped as a 1050x2100 recording of a switch
+    // adrift in empty space. Asserting the *dimensions* is the one-line check that would have
+    // caught it; asserting only the pixels never would, because the pixels were fine — just lost
+    // in a field of background.
+    val output =
+      render(
+        "ThreeCellSelector",
+        spec(targets = listOf(1)),
+        "wrapped",
+        widthPx = 400,
+        heightPx = 300,
+        wrapWidth = true,
+        wrapHeight = true,
+      )
+
+    val frames = ApngFrames.read(output)
+    assertTrue("expected frames, got none", frames.isNotEmpty())
+    for (frame in frames) {
+      assertEquals(90, frame.width)
+      assertEquals(30, frame.height)
+    }
+  }
+
+  @Test
+  fun `an unwrapped capture keeps the requested frame`() {
+    // The device-framed case still fills its sandbox — cropping is what a *wrapped* axis asks for,
+    // and a `@Preview` that declared a device size means it.
+    val output =
+      render(
+        "ThreeCellSelector",
+        spec(targets = listOf(1)),
+        "unwrapped",
+        widthPx = 200,
+        heightPx = 120,
+      )
+
+    val first = ApngFrames.read(output).first()
+    assertEquals(200, first.width)
+    assertEquals(120, first.height)
+  }
+
+  @Test
+  fun `content that grows mid-recording is re-recorded at the size it grew to`() {
+    // `ExpandOnTap` measures 30x30 at rest and 90x30 once tapped. Cropping to the resting
+    // measurement would slice the expansion off at x=30 — the exact frame edge the revealed half
+    // sits behind — so the recording has to notice it outgrew its crop and record again. The pixel
+    // assertion at x=60 is the one that matters: the frames could be the right SIZE while the
+    // revealed content was never captured.
+    val output =
+      render(
+        "ExpandOnTap",
+        spec(targets = listOf(0)),
+        "growth",
+        widthPx = 400,
+        heightPx = 300,
+        wrapWidth = true,
+        wrapHeight = true,
+      )
+
+    val frames = ApngFrames.read(output)
+    assertEquals("re-recorded at the grown width", 90, frames.first().width)
+    assertEquals(30, frames.first().height)
+    assertTrue("the revealed half is in the encoded pixels", frames.last().isWhiteAt(60, 15))
+  }
+
+  @Test
+  fun `padding a frame moves and scales nothing`() {
+    // The property that makes the fixed frame size safe. `ExpandOnTap` rests at 30x30 inside a
+    // capture sized 90x30 for its later expansion, so its early frames are padded — and the whole
+    // question is what happened to the component while that padding was added.
+    //
+    // Scaled up to fill, the cell would cover x=60. Re-centred, it would have left x=15. Neither
+    // is true here: the cell is exactly where it composed, at its own size, and the space it has
+    // not grown into yet is untouched padding.
+    val output =
+      render(
+        "ExpandOnTap",
+        spec(targets = listOf(0)),
+        "padding",
+        widthPx = 400,
+        heightPx = 300,
+        wrapWidth = true,
+        wrapHeight = true,
+      )
+
+    val frames = ApngFrames.read(output)
+    val resting = frames.first()
+    assertEquals(90, resting.width)
+    assertEquals("the cell did not scale up to fill the padded canvas", 0, resting.alphaAt(60, 15))
+    assertEquals("the cell did not drift from the top-left", 255, resting.alphaAt(15, 15))
+    assertEquals("nor did it grow rightwards into the padding", 0, resting.alphaAt(35, 15))
+    // ...and once it genuinely expands, that same pixel is real content rather than padding.
+    assertTrue("the expansion reaches the space the padding held", frames.last().isWhiteAt(60, 15))
+  }
+
+  @Test
+  fun `motionCropSize takes the measured content only on a wrapped axis`() {
+    val scene = androidx.compose.ui.unit.IntSize(400, 300)
+    val measured = androidx.compose.ui.unit.IntSize(90, 30)
+
+    assertEquals(
+      androidx.compose.ui.unit.IntSize(90, 30),
+      motionCropSize(measured, true, true, 400, 300, scene),
+    )
+    assertEquals(
+      androidx.compose.ui.unit.IntSize(90, 300),
+      motionCropSize(measured, true, false, 400, 300, scene),
+    )
+    assertEquals(
+      androidx.compose.ui.unit.IntSize(400, 300),
+      motionCropSize(measured, false, false, 400, 300, scene),
+    )
+    // Never larger than the scene that was actually rendered.
+    assertEquals(
+      androidx.compose.ui.unit.IntSize(400, 300),
+      motionCropSize(androidx.compose.ui.unit.IntSize(9000, 9000), true, true, 400, 300, scene),
     )
   }
 
@@ -262,6 +390,9 @@ private class ApngSplitter(private val bytes: ByteArray) {
   private fun readShort(at: Int): Short =
     (((bytes[at].toInt() and 0xFF) shl 8) or (bytes[at + 1].toInt() and 0xFF)).toShort()
 }
+
+/** The pixel's alpha — `0` is padding the renderer added, `255` is something the component drew. */
+private fun BufferedImage.alphaAt(x: Int, y: Int): Int = (getRGB(x, y) shr 24) and 0xFF
 
 /** True when the pixel is (near-)white — the fixtures' "this is the active one" signal. */
 private fun BufferedImage.isWhiteAt(x: Int, y: Int): Boolean {

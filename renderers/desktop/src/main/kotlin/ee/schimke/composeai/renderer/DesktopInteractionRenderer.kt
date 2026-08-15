@@ -1,13 +1,9 @@
 package ee.schimke.composeai.renderer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SkikoComposeUiTest
@@ -70,6 +66,9 @@ fun renderInteractionPreview(
   spec: InteractionSpec,
   uiMode: Int = 0,
   fontScale: Float = 1.0f,
+  wrapWidth: Boolean = false,
+  wrapHeight: Boolean = false,
+  sizeBounds: PreviewSizeBounds = PreviewSizeBounds(),
   classLoader: ClassLoader? = null,
 ) {
   val composableMethod = resolveMotionComposable(className, functionName, previewArgs, classLoader)
@@ -81,75 +80,100 @@ fun renderInteractionPreview(
 
   val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
-  val collector = MotionFrameCollector(spec.format, outputFile)
+  val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
+  val bgColor =
+    when {
+      backgroundColor != 0L -> Color(backgroundColor.toInt())
+      showBackground -> Color.White
+      else -> Color.Transparent
+    }
 
-  runSkikoComposeUiTest(
-    size = Size(widthPx.toFloat(), heightPx.toFloat()),
-    density = sceneDensity,
-  ) {
-    mainClock.autoAdvance = false
+  val result =
+    recordMotionCapture(
+      outputFile = outputFile,
+      format = spec.format,
+      frameIntervalMs = frameInterval,
+      padArgb = bgColor.toArgb(),
+    ) { collector, forcedCrop ->
+      val bounds = MotionBoundsTracker()
+      // Until the first measure lands there is nothing to crop to, so the pass starts committed to
+      // the whole scene and narrows once the content has been measured.
+      var crop = forcedCrop ?: sceneSize
 
-    setContent {
-      val bgColor =
-        when {
-          backgroundColor != 0L -> Color(backgroundColor.toInt())
-          showBackground -> Color.White
-          else -> Color.Transparent
-        }
-      MotionPreviewProviders(rtl = rtl, sceneDensity = sceneDensity, uiMode = uiMode) {
-        val body: @Composable () -> Unit = {
-          Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+      runSkikoComposeUiTest(
+        size = Size(sceneSize.width.toFloat(), sceneSize.height.toFloat()),
+        density = sceneDensity,
+      ) {
+        mainClock.autoAdvance = false
+
+        setContent {
+          MotionCaptureRoot(
+            rtl = rtl,
+            sceneDensity = sceneDensity,
+            uiMode = uiMode,
+            wrapWidth = wrapWidth,
+            wrapHeight = wrapHeight,
+            backgroundColor = bgColor,
+            sizeBounds = sizeBounds,
+            onMeasured = bounds::observe,
+            wrapperClassName = wrapperClassName,
+            classLoader = classLoader,
+          ) {
             InvokeMotionComposable(composableMethod, null, previewArgs)
           }
         }
-        if (wrapperClassName != null) {
-          InvokeMotionWrappedComposable(wrapperClassName, classLoader, body)
-        } else {
-          body()
+
+        // One tick so first composition + layout land: the target nodes don't have bounds to aim at
+        // until layout has run, and frame 0 should show the component at rest rather than
+        // unlaid-out. It is also what gives [bounds] the resting measurement the crop comes from.
+        mainClock.advanceTimeByFrame()
+
+        if (forcedCrop == null) {
+          crop = motionCropSize(bounds.size, wrapWidth, wrapHeight, widthPx, heightPx, sceneSize)
+        }
+
+        // Resolve every target ONCE, up front, against the composition at rest. Re-resolving per
+        // gesture would look more robust and be less so: a component that reflows as it responds (a
+        // navigation bar whose selected item widens, a container mid-shape-morph) would move the
+        // node the *next* index refers to, so a script written against the resting layout would
+        // silently start hitting different things partway through the recording.
+        val targetCentres = resolveTargetCentres(spec.targets, outputFile.name)
+
+        var elapsed = 0
+        var nextEvent = 0
+        repeat(frameCount) {
+          while (nextEvent < timeline.events.size && timeline.events[nextEvent].atMs <= elapsed) {
+            val event = timeline.events[nextEvent]
+            // Non-null by construction: `resolveTargetCentres` is given the same target list the
+            // timeline was expanded from, and refuses the whole render for an index it can't
+            // resolve.
+            val centre = targetCentres.getValue(event.target)
+            onRoot().performTouchInput { if (event.down) down(centre) else up() }
+            nextEvent++
+          }
+          collector.capture(captureRootPngBytes(), crop)
+          mainClock.advanceTimeBy(frameInterval.toLong())
+          elapsed += frameInterval
+        }
+
+        // Release anything still held. A capture that ends mid-press leaves the pointer down when
+        // the composition is torn down, and a reader looping the file would see the component stuck
+        // in its pressed state at the loop point with no release to explain it.
+        if (nextEvent < timeline.events.size) {
+          onRoot().performTouchInput { up() }
         }
       }
+
+      MotionPass(crop = crop, observed = bounds.size)
     }
 
-    // One tick so first composition + layout land: the target nodes don't have bounds to aim at
-    // until layout has run, and frame 0 should show the component at rest rather than unlaid-out.
-    mainClock.advanceTimeByFrame()
-
-    // Resolve every target ONCE, up front, against the composition at rest. Re-resolving per
-    // gesture would look more robust and be less so: a component that reflows as it responds (a
-    // navigation bar whose selected item widens, a container mid-shape-morph) would move the
-    // node the *next* index refers to, so a script written against the resting layout would
-    // silently start hitting different things partway through the recording.
-    val targetCentres = resolveTargetCentres(spec.targets, outputFile.name)
-
-    var elapsed = 0
-    var nextEvent = 0
-    repeat(frameCount) {
-      while (nextEvent < timeline.events.size && timeline.events[nextEvent].atMs <= elapsed) {
-        val event = timeline.events[nextEvent]
-        // Non-null by construction: `resolveTargetCentres` is given the same target list the
-        // timeline was expanded from, and refuses the whole render for an index it can't resolve.
-        val centre = targetCentres.getValue(event.target)
-        onRoot().performTouchInput { if (event.down) down(centre) else up() }
-        nextEvent++
-      }
-      collector.capture(captureRootPngBytes())
-      mainClock.advanceTimeBy(frameInterval.toLong())
-      elapsed += frameInterval
-    }
-
-    // Release anything still held. A capture that ends mid-press leaves the pointer down when the
-    // composition is torn down, and a reader looping the file would see the component stuck in its
-    // pressed state at the loop point with no release to explain it.
-    if (nextEvent < timeline.events.size) {
-      onRoot().performTouchInput { up() }
-    }
-  }
-
-  val written = collector.encode(frameIntervalMs = frameInterval)
   System.err.println(
-    "@InteractionPreview on ${written.name}: ${spec.gesture} × ${spec.targets.size} target(s), " +
-      "encoded ${collector.frameCount} frame(s) over ${totalDuration}ms @ ${frameInterval}ms " +
-      "(${spec.format.name.lowercase()})."
+    "@InteractionPreview on ${result.file.name}: ${spec.gesture} × ${spec.targets.size} " +
+      "target(s), encoded ${result.frameCount} frame(s) over ${totalDuration}ms @ " +
+      "${frameInterval}ms at ${result.crop.width}×${result.crop.height} " +
+      "(${spec.format.name.lowercase()}" +
+      (if (result.reRecorded) ", re-recorded for growth" else "") +
+      ")."
   )
 }
 

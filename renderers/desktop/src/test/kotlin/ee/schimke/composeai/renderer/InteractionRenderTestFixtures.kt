@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -63,4 +64,23 @@ fun HoldToLight() {
         indication = null,
       ) {}
   )
+}
+
+/**
+ * 30×30 at rest; a tap grows it to 90×30 and it never shrinks back.
+ *
+ * The probe for **capture region**: the resting measurement a capture would naturally crop to is
+ * *wrong* for this composable from the moment it is tapped, so a renderer that measured once would
+ * publish a recording with the expansion sliced off at the frame edge. The revealed half is painted
+ * white specifically so a test can assert it survived to the encoded pixels.
+ */
+@Composable
+fun ExpandOnTap() {
+  var expanded by remember { mutableStateOf(false) }
+  Row(modifier = Modifier.background(Color.Black)) {
+    Box(modifier = Modifier.size(30.dp).background(Color.DarkGray).clickable { expanded = true })
+    if (expanded) {
+      Box(modifier = Modifier.size(width = 60.dp, height = 30.dp).background(Color.White))
+    }
+  }
 }

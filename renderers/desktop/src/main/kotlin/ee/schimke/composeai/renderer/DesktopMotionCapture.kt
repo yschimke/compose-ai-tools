@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -13,8 +14,10 @@ import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import ee.schimke.composeai.scroll.ScrollGifEncoder
 import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.imageio.ImageIO
 import org.jetbrains.skia.EncodedImageFormat
@@ -42,6 +45,7 @@ import org.jetbrains.skia.Image as SkiaImage
 internal class MotionFrameCollector(
   private val format: MotionFormatKind,
   private val outputFile: File,
+  private val padArgb: Int = 0,
 ) {
   /** APNG: PNG files on disk, which is what the encoder stitches. */
   private val frameFiles = mutableListOf<File>()
@@ -54,18 +58,45 @@ internal class MotionFrameCollector(
   val frameCount: Int
     get() = if (format == MotionFormatKind.APNG) frameFiles.size else frameImages.size
 
-  fun capture(pngBytes: ByteArray) {
+  /**
+   * Adds one frame, padded or trimmed to exactly [target]. Nothing is ever scaled.
+   *
+   * Every frame of a capture must be the same size — an APNG's frames share one `IHDR`, and a GIF's
+   * share one logical screen — but a wrap-measured capture does *not* hand them over that way. The
+   * captured root is the composable's own bounds, so a composable that changes size mid-recording
+   * produces frames that change size with it.
+   *
+   * The frame's pixels are copied 1:1 to the same coordinates and the remainder is filled with
+   * [padArgb], the backdrop the preview already composes against. There is deliberately no
+   * resampling anywhere in this path: scaling a frame up to the target would soften the component
+   * against its own sharp sibling still, and — worse for what these captures document — a component
+   * that expands would appear to *shrink* as the canvas grew around it, which is the opposite of
+   * the motion being recorded.
+   *
+   * A `null` target, or a frame already at it, passes straight through — which is the fixed-frame
+   * (device-sized) case, and it costs exactly what it did before any of this existed.
+   */
+  fun capture(pngBytes: ByteArray, target: IntSize? = null) {
     when (format) {
       MotionFormatKind.APNG -> {
         val file = File(scratch, "frame-%05d.png".format(frameFiles.size))
-        file.writeBytes(pngBytes)
+        file.writeBytes(padOrTrimPngBytes(pngBytes, target, padArgb))
         frameFiles += file
       }
-      MotionFormatKind.GIF ->
-        frameImages +=
-          (ImageIO.read(pngBytes.inputStream())
-            ?: error("Motion frame PNG couldn't be decoded back to a BufferedImage"))
+      MotionFormatKind.GIF -> {
+        val decoded =
+          ImageIO.read(pngBytes.inputStream())
+            ?: error("Motion frame PNG couldn't be decoded back to a BufferedImage")
+        frameImages += padOrTrimImage(decoded, target, padArgb)
+      }
     }
+  }
+
+  /** Drops everything collected so far, including the scratch frames on disk. */
+  fun discard() {
+    frameFiles.clear()
+    frameImages.clear()
+    scratch.deleteRecursively()
   }
 
   /** Encodes the collected frames to [outputFile] and returns it. */
@@ -266,4 +297,219 @@ internal fun InvokeMotionWrappedComposable(
       method to instance
     }
   resolved.first.invoke(currentComposer, resolved.second, body)
+}
+
+/**
+ * Resizes a captured frame's PNG bytes to exactly [target], or returns them untouched when they
+ * already are.
+ *
+ * The size check reads the `IHDR` header directly instead of decoding, so a capture whose frames
+ * are all already the target size — every fixed-frame preview, and every wrapped one that doesn't
+ * change size, which is nearly all of them — never decodes a frame at all.
+ */
+private fun padOrTrimPngBytes(pngBytes: ByteArray, target: IntSize?, padArgb: Int): ByteArray {
+  if (target == null) return pngBytes
+  val width = pngIhdrInt(pngBytes, 16)
+  val height = pngIhdrInt(pngBytes, 20)
+  if (width <= 0 || height <= 0) return pngBytes
+  if (width == target.width && height == target.height) return pngBytes
+  val decoded =
+    ImageIO.read(pngBytes.inputStream())
+      ?: error("Motion frame PNG couldn't be decoded back to a BufferedImage")
+  val out = ByteArrayOutputStream()
+  ImageIO.write(padOrTrimImage(decoded, target, padArgb), "png", out)
+  return out.toByteArray()
+}
+
+/**
+ * [BufferedImage] counterpart of [padOrTrimPngBytes], also used directly by the GIF path's
+ * already-decoded frames.
+ *
+ * The frame is anchored top-left, matching where the single-frame path takes its crop from, so a
+ * component that grows does so into the new space rather than appearing to drift within the canvas.
+ */
+private fun padOrTrimImage(image: BufferedImage, target: IntSize?, padArgb: Int): BufferedImage {
+  if (target == null) return image
+  val w = target.width.coerceAtLeast(1)
+  val h = target.height.coerceAtLeast(1)
+  if (w == image.width && h == image.height) return image
+  val canvas = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+  val g = canvas.createGraphics()
+  try {
+    if (padArgb ushr 24 != 0) {
+      g.color = java.awt.Color(padArgb, true)
+      g.fillRect(0, 0, w, h)
+    }
+    // `getSubimage` returns a view sharing the parent's raster; drawing it into the canvas copies
+    // the pixels out, so the encoders (and the GIF path, which holds every frame in memory at once)
+    // don't pin full-size backing rasters.
+    val visible = image.getSubimage(0, 0, minOf(w, image.width), minOf(h, image.height))
+    g.drawImage(visible, 0, 0, null)
+  } finally {
+    g.dispose()
+  }
+  return canvas
+}
+
+/** Big-endian 4-byte read at [at] — used only for the PNG `IHDR` width/height fields. */
+private fun pngIhdrInt(bytes: ByteArray, at: Int): Int {
+  if (bytes.size < at + 4) return 0
+  return ((bytes[at].toInt() and 0xFF) shl 24) or
+    ((bytes[at + 1].toInt() and 0xFF) shl 16) or
+    ((bytes[at + 2].toInt() and 0xFF) shl 8) or
+    (bytes[at + 3].toInt() and 0xFF)
+}
+
+/**
+ * The largest content size [ComposePreviewContentBox] measured across a whole recording.
+ *
+ * A static render measures once, so it can crop to *the* intrinsic size. A motion capture has no
+ * such single size: a composable that expands mid-recording — a menu opening, a card growing into
+ * its detail state, a list revealing an item — is bigger at frame 90 than it was at frame 0, and
+ * cropping to the resting measurement would cut the expansion off exactly when it becomes the thing
+ * worth looking at. So every measure pass is folded in here and the crop is taken from the maximum.
+ */
+internal class MotionBoundsTracker {
+  var width: Int = 0
+    private set
+
+  var height: Int = 0
+    private set
+
+  val size: IntSize
+    get() = IntSize(width, height)
+
+  fun observe(measuredWidth: Int, measuredHeight: Int) {
+    if (measuredWidth > width) width = measuredWidth
+    if (measuredHeight > height) height = measuredHeight
+  }
+}
+
+/**
+ * The rect a motion capture's frames are trimmed to: the measured content on a wrapped axis, the
+ * requested frame on a fixed one, never larger than the scene that was actually rendered.
+ *
+ * Mirrors the single-frame path's crop in [DesktopRendererMain] so a component's motion capture and
+ * its static sticker come out the same size — which is what lets a viewer show one in place of the
+ * other without the card resizing under the reader.
+ */
+internal fun motionCropSize(
+  measured: IntSize,
+  wrapWidth: Boolean,
+  wrapHeight: Boolean,
+  widthPx: Int,
+  heightPx: Int,
+  sceneSize: IntSize,
+): IntSize =
+  IntSize(
+    (if (wrapWidth && measured.width > 0) measured.width else widthPx).coerceIn(1, sceneSize.width),
+    (if (wrapHeight && measured.height > 0) measured.height else heightPx).coerceIn(
+      1,
+      sceneSize.height,
+    ),
+  )
+
+/**
+ * The composition a motion capture records, wrap-measured exactly as the single-frame path measures
+ * it.
+ *
+ * Sharing [ComposePreviewContentBox] with the static render is the point: before this, the motion
+ * paths composed into a bare `fillMaxSize` box, so every capture came out the full device sandbox —
+ * a 137×84 switch published as a 1050×2100 recording of a switch adrift in empty space.
+ */
+@Composable
+internal fun MotionCaptureRoot(
+  rtl: Boolean,
+  sceneDensity: Density,
+  uiMode: Int,
+  wrapWidth: Boolean,
+  wrapHeight: Boolean,
+  backgroundColor: Color,
+  sizeBounds: PreviewSizeBounds,
+  onMeasured: (width: Int, height: Int) -> Unit,
+  wrapperClassName: String?,
+  classLoader: ClassLoader?,
+  content: @Composable () -> Unit,
+) {
+  MotionPreviewProviders(rtl = rtl, sceneDensity = sceneDensity, uiMode = uiMode) {
+    val body: @Composable () -> Unit = {
+      ComposePreviewContentBox(
+        wrapWidth = wrapWidth,
+        wrapHeight = wrapHeight,
+        backgroundColor = backgroundColor,
+        sizeBounds = sizeBounds,
+        onMeasured = onMeasured,
+        content = content,
+      )
+    }
+    if (wrapperClassName != null) {
+      InvokeMotionWrappedComposable(wrapperClassName, classLoader, body)
+    } else {
+      body()
+    }
+  }
+}
+
+/** What one recording pass committed to, and what it turned out to need. */
+internal data class MotionPass(val crop: IntSize, val observed: IntSize)
+
+/** How a capture was produced, for the renderer's log line. */
+internal data class MotionCaptureResult(
+  val frameCount: Int,
+  val file: File,
+  val crop: IntSize,
+  val reRecorded: Boolean,
+)
+
+/**
+ * Runs [record] once and encodes it — unless the composition grew past the crop that pass committed
+ * to, in which case it records a second time at the size the growth actually needed.
+ *
+ * ### Why a re-record rather than a wider crop
+ *
+ * The crop is decided after the first frame, because that is the only point at which the resting
+ * size is known and every frame from then on has to share it. Growth after that leaves two options,
+ * and only one of them keeps the normal case cheap:
+ * * crop every frame to the sandbox and trim at the end — correct, but it makes *every* capture pay
+ *   for the rare one, since each frame is then encoded at device size before being cut back down;
+ * * crop to the resting size immediately and re-record only if that turned out to be too small.
+ *
+ * This takes the second. A component that never changes size — which is nearly all of them —
+ * records once and pays nothing for the machinery; one that expands is recorded twice and keeps its
+ * expansion, instead of having it silently clipped at the frame edge.
+ *
+ * The retry is bounded to a single extra pass by construction: the scene stays sandbox-sized in
+ * both passes, so pass one observes the true maximum even while cropping to less than it, and pass
+ * two is handed that maximum up front rather than discovering it again.
+ */
+internal fun recordMotionCapture(
+  outputFile: File,
+  format: MotionFormatKind,
+  frameIntervalMs: Int,
+  padArgb: Int = 0,
+  record: (collector: MotionFrameCollector, forcedCrop: IntSize?) -> MotionPass,
+): MotionCaptureResult {
+  val first = MotionFrameCollector(format, outputFile, padArgb)
+  val pass = record(first, null)
+  val grew = pass.observed.width > pass.crop.width || pass.observed.height > pass.crop.height
+  if (!grew) {
+    val count = first.frameCount
+    return MotionCaptureResult(count, first.encode(frameIntervalMs), pass.crop, reRecorded = false)
+  }
+
+  first.discard()
+  val retryCrop =
+    IntSize(
+      maxOf(pass.crop.width, pass.observed.width),
+      maxOf(pass.crop.height, pass.observed.height),
+    )
+  System.err.println(
+    "Motion capture on ${outputFile.name}: content grew from ${pass.crop.width}×" +
+      "${pass.crop.height} to ${retryCrop.width}×${retryCrop.height} during the recording — " +
+      "re-recording at the larger size so the expansion isn't clipped."
+  )
+  val second = MotionFrameCollector(format, outputFile, padArgb)
+  record(second, retryCrop)
+  val count = second.frameCount
+  return MotionCaptureResult(count, second.encode(frameIntervalMs), retryCrop, reRecorded = true)
 }
