@@ -1767,6 +1767,14 @@ const FIXTURE_STATES = [
                 const done = document.querySelectorAll('.cp-rc-row[data-scored="done"]');
                 return started.length > 0 && started.length === done.length;
             });
+            // …and then the diff images themselves. `data-scored="done"` covers the COMPUTATION:
+            // the element sets each `img.src` to a fresh data URL and moves on without awaiting the
+            // decode, and the runner's generic `document.images` wait already ran, before any state
+            // was applied. Screenshotting between the two would catch empty diff slots — the same
+            // race one layer down.
+            await page.waitForFunction(() =>
+                Array.from(document.images).every((img) => img.complete),
+            );
         },
     },
     {

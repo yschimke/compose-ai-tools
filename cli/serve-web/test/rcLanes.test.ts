@@ -386,6 +386,29 @@ describe("<cp-rc-lanes>", () => {
         );
     });
 
+    it("wires itself up again after being detached and reinserted", async () => {
+        // Everything this element owns lives OUTSIDE it — listeners on the picker, an observer on
+        // the rows, a global — so tearing that down on disconnect has to be undoable. Without it
+        // the reference picker and the shared filter come back inert after any DOM relocation.
+        await mount();
+        const element = document.querySelector("cp-rc-lanes") as HTMLElement;
+        const parent = element.parentNode as HTMLElement;
+        element.remove();
+        assert.equal(window.cpRcLanes, undefined, "the global goes with it");
+
+        parent.insertBefore(element, parent.firstChild);
+        await flush();
+        assert.equal(
+            typeof window.cpRcLanes?.filter,
+            "function",
+            "and comes back",
+        );
+        press("baked");
+        scrollAllIntoView();
+        await flush();
+        assert.equal(chipsIn(rows()[0]).length, 2, "the picker still measures");
+    });
+
     it("survives a payload it cannot read", async () => {
         // The table is fully server-rendered, so a broken model costs the numbers and nothing else.
         document.body.innerHTML = `

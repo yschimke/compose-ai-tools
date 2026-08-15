@@ -67,6 +67,7 @@ export class RcLanes extends LitElement {
      * previous pass instead of racing it into the same cells.
      */
     private pass = 0;
+    private installed = false;
     private observer: IntersectionObserver | null = null;
     private scored = new WeakMap<HTMLElement, number>();
     private images = new Map<string, Promise<HTMLImageElement>>();
@@ -100,6 +101,13 @@ export class RcLanes extends LitElement {
         this.observer?.disconnect();
         this.observer = null;
         if (window.cpRcLanes === this.api) delete window.cpRcLanes;
+        // Everything this element owns lives OUTSIDE it — listeners on the picker, an observer on
+        // the rows, a global — so a teardown has to be undoable. Clearing the flag lets `install()`
+        // wire it all up again if the tag is reinserted; without that the picker and the shared
+        // filter would come back inert after any DOM relocation. The pass is bumped so work still
+        // in flight abandons itself rather than writing into a table nobody is observing.
+        this.installed = false;
+        this.pass++;
         super.disconnectedCallback();
     }
 
@@ -110,10 +118,12 @@ export class RcLanes extends LitElement {
 
     /** @return whether the page was ready to be wired up; false means "try again after the parse". */
     private install(): boolean {
-        if (!this.isConnected || this.model) return true;
+        // Tracked separately from `model`, which an in-flight pass still reads after a disconnect.
+        if (!this.isConnected || this.installed) return true;
         this.section = document.getElementById("cp-rc-lanes");
         const modelNode = document.getElementById("cp-rc-model");
         if (!this.section || !modelNode) return false;
+        this.installed = true;
         try {
             this.model = JSON.parse(modelNode.textContent || "null") as RcModel;
         } catch {
