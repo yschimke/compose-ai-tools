@@ -498,6 +498,13 @@ export function bridgeLivePreviewIds(
  * Stamp each baked image with the density of the preview annotation that rendered it. This is
  * independent of live alias publication: static catalogs and intentionally unbridged supplement
  * images still need the density to export Figma references at the correct physical scale.
+ *
+ * "At the correct physical scale" is the whole job, and an unstamped image does not degrade —
+ * `FigmaRestRasterizer.scaleFor` has no scale to request without a density, so it throws and the
+ * reference is DROPPED. That is why the `@OverrideVariant` fallback below matters far more here
+ * than the phrase "still need the density" suggests: on m3-catalog it was the difference between 4
+ * and 436 published variant references, and every `@OverrideVariant` state — every tab content
+ * axis, every button state cell — served its page with no design-spec lane at all.
  */
 export function stampPreviewDensities(manifest, spec, bundles) {
   const previewForState = previewForStateOf(spec);
@@ -514,8 +521,20 @@ export function stampPreviewDensities(manifest, spec, bundles) {
       const candidates = previewsByFn.get(fn) ?? [];
       const candidateId = pickVariantId(candidates, image, breakpointForSize);
       const candidate = candidates.find((it) => it.id === candidateId);
-      if (candidate?.density !== undefined) {
-        image.density = candidate.density;
+      const density =
+        candidate?.density !== undefined
+          ? candidate.density
+          : overrideVariantDensity({
+              previewForState,
+              previewsByFn,
+              breakpointForSize,
+              componentId: component.componentId,
+              image,
+              state,
+              fn,
+            });
+      if (density !== undefined) {
+        image.density = density;
         stamped++;
       }
     }
@@ -523,6 +542,52 @@ export function stampPreviewDensities(manifest, spec, bundles) {
   return stamped;
 }
 
+/**
+ * The density of a synthetic `@OverrideVariant` sticker, or undefined — the gap that made
+ * [stampPreviewDensities] the one place the fallback [bridgeLivePreviewIds] and
+ * [resolveSemanticsIds] both carry was missing, and the one whose absence went unnoticed longest
+ * because it fails as a missing *reference* rather than a missing live lane.
+ *
+ * A non-default state with no spec `variants` entry is a synthetic `<baseId>_VARIANT_<state>`
+ * preview. `PreviewDiscovery.overrideVariantPreview` derives it as `base.copy(id = base.id + tag)`,
+ * which decides both halves of this lookup: the variant keeps the base's `functionName` — so it is
+ * already in the base function's candidate list, and `resolveFunction` still finds nothing for the
+ * state — and it keeps the base's `params`, so it carries the base's density verbatim.
+ *
+ * So this narrows that list to the tagged ids and picks among them, rather than reconstructing an
+ * id from the base's. Reconstruction is what the sibling fallbacks do, and it is a trap here: the
+ * variants share the base's function, so `pickVariantId` can return one AS the base and build a
+ * doubled `…_VARIANT_icon_VARIANT_icon` that matches nothing.
+ *
+ * Which theme the pick lands on cannot change the answer — density is a `@Preview` param, identical
+ * across a `@CatalogModes` pair — but it is separated properly anyway so the value always comes from
+ * a record describing these exact pixels.
+ */
+function overrideVariantDensity({
+  previewForState,
+  previewsByFn,
+  breakpointForSize,
+  componentId,
+  image,
+  state,
+  fn,
+}) {
+  if (state === "default" || fn) return undefined;
+  // Props-bearing images are a spec-declared axis, not an `@OverrideVariant` — the same guard the
+  // sibling fallbacks apply, so a props variant with a missing spec entry stays unstamped rather
+  // than borrowing a density from a sticker it isn't.
+  if (image.props != null && Object.keys(image.props).length > 0) return undefined;
+  const baseFn = previewForState.get(variantKey(componentId, "default"));
+  const tag = `_VARIANT_${state}`;
+  const candidates = (previewsByFn.get(baseFn) ?? []).filter((candidate) =>
+    candidate.id.endsWith(tag),
+  );
+  // Empty ⇒ this state rendered no variant preview, and a density is a statement about the
+  // annotation that drew the pixels. Inventing one from the base would hand the rasteriser an
+  // export scale for a render that never happened.
+  const picked = pickVariantId(candidates, image, breakpointForSize);
+  return candidates.find((candidate) => candidate.id === picked)?.density;
+}
 
 /**
  * `functionName → candidates`, where a **later bundle REPLACES an earlier one** for any function it
