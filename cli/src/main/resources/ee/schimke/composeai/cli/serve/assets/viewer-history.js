@@ -205,14 +205,34 @@
 
     if (made < 2) return;
     wrap.appendChild(list);
-    // Anchored to the STAGE, immediately above it — not to whatever row happens to sit there.
-    // This used to insert itself after `.cp-viewer-bar` and bail out when that element was
-    // missing, so when #3893 folded that bar's controls into the title row and stopped emitting
-    // it, this script started returning at its second line and the timeline silently stopped
-    // drawing on every viewer page. `.cp-viewer` is the stage's own container: it is what the
-    // strip describes, it is what the strip must stay above, and it is the one element here that
-    // cannot be reorganised out from under this without the page having no viewer at all.
-    root.parentNode.insertBefore(wrap, root);
+    place(wrap);
+  }
+
+  // Anchored to the STAGE — not to whatever row happens to sit next to it. This used to insert
+  // itself after `.cp-viewer-bar` and bail out when that element was missing, so when #3893 folded
+  // that bar's controls into the title row and stopped emitting it, this script started returning
+  // at its second line and the timeline silently stopped drawing on every viewer page. `.cp-viewer`
+  // is the stage's own container: it is what the strip describes, and it is the one element here
+  // that cannot be reorganised out from under this without the page having no viewer at all.
+  //
+  // WHICH SIDE of the stage depends on the width, because the two widths want opposite things. On a
+  // laptop the strip reads as metadata about the render and sits above it, where it has always
+  // been. On a phone the page is bar, title, preview — the rule the mobile layout was rebuilt
+  // around — and a strip above the stage costs 113px of that: the render starts at 126px on every
+  // other preview and at 239px on one with a history. So there it goes BELOW the stage, joining the
+  // rows `viewer-drawers.js` moves down for the same reason, and immediately after it rather than
+  // after those rows: this arrives asynchronously from a fetch, and anchoring to a sibling that
+  // another script may or may not have moved yet would make the order depend on which won the race.
+  function place(wrap) {
+    var phone = window.matchMedia && window.matchMedia("(max-width: 640px)");
+    if (phone && phone.matches) root.parentNode.insertBefore(wrap, root.nextSibling);
+    else root.parentNode.insertBefore(wrap, root);
+    if (phone && phone.addEventListener && !wrap.dataset.cpHistoryPlaced) {
+      wrap.dataset.cpHistoryPlaced = "1";
+      phone.addEventListener("change", function () {
+        place(wrap);
+      });
+    }
   }
 
   // An inline payload lets a fixture (and any offline viewer) render the strip without reaching

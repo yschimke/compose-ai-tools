@@ -1612,6 +1612,28 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The render-history strip ON A PHONE, which is the one place it changes sides. Above 640px
+        // it sits between the title and the stage, where it reads as metadata about the render it
+        // describes; below, the page is bar → title → preview, and a strip there costs 113px of
+        // exactly that (the stage starts at 126px on every other preview and at 239px on one with
+        // a history), so it goes under the stage instead. Two positions decided at runtime by
+        // `viewer-history.js`, and the desktop baseline can only ever hold one of them.
+        fixture: "serve-viewer-history",
+        suffix: "mobile",
+        viewport: PHONE_VIEWPORT,
+        apply: async (page) => {
+            // The strip is re-placed on the breakpoint crossing the runner just made; wait for it
+            // to land under the stage rather than shooting the frame before it moves.
+            await page.waitForFunction(() => {
+                const viewer = document.querySelector(".cp-viewer");
+                const strip = document.querySelector(".cp-history");
+                return !!strip && !!viewer &&
+                    !!(viewer.compareDocumentPosition(strip) &
+                        Node.DOCUMENT_POSITION_FOLLOWING);
+            });
+        },
+    },
+    {
         // The component page ON A PHONE, and the claim is simply that the render is on screen. Two
         // things stand between the title and the stage at this width: the disclosure pills, which
         // are now every control the viewer has and wrapped to two rows twelve pixels short of
