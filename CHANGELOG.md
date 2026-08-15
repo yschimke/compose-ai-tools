@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.8.0](https://github.com/yschimke/compose-ai-tools/compare/v1.7.0...v1.8.0) (2026-08-15)
+
+
+### Features
+
+* **design-artifacts:** declare interaction variants, and gate --strict before writing ([#3901](https://github.com/yschimke/compose-ai-tools/issues/3901)) ([855bcc1](https://github.com/yschimke/compose-ai-tools/commit/855bcc1280211001391246b0e9825f4fc32b4b9e))
+* **design-artifacts:** publish motion captures onto the delivery branch ([#3917](https://github.com/yschimke/compose-ai-tools/issues/3917)) ([b38de4e](https://github.com/yschimke/compose-ai-tools/commit/b38de4ece8a3169c25133c3a886bc7770ad85fc5))
+* **design-map:** publish the projection as an npm package ([#3918](https://github.com/yschimke/compose-ai-tools/issues/3918)) ([8330994](https://github.com/yschimke/compose-ai-tools/commit/833099499e679dd2edb5a52cb7e3a11b536ae2eb))
+* **rc-player:** read a document's override surface from its own operations ([#3947](https://github.com/yschimke/compose-ai-tools/issues/3947)) ([e405cd2](https://github.com/yschimke/compose-ai-tools/commit/e405cd2c311ebc7b1b394b7018af23de22a457cf))
+* **release:** comment deploy and Maven milestones on the release PR ([#3903](https://github.com/yschimke/compose-ai-tools/issues/3903)) ([43d1656](https://github.com/yschimke/compose-ai-tools/commit/43d1656d2fbf81112fdbbef86f9be97a4ee369aa))
+* **serve:** add demand-activated catalog RSS feeds ([#3933](https://github.com/yschimke/compose-ai-tools/issues/3933)) ([07903a7](https://github.com/yschimke/compose-ai-tools/commit/07903a7fda7453196a0deb321453356bf9c62da7))
+* **serve:** carry published motion captures through the store, host and route ([#3921](https://github.com/yschimke/compose-ai-tools/issues/3921)) ([7625eae](https://github.com/yschimke/compose-ai-tools/commit/7625eae0c31bba76b3bb23005d665f002352b329))
+* **serve:** combine the status count into the Status link, and make render history a menu ([#3924](https://github.com/yschimke/compose-ai-tools/issues/3924)) ([b857c5c](https://github.com/yschimke/compose-ai-tools/commit/b857c5c12f6b7b293d69b683270a813c9856cf91))
+* **serve:** Components and Pages are two searchable sidebar panes ([#3926](https://github.com/yschimke/compose-ai-tools/issues/3926)) ([dac63d1](https://github.com/yschimke/compose-ai-tools/commit/dac63d1356c01fee78a46128e552e0ee550bc0c8))
+* **serve:** offer a preview's recorded interaction as a selectable Motion lane ([#3928](https://github.com/yschimke/compose-ai-tools/issues/3928)) ([581cbbe](https://github.com/yschimke/compose-ai-tools/commit/581cbbe5a142fdbda49b8dea71b0a395d8ede553))
+* **serve:** sign in on a top-level site host via a parent cookie domain ([#3920](https://github.com/yschimke/compose-ai-tools/issues/3920)) ([7046d98](https://github.com/yschimke/compose-ai-tools/commit/7046d987d4d04b94880fe7f8735f5bb63c2deef6))
+* **serve:** the catalog's chrome is one toolbar row on a phone ([#3906](https://github.com/yschimke/compose-ai-tools/issues/3906)) ([298e821](https://github.com/yschimke/compose-ai-tools/commit/298e821fae58552137d219230471fbad4147d9e1))
+* **serve:** the design-spec chip states the match, and opens the diff ([#3910](https://github.com/yschimke/compose-ai-tools/issues/3910)) ([633a2b6](https://github.com/yschimke/compose-ai-tools/commit/633a2b606203c84eeaca4e9ae6e8c994f1a352fa))
+* **serve:** the Pages pane is a tree of each page's major sections ([#3927](https://github.com/yschimke/compose-ai-tools/issues/3927)) ([5432af6](https://github.com/yschimke/compose-ai-tools/commit/5432af66e67878499fbdaaba32b2a5fdc35bcf6c))
+* **serve:** zoom and drill into a design page's sheet ([#3904](https://github.com/yschimke/compose-ai-tools/issues/3904)) ([61599de](https://github.com/yschimke/compose-ai-tools/commit/61599de6ebaa0ac6420c335aab3ea9e98b142291))
+
+
+### Bug Fixes
+
+* address missed review feedback ([#3954](https://github.com/yschimke/compose-ai-tools/issues/3954)) ([fdd01dd](https://github.com/yschimke/compose-ai-tools/commit/fdd01dd21dcf4246f034058a14f00cdc1c6b7122))
+* **ci:** compare shared CMP/Wasm render failures ([#3953](https://github.com/yschimke/compose-ai-tools/issues/3953)) ([88d49e7](https://github.com/yschimke/compose-ai-tools/commit/88d49e7e7bc06ed9fd6055ad231b320994182e72))
+* **cli:** address keyboard navigation review feedback ([#3942](https://github.com/yschimke/compose-ai-tools/issues/3942)) ([3ab9c80](https://github.com/yschimke/compose-ai-tools/commit/3ab9c80d2f9f6236706cec0f7b4b7fb911f9f665))
+* **design-artifacts:** stamp @OverrideVariant stickers with their renderer density ([#3908](https://github.com/yschimke/compose-ai-tools/issues/3908)) ([1b2b48e](https://github.com/yschimke/compose-ai-tools/commit/1b2b48ed2474e2cdb5c7a1070fdd9d806bdf3353))
+* **design-map:** drop the leading ./ from the bin path ([#3925](https://github.com/yschimke/compose-ai-tools/issues/3925)) ([4e75fad](https://github.com/yschimke/compose-ai-tools/commit/4e75fadcb58cf2265f65cc25f2e3d6747cbf1293))
+* **preview:** wrap motion captures to their content, not the device sandbox ([#3912](https://github.com/yschimke/compose-ai-tools/issues/3912)) ([8322d55](https://github.com/yschimke/compose-ai-tools/commit/8322d55d37db2bd03156314fffcd98e087b01160))
+* **rc-player:** render tinted icons ([#3937](https://github.com/yschimke/compose-ai-tools/issues/3937)) ([a875c0e](https://github.com/yschimke/compose-ai-tools/commit/a875c0e557eb1b01d2363d9182ab2b63b2eade35))
+* **rc-player:** resolve embedded theme colors ([#3952](https://github.com/yschimke/compose-ai-tools/issues/3952)) ([78c8088](https://github.com/yschimke/compose-ai-tools/commit/78c808836871b4b072923fe1f3e47cf04cb63f16))
+* **remote-m3:** address post-merge preview failures ([#3944](https://github.com/yschimke/compose-ai-tools/issues/3944)) ([96d9ae3](https://github.com/yschimke/compose-ai-tools/commit/96d9ae3787e3a7afcb09f95917c27d23ac88a6c0))
+* **remote-m3:** address preview review feedback ([#3939](https://github.com/yschimke/compose-ai-tools/issues/3939)) ([688801d](https://github.com/yschimke/compose-ai-tools/commit/688801d9775d6e4e7f000878fa74777b281144df))
+* **renderer:** preserve capture timing while settling ([#3945](https://github.com/yschimke/compose-ai-tools/issues/3945)) ([a2c9e43](https://github.com/yschimke/compose-ai-tools/commit/a2c9e43085906f02979199c83881090cc23a9bb4))
+* **renderer:** settle still-frame captures adaptively ([#3938](https://github.com/yschimke/compose-ai-tools/issues/3938)) ([8000ca2](https://github.com/yschimke/compose-ai-tools/commit/8000ca208835c8a8269e8eda60692e6bb411487f))
+* **serve:** a design page's headers are furniture, not missing components ([#3919](https://github.com/yschimke/compose-ai-tools/issues/3919)) ([4a0ac92](https://github.com/yschimke/compose-ai-tools/commit/4a0ac9267cf49756b662504465e4626883d8430c))
+* **serve:** fit a design page's renders to the component, not the canvas ([#3900](https://github.com/yschimke/compose-ai-tools/issues/3900)) ([2f114aa](https://github.com/yschimke/compose-ai-tools/commit/2f114aaa62609c46e69556bd7106ae5d48b57edc))
+* **serve:** harden catalog change feeds ([#3941](https://github.com/yschimke/compose-ai-tools/issues/3941)) ([cb9e1a0](https://github.com/yschimke/compose-ai-tools/commit/cb9e1a050e0b611aaaf0c22777f85205a7bd0102))
+* **serve:** land section links on an anchor that exists, and keep Enter navigating ([#3930](https://github.com/yschimke/compose-ai-tools/issues/3930)) ([7c24948](https://github.com/yschimke/compose-ai-tools/commit/7c249483f56ef906ef939776cba0ee0045f797ad))
+* **serve:** move the catalog's tally below the grid, and four review fixes ([#3907](https://github.com/yschimke/compose-ai-tools/issues/3907)) ([fc28cb8](https://github.com/yschimke/compose-ai-tools/commit/fc28cb8e0ad16cb795286331e46353e8b3b765e3))
+* **serve:** repair main, and close the review findings on the chip verdict ([#3915](https://github.com/yschimke/compose-ai-tools/issues/3915)) ([60b34b2](https://github.com/yschimke/compose-ai-tools/commit/60b34b27677c979a886a094f979624324dc6d612))
+* **serve:** revalidate published captures instead of promising them immutable ([#3932](https://github.com/yschimke/compose-ai-tools/issues/3932)) ([2c1b401](https://github.com/yschimke/compose-ai-tools/commit/2c1b4016466e0c16c46f0289b637c03ef14f56ba))
+
 ## [1.7.0](https://github.com/yschimke/compose-ai-tools/compare/v1.6.0...v1.7.0) (2026-08-15)
 
 
