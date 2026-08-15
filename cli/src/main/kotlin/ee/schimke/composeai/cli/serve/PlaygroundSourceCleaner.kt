@@ -376,8 +376,15 @@ object PlaygroundSourceCleaner {
    * invisible in the first place.
    */
   private fun unqualifyScaffoldCalls(text: String, rules: UsageRules): String {
-    if (rules.scaffolds.isEmpty() || rules.scaffoldPackages.isEmpty()) return text
-    val names = rules.scaffolds.keys.joinToString("|") { Regex.escape(it) }
+    // Only helpers a pass will actually rewrite. Unqualifying is a *setup* step — it exists so the
+    // kind passes, which match a bare name, can see a package-qualified call. Doing it for a
+    // [UsageRules.Kind.UNKNOWN] helper strips the qualifier and then no pass rewrites the call and
+    // no pass adds an import, turning `ee.schimke.m3catalog.toggleable(true)` — which resolved —
+    // into a bare `toggleable(true)` that does not. Left qualified, the call keeps working and
+    // still lands in residue via `mentionsQualifiedCall`.
+    val rewritable = rules.scaffolds.filterValues { it.kind != UsageRules.Kind.UNKNOWN }
+    if (rewritable.isEmpty() || rules.scaffoldPackages.isEmpty()) return text
+    val names = rewritable.keys.joinToString("|") { Regex.escape(it) }
     val packages = rules.scaffoldPackages.joinToString("|") { Regex.escape(it) }
     // `[({]` and not just `(`: a trailing-lambda call — `counted { }` — has no parentheses at all,
     // and that is the shape most scaffolding wrappers are written in.

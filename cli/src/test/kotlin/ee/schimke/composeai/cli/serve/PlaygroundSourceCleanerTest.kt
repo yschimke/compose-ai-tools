@@ -416,6 +416,59 @@ class PlaygroundSourceCleanerTest {
     assertEquals(UsageRules.Kind.UNKNOWN, rules.scaffolds["toggleable"]?.kind)
   }
 
+  /**
+   * Forgiving about the *kind* vocabulary is not the same as forgiving about the rest of the
+   * document. A rules file this code cannot honour must still take the safe GENERIC fallback: an
+   * `INLINE` rule with a null member map would otherwise decode to an empty one, and `applyInline`
+   * would delete the binding while leaving its member references pointing at nothing.
+   */
+  @Test
+  fun `tolerating an unknown kind does not make the rest of the document forgiving`() {
+    assertNull(UsageRules.parse("""{"scaffolds":{"counted":{"kind":"INLINE","members":null}}}"""))
+    assertNull(UsageRules.parse("""{"scaffoldPackages":null}"""))
+  }
+
+  /**
+   * Unqualifying is setup for the kind passes, so a helper no pass will rewrite must not be put
+   * through it: stripping the qualifier off a call nothing then rewrites — and nothing imports —
+   * turns code that resolved into code that does not.
+   */
+  @Test
+  fun `an unknown kind keeps the package qualifier that makes it resolve`() {
+    val rules =
+      assertNotNull(
+        UsageRules.parse(
+          """
+          {
+            "scaffoldPackages": ["ee.schimke.m3catalog"],
+            "scaffolds": { "toggleable": { "kind": "DESTRUCTURE" } }
+          }
+          """
+            .trimIndent()
+        )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Switch
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun SwitchSticker() {
+        var checked by ee.schimke.m3catalog.toggleable(true)
+        Switch(checked = checked, onCheckedChange = { checked = it })
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), rules)
+      )
+    assertTrue(result.text.contains("ee.schimke.m3catalog.toggleable(true)"), result.text)
+    assertTrue(result.residue.contains("toggleable"), "${result.residue}")
+  }
+
   /** An unknown kind fires no pass, so the helper survives the clean and is reported as residue. */
   @Test
   fun `a helper whose kind is unknown is left alone and reported`() {
