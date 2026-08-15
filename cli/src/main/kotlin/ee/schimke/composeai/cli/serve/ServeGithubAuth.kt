@@ -35,6 +35,25 @@ data class ServeGithubAuthConfig(
   val allowedUsers: Set<String> = emptySet(),
   val callbackBaseUrl: String? = null,
   /**
+   * The domain the auth cookies are written for, so **one sign-in covers a parent host and every
+   * top-level site under it** — set `preview.coo.ee` and a session established anywhere in the
+   * family is valid on `m3.preview.coo.ee` too.
+   *
+   * This is what makes a pinned callback work from a site host at all. Without it the cookies are
+   * host-only: the `cp_gh_state` cookie written on the site host is not sent to the pinned callback
+   * origin, so the CSRF check there sees nothing and answers 401, and a session cookie set at the
+   * callback would be scoped to the wrong host anyway.
+   *
+   * Null (the default) keeps cookies host-only, which is right for a single-hostname box and is the
+   * only safe default: it must be the operator's explicit choice, never derived from the request's
+   * own `Host`, or an attacker-supplied header could widen the scope of a session cookie.
+   *
+   * **Every host under this domain is inside the session's blast radius**, so it must cover only
+   * hosts this deployment controls. A registrable public suffix (`co.uk`, or a bare `com`) is
+   * refused outright; beyond that the operator is trusted to know what lives under their own name.
+   */
+  val cookieDomain: String? = null,
+  /**
    * Overrides the OAuth scope entirely. Null (the default) derives it from the gating repo's
    * visibility — see [ServeGithubAuth.requestedScope], which is what an operator wants unless their
    * GitHub App or org policy needs something specific.
@@ -50,10 +69,60 @@ data class ServeGithubAuthConfig(
     require(repository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) {
       "GitHub auth repository must be owner/repo"
     }
+    val domain = cookieDomain?.trim()?.removePrefix(".")?.takeIf { it.isNotEmpty() }
+    if (domain != null) {
+      val normalized = ServeSites.normalizeHost(domain)
+      require(normalized != null) { "GitHub auth cookie domain '$cookieDomain' is not a hostname" }
+      // A single-label domain (`com`, `localhost`) or a two-label public suffix (`co.uk`) would ask
+      // the browser to scope the session across a whole registry. Browsers reject that, so the
+      // sign-in would fail at the Set-Cookie rather than here — which is a much worse place to find
+      // out. Two labels is the floor, and the known multi-part suffixes are named out.
+      val labels = normalized.split(".")
+      require(labels.size >= 2) {
+        "GitHub auth cookie domain '$cookieDomain' must have at least two labels"
+      }
+      require(normalized !in PUBLIC_SUFFIXES) {
+        "GitHub auth cookie domain '$cookieDomain' is a public suffix — no cookie may span it"
+      }
+      // The pinned callback is where the cookies are actually written, so a domain that doesn't
+      // cover it produces a sign-in the browser drops on the floor.
+      val callbackHost =
+        callbackBaseUrl
+          ?.substringAfter("://", "")
+          ?.substringBefore('/')
+          ?.takeIf { it.isNotEmpty() }
+          ?.let { ServeSites.normalizeHost(it) }
+      require(
+        callbackHost == null || callbackHost == normalized || callbackHost.endsWith(".$normalized")
+      ) {
+        "GitHub auth cookie domain '$cookieDomain' does not cover the callback host '$callbackHost'"
+      }
+    }
   }
 
   companion object {
     const val MIN_COOKIE_SECRET_CHARS = 32
+
+    /**
+     * Two-label names that are registries rather than registrable domains, so a cookie may not span
+     * them. Not a full public-suffix list — that is a large, churning dataset and a `serve` box
+     * carries no copy of it. These are the ones a plausible typo lands on; anything past them is
+     * the operator's own name to reason about.
+     */
+    private val PUBLIC_SUFFIXES =
+      setOf(
+        "co.uk",
+        "org.uk",
+        "ac.uk",
+        "gov.uk",
+        "co.jp",
+        "co.nz",
+        "co.za",
+        "com.au",
+        "com.br",
+        "com.cn",
+        "github.io",
+      )
   }
 }
 
@@ -64,9 +133,17 @@ class ServeGithubAuth(
   /** Unauthenticated client for the one-shot visibility probe behind [requestedScope]. */
   private val anonymousClient: OkHttpClient = OkHttpClient(),
 ) {
-  suspend fun RoutingContext.handleStart() {
+  /**
+   * `GET /auth/github/start`. [siteHosts] are the top-level site hostnames this server answers for
+   * ([ServeSites.hosts]) — the **only** hosts a sign-in may be returned to, and the list is checked
+   * again before [handleCallback] issues that redirect. Empty (the default) means the sign-in ends
+   * where it started, which is exactly what this did before sites existed.
+   */
+  suspend fun RoutingContext.handleStart(siteHosts: Set<String> = emptySet()) {
     val returnTo = safeReturnTo(call.request.queryParameters["return"] ?: "/")
-    val state = signedState(nonce(), returnTo)
+    // Null on the ordinary same-host sign-in, which is then byte-for-byte what it always was.
+    val originHost = originHostFor(call, siteHosts)
+    val state = signedState(nonce(), returnTo, originHost)
     call.response.cookies.append(
       stateCookie(
         state,
@@ -77,7 +154,26 @@ class ServeGithubAuth(
     call.respondRedirect(authorizeUrl(call, state))
   }
 
-  suspend fun RoutingContext.handleCallback() {
+  /**
+   * `GET /auth/github/callback` — GitHub's return leg, which on a pinned box always lands on the
+   * pinned origin whatever host the visitor started from.
+   *
+   * Two shapes end up here, and they differ only in where the visitor is sent afterwards. A
+   * **same-host** sign-in (no origin host in the state) returns to a relative path, as it always
+   * did. A **cross-host** sign-in — started on a top-level site — returns to an absolute URL on
+   * that site, so the visitor lands back where they were reading rather than being quietly moved to
+   * the pinned origin.
+   *
+   * **The CSRF check is unchanged**, and that is the point of doing this with a cookie domain
+   * rather than a token handoff: with [ServeGithubAuthConfig.cookieDomain] set, `cp_gh_state` is
+   * written for the parent domain, so it is sent to the pinned callback host too and can be
+   * compared here exactly as it always was. All the cross-host leg adds is *where to go back to* —
+   * a redirect target, not a credential.
+   *
+   * The session cookie is likewise written for the parent domain, so one sign-in is already valid
+   * on every site host under it. There is nothing to hand over.
+   */
+  suspend fun RoutingContext.handleCallback(siteHosts: Set<String> = emptySet()) {
     val state = call.request.queryParameters["state"].orEmpty()
     val expected = call.request.cookieValue(STATE_COOKIE).orEmpty()
     val code = call.request.queryParameters["code"].orEmpty()
@@ -88,6 +184,12 @@ class ServeGithubAuth(
       call.respondText("GitHub sign-in failed.", status = HttpStatusCode.Unauthorized)
       return
     }
+    // Where the visitor started, when that was a different host to this one. Re-validated against
+    // the live site list rather than trusted from [handleStart]: the signature proves this server
+    // minted the state, not that the host is still one of ours, and an unchecked value here is an
+    // open redirect off the back of a real sign-in. Anything unrecognised falls back to a
+    // same-origin relative return, which is where this route always sent people.
+    val returnHost = statePayload.originHost?.takeIf { it in siteHosts && withinCookieDomain(it) }
     val user =
       withContext(Dispatchers.IO) { verifier.verify(code, callbackUrl(call), config) }
         .getOrElse {
@@ -101,7 +203,27 @@ class ServeGithubAuth(
     val secure = isSecure(call, config.callbackBaseUrl)
     call.response.cookies.append(authCookie(session, maxAge = SESSION_TTL_SECONDS, secure = secure))
     call.response.cookies.append(stateCookie("", maxAge = 0, secure = secure))
-    call.respondRedirect(statePayload.returnTo)
+    call.respondRedirect(
+      if (returnHost == null) statePayload.returnTo
+      else "https://$returnHost${statePayload.returnTo}"
+    )
+  }
+
+  /**
+   * Whether a sign-in started on [rawHost] can actually come back to it.
+   *
+   * True when the callback isn't pinned (it is derived from the request, so it never leaves the
+   * host), when this *is* the pinned host, or when [rawHost] is a configured site host that the
+   * session cookie's domain covers — the case this exists for. False for a site outside the cookie
+   * domain: the cookies written at the callback would not be sent to it, so a sign-in started there
+   * would appear to succeed and land the visitor back signed-out. [ServeHttpServer] reads this to
+   * decide whether to offer the sign-in affordance at all.
+   */
+  fun canRoundTrip(rawHost: String?, siteHosts: Set<String>): Boolean {
+    if (!hasPinnedCallback) return true
+    val host = rawHost?.let { ServeSites.normalizeHost(it) } ?: return false
+    if (host == pinnedCallbackHost()) return true
+    return host in siteHosts && withinCookieDomain(host)
   }
 
   fun isAuthenticated(call: ApplicationCall): Boolean {
@@ -231,10 +353,10 @@ class ServeGithubAuth(
 
   /**
    * Whether the OAuth callback is pinned to one origin (`--github-auth-callback-base-url`) rather
-   * than derived from the request. A pinned callback means a sign-in started anywhere else cannot
-   * complete: the host-only state cookie is written on the origin the visitor was on, and GitHub
-   * returns to the pinned one. [ServeHttpServer] reads this to withhold the sign-in affordance on a
-   * top-level site instead of offering a link that 401s.
+   * than derived from the request. A pinned callback means the return leg always lands on that one
+   * origin, whatever host the visitor started from — which is why a sign-in begun on a top-level
+   * site has to be handed back to it ([handleComplete]) instead of finishing at the callback. Use
+   * [canRoundTrip] to ask whether a given host's sign-in can complete; this is the raw setting.
    */
   val hasPinnedCallback: Boolean
     get() = !config.callbackBaseUrl.isNullOrBlank()
@@ -244,14 +366,79 @@ class ServeGithubAuth(
       ?: call?.let { externalOrigin(it) + CALLBACK_PATH }
       ?: CALLBACK_PATH
 
-  private fun signedState(nonce: String, returnTo: String): String = sign("$nonce|$returnTo")
+  /**
+   * The host to send the visitor back to once the callback has run, or null when the sign-in ends
+   * where it started (the ordinary case: no pinned callback, or already on the pinned origin).
+   *
+   * Only a configured site host the cookie domain covers is ever returned. That is the allowlist
+   * which keeps the state's origin field from becoming an open redirect, and it is applied again in
+   * [handleCallback], because between the two legs the value has been round-tripped through the
+   * client.
+   */
+  private fun originHostFor(call: ApplicationCall, siteHosts: Set<String>): String? {
+    if (!hasPinnedCallback || siteHosts.isEmpty()) return null
+    val host = requestHost(call) ?: return null
+    if (host == pinnedCallbackHost()) return null
+    return host.takeIf { it in siteHosts && withinCookieDomain(it) }
+  }
+
+  /**
+   * Whether a cookie written for [ServeGithubAuthConfig.cookieDomain] would actually be sent to
+   * [host] — it is the domain itself, or a subdomain of it. No cookie domain configured ⇒ cookies
+   * are host-only, so nothing but the host that set them qualifies.
+   *
+   * The dot matters: a naive `endsWith` would read `notpreview.coo.ee` as being under
+   * `preview.coo.ee` and offer a sign-in that silently can't work.
+   */
+  private fun withinCookieDomain(host: String): Boolean {
+    val domain = cookieDomain ?: return false
+    return host == domain || host.endsWith(".$domain")
+  }
+
+  /** The configured cookie domain, normalised; null when cookies stay host-only. */
+  private val cookieDomain: String? by lazy {
+    config.cookieDomain
+      ?.trim()
+      ?.removePrefix(".")
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { ServeSites.normalizeHost(it) }
+  }
+
+  /** The host of the pinned callback, so a sign-in already on it is never handed off to itself. */
+  private fun pinnedCallbackHost(): String? =
+    config.callbackBaseUrl
+      ?.substringAfter("://", "")
+      ?.substringBefore('/')
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { ServeSites.normalizeHost(it) }
+
+  /**
+   * `nonce|originHost|returnTo`, with an empty origin host on the same-host flow. The nonce is
+   * base64url and the origin host is a validated hostname, so neither can contain the separator and
+   * `returnTo` keeps its rest-of-string reading — which matters, since a return path may carry a
+   * query string containing anything at all.
+   */
+  private fun signedState(nonce: String, returnTo: String, originHost: String?): String =
+    sign("$nonce|${originHost.orEmpty()}|$returnTo")
 
   private fun verifyState(value: String): StatePayload? {
     val payload = verifySigned(value) ?: return null
-    val idx = payload.indexOf('|')
-    if (idx <= 0) return null
-    val returnTo = safeReturnTo(payload.substring(idx + 1))
-    return StatePayload(returnTo)
+    val firstPipe = payload.indexOf('|')
+    if (firstPipe <= 0) return null
+    val nonce = payload.substring(0, firstPipe)
+    val rest = payload.substring(firstPipe + 1)
+    val secondPipe = rest.indexOf('|')
+    // No second separator ⇒ a state minted before handoff existed: the remainder is the return path
+    // and there is no origin host. Kept so sign-ins already in flight across a restart still land.
+    if (secondPipe < 0) return StatePayload(nonce, safeReturnTo(rest), null)
+    val originField = rest.substring(0, secondPipe)
+    val originHost = originField.takeIf { it.isNotEmpty() }?.let { ServeSites.normalizeHost(it) }
+    // A non-empty middle field that isn't a hostname means this is the legacy shape after all and
+    // the return path simply contained a separator — read it whole rather than truncating it.
+    if (originField.isNotEmpty() && originHost == null) {
+      return StatePayload(nonce, safeReturnTo(rest), null)
+    }
+    return StatePayload(nonce, safeReturnTo(rest.substring(secondPipe + 1)), originHost)
   }
 
   private fun signedSession(
@@ -326,13 +513,23 @@ class ServeGithubAuth(
       value = value,
       path = "/",
       maxAge = maxAge.toInt(),
+      // Null ⇒ no Domain attribute ⇒ host-only, the default and the single-hostname behaviour.
+      // Set, it scopes the cookie to the parent domain and every site host under it, which is what
+      // lets one sign-in cover preview.coo.ee and m3.preview.coo.ee alike. Always the operator's
+      // configured value, never anything derived from the request.
+      domain = cookieDomain,
       secure = secure,
       httpOnly = true,
       encoding = CookieEncoding.URI_ENCODING,
       extensions = mapOf("SameSite" to "Lax"),
     )
 
-  private data class StatePayload(val returnTo: String)
+  private data class StatePayload(
+    val nonce: String,
+    val returnTo: String,
+    /** The site host to hand the finished sign-in back to; null on the same-host flow. */
+    val originHost: String?,
+  )
 
   private data class SessionPayload(
     val login: String,
@@ -345,6 +542,7 @@ class ServeGithubAuth(
   companion object {
     const val START_PATH = "/auth/github/start"
     const val CALLBACK_PATH = "/auth/github/callback"
+
     private const val AUTH_COOKIE = "cp_gh_auth"
     private const val STATE_COOKIE = "cp_gh_state"
     /**
@@ -623,6 +821,18 @@ private fun io.ktor.server.request.ApplicationRequest.cookieValue(name: String):
 internal fun isSecure(call: ApplicationCall, callbackBaseUrl: String? = null): Boolean =
   callbackBaseUrl?.trim()?.takeIf { it.isNotEmpty() }?.startsWith("https://", ignoreCase = true)
     ?: externalOrigin(call).startsWith("https://", ignoreCase = true)
+
+/**
+ * The externally visible hostname of this request, normalised for comparison against the configured
+ * site hosts — `X-Forwarded-Host` first (Caddy sets it, and behind a proxy it is the only view of
+ * the name the visitor typed), else `Host`. Null when what arrives isn't a hostname at all, so a
+ * junk header matches no site and simply gets the pre-handoff behaviour.
+ */
+internal fun requestHost(call: ApplicationCall): String? {
+  val forwarded = call.request.headers["X-Forwarded-Host"]?.substringBefore(',')?.trim()
+  val raw = forwarded?.takeIf { it.isNotEmpty() } ?: call.request.headers[HttpHeaders.Host]
+  return raw?.let { ServeSites.normalizeHost(it) }
+}
 
 private fun externalOrigin(call: ApplicationCall): String {
   val forwardedProto = call.request.headers["X-Forwarded-Proto"]?.substringBefore(",")?.trim()

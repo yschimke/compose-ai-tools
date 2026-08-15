@@ -135,6 +135,7 @@ internal object CliFlagValidation {
             "--export",
             "--extra-maven-repos",
             "--github-auth-callback-base-url",
+            "--github-auth-cookie-domain",
             "--github-auth-client-id",
             "--github-auth-client-secret",
             "--github-auth-cookie-secret",

@@ -139,6 +139,22 @@ if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" ||
   fi
   [[ -n "${github_auth_callback_base_url}" ]] &&
     args+=(--github-auth-callback-base-url "${github_auth_callback_base_url}")
+  # Scope the auth cookies to the parent domain so ONE sign-in covers this host and every
+  # SERVE_SITES hostname under it. Without it the cookies are host-only, the state cookie written on
+  # a site host never reaches the pinned callback origin, and the server withholds the sign-in
+  # affordance on every site (live + playground stay snapshot-only there).
+  #
+  # Derived from DOMAIN, but only when sites are actually configured — a single-hostname box has
+  # nothing to widen for, and a cookie domain is the blast radius of a session. Set it explicitly to
+  # override, or to `none` to keep cookies host-only. Note the derivation is only as narrow as
+  # DOMAIN itself: on a box whose DOMAIN is an apex, set this to the subdomain the sites live under
+  # rather than letting one session span the whole zone.
+  github_auth_cookie_domain="${SERVE_GITHUB_AUTH_COOKIE_DOMAIN:-}"
+  if [[ -z "${github_auth_cookie_domain}" && -n "${SERVE_SITES:-}" && -n "${DOMAIN:-}" ]]; then
+    github_auth_cookie_domain="${DOMAIN}"
+  fi
+  [[ -n "${github_auth_cookie_domain}" && "${github_auth_cookie_domain}" != "none" ]] &&
+    args+=(--github-auth-cookie-domain "${github_auth_cookie_domain}")
   [[ -n "${SERVE_GITHUB_AUTH_USERS:-}" ]] && args+=(--github-auth-users "${SERVE_GITHUB_AUTH_USERS}")
   # Unset derives the scope from the gating repo's visibility (public -> read:user, private ->
   # read:user repo). Only set this when a GitHub App or org policy demands a specific scope.

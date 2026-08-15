@@ -110,13 +110,25 @@ On that hostname:
   another catalog through the wrong domain — and the host **outranks `?session=`**, so the older
   query spelling can't reach past it either.
 
-One surface is **withheld** on a site rather than broken: when the box pins an OAuth callback origin
-(`--github-auth-callback-base-url`, which this deployment sets), a GitHub sign-in started on a site
-host cannot come back to it — the `cp_gh_state` cookie is host-only and GitHub returns to the pinned
-origin. The sign-in affordance is therefore not offered on a site host, and its live/playground
-surfaces stay snapshot-only, instead of advertising a button that 401s. A box with no pinned
-callback derives it from the request and is unaffected. Carrying the originating host through the
-OAuth dance is the real fix and isn't done yet.
+**Sign-in works on a site host, given a cookie domain.** `--github-auth-cookie-domain preview.coo.ee`
+writes both auth cookies for the parent domain, so **one sign-in covers the parent host and every
+site under it** — sign in on `preview.coo.ee` and you are already signed in on `m3.preview.coo.ee`,
+and vice versa. It is what makes the round trip close at all when the box pins an OAuth callback
+origin (`--github-auth-callback-base-url`, which this deployment sets): the `cp_gh_state` cookie
+written on the site host is sent to the pinned origin too, so the CSRF check runs exactly where it
+always did, and the session cookie minted there is already valid back on the site. The state carries
+the originating host purely so the callback knows where to send the visitor back to — a redirect
+target, never a credential, and one checked against the configured site list before it is used.
+
+Without a cookie domain the cookies stay host-only, the sign-in started on a site host cannot come
+back to it, and the affordance is **withheld** there rather than advertising a button that 401s —
+live and playground stay snapshot-only, which is what every site host used to do. The same applies
+to a site on a domain the cookie domain doesn't cover. A box with no pinned callback derives it from
+the request and never needed any of this.
+
+Choose the domain deliberately: every host under it is inside the session's reach, so name the
+narrowest one that covers your sites. A public suffix (`co.uk`) or a domain that doesn't cover the
+callback host is refused at startup rather than producing cookies the browser silently drops.
 
 The same catalog, served both ways. The visible difference is the header: the canonical path keeps
 the "← All design systems" button back to the front door, and the site has no front door to return

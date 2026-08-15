@@ -111,9 +111,9 @@ curl -sI https://m3.preview.coo.ee/wear-m3/ | head -1                    # 404 �
 ```
 
 Sites are read **at startup**, so this is a restart either way; the additive `/admin/catalogs`
-reconcile does not carry them. GitHub sign-in is deliberately not offered on a site host (the
-`cp_gh_state` cookie is host-only and this box pins a callback origin), so its live and playground
-surfaces stay snapshot-only.
+reconcile does not carry them. If this box uses GitHub sign-in, set `SERVE_GITHUB_AUTH_COOKIE_DOMAIN`
+as well — see *GitHub auth* below; without it sign-in is withheld on a site host and its live and
+playground surfaces stay snapshot-only.
 
 > `catalogs.json`'s `"sites"` key says the same thing as durable config — but on this image that
 > file is a volume the box seeds once and never overwrites, so committing a site to
@@ -174,7 +174,25 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # openssl rand -hex 32
 ```
 
 The compose profile derives the callback base URL from `DOMAIN`; set
-`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL` to override. Empty `SERVE_GITHUB_AUTH_USERS` allows any
+`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL` to override.
+
+**With top-level sites configured, the cookies need a domain.** `SERVE_GITHUB_AUTH_COOKIE_DOMAIN`
+scopes both auth cookies to a parent domain, so one sign-in covers this host and every `SERVE_SITES`
+hostname under it — sign in on `preview.coo.ee` and `m3.preview.coo.ee` is signed in too. Without it
+the cookies are host-only: a sign-in started on a site host writes its state cookie there while
+GitHub returns to the pinned callback origin, the callback sees no state, and the server withholds
+the sign-in affordance on every site (live and playground stay snapshot-only there). The entrypoint
+derives it from `DOMAIN` when `SERVE_SITES` is set; set it explicitly to narrow it, or to `none` to
+keep cookies host-only:
+
+```bash
+SERVE_GITHUB_AUTH_COOKIE_DOMAIN=preview.coo.ee
+```
+
+Every host under that domain is inside the session's reach, so name the narrowest one covering your
+sites — on a box whose `DOMAIN` is an apex, set this explicitly rather than letting one session span
+the whole zone. A public suffix, or a domain that doesn't cover the callback host, is refused at
+startup rather than producing cookies the browser drops silently. Empty `SERVE_GITHUB_AUTH_USERS` allows any
 signed-in GitHub user to use live previews; playground additionally requires **write** access to
 `SERVE_GITHUB_AUTH_REPO` (default `yschimke/compose-ai-tools`). Set `SERVE_GITHUB_AUTH_USERS` to a
 comma-separated login list only if you want to narrow sign-in for both surfaces. The OAuth app
