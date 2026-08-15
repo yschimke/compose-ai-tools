@@ -694,7 +694,12 @@ class ServeWebFixtureTest {
               "shape",
               "Shape",
               listOf(
-                ServeWeb.PageSection("1:20", "Corner radius"),
+                // Anchored at the set's first descendant component, not at the set: the page view
+                // draws an anchor per component and `isComponent` excludes containers, so a link
+                // to the set's own id would resolve to nothing.
+                ServeWeb.PageSection("1:20", "Corner radius", "1:1"),
+                // …and a set with no descendant component, which must link to the sheet plainly
+                // rather than carry a fragment that lands nowhere.
                 ServeWeb.PageSection("1:21", "Shape scale"),
               ),
             ),
@@ -2065,7 +2070,12 @@ class ServeWebFixtureTest {
               "shape",
               "Shape",
               listOf(
-                ServeWeb.PageSection("1:20", "Corner radius"),
+                // Anchored at the set's first descendant component, not at the set: the page view
+                // draws an anchor per component and `isComponent` excludes containers, so a link
+                // to the set's own id would resolve to nothing.
+                ServeWeb.PageSection("1:20", "Corner radius", "1:1"),
+                // …and a set with no descendant component, which must link to the sheet plainly
+                // rather than carry a fragment that lands nowhere.
                 ServeWeb.PageSection("1:21", "Shape scale"),
               ),
             ),
@@ -3288,10 +3298,15 @@ class ServeWebFixtureTest {
           " aria-expanded=\"true\" aria-controls=\"cp-page-sections-shape\">Shape"
       ) &&
         landingGrouped.contains(
-          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape#cp-node-1-20\"" +
+          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape#cp-node-1-1\"" +
             " data-search=\"Corner radius\">Corner radius</a>"
         ) &&
-        landingGrouped.contains("data-search=\"Shape scale\">Shape scale</a>"),
+        // A section with no anchor target carries no fragment — a `#` that resolves to nothing
+        // looks like a broken link and behaves like one.
+        landingGrouped.contains(
+          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape\"" +
+            " data-search=\"Shape scale\">Shape scale</a>"
+        ),
       "a page's major sections hang under it, each linking to that node's anchor",
     )
     // …and a page with NO sections stays a leaf: named, filterable, and carrying neither a twisty
@@ -3302,6 +3317,21 @@ class ServeWebFixtureTest {
           " data-search=\"Typography\">Typography</a>"
       ) && landingGrouped.contains("<a class=\"cp-pane-all\" href=\"/pages\">All pages</a>"),
       "a page with no sections stays a plain filterable row, and the index link survives",
+    )
+    // THE JOIN, asserted rather than assumed: every fragment a section row links to must exist as
+    // an id on the page view it points at. These are two different goldens built by two different
+    // functions, and the first version of this shipped links to `#cp-node-<setId>` — anchors that
+    // the page never emits, because it draws one per COMPONENT and a component set is not one. The
+    // links resolved to nothing and no test noticed, since each golden was self-consistent.
+    val sectionFragments =
+      Regex("""href="[^"]*#(cp-node-[^"]*)"""").findAll(landingGrouped).map { it.groupValues[1] }
+    val pageAnchors =
+      Regex("""id="(cp-node-[^"]*)"""").findAll(designPageHtml).map { it.groupValues[1] }
+    val pageAnchorSet = pageAnchors.toSet()
+    val dangling = sectionFragments.filterNot { it in pageAnchorSet }.toList()
+    assertTrue(
+      pageAnchorSet.isNotEmpty() && dangling.isEmpty(),
+      "every section link lands on an anchor the page view actually emits; dangling: $dangling",
     )
     // The pane the switch reveals ships hidden, and the tree keeps the column when it is showing.
     assertTrue(

@@ -800,7 +800,23 @@ object ServeWeb {
    * listing them in a sidebar would rebuild the wall of rows this navigation exists to avoid; the
    * sets are the handful of things the page is actually divided into.
    */
-  data class PageSection(val nodeId: String, val name: String)
+  data class PageSection(
+    val nodeId: String,
+    val name: String,
+    /**
+     * The node a link to this section actually lands on — the set's first descendant component.
+     *
+     * Not the set itself, and this is the whole subtlety: the page view draws a hotspot (and an
+     * anchor) per *component*, and `PageNode.isComponent` deliberately excludes containers, since
+     * nothing implements a component set and drawing one would put an enormous hotspot over the
+     * real components inside it. So a set has no anchor to land on, and the first component under
+     * it is where the section visibly starts on the sheet anyway.
+     *
+     * Blank when the set has no descendant component — a malformed or truncated manifest. The link
+     * then carries no fragment at all rather than one that resolves to nothing.
+     */
+    val anchorNodeId: String = "",
+  )
 
   /**
    * The `id` a page's node hotspot carries, so a link can land on it.
@@ -1765,8 +1781,12 @@ object ServeWeb {
           page.sections.forEach { section ->
             val sectionName = WebEscaping.htmlEscape(section.name)
             // The fragment is BUILT from the node id (nodeAnchorId), never interpolated raw: the
-            // id is free text from a third-party manifest and this is a URL.
-            val sectionHref = "$pageUrl#${nodeAnchorId(section.nodeId)}"
+            // id is free text from a third-party manifest and this is a URL. A section with no
+            // anchor target links to the sheet plainly — a fragment that resolves to nothing looks
+            // like a broken link and behaves like one.
+            val sectionHref =
+              if (section.anchorNodeId.isBlank()) pageUrl
+              else "$pageUrl#${nodeAnchorId(section.anchorNodeId)}"
             append("      <li><a class=\"cp-tree-variant cp-tree-link\"")
             append(" href=\"${WebEscaping.htmlEscape(sectionHref)}\"")
             append(" data-search=\"$sectionName\">$sectionName</a></li>\n")
@@ -3107,6 +3127,12 @@ object ServeWeb {
       "\n      pageRows.forEach(function (p) {" +
           "\n        if (!p.hasAttribute(\"aria-expanded\")) return;" +
           "\n        p.addEventListener(\"click\", function (e) {" +
+          // Pointer only. A keyboard Enter synthesizes a click with `detail === 0` and no
+          // meaningful pointer position, so `offsetX` reads 0 — inside the twisty's 14px — and the
+          // row would fold instead of following its link. The label IS a link to the whole sheet;
+          // that has to keep working from the keyboard, and the sections below it are tab stops of
+          // their own, so nothing is unreachable by leaving the fold to the mouse.
+          "\n          if (!e.detail) return;" +
           "\n          if (e.offsetX > 14) return;" +
           "\n          e.preventDefault();" +
           "\n          var open = p.getAttribute(\"aria-expanded\") !== \"true\";" +

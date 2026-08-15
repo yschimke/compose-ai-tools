@@ -5464,13 +5464,31 @@ class ServeHttpServer(
    *   sidebar into the thing it replaced; past it the page's own row still leads to the whole
    *   sheet, which is where every section is anyway.
    */
-  private fun designPageSections(page: DesignPage): List<ServeWeb.PageSection> =
-    page.nodes
+  private fun designPageSections(page: DesignPage): List<ServeWeb.PageSection> {
+    val nodes = page.nodes
+    return nodes
       .asSequence()
-      .filter { it.isContainer && it.name.isNotBlank() }
-      .map { ServeWeb.PageSection(it.nodeId, it.name) }
+      .withIndex()
+      .filter { (_, node) -> node.isContainer && node.name.isNotBlank() }
+      .map { (i, node) ->
+        // Where a link to this section lands. The page view anchors COMPONENTS, and a set is not
+        // one — so the target is the set's first descendant component, which is where the section
+        // visibly starts on the sheet. Nodes are in the design file's own order, so "descendant"
+        // is the following run of deeper nodes, and the run ends at the next node that is not
+        // deeper than the set.
+        val anchor =
+          nodes
+            .asSequence()
+            .drop(i + 1)
+            .takeWhile { it.depth > node.depth }
+            .firstOrNull { it.isComponent }
+            ?.nodeId
+            .orEmpty()
+        ServeWeb.PageSection(node.nodeId, node.name, anchor)
+      }
       .take(MAX_PAGE_SECTIONS)
       .toList()
+  }
 
   private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
