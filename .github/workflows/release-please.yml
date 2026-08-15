@@ -124,6 +124,14 @@ jobs:
     secrets: inherit
     permissions:
       contents: write   # needed by the called workflow's `release` job
+      # A called workflow cannot elevate what its caller granted: a job in
+      # release.yml asking for `id-token: write` gets nothing unless it is
+      # listed HERE. Without it npm Trusted Publishing has no OIDC token to
+      # exchange, and because `publish-design-map` is deliberately tolerant of a
+      # registry outage the failure would be invisible — every automatic release
+      # would quietly not reach npm. Only that job requests it; the rest of
+      # release.yml is unaffected by its presence.
+      id-token: write   # npm Trusted Publishing in `publish-design-map`
 
   # Flip the draft Release to published once every required artifact is verified
   # present — the gate that makes a release atomic from a consumer's view.

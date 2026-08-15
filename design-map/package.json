@@ -14,7 +14,8 @@
   "files": [
     "design-map.mjs",
     "emit-design-map.mjs",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22"
