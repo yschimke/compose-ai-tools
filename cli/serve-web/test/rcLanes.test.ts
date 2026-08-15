@@ -329,6 +329,63 @@ describe("<cp-rc-lanes>", () => {
         assert.equal(observed.size, 2);
     });
 
+    it("says when a row is mid-measurement and when it has finished", async () => {
+        // Everything about the reference picker is asynchronous, so without this there is no way to
+        // tell "still working" from "finished, and this is all there is" — which is exactly what
+        // the preview-harness has to know before it takes a screenshot.
+        await mount();
+        press("baked");
+        assert.equal(rows()[0].dataset.scored, undefined, "not started");
+        scrollAllIntoView();
+        await flush();
+        assert.equal(rows()[0].dataset.scored, "done");
+        assert.equal(rows()[1].dataset.scored, "done");
+
+        press("android");
+        assert.equal(
+            rows()[0].dataset.scored,
+            undefined,
+            "cleared for the new pass",
+        );
+    });
+
+    it("decodes the reference frame once per row, not once per lane", async () => {
+        // `load()` caching the <img> is not enough: every `pixels()` call allocates a canvas,
+        // redraws and does another full-frame `getImageData`. On the five-player wall that was four
+        // redundant readbacks per row, in the lazy scroll path the observer exists to protect.
+        await mount();
+        const decoded: string[] = [];
+        // happy-dom cannot decode a PNG, so the measuring path is intercepted at its one seam.
+        const element = document.querySelector("cp-rc-lanes") as unknown as {
+            pixels(src: string): Promise<unknown>;
+        };
+        element.pixels = async (src: string) => {
+            decoded.push(src);
+            return {
+                width: 4,
+                height: 4,
+                data: new Uint8ClampedArray(4 * 4 * 4),
+            };
+        };
+        press("android");
+        scrollAllIntoView();
+        await flush();
+        await flush();
+        // Row 0 has one measurable lane besides the reference (cmp never rendered), row 1 the same,
+        // so the reference is fetched once per row and each lane once.
+        assert.deepEqual(decoded, [
+            "android/0.png",
+            "baked/0.png",
+            "android/1.png",
+            "baked/1.png",
+        ]);
+        assert.equal(
+            decoded.filter((src) => src === "android/0.png").length,
+            1,
+            "the reference is not re-read per lane",
+        );
+    });
+
     it("survives a payload it cannot read", async () => {
         // The table is fully server-rendered, so a broken model costs the numbers and nothing else.
         document.body.innerHTML = `

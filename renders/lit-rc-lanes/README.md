@@ -34,6 +34,15 @@ The numbers read `0.00%` because the harness serves one placeholder for every
 `/rc-compare/` URL, so every lane is genuinely identical. The arithmetic is
 covered directly instead, in `cli/serve-web/test/pixelDiff.test.ts`.
 
+The state waits for every started row to **finish**, not for the first diff image
+to appear. A row measures its lanes one after another and several rows are in
+flight at once, so the first image lands while most of the wall is still
+decoding — a baseline taken there would hold whichever subset won that run's race
+and re-diff itself forever. `<cp-rc-lanes>` marks each row `data-scored="pending"`
+then `"done"` for exactly this, which is also the only way to tell "still
+measuring" from "finished, and this is all there is" when looking at the page.
+Verified stable: three consecutive runs produce byte-identical captures.
+
 ## The metric, finally pinned
 
 `rc/pixelDiff.ts` is pixelmatch's YIQ metric, hand-transcribed into nine magic

@@ -1757,11 +1757,16 @@ const FIXTURE_STATES = [
         suffix: "diff-player",
         apply: async (page) => {
             await page.click('[data-rc-ref="cmp-jvm"]');
-            await page.waitForFunction(
-                () =>
-                    document.querySelectorAll(".cp-rc-row .cp-rc-diffslot:not([hidden]) img")
-                        .length > 0,
-            );
+            // Every started row FINISHED, not "the first diff image appeared". A row measures its
+            // lanes one after another, and several rows are in flight at once, so the first image
+            // lands while most of the wall is still decoding — a baseline taken there would hold
+            // whichever subset happened to win the race that run, and re-diff itself forever.
+            // `<cp-rc-lanes>` marks each row `pending` then `done` for exactly this.
+            await page.waitForFunction(() => {
+                const started = document.querySelectorAll(".cp-rc-row[data-scored]");
+                const done = document.querySelectorAll('.cp-rc-row[data-scored="done"]');
+                return started.length > 0 && started.length === done.length;
+            });
         },
     },
     {

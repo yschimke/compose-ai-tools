@@ -241,6 +241,18 @@ export class RcLanes extends LitElement {
         const scores = row.querySelector<HTMLElement>("[data-scores]");
         if (!model || !scores) return;
         this.cellFor(row, this.reference)?.classList.add("is-reference");
+        // Say out loud that this row is mid-measurement, and when it stops being so. The whole
+        // point of the reference picker is asynchronous, so without a signal there is no way — for
+        // the preview-harness, or for anyone debugging — to tell "still working" from "finished,
+        // and this is all there is". `clearRow` drops it again on the next pass.
+        row.dataset.scored = "pending";
+
+        // The reference frame is decoded ONCE for the row. Every lane is measured against the same
+        // image, and `load()` caching the `HTMLImageElement` is not enough: each `pixels()` call
+        // allocates a full-size canvas, redraws, and does another `getImageData` readback. On the
+        // five-player wall that is four redundant full-frame readbacks per row, in the lazy scroll
+        // path this observer exists to keep smooth.
+        let referencePixels: Promise<Pixels> | null = null;
 
         // Sequential on purpose: each step decodes two full frames onto a canvas, and a row of
         // players started at once would stall the scroll this observer exists to keep smooth.
@@ -255,8 +267,9 @@ export class RcLanes extends LitElement {
                 continue;
             }
             try {
+                referencePixels ??= this.pixels(step.referenceSrc);
                 const [reference, lane] = await Promise.all([
-                    this.pixels(step.referenceSrc),
+                    referencePixels,
                     this.pixels(step.laneSrc),
                 ]);
                 if (pass !== this.pass) return;
@@ -291,6 +304,7 @@ export class RcLanes extends LitElement {
                 scores.appendChild(this.chip(label, "diff failed", "na", null));
             }
         }
+        if (pass === this.pass) row.dataset.scored = "done";
     }
 
     private chip(
@@ -318,6 +332,7 @@ export class RcLanes extends LitElement {
     }
 
     private clearRow(row: HTMLElement): void {
+        delete row.dataset.scored;
         const scores = row.querySelector("[data-scores]");
         if (scores) scores.textContent = "";
         for (const slot of row.querySelectorAll<HTMLElement>(
