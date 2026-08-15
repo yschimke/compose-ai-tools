@@ -186,6 +186,36 @@ class ServeCatalogStore(
   }
 
   /**
+   * The route-safe id a published capture is served under, or null when it can't be served.
+   *
+   * Same containment reasoning as the baked images and the deferred records: the branch is trusted,
+   * but a garbled or compromised catalog must not mint odd ids or escape the staged dir. The
+   * extension is checked against a closed list rather than merely being *some* suffix — these bytes
+   * are handed to a browser, and an open-ended suffix taken from fetched JSON is how a catalog
+   * would get to choose the content type it is served under.
+   *
+   * The id is derived exactly as a still's is, so a capture the export named from its sibling
+   * sticker lands on that sticker's id plus whatever disambiguating segment it carried
+   * (`__interaction` / `__anim`). Nothing here re-derives the export's naming rule — the pairing to
+   * a card is done by `theme` in the load loop, not by taking the name apart.
+   */
+  private fun motionPreviewIdOf(path: String): String? {
+    if (path.isBlank() || !path.startsWith("$MOTION_DIR/")) return null
+    val extension = MOTION_EXTENSIONS.firstOrNull { path.endsWith(it) } ?: return null
+    if (".." in path.split("/")) return null
+    // Flattened exactly as a still's path is, so a capture named from its sibling sticker shares
+    // that sticker's id — the two never collide because they are served from separate routes, and a
+    // second capture on the same card keeps its own id via the `__interaction` / `__anim` segment
+    // the export carried through.
+    return path.removePrefix("$MOTION_DIR/").removeSuffix(extension).replace("/", "__")
+  }
+
+  /** The extension [path] carries, or null when it is not a servable capture. */
+  private fun motionExtensionOf(path: String): String? = MOTION_EXTENSIONS.firstOrNull {
+    path.endsWith(it)
+  }
+
+  /**
    * One declared baked image, resolved to everything the load loop needs *before* any fetch: its
    * route-safe [id], the staged [target] it writes to (null when that path escaped the previews dir
    * — planned anyway so it still counts as declared, then skipped), and the component context that
@@ -202,6 +232,10 @@ class ServeCatalogStore(
     val group: String?,
     val componentSourceFile: String?,
     val componentBodyLine: Int?,
+    /**
+     * The owning component's published captures, paired to this image by theme in the load loop.
+     */
+    val componentMotion: List<Motion>,
   )
 
   /**
@@ -346,6 +380,7 @@ class ServeCatalogStore(
             group,
             componentSourceFile,
             componentBodyLine,
+            component.motion,
           )
         }
       }
@@ -358,6 +393,13 @@ class ServeCatalogStore(
     // paint therefore fills the default previews concurrently through the ordinary request path —
     // no separate background pass to schedule, cancel on refresh, or reason about.
     val bakedPathById = LinkedHashMap<String, String>()
+    // Branch path per capture route id, for the host to fetch on demand. Captures are NOT staged
+    // here, on the same reasoning that made the baked images lazy — and more so: a capture is one
+    // to
+    // two orders of magnitude heavier than the sticker beside it, and it is opt-in surface most
+    // visitors never open. Fetching them at registration would make every catalog refresh pay for
+    // pixels nobody asked to see.
+    val motionPathById = LinkedHashMap<String, String>()
     for (planned in plannedImages) {
       if (count >= maxImages) break
       // Counted as the catalog CLAIMS to publish it, which is how the completeness check below
@@ -383,8 +425,29 @@ class ServeCatalogStore(
         // A catalog with neither state/theme nor a section records nothing and stays a flat grid.
         val hasSectionInfo = planned.section != null || planned.group != null
         val props = image.props?.takeIf { it.isNotEmpty() }
+        // Pair the component's captures to THIS card by theme, rather than by taking the published
+        // filename apart. The export already resolved which themed sticker each capture accompanies
+        // and recorded it; re-deriving that here from the name would be a second implementation of
+        // the export's naming rule, and the two would eventually disagree. A capture with no theme
+        // (an unthemed catalog) belongs to every card of its component.
+        val motion =
+          planned.componentMotion.mapNotNull { capture ->
+            val theme = capture.theme?.takeIf { it.isNotBlank() }
+            if (theme != null && !theme.equals(image.theme, ignoreCase = true))
+              return@mapNotNull null
+            val motionId = motionPreviewIdOf(capture.path) ?: return@mapNotNull null
+            val extension = motionExtensionOf(capture.path) ?: return@mapNotNull null
+            motionPathById[motionId] = capture.path
+            MotionMeta(
+              id = motionId,
+              kind = capture.kind.takeIf { it.isNotBlank() },
+              caption = capture.caption?.takeIf { it.isNotBlank() },
+              extension = extension,
+            )
+          }
         if (
-          image.state != null ||
+          motion.isNotEmpty() ||
+            image.state != null ||
             image.theme != null ||
             props != null ||
             planned.componentId != null ||
@@ -407,6 +470,7 @@ class ServeCatalogStore(
               supportsFocus = image.supportsFocus,
               supportsGestures = image.supportsGestures,
               fixedTheme = image.fixedTheme,
+              motion = motion,
               section = planned.section,
               group = planned.group,
               order = if (hasSectionInfo) count else null,
@@ -663,6 +727,15 @@ class ServeCatalogStore(
           fetchBakedPng = { id ->
             bakedPathById[id]?.let { path -> fetchCatalogAsset(base + path) }
           },
+          // The same seam for the motion axis: ids the catalog publishes a capture for, and the
+          // fetch that lands one. Captures are never staged at registration (see [motionPathById]),
+          // so this lane is lazy all the way down — a catalog with motion costs nothing extra until
+          // a reader actually asks to watch something.
+          declaredMotion = motionPathById.keys.toList(),
+          fetchMotion = { id ->
+            motionPathById[id]?.let { path -> fetchCatalogAsset(base + path) }
+          },
+          motionBranchPaths = motionPathById.toMap(),
           // The branch path of every baked render, so a pinned (`?at=<sha>`) request can be
           // answered out of the same tree at an older commit — see [ServeCatalogRevision].
           bakedBranchPaths = bakedPathById.toMap(),
@@ -1919,6 +1992,39 @@ class ServeCatalogStore(
      * for an older catalog, or a preview whose classfile carried no line numbers.
      */
     val bodyLine: Int? = null,
+    /**
+     * The component's animated captures (`@InteractionPreview` / `@AnimatedPreview`), published
+     * beside its stills under `motion/` on the delivery branch.
+     *
+     * A sibling axis to [images] rather than more entries inside it, because every consumer of
+     * [images] assumes a still: the grid lays them out as a sheet, a parity run diffs them against
+     * a kit node. A 114-frame recording folded in there would publish its first frame and silently
+     * drop the point. Empty for a catalog with no motion, and for one exported before the branch
+     * carried these bytes at all.
+     */
+    val motion: List<Motion> = emptyList(),
+  )
+
+  /**
+   * One published animated capture: what moved, why a reader should care, and which themed card it
+   * belongs beside.
+   *
+   * [path] is a branch path (`motion/<slug>/<variant>.apng`) named from the sibling sticker by the
+   * export, so it flattens to the same route id the still does — see [motionPreviewIdOf].
+   */
+  @Serializable
+  private data class Motion(
+    val path: String = "",
+    /** `"interaction"` (a scripted gesture) or `"animation"` (a self-running animation). */
+    val kind: String = "",
+    /**
+     * The caption the annotation declared. A motion capture without one is close to useless — the
+     * reader can see *that* something moved, and this is what tells them which property they are
+     * being shown — so the viewer surfaces it beside the capture rather than dropping it.
+     */
+    val caption: String? = null,
+    /** The theme of the sticker this capture accompanies, used to pair it with the right card. */
+    val theme: String? = null,
   )
 
   @Serializable
@@ -1980,6 +2086,22 @@ class ServeCatalogStore(
    * authored component list — because [ServeBundleHost] otherwise lists previews sorted by id. All
    * three are null for a plain (untabbed) catalog / uploaded bundle, preserving the flat layout.
    */
+  /**
+   * One animated capture offered beside a preview, as the served manifest carries it.
+   *
+   * [id] is the route the bytes are fetched under, not a branch path: the store owns URL assembly
+   * and the size cap, exactly as it does for baked PNGs, so the host and the viewer only ever name
+   * an id. [extension] rides along because the two formats are not interchangeable to a browser —
+   * an APNG served as a GIF renders its first frame and stops.
+   */
+  @Serializable
+  data class MotionMeta(
+    val id: String,
+    val kind: String? = null,
+    val caption: String? = null,
+    val extension: String = ".apng",
+  )
+
   @Serializable
   data class VariantMeta(
     val state: String? = null,
@@ -2000,6 +2122,12 @@ class ServeCatalogStore(
     val supportsGestures: Boolean = false,
     /** Discovery-time `@FixedTheme` — see [Image.fixedTheme]. */
     val fixedTheme: Boolean = false,
+    /**
+     * Animated captures this preview can offer instead of its still. Empty for the overwhelming
+     * majority of previews; a viewer shows the still exactly as before and surfaces these only as
+     * an opt-in control, because motion is the answer to a question most readers aren't asking.
+     */
+    val motion: List<MotionMeta> = emptyList(),
     val section: String? = null,
     val group: String? = null,
     val order: Int? = null,
@@ -2036,6 +2164,16 @@ class ServeCatalogStore(
     const val DEFAULT_BRANCH_PREFIX = "design-artifacts/"
     const val CATALOG_FILE = "catalog.json"
     const val IMAGES_DIR = "images"
+
+    /** The delivery branch's directory of published animated captures, beside `images/`. */
+    const val MOTION_DIR = "motion"
+
+    /**
+     * Extensions a published capture can carry. Closed deliberately: these bytes are served to a
+     * browser, and an open-ended suffix on a path from fetched JSON is how a catalog would get to
+     * name the content type it is served under.
+     */
+    val MOTION_EXTENSIONS = listOf(".apng", ".gif")
     const val FIGMA_DIR = "figma"
     /** A preview id folds the component slug + variant as `<slug>__<variant>`. */
     const val SLUG_SEPARATOR = "__"

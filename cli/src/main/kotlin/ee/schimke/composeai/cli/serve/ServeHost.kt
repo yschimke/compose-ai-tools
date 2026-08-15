@@ -227,6 +227,16 @@ interface ServeHost : AutoCloseable {
   fun bakedRenderSize(previewId: String): Pair<Int, Int>? = null
 
   /**
+   * The bytes of one published animated capture, or null when this host has none to serve.
+   *
+   * Defaults to null so every host that isn't a published catalog — a daemon, a plain bundle —
+   * simply has no motion lane rather than needing to say so. [extension] is part of the request
+   * because the two formats aren't interchangeable to a browser, and it is validated against what
+   * the catalog declared rather than trusted, so a request can't choose its own content type.
+   */
+  fun motionBytes(motionId: String, extension: String): ByteArray? = null
+
+  /**
    * A visitor is present on this session's pages right now (see `POST /api/presence`) — get its
    * live render lane ready, if it has one and isn't ready already.
    *

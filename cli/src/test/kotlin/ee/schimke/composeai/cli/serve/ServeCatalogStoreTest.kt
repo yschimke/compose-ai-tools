@@ -223,6 +223,88 @@ class ServeCatalogStoreTest {
     assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
   }
 
+  /**
+   * A catalog whose one component publishes a still, a capture beside it, and a second capture
+   * whose path tries to climb out of the motion directory.
+   */
+  private val motionCatalogJson =
+    """
+    {
+      "meta": {"system": "compose-m3"},
+      "components": [
+        {
+          "componentId": "Switch/On",
+          "images": [
+            {"path": "images/switch-on/ideal__default__dark.png", "theme": "dark",
+             "previewId": "SwitchOn_Dark"}
+          ],
+          "motion": [
+            {"path": "motion/switch-on/ideal__default__dark.apng", "kind": "interaction",
+             "caption": "Toggle off and back on.", "theme": "dark"},
+            {"path": "motion/../../etc/passwd.apng", "kind": "interaction", "theme": "dark"}
+          ]
+        }
+      ]
+    }
+    """
+      .trimIndent()
+
+  @Test
+  fun `a published capture is offered on its card and fetched only when watched`() {
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val fetcher: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> motionCatalogJson.toByteArray()
+        url.endsWith(".png") -> png()
+        url.endsWith(".apng") -> byteArrayOf(1, 2, 3)
+        else -> null
+      }
+    }
+    store(TrustStore.EMPTY, fetch = fetcher).load("compose-m3")
+    val host = registered.getValue("compose-m3")
+
+    val preview = host.previews.single { it.id == "switch-on__ideal__default__dark" }
+    // The traversal attempt is gone; the legitimate capture is offered with its caption intact.
+    val motion = preview.motion.single()
+    assertEquals("switch-on__ideal__default__dark", motion.id)
+    assertEquals("interaction", motion.kind)
+    assertEquals("Toggle off and back on.", motion.caption)
+    assertEquals(".apng", motion.extension)
+
+    // Nothing was fetched to publish it. A capture is one to two orders of magnitude heavier than
+    // the sticker beside it and most readers never open one, so paying for it at registration would
+    // be the whole cost of the feature spent on nobody.
+    assertEquals(0, requested.count { it.endsWith(".apng") })
+
+    // It lands on first watch, and only once — the second read comes off disk.
+    assertContentEquals(byteArrayOf(1, 2, 3), host.motionBytes(motion.id, ".apng"))
+    assertEquals(1, requested.count { it.endsWith(".apng") })
+    assertContentEquals(byteArrayOf(1, 2, 3), host.motionBytes(motion.id, ".apng"))
+    assertEquals(1, requested.count { it.endsWith(".apng") })
+  }
+
+  @Test
+  fun `a capture request cannot choose an id or a type the catalog never published`() {
+    val fetcher: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> motionCatalogJson.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> byteArrayOf(1, 2, 3)
+      }
+    }
+    store(TrustStore.EMPTY, fetch = fetcher).load("compose-m3")
+    val host = registered.getValue("compose-m3")
+    val id = "switch-on__ideal__default__dark"
+
+    // These bytes come off a delivery branch, so the suffix a request asks for must never be what
+    // decides how they are typed — the declared extension is, and this id declared `.apng`.
+    assertNull(host.motionBytes(id, ".gif"))
+    // Nor may a request name a capture the catalog never declared, however plausible the id.
+    assertNull(host.motionBytes("switch-on__ideal__default__light", ".apng"))
+    assertNull(host.motionBytes("../../etc/passwd", ".apng"))
+  }
+
   @Test
   fun `a catalog publishes before its baked vectors are fetched`() {
     // The vectors are the last bulk fetch on the publish path — one per image plus one per slug.
