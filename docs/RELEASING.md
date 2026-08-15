@@ -95,7 +95,8 @@ republishing the release.
    - `compose-preview-<ver>.{zip,tar.gz}` — the CLI; tarball already implementation-bundles `:mcp` and the desktop renderer.
    - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-4. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+4. Publishes **`@yschimke/compose-design-map`** (the `design-map/` package — the annotations→`design-map.json` projection) to **npm**, at the tag's version. Uses npm Trusted Publishing (OIDC), so there is no npm token to rotate; provenance is attached except on a `workflow_dispatch` recovery, where the ref no longer names the built tree. Like the marketplace publishes it is tolerated rather than blocking, and it skips a version already on npm, so re-dispatching a tag is safe.
+5. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Alongside `release.yml`, the automatic release chain starts
 `preview-host-image.yml` immediately after tag creation. That job builds only
@@ -133,6 +134,13 @@ Required secrets on the repository:
 | `OVSX_PAT` | Open VSX PAT for the `yuri-schimke` namespace (https://open-vsx.org/user-settings/tokens) |
 
 `GITHUB_TOKEN` is provided automatically and is used by the `release` job to upload assets onto the GitHub Release.
+
+npm needs **no secret**: `@yschimke/compose-design-map` publishes over OIDC Trusted Publishing,
+configured once on npmjs.com against this repository and the `release.yml` workflow filename. That
+binding is to the filename — renaming `release.yml` breaks npm publishing until the trusted
+publisher is reconfigured. The package's committed version is a placeholder (`0.0.0`); the release
+job stamps the tag onto it, exactly as `build-vscode-extension` does for the extension, so nothing
+in the tree needs bumping.
 
 Marketplace publishes are idempotent on re-runs: if the version is already published (e.g. on a `workflow_dispatch` retry for an existing tag), the step logs the "already published" message and exits 0 rather than failing.
 

@@ -102,6 +102,7 @@
       "gradle/libs.versions.toml"
     ],
     "design_artifacts": [
+      "design-map/**",
       "scripts/design-artifacts/**",
       "cli/src/main/resources/rc-player/**",
       ".github/actions/lib/**"

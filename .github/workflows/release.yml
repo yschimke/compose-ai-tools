@@ -315,6 +315,75 @@ jobs:
           fi
           printf '%s\n' "$output"
 
+  # `@yschimke/compose-design-map` — the design-map projection (`design-map/`), published to npm so
+  # a downstream catalog repo can `npx` it at a pinned version.
+  #
+  # It has to be a package rather than a file someone fetches. The consumer is a catalog repo whose
+  # `design-map.json` is COMMITTED and CI-checked, so the projection's version is an input to a
+  # checked-in artifact: a floating fetch means the next change here turns that repo red for a
+  # change nobody there made, and the failure reads as "your map is stale". m3-catalog was fetching
+  # these two files from `main` over HTTPS for exactly that reason — no pin, no integrity, no
+  # release note. A version on npm makes the bump a commit that regenerates the map in the same
+  # diff.
+  #
+  # Dependency-free by design (no `npm ci` here, and none downstream either), which is what keeps
+  # `npx --yes @yschimke/compose-design-map@X.Y.Z` a one-line step in someone else's CI.
+  publish-design-map:
+    runs-on: ubuntu-latest
+    # Same posture as `publish-vscode-extension`: a registry outage must not strand the drafted
+    # release, since `finalize-release` gates on this whole run succeeding. Unlike the VSIX there is
+    # no GitHub Release asset to fall back on, so a tolerated failure here means the version simply
+    # is not on npm — recover by re-dispatching this workflow for the tag, which republishes
+    # idempotently (the step below skips a version that is already up).
+    continue-on-error: true
+    permissions:
+      contents: read
+      id-token: write # OIDC trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG_NAME }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      - name: Upgrade npm (OIDC trusted publishing needs >= 11.5.1)
+        run: npm install -g npm@latest
+      # The package tests are the only gate in front of an irreversible publish — npm refuses to
+      # overwrite a published version, so a broken projection would have to be superseded rather
+      # than fixed. They are dependency-free and take a second.
+      - name: Test
+        working-directory: design-map
+        run: npm test
+      - name: Set version from the tag
+        working-directory: design-map
+        # The committed version is a placeholder (0.0.0); the tag is the release coordinate, the
+        # same arrangement `build-vscode-extension` uses. Read from $TAG_NAME in the env rather
+        # than templating it, so a tag name can't inject arguments into `npm version`.
+        run: npm version --no-git-tag-version --allow-same-version "${TAG_NAME#v}"
+      - name: Publish
+        env:
+          # Only a workflow_dispatch recovery builds a tag while the ref points elsewhere; there,
+          # npm's provenance generator would attest a commit that did not produce the tarball. A
+          # package with no attestation is a gap, one with a false attestation is a lie. The
+          # workflow_call path runs on the release commit the tag names, so provenance stays on.
+          IS_RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
+        working-directory: design-map
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if npm view "@yschimke/compose-design-map@${version}" version >/dev/null 2>&1; then
+            echo "skip @yschimke/compose-design-map@${version} (already published)"
+            exit 0
+          fi
+          flags=(--access public)
+          if [ "${IS_RECOVERY}" = "true" ]; then
+            flags+=(--provenance=false)
+            echo "recovery publish: provenance disabled (ref does not name the built tree)"
+          fi
+          npm publish "${flags[@]}"
+
   release:
     # The GitHub Release asset upload depends ONLY on the build jobs that produce the assets — it is
     # deliberately NOT gated on `publish-gradle-plugin`. The Maven Central publish is slow and

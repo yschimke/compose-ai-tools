@@ -1,0 +1,39 @@
+{
+  "name": "@yschimke/compose-design-map",
+  "version": "0.0.0",
+  "description": "Project a compose-preview discovery manifest into design-parity's design-map.json, plus a sidecar of unresolved variant declarations. Dependency-free.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./design-map.mjs",
+  "exports": {
+    ".": "./design-map.mjs"
+  },
+  "bin": {
+    "compose-design-map": "./emit-design-map.mjs"
+  },
+  "files": [
+    "design-map.mjs",
+    "emit-design-map.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "compose",
+    "compose-preview",
+    "design-parity",
+    "design-map",
+    "figma"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yschimke/compose-ai-tools.git",
+    "directory": "design-map"
+  },
+  "homepage": "https://github.com/yschimke/compose-ai-tools/tree/main/design-map#readme",
+  "bugs": "https://github.com/yschimke/compose-ai-tools/issues"
+}
