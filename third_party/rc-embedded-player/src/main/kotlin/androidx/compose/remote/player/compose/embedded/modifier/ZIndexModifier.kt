@@ -27,6 +27,6 @@ import androidx.compose.ui.zIndex
 
 @Composable
 internal fun Modifier.zIndex(op: ZIndexModifierOperation): Modifier {
-    val zIndexValue = rememberRemoteFloatAsState(op.valueReflection).value
-    return this.zIndex(zIndexValue)
+  val zIndexValue = rememberRemoteFloatAsState(op.valueReflection).value
+  return this.zIndex(zIndexValue)
 }

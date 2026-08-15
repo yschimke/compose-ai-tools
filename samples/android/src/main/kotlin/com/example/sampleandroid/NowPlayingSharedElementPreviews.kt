@@ -43,27 +43,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
- * A single, deliberately-designed **container transform** — a compact "now playing" mini-player that
- * grows into a full player screen — shown two ways:
+ * A single, deliberately-designed **container transform** — a compact "now playing" mini-player
+ * that grows into a full player screen — shown two ways:
  * - [NowPlayingContainerTransformPreview] renders the transition on its own, the way it ships.
  * - [NowPlayingDebugOverlayPreview] wraps the *same* scene in Compose 1.11's
  *   [LookaheadAnimationVisualDebugging] overlay, so the target-bounds rectangles and shared-element
  *   key labels are drawn over the morph.
  *
  * Both are the identical composable ([NowPlayingSharedLayout]); the only difference is the debug
- * wrapper. Put the two GIFs side by side and you can see exactly what the overlay adds — which is the
- * point of the tool: it's a lens you drop over a working animation to see the shared-element bounds,
- * not a different animation.
+ * wrapper. Put the two GIFs side by side and you can see exactly what the overlay adds — which is
+ * the point of the tool: it's a lens you drop over a working animation to see the shared-element
+ * bounds, not a different animation.
  *
  * The gradient album art is the hero shared element (`key = "art"`): a 56dp rounded square in the
  * mini-player that morphs into the full-width cover art in the expanded player, carrying continuous
  * identity through the [artworkBrush] rather than cross-fading. The title (`sharedBounds`) and the
- * card surface (`sharedBounds`) travel with it; the scrubber and transport controls exist only in the
- * expanded state and fade in over the morphing container.
+ * card surface (`sharedBounds`) travel with it; the scrubber and transport controls exist only in
+ * the expanded state and fade in over the morphing container.
  */
 /**
  * Duration of the container-transform morph. Shared by the bounds tween *and* the [AnimatedContent]
@@ -114,8 +113,9 @@ fun NowPlayingDebugOverlayPreview() {
 }
 
 /**
- * The shared-element scene itself, factored out so the plain and debug previews render byte-for-byte
- * the same transition. Kicks the mini→full transition off on the first composed frame.
+ * The shared-element scene itself, factored out so the plain and debug previews render
+ * byte-for-byte the same transition. Kicks the mini→full transition off on the first composed
+ * frame.
  */
 @Composable
 private fun NowPlayingSharedLayout(modifier: Modifier = Modifier) {
@@ -123,7 +123,8 @@ private fun NowPlayingSharedLayout(modifier: Modifier = Modifier) {
   // flipping an AnimatedContent targetState. Under the paused render clock a targetState flip snaps
   // the shared-element bounds to their target in a single captured frame (only the fades tween);
   // making the transition *fraction* the clock-driven animation means the bounds interpolate
-  // smoothly across every captured frame — the same seekable primitive SharedElementFilmstripPreview
+  // smoothly across every captured frame — the same seekable primitive
+  // SharedElementFilmstripPreview
   // uses for fixed fractions, animated here instead of seeked.
   val seekState = remember { SeekableTransitionState(PlayerScreen.MiniPlayer) }
   LaunchedEffect(Unit) {

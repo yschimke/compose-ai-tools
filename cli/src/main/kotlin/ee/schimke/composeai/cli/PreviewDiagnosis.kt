@@ -353,12 +353,11 @@ private fun refreshableOutputs(
   siblingOutputs: Set<String>,
   fileSystem: FileSystem,
 ): List<Pair<String, OutputDiscovery>> {
-  val declared =
-    buildList {
-        preview?.captures?.forEach { if (it.renderOutput.isNotEmpty()) add(it.renderOutput) }
-        preview?.dataProducts?.forEach { if (it.output.isNotEmpty()) add(it.output) }
-      }
-      .distinct()
+  val declared = buildList {
+    preview?.captures?.forEach { if (it.renderOutput.isNotEmpty()) add(it.renderOutput) }
+    preview?.dataProducts?.forEach { if (it.output.isNotEmpty()) add(it.output) }
+  }
+    .distinct()
   val defaultStem = "renders/${result.id}.png"
   val defaultStemIsLive =
     preview == null ||
@@ -372,18 +371,18 @@ private fun refreshableOutputs(
     if (preview?.params?.previewParameterProviderClassName == null) emptyList()
     else
       buildList {
-          preview.captures.forEach { add(it.renderOutput.ifEmpty { defaultStem }) }
-          preview.dataProducts.forEach { if (it.output.isNotEmpty()) add(it.output) }
-        }
+        preview.captures.forEach { add(it.renderOutput.ifEmpty { defaultStem }) }
+        preview.dataProducts.forEach { if (it.output.isNotEmpty()) add(it.output) }
+      }
         .distinct()
   val fanout =
     if (module == null) emptyList()
     else paramFanoutOutputs(fanoutTemplates, module, siblingOutputs, fileSystem)
   return buildList {
-      declared.forEach { add(it to OutputDiscovery.DECLARED) }
-      if (defaultStemIsLive) add(defaultStem to OutputDiscovery.DECLARED)
-      fanout.forEach { add(it to OutputDiscovery.SCANNED) }
-    }
+    declared.forEach { add(it to OutputDiscovery.DECLARED) }
+    if (defaultStemIsLive) add(defaultStem to OutputDiscovery.DECLARED)
+    fanout.forEach { add(it to OutputDiscovery.SCANNED) }
+  }
     .distinctBy { it.first }
 }
 

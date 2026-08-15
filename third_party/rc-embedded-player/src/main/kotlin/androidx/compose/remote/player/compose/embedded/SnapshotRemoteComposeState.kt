@@ -32,149 +32,149 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
  * changes, or expression evaluation run) invalidates exactly those readers.
  */
 internal class SnapshotRemoteComposeState : RemoteComposeState() {
-    private val floats: SnapshotStateMap<Int, Float> = mutableStateMapOf()
-    private val overriddenFloats: SnapshotStateMap<Int, Boolean> = mutableStateMapOf()
-    private val integers: SnapshotStateMap<Int, Int> = mutableStateMapOf()
-    private val colors: SnapshotStateMap<Int, Int> = mutableStateMapOf()
-    private val data: SnapshotStateMap<Int, Any> = mutableStateMapOf()
-    private val objects: SnapshotStateMap<Int, Any> = mutableStateMapOf()
+  private val floats: SnapshotStateMap<Int, Float> = mutableStateMapOf()
+  private val overriddenFloats: SnapshotStateMap<Int, Boolean> = mutableStateMapOf()
+  private val integers: SnapshotStateMap<Int, Int> = mutableStateMapOf()
+  private val colors: SnapshotStateMap<Int, Int> = mutableStateMapOf()
+  private val data: SnapshotStateMap<Int, Any> = mutableStateMapOf()
+  private val objects: SnapshotStateMap<Int, Any> = mutableStateMapOf()
 
-    // --- Float ---
-    override fun getFloat(id: Int): Float {
-        if (id !in floats) {
-            floats[id] = super.getFloat(id)
-        }
-        return floats[id] ?: 0f
+  // --- Float ---
+  override fun getFloat(id: Int): Float {
+    if (id !in floats) {
+      floats[id] = super.getFloat(id)
     }
+    return floats[id] ?: 0f
+  }
 
-    override fun cacheFloat(id: Int, item: Float) {
-        super.cacheFloat(id, item)
-        floats[id] = super.getFloat(id)
-        integers[id] = super.getInteger(id)
-        colors[id] = super.getColor(id)
+  override fun cacheFloat(id: Int, item: Float) {
+    super.cacheFloat(id, item)
+    floats[id] = super.getFloat(id)
+    integers[id] = super.getInteger(id)
+    colors[id] = super.getColor(id)
+  }
+
+  override fun updateFloat(id: Int, value: Float) {
+    val old = floats[id]
+    super.updateFloat(id, value)
+    val new = super.getFloat(id)
+    if (new != old) {
+      floats[id] = new
+      integers[id] = super.getInteger(id)
+      colors[id] = super.getColor(id)
     }
+  }
 
-    override fun updateFloat(id: Int, value: Float) {
-        val old = floats[id]
-        super.updateFloat(id, value)
-        val new = super.getFloat(id)
-        if (new != old) {
-            floats[id] = new
-            integers[id] = super.getInteger(id)
-            colors[id] = super.getColor(id)
-        }
+  override fun overrideFloat(id: Int, value: Float) {
+    val old = floats[id]
+    super.overrideFloat(id, value)
+    val new = super.getFloat(id)
+    overriddenFloats[id] = true
+    if (new != old) {
+      floats[id] = new
+      integers[id] = super.getInteger(id)
+      colors[id] = super.getColor(id)
     }
+  }
 
-    override fun overrideFloat(id: Int, value: Float) {
-        val old = floats[id]
-        super.overrideFloat(id, value)
-        val new = super.getFloat(id)
-        overriddenFloats[id] = true
-        if (new != old) {
-            floats[id] = new
-            integers[id] = super.getInteger(id)
-            colors[id] = super.getColor(id)
-        }
+  /** Whether a host/action override should take precedence over the id's authored expression. */
+  fun isFloatOverridden(id: Int): Boolean = overriddenFloats[id] == true
+
+  // --- Integer ---
+  override fun getInteger(id: Int): Int {
+    if (id !in integers) {
+      integers[id] = super.getInteger(id)
     }
+    return integers[id] ?: 0
+  }
 
-    /** Whether a host/action override should take precedence over the id's authored expression. */
-    fun isFloatOverridden(id: Int): Boolean = overriddenFloats[id] == true
-
-    // --- Integer ---
-    override fun getInteger(id: Int): Int {
-        if (id !in integers) {
-            integers[id] = super.getInteger(id)
-        }
-        return integers[id] ?: 0
+  override fun updateInteger(id: Int, value: Int) {
+    val old = integers[id]
+    super.updateInteger(id, value)
+    val new = super.getInteger(id)
+    if (new != old) {
+      integers[id] = new
+      floats[id] = super.getFloat(id)
+      colors[id] = super.getColor(id)
     }
+  }
 
-    override fun updateInteger(id: Int, value: Int) {
-        val old = integers[id]
-        super.updateInteger(id, value)
-        val new = super.getInteger(id)
-        if (new != old) {
-            integers[id] = new
-            floats[id] = super.getFloat(id)
-            colors[id] = super.getColor(id)
-        }
+  override fun overrideInteger(id: Int, value: Int) {
+    val old = integers[id]
+    super.overrideInteger(id, value)
+    val new = super.getInteger(id)
+    if (new != old) {
+      integers[id] = new
+      floats[id] = super.getFloat(id)
+      colors[id] = super.getColor(id)
     }
+  }
 
-    override fun overrideInteger(id: Int, value: Int) {
-        val old = integers[id]
-        super.overrideInteger(id, value)
-        val new = super.getInteger(id)
-        if (new != old) {
-            integers[id] = new
-            floats[id] = super.getFloat(id)
-            colors[id] = super.getColor(id)
-        }
+  // --- Color ---
+  override fun getColor(id: Int): Int {
+    if (id !in colors) {
+      colors[id] = super.getColor(id)
     }
+    return colors[id] ?: 0
+  }
 
-    // --- Color ---
-    override fun getColor(id: Int): Int {
-        if (id !in colors) {
-            colors[id] = super.getColor(id)
-        }
-        return colors[id] ?: 0
+  override fun overrideColor(id: Int, color: Int) {
+    val old = colors[id]
+    super.overrideColor(id, color)
+    val new = super.getColor(id)
+    if (new != old) {
+      colors[id] = new
+      floats[id] = super.getFloat(id)
+      integers[id] = super.getInteger(id)
     }
+  }
 
-    override fun overrideColor(id: Int, color: Int) {
-        val old = colors[id]
-        super.overrideColor(id, color)
-        val new = super.getColor(id)
-        if (new != old) {
-            colors[id] = new
-            floats[id] = super.getFloat(id)
-            integers[id] = super.getInteger(id)
-        }
-    }
-
-    // --- Data Object ---
-    override fun getFromId(id: Int): Any? {
-        if (id !in data) {
-            val item = super.getFromId(id)
-            if (item != null) {
-                data[id] = item
-            }
-        }
-        return data[id]
-    }
-
-    override fun getObject(id: Int): Any? {
-        if (id !in objects) {
-            val item = super.getObject(id)
-            if (item != null) {
-                objects[id] = item
-            }
-        }
-        return objects[id]
-    }
-
-    override fun cacheData(id: Int, item: Any) {
-        super.cacheData(id, item)
+  // --- Data Object ---
+  override fun getFromId(id: Int): Any? {
+    if (id !in data) {
+      val item = super.getFromId(id)
+      if (item != null) {
         data[id] = item
+      }
     }
+    return data[id]
+  }
 
-    override fun updateData(id: Int, item: Any) {
-        // Mirror into the snapshot-backed map like cacheData/overrideData: loadText (and any
-        // other update of an *existing* data id) goes through here, and without the mirror the
-        // stale snapshot entry keeps being served and nothing recomposes — the update would not
-        // be visible until some unrelated write refreshed the id.
-        val old = data[id]
-        super.updateData(id, item)
-        val new = super.getFromId(id)
-        if (new != old && new != null) {
-            data[id] = new
-        }
-    }
-
-    override fun updateObject(id: Int, item: Any) {
-        super.updateObject(id, item)
+  override fun getObject(id: Int): Any? {
+    if (id !in objects) {
+      val item = super.getObject(id)
+      if (item != null) {
         objects[id] = item
+      }
     }
+    return objects[id]
+  }
 
-    override fun overrideData(id: Int, item: Any) {
-        super.overrideData(id, item)
-        data[id] = item
+  override fun cacheData(id: Int, item: Any) {
+    super.cacheData(id, item)
+    data[id] = item
+  }
+
+  override fun updateData(id: Int, item: Any) {
+    // Mirror into the snapshot-backed map like cacheData/overrideData: loadText (and any
+    // other update of an *existing* data id) goes through here, and without the mirror the
+    // stale snapshot entry keeps being served and nothing recomposes — the update would not
+    // be visible until some unrelated write refreshed the id.
+    val old = data[id]
+    super.updateData(id, item)
+    val new = super.getFromId(id)
+    if (new != old && new != null) {
+      data[id] = new
     }
+  }
+
+  override fun updateObject(id: Int, item: Any) {
+    super.updateObject(id, item)
+    objects[id] = item
+  }
+
+  override fun overrideData(id: Int, item: Any) {
+    super.overrideData(id, item)
+    data[id] = item
+  }
 }

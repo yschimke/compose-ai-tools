@@ -284,8 +284,8 @@ internal object ModifierTokenResolver {
       return it
     }
     return runCatching {
-        mod.javaClass.getDeclaredField("clip").apply { isAccessible = true }.getBoolean(mod)
-      }
+      mod.javaClass.getDeclaredField("clip").apply { isAccessible = true }.getBoolean(mod)
+    }
       .getOrNull() ?: false
   }
 
@@ -418,8 +418,8 @@ internal object ModifierTokenResolver {
     val brush =
       elements["brush"]
         ?: runCatching {
-            mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod)
-          }
+          mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod)
+        }
           .getOrNull()
         ?: return null
     if (brush.javaClass.simpleName != "LinearGradient") return null
@@ -514,47 +514,45 @@ internal object ModifierTokenResolver {
     // to a raw `Function1`, so there is no type argument to read back off it.
     val iface =
       runCatching {
-          Class.forName(
-            "androidx.compose.ui.graphics.GraphicsLayerScope",
-            false,
-            modifier.javaClass.classLoader,
-          )
-        }
+        Class.forName(
+          "androidx.compose.ui.graphics.GraphicsLayerScope",
+          false,
+          modifier.javaClass.classLoader,
+        )
+      }
         .getOrNull()
         ?.takeIf { it.isInterface } ?: return null
     val scope =
       runCatching {
-          java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) {
-            proxy,
-            m,
-            args ->
-            val name = m.name
-            if (name.startsWith("set") && args != null && args.size == 1) {
-              recorded[propertyName(name, "set")] = args[0]
-              return@newProxyInstance null
-            }
-            // A property the scope already knows: what the block just assigned, this node's real
-            // geometry/density, or Compose's own identity.
-            knownProperty(name, recorded, geometry)?.let {
-              return@newProxyInstance it
-            }
-            // `Density`'s dp/sp conversions are real method bodies on the interface, and a Proxy
-            // intercepts those as well as the abstract accessors. Stubbing them handed a block
-            // that writes `alpha = if (size.height < 40.dp.toPx()) …` a zero threshold, which is
-            // the same class of wrong answer as an assumed density — and now that this evaluator
-            // outranks the coordinator's applied alpha, a wrong answer here is worse than none.
-            // Run the real body: it reads `density` back off this same proxy, so it converts
-            // against the node's value.
-            if (m.isDefault) {
-              val invoked = runCatching {
-                java.lang.reflect.InvocationHandler.invokeDefault(proxy, m, *(args ?: emptyArray()))
-              }
-              if (invoked.isSuccess) return@newProxyInstance invoked.getOrNull()
-            }
-            // Anything else answers with a harmless zero so the block doesn't blow up mid-run.
-            zeroFor(m.returnType)
+        java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) { proxy, m, args
+          ->
+          val name = m.name
+          if (name.startsWith("set") && args != null && args.size == 1) {
+            recorded[propertyName(name, "set")] = args[0]
+            return@newProxyInstance null
           }
+          // A property the scope already knows: what the block just assigned, this node's real
+          // geometry/density, or Compose's own identity.
+          knownProperty(name, recorded, geometry)?.let {
+            return@newProxyInstance it
+          }
+          // `Density`'s dp/sp conversions are real method bodies on the interface, and a Proxy
+          // intercepts those as well as the abstract accessors. Stubbing them handed a block
+          // that writes `alpha = if (size.height < 40.dp.toPx()) …` a zero threshold, which is
+          // the same class of wrong answer as an assumed density — and now that this evaluator
+          // outranks the coordinator's applied alpha, a wrong answer here is worse than none.
+          // Run the real body: it reads `density` back off this same proxy, so it converts
+          // against the node's value.
+          if (m.isDefault) {
+            val invoked = runCatching {
+              java.lang.reflect.InvocationHandler.invokeDefault(proxy, m, *(args ?: emptyArray()))
+            }
+            if (invoked.isSuccess) return@newProxyInstance invoked.getOrNull()
+          }
+          // Anything else answers with a harmless zero so the block doesn't blow up mid-run.
+          zeroFor(m.returnType)
         }
+      }
         .getOrNull() ?: return null
     @Suppress("UNCHECKED_CAST") val invoke = block as? Function1<Any?, Any?> ?: return null
     runCatching { invoke(scope) }.getOrNull() ?: return null
@@ -571,13 +569,12 @@ internal object ModifierTokenResolver {
    * `Size` is a value class over a packed `Long`, so it is built by packing the two floats rather
    * than constructed — the same shape [offsetAxis] already reads `Offset` back through.
    */
-  private fun nodeSize(info: ModifierInfo): Long? =
-    runCatching {
-        val size = info.coordinates.size
-        if (size.width <= 0 || size.height <= 0) null
-        else packFloats(size.width.toFloat(), size.height.toFloat())
-      }
-      .getOrNull()
+  private fun nodeSize(info: ModifierInfo): Long? = runCatching {
+    val size = info.coordinates.size
+    if (size.width <= 0 || size.height <= 0) null
+    else packFloats(size.width.toFloat(), size.height.toFloat())
+  }
+    .getOrNull()
 
   /**
    * This modifier's own `Density`, or null when the coordinates can't supply one.
@@ -610,9 +607,9 @@ internal object ModifierTokenResolver {
       }
       ?.let { field ->
         runCatching {
-            field.isAccessible = true
-            field.get(modifier)
-          }
+          field.isAccessible = true
+          field.get(modifier)
+        }
           .getOrNull()
       }
 
@@ -689,9 +686,9 @@ internal object ModifierTokenResolver {
       .firstOrNull { it.name == name }
       ?.let { field ->
         runCatching {
-            field.isAccessible = true
-            field.get(instance)
-          }
+          field.isAccessible = true
+          field.get(instance)
+        }
           .getOrNull()
       }
 
@@ -717,11 +714,11 @@ internal object ModifierTokenResolver {
     val px =
       floatValue(elements["shadowElevation"])
         ?: runCatching {
-            mod.javaClass
-              .getDeclaredField("shadowElevation")
-              .apply { isAccessible = true }
-              .getFloat(mod)
-          }
+          mod.javaClass
+            .getDeclaredField("shadowElevation")
+            .apply { isAccessible = true }
+            .getFloat(mod)
+        }
           .getOrNull()
     if (px != null) {
       if (px <= 0f) return null
@@ -734,11 +731,11 @@ internal object ModifierTokenResolver {
     val elevationDp =
       floatValue(elements["elevation"])
         ?: runCatching {
-            mod.javaClass
-              .getDeclaredField("elevation")
-              .apply { isAccessible = true }
-              .let { floatValue(it.get(mod)) }
-          }
+          mod.javaClass
+            .getDeclaredField("elevation")
+            .apply { isAccessible = true }
+            .let { floatValue(it.get(mod)) }
+        }
           .getOrNull()
         ?: return null
     if (elevationDp <= 0f) return null
@@ -750,10 +747,9 @@ internal object ModifierTokenResolver {
     when (raw) {
       is Float -> raw
       is Double -> raw.toFloat()
-      else ->
-        runCatching {
-            raw?.javaClass?.getDeclaredField("value")?.apply { isAccessible = true }?.getFloat(raw)
-          }
+      else -> runCatching {
+          raw?.javaClass?.getDeclaredField("value")?.apply { isAccessible = true }?.getFloat(raw)
+        }
           .getOrNull()
     }
 
@@ -775,11 +771,11 @@ internal object ModifierTokenResolver {
           continue
         val spacing =
           runCatching {
-              value.javaClass
-                .getDeclaredField("spacing")
-                .apply { isAccessible = true }
-                .getFloat(value)
-            }
+            value.javaClass
+              .getDeclaredField("spacing")
+              .apply { isAccessible = true }
+              .getFloat(value)
+          }
             .getOrNull() ?: continue
         if (spacing > 0f) return "${spacing}dp"
       }
@@ -803,14 +799,14 @@ internal object ModifierTokenResolver {
       return if (it == Color.Unspecified) null else colorToWireString(it)
     }
     return runCatching {
-        val field = mod.javaClass.getDeclaredField("color").apply { isAccessible = true }
-        val packed = field.getLong(mod).toULong()
-        // sRGB packs the colour space id (non-zero) into the low 32 bits as 0; anything else is a
-        // wide-gamut/unspecified packing we can't read as a plain ARGB hex.
-        if (packed and 0xFFFFFFFFuL != 0uL) return null
-        val argb = (packed shr 32).toInt()
-        if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
-      }
+      val field = mod.javaClass.getDeclaredField("color").apply { isAccessible = true }
+      val packed = field.getLong(mod).toULong()
+      // sRGB packs the colour space id (non-zero) into the low 32 bits as 0; anything else is a
+      // wide-gamut/unspecified packing we can't read as a plain ARGB hex.
+      if (packed and 0xFFFFFFFFuL != 0uL) return null
+      val argb = (packed shr 32).toInt()
+      if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
+    }
       .getOrNull()
   }
 
@@ -862,9 +858,9 @@ internal object ModifierTokenResolver {
           .takeUnless { it.isSynthetic }
           ?.let { field ->
             runCatching {
-                field.isAccessible = true
-                field.get(current)
-              }
+              field.isAccessible = true
+              field.get(current)
+            }
               .getOrNull()
           } ?: return current
       current = next
@@ -960,15 +956,15 @@ internal object ModifierTokenResolver {
     val colorFilter =
       elements["colorFilter"]
         ?: runCatching {
-            mod.javaClass.getDeclaredField("colorFilter").apply { isAccessible = true }.get(mod)
-          }
+          mod.javaClass.getDeclaredField("colorFilter").apply { isAccessible = true }.get(mod)
+        }
           .getOrNull()
     if (colorFilter != null) return null
     val painter =
       elements["painter"]
         ?: runCatching {
-            mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
-          }
+          mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
+        }
           .getOrNull()
         ?: return null
     // A Wear M3 scaling list (`TransformingLazyColumn` + `SurfaceTransformation`) doesn't fill its
@@ -991,21 +987,17 @@ internal object ModifierTokenResolver {
         // drop the outline from the vector export. Leave bordered wrappers unresolved so the raster
         // path preserves the full pixels (fill + border); only a borderless wrapper — the common
         // filled TitleCard/Card — collapses to a flat vector fill with editable text.
-        val border =
-          runCatching {
-              painter.javaClass
-                .getDeclaredField("border")
-                .apply { isAccessible = true }
-                .get(painter)
-            }
-            .getOrNull()
+        val border = runCatching {
+          painter.javaClass.getDeclaredField("border").apply { isAccessible = true }.get(painter)
+        }
+          .getOrNull()
         if (border != null) return null
         runCatching {
-            painter.javaClass
-              .getDeclaredField("backgroundPainter")
-              .apply { isAccessible = true }
-              .get(painter)
-          }
+          painter.javaClass
+            .getDeclaredField("backgroundPainter")
+            .apply { isAccessible = true }
+            .get(painter)
+        }
           .getOrNull() ?: return null
       } else {
         // Any *other* delegating painter is unwrapped structurally rather than by name (issue
@@ -1021,11 +1013,11 @@ internal object ModifierTokenResolver {
     if (fillPainter.javaClass.simpleName != "ColorPainter") return null
     val baseArgb =
       runCatching {
-          val field = fillPainter.javaClass.getDeclaredField("color").apply { isAccessible = true }
-          val packed = field.getLong(fillPainter).toULong()
-          if (packed and 0xFFFFFFFFuL != 0uL) return null
-          (packed shr 32).toInt()
-        }
+        val field = fillPainter.javaClass.getDeclaredField("color").apply { isAccessible = true }
+        val packed = field.getLong(fillPainter).toULong()
+        if (packed and 0xFFFFFFFFuL != 0uL) return null
+        (packed shr 32).toInt()
+      }
         .getOrNull() ?: return null
     if (baseArgb == 0) return null
     // Fold `Modifier.paint`'s alpha multiplier into the colour's alpha channel (default 1 =
@@ -1033,8 +1025,8 @@ internal object ModifierTokenResolver {
     val alpha =
       (floatValue(elements["alpha"])
           ?: runCatching {
-              mod.javaClass.getDeclaredField("alpha").apply { isAccessible = true }.getFloat(mod)
-            }
+            mod.javaClass.getDeclaredField("alpha").apply { isAccessible = true }.getFloat(mod)
+          }
             .getOrNull()
           ?: 1f)
         .coerceIn(0f, 1f)
@@ -1065,8 +1057,8 @@ internal object ModifierTokenResolver {
     val dp =
       floatValue(elements["width"])
         ?: runCatching {
-            mod.javaClass.getDeclaredField("width").apply { isAccessible = true }.getFloat(mod)
-          }
+          mod.javaClass.getDeclaredField("width").apply { isAccessible = true }.getFloat(mod)
+        }
           .getOrNull()
         ?: return null
     if (dp <= 0f) return null
@@ -1082,8 +1074,8 @@ internal object ModifierTokenResolver {
     val dp =
       floatValue(element)
         ?: runCatching {
-            mod.javaClass.getDeclaredField(field).apply { isAccessible = true }.getFloat(mod)
-          }
+          mod.javaClass.getDeclaredField(field).apply { isAccessible = true }.getFloat(mod)
+        }
           .getOrNull()
         ?: return null
     if (dp.isNaN() || dp <= 0f) return null
@@ -1095,17 +1087,17 @@ internal object ModifierTokenResolver {
       return if (it == Color.Unspecified) null else colorToWireString(it)
     }
     return runCatching {
-        val brush =
-          mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod)
-            ?: return null
-        if (brush.javaClass.simpleName != "SolidColor") return null
-        val value =
-          brush.javaClass.getDeclaredField("value").apply { isAccessible = true }.getLong(brush)
-        val packed = value.toULong()
-        if (packed and 0xFFFFFFFFuL != 0uL) return null
-        val argb = (packed shr 32).toInt()
-        if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
-      }
+      val brush =
+        mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod)
+          ?: return null
+      if (brush.javaClass.simpleName != "SolidColor") return null
+      val value =
+        brush.javaClass.getDeclaredField("value").apply { isAccessible = true }.getLong(brush)
+      val packed = value.toULong()
+      if (packed and 0xFFFFFFFFuL != 0uL) return null
+      val argb = (packed shr 32).toInt()
+      if (argb == 0) null else "#${String.format(Locale.US, "%08X", argb)}"
+    }
       .getOrNull()
   }
 
@@ -1269,13 +1261,12 @@ internal object ModifierTokenResolver {
     return out
   }
 
-  private fun fieldValues(target: Any): List<Any> =
-    runCatching {
-        target.javaClass.declaredFields.mapNotNull { field ->
-          runCatching { field.apply { isAccessible = true }.get(target) }.getOrNull()
-        }
-      }
-      .getOrDefault(emptyList())
+  private fun fieldValues(target: Any): List<Any> = runCatching {
+    target.javaClass.declaredFields.mapNotNull { field ->
+      runCatching { field.apply { isAccessible = true }.get(target) }.getOrNull()
+    }
+  }
+    .getOrDefault(emptyList())
 
   /**
    * Whether a placeholder is currently painting over the content, read from the `PlaceholderState`
@@ -1320,9 +1311,10 @@ internal object ModifierTokenResolver {
   private fun reflectField(target: Any, name: String): Any? {
     var cls: Class<*>? = target.javaClass
     while (cls != null && cls != Any::class.java) {
-      val value =
-        runCatching { cls.getDeclaredField(name).apply { isAccessible = true }.get(target) }
-          .getOrNull()
+      val value = runCatching {
+        cls.getDeclaredField(name).apply { isAccessible = true }.get(target)
+      }
+        .getOrNull()
       if (value != null) return value
       cls = cls.superclass
     }
@@ -1389,9 +1381,9 @@ internal object ModifierTokenResolver {
       return it
     }
     runCatching {
-        val field = mod.javaClass.getDeclaredField("shape").apply { isAccessible = true }
-        field.get(mod) as? Shape
-      }
+      val field = mod.javaClass.getDeclaredField("shape").apply { isAccessible = true }
+      field.get(mod) as? Shape
+    }
       .getOrNull()
       ?.let {
         return it
@@ -1405,12 +1397,11 @@ internal object ModifierTokenResolver {
     // a bespoke morph shape) yields no corners downstream and the card simply stays square, as
     // before — no regression.
     return runCatching {
-        val painter =
-          mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
-        if (painter?.javaClass?.simpleName != "BackgroundPainter") return null
-        painter.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(painter)
-          as? Shape
-      }
+      val painter = mod.javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(mod)
+      if (painter?.javaClass?.simpleName != "BackgroundPainter") return null
+      painter.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(painter)
+        as? Shape
+    }
       .getOrNull()
   }
 
@@ -1432,9 +1423,9 @@ internal object ModifierTokenResolver {
         .filter { it.name.endsWith("state", ignoreCase = true) }
         .mapNotNull { field ->
           runCatching {
-              field.isAccessible = true
-              field.get(this)
-            }
+            field.isAccessible = true
+            field.get(this)
+          }
             .getOrNull()
         }
         .mapNotNull { state -> state.invokeNoArg("getMorphedShape") as? Shape }
@@ -1479,9 +1470,9 @@ internal object ModifierTokenResolver {
     val ordered = candidates.sortedBy { if (it.name == "shape") 0 else 1 }
     return ordered.firstNotNullOfOrNull { field ->
       runCatching {
-          field.isAccessible = true
-          (field.get(this) as? Shape)?.takeIf { it.invokeNoArg("getTopStart") != null }
-        }
+        field.isAccessible = true
+        (field.get(this) as? Shape)?.takeIf { it.invokeNoArg("getTopStart") != null }
+      }
         .getOrNull()
     }
   }
@@ -1538,13 +1529,13 @@ internal object ModifierTokenResolver {
     if (widthPx <= 0 || heightPx <= 0) return null
     val rounded =
       runCatching {
-          createOutline(
-            Size(widthPx.toFloat(), heightPx.toFloat()),
-            LayoutDirection.Ltr,
-            Density(density),
-          )
-            as? Outline.Rounded
-        }
+        createOutline(
+          Size(widthPx.toFloat(), heightPx.toFloat()),
+          LayoutDirection.Ltr,
+          Density(density),
+        )
+          as? Outline.Rounded
+      }
         .getOrNull() ?: return null
     val rect = rounded.roundRect
     val values =
@@ -1580,13 +1571,13 @@ internal object ModifierTokenResolver {
     if (widthPx <= 0 || heightPx <= 0) return null
     val generic =
       runCatching {
-          createOutline(
-            Size(widthPx.toFloat(), heightPx.toFloat()),
-            LayoutDirection.Ltr,
-            Density(density),
-          )
-            as? Outline.Generic
-        }
+        createOutline(
+          Size(widthPx.toFloat(), heightPx.toFloat()),
+          LayoutDirection.Ltr,
+          Density(density),
+        )
+          as? Outline.Generic
+      }
         .getOrNull() ?: return null
     return runCatching { sampleClosedPath(generic.path, widthPx.toFloat(), heightPx.toFloat()) }
       .getOrNull()
@@ -1631,9 +1622,9 @@ internal object ModifierTokenResolver {
     // `PxCornerSize` (`RoundedCornerShape(12f)`) stores its pixel radius in a `size` field.
     if (corner.javaClass.simpleName != "PxCornerSize") return null
     return runCatching {
-        val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
-        (field.get(corner) as? Float)
-      }
+      val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
+      (field.get(corner) as? Float)
+    }
       .getOrNull()
   }
 
@@ -1641,15 +1632,14 @@ internal object ModifierTokenResolver {
     corner ?: return null
     return when (corner.javaClass.simpleName) {
       // A dp corner stores its `Dp` (inlined float) directly.
-      "DpCornerSize" ->
-        runCatching {
-            val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
-            when (val raw = field.get(corner)) {
-              is Float -> raw
-              is Dp -> raw.value
-              else -> null
-            }
+      "DpCornerSize" -> runCatching {
+          val field = corner.javaClass.getDeclaredField("size").apply { isAccessible = true }
+          when (val raw = field.get(corner)) {
+            is Float -> raw
+            is Dp -> raw.value
+            else -> null
           }
+        }
           .getOrNull()
       // A percent corner is a fraction of the shorter side: `px = minSide * percent/100`, then dp.
       "PercentCornerSize" ->
@@ -1673,8 +1663,8 @@ internal object ModifierTokenResolver {
     return sequenceOf("percent", "size")
       .mapNotNull { name ->
         runCatching {
-            corner.javaClass.getDeclaredField(name).apply { isAccessible = true }.getFloat(corner)
-          }
+          corner.javaClass.getDeclaredField(name).apply { isAccessible = true }.getFloat(corner)
+        }
           .getOrNull()
       }
       .firstOrNull()
@@ -1701,16 +1691,16 @@ internal object ModifierTokenResolver {
     return null
   }
 
-  private fun reflectDp(mod: Any, field: String): String? =
-    runCatching {
-        val value =
-          mod.javaClass.getDeclaredField(field).apply { isAccessible = true }.getFloat(mod)
-        if (value.isNaN()) null else "${value}dp"
-      }
-      .getOrNull()
+  private fun reflectDp(mod: Any, field: String): String? = runCatching {
+    val value = mod.javaClass.getDeclaredField(field).apply { isAccessible = true }.getFloat(mod)
+    if (value.isNaN()) null else "${value}dp"
+  }
+    .getOrNull()
 
-  private fun Any.invokeNoArg(name: String): Any? =
-    runCatching { javaClass.getMethod(name).invoke(this) }.getOrNull()
+  private fun Any.invokeNoArg(name: String): Any? = runCatching {
+    javaClass.getMethod(name).invoke(this)
+  }
+    .getOrNull()
 
   private fun Dp.toWireDp(): String = "${value}dp"
 

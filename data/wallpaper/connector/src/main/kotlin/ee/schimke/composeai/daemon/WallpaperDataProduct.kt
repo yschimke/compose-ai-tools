@@ -234,8 +234,8 @@ class WallpaperDataProductRegistry : DataProductRegistry {
     @Suppress("UNCHECKED_CAST")
     val colors =
       runCatching {
-          resolved.javaClass.getMethod("getColorScheme").invoke(resolved) as? Map<String, String>
-        }
+        resolved.javaClass.getMethod("getColorScheme").invoke(resolved) as? Map<String, String>
+      }
         .getOrNull() ?: return false
     val surface = colors["surface"] ?: return false
     return surface.length == 9 && surface.startsWith("#") && surface.luminanceArgb() < 0.5f

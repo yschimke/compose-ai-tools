@@ -3,7 +3,6 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.data.overrides.OverrideSeed
 import ee.schimke.composeai.data.overrides.OverrideSeedKind
 import ee.schimke.composeai.data.overrides.OverrideVariantSpec
-import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -135,16 +134,17 @@ class FigmaSvgManifestUiModeTest {
     )
 
   /**
-   * Same guarantee through the **production** resolver ([renderSpecFromInfo] +
-   * [RobolectricHost.reshapeRenderPayload] — the lane `bundle pack`'s semantics fetch and the live
-   * daemon actually use, unlike the harness-only [PreviewManifestRouter] above), in the order
-   * discovery really emits a multipreview (Dark FIRST, then Light — annotation order reversed).
+   * Same guarantee through the **production** resolver
+   * ([renderSpecFromInfo] + [RobolectricHost.reshapeRenderPayload] — the lane `bundle pack`'s
+   * semantics fetch and the live daemon actually use, unlike the harness-only
+   * [PreviewManifestRouter] above), in the order discovery really emits a multipreview (Dark FIRST,
+   * then Light — annotation order reversed).
    *
    * This is the exact sequence that shipped theme-lagged in the 0.17.14 confetti-mobile catalog:
    * `renderSpecFromInfo` resolved a no-night preview to a null uiMode, so `_Light` emitted no
    * `uiMode=` token and inherited `_Dark`'s `night` qualifier — every capture wore the PREVIOUS
-   * render's theme. The resolver now defaults to an explicit LIGHT, so each render resets the
-   * night bit deterministically.
+   * render's theme. The resolver now defaults to an explicit LIGHT, so each render resets the night
+   * bit deterministically.
    */
   @Test
   fun `production resolver renders dark-then-light with the right themes`() {

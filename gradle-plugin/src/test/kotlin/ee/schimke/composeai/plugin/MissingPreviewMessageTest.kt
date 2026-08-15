@@ -52,7 +52,10 @@ class MissingPreviewMessageTest {
         module = "app",
         variant = "debug",
         previews =
-          listOf(previewWithCapture("A", "renders/A.png"), previewWithCapture("B", "renders/B.png")),
+          listOf(
+            previewWithCapture("A", "renders/A.png"),
+            previewWithCapture("B", "renders/B.png"),
+          ),
       )
 
     val sidecars =
@@ -122,7 +125,10 @@ class MissingPreviewMessageTest {
         module = "app",
         variant = "debug",
         previews =
-          listOf(previewWithCapture("A", "renders/A.png"), previewWithCapture("B", "renders/B.png")),
+          listOf(
+            previewWithCapture("A", "renders/A.png"),
+            previewWithCapture("B", "renders/B.png"),
+          ),
       )
 
     val sidecars = ComposePreviewTasks.readErrorSidecarsFor(manifest, listOf("A", "B"), outDir)
@@ -248,7 +254,10 @@ class MissingPreviewMessageTest {
         module = "catalog",
         variant = "debug",
         previews =
-          listOf(previewWithCapture("A", "renders/A.png"), previewWithCapture("B", "renders/B.png")),
+          listOf(
+            previewWithCapture("A", "renders/A.png"),
+            previewWithCapture("B", "renders/B.png"),
+          ),
       )
     val rootCause =
       "skiko's native library could not be loaded because this process mixed two glibc builds"

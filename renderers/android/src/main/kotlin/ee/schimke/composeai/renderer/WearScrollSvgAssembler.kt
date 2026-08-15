@@ -15,21 +15,22 @@ import java.io.File
 import javax.imageio.ImageIO
 
 /**
- * Drives a Wear scrolling preview one viewport-step at a time and assembles the captured slices into
- * one tall capsule via the production [WearScrollSliceStitcher] — the render-side orchestration that
- * turns a live composition into the stitched layout + semantics trees (plus the composited EdgeButton
- * crescent) the `compose/figma-svg-long` export then bakes to SVG.
+ * Drives a Wear scrolling preview one viewport-step at a time and assembles the captured slices
+ * into one tall capsule via the production [WearScrollSliceStitcher] — the render-side
+ * orchestration that turns a live composition into the stitched layout + semantics trees (plus the
+ * composited EdgeButton crescent) the `compose/figma-svg-long` export then bakes to SVG.
  *
  * It's deliberately backend-thin: the caller owns the `setContent` (with `LocalReduceMotion` on so
  * items are unscaled) and supplies two capabilities —
  * - [captureFrame]: force a draw and write the current frame PNG (so the layout inspector sees
  *   z-sorted children), and
- * - [captureTree]: walk the drawn composition into a ([LayoutInspectorNode], [ComposeSemanticsNode])
- *   pair.
+ * - [captureTree]: walk the drawn composition into a ([LayoutInspectorNode],
+ *   [ComposeSemanticsNode]) pair.
  *
  * so both the daemon's `RenderEngine` and the `:renderer-android` end-to-end test exercise the same
- * capture → chain → place → raster path. This object never touches SVG serialisation; it returns the
- * assembled trees + the composited crescent frame for the caller to hand to `ComposeFigmaSvgProduct`.
+ * capture → chain → place → raster path. This object never touches SVG serialisation; it returns
+ * the assembled trees + the composited crescent frame for the caller to hand to
+ * `ComposeFigmaSvgProduct`.
  */
 object WearScrollSvgAssembler {
   /**
@@ -47,7 +48,9 @@ object WearScrollSvgAssembler {
     val itemCount: Int,
   )
 
-  /** M3 `EdgeButton` container fill — the crescent's background token, used to locate its bounds. */
+  /**
+   * M3 `EdgeButton` container fill — the crescent's background token, used to locate its bounds.
+   */
   const val DEFAULT_EDGE_BUTTON_BACKGROUND: String = "#FFE9DDFF"
 
   /** px above the located EdgeButton to start the crescent crop, so its upper curve is included. */
@@ -56,7 +59,9 @@ object WearScrollSvgAssembler {
   /** Fraction of a viewport to advance per slice — overlapping so shared items chain reliably. */
   private const val DEFAULT_STEP_FRACTION = 0.8f
 
-  /** ms to settle the composition after the last scroll so the EdgeButton reveal animation lands. */
+  /**
+   * ms to settle the composition after the last scroll so the EdgeButton reveal animation lands.
+   */
   private const val DEFAULT_SETTLE_MS = 2000L
 
   /**
@@ -64,19 +69,19 @@ object WearScrollSvgAssembler {
    * assembles the slices into a capsule [Assembled] of [deviceWidthPx] wide. **All coordinates are
    * captured-frame pixels** — the layout/semantics bounds, the stitcher width, and the crescent PNG
    * crop share one px space, so [deviceWidthPx] must be the frame's *pixel* width (`spec.widthPx`),
-   * not its dp width. Scratch PNGs (per-slice draws, the settled frame, the composited crescent) are
-   * written under [workDir].
+   * not its dp width. Scratch PNGs (per-slice draws, the settled frame, the composited crescent)
+   * are written under [workDir].
    *
-   * Returns `null` when the preview has no vertical scrollable **or** when the stitcher classified no
-   * list items (e.g. a `Modifier.verticalScroll` column, or rows without a background token) — in
-   * both cases the caller should fall back to its plain viewport / grow-tall export rather than emit a
-   * near-empty capsule. Otherwise the stitched trees, sized to hold every row, its clock arc, and
-   * (when an EdgeButton is present) the composited crescent frame.
+   * Returns `null` when the preview has no vertical scrollable **or** when the stitcher classified
+   * no list items (e.g. a `Modifier.verticalScroll` column, or rows without a background token) —
+   * in both cases the caller should fall back to its plain viewport / grow-tall export rather than
+   * emit a near-empty capsule. Otherwise the stitched trees, sized to hold every row, its clock
+   * arc, and (when an EdgeButton is present) the composited crescent frame.
    *
    * @param edgeButtonBackground the EdgeButton container fill to locate for the crescent raster, or
    *   null to skip the bottom control entirely.
-   * @param defaultEdgeCropTop crescent crop-top (px) to use when [edgeButtonBackground] is set but no
-   *   matching node is found; null means "no EdgeButton found ⇒ no crescent".
+   * @param defaultEdgeCropTop crescent crop-top (px) to use when [edgeButtonBackground] is set but
+   *   no matching node is found; null means "no EdgeButton found ⇒ no crescent".
    */
   @Suppress("LongParameterList")
   fun assemble(
@@ -131,7 +136,8 @@ object WearScrollSvgAssembler {
       )
 
     // A scrollable was present but no list items were classified (no item container found): there's
-    // no capsule to build, so signal a fallback rather than writing a clock-and-face-only frame. The
+    // no capsule to build, so signal a fallback rather than writing a clock-and-face-only frame.
+    // The
     // clock arc rides a `curvedTexts` node and the crescent is the edge node; a real list row is
     // neither, so they don't count toward "items placed".
     val itemCount =
@@ -166,11 +172,18 @@ object WearScrollSvgAssembler {
   }
 
   /** First node (depth-first) whose resolved container background token equals [background]. */
-  private fun findByBackground(node: LayoutInspectorNode, background: String): LayoutInspectorBounds? {
+  private fun findByBackground(
+    node: LayoutInspectorNode,
+    background: String,
+  ): LayoutInspectorBounds? {
     if (node.tokens?.backgroundColor == background && node.bounds.bottom > node.bounds.top) {
       return node.bounds
     }
-    node.children.forEach { child -> findByBackground(child, background)?.let { return it } }
+    node.children.forEach { child ->
+      findByBackground(child, background)?.let {
+        return it
+      }
+    }
     return null
   }
 }

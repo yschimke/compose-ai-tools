@@ -114,7 +114,9 @@ private fun ImeAwareList(showLabel: String) {
             fontWeight = FontWeight.Medium,
           ),
         modifier =
-          Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.ime).padding(8.dp),
+          Modifier.align(Alignment.BottomCenter)
+            .windowInsetsPadding(WindowInsets.ime)
+            .padding(8.dp),
       )
     }
   }

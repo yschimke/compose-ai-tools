@@ -310,10 +310,11 @@ sealed interface ScrollDriveResult {
  *
  * Prefers the movement the scroller actually reported. `ScrollAxisRange.value` is trustworthy on a
  * container that knows its extent — Wear's `TransformingLazyColumn` reports the exact clamped tail,
- * so the final slice is credited 353 px rather than the 400 px asked for — but it is not universally
- * so: a plain `LazyColumn`'s `value` leaps to its newly-discovered extent (0 → 5010 for a single
- * 1000 px scroll) the first time it is scrolled. A reported move larger than what was dispatched is
- * therefore a re-scaling, not travel, and the requested distance is the better estimate.
+ * so the final slice is credited 353 px rather than the 400 px asked for — but it is not
+ * universally so: a plain `LazyColumn`'s `value` leaps to its newly-discovered extent (0 → 5010 for
+ * a single 1000 px scroll) the first time it is scrolled. A reported move larger than what was
+ * dispatched is therefore a re-scaling, not travel, and the requested distance is the better
+ * estimate.
  *
  * Callers treat the total as a hint — the Android stitcher decides placement by pixel matching — so
  * this only has to be right enough to keep the hint useful.

@@ -17,8 +17,8 @@ import androidx.compose.ui.draw.CacheDrawModifierNode
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.node.DelegatingNode
@@ -56,10 +56,10 @@ import org.robolectric.annotation.GraphicsMode
  * the one shape the export had no answer for.
  *
  * Neither existing tier reaches it. `VectorGraphicExtractor` needs an `ImageVector`;
- * `DrawCaptureExtractor`'s recorder aborts the moment the lambda touches `drawContext.canvas`, which
- * `drawIntoCanvas` does by definition. And the hybrid frame crop is restricted to childless leaves,
- * because cropping a container's box out of the composited frame bakes its descendants into the
- * `<image>` and then draws them a second time as vector. So the chrome used to vanish outright.
+ * `DrawCaptureExtractor`'s recorder aborts the moment the lambda touches `drawContext.canvas`,
+ * which `drawIntoCanvas` does by definition. And the hybrid frame crop is restricted to childless
+ * leaves, because cropping a container's box out of the composited frame bakes its descendants into
+ * the `<image>` and then draws them a second time as vector. So the chrome used to vanish outright.
  *
  * What must hold now: the node's own draw is re-invoked against an offscreen bitmap and exported as
  * an `<image>`, *and* the container's text stays an editable `<text>` on top of it — the property
@@ -154,8 +154,7 @@ class FigmaSvgDrawRasterRenderTest {
 
     val raster = File(rootDir, "scaled-card/figma-raster").listFiles().orEmpty().single()
     val png = ImageIO.read(raster)
-    val placed =
-      Regex("""<image[^>]*\bwidth="(\d+)"[^>]*\bheight="(\d+)"""").find(svg)?.groupValues
+    val placed = Regex("""<image[^>]*\bwidth="(\d+)"[^>]*\bheight="(\d+)"""").find(svg)?.groupValues
     assertTrue("the capture is emitted as an <image>:\n$svg", placed != null)
     val placedWidth = placed!![1].toInt()
     // The bitmap holds the node's own 80px box; the `<image>` places it in the scaled ~40px slot.
@@ -190,7 +189,10 @@ class FigmaSvgDrawRasterRenderTest {
         Box(Modifier.size(width = 120.dp, height = 12.dp).delegatedCacheDraw())
       }
 
-    assertTrue("the delegated draw must not export as an empty layer:\n$svg", svg.contains("<image "))
+    assertTrue(
+      "the delegated draw must not export as an empty layer:\n$svg",
+      svg.contains("<image "),
+    )
     assertTrue(
       "raster sidecar is written",
       File(rootDir, "delegated-cache-draw/figma-raster").listFiles().orEmpty().isNotEmpty(),
@@ -203,9 +205,9 @@ class FigmaSvgDrawRasterRenderTest {
     val svg =
       exportSvg("mirrored-draw", withFrame = true) {
         Box(
-          Modifier.size(width = 44.dp, height = 120.dp)
-            .graphicsLayer(scaleY = -1f)
-            .drawBehind { drawRect(Color(0xFF6750A4)) }
+          Modifier.size(width = 44.dp, height = 120.dp).graphicsLayer(scaleY = -1f).drawBehind {
+            drawRect(Color(0xFF6750A4))
+          }
         )
       }
 
@@ -228,7 +230,11 @@ class FigmaSvgDrawRasterRenderTest {
         }
       }
 
-    assertEquals("the affected subtree becomes one composited image:\n$svg", 1, Regex("<image ").findAll(svg).count())
+    assertEquals(
+      "the affected subtree becomes one composited image:\n$svg",
+      1,
+      Regex("<image ").findAll(svg).count(),
+    )
     assertFalse("the clipped text is already inside the frame crop:\n$svg", svg.contains(">Hi<"))
   }
 
@@ -311,9 +317,5 @@ private data object DelegatedCacheDrawElement : ModifierNodeElement<DelegatedCac
 private class DelegatedCacheDrawNode : DelegatingNode() {
   @Suppress("unused")
   private val drawDelegate =
-    delegate(
-      CacheDrawModifierNode {
-        onDrawBehind { drawRect(Color(0xFF6750A4)) }
-      }
-    )
+    delegate(CacheDrawModifierNode { onDrawBehind { drawRect(Color(0xFF6750A4)) } })
 }

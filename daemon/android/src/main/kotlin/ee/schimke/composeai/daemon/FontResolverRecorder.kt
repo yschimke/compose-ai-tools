@@ -83,12 +83,11 @@ class FontResolverRecorder(private val context: Context? = null) {
     val ctx = context
     if (resId != null && ctx != null) {
       val value = TypedValue()
-      val path =
-        runCatching {
-            ctx.resources.getValue(resId, value, true)
-            value.string?.toString()
-          }
-          .getOrNull()
+      val path = runCatching {
+        ctx.resources.getValue(resId, value, true)
+        value.string?.toString()
+      }
+        .getOrNull()
       if (!path.isNullOrBlank()) return path
     }
     val label = fontLabel(font)
@@ -102,8 +101,8 @@ class FontResolverRecorder(private val context: Context? = null) {
    *
    * Returns null for a non-resource font (nothing to recover — the caller falls back to the usual
    * label path). For a resource font that could **not** be recovered it returns the resource's own
-   * entry name (`montserrat_regular`): that is deliberately a name the export cannot produce a
-   * face for, so it lands in `FigmaSvgRenderedFonts.unnamedIn(...)` and the text exports as
+   * entry name (`montserrat_regular`): that is deliberately a name the export cannot produce a face
+   * for, so it lands in `FigmaSvgRenderedFonts.unnamedIn(...)` and the text exports as
    * missing-glyph boxes plus a warning sidecar — the house rule that wrong-and-obvious beats
    * wrong-and-plausible. Emitting the numeric id as a CSS family with no `@font-face` behind it is
    * exactly the silent-substitution failure this closes.
@@ -115,23 +114,24 @@ class FontResolverRecorder(private val context: Context? = null) {
     FigmaResourceFonts.pathFor(identity)?.let { cached ->
       val file = java.io.File(cached)
       if (file.isFile && file.length() > 0) {
-        fontFamilyOf(file.readBytes())?.let { return it }
+        fontFamilyOf(file.readBytes())?.let {
+          return it
+        }
       }
     }
     // The resource table's own path tells us the on-disk extension; a `res/font/<name>.xml` family
     // descriptor is not a face we can embed, so it takes the unrecoverable branch below.
     val value = TypedValue()
-    val resPath =
-      runCatching {
-          ctx.resources.getValue(resId, value, true)
-          value.string?.toString()
-        }
-        .getOrNull()
-        .orEmpty()
+    val resPath = runCatching {
+      ctx.resources.getValue(resId, value, true)
+      value.string?.toString()
+    }
+      .getOrNull()
+      .orEmpty()
     val entryName =
-      runCatching { ctx.resources.getResourceEntryName(resId) }.getOrNull()?.takeIf {
-        it.isNotBlank()
-      } ?: resId.toString()
+      runCatching { ctx.resources.getResourceEntryName(resId) }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() } ?: resId.toString()
     val extension =
       when {
         resPath.endsWith(".otf", ignoreCase = true) -> "otf"
@@ -147,10 +147,10 @@ class FontResolverRecorder(private val context: Context? = null) {
         ?.takeIf { it.isNotEmpty() } ?: return entryName
     val target =
       runCatching {
-          val dir = java.io.File(System.getProperty("java.io.tmpdir"), "composeai-res-fonts")
-          dir.mkdirs()
-          java.io.File(dir, "$entryName-$resId.$extension").apply { writeBytes(bytes) }
-        }
+        val dir = java.io.File(System.getProperty("java.io.tmpdir"), "composeai-res-fonts")
+        dir.mkdirs()
+        java.io.File(dir, "$entryName-$resId.$extension").apply { writeBytes(bytes) }
+      }
         .getOrNull() ?: return entryName
     val family = fontFamilyOf(bytes) ?: return entryName
     FigmaResourceFonts.register(identity, target.absolutePath)
@@ -167,8 +167,8 @@ class FontResolverRecorder(private val context: Context? = null) {
    * identity is the *family*: Lato 400 and Lato 600 are different files, and a bare-family
    * registration would hand whichever resolved last to every weight the export asks about.
    *
-   * A cache miss is deliberately silent: it means the render didn't draw with this face either
-   * (it fell back), which `FontResolutionDiagnostics` already reports on the render side.
+   * A cache miss is deliberately silent: it means the render didn't draw with this face either (it
+   * fell back), which `FontResolutionDiagnostics` already reports on the render side.
    */
   private fun recoverDownloadableFont(
     font: Font,
@@ -181,21 +181,23 @@ class FontResolverRecorder(private val context: Context? = null) {
     // Look the cache up by the matched *face's* own declared weight/style — what the downloadable
     // provider actually requested and cached — not by the requested text [weight]. A family that
     // declares a single `Font(GoogleFont("Lato"))` (the JetLagged shape) carries only its default
-    // face, so text set at a heavier `FontWeight` draws that default face (synthetically bolded) and
+    // face, so text set at a heavier `FontWeight` draws that default face (synthetically bolded)
+    // and
     // the cache holds it under the default weight, never the heading weight; keying off the matched
     // face finds that exact file while keying off the requested weight missed and dropped the
-    // `@font-face` (issue #2906). Keying off the matched face — rather than any nearby cache entry —
+    // `@font-face` (issue #2906). Keying off the matched face — rather than any nearby cache entry
+    // —
     // also refuses to embed an unrelated weight the shared cross-project cache happens to hold but
     // this render never drew: a cache miss here means the face fell back, so embed nothing and let
     // the export degrade to match the raster.
     val file =
       runCatching {
-          ee.schimke.composeai.renderer.GoogleFontFiles.cached(
-            family,
-            font.weight.weight,
-            styleName(font.style) == "italic",
-          )
-        }
+        ee.schimke.composeai.renderer.GoogleFontFiles.cached(
+          family,
+          font.weight.weight,
+          styleName(font.style) == "italic",
+        )
+      }
         .getOrNull() ?: return
     // Register under the *requested* text weight/style (what the export's `<text>` asks about),
     // pointing at the exact file the matched face resolved to.
@@ -209,16 +211,15 @@ class FontResolverRecorder(private val context: Context? = null) {
    * parseable font, which is how an XML font-family descriptor (or any non-font payload) is
    * rejected rather than registered as an unusable face.
    */
-  private fun fontFamilyOf(bytes: ByteArray): String? =
-    runCatching {
-        java.awt.Font.createFont(
-            java.awt.Font.TRUETYPE_FONT,
-            java.io.ByteArrayInputStream(bytes),
-          )
-          .family
-      }
-      .getOrNull()
-      ?.takeIf { it.isNotBlank() }
+  private fun fontFamilyOf(bytes: ByteArray): String? = runCatching {
+    java.awt.Font.createFont(
+        java.awt.Font.TRUETYPE_FONT,
+        java.io.ByteArrayInputStream(bytes),
+      )
+      .family
+  }
+    .getOrNull()
+    ?.takeIf { it.isNotBlank() }
 }
 
 fun recordingFontFamilyResolver(
@@ -307,38 +308,36 @@ private fun matchingFont(fontFamily: FontFamily?, fontWeight: FontWeight?, fontS
 }
 
 private fun fontLabel(font: Font): String {
-  val identity =
-    runCatching {
-        val field = font.javaClass.getDeclaredField("identity")
-        field.isAccessible = true
-        field.get(font) as? String
-      }
-      .getOrNull()
+  val identity = runCatching {
+    val field = font.javaClass.getDeclaredField("identity")
+    field.isAccessible = true
+    field.get(font) as? String
+  }
+    .getOrNull()
   if (!identity.isNullOrBlank()) return identity
   val resId = resourceId(font)
   if (resId != null) return "res/font/$resId"
   return font.toString()
 }
 
-private fun resourceId(font: Font): Int? =
-  runCatching {
-      val field = font.javaClass.getDeclaredField("resId")
-      field.isAccessible = true
-      field.get(font) as? Int
-    }
-    .getOrNull()
+private fun resourceId(font: Font): Int? = runCatching {
+  val field = font.javaClass.getDeclaredField("resId")
+  field.isAccessible = true
+  field.get(font) as? Int
+}
+  .getOrNull()
 
 private fun resolvedFamily(resolved: Any?): String {
   if (resolved == null) return "<unresolved>"
   val reflected =
     listOf("getFamilyName", "getFamily", "getName").firstNotNullOfOrNull { name ->
       runCatching {
-          val value =
-            resolved.javaClass.methods
-              .firstOrNull { it.name == name && it.parameterCount == 0 }
-              ?.invoke(resolved)
-          value as? String
-        }
+        val value =
+          resolved.javaClass.methods
+            .firstOrNull { it.name == name && it.parameterCount == 0 }
+            ?.invoke(resolved)
+        value as? String
+      }
         .getOrNull()
     }
   return reflected?.takeIf { it.isNotBlank() } ?: resolved.toString()

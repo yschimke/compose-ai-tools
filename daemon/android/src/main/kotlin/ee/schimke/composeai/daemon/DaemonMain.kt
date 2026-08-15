@@ -523,7 +523,8 @@ fun main(args: Array<String>) {
             Extension(
               id = "compose/semantics-wireframe",
               displayName = "Compose semantics wireframe",
-              dataProductRegistry = ComposeSemanticsWireframeDataProductRegistry(rootDir = dataRoot),
+              dataProductRegistry =
+                ComposeSemanticsWireframeDataProductRegistry(rootDir = dataRoot),
             )
           }
           tryAdd("compose/figma-svg") {
@@ -791,7 +792,8 @@ private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String
  */
 internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // `@OverrideVariant` baked seed for a synthetic variant preview → the base override layer. The
-  // inbound live `renderNow.overrides` is layered OVER this in `RobolectricHost.reshapeRenderPayload`
+  // inbound live `renderNow.overrides` is layered OVER this in
+  // `RobolectricHost.reshapeRenderPayload`
   // so live wins per key; the baked seed applies even with zero live overrides.
   val bakedOverrides =
     info.overrides

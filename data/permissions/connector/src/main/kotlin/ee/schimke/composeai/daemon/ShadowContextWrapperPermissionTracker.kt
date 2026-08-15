@@ -49,17 +49,17 @@ import org.robolectric.annotation.RealObject
  * `:daemon:android`. The Robolectric sandbox loads the shadow class, sees the `@Implements`
  * annotation, and from then on every `ContextWrapper.checkPermission` call routes through here.
  *
- * **Daemon-only, on purpose (issue #3698).** It is deliberately NOT added to the
- * `shadows=` / `instrumentedPackages=` lines `GenerateRobolectricPropertiesTask` writes for the
- * standalone `composePreviewRender` Test task, so a static render tracks no queries. Query
- * tracking only feeds `PermissionsDataProductRegistry`'s
- * `data/fetch?kind=compose/permissions` payload, which that lane has no protocol to answer —
- * registering it there would collect a list nothing can read while putting every static-lane
- * permission check behind [PermissionsController]'s grant map, including previews carrying no
- * `@PermissionPreview` (whose controller state is empty). The *grant* leg needs no help from this
- * shadow: [PermissionsController.set] mirrors grants into `ShadowApplication`, which is why
- * `@PermissionPreview` flips the rendered branch in the static lane regardless. See
- * `docs/DATA_PRODUCTS.md`; the absence is pinned by `GenerateRobolectricPropertiesTaskTest`.
+ * **Daemon-only, on purpose (issue #3698).** It is deliberately NOT added to the `shadows=` /
+ * `instrumentedPackages=` lines `GenerateRobolectricPropertiesTask` writes for the standalone
+ * `composePreviewRender` Test task, so a static render tracks no queries. Query tracking only feeds
+ * `PermissionsDataProductRegistry`'s `data/fetch?kind=compose/permissions` payload, which that lane
+ * has no protocol to answer — registering it there would collect a list nothing can read while
+ * putting every static-lane permission check behind [PermissionsController]'s grant map, including
+ * previews carrying no `@PermissionPreview` (whose controller state is empty). The *grant* leg
+ * needs no help from this shadow: [PermissionsController.set] mirrors grants into
+ * `ShadowApplication`, which is why `@PermissionPreview` flips the rendered branch in the static
+ * lane regardless. See `docs/DATA_PRODUCTS.md`; the absence is pinned by
+ * `GenerateRobolectricPropertiesTaskTest`.
  */
 @Implements(ContextWrapper::class)
 class ShadowContextWrapperPermissionTracker {

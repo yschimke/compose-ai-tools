@@ -22,7 +22,9 @@ class RenderMatrixCellNamesTest {
     )
     assertEquals(
       "ar--dark--1.5x.png",
-      RenderMatrixCommand.cellFileName(MatrixCell(locale = "ar", uiMode = "dark", fontScale = 1.5f)),
+      RenderMatrixCommand.cellFileName(
+        MatrixCell(locale = "ar", uiMode = "dark", fontScale = 1.5f)
+      ),
     )
   }
 

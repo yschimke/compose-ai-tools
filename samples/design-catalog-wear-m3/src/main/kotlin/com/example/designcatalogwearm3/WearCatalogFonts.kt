@@ -41,12 +41,13 @@ import ee.schimke.composeai.preview.TypographyCatalog
  */
 
 /**
- * The GMS Fonts provider the catalog's typefaces resolve through. On a device it reaches Google Play
- * Services; under the renderer's Robolectric harness `ShadowFontsContractCompat` intercepts the
- * request and hands back a TTF from the shared `~/.cache/composeai/fonts/` cache (downloaded once
- * from `fonts.googleapis.com`), so no font bytes are vendored or packed into the bundle. The cert
- * array is empty: the shadow short-circuits before signature verification, and this catalog is only
- * ever rendered, never shipped to a device (mirrors `:samples:android`'s `FontPreviewWrapper`).
+ * The GMS Fonts provider the catalog's typefaces resolve through. On a device it reaches Google
+ * Play Services; under the renderer's Robolectric harness `ShadowFontsContractCompat` intercepts
+ * the request and hands back a TTF from the shared `~/.cache/composeai/fonts/` cache (downloaded
+ * once from `fonts.googleapis.com`), so no font bytes are vendored or packed into the bundle. The
+ * cert array is empty: the shadow short-circuits before signature verification, and this catalog is
+ * only ever rendered, never shipped to a device (mirrors `:samples:android`'s
+ * `FontPreviewWrapper`).
  */
 private val googleFontProvider =
   GoogleFont.Provider(
@@ -90,7 +91,8 @@ val JetBrainsMono: FontFamily =
 val Inter: FontFamily =
   FontFamily(GoogleFontFont(GoogleFont("Inter"), googleFontProvider, weight = FontWeight.Normal))
 
-// --- Roboto Flex type-scale specimens (the default face) ------------------------------------------
+// --- Roboto Flex type-scale specimens (the default face)
+// ------------------------------------------
 
 @TypographyCatalog(name = "Display", group = "Roboto Flex")
 val RobotoFlexDisplay: TextStyle =
@@ -108,7 +110,8 @@ val RobotoFlexBody: TextStyle =
 val RobotoFlexLabel: TextStyle =
   TextStyle(fontFamily = RobotoFlex, fontSize = 12.sp, fontWeight = FontWeight.Medium)
 
-// --- Google Sans Flex type-scale specimens (the Material 3 Expressive brand face) -----------------
+// --- Google Sans Flex type-scale specimens (the Material 3 Expressive brand face)
+// -----------------
 
 @TypographyCatalog(name = "Display", group = "Google Sans Flex")
 val GoogleSansFlexDisplay: TextStyle =
@@ -162,21 +165,26 @@ val InterTitle: TextStyle =
 val InterBody: TextStyle =
   TextStyle(fontFamily = Inter, fontSize = 15.sp, fontWeight = FontWeight.Normal)
 
-// --- Colour-role tokens ---------------------------------------------------------------------------
+// --- Colour-role tokens
+// ---------------------------------------------------------------------------
 
 @ColorCatalog(name = "primary", group = "Wear palette") val WearPrimary: Color = Color(0xFFAECBFA)
 
-@ColorCatalog(name = "secondary", group = "Wear palette") val WearSecondary: Color = Color(0xFFA8DAB5)
+@ColorCatalog(name = "secondary", group = "Wear palette")
+val WearSecondary: Color = Color(0xFFA8DAB5)
 
 @ColorCatalog(name = "surface", group = "Wear palette") val WearSurface: Color = Color(0xFF202124)
 
 @ColorCatalog(name = "error", group = "Wear palette") val WearError: Color = Color(0xFFF28B82)
 
-// --- Shape tokens ---------------------------------------------------------------------------------
+// --- Shape tokens
+// ---------------------------------------------------------------------------------
 
-@ShapeCatalog(name = "small", group = "Wear shapes") val WearSmallShape: Shape = RoundedCornerShape(8.dp)
+@ShapeCatalog(name = "small", group = "Wear shapes")
+val WearSmallShape: Shape = RoundedCornerShape(8.dp)
 
 @ShapeCatalog(name = "medium", group = "Wear shapes")
 val WearMediumShape: Shape = RoundedCornerShape(18.dp)
 
-@ShapeCatalog(name = "full", group = "Wear shapes") val WearFullShape: Shape = RoundedCornerShape(50)
+@ShapeCatalog(name = "full", group = "Wear shapes")
+val WearFullShape: Shape = RoundedCornerShape(50)

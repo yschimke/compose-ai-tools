@@ -20,7 +20,11 @@ class ServeViewerThemeBarTest {
   private val declared =
     listOf(
       ServeTheme(name = "High Contrast", providerFqn = "com.example.HighContrastThemeCatalog"),
-      ServeTheme(name = "Brand Light", providerFqn = "com.example.BrandLightTheme", group = "Brand"),
+      ServeTheme(
+        name = "Brand Light",
+        providerFqn = "com.example.BrandLightTheme",
+        group = "Brand",
+      ),
     )
 
   private fun viewer(

@@ -57,11 +57,12 @@ object ServeParameterRows {
 
     val root = moduleDir / "build" / "compose-previews"
     val dir = if (dirPart.isEmpty()) root else dirPart.split('/').fold(root) { acc, p -> acc / p }
-    val entries =
-      runCatching { fileSystem.list(dir) }
-        .getOrElse {
-          return emptyList()
-        }
+    val entries = runCatching {
+      fileSystem.list(dir)
+    }
+      .getOrElse {
+        return emptyList()
+      }
 
     return PreviewParameterFanout.rowsOf(
         baseId = preview.id,

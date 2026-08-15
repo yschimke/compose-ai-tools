@@ -32,11 +32,11 @@ import androidx.compose.ui.Modifier
 
 @Composable
 internal fun RcPlayerStateLayout(layout: StateLayout, modifier: Modifier) {
-    val index by rememberRemoteIntAsState(layout.indexIdReflection)
+  val index by rememberRemoteIntAsState(layout.indexIdReflection)
 
-    // StateLayout relies on remote-core's internal visibility toggle based on currentLayoutIndex
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        val children = remember { ArrayList<Component>().apply { layout.getComponents(this) } }
-        RcPlayerComponent(children[index])
-    }
+  // StateLayout relies on remote-core's internal visibility toggle based on currentLayoutIndex
+  Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    val children = remember { ArrayList<Component>().apply { layout.getComponents(this) } }
+    RcPlayerComponent(children[index])
+  }
 }

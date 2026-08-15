@@ -56,7 +56,8 @@ import org.robolectric.annotation.GraphicsMode
  * **One document per test case, deliberately.** Two independent reasons:
  *
  * 1. `RcPlayer` installs its runtime state *onto* the `CoreDocument` and is documented as
- *    one-player-per-document, so sharing a composition risks one row's state bleeding into the next.
+ *    one-player-per-document, so sharing a composition risks one row's state bleeding into the
+ *    next.
  * 2. Swapping documents inside a single composition produced **stale captures** — a document's PNG
  *    came back holding the previous document's pixels. On a compare page that is indistinguishable
  *    from a renderer bug, so the failure mode is removed rather than waited out.
@@ -68,10 +69,10 @@ import org.robolectric.annotation.GraphicsMode
  * **Why the capture still draws the view by hand.** Every harness here settles with `waitForIdle()`
  * now that the player's frame loop lets the composition reach idle ([RcIdleProbeTest]), but the
  * rasterization itself stays a direct `View.draw(Canvas(bitmap))` rather than `captureToImage()`.
- * That is a Robolectric limit, not a player one: `captureToImage()` calls `forceRedraw`, which waits
- * on a `ViewTreeObserver.OnDrawListener` Robolectric never fires, and times out after 2s for *any*
- * content — [RobolectricCaptureToImageProbeTest] pins that with a bare `Box` and no player at all.
- * When that probe starts failing, Robolectric has grown the draw pass and this can become a
+ * That is a Robolectric limit, not a player one: `captureToImage()` calls `forceRedraw`, which
+ * waits on a `ViewTreeObserver.OnDrawListener` Robolectric never fires, and times out after 2s for
+ * *any* content — [RobolectricCaptureToImageProbeTest] pins that with a bare `Box` and no player at
+ * all. When that probe starts failing, Robolectric has grown the draw pass and this can become a
  * `captureToImage()`.
  *
  * Density comes from each document's `DOC_DENSITY_AT_GENERATION` header property, staged in the

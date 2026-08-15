@@ -79,19 +79,18 @@ class RobolectricHostPoolTest {
     val host = RobolectricHost(sandboxCount = 3)
     val previewIds = (0 until 32).map { i -> "com.example.preview.Foo$i.method" }
 
-    val slotByPreview =
-      previewIds.associateWith { previewId ->
-        val slots =
-          (1L..8L)
-            .map { id -> host.chooseSlotIndexForTest(payload = "previewId=$previewId", id = id) }
-            .toSet()
-        assertEquals(
-          "previewId='$previewId' should always resolve to one slot, saw $slots",
-          1,
-          slots.size,
-        )
-        slots.single()
-      }
+    val slotByPreview = previewIds.associateWith { previewId ->
+      val slots =
+        (1L..8L)
+          .map { id -> host.chooseSlotIndexForTest(payload = "previewId=$previewId", id = id) }
+          .toSet()
+      assertEquals(
+        "previewId='$previewId' should always resolve to one slot, saw $slots",
+        1,
+        slots.size,
+      )
+      slots.single()
+    }
 
     assertEquals(
       "32 previewIds should spread across all three slots, saw ${slotByPreview.values.toSet()}",
@@ -306,7 +305,10 @@ class RobolectricHostPoolTest {
       )
     try {
       host.start()
-      assertTrue("host with a worker process should advertise interactive", host.supportsInteractive)
+      assertTrue(
+        "host with a worker process should advertise interactive",
+        host.supportsInteractive,
+      )
 
       val session =
         host.acquireInteractiveSession(

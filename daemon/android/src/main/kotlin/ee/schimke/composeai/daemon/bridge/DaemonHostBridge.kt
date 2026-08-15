@@ -310,7 +310,8 @@ internal constructor(
    * `Start`, drained until `Close`, then the slot returns to draining [requests]. A single mixed
    * queue would force the sandbox-side loop to discriminate per-poll.
    */
-  @JvmField val interactiveCommands: LinkedBlockingQueue<InteractiveCommand> = LinkedBlockingQueue(),
+  @JvmField
+  val interactiveCommands: LinkedBlockingQueue<InteractiveCommand> = LinkedBlockingQueue(),
 ) {
   /** Convenience: blocks until this slot's sandbox is ready. */
   fun awaitSandboxReady(timeoutMs: Long): Boolean =
@@ -434,14 +435,14 @@ sealed interface InteractiveCommand {
      */
     val themeProviderFqn: String? = null,
     /**
-     * Decomposed `spec.overrides.touchOverlay`. When `true`, the held-rule loop wraps
-     * the preview with the planner output that includes `TouchOverlayExtension`, so a
-     * panel-driven `interactive/input` with multi-touch dispatch paints the visualization rings on
-     * the streamed frames. Threaded as a primitive (not the full `PreviewOverrides` bag) because
-     * the protocol's nested types live in the instrumented daemon package and don't cross the
-     * sandbox classloader boundary cleanly — same decomposition pattern the other `spec.*`
-     * qualifier fields above use. Other planner-relevant fields (keyboard, material3Theme, …) can
-     * be added the same way when their interactive use cases need them.
+     * Decomposed `spec.overrides.touchOverlay`. When `true`, the held-rule loop wraps the preview
+     * with the planner output that includes `TouchOverlayExtension`, so a panel-driven
+     * `interactive/input` with multi-touch dispatch paints the visualization rings on the streamed
+     * frames. Threaded as a primitive (not the full `PreviewOverrides` bag) because the protocol's
+     * nested types live in the instrumented daemon package and don't cross the sandbox classloader
+     * boundary cleanly — same decomposition pattern the other `spec.*` qualifier fields above use.
+     * Other planner-relevant fields (keyboard, material3Theme, …) can be added the same way when
+     * their interactive use cases need them.
      */
     val touchOverlay: Boolean? = null,
     /**
@@ -470,14 +471,14 @@ sealed interface InteractiveCommand {
     val wrapWidth: Boolean = false,
     val wrapHeight: Boolean = false,
     /**
-     * `RenderSpec.previewId` — the key `BundleIrReplayStore` files a bundle's captured
-     * intermediate representations under. The held-rule loop looks it up exactly like
-     * `RenderEngine.render` does, so an IR-backed preview (a Remote Compose doc, a Wear
-     * protolayout tile) replays from its carried bytes instead of reflecting a consumer class that
-     * pack-time minimisation deliberately dropped. Without it every preview in a fully IR-backed
-     * catalog — `samples/design-catalog-remote-m3`, whose `classes/app.jar` is empty by design —
-     * failed `interactive/start` with `ClassNotFoundException` and the viewer reported "input
-     * requires a live stream — unavailable".
+     * `RenderSpec.previewId` — the key `BundleIrReplayStore` files a bundle's captured intermediate
+     * representations under. The held-rule loop looks it up exactly like `RenderEngine.render`
+     * does, so an IR-backed preview (a Remote Compose doc, a Wear protolayout tile) replays from
+     * its carried bytes instead of reflecting a consumer class that pack-time minimisation
+     * deliberately dropped. Without it every preview in a fully IR-backed catalog —
+     * `samples/design-catalog-remote-m3`, whose `classes/app.jar` is empty by design — failed
+     * `interactive/start` with `ClassNotFoundException` and the viewer reported "input requires a
+     * live stream — unavailable".
      *
      * Threaded as the raw `java.lang.String` for the same do-not-acquire bridge reason as [kind]
      * and the other `spec.*` fields above. `null` on a caller that predates this field, which just
@@ -506,16 +507,16 @@ sealed interface InteractiveCommand {
      */
     val keyCode: String? = null,
     /**
-     * Issue #3491 — the literal character a `keyDown` typed (the browser's `KeyboardEvent.key`
-     * when printable). [keyCode] names the physical key; this names what it produced, which is
-     * what a `TextField` actually inserts. Plain `java.lang.String`, like [keyCode].
+     * Issue #3491 — the literal character a `keyDown` typed (the browser's `KeyboardEvent.key` when
+     * printable). [keyCode] names the physical key; this names what it produced, which is what a
+     * `TextField` actually inserts. Plain `java.lang.String`, like [keyCode].
      */
     val text: String? = null,
     /**
-     * Issue #3491 — `"mouse"` / `"touch"` / `"pen"`, the pointing device this event came from.
-     * Null means touch (every client before the field existed). Decides whether the sandbox
-     * synthesises the gesture through `performTouchInput` or `performMouseInput`; only the latter
-     * drags out a text selection.
+     * Issue #3491 — `"mouse"` / `"touch"` / `"pen"`, the pointing device this event came from. Null
+     * means touch (every client before the field existed). Decides whether the sandbox synthesises
+     * the gesture through `performTouchInput` or `performMouseInput`; only the latter drags out a
+     * text selection.
      */
     val pointerType: String? = null,
     /**
@@ -661,9 +662,9 @@ sealed interface InteractiveCommand {
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
     /**
-     * The evidence as a JSON string (do-not-acquire), not a typed
-     * `UiAutomatorUnsupportedReason` — same boundary rule as [CaptureProbeSemantics.replyNodesJson]
-     * and [CaptureA11yFindings.replyFindingsJson]. The reason object is built under Robolectric's
+     * The evidence as a JSON string (do-not-acquire), not a typed `UiAutomatorUnsupportedReason` —
+     * same boundary rule as [CaptureProbeSemantics.replyNodesJson] and
+     * [CaptureA11yFindings.replyFindingsJson]. The reason object is built under Robolectric's
      * instrumenting classloader, so a typed reference arrives host-side as a sandbox-loaded object
      * and fails the host cast with a same-name `ClassCastException`.
      */

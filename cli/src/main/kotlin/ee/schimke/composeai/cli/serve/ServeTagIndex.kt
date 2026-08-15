@@ -105,8 +105,8 @@ private constructor(private val byPreview: Map<String, Map<String, ServeSemantic
       if (!fileSystem.exists(index)) return EMPTY
       val manifest =
         runCatching {
-            JSON.decodeFromString<TagIndexManifest>(fileSystem.read(index) { readUtf8() })
-          }
+          JSON.decodeFromString<TagIndexManifest>(fileSystem.read(index) { readUtf8() })
+        }
           .getOrNull() ?: return EMPTY
       if (manifest.schema != TagIndexManifest.SCHEMA) return EMPTY
       if (manifest.previews.size > MAX_PREVIEWS) return EMPTY

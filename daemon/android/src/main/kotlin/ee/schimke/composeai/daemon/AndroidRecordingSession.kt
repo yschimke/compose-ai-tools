@@ -167,14 +167,16 @@ class AndroidRecordingSession(
     val evidence = mutableListOf<RecordingScriptEvidence>()
     // `assert.pixels` events (issue #2519) freeze the frame bytes at the assertion's own timeline
     // position — before any later same-bucket event — mirroring the desktop session, so the golden
-    // check observes the UI as of the assertion rather than after a same-bucket input. Each reserves
+    // check observes the UI as of the assertion rather than after a same-bucket input. Each
+    // reserves
     // its evidence slot here and the diff runs in a post-loop pass, keeping evidence in timeline
     // order.
     val pendingPixels = mutableListOf<PendingPixelAssert>()
     for (frameIndex in 0 until totalFrames) {
       val tMs: Long = frameIndex.toLong() * 1000L / fps.toLong()
 
-      // A bucket's virtual clock must advance to `tMs` exactly once, whether the advancing render is
+      // A bucket's virtual clock must advance to `tMs` exactly once, whether the advancing render
+      // is
       // an `assert.pixels` snapshot mid-drain or the final written-frame render. `advanceFor` hands
       // the full delta to the first render of the bucket and 0 to the rest.
       var bucketAdvanceApplied = false
@@ -262,11 +264,11 @@ class AndroidRecordingSession(
   }
 
   /**
-   * A deferred `assert.pixels` event (issue #2519): [snapshotPng] is the frame frozen at the event's
-   * timeline position during playback (scaled the same way the written frames are); the diff against
-   * the baseline runs after the loop and its result replaces the placeholder evidence at
-   * [evidenceIndex] so the event keeps its position. Not a `data class` — it holds a `ByteArray` and
-   * is only ever appended to a list (no equality needed).
+   * A deferred `assert.pixels` event (issue #2519): [snapshotPng] is the frame frozen at the
+   * event's timeline position during playback (scaled the same way the written frames are); the
+   * diff against the baseline runs after the loop and its result replaces the placeholder evidence
+   * at [evidenceIndex] so the event keeps its position. Not a `data class` — it holds a `ByteArray`
+   * and is only ever appended to a list (no equality needed).
    */
   private class PendingPixelAssert(
     val evidenceIndex: Int,
@@ -278,8 +280,8 @@ class AndroidRecordingSession(
    * Render [srcPngPath] (an `interactive.render` output, the raw natural-size frame) through the
    * same [copyAndMaybeScale] the written frames use, and return the scaled PNG bytes. A baseline is
    * captured from a written (scaled) `frame-NNNNN.png`, so the frozen `assert.pixels` snapshot has
-   * to be scaled identically for the diff to be apples-to-apples. Uses a short-lived temp file under
-   * [framesDir] because `copyAndMaybeScale` writes to disk.
+   * to be scaled identically for the diff to be apples-to-apples. Uses a short-lived temp file
+   * under [framesDir] because `copyAndMaybeScale` writes to disk.
    */
   private fun captureScaledFrameBytes(srcPngPath: String): ByteArray {
     val tmp = File.createTempFile("assert-pixels-snapshot-", ".png", framesDir)
@@ -296,9 +298,9 @@ class AndroidRecordingSession(
    * (frozen at the event's position in [stopScripted]) against the committed baseline PNG named by
    * the event's `inputText` (resolved CLI-side against `--baseline-dir`). The pure verdict lives in
    * [pixelAssertVerdict] in `:daemon:core` — the same one the desktop backend uses, reusing the
-   * `PixelDiff` comparator. On failure it writes actual/expected/diff PNGs under [encodedDir] so the
-   * drift is inspectable without re-running. Fail-closed: a missing baseline, a missing frame, or a
-   * dimension mismatch is FAILED, never a silent pass.
+   * `PixelDiff` comparator. On failure it writes actual/expected/diff PNGs under [encodedDir] so
+   * the drift is inspectable without re-running. Fail-closed: a missing baseline, a missing frame,
+   * or a dimension mismatch is FAILED, never a silent pass.
    */
   private fun evaluatePixelAssert(
     event: RecordingScriptEvent,
@@ -513,10 +515,11 @@ class AndroidRecordingSession(
    * APPLIED / FAILED through the shared [evaluateVisibilityAssertion].
    *
    * **Targets (issue #2519).** The snapshot is a *flat* node list, but each retained node now
-   * carries its merged descendant text ([RecordingProbeNode.mergedText]), so `testTag`, `role`+`text`
-   * (a `Button { Text("Add") }` matches via the button's merged text), and `text` alone all resolve.
-   * `ref` still has no counterpart in the snapshot and fails with a clear message rather than risk a
-   * false `assert.notVisible` pass. A missing/empty target is itself a failed assertion.
+   * carries its merged descendant text ([RecordingProbeNode.mergedText]), so `testTag`,
+   * `role`+`text` (a `Button { Text("Add") }` matches via the button's merged text), and `text`
+   * alone all resolve. `ref` still has no counterpart in the snapshot and fails with a clear
+   * message rather than risk a false `assert.notVisible` pass. A missing/empty target is itself a
+   * failed assertion.
    */
   private fun assertVisibilityHandler(expectVisible: Boolean): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
@@ -1057,10 +1060,10 @@ class AndroidRecordingSession(
    * input at the current frame boundary, same convention scripted playback uses).
    *
    * Every field the wire carries is mapped: anything left off the script event is gone by the time
-   * [scriptHandlers] dispatches. `text` and `pointerType` (issue #3545) are what let a live recording
-   * type printable characters and mouse-select, matching the desktop lane and the ordinary
-   * interactive session; `target` and `scrollDeltaY` were dropped here for the same reason and are
-   * mapped alongside them.
+   * [scriptHandlers] dispatches. `text` and `pointerType` (issue #3545) are what let a live
+   * recording type printable characters and mouse-select, matching the desktop lane and the
+   * ordinary interactive session; `target` and `scrollDeltaY` were dropped here for the same reason
+   * and are mapped alongside them.
    */
   private fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent =
     RecordingScriptEvent(

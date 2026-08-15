@@ -2410,17 +2410,16 @@ data class FigmaSvgModel(
         if (ownsModifierText) {
           nodesWithModifierText += n.nodeId
         }
-        val candidateBounds =
-          buildList {
-              add(n.bounds)
-              // A Text's semantics bounds include semantic modifiers such as clickable, minimum
-              // touch size, and padding, while LayoutInspectorNode.bounds is the inner glyph box.
-              // Keep the text attached to that same layout node by accepting any captured
-              // modifier boundary as a matching surface. This is essential for emoji-table cells:
-              // their 42dp clickable semantics surround a much smaller padded text layout.
-              n.modifiers.mapNotNullTo(this) { it.bounds }
-            }
-            .distinct()
+        val candidateBounds = buildList {
+          add(n.bounds)
+          // A Text's semantics bounds include semantic modifiers such as clickable, minimum
+          // touch size, and padding, while LayoutInspectorNode.bounds is the inner glyph box.
+          // Keep the text attached to that same layout node by accepting any captured
+          // modifier boundary as a matching surface. This is essential for emoji-table cells:
+          // their 42dp clickable semantics surround a much smaller padded text layout.
+          n.modifiers.mapNotNullTo(this) { it.bounds }
+        }
+          .distinct()
         candidateBounds
           .filterNot { it.isNoGeometry() }
           .forEach { b ->

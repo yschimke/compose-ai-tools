@@ -15,25 +15,27 @@ import kotlinx.serialization.json.Json
  * per line over a loopback socket between [SandboxProcessPool] (parent, in the daemon JVM) and
  * [SandboxWorkerMain] (child, one Robolectric sandbox per JVM).
  *
- * **Why a bespoke protocol and not the daemon's own JSON-RPC?** The worker is not a daemon: it
- * owns no preview index, no extension registry, no watch state. The parent resolves `previewId` to
- * a full spec payload *before* dispatch (`RobolectricHost.submit`'s `reshapeRenderPayload`), so the
+ * **Why a bespoke protocol and not the daemon's own JSON-RPC?** The worker is not a daemon: it owns
+ * no preview index, no extension registry, no watch state. The parent resolves `previewId` to a
+ * full spec payload *before* dispatch (`RobolectricHost.submit`'s `reshapeRenderPayload`), so the
  * only things that need to cross the process boundary are a spec payload in and a [RenderResult]
  * out. Three message kinds each way is the whole surface.
  *
  * **Why the result survives the trip intact.** `RobolectricHost` already reduces a sandbox-side
- * `RenderResult` to plain data before handing it to callers — `copyPreviewContextAcrossClassloaders`
- * copies the device context and the Material3 theme payload and deliberately drops the live
- * `slotTables` / `rootForTest` handles, which are Compose objects the host classloader can't use
- * anyway. Everything that survives that copy is a `String`/number/`Map`, so [RenderResultDto] is a
- * faithful carrier: a render served by a worker process yields the same host-side `RenderResult` as
- * one served in-process, and the host-side data products (`ExtensionRegistry.onRender`) see the
- * same input either way.
+ * `RenderResult` to plain data before handing it to callers —
+ * `copyPreviewContextAcrossClassloaders` copies the device context and the Material3 theme payload
+ * and deliberately drops the live `slotTables` / `rootForTest` handles, which are Compose objects
+ * the host classloader can't use anyway. Everything that survives that copy is a
+ * `String`/number/`Map`, so [RenderResultDto] is a faithful carrier: a render served by a worker
+ * process yields the same host-side `RenderResult` as one served in-process, and the host-side data
+ * products (`ExtensionRegistry.onRender`) see the same input either way.
  */
 @Serializable
 sealed interface WorkerRequest {
 
-  /** Render [payload] (an already-resolved `key=value;…` spec payload) and reply with the result. */
+  /**
+   * Render [payload] (an already-resolved `key=value;…` spec payload) and reply with the result.
+   */
   @Serializable
   @SerialName("render")
   data class Render(val id: Long, val payload: String, val timeoutMs: Long) : WorkerRequest
@@ -56,9 +58,7 @@ sealed interface WorkerResponse {
    * worker's own process id — the pool surfaces it in diagnostics and the pool test asserts on it
    * to prove slots really are distinct processes.
    */
-  @Serializable
-  @SerialName("ready")
-  data class Ready(val slot: Int, val pid: Long) : WorkerResponse
+  @Serializable @SerialName("ready") data class Ready(val slot: Int, val pid: Long) : WorkerResponse
 
   /** Sent instead of [Ready] when the worker's sandbox never came up. */
   @Serializable
@@ -72,8 +72,8 @@ sealed interface WorkerResponse {
 
   /**
    * Failed render. [diagnostic] is the flattened `class: message` cause chain of the worker-side
-   * throwable — `RenderErrorClassifier` matches on exactly that text, so a remote failure classifies
-   * into the same `renderFailed.kind` an in-process one would.
+   * throwable — `RenderErrorClassifier` matches on exactly that text, so a remote failure
+   * classifies into the same `renderFailed.kind` an in-process one would.
    */
   @Serializable
   @SerialName("failed")
@@ -157,7 +157,8 @@ data class PreviewContextDto(
         outputBaseName = context.outputBaseName,
         device = PreviewDeviceContextDto.of(context.device),
         parameterInformationCollected = context.inspection.parameterInformationCollected,
-        themePayload = context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload,
+        themePayload =
+          context.inspection.values[MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY] as? ThemePayload,
       )
   }
 }

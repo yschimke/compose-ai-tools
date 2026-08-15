@@ -62,7 +62,8 @@ class GoogleVariableFontFamiliesTest {
     val source = FakeSource(robotoFlex())
     val resolver = GoogleVariableFontFamilies(source)
 
-    val narrow = resolver.composeFontFamily(GOOGLE_ROBOTO_FLEX, WEIGHT, UPRIGHT, listOf(WDTH to 25f))
+    val narrow =
+      resolver.composeFontFamily(GOOGLE_ROBOTO_FLEX, WEIGHT, UPRIGHT, listOf(WDTH to 25f))
     val wide = resolver.composeFontFamily(GOOGLE_ROBOTO_FLEX, WEIGHT, UPRIGHT, listOf(WDTH to 151f))
 
     assertNotNull(narrow)
@@ -118,8 +119,12 @@ class GoogleVariableFontFamiliesTest {
     val source = FakeSource(null)
     val resolver = GoogleVariableFontFamilies(source)
 
-    assertNull(resolver.composeFontFamily("google:Lobster Two", WEIGHT, UPRIGHT, listOf(WGHT to 700f)))
-    assertNull(resolver.composeFontFamily("google:Lobster Two", WEIGHT, UPRIGHT, listOf(WGHT to 400f)))
+    assertNull(
+      resolver.composeFontFamily("google:Lobster Two", WEIGHT, UPRIGHT, listOf(WGHT to 700f))
+    )
+    assertNull(
+      resolver.composeFontFamily("google:Lobster Two", WEIGHT, UPRIGHT, listOf(WGHT to 400f))
+    )
     assertEquals(1, source.variableCalls)
   }
 

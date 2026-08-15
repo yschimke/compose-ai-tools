@@ -63,11 +63,13 @@ object SandboxWorkerMain {
           // pool forwards. Unset (in-process tests, no hot-reload wiring) → null → the worker
           // resolves preview classes off its own sandbox classpath, like a single-sandbox daemon.
           userClassloaderHolderFactory =
-            UserClassLoaderHolder.urlsFromSysprop().takeIf { it.isNotEmpty() }?.let { urls ->
-              { sandboxClassLoader: ClassLoader ->
-                UserClassLoaderHolder(urls = urls, parentSupplier = { sandboxClassLoader })
-              }
-            },
+            UserClassLoaderHolder.urlsFromSysprop()
+              .takeIf { it.isNotEmpty() }
+              ?.let { urls ->
+                { sandboxClassLoader: ClassLoader ->
+                  UserClassLoaderHolder(urls = urls, parentSupplier = { sandboxClassLoader })
+                }
+              },
         )
       try {
         host.start()

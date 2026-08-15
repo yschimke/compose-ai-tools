@@ -40,8 +40,8 @@ import org.junit.Test
  *    *cross-package* references: the vendored player splits into `embedded`, `embedded.layout`,
  *    `embedded.modifier` and `embedded.state`, so a file in a sub-package must import anything it
  *    uses from the root package and the import scan catches it. References *within* the root
- *    package need no import and are invisible here — `PROVENANCE.md`'s chain table is the record for
- *    those, not this test.
+ *    package need no import and are invisible here — `PROVENANCE.md`'s chain table is the record
+ *    for those, not this test.
  *
  * So [IMPORT_CLEAN] is the weaker claim ("the decoupling done to this file has not regressed") and
  * [READY_FOR_JVM_COMMON] is the stronger one ("this file can move"). Keeping them apart matters —
@@ -50,8 +50,8 @@ import org.junit.Test
  *
  * **This test is now the fast check, not the real one.** `:third-party-rc-embedded-player-jvm`
  * compiles every [READY_FOR_JVM_COMMON] file against Compose Desktop, which settles the question by
- * construction — a file that isn't really neutral fails to build there. What this test still buys is
- * speed and a precise message, plus [IMPORT_CLEAN] coverage for files not yet pulled into that
+ * construction — a file that isn't really neutral fails to build there. What this test still buys
+ * is speed and a precise message, plus [IMPORT_CLEAN] coverage for files not yet pulled into that
  * module. [readyFilesAreActuallyCompiledForTheJvm] keeps the two from drifting apart.
  */
 class PlatformNeutralSourcesTest {
@@ -110,9 +110,9 @@ class PlatformNeutralSourcesTest {
    * The declaration name an `import` line actually binds, ignoring any `as` alias.
    *
    * The alias is a local rename, not part of the declaration's identity — `import …embedded.Foo as
-   * Bar` still depends on `Foo`. Taking the simple name off the raw line would compare
-   * `"Foo as Bar"` and match nothing, so an aliased import of an `androidMain` declaration would
-   * slip past. Not hypothetical: this vendored tree already aliases imports off this very package
+   * Bar` still depends on `Foo`. Taking the simple name off the raw line would compare `"Foo as
+   * Bar"` and match nothing, so an aliased import of an `androidMain` declaration would slip past.
+   * Not hypothetical: this vendored tree already aliases imports off this very package
    * (`…embedded.R as GoogleFontR` in two files).
    */
   private fun importedSimpleName(imported: String): String =
@@ -164,7 +164,9 @@ class PlatformNeutralSourcesTest {
     )
   }
 
-  /** Feeds every `import` line of each declared file to [block] as (relative path, FQN, raw line). */
+  /**
+   * Feeds every `import` line of each declared file to [block] as (relative path, FQN, raw line).
+   */
   private fun forEachDeclaredFile(
     files: List<String>,
     block: (relative: String, imported: String, line: String) -> Unit,
@@ -174,7 +176,8 @@ class PlatformNeutralSourcesTest {
       val file = File(root, relative)
       // A rename that silently drops a file from the guard is the failure this catches.
       assertTrue("declared in this test but missing: $relative", file.isFile)
-      file.readLines()
+      file
+        .readLines()
         .filter { it.startsWith("import ") }
         .forEach { block(relative, it.removePrefix("import ").trim(), it) }
     }
@@ -210,7 +213,8 @@ class PlatformNeutralSourcesTest {
         // android.graphics.Bitmap / Rect / drawable on the canvas draw path
         "executeOperations",
         // The image seam (RcPlayerImagePlatform.kt) — framework Bitmap decode/lookup/offscreen; its
-        // ImageBitmap projections are what the draw path calls, but the file itself stays androidMain.
+        // ImageBitmap projections are what the draw path calls, but the file itself stays
+        // androidMain.
         "resolveBitmap",
         "resolveImage",
         "resolveCanvasImage",
@@ -242,8 +246,9 @@ class PlatformNeutralSourcesTest {
       )
 
     /**
-     * Import-clean, but still referencing something that stays in `androidMain`, so not yet movable.
-     * These are here to hold decoupling work that has already been done against regression.
+     * Import-clean, but still referencing something that stays in `androidMain`, so not yet
+     * movable. These are here to hold decoupling work that has already been done against
+     * regression.
      */
     val IMPORT_CLEAN =
       listOf(
@@ -255,7 +260,8 @@ class PlatformNeutralSourcesTest {
         "RcPlayerDrawing.kt",
         "RcPlayerPaint.kt",
         // The component-tree dispatch (RcPlayerRawDocument / RcPlayerRootLayoutComponent /
-        // RcPlayerComponent / RcPlayerChildren), split out of the Android-coupled RcPlayer.kt. Import-
+        // RcPlayerComponent / RcPlayerChildren), split out of the Android-coupled RcPlayer.kt.
+        // Import-
         // clean, but not movable yet: its `when` reaches the still-androidMain RcPlayerText
         // (googlefonts) and RcPlayerImageLayout (Drawable loader).
         "RcPlayerDispatch.kt",
@@ -263,8 +269,9 @@ class PlatformNeutralSourcesTest {
 
     /**
      * Import-clean *and* free of cross-package references into `androidMain` — these are the files
-     * that can actually move. Platform-neutral as vendored: the reflective `CoreDocument` accessors,
-     * the document data model, and the snapshot-backed state store are plain `remote-core` types.
+     * that can actually move. Platform-neutral as vendored: the reflective `CoreDocument`
+     * accessors, the document data model, and the snapshot-backed state store are plain
+     * `remote-core` types.
      */
     val READY_FOR_JVM_COMMON =
       listOf(
@@ -272,7 +279,8 @@ class PlatformNeutralSourcesTest {
         "CoreDataModel.kt",
         "SnapshotRemoteComposeState.kt",
         // Written here rather than vendored: a platform-neutral `RemoteContext`, ported from
-        // `AndroidRemoteContext` minus its one Android method. It touches nothing but `remote-core`.
+        // `AndroidRemoteContext` minus its one Android method. It touches nothing but
+        // `remote-core`.
         "StoreBackedRemoteContext.kt",
         "RcImageSource.kt",
         "GraphContext.kt",
@@ -280,7 +288,8 @@ class PlatformNeutralSourcesTest {
         "RcPlayerEasing.kt",
         // Custom (host-extension) components: schemas, the property reader, the plugin registry and
         // the dispatch leaf — all neutral Compose + remote-core, so genuinely movable and compiled
-        // by the jvm module (`sharedPlayerSources`). Its Android-only siblings on the dispatch `when`
+        // by the jvm module (`sharedPlayerSources`). Its Android-only siblings on the dispatch
+        // `when`
         // (RcPlayerText / RcPlayerImageLayout) are answered by jvm siblings, not by this file.
         "RcPlayerCustom.kt",
         "state/RcPlayerState.kt",

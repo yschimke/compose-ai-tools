@@ -1437,12 +1437,13 @@ class DoctorCommand(
       // child fills the stderr pipe buffer first, and the 5s `waitFor` guard below can never fire
       // while we're blocked on that read. (`java -version` prints to stderr, so this path matters.)
       val stderrHolder = arrayOfNulls<String>(1)
-      val stderrThread =
-        Thread { stderrHolder[0] = process.errorStream.bufferedReader().use { it.readText() } }
-          .apply {
-            isDaemon = true
-            start()
-          }
+      val stderrThread = Thread {
+        stderrHolder[0] = process.errorStream.bufferedReader().use { it.readText() }
+      }
+        .apply {
+          isDaemon = true
+          start()
+        }
       val stdout = process.inputStream.bufferedReader().use { it.readText() }
       if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
         process.destroyForcibly()

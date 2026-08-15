@@ -1097,17 +1097,15 @@ class ServeCatalogStore(
       try {
         thin.writeBytes(bytes)
         runCatching {
-            BundleClasspathHydration.hydrate(
-              source = thin,
-              output = target,
-              resolveClasspath = { entry ->
-                fetchExternalClasspathBlob(entry, base, prefix, system)
-              },
-              resolveResource = { entry ->
-                readMaterializedExternalResource(entry, externalResourcesDir)
-              },
-            )
-          }
+          BundleClasspathHydration.hydrate(
+            source = thin,
+            output = target,
+            resolveClasspath = { entry -> fetchExternalClasspathBlob(entry, base, prefix, system) },
+            resolveResource = { entry ->
+              readMaterializedExternalResource(entry, externalResourcesDir)
+            },
+          )
+        }
           .onFailure {
             System.err.println(
               "serve: $system per-preview '$stem' classpath hydration failed (${it.message})"
@@ -1144,15 +1142,14 @@ class ServeCatalogStore(
   }
 
   /** A cached download is usable without a sibling pool and was not split as view-only. */
-  private fun isCompleteExecutableBundle(bundle: File): Boolean =
-    runCatching {
-        BundleReader.readMetadata(bundle).manifest.let { manifest ->
-          manifest.resolution != "view-only" &&
-            manifest.externalClasspath.isEmpty() &&
-            manifest.externalResources.isEmpty()
-        }
-      }
-      .getOrDefault(false)
+  private fun isCompleteExecutableBundle(bundle: File): Boolean = runCatching {
+    BundleReader.readMetadata(bundle).manifest.let { manifest ->
+      manifest.resolution != "view-only" &&
+        manifest.externalClasspath.isEmpty() &&
+        manifest.externalResources.isEmpty()
+    }
+  }
+    .getOrDefault(false)
 
   /** Read one already-verified external resource from the monolithic bundle's materialized pool. */
   private fun readMaterializedExternalResource(
@@ -1433,8 +1430,8 @@ class ServeCatalogStore(
     figmaExecutor.execute {
       if (generations[system] != generation) return@execute
       runCatching {
-          fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
-        }
+        fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
+      }
         .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
     }
   }
@@ -1524,10 +1521,10 @@ class ServeCatalogStore(
   private fun writeAnnotations(base: String, staging: File) {
     val bytes =
       runCatching {
-          fetchCatalogAsset(
-            "$base${ServeAnnotationStore.DIRECTORY}/${ServeAnnotationStore.INDEX_FILE}"
-          )
-        }
+        fetchCatalogAsset(
+          "$base${ServeAnnotationStore.DIRECTORY}/${ServeAnnotationStore.INDEX_FILE}"
+        )
+      }
         .getOrNull() ?: return
     val manifest =
       runCatching { json.decodeFromString(AnnotationManifest.serializer(), bytes.decodeToString()) }
@@ -1555,8 +1552,8 @@ class ServeCatalogStore(
   private fun writeTagIndex(base: String, staging: File) {
     val bytes =
       runCatching {
-          fetchCatalogAsset("$base${ServeTagIndexStore.DIRECTORY}/${ServeTagIndexStore.INDEX_FILE}")
-        }
+        fetchCatalogAsset("$base${ServeTagIndexStore.DIRECTORY}/${ServeTagIndexStore.INDEX_FILE}")
+      }
         .getOrNull() ?: return
     val manifest =
       runCatching { json.decodeFromString(TagIndexManifest.serializer(), bytes.decodeToString()) }
@@ -1620,11 +1617,11 @@ class ServeCatalogStore(
         .getOrNull() ?: return
     val manifest =
       runCatching {
-          DesignPagesJson.decodeFromString(
-            DesignPagesManifest.serializer(),
-            manifestBytes.decodeToString(),
-          )
-        }
+        DesignPagesJson.decodeFromString(
+          DesignPagesManifest.serializer(),
+          manifestBytes.decodeToString(),
+        )
+      }
         .getOrNull() ?: return
     // Capped before a single byte is fetched. A catalog branch is trusted-ish but not trusted to be
     // sane: without a ceiling, a branch declaring hundreds of pages would cost one refresh that
@@ -1726,14 +1723,14 @@ class ServeCatalogStore(
   private fun fetchDesignReferences(base: String): List<DesignReference> {
     val manifestBytes =
       runCatching {
-          fetchCatalogAsset(
-            "$base${ServeDesignReferenceStore.DIRECTORY}/${ServeDesignReferenceStore.INDEX_FILE}"
-          )
-        }
+        fetchCatalogAsset(
+          "$base${ServeDesignReferenceStore.DIRECTORY}/${ServeDesignReferenceStore.INDEX_FILE}"
+        )
+      }
         .getOrNull() ?: return emptyList()
     return runCatching {
-        json.decodeFromString(DesignReferenceManifest.serializer(), manifestBytes.decodeToString())
-      }
+      json.decodeFromString(DesignReferenceManifest.serializer(), manifestBytes.decodeToString())
+    }
       .getOrNull()
       ?.takeIf { it.schema == DesignReferenceManifest.SCHEMA }
       ?.references
@@ -2212,12 +2209,12 @@ class ServeCatalogStore(
    */
   private fun fetchRevisions(repo: String, branch: String): List<ServeCatalogRevision.Revision> =
     runCatching {
-        val url = ServeCatalogRevision.commitsFeedUrl(repo, branch)
-        val body = if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FEED_FETCH_BYTES)
-        body?.toString(Charsets.UTF_8)?.let { ServeCatalogRevision.parseCommitsFeed(it) }
-      }
-      .getOrNull()
-      .orEmpty()
+      val url = ServeCatalogRevision.commitsFeedUrl(repo, branch)
+      val body = if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FEED_FETCH_BYTES)
+      body?.toString(Charsets.UTF_8)?.let { ServeCatalogRevision.parseCommitsFeed(it) }
+    }
+    .getOrNull()
+    .orEmpty()
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
@@ -2268,9 +2265,9 @@ class ServeCatalogStore(
             // after the swap, and nothing then removes what they wrote.
             if (!stillWanted()) return@submit false
             runCatching {
-                target.parentFile?.mkdirs()
-                target.writeBytes(bytes)
-              }
+              target.parentFile?.mkdirs()
+              target.writeBytes(bytes)
+            }
               .isSuccess
           }
       }

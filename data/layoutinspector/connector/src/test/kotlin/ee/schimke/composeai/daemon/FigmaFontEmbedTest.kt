@@ -404,7 +404,10 @@ class FigmaFontEmbedTest {
                 boundsInRoot = "8,8,192,40",
                 text = "Morning run",
                 typography =
-                  ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "FontFamily.Default"),
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontFamily = "FontFamily.Default",
+                  ),
               )
             ),
         )

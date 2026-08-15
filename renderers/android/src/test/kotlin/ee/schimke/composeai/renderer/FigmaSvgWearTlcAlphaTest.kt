@@ -1,9 +1,9 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
@@ -32,7 +33,6 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.material3.placeholder
 import androidx.wear.compose.material3.rememberPlaceholderState
-import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
@@ -151,15 +151,13 @@ class FigmaSvgWearTlcAlphaTest {
                 item {
                   Text(
                     "Jun 2, 2020",
-                    modifier =
-                      Modifier.padding(horizontal = 8.dp).transformedHeight(this, spec),
+                    modifier = Modifier.padding(horizontal = 8.dp).transformedHeight(this, spec),
                   )
                 }
                 item {
                   Text(
                     "A real Jetcaster episode summary",
-                    modifier =
-                      Modifier.padding(horizontal = 8.dp).transformedHeight(this, spec),
+                    modifier = Modifier.padding(horizontal = 8.dp).transformedHeight(this, spec),
                   )
                 }
                 items(LABELS.size) { index ->
@@ -183,7 +181,10 @@ class FigmaSvgWearTlcAlphaTest {
     val faded =
       OPACITY.findAll(svg).map { it.groupValues[1].toDouble() }.filter { it < MIN_VISIBLE }.toList()
     REQUIRED_CONTENT.forEach { content ->
-      assertTrue("real transformed Wear content '$content' is missing:\n$svg", svg.contains(content))
+      assertTrue(
+        "real transformed Wear content '$content' is missing:\n$svg",
+        svg.contains(content),
+      )
     }
     assertTrue(
       "FilledIconButton surfaces must survive as opaque vector fills:\n$svg",
@@ -242,7 +243,9 @@ class FigmaSvgWearTlcAlphaTest {
   }
 
   private companion object {
-    /** Wear's real screen density — the alpha block converts dp inside itself, so 1x hid the bug. */
+    /**
+     * Wear's real screen density — the alpha block converts dp inside itself, so 1x hid the bug.
+     */
     const val DENSITY = 2f
     val LABELS = listOf("Latest episode", "Queue", "Library", "Podcasts", "Downloads")
     // ListHeader paints through its transformed container painter and is intentionally rasterised;

@@ -295,11 +295,10 @@ internal object ComposeRuntimeTracingAvailability {
   fun isAvailable(
     classLoader: ClassLoader =
       Thread.currentThread().contextClassLoader ?: PerfettoTraceDataProducer::class.java.classLoader
-  ): Boolean =
-    runCatching {
-        Class.forName("androidx.compose.runtime.tracing.ComposeRuntimeTracing", false, classLoader)
-      }
-      .isSuccess
+  ): Boolean = runCatching {
+    Class.forName("androidx.compose.runtime.tracing.ComposeRuntimeTracing", false, classLoader)
+  }
+    .isSuccess
 }
 
 @Serializable

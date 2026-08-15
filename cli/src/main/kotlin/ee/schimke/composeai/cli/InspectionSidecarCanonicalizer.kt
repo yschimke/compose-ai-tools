@@ -54,14 +54,14 @@ internal object InspectionSidecarCanonicalizer {
 
   private fun canonicalizeSemantics(bytes: ByteArray): Pair<ByteArray, Map<String, String>>? =
     runCatching {
-        val payload =
-          json.parseToJsonElement(bytes.decodeToString()) as? JsonObject ?: return@runCatching null
-        val root = payload["root"] as? JsonObject ?: return@runCatching null
-        val idMapping = LinkedHashMap<String, String>()
-        val canonicalRoot = canonicalizeSemanticsNode(root, "r", idMapping)
-        rewrite(payload, "root", canonicalRoot).toString().encodeToByteArray() to idMapping
-      }
-      .getOrNull()
+      val payload =
+        json.parseToJsonElement(bytes.decodeToString()) as? JsonObject ?: return@runCatching null
+      val root = payload["root"] as? JsonObject ?: return@runCatching null
+      val idMapping = LinkedHashMap<String, String>()
+      val canonicalRoot = canonicalizeSemanticsNode(root, "r", idMapping)
+      rewrite(payload, "root", canonicalRoot).toString().encodeToByteArray() to idMapping
+    }
+    .getOrNull()
 
   private fun canonicalizeSemanticsNode(
     node: JsonObject,
@@ -84,16 +84,16 @@ internal object InspectionSidecarCanonicalizer {
 
   private fun canonicalizeLayout(bytes: ByteArray, semanticsIds: Map<String, String>): ByteArray? =
     runCatching {
-        val payload =
-          json.parseToJsonElement(bytes.decodeToString()) as? JsonObject ?: return@runCatching null
-        val root = payload["root"] as? JsonObject ?: return@runCatching null
-        val canonicalRoot = canonicalizeLayoutNode(root, "r", semanticsIds)
-        rewrite(payload, "root", canonicalRoot)
-          .canonicalizeRuntimeStrings()
-          .toString()
-          .encodeToByteArray()
-      }
-      .getOrNull()
+      val payload =
+        json.parseToJsonElement(bytes.decodeToString()) as? JsonObject ?: return@runCatching null
+      val root = payload["root"] as? JsonObject ?: return@runCatching null
+      val canonicalRoot = canonicalizeLayoutNode(root, "r", semanticsIds)
+      rewrite(payload, "root", canonicalRoot)
+        .canonicalizeRuntimeStrings()
+        .toString()
+        .encodeToByteArray()
+    }
+    .getOrNull()
 
   private fun canonicalizeLayoutNode(
     node: JsonObject,

@@ -88,7 +88,8 @@ class CatalogTokenSidecarTest {
       assertTrue("sidecar not written at ${sidecar.path}", sidecar.exists())
       val json = sidecar.readText()
 
-      // The whole ColorScheme expands to per-role COLOR entries with real hex values (not a marker).
+      // The whole ColorScheme expands to per-role COLOR entries with real hex values (not a
+      // marker).
       assertFalse("whole-object marker leaked", json.contains("\"whole\":true"))
       assertTrue(json.contains("\"label\":\"Brand · primary\""))
       assertTrue(json.contains("\"hex\":\"#FF112233\""))

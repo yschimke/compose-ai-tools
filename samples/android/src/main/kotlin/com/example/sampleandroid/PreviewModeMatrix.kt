@@ -47,8 +47,8 @@ import androidx.compose.ui.unit.sp
  * here and an expectation there, so a regression in `DeviceDimensions.resolveForRender`, the
  * qualifier plumbing, or the multipreview walk fails the sample's own `check`.
  *
- * Sizes are deliberately small and colours deliberately flat: these previews exist to be *measured*,
- * so a cheap render and an unambiguous corner pixel matter more than looking good.
+ * Sizes are deliberately small and colours deliberately flat: these previews exist to be
+ * *measured*, so a cheap render and an unambiguous corner pixel matter more than looking good.
  */
 
 /**
@@ -62,7 +62,10 @@ private fun IntrinsicProbe(
   label: String,
   color: Color = if (isSystemInDarkTheme()) Color(0xFF10131A) else Color(0xFF3366FF),
 ) {
-  Box(modifier = Modifier.size(160.dp, 80.dp).background(color), contentAlignment = Alignment.Center) {
+  Box(
+    modifier = Modifier.size(160.dp, 80.dp).background(color),
+    contentAlignment = Alignment.Center,
+  ) {
     Text(text = label, color = Color.White, fontSize = 12.sp, textAlign = TextAlign.Center)
   }
 }
@@ -121,8 +124,16 @@ fun MatrixFixedWidthOnlyPreview() {
 
 // --- Typical annotation params ---------------------------------------------------------------
 
-/** `showBackground` + `backgroundColor`: the harness paints the declared colour behind the probe. */
-@Preview(name = "Background colour", widthDp = 120, heightDp = 60, showBackground = true, backgroundColor = 0xFF00FF00)
+/**
+ * `showBackground` + `backgroundColor`: the harness paints the declared colour behind the probe.
+ */
+@Preview(
+  name = "Background colour",
+  widthDp = 120,
+  heightDp = 60,
+  showBackground = true,
+  backgroundColor = 0xFF00FF00,
+)
 @Composable
 fun MatrixBackgroundColorPreview() {
   // Centred inside the fixed frame so all four corners are pure harness background.
@@ -131,7 +142,9 @@ fun MatrixBackgroundColorPreview() {
   }
 }
 
-/** `uiMode = UI_MODE_NIGHT_YES` — the dark sibling of [MatrixLightPreview]; same size, dark pixels. */
+/**
+ * `uiMode = UI_MODE_NIGHT_YES` — the dark sibling of [MatrixLightPreview]; same size, dark pixels.
+ */
 @Preview(name = "Night", widthDp = 200, heightDp = 100, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun MatrixNightPreview() {
@@ -202,7 +215,10 @@ fun MatrixDeviceSpecPreview() {
  * (1200×1920px). Only `landscape` used to be honoured here, so this rendered landscape — pixel for
  * pixel identical to the un-rotated sibling above (issue #3547).
  */
-@Preview(name = "Rotated device spec", device = "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait")
+@Preview(
+  name = "Rotated device spec",
+  device = "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait",
+)
 @Composable
 fun MatrixRotatedDeviceSpecPreview() {
   CanvasProbe("rotated")
@@ -256,8 +272,8 @@ fun MatrixScreenSizesMultiPreview() {
 
 /**
  * App-declared multipreview meta-annotation. Discovery walks these transitively (with cycle
- * detection), so a consumer's own `@PhoneAndWatchPreviews` fans out exactly like the AndroidX ones —
- * this is the case a hand-written annotation in a real codebase hits.
+ * detection), so a consumer's own `@PhoneAndWatchPreviews` fans out exactly like the AndroidX ones
+ * — this is the case a hand-written annotation in a real codebase hits.
  */
 @Preview(name = "Meta phone", device = "id:pixel_5")
 @Preview(name = "Meta watch", device = "id:wearos_small_round")

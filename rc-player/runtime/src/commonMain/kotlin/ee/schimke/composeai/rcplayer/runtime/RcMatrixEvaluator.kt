@@ -93,7 +93,12 @@ public object RcMatrixEvaluator {
           matrices[matrixIndex] =
             multiply(
               matrices[matrixIndex],
-              projection(values[index - 4], values[index - 3], values[index - 2], values[index - 1]),
+              projection(
+                values[index - 4],
+                values[index - 3],
+                values[index - 2],
+                values[index - 1],
+              ),
             )
       }
     }

@@ -37,13 +37,13 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
-import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
 import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GesturePriority
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureHorizontalPageIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGesturePageIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicator
@@ -114,9 +114,7 @@ private fun rememberScrollGestureIndicatorState(
   forceShow: Boolean = false
 ): OneHandedGestureScrollIndicatorState {
   val state = remember { OneHandedGestureScrollIndicatorState() }
-  LaunchedEffect(forceShow, state) {
-    if (forceShow) state.showIndicator()
-  }
+  LaunchedEffect(forceShow, state) { if (forceShow) state.showIndicator() }
   return state
 }
 
@@ -125,9 +123,7 @@ private fun rememberPageGestureIndicatorState(
   forceShow: Boolean = false
 ): OneHandedGesturePageIndicatorState {
   val state = remember { OneHandedGesturePageIndicatorState() }
-  LaunchedEffect(forceShow, state) {
-    if (forceShow) state.showIndicator()
-  }
+  LaunchedEffect(forceShow, state) { if (forceShow) state.showIndicator() }
   return state
 }
 
@@ -306,9 +302,7 @@ fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) 
           onGesture = onDismiss,
         ),
     ) {
-      OneHandedGestureClickIndicator(gestureConfiguration, indicatorState) {
-        Text("Back")
-      }
+      OneHandedGestureClickIndicator(gestureConfiguration, indicatorState) { Text("Back") }
     }
   }
 }
@@ -331,14 +325,13 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
         state = listState,
         contentPadding = contentPadding,
         modifier =
-          Modifier.fillMaxSize()
-            .oneHandedGesture(
-              gestureConfiguration = gestureConfiguration,
-              onGestureLabel = "Scroll down",
-              onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
-            ) {
-              OneHandedGestureDefaults.scrollDown(listState)
-            },
+          Modifier.fillMaxSize().oneHandedGesture(
+            gestureConfiguration = gestureConfiguration,
+            onGestureLabel = "Scroll down",
+            onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
+          ) {
+            OneHandedGestureDefaults.scrollDown(listState)
+          },
       ) {
         item { ListHeader { Text("Scroll") } }
         items(12) { index ->
@@ -377,14 +370,13 @@ fun PageGestureScreen(forceHint: Boolean = false) {
       HorizontalPager(
         state = pagerState,
         modifier =
-          Modifier.fillMaxSize()
-            .oneHandedGesture(
-              gestureConfiguration = gestureConfiguration,
-              onGestureLabel = "Next page",
-              onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
-            ) {
-              OneHandedGestureDefaults.scrollToNextPage(pagerState)
-            },
+          Modifier.fillMaxSize().oneHandedGesture(
+            gestureConfiguration = gestureConfiguration,
+            onGestureLabel = "Next page",
+            onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
+          ) {
+            OneHandedGestureDefaults.scrollToNextPage(pagerState)
+          },
       ) { page ->
         Box(
           modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -454,9 +446,7 @@ private fun GestureSticker(content: @Composable () -> Unit) {
 }
 
 @Preview(showBackground = false)
-@RoboComposePreviewOptions(
-  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
-)
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)])
 @Composable
 fun PrimaryActionStickerPreview() {
   GestureSticker { PlayGestureButton(forceHint = true) }
@@ -507,18 +497,14 @@ fun GestureGalleryPreview() {
 }
 
 @WearPreviewLargeRound
-@RoboComposePreviewOptions(
-  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
-)
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)])
 @Composable
 fun PrimaryActionScreenPreview() {
   MaterialTheme { PrimaryActionScreen(forceHint = true) }
 }
 
 @WearPreviewLargeRound
-@RoboComposePreviewOptions(
-  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
-)
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)])
 @Composable
 fun DismissActionScreenPreview() {
   MaterialTheme { DismissActionScreen(forceHint = true) }
@@ -543,9 +529,7 @@ fun DisabledGestureScreenPreview() {
 }
 
 @WearPreviewLargeRound
-@RoboComposePreviewOptions(
-  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
-)
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)])
 @Composable
 fun ButtonHintScreenPreview() {
   MaterialTheme { ButtonHintScreen(showHint = true) }

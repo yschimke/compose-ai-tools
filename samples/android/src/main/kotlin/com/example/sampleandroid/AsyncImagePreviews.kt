@@ -31,10 +31,10 @@ import java.io.ByteArrayOutputStream
  * centred `Column` next to a caption. Two things go wrong at once when the load doesn't resolve,
  * and the second is the nastier one:
  *
- *  1. the artwork is missing, and
- *  2. an unresolved `AsyncImagePainter` reports **no intrinsic size**, so `FillWidth` has nothing
- *     to scale from and the image expands to the parent's full height — shoving the caption out of
- *     frame. The whole screen captures as a solid block with neither element visible.
+ * 1. the artwork is missing, and
+ * 2. an unresolved `AsyncImagePainter` reports **no intrinsic size**, so `FillWidth` has nothing to
+ *    scale from and the image expands to the parent's full height — shoving the caption out of
+ *    frame. The whole screen captures as a solid block with neither element visible.
  *
  * So this preview is a good detector: if the fix regresses, the PNG doesn't just lose the rings —
  * it loses the "Living room speaker" line too, which is impossible to miss in a visual diff.
@@ -77,8 +77,8 @@ fun AsyncImageArtworkPreview() {
  * A preview render deliberately doesn't hit the network — coil runs inline on the render thread so
  * local models resolve, which puts any HTTP fetch under Android's main-thread network guard, and a
  * preview whose pixels depend on live egress wouldn't be reproducible anyway. `.invalid` is a
- * reserved TLD that resolves nowhere, so this fixture behaves identically in a sandbox, in CI and on
- * a laptop regardless. The renderer should keep the real inline load path, diagnose the failed
+ * reserved TLD that resolves nowhere, so this fixture behaves identically in a sandbox, in CI and
+ * on a laptop regardless. The renderer should keep the real inline load path, diagnose the failed
  * request in `<png>.warnings.json`, and still paint the request placeholder instead of dropping to
  * transparent empty pixels.
  *

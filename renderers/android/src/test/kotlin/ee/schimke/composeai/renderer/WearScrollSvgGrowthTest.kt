@@ -1,13 +1,8 @@
 package ee.schimke.composeai.renderer
 
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
@@ -23,7 +18,6 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
-import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
@@ -31,11 +25,11 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeSource
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
-import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import com.github.takahirom.roborazzi.RoborazziOptions
@@ -66,14 +60,14 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Demonstrates the **real** `figma-svg-long` extraction on Wear: start from a normal round-watch
  * **device preview** (a square `wearos_large_round`, 227×227dp) and *grow it by measurement* until
- * the virtualised `TransformingLazyColumn` composes every row — deriving the tall height rather than
- * hardcoding it. This is the daemon's `runScrollSvgScenario` growth loop, exercised here in
+ * the virtualised `TransformingLazyColumn` composes every row — deriving the tall height rather
+ * than hardcoding it. This is the daemon's `runScrollSvgScenario` growth loop, exercised here in
  * `:renderer-android` so the Wear dependency comes from the module being rendered (its test
  * classpath carries `wear-compose-foundation`), never the daemon.
  *
  * It asserts the two ends of the extraction:
- * - **Device preview (square):** only a handful of items are composed (LazyList virtualisation), and
- *   the export masks the frame to the inscribed **circle** (`height == width`).
+ * - **Device preview (square):** only a handful of items are composed (LazyList virtualisation),
+ *   and the export masks the frame to the inscribed **circle** (`height == width`).
  * - **Extracted tall frame:** every row is composed, and the export masks to the **capsule** (the
  *   tall frame the growth loop settled on), the vector analogue of the raster pill clip.
  *
@@ -94,7 +88,8 @@ class WearScrollSvgGrowthTest {
   // px == dp so the grown-height arithmetic reads directly.
   private val deviceDp = 227
 
-  // A realistic activity list — the same content shape as `:samples:wear`'s `LongActivityListScreen`,
+  // A realistic activity list — the same content shape as `:samples:wear`'s
+  // `LongActivityListScreen`,
   // the canonical Wear scroll fixture. Each title carries a unique index so it counts cleanly.
   private val activities: List<Pair<String, String>> =
     List(15) { i ->
@@ -128,13 +123,13 @@ class WearScrollSvgGrowthTest {
   }
 
   /**
-   * The **real** Wear activity screen, verbatim from `:samples:wear`'s `ActivityListLongPreview`: an
-   * `AppScaffold` pinning `TimeText` (10:10), a `ScreenScaffold` whose `edgeButton` slot holds the
-   * "Start workout" `EdgeButton`, and a `TransformingLazyColumn` with an "Activity" `ListHeader` and
-   * `TitleCard` rows scaled by `SurfaceTransformation` / `transformedHeight`. No `reduceMotion`
-   * parameter and no hand-tuned padding — this is exactly the code a Wear developer writes. The
-   * extraction harness (see [probe]) provides `LocalReduceMotion` externally when it needs the list
-   * flattened, the same way the daemon does; the preview itself is unaware of it.
+   * The **real** Wear activity screen, verbatim from `:samples:wear`'s `ActivityListLongPreview`:
+   * an `AppScaffold` pinning `TimeText` (10:10), a `ScreenScaffold` whose `edgeButton` slot holds
+   * the "Start workout" `EdgeButton`, and a `TransformingLazyColumn` with an "Activity"
+   * `ListHeader` and `TitleCard` rows scaled by `SurfaceTransformation` / `transformedHeight`. No
+   * `reduceMotion` parameter and no hand-tuned padding — this is exactly the code a Wear developer
+   * writes. The extraction harness (see [probe]) provides `LocalReduceMotion` externally when it
+   * needs the list flattened, the same way the daemon does; the preview itself is unaware of it.
    */
   @Composable
   private fun WearList() {
@@ -191,8 +186,8 @@ class WearScrollSvgGrowthTest {
    * Renders [WearList] in a FRESH rule at [heightPx] (the round watch's width is fixed; only the
    * height grows), forces a draw so children z-sort, measures the scroll content via the shared
    * [ScrollContentMeasure] the daemon uses, and — when [exportPreviewId] is set — runs the real
-   * capture + figma-svg export (inside the rule statement, before teardown) so the SVG reflects this
-   * exact frame. [reduceMotion] toggles the Wear item scaling (off = scaled watch look).
+   * capture + figma-svg export (inside the rule statement, before teardown) so the SVG reflects
+   * this exact frame. [reduceMotion] toggles the Wear item scaling (off = scaled watch look).
    */
   private fun probe(
     heightPx: Int,
@@ -211,7 +206,8 @@ class WearScrollSvgGrowthTest {
           val slotTables = mutableSetOf<CompositionData>()
           rule.mainClock.autoAdvance = false
           // The extraction harness provides Wear's `LocalReduceMotion` externally to flatten the
-          // TransformingLazyColumn scaling — exactly how the daemon does it, via the same reflective
+          // TransformingLazyColumn scaling — exactly how the daemon does it, via the same
+          // reflective
           // seam. The preview stays a plain Wear screen with no knowledge of it. Resolved off this
           // module's own classloader (its test classpath carries wear-compose-foundation).
           val reduceMotionLocal = WearReduceMotionLocal.get()
@@ -277,14 +273,17 @@ class WearScrollSvgGrowthTest {
           out = Probe(measure = measure, svg = svg)
         }
       }
-    rule.apply(statement, Description.createTestDescription(javaClass, "probe-$heightPx")).evaluate()
+    rule
+      .apply(statement, Description.createTestDescription(javaClass, "probe-$heightPx"))
+      .evaluate()
     return out
   }
 
   // Count list items by their captured title text — each activity title is unique, so a present
   // `<text>…title…</text>` proves that row composed and reached the export.
-  private fun itemLayerCount(svg: String) =
-    activities.count { (title, _) -> svg.contains(">$title</text>") }
+  private fun itemLayerCount(svg: String) = activities.count { (title, _) ->
+    svg.contains(">$title</text>")
+  }
 
   @Test
   fun `grows a square round device preview into a tall capsule that carries the whole list`() {
@@ -323,16 +322,22 @@ class WearScrollSvgGrowthTest {
       prevContentBottom = m.contentBottom
       probeHeight = m.contentBottom + bottomChrome + baseHeight
     }
-    // The growth must have extracted a frame taller than the square device — that's the whole point.
+    // The growth must have extracted a frame taller than the square device — that's the whole
+    // point.
     assertTrue(
       "growth must derive a frame taller than the ${deviceDp}px device (got $sizedHeight)",
       sizedHeight > deviceDp,
     )
 
-    // 3. Render + export at the settled tall height, flattened (reduceMotion = true) — the extracted
+    // 3. Render + export at the settled tall height, flattened (reduceMotion = true) — the
+    // extracted
     // tall screenshot.
     val tall =
-      probe(ceil(sizedHeight.toDouble()).toInt(), reduceMotion = true, exportPreviewId = "wear-tall")
+      probe(
+        ceil(sizedHeight.toDouble()).toInt(),
+        reduceMotion = true,
+        exportPreviewId = "wear-tall",
+      )
     val tallSvg = tall.svg!!
     File("build/wear-scroll-svg").mkdirs()
     File("build/wear-scroll-svg/wear-device.svg").writeText(deviceSvg)
@@ -354,7 +359,8 @@ class WearScrollSvgGrowthTest {
       itemLayerCount(tallSvg),
     )
     // The pinned scaffold chrome frames the extracted screen: the ListHeader and the revealed
-    // EdgeButton both land in the tall frame (the scaffold pins them for free — no bespoke capture).
+    // EdgeButton both land in the tall frame (the scaffold pins them for free — no bespoke
+    // capture).
     assertTrue("the extracted screen keeps its header", tallSvg.contains(">Activity</text>"))
     assertTrue(
       "the extracted screen reveals the EdgeButton",
@@ -363,13 +369,13 @@ class WearScrollSvgGrowthTest {
   }
 
   /**
-   * Slice-stitches the **real** `ActivityListLongPreview` into a capsule SVG: capture the preview at
-   * viewport-steps down its scroll (reduce-motion on, so items are unscaled), feed the layout +
+   * Slice-stitches the **real** `ActivityListLongPreview` into a capsule SVG: capture the preview
+   * at viewport-steps down its scroll (reduce-motion on, so items are unscaled), feed the layout +
    * semantics trees to the production [WearScrollSvgAssembler], and export. The stitcher chains the
-   * slices by shared-item movement, places each list item at its true content position, pins TimeText
-   * on the rim, and emits the Canvas-drawn EdgeButton crescent as one raster the test composites from
-   * a settled final frame. The result is the tree-level twin of the raster `render-scroll-long` PNG —
-   * from the unmodified preview, no reconstructed boxes.
+   * slices by shared-item movement, places each list item at its true content position, pins
+   * TimeText on the rim, and emits the Canvas-drawn EdgeButton crescent as one raster the test
+   * composites from a settled final frame. The result is the tree-level twin of the raster
+   * `render-scroll-long` PNG — from the unmodified preview, no reconstructed boxes.
    */
   @Test
   fun `slice-stitches the real preview into a capsule`() {
@@ -454,12 +460,14 @@ class WearScrollSvgGrowthTest {
     assertTrue("EdgeButton crescent as a raster", svg.contains("<image "))
 
     // Wire the capsule into the vscode preview-harness page-fixture lane so the CI visual-diff bot
-    // (`vscode-preview-diff`) screenshots + diffs it on every PR — the `?scroll=long` SVG surface had
+    // (`vscode-preview-diff`) screenshots + diffs it on every PR — the `?scroll=long` SVG surface
+    // had
     // no committed capture path before. The harness stubs `/render/**`, so the fixture must be
     // self-contained: inline the one EdgeButton raster crop as a `data:` URI. The committed HTML is
     // the vehicle for the screenshot diff (identical on baseline + PR until it changes); regenerate
     // it after a renderer/stitcher change with `UPDATE_WEAR_SCROLL_FIXTURE=true`.
-    val fixtureHtml = wearScrollLongPageFixture(inlineRasters(svg, File(rootDir, "wear-slice/figma-raster")))
+    val fixtureHtml =
+      wearScrollLongPageFixture(inlineRasters(svg, File(rootDir, "wear-slice/figma-raster")))
     val fixture =
       File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages/$WEAR_SCROLL_FIXTURE.html")
     if (
@@ -485,8 +493,10 @@ class WearScrollSvgGrowthTest {
     // Drift guard: fail if the committed fixture no longer matches what the current assembler + SVG
     // producer emit, so a renderer change can't leave `vscode-preview-diff` screenshotting a stale
     // capsule. The inlined crescent's PNG bytes are normalised out — their pixels aren't
-    // deterministic across environments (and the screenshot diff already covers them); everything the
-    // vector export controls (cards, text, positions, clip, device face, the crescent's placement) is
+    // deterministic across environments (and the screenshot diff already covers them); everything
+    // the
+    // vector export controls (cards, text, positions, clip, device face, the crescent's placement)
+    // is
     // compared exactly. Regenerate with `UPDATE_WEAR_SCROLL_FIXTURE=true` when this trips.
     assertEquals(
       "committed capsule fixture is stale — regenerate with UPDATE_WEAR_SCROLL_FIXTURE=true",
@@ -554,7 +564,9 @@ private fun repoRoot(): File {
   error("could not locate repo root (settings.gradle.kts) from ${System.getProperty("user.dir")}")
 }
 
-/** Basename of the committed capsule page fixture (auto-discovered by `pages-snapshot.spec.mjs`). */
+/**
+ * Basename of the committed capsule page fixture (auto-discovered by `pages-snapshot.spec.mjs`).
+ */
 private const val WEAR_SCROLL_FIXTURE = "serve-wear-scroll-long-capsule"
 
 @OptIn(InternalComposeApi::class)

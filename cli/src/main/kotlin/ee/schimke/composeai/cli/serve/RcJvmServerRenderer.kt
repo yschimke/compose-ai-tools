@@ -175,12 +175,13 @@ internal object RcJvmServerRenderer {
       // release.
       // Mirrors BundleRenderer.runRenderProcess.
       val log = StringBuilder()
-      val drain =
-        Thread { process.inputStream.bufferedReader().forEachLine { log.appendLine(it) } }
-          .apply {
-            isDaemon = true
-            start()
-          }
+      val drain = Thread {
+        process.inputStream.bufferedReader().forEachLine { log.appendLine(it) }
+      }
+        .apply {
+          isDaemon = true
+          start()
+        }
       val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
       if (!finished) {
         process.destroyForcibly()

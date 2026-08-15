@@ -167,18 +167,18 @@ class RecordingResources(
   private fun fileValue(id: Int): String? {
     val value = TypedValue()
     return runCatching {
-        base.getValue(id, value, true)
-        value.string?.toString()
-      }
+      base.getValue(id, value, true)
+      value.string?.toString()
+    }
       .getOrNull()
   }
 
   private fun dimensionValue(id: Int): String? {
     val value = TypedValue()
     return runCatching {
-        base.getValue(id, value, true)
-        value.coerceToString()?.toString()
-      }
+      base.getValue(id, value, true)
+      value.coerceToString()?.toString()
+    }
       .getOrNull()
   }
 

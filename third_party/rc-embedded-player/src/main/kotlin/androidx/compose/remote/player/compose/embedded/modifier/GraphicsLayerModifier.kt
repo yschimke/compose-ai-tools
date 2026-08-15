@@ -28,40 +28,38 @@ import androidx.compose.ui.graphics.graphicsLayer
 
 @Composable
 internal fun Modifier.graphicsLayer(op: GraphicsLayerModifierOperation): Modifier {
-    val document = LocalCoreDocument.current
-    val values = op.getValuesReflection()
-    val scaleX =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.SCALE_X].value).value
-    val scaleY =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.SCALE_Y].value).value
-    val alpha = rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ALPHA].value).value
-    val translationX =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.TRANSLATION_X].value).value
-    val translationY =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.TRANSLATION_Y].value).value
-    val shadowElevation =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.SHADOW_ELEVATION].value)
-            .value
-    val rotationX =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ROTATION_X].value).value
-    val rotationY =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ROTATION_Y].value).value
-    val rotationZ =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ROTATION_Z].value).value
-    val cameraDistance =
-        rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.CAMERA_DISTANCE].value)
-            .value
+  val document = LocalCoreDocument.current
+  val values = op.getValuesReflection()
+  val scaleX =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.SCALE_X].value).value
+  val scaleY =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.SCALE_Y].value).value
+  val alpha = rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ALPHA].value).value
+  val translationX =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.TRANSLATION_X].value).value
+  val translationY =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.TRANSLATION_Y].value).value
+  val shadowElevation =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.SHADOW_ELEVATION].value).value
+  val rotationX =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ROTATION_X].value).value
+  val rotationY =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ROTATION_Y].value).value
+  val rotationZ =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.ROTATION_Z].value).value
+  val cameraDistance =
+    rememberRemoteFloatAsState(values[GraphicsLayerModifierOperation.CAMERA_DISTANCE].value).value
 
-    return this.graphicsLayer {
-        this.scaleX = scaleX
-        this.scaleY = scaleY
-        this.alpha = alpha
-        this.translationX = translationX
-        this.translationY = translationY
-        this.shadowElevation = shadowElevation
-        this.rotationX = rotationX
-        this.rotationY = rotationY
-        this.rotationZ = rotationZ
-        this.cameraDistance = cameraDistance
-    }
+  return this.graphicsLayer {
+    this.scaleX = scaleX
+    this.scaleY = scaleY
+    this.alpha = alpha
+    this.translationX = translationX
+    this.translationY = translationY
+    this.shadowElevation = shadowElevation
+    this.rotationX = rotationX
+    this.rotationY = rotationY
+    this.rotationZ = rotationZ
+    this.cameraDistance = cameraDistance
+  }
 }

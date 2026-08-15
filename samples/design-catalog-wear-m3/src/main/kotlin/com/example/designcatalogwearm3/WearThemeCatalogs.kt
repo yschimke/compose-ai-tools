@@ -13,10 +13,10 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * Each wraps the stock Wear [MaterialTheme] with one of the catalog's declared palettes (the same
  * `wearColorScheme` mapping the `knob.theme.colors` override uses) **and its type scale** (the same
  * `wearCatalogTypography` mapping), so the rendered sheets differ in their primary / secondary
- * families and in their typeface. Rendered by the
- * `WEAR_THEME_CATALOG` strategy, which reads `androidx.wear.compose.material3.MaterialTheme`
- * reflectively; annotate these `@ThemeCatalog` instead and all three collapse to the identical
- * baseline mobile M3 palette, which is the bug this kind exists to fix.
+ * families and in their typeface. Rendered by the `WEAR_THEME_CATALOG` strategy, which reads
+ * `androidx.wear.compose.material3.MaterialTheme` reflectively; annotate these `@ThemeCatalog`
+ * instead and all three collapse to the identical baseline mobile M3 palette, which is the bug this
+ * kind exists to fix.
  *
  * They also populate the preview server's **Theme** select for this module. The local marker keeps
  * [WearCatalogTheme] inside each sticker from shadowing the selected outer provider.
@@ -33,23 +33,19 @@ private fun WearThemeOverride(name: String, content: @Composable () -> Unit) {
 
 @WearThemeCatalog(name = "M3", group = "Wear")
 class WearM3ThemeCatalog : PreviewWrapperProvider {
-  @Composable
-  override fun Wrap(content: @Composable () -> Unit) =
-    WearThemeOverride("M3", content)
+  @Composable override fun Wrap(content: @Composable () -> Unit) = WearThemeOverride("M3", content)
 }
 
 @WearThemeCatalog(name = "Coral", group = "Wear")
 class WearCoralThemeCatalog : PreviewWrapperProvider {
   @Composable
-  override fun Wrap(content: @Composable () -> Unit) =
-    WearThemeOverride("Coral", content)
+  override fun Wrap(content: @Composable () -> Unit) = WearThemeOverride("Coral", content)
 }
 
 @WearThemeCatalog(name = "Teal", group = "Wear")
 class WearTealThemeCatalog : PreviewWrapperProvider {
   @Composable
-  override fun Wrap(content: @Composable () -> Unit) =
-    WearThemeOverride("Teal", content)
+  override fun Wrap(content: @Composable () -> Unit) = WearThemeOverride("Teal", content)
 }
 
 /**
@@ -72,6 +68,5 @@ class WearGoogleSansFlexThemeCatalog : PreviewWrapperProvider {
 @WearThemeCatalog(name = "KotlinConf", group = "Confetti Wear")
 class WearKotlinConfThemeCatalog : PreviewWrapperProvider {
   @Composable
-  override fun Wrap(content: @Composable () -> Unit) =
-    WearThemeOverride("KotlinConf", content)
+  override fun Wrap(content: @Composable () -> Unit) = WearThemeOverride("KotlinConf", content)
 }

@@ -10,13 +10,14 @@ import android.content.Context
  *
  * Compose `Text` routes emoji through EmojiCompat when the process has initialised it (see
  * `PlatformParagraphStyle.emojiSupportMatch`, default `EmojiSupportMatch.Default`). A consumer that
- * depends on `androidx.emoji2:emoji2-bundled` and calls `EmojiCompat.init(BundledEmojiCompatConfig)`
- * renders emoji on-device from that **bundled, version-pinned** NotoColorEmoji. The renderer never
- * runs the consumer's `Application.onCreate()` (see `RobolectricRenderTestBase` — the default
- * `android.app.Application` is used), so EmojiCompat is normally *un*-initialised in the render JVM
- * and Compose falls back to the platform emoji font (the AOSP `NotoColorEmoji.ttf` bundled in
- * Robolectric's `nativeruntime-dist-compat`). That's a preview↔device fidelity gap: newer or
- * differently-styled emoji look different in the preview than in the shipped app.
+ * depends on `androidx.emoji2:emoji2-bundled` and calls
+ * `EmojiCompat.init(BundledEmojiCompatConfig)` renders emoji on-device from that **bundled,
+ * version-pinned** NotoColorEmoji. The renderer never runs the consumer's `Application.onCreate()`
+ * (see `RobolectricRenderTestBase` — the default `android.app.Application` is used), so EmojiCompat
+ * is normally *un*-initialised in the render JVM and Compose falls back to the platform emoji font
+ * (the AOSP `NotoColorEmoji.ttf` bundled in Robolectric's `nativeruntime-dist-compat`). That's a
+ * preview↔device fidelity gap: newer or differently-styled emoji look different in the preview than
+ * in the shipped app.
  *
  * When the consumer ships `emoji2-bundled`, [ensureInitialized] closes that gap by initialising
  * EmojiCompat with the bundled config in the render process — so previews draw the app's own emoji
@@ -34,12 +35,15 @@ import android.content.Context
  * The bundled metadata is loaded **synchronously** on the calling thread (a direct executor) under
  * `LOAD_STRATEGY_MANUAL`, then the load state is polled with the main looper idled between checks —
  * Robolectric's looper is `PAUSED`, so nothing advances on its own. `replaceAll` is left at its
- * default (`false`), so only emoji the platform font can't render fall through to the bundled font —
- * matching what a default emoji2 consumer draws on-device rather than force-restyling every glyph.
+ * default (`false`), so only emoji the platform font can't render fall through to the bundled font
+ * — matching what a default emoji2 consumer draws on-device rather than force-restyling every
+ * glyph.
  */
 internal object EmojiCompatRenderSupport {
 
-  /** Process-level guard: init is attempted once per render JVM, mirroring [PixelSystemFontAliases]. */
+  /**
+   * Process-level guard: init is attempted once per render JVM, mirroring [PixelSystemFontAliases].
+   */
   @Volatile private var attempted = false
 
   /**
@@ -68,24 +72,27 @@ internal object EmojiCompatRenderSupport {
     // thread Robolectric would never pump. The (Context, Executor) ctor landed in emoji2 1.3.0;
     // fall back to the (Context) ctor on older lines.
     val directExecutor = java.util.concurrent.Executor { it.run() }
-    val config =
-      runCatching {
-          bundledConfigClass
-            .getConstructor(Context::class.java, java.util.concurrent.Executor::class.java)
-            .newInstance(context, directExecutor)
-        }
-        .getOrElse { bundledConfigClass.getConstructor(Context::class.java).newInstance(context) }
+    val config = runCatching {
+      bundledConfigClass
+        .getConstructor(Context::class.java, java.util.concurrent.Executor::class.java)
+        .newInstance(context, directExecutor)
+    }
+      .getOrElse { bundledConfigClass.getConstructor(Context::class.java).newInstance(context) }
 
     val manual = emojiCompatClass.getField("LOAD_STRATEGY_MANUAL").getInt(null)
     configClass
       .getMethod("setMetadataLoadStrategy", Int::class.javaPrimitiveType)
       .invoke(config, manual)
     // Leave `replaceAll` at its default (false): EmojiCompat replaces only emoji the platform font
-    // can't render, matching what a default emoji2 consumer draws on-device. Forcing replaceAll=true
-    // would push glyphs the platform already covers through the bundled font too, making the preview
+    // can't render, matching what a default emoji2 consumer draws on-device. Forcing
+    // replaceAll=true
+    // would push glyphs the platform already covers through the bundled font too, making the
+    // preview
     // diverge from the app in the opposite direction — and the renderer can't know the consumer
-    // opted into replaceAll. Gap-fill still fixes the case that matters: newer / ZWJ emoji the frozen
-    // preview font lacks get the bundled glyph, while system-covered emoji stay on the platform font.
+    // opted into replaceAll. Gap-fill still fixes the case that matters: newer / ZWJ emoji the
+    // frozen
+    // preview font lacks get the bundled glyph, while system-covered emoji stay on the platform
+    // font.
 
     val instance = emojiCompatClass.getMethod("init", configClass).invoke(null, config)
     emojiCompatClass.getMethod("load").invoke(instance)

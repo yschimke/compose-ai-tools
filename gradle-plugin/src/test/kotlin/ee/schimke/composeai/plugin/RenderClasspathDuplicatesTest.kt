@@ -235,16 +235,15 @@ class RenderClasspathDuplicatesTest {
         util.absolutePath to "org.bouncycastle:bcutil-jdk18on:1.84",
       )
 
-    val thrown =
-      runCatching {
-          RenderClasspathDuplicates.check(
-            task,
-            listOf(provNew, provOld, util),
-            RenderClasspathDuplicates.MODE_FAIL,
-            coords,
-          )
-        }
-        .exceptionOrNull()
+    val thrown = runCatching {
+      RenderClasspathDuplicates.check(
+        task,
+        listOf(provNew, provOld, util),
+        RenderClasspathDuplicates.MODE_FAIL,
+        coords,
+      )
+    }
+      .exceptionOrNull()
 
     assertThat(thrown).isInstanceOf(GradleException::class.java)
     // The family skew…
@@ -325,16 +324,15 @@ class RenderClasspathDuplicatesTest {
       coords,
     )
 
-    val thrown =
-      runCatching {
-          RenderClasspathDuplicates.check(
-            task,
-            listOf(prov, util),
-            RenderClasspathDuplicates.MODE_FAIL,
-            coords,
-          )
-        }
-        .exceptionOrNull()
+    val thrown = runCatching {
+      RenderClasspathDuplicates.check(
+        task,
+        listOf(prov, util),
+        RenderClasspathDuplicates.MODE_FAIL,
+        coords,
+      )
+    }
+      .exceptionOrNull()
 
     assertThat(thrown).isInstanceOf(GradleException::class.java)
     assertThat(thrown!!.message).contains("one release train")
@@ -503,11 +501,10 @@ class RenderClasspathDuplicatesTest {
     // off: silent even with duplicates present.
     RenderClasspathDuplicates.check(task, files, RenderClasspathDuplicates.MODE_OFF, coords)
 
-    val thrown =
-      runCatching {
-          RenderClasspathDuplicates.check(task, files, RenderClasspathDuplicates.MODE_FAIL, coords)
-        }
-        .exceptionOrNull()
+    val thrown = runCatching {
+      RenderClasspathDuplicates.check(task, files, RenderClasspathDuplicates.MODE_FAIL, coords)
+    }
+      .exceptionOrNull()
 
     assertThat(thrown).isInstanceOf(GradleException::class.java)
     assertThat(thrown!!.message).contains("org.bouncycastle:bcprov-jdk18on")

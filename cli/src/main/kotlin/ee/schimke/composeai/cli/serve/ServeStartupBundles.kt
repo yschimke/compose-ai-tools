@@ -77,8 +77,10 @@ internal object ServeStartupBundles {
   }
 
   /** True when [source] is an `http`/`https` URL (vs. a local filesystem path). */
-  fun isUrl(source: String): Boolean =
-    runCatching { URI(source).scheme?.lowercase() in setOf("http", "https") }.getOrDefault(false)
+  fun isUrl(source: String): Boolean = runCatching {
+    URI(source).scheme?.lowercase() in setOf("http", "https")
+  }
+    .getOrDefault(false)
 
   /**
    * Candidate branch [BundleVerifier.Origin]s for a
@@ -116,12 +118,12 @@ internal object ServeStartupBundles {
   fun fetch(url: String, maxBytes: Long = DEFAULT_MAX_BYTES): ByteArray? {
     if (!isUrl(url)) return null
     return runCatching {
-        httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-          if (!response.isSuccessful) return@use null
-          val body = response.body ?: return@use null
-          readCapped(body.byteStream(), maxBytes)
-        }
+      httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        if (!response.isSuccessful) return@use null
+        val body = response.body ?: return@use null
+        readCapped(body.byteStream(), maxBytes)
       }
+    }
       .getOrNull()
   }
 

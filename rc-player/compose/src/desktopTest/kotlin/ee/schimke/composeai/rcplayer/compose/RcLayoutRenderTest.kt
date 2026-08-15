@@ -152,7 +152,12 @@ class RcLayoutRenderTest {
           width(100f),
           height(20f),
           RcLayoutContent(4),
-        ) + child(5) + child(6) + child(7) + child(8) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+        ) +
+          child(5) +
+          child(6) +
+          child(7) +
+          child(8) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
       )
     val scene =
       ImageComposeScene(width = 100, height = 20, density = Density(1f)) {

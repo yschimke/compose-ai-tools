@@ -17,9 +17,9 @@ import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GestureIndicatorSize
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import ee.schimke.composeai.daemon.protocol.GestureKindOverride
 import kotlinx.coroutines.launch
@@ -28,8 +28,8 @@ import kotlinx.coroutines.launch
  * Consumer-facing kind of one-handed gesture, mapped to the Wear framework [GestureAction] and the
  * `compose/gestures` wire spelling ([GestureKindOverride]). `SCROLL` and `PAGE` are
  * [GestureAction.Primary] gestures (the primary "double pinch" also drives scroll / paging per the
- * Wear design guide) but stay distinct in the data product so an agent can tell a play button from a
- * scroll surface.
+ * Wear design guide) but stay distinct in the data product so an agent can tell a play button from
+ * a scroll surface.
  */
 enum class GestureType(val wire: GestureKindOverride) {
   PRIMARY(GestureKindOverride.PRIMARY),
@@ -47,9 +47,10 @@ enum class GestureType(val wire: GestureKindOverride) {
 }
 
 /**
- * The [GestureStateController] a previewed tree reports into. Installed by [GestureOverrideExtension]
- * during a daemon render; defaults to the process-static singleton so a plain `@Preview` (rendered
- * without the daemon extension chain) still registers handlers harmlessly.
+ * The [GestureStateController] a previewed tree reports into. Installed by
+ * [GestureOverrideExtension] during a daemon render; defaults to the process-static singleton so a
+ * plain `@Preview` (rendered without the daemon extension chain) still registers handlers
+ * harmlessly.
  */
 val LocalGestureRegistry: ProvidableCompositionLocal<GestureStateController> =
   staticCompositionLocalOf {
@@ -76,7 +77,8 @@ val LocalGestureRegistry: ProvidableCompositionLocal<GestureStateController> =
  * @param interactionSource forwarded to the framework so gesture activation produces the same
  *   pressed/ripple feedback as a touch interaction.
  * @param hintAvailable whether a [GestureHint] is wired for this handler (reported, not enforced).
- * @param onGesture the action to run when the gesture fires (on-device) or is invoked (data product).
+ * @param onGesture the action to run when the gesture fires (on-device) or is invoked (data
+ *   product).
  */
 @Composable
 fun Modifier.reportedOneHandedGesture(
@@ -107,9 +109,7 @@ fun Modifier.reportedOneHandedGesture(
     enabledInAmbient = enabledInAmbient,
     interactionSource = interactionSource,
     onGestureLabel = label,
-    onGestureAvailable = {
-      showIndicator?.let { show -> scope.launch { show() } }
-    },
+    onGestureAvailable = { showIndicator?.let { show -> scope.launch { show() } } },
     onGesture = onGesture,
   )
 }
@@ -119,8 +119,8 @@ fun Modifier.reportedOneHandedGesture(
  *
  * The matching [reportedOneHandedGesture] asks [indicatorState] to show when the framework reports
  * the gesture as available. In a forced still preview, [forceShow] or the daemon's
- * `overrides.gestures.showHints = true` renders the indicator's peak frame directly because the real
- * finite animation completes during Robolectric idle pre-roll.
+ * `overrides.gestures.showHints = true` renders the indicator's peak frame directly because the
+ * real finite animation completes during Robolectric idle pre-roll.
  */
 @Composable
 fun GestureHint(

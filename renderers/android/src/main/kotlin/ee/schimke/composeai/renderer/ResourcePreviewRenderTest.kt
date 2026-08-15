@@ -72,8 +72,10 @@ class ResourcePreviewRenderTest {
 
     var rendered = 0
     var missing = 0
-    // Every failure / fallback that leaves a capture without a PNG is recorded here and written to a
-    // `resource-render-errors.json` sidecar in the bundle, so the reason survives past the CI log and
+    // Every failure / fallback that leaves a capture without a PNG is recorded here and written to
+    // a
+    // `resource-render-errors.json` sidecar in the bundle, so the reason survives past the CI log
+    // and
     // can be surfaced later (CLI / preview server / VS Code) rather than being invisible.
     val errors = mutableListOf<RenderErrorEntry>()
     for (preview in manifest.resources) {
@@ -132,8 +134,8 @@ class ResourcePreviewRenderTest {
   }
 
   /**
-   * Writes the [errors] to `resource-render-errors.json` **inside** the `renders/resources/` subtree
-   * ([outputRoot] is the `renders/` dir the PNGs are written under; the captures land under
+   * Writes the [errors] to `resource-render-errors.json` **inside** the `renders/resources/`
+   * subtree ([outputRoot] is the `renders/` dir the PNGs are written under; the captures land under
    * `resources/`). It must live inside the Gradle task's declared output tree
    * (`resourcesRendersSubtree` = `renders/resources`) — a sidecar in the parent dir would be left
    * stale or dropped by up-to-date / build-cache flows while the PNG subtree is still considered
@@ -154,11 +156,11 @@ class ResourcePreviewRenderTest {
    * Renders one [capture] of [preview] to disk. Returns `null` when a file was written, or a short
    * human-readable **skip reason** when the capture was deliberately skipped for a known reason (a
    * null drawable, a missing mask shape, a wrong drawable type, an absent `<monochrome>` layer, …).
-   * The reason is recorded into the bundle's `resource-render-errors.json` sidecar (and logged) so it
-   * can be surfaced later in the CLI / preview server / VS Code, instead of only living in the CI
-   * log. Unexpected failures — a resource the platform simply can't rasterise under Robolectric —
-   * are left to propagate; [renderResources] catches them per capture and records them the same way
-   * (issue #2589) rather than aborting the whole batch.
+   * The reason is recorded into the bundle's `resource-render-errors.json` sidecar (and logged) so
+   * it can be surfaced later in the CLI / preview server / VS Code, instead of only living in the
+   * CI log. Unexpected failures — a resource the platform simply can't rasterise under Robolectric
+   * — are left to propagate; [renderResources] catches them per capture and records them the same
+   * way (issue #2589) rather than aborting the whole batch.
    */
   private fun renderCapture(
     context: android.content.Context,
@@ -745,12 +747,12 @@ class ResourcePreviewRenderTest {
      * [onError], and also counted missing — so one un-rasterisable resource can't abort the batch
      * (issue #2589).
      *
-     * [fatal] guards the downgrade: when it returns `true` for a caught throwable, that throwable is
-     * re-thrown so the whole task fails. This keeps genuine output/filesystem failures (a dir that
-     * can't be created, ENOSPC, a write error) hard — only in-memory rasterisation failures should
-     * be swallowed as missing renders. See [isOutputFailure]. Pure and side-effect-free apart from
-     * [render] / [onError] / [fatal], so the isolation contract is unit-testable without a
-     * Robolectric drawable that actually throws.
+     * [fatal] guards the downgrade: when it returns `true` for a caught throwable, that throwable
+     * is re-thrown so the whole task fails. This keeps genuine output/filesystem failures (a dir
+     * that can't be created, ENOSPC, a write error) hard — only in-memory rasterisation failures
+     * should be swallowed as missing renders. See [isOutputFailure]. Pure and side-effect-free
+     * apart from [render] / [onError] / [fatal], so the isolation contract is unit-testable without
+     * a Robolectric drawable that actually throws.
      */
     fun <T> tallyRenders(
       items: List<T>,
@@ -776,9 +778,9 @@ class ResourcePreviewRenderTest {
      * `true` when [t] (or anything in its cause chain) is an [java.io.IOException] — i.e. the
      * renderer got as far as trying to write output and the filesystem failed (missing/uncreatable
      * dir, ENOSPC, permissions, a path collision). Those must fail the task, not be downgraded to a
-     * missing render (Codex review, PR #2638): rasterising a drawable is in-memory and surfaces as a
-     * `RuntimeException` / `Error`, so this cleanly separates "can't draw this resource" (tolerated)
-     * from "couldn't write the output" (fatal).
+     * missing render (Codex review, PR #2638): rasterising a drawable is in-memory and surfaces as
+     * a `RuntimeException` / `Error`, so this cleanly separates "can't draw this resource"
+     * (tolerated) from "couldn't write the output" (fatal).
      */
     fun isOutputFailure(t: Throwable): Boolean {
       var cur: Throwable? = t

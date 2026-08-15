@@ -289,7 +289,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           forkInitMs,
           if (renderRan)
             "composePreviewRender wall - sum(per-preview javaexec) = Gradle orchestration between forks"
-          else "composePreviewRender UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)",
+          else
+            "composePreviewRender UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)",
         )
       rows +=
         Row(
@@ -613,14 +614,14 @@ abstract class BenchCompileStagesTask : DefaultTask() {
       val proc = ProcessBuilder(cmd).directory(rootDir).redirectErrorStream(true).start()
       val builds = LinkedBlockingQueue<Long>()
       Thread {
-          proc.inputStream.bufferedReader().forEachLine { line ->
-            val ms = parseBuildSuccessful(line)
-            when {
-              ms != null -> builds.offer(ms)
-              line.contains("BUILD FAILED") -> builds.offer(-1L)
-            }
+        proc.inputStream.bufferedReader().forEachLine { line ->
+          val ms = parseBuildSuccessful(line)
+          when {
+            ms != null -> builds.offer(ms)
+            line.contains("BUILD FAILED") -> builds.offer(-1L)
           }
         }
+      }
         .apply {
           isDaemon = true
           start()

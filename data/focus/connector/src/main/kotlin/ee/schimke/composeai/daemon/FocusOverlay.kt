@@ -40,8 +40,8 @@ object FocusOverlay {
 
     val image =
       runCatching {
-          ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream())
-        }
+        ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream())
+      }
         .getOrNull() ?: return
     val g = image.createGraphics()
     try {
@@ -93,23 +93,23 @@ object FocusOverlay {
    */
   private fun readFocusRect(view: View): Rectangle? {
     return runCatching {
-        val getFocusOwner =
-          view::class.java.methods.firstOrNull { it.name == "getFocusOwner" } ?: return null
-        val owner = getFocusOwner.invoke(view) ?: return null
-        val getFocusRect =
-          owner::class.java.methods.firstOrNull { it.name == "getFocusRect" } ?: return null
-        val rect = getFocusRect.invoke(owner) ?: return null
-        val left = (rect::class.java.getMethod("getLeft").invoke(rect) as? Float) ?: return null
-        val top = (rect::class.java.getMethod("getTop").invoke(rect) as? Float) ?: return null
-        val right = (rect::class.java.getMethod("getRight").invoke(rect) as? Float) ?: return null
-        val bottom = (rect::class.java.getMethod("getBottom").invoke(rect) as? Float) ?: return null
-        // Compose's `Rect` reports `left = top = Float.POSITIVE_INFINITY` (`Rect.Zero`) when no
-        // focus is active; clamp to int silently here.
-        if (!left.isFinite() || !top.isFinite() || !right.isFinite() || !bottom.isFinite()) {
-          return null
-        }
-        Rectangle(left.toInt(), top.toInt(), (right - left).toInt(), (bottom - top).toInt())
+      val getFocusOwner =
+        view::class.java.methods.firstOrNull { it.name == "getFocusOwner" } ?: return null
+      val owner = getFocusOwner.invoke(view) ?: return null
+      val getFocusRect =
+        owner::class.java.methods.firstOrNull { it.name == "getFocusRect" } ?: return null
+      val rect = getFocusRect.invoke(owner) ?: return null
+      val left = (rect::class.java.getMethod("getLeft").invoke(rect) as? Float) ?: return null
+      val top = (rect::class.java.getMethod("getTop").invoke(rect) as? Float) ?: return null
+      val right = (rect::class.java.getMethod("getRight").invoke(rect) as? Float) ?: return null
+      val bottom = (rect::class.java.getMethod("getBottom").invoke(rect) as? Float) ?: return null
+      // Compose's `Rect` reports `left = top = Float.POSITIVE_INFINITY` (`Rect.Zero`) when no
+      // focus is active; clamp to int silently here.
+      if (!left.isFinite() || !top.isFinite() || !right.isFinite() || !bottom.isFinite()) {
+        return null
       }
+      Rectangle(left.toInt(), top.toInt(), (right - left).toInt(), (bottom - top).toInt())
+    }
       .getOrNull()
   }
 }

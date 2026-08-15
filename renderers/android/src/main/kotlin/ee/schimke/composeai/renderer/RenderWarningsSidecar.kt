@@ -23,7 +23,8 @@ import okio.Path.Companion.toPath
  * plugin reads this back (`ComposePreviewTasks.WarningSidecar`) and the bundle packs it next to the
  * PNG.
  */
-// Public (not `internal`) so the CLI `bundle pack` / serve daemon's `:daemon:android` `RenderEngine`
+// Public (not `internal`) so the CLI `bundle pack` / serve daemon's `:daemon:android`
+// `RenderEngine`
 // can write the warnings sidecar on the daemon render path, the same as the gradle-plugin's
 // `RobolectricRenderTest` does on its path.
 object RenderWarningsSidecar {
@@ -35,8 +36,8 @@ object RenderWarningsSidecar {
 
   /**
    * Write [fallbacks] and [imageLoads] as the warnings sidecar for [pngFile], or delete any stale
-   * sidecar when both are empty (a now-clean render must not keep yesterday's warning).
-   * Best-effort — a write failure prints to stderr but never derails the render, mirroring
+   * sidecar when both are empty (a now-clean render must not keep yesterday's warning). Best-effort
+   * — a write failure prints to stderr but never derails the render, mirroring
    * [RenderErrorSidecar].
    */
   @JvmOverloads

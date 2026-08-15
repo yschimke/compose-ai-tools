@@ -205,9 +205,9 @@ object ServeParityActivityStore {
     val path = bundleDir.toOkioPath() / ParityActivity.DIRECTORY.toPath() / ParityActivity.FILE
     val raw =
       runCatching {
-          if (!fileSystem.exists(path)) return@runCatching null
-          JSON.decodeFromString<ParityActivity>(fileSystem.read(path) { readUtf8() })
-        }
+        if (!fileSystem.exists(path)) return@runCatching null
+        JSON.decodeFromString<ParityActivity>(fileSystem.read(path) { readUtf8() })
+      }
         .getOrNull() ?: return null
     return sanitize(raw)
   }

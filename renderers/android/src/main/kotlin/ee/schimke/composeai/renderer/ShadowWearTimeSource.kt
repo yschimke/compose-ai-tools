@@ -10,11 +10,12 @@ import org.robolectric.annotation.Implements
  * ## What it replaces
  *
  * `androidx.wear.compose.materialcore.ResourcesKt.currentTimeMillis()` is a one-line
- * `System.currentTimeMillis()`, and it is the single point both Wear Material's and Wear Material3's
- * `TimeText` read the clock through — `DefaultTimeSource.currentTime()` is, in effect:
+ * `System.currentTimeMillis()`, and it is the single point both Wear Material's and Wear
+ * Material3's `TimeText` read the clock through — `DefaultTimeSource.currentTime()` is, in effect:
  * ```kotlin
  * currentTime({ currentTimeMillis() }, timeFormat).value
  * ```
+ *
  * Neither major has an inspection-mode branch (checked through `1.7.0-alpha07`), so there is no
  * `LocalInspectionMode` seam here the way there is elsewhere: a preview gets a fixed clock only by
  * passing its own `TimeSource`, which an activity hero — rendering the app's real screen — has no
@@ -49,8 +50,6 @@ class ShadowWearTimeSource {
      * Read at call time and holding no state of its own, so it is immune to the ordering hazards a
      * `SystemClock.setCurrentTimeMillis` pin would carry — see [PreviewClock]'s KDoc.
      */
-    @JvmStatic
-    @Implementation
-    fun currentTimeMillis(): Long = PreviewClock.currentTimeMillis()
+    @JvmStatic @Implementation fun currentTimeMillis(): Long = PreviewClock.currentTimeMillis()
   }
 }

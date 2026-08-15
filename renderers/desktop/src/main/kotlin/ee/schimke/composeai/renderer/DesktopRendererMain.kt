@@ -296,14 +296,14 @@ fun main(args: Array<String>) {
     ?.takeIf { it.isNotBlank() }
     ?.let { seedJson ->
       runCatching {
-          kotlinx.serialization.json
-            .Json { ignoreUnknownKeys = true }
-            .decodeFromString(
-              ee.schimke.composeai.data.overrides.OverrideVariantSpec.serializer(),
-              seedJson,
-            )
-            .toNamedOverrides()
-        }
+        kotlinx.serialization.json
+          .Json { ignoreUnknownKeys = true }
+          .decodeFromString(
+            ee.schimke.composeai.data.overrides.OverrideVariantSpec.serializer(),
+            seedJson,
+          )
+          .toNamedOverrides()
+      }
         .getOrNull()
         ?.takeIf { it.isNotEmpty() }
         ?.let { ee.schimke.composeai.overrides.PreviewOverrideController.set(it) }
@@ -959,26 +959,26 @@ private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
       System.err.println("@PreviewParameter: provider class $providerFqn not found — skipping.")
       return emptyList()
     }
-  val instance =
-    runCatching {
-        val ctor = clazz.getDeclaredConstructor()
-        ctor.isAccessible = true
-        ctor.newInstance()
-      }
-      .getOrElse { e ->
-        System.err.println(
-          "@PreviewParameter: couldn't instantiate $providerFqn via nullary ctor: ${e.message}"
-        )
-        return emptyList()
-      }
-  val getValues =
-    runCatching { clazz.getMethod("getValues") }
-      .getOrElse {
-        System.err.println(
-          "@PreviewParameter: $providerFqn has no getValues() — not a PreviewParameterProvider?"
-        )
-        return emptyList()
-      }
+  val instance = runCatching {
+    val ctor = clazz.getDeclaredConstructor()
+    ctor.isAccessible = true
+    ctor.newInstance()
+  }
+    .getOrElse { e ->
+      System.err.println(
+        "@PreviewParameter: couldn't instantiate $providerFqn via nullary ctor: ${e.message}"
+      )
+      return emptyList()
+    }
+  val getValues = runCatching {
+    clazz.getMethod("getValues")
+  }
+    .getOrElse {
+      System.err.println(
+        "@PreviewParameter: $providerFqn has no getValues() — not a PreviewParameterProvider?"
+      )
+      return emptyList()
+    }
   // A `private` provider (idiomatic Kotlin, renders fine in Android Studio) compiles to a
   // package-private JVM class; `getValues.invoke` from outside the package then throws
   // IllegalAccessException without this. Mirrors the Android renderer fix for issue #2493.

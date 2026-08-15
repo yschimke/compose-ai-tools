@@ -17,21 +17,20 @@ public fun RcComposeViewController(
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
   onError: (String) -> Unit = {},
 ): UIViewController {
-  val document =
-    runCatching {
-        RcDocumentCodec.decode(bytes).also {
-          it
-            .composeSupportReport(
-              RcOperationProfiles.CMP_IOS_ALPHA16,
-              availableFontFamilies = fontFamilies.keys,
-            )
-            .requireFullyRenderable()
-        }
-      }
-      .getOrElse {
-        onError(it.message ?: "Remote Compose document failed to load")
-        return ComposeUIViewController {}
-      }
+  val document = runCatching {
+    RcDocumentCodec.decode(bytes).also {
+      it
+        .composeSupportReport(
+          RcOperationProfiles.CMP_IOS_ALPHA16,
+          availableFontFamilies = fontFamilies.keys,
+        )
+        .requireFullyRenderable()
+    }
+  }
+    .getOrElse {
+      onError(it.message ?: "Remote Compose document failed to load")
+      return ComposeUIViewController {}
+    }
   return ComposeUIViewController {
     RcComposePlayer(
       document,

@@ -55,9 +55,7 @@ class CatalogInteractivityTest {
   private fun ComposeContentTestRule.setLane(
     inspection: Boolean,
     content: @Composable () -> Unit,
-  ) = setContent {
-    CompositionLocalProvider(LocalInspectionMode provides inspection) { content() }
-  }
+  ) = setContent { CompositionLocalProvider(LocalInspectionMode provides inspection) { content() } }
 
   @Test
   fun `switch button toggles on the live lane`() {

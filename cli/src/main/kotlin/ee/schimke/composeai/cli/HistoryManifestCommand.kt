@@ -169,32 +169,29 @@ class HistoryManifestCommand(
   }
 }
 
-private fun gitShow(repoDir: File, ref: String, path: String): String? =
-  runCatching {
-      val p =
-        ProcessBuilder("git", "show", "$ref:$path")
-          .directory(repoDir)
-          .redirectErrorStream(false)
-          .start()
-      val out = p.inputStream.bufferedReader().readText()
-      if (p.waitFor() == 0 && out.isNotBlank()) out else null
-    }
-    .getOrNull()
+private fun gitShow(repoDir: File, ref: String, path: String): String? = runCatching {
+  val p =
+    ProcessBuilder("git", "show", "$ref:$path")
+      .directory(repoDir)
+      .redirectErrorStream(false)
+      .start()
+  val out = p.inputStream.bufferedReader().readText()
+  if (p.waitFor() == 0 && out.isNotBlank()) out else null
+}
+  .getOrNull()
 
 /** Newest commit on [ref] that touched the renders tree, ignoring history-only commits. */
 private fun renderTip(repoDir: File, ref: String, pathspec: String = "renders"): String? =
   runCatching {
-      val p =
-        ProcessBuilder("git", "rev-list", "-1", ref, "--", pathspec).directory(repoDir).start()
-      val out = p.inputStream.bufferedReader().readText().trim()
-      if (p.waitFor() == 0 && out.isNotEmpty()) out else null
-    }
-    .getOrNull()
+    val p = ProcessBuilder("git", "rev-list", "-1", ref, "--", pathspec).directory(repoDir).start()
+    val out = p.inputStream.bufferedReader().readText().trim()
+    if (p.waitFor() == 0 && out.isNotEmpty()) out else null
+  }
+  .getOrNull()
 
-private fun resolveSha(repoDir: File, ref: String): String? =
-  runCatching {
-      val p = ProcessBuilder("git", "rev-parse", ref).directory(repoDir).start()
-      val out = p.inputStream.bufferedReader().readText().trim()
-      if (p.waitFor() == 0 && out.isNotEmpty()) out else null
-    }
-    .getOrNull()
+private fun resolveSha(repoDir: File, ref: String): String? = runCatching {
+  val p = ProcessBuilder("git", "rev-parse", ref).directory(repoDir).start()
+  val out = p.inputStream.bufferedReader().readText().trim()
+  if (p.waitFor() == 0 && out.isNotEmpty()) out else null
+}
+  .getOrNull()

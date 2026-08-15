@@ -84,11 +84,15 @@ class RcNamedActionDispatchTest {
       "Expected capture to record the host lambda, but CapturedDocument.lambdas was empty"
     }
 
-    rule.setContent { Box(modifier = Modifier.size(200.dp)) { RcPlayer(capturedDocument = captured) } }
+    rule.setContent {
+      Box(modifier = Modifier.size(200.dp)) { RcPlayer(capturedDocument = captured) }
+    }
 
     rule.onNode(hasClickAction()).performClick()
     rule.waitForIdle()
 
-    assert(clicks == 1) { "Expected the captured host lambda to run exactly once, but ran $clicks times" }
+    assert(clicks == 1) {
+      "Expected the captured host lambda to run exactly once, but ran $clicks times"
+    }
   }
 }

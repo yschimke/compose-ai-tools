@@ -202,9 +202,10 @@ internal object NotificationSidecar {
     if (person != null) {
       // Reflectively read `getName()` — both `android.app.Person` and
       // `androidx.core.app.Person` expose it. Avoids the hard dep.
-      val name =
-        runCatching { person.javaClass.getMethod("getName").invoke(person) as? CharSequence }
-          .getOrNull()
+      val name = runCatching {
+        person.javaClass.getMethod("getName").invoke(person) as? CharSequence
+      }
+        .getOrNull()
       if (name != null) return name.toString()
     }
     return bundle.getCharSequence("sender")?.toString()

@@ -227,10 +227,11 @@ internal object ServeRcCompare {
   fun encodeClientModel(model: ClientModel): String =
     MODEL_JSON.encodeToString(ClientModel.serializer(), model).replace("<", "\\u003c")
 
-  fun parseSummary(bytes: ByteArray): RcSummary? =
-    runCatching { JSON.decodeFromString<RcSummary>(bytes.decodeToString()) }
-      .getOrNull()
-      ?.takeIf { it.rows.isNotEmpty() }
+  fun parseSummary(bytes: ByteArray): RcSummary? = runCatching {
+    JSON.decodeFromString<RcSummary>(bytes.decodeToString())
+  }
+    .getOrNull()
+    ?.takeIf { it.rows.isNotEmpty() }
 
   /**
    * Turn a published summary + the catalog's `catalog-id → daemon-id` alias into the manifest to
@@ -416,9 +417,9 @@ private constructor(private val root: Path, private val fileSystem: FileSystem) 
     val path = root / ServeRcCompare.DIRECTORY / ServeRcCompare.INDEX_FILE
     val manifest =
       runCatching {
-          if (!fileSystem.exists(path)) return null
-          JSON.decodeFromString<RcCompareManifest>(fileSystem.read(path) { readUtf8() })
-        }
+        if (!fileSystem.exists(path)) return null
+        JSON.decodeFromString<RcCompareManifest>(fileSystem.read(path) { readUtf8() })
+      }
         .getOrNull()
         ?.takeIf { it.schema == RcCompareManifest.SCHEMA } ?: return null
     settled = manifest

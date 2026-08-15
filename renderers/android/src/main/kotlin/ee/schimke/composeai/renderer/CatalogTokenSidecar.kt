@@ -40,8 +40,10 @@ internal object CatalogTokenSidecar {
 
   const val SCHEMA = "compose-preview-catalog-tokens/v1"
 
-  /** Reference square (px, at density 1) a `CornerBasedShape`'s corners resolve against — see
-   * [shapeJson]. Fixed so an 8dp vs 18dp vs 50% corner produce distinct, comparable radii. */
+  /**
+   * Reference square (px, at density 1) a `CornerBasedShape`'s corners resolve against — see
+   * [shapeJson]. Fixed so an 8dp vs 18dp vs 50% corner produce distinct, comparable radii.
+   */
   private const val SHAPE_REFERENCE_PX = 48f
 
   /**
@@ -177,85 +179,82 @@ internal object CatalogTokenSidecar {
 
   /**
    * The sidecar entries a token contributes: one for a single token (`COLOR` / `TEXT_STYLE` /
-   * `SHAPE`), or one **per resolved role** for a whole-object scale (`COLOR_SCHEME` / `TYPOGRAPHY` /
-   * `SHAPES`) — the exact palette / type / shape roles the PNG sheet drew, each with its resolved
+   * `SHAPE`), or one **per resolved role** for a whole-object scale (`COLOR_SCHEME` / `TYPOGRAPHY`
+   * / `SHAPES`) — the exact palette / type / shape roles the PNG sheet drew, each with its resolved
    * value, so the detached bundle/export path keeps the data even though it never re-renders. The
    * whole-object roles are read via the same typed property access the render strategy uses (a
    * `ColorScheme`/`Typography`/`Shapes` is a plain object field, so there's no `Color`-erasure
    * problem — only a single top-level `Color` erases to `long`, which [reflectColor] handles). A
    * token whose value can't be reflected contributes nothing (empty list), not a fatal error.
    */
-  private fun tokenEntries(token: CatalogToken): List<String> =
-    runCatching {
-        when (token.tokenKind) {
-          CatalogTokenKind.COLOR ->
-            listOf(
-              entryJson(
-                token.label,
-                token.className,
-                token.member,
-                "COLOR",
-                colorJson(CatalogValueReflection.reflectColor(token.className, token.member)),
-              )
-            )
-          CatalogTokenKind.TEXT_STYLE ->
-            listOf(
-              entryJson(
-                token.label,
-                token.className,
-                token.member,
-                "TEXT_STYLE",
-                textStyleJson(
-                  CatalogValueReflection.reflectTextStyle(token.className, token.member)
-                ),
-              )
-            )
-          CatalogTokenKind.SHAPE ->
-            listOf(
-              entryJson(
-                token.label,
-                token.className,
-                token.member,
-                "SHAPE",
-                shapeJson(CatalogValueReflection.reflectAs(token.className, token.member)),
-              )
-            )
-          CatalogTokenKind.COLOR_SCHEME ->
-            colorSchemeRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
-              (role, color) ->
-              entryJson(
-                "${token.label} · $role",
-                token.className,
-                token.member,
-                "COLOR",
-                colorJson(color),
-              )
-            }
-          CatalogTokenKind.TYPOGRAPHY ->
-            typographyRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
-              (role, style) ->
-              entryJson(
-                "${token.label} · $role",
-                token.className,
-                token.member,
-                "TEXT_STYLE",
-                textStyleJson(style),
-              )
-            }
-          CatalogTokenKind.SHAPES ->
-            shapesRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
-              (role, shape) ->
-              entryJson(
-                "${token.label} · $role",
-                token.className,
-                token.member,
-                "SHAPE",
-                shapeJson(shape),
-              )
-            }
+  private fun tokenEntries(token: CatalogToken): List<String> = runCatching {
+    when (token.tokenKind) {
+      CatalogTokenKind.COLOR ->
+        listOf(
+          entryJson(
+            token.label,
+            token.className,
+            token.member,
+            "COLOR",
+            colorJson(CatalogValueReflection.reflectColor(token.className, token.member)),
+          )
+        )
+      CatalogTokenKind.TEXT_STYLE ->
+        listOf(
+          entryJson(
+            token.label,
+            token.className,
+            token.member,
+            "TEXT_STYLE",
+            textStyleJson(CatalogValueReflection.reflectTextStyle(token.className, token.member)),
+          )
+        )
+      CatalogTokenKind.SHAPE ->
+        listOf(
+          entryJson(
+            token.label,
+            token.className,
+            token.member,
+            "SHAPE",
+            shapeJson(CatalogValueReflection.reflectAs(token.className, token.member)),
+          )
+        )
+      CatalogTokenKind.COLOR_SCHEME ->
+        colorSchemeRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+          (role, color) ->
+          entryJson(
+            "${token.label} · $role",
+            token.className,
+            token.member,
+            "COLOR",
+            colorJson(color),
+          )
         }
-      }
-      .getOrDefault(emptyList())
+      CatalogTokenKind.TYPOGRAPHY ->
+        typographyRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+          (role, style) ->
+          entryJson(
+            "${token.label} · $role",
+            token.className,
+            token.member,
+            "TEXT_STYLE",
+            textStyleJson(style),
+          )
+        }
+      CatalogTokenKind.SHAPES ->
+        shapesRoles(CatalogValueReflection.reflectAs(token.className, token.member)).map {
+          (role, shape) ->
+          entryJson(
+            "${token.label} · $role",
+            token.className,
+            token.member,
+            "SHAPE",
+            shapeJson(shape),
+          )
+        }
+    }
+  }
+    .getOrDefault(emptyList())
 
   /** One `{label, className, member, kind, <value>}` sidecar entry. */
   private fun entryJson(
@@ -289,15 +288,15 @@ internal object CatalogTokenSidecar {
     val corners =
       (shape as? CornerBasedShape)?.let { s ->
         runCatching {
-            val size = Size(SHAPE_REFERENCE_PX, SHAPE_REFERENCE_PX)
-            val density = Density(1f)
-            "\"cornersPx\":{" +
-              "\"topStart\":${s.topStart.toPx(size, density)}," +
-              "\"topEnd\":${s.topEnd.toPx(size, density)}," +
-              "\"bottomEnd\":${s.bottomEnd.toPx(size, density)}," +
-              "\"bottomStart\":${s.bottomStart.toPx(size, density)}}," +
-              "\"referenceSizePx\":${SHAPE_REFERENCE_PX.toInt()}"
-          }
+          val size = Size(SHAPE_REFERENCE_PX, SHAPE_REFERENCE_PX)
+          val density = Density(1f)
+          "\"cornersPx\":{" +
+            "\"topStart\":${s.topStart.toPx(size, density)}," +
+            "\"topEnd\":${s.topEnd.toPx(size, density)}," +
+            "\"bottomEnd\":${s.bottomEnd.toPx(size, density)}," +
+            "\"bottomStart\":${s.bottomStart.toPx(size, density)}}," +
+            "\"referenceSizePx\":${SHAPE_REFERENCE_PX.toInt()}"
+        }
           .getOrNull()
       }
     return if (corners != null) "\"shape\":{\"type\":$type,$corners}"

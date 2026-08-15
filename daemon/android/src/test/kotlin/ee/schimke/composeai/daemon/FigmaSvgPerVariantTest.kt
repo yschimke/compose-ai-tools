@@ -3,7 +3,6 @@ package ee.schimke.composeai.daemon
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -27,8 +26,8 @@ import org.junit.rules.TemporaryFolder
  * exact `renderNow.overrides` channel a state variant travels through, so the two SVGs differ in
  * their fill exactly as `disabled` vs `filled` would.
  *
- * The two SVGs are also dumped to `-Dcomposeai.test.figmaSvgDumpDir` (when set) so a human/agent can
- * eyeball the actual vectors, not just trust the byte assertion.
+ * The two SVGs are also dumped to `-Dcomposeai.test.figmaSvgDumpDir` (when set) so a human/agent
+ * can eyeball the actual vectors, not just trust the byte assertion.
  */
 class FigmaSvgPerVariantTest {
 
@@ -80,16 +79,15 @@ class FigmaSvgPerVariantTest {
       assertTrue("dark export must be a real SVG", String(darkBytes).contains("<svg"))
 
       // Optional dump so the vectors are observable, not just asserted.
-      (System.getProperty("composeai.test.figmaSvgDumpDir")
-          ?: System.getenv("FIGMA_SVG_DUMP_DIR"))
+      (System.getProperty("composeai.test.figmaSvgDumpDir") ?: System.getenv("FIGMA_SVG_DUMP_DIR"))
         ?.let { dump ->
-        File(dump).apply { mkdirs() }
-        lightSvg.copyTo(File(dump, "dark-aware-light.svg"), overwrite = true)
-        darkSvg.copyTo(File(dump, "dark-aware-dark.svg"), overwrite = true)
-        System.err.println(
-          "FIGMA-SVG-PER-VARIANT dumped light=${lightBytes.size}B dark=${darkBytes.size}B to $dump"
-        )
-      }
+          File(dump).apply { mkdirs() }
+          lightSvg.copyTo(File(dump, "dark-aware-light.svg"), overwrite = true)
+          darkSvg.copyTo(File(dump, "dark-aware-dark.svg"), overwrite = true)
+          System.err.println(
+            "FIGMA-SVG-PER-VARIANT dumped light=${lightBytes.size}B dark=${darkBytes.size}B to $dump"
+          )
+        }
 
       // The point: a state variant is not a copy of the default. If this collapses to equal, the
       // engine stopped distinguishing overrides and the wear lane would re-share one vector.
@@ -138,7 +136,10 @@ class FigmaSvgPerVariantTest {
       val lightSvg = dataDir.resolve("dark-aware-light").resolve("compose-figma.svg")
       val darkSvg = dataDir.resolve("dark-aware-dark").resolve("compose-figma.svg")
 
-      assertTrue("light output-name SVG must be produced: ${lightSvg.absolutePath}", lightSvg.exists())
+      assertTrue(
+        "light output-name SVG must be produced: ${lightSvg.absolutePath}",
+        lightSvg.exists(),
+      )
       assertTrue("dark output-name SVG must be produced: ${darkSvg.absolutePath}", darkSvg.exists())
       val light = lightSvg.readText()
       val dark = darkSvg.readText()

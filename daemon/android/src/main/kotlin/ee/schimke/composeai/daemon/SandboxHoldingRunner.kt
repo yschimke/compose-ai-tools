@@ -153,8 +153,10 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
       }
     }
     // Wear one-handed-gesture SDK-manager shadow — only when the wear-compose gesture API is on the
-    // classpath. Makes the framework's registration + indicator pipeline observable under the render
-    // (arms via `GestureStateController.detectionArmed`), so a raw `Modifier.oneHandedGesture` app is
+    // classpath. Makes the framework's registration + indicator pipeline observable under the
+    // render
+    // (arms via `GestureStateController.detectionArmed`), so a raw `Modifier.oneHandedGesture` app
+    // is
     // surfaced in `compose/gestures` and its hint can be shown. Same NoClassDefFoundError guard as
     // ambient for artifacts predating the gesture connector.
     if (isWearGestureAvailable(javaClass.classLoader)) {
@@ -171,13 +173,17 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     // `compose/permissions` data product.
     shadows += ShadowContextWrapperPermissionTracker::class.java
     // Downloadable-GoogleFont shadow. Always registered — androidx.core's `FontsContractCompat` is
-    // on every Compose consumer classpath, so the `@Implements` link always resolves (same safety as
+    // on every Compose consumer classpath, so the `@Implements` link always resolves (same safety
+    // as
     // the permission-tracker shadow above). Without it the daemon render path (`bundle pack` /
-    // serve, incl. `--with-semantics`) hits the real GMS Fonts provider — absent under Robolectric —
+    // serve, incl. `--with-semantics`) hits the real GMS Fonts provider — absent under Robolectric
+    // —
     // so every `Font(GoogleFont(...))` silently rendered in the platform fallback (Roboto). The
-    // one-shot `bundle render` path got this shadow via its synthesized `robolectric.properties`, but
+    // one-shot `bundle render` path got this shadow via its synthesized `robolectric.properties`,
+    // but
     // the daemon never did. With it, a face resolves from the shared cache
-    // (`composeai.fonts.cacheDir`) / a live fetch, and a genuinely unresolvable face is recorded for
+    // (`composeai.fonts.cacheDir`) / a live fetch, and a genuinely unresolvable face is recorded
+    // for
     // `RenderEngine`'s fatal-on-fallback gate instead of vanishing.
     shadows += ShadowFontsContractCompat::class.java
     // Coil 2 preview-branch shadow. Gated on coil 2 actually being on the classpath purely to keep
@@ -188,7 +194,8 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     if (isCoil2Available(javaClass.classLoader)) {
       shadows += ee.schimke.composeai.renderer.ShadowAsyncImagePainter::class.java
     }
-    // Wear clock shadow — same shape and same gating rationale as the coil one above, and pairs with
+    // Wear clock shadow — same shape and same gating rationale as the coil one above, and pairs
+    // with
     // the `addInstrumentedPackage(WEAR_MATERIAL_CORE_RESOURCES)` call in `createClassLoaderConfig`;
     // both are needed for it to take effect. Without it a daemon render of a clock-bearing Wear
     // screen paints the host wall clock and disagrees with the batch render's fixed `10:10`
@@ -243,10 +250,11 @@ internal fun isWearGestureAvailable(loader: ClassLoader?): Boolean {
 }
 
 /**
- * The single Wear class whose `currentTimeMillis()` both Wear Material and Wear Material3 `TimeText`
- * read. Instrumented (see [SandboxHoldingRunner.createClassLoaderConfig] and the Gradle path's
- * generated `robolectric.properties`) so Robolectric rewrites its `System.currentTimeMillis()` call
- * into the emulated clock [ee.schimke.composeai.renderer.PreviewClock] pins.
+ * The single Wear class whose `currentTimeMillis()` both Wear Material and Wear Material3
+ * `TimeText` read. Instrumented (see [SandboxHoldingRunner.createClassLoaderConfig] and the Gradle
+ * path's generated `robolectric.properties`) so Robolectric rewrites its
+ * `System.currentTimeMillis()` call into the emulated clock
+ * [ee.schimke.composeai.renderer.PreviewClock] pins.
  */
 internal const val WEAR_MATERIAL_CORE_RESOURCES: String =
   "androidx.wear.compose.materialcore.ResourcesKt"
@@ -307,4 +315,3 @@ internal fun isRemoteComposeAvailable(loader: ClassLoader?): Boolean {
     false
   }
 }
-

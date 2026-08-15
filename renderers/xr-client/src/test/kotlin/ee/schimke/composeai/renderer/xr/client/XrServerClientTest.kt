@@ -41,53 +41,53 @@ class XrServerClientTest {
   private fun startFakeServer(serverIn: InputStream, serverOut: OutputStream) {
     serverThread =
       Thread {
-          var seq = 0L
-          while (true) {
-            val frame = readFrame(serverIn) ?: return@Thread
-            val req = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
-            val method = req["method"]?.jsonPrimitive?.content ?: continue
-            val id = req["id"]?.jsonPrimitive?.long
-            when (method) {
-              "initialize" ->
-                writeFrame(
-                  serverOut,
-                  result(
-                    id!!,
-                    buildJsonObject {
-                      put(
-                        "capabilities",
-                        buildJsonObject {
-                          put("render", true)
-                          put("updatePanels", true)
-                          put("streamFrame", true)
-                        },
-                      )
-                    },
-                  ),
-                )
-              "render",
-              "xr/updatePanels" -> {
-                seq += 1
-                val sid =
-                  req["params"]?.jsonObject?.get("sessionId")?.jsonPrimitive?.content ?: "default"
-                // Push the frame first (as the native server does), tagged with the session, then
-                // ack.
-                writeFrame(serverOut, streamFrame(seq, "frame-$seq", sid))
-                writeFrame(
-                  serverOut,
-                  result(
-                    id!!,
-                    buildJsonObject {
-                      put("ok", true)
-                      put("seq", seq)
-                    },
-                  ),
-                )
-              }
-              "exit" -> return@Thread
+        var seq = 0L
+        while (true) {
+          val frame = readFrame(serverIn) ?: return@Thread
+          val req = json.parseToJsonElement(frame.toString(Charsets.UTF_8)).jsonObject
+          val method = req["method"]?.jsonPrimitive?.content ?: continue
+          val id = req["id"]?.jsonPrimitive?.long
+          when (method) {
+            "initialize" ->
+              writeFrame(
+                serverOut,
+                result(
+                  id!!,
+                  buildJsonObject {
+                    put(
+                      "capabilities",
+                      buildJsonObject {
+                        put("render", true)
+                        put("updatePanels", true)
+                        put("streamFrame", true)
+                      },
+                    )
+                  },
+                ),
+              )
+            "render",
+            "xr/updatePanels" -> {
+              seq += 1
+              val sid =
+                req["params"]?.jsonObject?.get("sessionId")?.jsonPrimitive?.content ?: "default"
+              // Push the frame first (as the native server does), tagged with the session, then
+              // ack.
+              writeFrame(serverOut, streamFrame(seq, "frame-$seq", sid))
+              writeFrame(
+                serverOut,
+                result(
+                  id!!,
+                  buildJsonObject {
+                    put("ok", true)
+                    put("seq", seq)
+                  },
+                ),
+              )
             }
+            "exit" -> return@Thread
           }
         }
+      }
         .apply {
           isDaemon = true
           start()

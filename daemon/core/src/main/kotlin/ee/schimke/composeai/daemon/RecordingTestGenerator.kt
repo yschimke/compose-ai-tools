@@ -229,27 +229,24 @@ object RecordingTestGenerator {
       return
     }
     val current = snapshot.mapNotNull { node -> nodeFinder(node)?.let { it to node } }
-    val assertions =
-      buildList {
-          if (previousProbe == null) {
-            // First probe: no prior snapshot to diff against, so assert that the interaction
-            // anchors
-            // (test-tagged or clickable nodes) are present — the stable handles worth pinning.
-            current
-              .filter { (_, node) -> node.testTag != null || node.clickable }
-              .forEach { (finder, _) -> add("composeTestRule.$finder.assertExists()") }
-          } else {
-            val before = previousProbe.mapNotNull(::nodeFinder).toSet()
-            val after = current.map { it.first }.toSet()
-            current
-              .filter { (finder, _) -> finder !in before }
-              .forEach { (finder, _) -> add("composeTestRule.$finder.assertExists()") }
-            (before - after).forEach { finder ->
-              add("composeTestRule.$finder.assertDoesNotExist()")
-            }
-          }
-        }
-        .distinct()
+    val assertions = buildList {
+      if (previousProbe == null) {
+        // First probe: no prior snapshot to diff against, so assert that the interaction
+        // anchors
+        // (test-tagged or clickable nodes) are present — the stable handles worth pinning.
+        current
+          .filter { (_, node) -> node.testTag != null || node.clickable }
+          .forEach { (finder, _) -> add("composeTestRule.$finder.assertExists()") }
+      } else {
+        val before = previousProbe.mapNotNull(::nodeFinder).toSet()
+        val after = current.map { it.first }.toSet()
+        current
+          .filter { (finder, _) -> finder !in before }
+          .forEach { (finder, _) -> add("composeTestRule.$finder.assertExists()") }
+        (before - after).forEach { finder -> add("composeTestRule.$finder.assertDoesNotExist()") }
+      }
+    }
+      .distinct()
     if (assertions.isEmpty()) {
       appendLine("    // TODO assert state$labelSuffix")
       return

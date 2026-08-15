@@ -1,15 +1,12 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.fonts.google.GoogleFontKey
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 
 /**
  * Unit tests for [GoogleFontCache], [GoogleFontKey], the CSS-API helpers, and the

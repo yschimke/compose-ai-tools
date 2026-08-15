@@ -613,49 +613,48 @@ internal data class HistoryDiffResponse(
  * from a compared-but-unchanged section, so a reviewer can tell "no a11y data" from "a11y
  * unchanged".
  */
-internal fun formatDataDeltaHuman(delta: HistoryDataDelta): String =
-  buildString {
-      appendLine("semantics:")
-      appendLine(
-        when (val s = delta.semantics) {
-          null -> "  (not captured on both entries)"
-          else -> formatSemanticsDeltaHuman(s).prependIndent("  ")
-        }
-      )
-      appendLine("a11y:")
-      val a = delta.a11y
-      if (a == null) {
-        appendLine("  (not captured on both entries)")
-      } else if (a.isEmpty) {
-        appendLine("  No a11y finding changes.")
-      } else {
-        appendLine(
-          "  ${a.added.size} added, ${a.removed.size} removed, ${a.changed.size} changed".trimEnd()
-        )
-        a.removed.forEach {
-          appendLine("    - ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")
-        }
-        a.added.forEach {
-          appendLine("    + ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")
-        }
-        a.changed.forEach { change ->
-          appendLine("    ~ ${change.type}${change.ref?.let { r -> " @$r" } ?: ""}")
-          change.changes.forEach { f ->
-            appendLine("        ${f.field}: ${f.from ?: "∅"} → ${f.to ?: "∅"}")
-          }
-        }
-      }
-      appendLine("theme:")
-      val t = delta.theme
-      if (t == null) {
-        appendLine("  (not captured on both entries)")
-      } else if (t.isEmpty) {
-        appendLine("  No theme token changes.")
-      } else {
-        (t.colorScheme + t.shapes).forEach { tok ->
-          appendLine("    ~ ${tok.token}: ${tok.from ?: "∅"} → ${tok.to ?: "∅"}")
-        }
-        t.typography.forEach { tok -> appendLine("    ~ ${tok.token} (typography changed)") }
+internal fun formatDataDeltaHuman(delta: HistoryDataDelta): String = buildString {
+  appendLine("semantics:")
+  appendLine(
+    when (val s = delta.semantics) {
+      null -> "  (not captured on both entries)"
+      else -> formatSemanticsDeltaHuman(s).prependIndent("  ")
+    }
+  )
+  appendLine("a11y:")
+  val a = delta.a11y
+  if (a == null) {
+    appendLine("  (not captured on both entries)")
+  } else if (a.isEmpty) {
+    appendLine("  No a11y finding changes.")
+  } else {
+    appendLine(
+      "  ${a.added.size} added, ${a.removed.size} removed, ${a.changed.size} changed".trimEnd()
+    )
+    a.removed.forEach {
+      appendLine("    - ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")
+    }
+    a.added.forEach {
+      appendLine("    + ${it.level} ${it.type}${it.ref?.let { r -> " @$r" } ?: ""}")
+    }
+    a.changed.forEach { change ->
+      appendLine("    ~ ${change.type}${change.ref?.let { r -> " @$r" } ?: ""}")
+      change.changes.forEach { f ->
+        appendLine("        ${f.field}: ${f.from ?: "∅"} → ${f.to ?: "∅"}")
       }
     }
-    .trimEnd()
+  }
+  appendLine("theme:")
+  val t = delta.theme
+  if (t == null) {
+    appendLine("  (not captured on both entries)")
+  } else if (t.isEmpty) {
+    appendLine("  No theme token changes.")
+  } else {
+    (t.colorScheme + t.shapes).forEach { tok ->
+      appendLine("    ~ ${tok.token}: ${tok.from ?: "∅"} → ${tok.to ?: "∅"}")
+    }
+    t.typography.forEach { tok -> appendLine("    ~ ${tok.token} (typography changed)") }
+  }
+}
+  .trimEnd()

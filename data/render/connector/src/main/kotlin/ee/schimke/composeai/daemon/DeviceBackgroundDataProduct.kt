@@ -196,9 +196,9 @@ internal data class DeviceBackgroundThemeCapture(private val colorScheme: Map<St
         runCatching { payload.javaClass.getMethod("getResolvedTokens").invoke(payload) }.getOrNull()
           ?: return null
       return runCatching {
-          resolvedTokens.javaClass.getMethod("getColorScheme").invoke(resolvedTokens)
-            as? Map<String, String>
-        }
+        resolvedTokens.javaClass.getMethod("getColorScheme").invoke(resolvedTokens)
+          as? Map<String, String>
+      }
         .getOrNull()
     }
   }

@@ -50,18 +50,21 @@ class PreviewParameterRowMatchTest {
     val provider =
       object {
         @Suppress("unused")
-        val values: Sequence<String> = generateSequence("x") { enumerated = true; "x" }
+        val values: Sequence<String> =
+          generateSequence("x") {
+            enumerated = true
+            "x"
+          }
       }
-    val failure =
-      runCatching {
-          PreviewParameterSupport.resolve(
-            clazz = provider.javaClass,
-            functionName = "Irrelevant",
-            providerClassName = provider.javaClass.name,
-            row = "PARAM_${PreviewParameterSupport.MAX_ROW_SCAN}",
-          )
-        }
-        .exceptionOrNull()
+    val failure = runCatching {
+      PreviewParameterSupport.resolve(
+        clazz = provider.javaClass,
+        functionName = "Irrelevant",
+        providerClassName = provider.javaClass.name,
+        row = "PARAM_${PreviewParameterSupport.MAX_ROW_SCAN}",
+      )
+    }
+      .exceptionOrNull()
     assertEquals(false, enumerated)
     assertEquals(
       true,

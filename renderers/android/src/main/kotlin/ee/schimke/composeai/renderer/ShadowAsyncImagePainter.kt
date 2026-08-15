@@ -6,8 +6,8 @@ import org.robolectric.annotation.RealObject
 import org.robolectric.util.ReflectionHelpers
 
 /**
- * Robolectric shadow that stops coil 2's `AsyncImagePainter` from short-circuiting into its
- * preview branch, so a preview render actually loads the image (issue #2952).
+ * Robolectric shadow that stops coil 2's `AsyncImagePainter` from short-circuiting into its preview
+ * branch, so a preview render actually loads the image (issue #2952).
  *
  * ## Why this is needed at all
  *
@@ -16,6 +16,7 @@ import org.robolectric.util.ReflectionHelpers
  * ```kotlin
  * if (isPreview) { updateState(State.Loading(request.placeholder()?.toPainter())); return }
  * ```
+ *
  * — it paints the *placeholder* and never starts a request. The renderer composes with
  * `LocalInspectionMode = true` on purpose (AS parity, issue #1584: a preview that branches on it to
  * show stub data instead of a network call must hit the same branch it does in the IDE), so coil 2
@@ -29,12 +30,12 @@ import org.robolectric.util.ReflectionHelpers
  * ## Why a shadow, rather than turning inspection mode off
  *
  * Flipping `LocalInspectionMode` to `false` for the whole render would fix coil and break
- * everything else: it is a root-level composition local, so it would silently move every
- * `if (LocalInspectionMode.current)` branch in the consumer's tree onto its production path
- * (real network calls, real DI) — a much bigger behaviour change than the bug being fixed, and a
- * direct reversal of the deliberate AS-parity default. Shadowing the setter is surgical: it
- * changes exactly one boolean inside coil, and the consumer's own inspection-mode branches keep
- * seeing `true`.
+ * everything else: it is a root-level composition local, so it would silently move every `if
+ * (LocalInspectionMode.current)` branch in the consumer's tree onto its production path (real
+ * network calls, real DI) — a much bigger behaviour change than the bug being fixed, and a direct
+ * reversal of the deliberate AS-parity default. Shadowing the setter is surgical: it changes
+ * exactly one boolean inside coil, and the consumer's own inspection-mode branches keep seeing
+ * `true`.
  *
  * This is the same shape as [ShadowFontsContractCompat] — a third-party library that silently
  * degrades under Robolectric, intercepted at the lowest stable seam rather than worked around in

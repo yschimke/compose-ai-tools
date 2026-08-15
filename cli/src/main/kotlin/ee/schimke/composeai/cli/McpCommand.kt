@@ -235,9 +235,9 @@ internal class McpCommand(
       if (installAntigravity) {
         results +=
           runCatching {
-              writeAntigravityConfig(antigravityConfig, launcher, projectDir)
-              HostResult("antigravity", true, antigravityConfig.absolutePath, null)
-            }
+            writeAntigravityConfig(antigravityConfig, launcher, projectDir)
+            HostResult("antigravity", true, antigravityConfig.absolutePath, null)
+          }
             .getOrElse { e ->
               HostResult("antigravity", false, antigravityConfig.absolutePath, e.message)
             }
@@ -245,9 +245,9 @@ internal class McpCommand(
       if (installCodex) {
         results +=
           runCatching {
-              writeCodexConfig(codexConfig, launcher, projectDir)
-              HostResult("codex", true, codexConfig.absolutePath, null)
-            }
+            writeCodexConfig(codexConfig, launcher, projectDir)
+            HostResult("codex", true, codexConfig.absolutePath, null)
+          }
             .getOrElse { e -> HostResult("codex", false, codexConfig.absolutePath, e.message) }
       }
       if (installClaude) {

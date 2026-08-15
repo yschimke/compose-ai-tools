@@ -43,6 +43,6 @@ import androidx.compose.remote.core.Limits
  * process-global and public, and anything else on the classpath can flip them back.
  */
 public fun enableEncodedImageReferences() {
-    Limits.ENABLE_IMAGE_URLS = true
-    Limits.ENABLE_IMAGE_FILES = true
+  Limits.ENABLE_IMAGE_URLS = true
+  Limits.ENABLE_IMAGE_FILES = true
 }

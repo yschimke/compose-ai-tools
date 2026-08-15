@@ -375,13 +375,17 @@ class RenderEngineTest {
       assertTrue("expected a sampled polyline, got: $path", points.size > 8)
       assertTrue(
         "the triangle apex (~100, ~52) must be present, got: $path",
-        points.any { (x, y) -> kotlin.math.abs(x - 100.0) < 2.0 && kotlin.math.abs(y - 52.0) < 2.0 },
+        points.any { (x, y) ->
+          kotlin.math.abs(x - 100.0) < 2.0 && kotlin.math.abs(y - 52.0) < 2.0
+        },
       )
       // The base corners pin the other two vertices, so the shape is a triangle and not a bounding
       // box drawn as a path.
       assertTrue(
         "the bottom-left vertex (~40, ~148) must be present, got: $path",
-        points.any { (x, y) -> kotlin.math.abs(x - 40.0) < 2.0 && kotlin.math.abs(y - 148.0) < 2.0 },
+        points.any { (x, y) ->
+          kotlin.math.abs(x - 40.0) < 2.0 && kotlin.math.abs(y - 148.0) < 2.0
+        },
       )
     } finally {
       host.shutdown()
@@ -771,22 +775,21 @@ class RenderEngineTest {
     val host = DesktopHost(engine = RenderEngine(outputDir = outputDir))
     host.start()
     try {
-      val failure =
-        runCatching {
-            host.submit(
-              RenderRequest.Render(
-                payload =
-                  "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
-                    "functionName=CaseLabelledSquare;" +
-                    "previewParameterProvider=ee.schimke.composeai.daemon.CaseTintProvider;" +
-                    "previewParameterRow=DARK;" +
-                    "widthPx=64;heightPx=64;density=1.0;" +
-                    "outputBaseName=case-square_DARK"
-              ),
-              timeoutMs = 60_000,
-            )
-          }
-          .exceptionOrNull()
+      val failure = runCatching {
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=CaseLabelledSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.CaseTintProvider;" +
+                "previewParameterRow=DARK;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "outputBaseName=case-square_DARK"
+          ),
+          timeoutMs = 60_000,
+        )
+      }
+        .exceptionOrNull()
       val message =
         generateSequence(failure) { it.cause }.mapNotNull { it.message }.joinToString(" ")
       assertTrue(

@@ -103,11 +103,11 @@ private constructor(
       val manifestPath = root / DIRECTORY / INDEX_FILE
       val manifest =
         runCatching {
-            if (!fileSystem.exists(manifestPath)) return@runCatching null
-            DesignPagesJson.decodeFromString<DesignPagesManifest>(
-              fileSystem.read(manifestPath) { readUtf8() }
-            )
-          }
+          if (!fileSystem.exists(manifestPath)) return@runCatching null
+          DesignPagesJson.decodeFromString<DesignPagesManifest>(
+            fileSystem.read(manifestPath) { readUtf8() }
+          )
+        }
           .getOrNull()
           ?.takeIf { it.isSupported } ?: return empty()
 

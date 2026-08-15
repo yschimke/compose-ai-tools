@@ -32,7 +32,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 
 internal val LocalCoreDocument: ProvidableCompositionLocal<CoreDocument> = compositionLocalOf {
-    throw IllegalStateException("No document")
+  throw IllegalStateException("No document")
 }
 
 /**
@@ -42,7 +42,7 @@ internal val LocalCoreDocument: ProvidableCompositionLocal<CoreDocument> = compo
  * happen inside [RcPlayer]).
  */
 internal val LocalGraphContext: ProvidableCompositionLocal<GraphContext?> = compositionLocalOf {
-    null
+  null
 }
 
 /**
@@ -53,50 +53,50 @@ internal val LocalGraphContext: ProvidableCompositionLocal<GraphContext?> = comp
  * op reads them as an input (chains).
  */
 internal fun buildComputedOpIndex(operations: Collection<Operation>): Map<Int, Operation> {
-    val map = HashMap<Int, Operation>()
-    fun walk(ops: Collection<Operation>) {
-        for (op in ops) {
-            if (op is VariableSupport && op is VariableProvider) {
-                val animated = op is FloatExpression && op.mFloatAnimation != null
-                val id = op.id
-                if (!animated && id > 0 && !map.containsKey(id)) map[id] = op
-            }
-            if (op is Container) walk(op.getList())
-        }
+  val map = HashMap<Int, Operation>()
+  fun walk(ops: Collection<Operation>) {
+    for (op in ops) {
+      if (op is VariableSupport && op is VariableProvider) {
+        val animated = op is FloatExpression && op.mFloatAnimation != null
+        val id = op.id
+        if (!animated && id > 0 && !map.containsKey(id)) map[id] = op
+      }
+      if (op is Container) walk(op.getList())
     }
-    walk(operations)
-    return map
+  }
+  walk(operations)
+  return map
 }
 
 internal val LocalRemoteContext: ProvidableCompositionLocal<RemoteContext> = compositionLocalOf {
-    throw IllegalStateException("No remote context")
+  throw IllegalStateException("No remote context")
 }
 
 internal val LocalComponentValueMap: ProvidableCompositionLocal<Map<Int, List<ComponentValue>>> =
-    compositionLocalOf {
-        emptyMap()
-    }
+  compositionLocalOf {
+    emptyMap()
+  }
 
 internal val LocalComponentValueStateMap:
-    ProvidableCompositionLocal<Map<Int, MutableState<Float>>> =
-    compositionLocalOf {
-        emptyMap()
-    }
+  ProvidableCompositionLocal<Map<Int, MutableState<Float>>> =
+  compositionLocalOf {
+    emptyMap()
+  }
 
 internal val LocalCurrentTimeMillis: ProvidableCompositionLocal<State<Float>> = compositionLocalOf {
-    androidx.compose.runtime.mutableFloatStateOf(0f)
+  androidx.compose.runtime.mutableFloatStateOf(0f)
 }
 
 /** Host-action callback (id, value) for `HostAction`/`RunAction` clicks. Default no-op. */
 internal val LocalRemoteActionHandler: ProvidableCompositionLocal<(Int, String?) -> Unit> =
-    compositionLocalOf {
-        { _, _ -> }
-    }
+  compositionLocalOf {
+    { _, _ -> }
+  }
 
 /**
  * Host named-action callback (name, resolved value) for `HostNamedAction` clicks. Default no-op.
  */
 internal val LocalRemoteNamedActionHandler: ProvidableCompositionLocal<(String, Any?) -> Unit> =
-    compositionLocalOf {
-        { _, _ -> }
-    }
+  compositionLocalOf {
+    { _, _ -> }
+  }

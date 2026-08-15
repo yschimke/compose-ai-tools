@@ -6,15 +6,15 @@ import javax.imageio.ImageIO
 import org.junit.Test
 
 /**
- * End-to-end verification for issue #2974: a dark `@Preview(showBackground = true)` whose only drawn
- * child is a thin divider centred in a taller fixed-size `Box` fills the **whole** preview with the
- * dark backing colour, not just the divider's bounds.
+ * End-to-end verification for issue #2974: a dark `@Preview(showBackground = true)` whose only
+ * drawn child is a thin divider centred in a taller fixed-size `Box` fills the **whole** preview
+ * with the dark backing colour, not just the divider's bounds.
  *
  * Reads the PNG produced by `:samples:android:composePreviewRenderAll` (wired into this module's
  * `test` task in `build.gradle.kts`) and asserts every corner — well outside the centred divider —
  * is the opaque Material dark surface (`#1C1B1F`, `PreviewBackground.NIGHT_ARGB`). This is the PNG
- * half of the PNG/SVG parity the layered-SVG export must match: the SVG background rect has to cover
- * the same full crop these pixels do (asserted against the SVG in
+ * half of the PNG/SVG parity the layered-SVG export must match: the SVG background rect has to
+ * cover the same full crop these pixels do (asserted against the SVG in
  * `FigmaSvgShowBackgroundBoundsRenderTest`).
  */
 class DividerShowBackgroundPreviewPixelTest {

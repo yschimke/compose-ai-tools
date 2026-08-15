@@ -23,9 +23,9 @@ import androidx.compose.ui.text.TextStyle
  *   way [PreviewRenderStrategy]'s default strategy invokes a consumer `@Composable`. No
  *   `getDeclaredComposableMethod` lookup needed.
  * - The values cross the loader boundary cleanly. `Color` is a `@JvmInline value class`, so its
- *   getters are name-mangled (`getPrimary-0d7_KjU()`) and return a raw `long` we re-wrap into
- *   *our* [Color]. `TextStyle` lives in `androidx.compose.ui.text`, shared via the parent loader,
- *   so those getters return a directly usable instance.
+ *   getters are name-mangled (`getPrimary-0d7_KjU()`) and return a raw `long` we re-wrap into *our*
+ *   [Color]. `TextStyle` lives in `androidx.compose.ui.text`, shared via the parent loader, so
+ *   those getters return a directly usable instance.
  *
  * Every lookup is best-effort: a module without wear-compose on its classpath (or a future release
  * that renames these members) yields null, and the caller falls back rather than failing the
@@ -40,13 +40,12 @@ internal object WearMaterialTheme {
   fun colorSchemeOrNull(loader: ClassLoader?): Any? = readTheme(loader, "getColorScheme")
 
   /** The Wear `Typography` currently in composition, as an opaque handle, or null. */
-  @Composable
-  fun typographyOrNull(loader: ClassLoader?): Any? = readTheme(loader, "getTypography")
+  @Composable fun typographyOrNull(loader: ClassLoader?): Any? = readTheme(loader, "getTypography")
 
   /**
    * Invoke `MaterialTheme.<getter>(composer, 0)` reflectively. The `0` is the composable calling
-   * convention's `$changed` mask — these getters are read-only `LocalX.current` reads, so no
-   * change bits apply.
+   * convention's `$changed` mask — these getters are read-only `LocalX.current` reads, so no change
+   * bits apply.
    */
   @Composable
   private fun readTheme(loader: ClassLoader?, getter: String): Any? {
@@ -54,21 +53,21 @@ internal object WearMaterialTheme {
     // `currentComposer` can't be touched inside it.
     val composer = currentComposer
     return runCatching {
-        val clazz =
-          Class.forName(MATERIAL_THEME, false, loader ?: WearMaterialTheme::class.java.classLoader)
-        val instance = clazz.getField("INSTANCE").get(null)
-        val method =
-          clazz.getMethod(
-            getter,
-            Class.forName(
-              "androidx.compose.runtime.Composer",
-              false,
-              WearMaterialTheme::class.java.classLoader,
-            ),
-            Int::class.javaPrimitiveType,
-          )
-        method.invoke(instance, composer, 0)
-      }
+      val clazz =
+        Class.forName(MATERIAL_THEME, false, loader ?: WearMaterialTheme::class.java.classLoader)
+      val instance = clazz.getField("INSTANCE").get(null)
+      val method =
+        clazz.getMethod(
+          getter,
+          Class.forName(
+            "androidx.compose.runtime.Composer",
+            false,
+            WearMaterialTheme::class.java.classLoader,
+          ),
+          Int::class.javaPrimitiveType,
+        )
+      method.invoke(instance, composer, 0)
+    }
       .getOrNull()
   }
 
@@ -82,18 +81,20 @@ internal object WearMaterialTheme {
     if (scheme == null) return null
     val getter = "get${name.replaceFirstChar { it.uppercase() }}"
     return runCatching {
-        val method =
-          scheme.javaClass.methods.firstOrNull {
-            (it.name == getter || it.name.startsWith("$getter-")) &&
-              it.parameterCount == 0 &&
-              it.returnType == Long::class.javaPrimitiveType
-          } ?: return null
-        Color((method.invoke(scheme) as Long).toULong())
-      }
+      val method =
+        scheme.javaClass.methods.firstOrNull {
+          (it.name == getter || it.name.startsWith("$getter-")) &&
+            it.parameterCount == 0 &&
+            it.returnType == Long::class.javaPrimitiveType
+        } ?: return null
+      Color((method.invoke(scheme) as Long).toULong())
+    }
       .getOrNull()
   }
 
-  /** Read a type-scale style off a Wear `Typography` handle. `TextStyle` is parent-loader shared. */
+  /**
+   * Read a type-scale style off a Wear `Typography` handle. `TextStyle` is parent-loader shared.
+   */
   fun style(typography: Any?, name: String): TextStyle? {
     if (typography == null) return null
     val getter = "get${name.replaceFirstChar { it.uppercase() }}"

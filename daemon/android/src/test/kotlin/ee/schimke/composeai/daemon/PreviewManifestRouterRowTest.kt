@@ -123,9 +123,8 @@ class PreviewManifestRouterRowTest {
   fun `a non-parameterized preview never gets a row token`() {
     val t =
       tokens(
-        router(entry("Screen", parameterized = false)).routePayload(
-          "previewId=Screen;previewParameterRow=Dark"
-        )
+        router(entry("Screen", parameterized = false))
+          .routePayload("previewId=Screen;previewParameterRow=Dark")
       )
     assertFalse(t.containsKey("previewParameterRow"))
   }

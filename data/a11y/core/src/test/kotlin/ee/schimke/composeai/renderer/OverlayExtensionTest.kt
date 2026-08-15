@@ -96,7 +96,9 @@ class OverlayExtensionTest {
     assertEquals("a11y", ordered.first())
     assertTrue(
       "expected both consumers after the hierarchy producer, got $ordered",
-      ordered.containsAll(listOf(OverlayExtension.EXTENSION_ID, TouchTargetsExtension.EXTENSION_ID)),
+      ordered.containsAll(
+        listOf(OverlayExtension.EXTENSION_ID, TouchTargetsExtension.EXTENSION_ID)
+      ),
     )
   }
 }

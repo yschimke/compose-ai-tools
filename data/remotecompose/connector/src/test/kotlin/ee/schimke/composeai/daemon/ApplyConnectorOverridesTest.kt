@@ -113,7 +113,9 @@ class ApplyConnectorOverridesTest {
     assertEquals(listOf(Triple("color", "seed", 0xFFFF6F61.toInt() as Any?)), updater.calls)
   }
 
-  /** …and an 8-digit value keeps the alpha it was given, including a deliberately transparent one. */
+  /**
+   * …and an 8-digit value keeps the alpha it was given, including a deliberately transparent one.
+   */
   @Test
   fun `eight-digit color value keeps its alpha`() {
     val updater = CapturingStateUpdater()
@@ -122,8 +124,8 @@ class ApplyConnectorOverridesTest {
   }
 
   /**
-   * The wire model carries `argb` as an arbitrary string, so a length no colour spelling produces is
-   * skipped rather than thrown — a typo in a panel value must not crash the render path.
+   * The wire model carries `argb` as an arbitrary string, so a length no colour spelling produces
+   * is skipped rather than thrown — a typo in a panel value must not crash the render path.
    */
   @Test
   fun `an unparseable color is skipped`() {

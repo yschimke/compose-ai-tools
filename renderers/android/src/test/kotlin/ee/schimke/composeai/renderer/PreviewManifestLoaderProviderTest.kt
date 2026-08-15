@@ -14,8 +14,8 @@ import org.junit.rules.TemporaryFolder
  * [PreviewManifestLoader.expandParameterProvider] / `loadProviderValues` (issue #2493):
  * - a `private` (package-private in bytecode) provider is opened up with `isAccessible` and
  *   enumerated instead of crashing with `IllegalAccessException`;
- * - a provider that can't be loaded is isolated to its own preview — it returns no rows and writes a
- *   `.error.json` card rather than throwing out of the shard's `@Parameters` method.
+ * - a provider that can't be loaded is isolated to its own preview — it returns no rows and writes
+ *   a `.error.json` card rather than throwing out of the shard's `@Parameters` method.
  */
 class PreviewManifestLoaderProviderTest {
 

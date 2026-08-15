@@ -52,28 +52,28 @@ public class RcFontFaces(private val faces: List<RcFontFace>) {
     }
     val built =
       runCatching {
-          FontFamily(
-            faces.map { face ->
-              val weight = FontWeight(face.weight)
-              val style = if (face.italic) FontStyle.Italic else FontStyle.Normal
-              if (settings == null || settings.settings.isEmpty()) {
-                Font(identity = face.identity, data = face.data, weight = weight, style = style)
-              } else {
-                Font(
-                  // The identity carries the axes, because Compose's font cache keys on it: two
-                  // instances of one file that share an identity are the *same* cached typeface, so
-                  // the first axis set drawn would silently be used for every later one (every line
-                  // of a `wght` ramp rendering at the first line's weight).
-                  identity = face.identity + instanceSuffix(key),
-                  data = face.data,
-                  weight = weight,
-                  style = style,
-                  variationSettings = settings,
-                )
-              }
+        FontFamily(
+          faces.map { face ->
+            val weight = FontWeight(face.weight)
+            val style = if (face.italic) FontStyle.Italic else FontStyle.Normal
+            if (settings == null || settings.settings.isEmpty()) {
+              Font(identity = face.identity, data = face.data, weight = weight, style = style)
+            } else {
+              Font(
+                // The identity carries the axes, because Compose's font cache keys on it: two
+                // instances of one file that share an identity are the *same* cached typeface, so
+                // the first axis set drawn would silently be used for every later one (every line
+                // of a `wght` ramp rendering at the first line's weight).
+                identity = face.identity + instanceSuffix(key),
+                data = face.data,
+                weight = weight,
+                style = style,
+                variationSettings = settings,
+              )
             }
-          )
-        }
+          }
+        )
+      }
         .getOrNull() ?: return null
     instances[key] = built
     return built

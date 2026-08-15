@@ -248,22 +248,20 @@ internal object AndroidBundleResources {
   internal fun stripApplicationName(manifestXml: String): String? {
     val doc =
       runCatching {
-          val factory =
-            DocumentBuilderFactory.newInstance().apply {
-              isNamespaceAware = true
-              // XXE hardening: no DTDs, no external entities.
-              runCatching {
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-              }
-              runCatching {
-                setFeature("http://xml.org/sax/features/external-general-entities", false)
-              }
-              runCatching {
-                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-              }
+        val factory =
+          DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            // XXE hardening: no DTDs, no external entities.
+            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+            runCatching {
+              setFeature("http://xml.org/sax/features/external-general-entities", false)
             }
-          factory.newDocumentBuilder().parse(ByteArrayInputStream(manifestXml.toByteArray()))
-        }
+            runCatching {
+              setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            }
+          }
+        factory.newDocumentBuilder().parse(ByteArrayInputStream(manifestXml.toByteArray()))
+      }
         .getOrNull() ?: return null
 
     val applications = doc.getElementsByTagName("application")
@@ -278,13 +276,13 @@ internal object AndroidBundleResources {
     if (!removedAny) return null
 
     return runCatching {
-        val writer = StringWriter()
-        TransformerFactory.newInstance()
-          .newTransformer()
-          .apply { setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no") }
-          .transform(DOMSource(doc), StreamResult(writer))
-        writer.toString()
-      }
+      val writer = StringWriter()
+      TransformerFactory.newInstance()
+        .newTransformer()
+        .apply { setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no") }
+        .transform(DOMSource(doc), StreamResult(writer))
+      writer.toString()
+    }
       .getOrNull()
   }
 }

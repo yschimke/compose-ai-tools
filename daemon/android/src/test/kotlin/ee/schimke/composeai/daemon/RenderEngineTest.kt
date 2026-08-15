@@ -40,11 +40,14 @@ class RenderEngineTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
-  /** Deepest text-bearing leaves (width > 0) and their measured heights, from a layout-inspector. */
+  /**
+   * Deepest text-bearing leaves (width > 0) and their measured heights, from a layout-inspector.
+   */
   private fun leafHeights(layoutJson: kotlinx.serialization.json.JsonObject): List<Int> {
     val out = mutableListOf<Int>()
     fun walk(node: kotlinx.serialization.json.JsonObject) {
-      val children = node["children"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+      val children =
+        node["children"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
       val size = node["size"]!!.jsonObject
       val w = (size["width"] as JsonPrimitive).content.toInt()
       val h = (size["height"] as JsonPrimitive).content.toInt()
@@ -55,31 +58,37 @@ class RenderEngineTest {
     return out
   }
 
-  private fun renderTallColumn(host: RobolectricHost, outputDir: File, wrap: Boolean, base: String) =
+  private fun renderTallColumn(
+    host: RobolectricHost,
+    outputDir: File,
+    wrap: Boolean,
+    base: String,
+  ) =
     host.submit(
       RenderRequest.Render(
         payload =
           "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
             "functionName=TallWrapColumn;" +
             // widthDp=200 @ density 2.625 ⇒ 525 px (pinned width). Wrap OFF pins the historical
-            // 320 px height frame (the bug); wrap ON uses the 800 dp sandbox bound + intrinsic crop.
+            // 320 px height frame (the bug); wrap ON uses the 800 dp sandbox bound + intrinsic
+            // crop.
             "widthPx=525;heightPx=${if (wrap) 2100 else 320};density=2.625;" +
             "wrapWidth=false;wrapHeight=$wrap;" +
-            "showBackground=true;outputBaseName=$base",
+            "showBackground=true;outputBaseName=$base"
       ),
       timeoutMs = 120_000,
     )
 
   /**
    * Wrap-height regression (the `TcpConnectPanel` figma-svg collapse). A no-height preview whose
-   * content is taller than the historical 320 px daemon frame reflowed its overflow children to zero
-   * height — a `Column` hands each child the remaining height, so once the 320 px budget is spent the
-   * lower rows measure to zero lines. The AS-parity wrap fix renders the full content against the
-   * sandbox bound and crops to the measured intrinsic size, so nothing collapses.
+   * content is taller than the historical 320 px daemon frame reflowed its overflow children to
+   * zero height — a `Column` hands each child the remaining height, so once the 320 px budget is
+   * spent the lower rows measure to zero lines. The AS-parity wrap fix renders the full content
+   * against the sandbox bound and crops to the measured intrinsic size, so nothing collapses.
    *
-   * Asserts both directions through the real Robolectric render: wrap OFF still collapses lower rows
-   * (proving the fixture reproduces the bug and the assertion has teeth); wrap ON keeps every row at
-   * its natural height and the captured tree is taller than the old frame.
+   * Asserts both directions through the real Robolectric render: wrap OFF still collapses lower
+   * rows (proving the fixture reproduces the bug and the assertion has teeth); wrap ON keeps every
+   * row at its natural height and the captured tree is taller than the old frame.
    */
   @Test
   fun tallWrapHeightPreviewDoesNotCollapse() {
@@ -93,10 +102,12 @@ class RenderEngineTest {
       val on = renderTallColumn(host, outputDir, wrap = true, base = "tall-wrapped")
 
       // Before/after PNGs for the PR's visual evidence (build dir, not committed).
-      File("build/wrap-evidence").apply { mkdirs() }.let { dir ->
-        off.pngPath?.let { File(it).copyTo(File(dir, "tall-fixed-320.png"), overwrite = true) }
-        on.pngPath?.let { File(it).copyTo(File(dir, "tall-wrapped.png"), overwrite = true) }
-      }
+      File("build/wrap-evidence")
+        .apply { mkdirs() }
+        .let { dir ->
+          off.pngPath?.let { File(it).copyTo(File(dir, "tall-fixed-320.png"), overwrite = true) }
+          on.pngPath?.let { File(it).copyTo(File(dir, "tall-wrapped.png"), overwrite = true) }
+        }
 
       fun layout(base: String) =
         Json.parseToJsonElement(
@@ -121,7 +132,9 @@ class RenderEngineTest {
       // Wrap ON (the fix): full natural height, no collapsed rows.
       val wrapped = layout("tall-wrapped")
       val wrappedRootH =
-        (wrapped["root"]!!.jsonObject["size"]!!.jsonObject["height"] as JsonPrimitive).content.toInt()
+        (wrapped["root"]!!.jsonObject["size"]!!.jsonObject["height"] as JsonPrimitive)
+          .content
+          .toInt()
       assertTrue(
         "wrap-on root must measure the full content, well past the 320 px frame (was $wrappedRootH)",
         wrappedRootH > 340,
@@ -224,7 +237,8 @@ class RenderEngineTest {
   @Test
   fun figmaSvgExportEmbedsGoogleFontsByDefault() {
     // Parity with the desktop export: font embedding is ON by default, so the Android export embeds
-    // each text node's face as an `@font-face` WOFF2 (the SVG renders the real typeface instead of a
+    // each text node's face as an `@font-face` WOFF2 (the SVG renders the real typeface instead of
+    // a
     // browser-substituted `sans-serif`) WITHOUT any opt-in flag — the default that leaves the
     // meshcore-mobile stickers looking right. We pre-seed the shared font cache
     // (`composeai.fonts.cacheDir`) so the resolver serves from disk — deterministic, no network in
@@ -285,7 +299,8 @@ class RenderEngineTest {
     // pre-default behaviour, still reachable for anyone who wants the smaller vector-only SVG.
     val outputDir = tempFolder.newFolder("renders-figma-novec")
     val fontCache = tempFolder.newFolder("font-cache-novec")
-    for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2").writeBytes(byteArrayOf(1))
+    for (w in listOf(400, 500, 700)) File(fontCache, "noto-serif-$w.woff2")
+      .writeBytes(byteArrayOf(1))
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
     System.setProperty("composeai.svg.embedFonts", "false")
@@ -410,11 +425,20 @@ class RenderEngineTest {
       val previewDir = outputDir.parentFile!!.resolve("data").resolve("figma-gradient")
       val svg = previewDir.resolve("compose-figma.svg").readText()
 
-      assertTrue("a linear brush must be emitted as a gradient def, got:\n$svg", svg.contains("<linearGradient"))
-      assertTrue("the background rect must reference that def, got:\n$svg", svg.contains("fill=\"url(#"))
+      assertTrue(
+        "a linear brush must be emitted as a gradient def, got:\n$svg",
+        svg.contains("<linearGradient"),
+      )
+      assertTrue(
+        "the background rect must reference that def, got:\n$svg",
+        svg.contains("fill=\"url(#"),
+      )
       // The whole point of the gradient path over a raster: the label survives as editable text.
       assertTrue("the label must stay editable, got:\n$svg", svg.contains(">Gradient<"))
-      assertFalse("a linear brush must not fall back to a raster, got:\n$svg", svg.contains("<image "))
+      assertFalse(
+        "a linear brush must not fall back to a raster, got:\n$svg",
+        svg.contains("<image "),
+      )
       assertFalse(
         "no raster crop should be written for a linear brush",
         previewDir.resolve("figma-raster").exists(),
@@ -423,7 +447,8 @@ class RenderEngineTest {
       // Same end-to-end colour claim the raster crop used to make — red on the left, blue on the
       // right — now read off the gradient's stops rather than sampled pixels.
       val stops = Regex("""<stop offset="([\d.]+)" stop-color="(#[0-9A-Fa-f]{6})"/>""").findAll(svg)
-      val byOffset = stops.map { it.groupValues[1].toDouble() to it.groupValues[2].uppercase() }.toList()
+      val byOffset =
+        stops.map { it.groupValues[1].toDouble() to it.groupValues[2].uppercase() }.toList()
       assertEquals("expected exactly two stops, got $byOffset", 2, byOffset.size)
       assertEquals("gradient must start red", "#FF0000", byOffset.first().second)
       assertEquals("gradient must end blue", "#0000FF", byOffset.last().second)
@@ -460,7 +485,10 @@ class RenderEngineTest {
 
       val previewDir = outputDir.parentFile!!.resolve("data").resolve("figma-radial")
       val svg = previewDir.resolve("compose-figma.svg").readText()
-      assertTrue("a radial brush must keep the hybrid raster path, got:\n$svg", svg.contains("<image "))
+      assertTrue(
+        "a radial brush must keep the hybrid raster path, got:\n$svg",
+        svg.contains("<image "),
+      )
       assertFalse(
         "a radial brush must not be emitted as a linear gradient it isn't, got:\n$svg",
         svg.contains("<linearGradient"),
@@ -512,7 +540,10 @@ class RenderEngineTest {
           .readText()
       assertTrue("supplementary-plane emoji must remain editable text", svg.contains("😀"))
       assertTrue("annotated text must preserve its base run", svg.contains(">body </tspan>"))
-      assertTrue("annotated text must preserve its explicit code run", svg.contains(">code</tspan>"))
+      assertTrue(
+        "annotated text must preserve its explicit code run",
+        svg.contains(">code</tspan>"),
+      )
       assertTrue(
         "the explicit span face must remain distinct",
         svg.contains("""font-family="monospace""""),
@@ -552,7 +583,10 @@ class RenderEngineTest {
           .resolve("figma-transforms")
           .resolve("compose-figma.svg")
           .readText()
-      assertTrue("alpha-zero graphics layer must remain transparent", svg.contains("""opacity="0""""))
+      assertTrue(
+        "alpha-zero graphics layer must remain transparent",
+        svg.contains("""opacity="0""""),
+      )
       assertTrue("the ImageVector must remain an editable path", svg.contains("<path "))
 
       val scales =
@@ -573,7 +607,8 @@ class RenderEngineTest {
   @Test
   fun figmaSvgDrawsAPaddedIconAtItsPaintedSize() {
     // Issue #2853, the padded icon in an embedded container: Jetchat's `InputSelectorButton` is
-    // `IconButton { Icon(modifier = Modifier.padding(8.dp).size(56.dp)) }` and its `RecordButton` is
+    // `IconButton { Icon(modifier = Modifier.padding(8.dp).size(56.dp)) }` and its `RecordButton`
+    // is
     // `Icon(modifier = Modifier.sizeIn(minWidth = 56.dp).padding(18.dp))`. Either way the padding
     // ahead of the painter insets the box the glyph is drawn into, so fitting the vector to the
     // node's own box drew every glyph at its button's size — the oversized action icons and
@@ -674,7 +709,10 @@ class RenderEngineTest {
           .resolve("record-button")
           .resolve("compose-figma.svg")
           .readText()
-      assertTrue("the alpha-zero recording circle must be faded out", svg.contains("""opacity="0""""))
+      assertTrue(
+        "the alpha-zero recording circle must be faded out",
+        svg.contains("""opacity="0""""),
+      )
       assertTrue("the microphone must remain an editable path", svg.contains("<path "))
     } finally {
       host.shutdown()
@@ -685,7 +723,8 @@ class RenderEngineTest {
   fun figmaSvgKeepsAScaledVectorSquareInAnAnimatedLayout() {
     // Issue #2853, the embedded distorted vector: a square create icon scaled through a graphics
     // layer (Jetchat's `Profile/Animating FAB content`). Its captured scale is already baked into
-    // the drawn bounds, so the export must fit the vector to those bounds once — a uniform scale for
+    // the drawn bounds, so the export must fit the vector to those bounds once — a uniform scale
+    // for
     // a square icon — never multiplying a layout-slot fit by the captured scale again.
     val outputDir = tempFolder.newFolder("renders-animated-fab")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
@@ -968,22 +1007,21 @@ class RenderEngineTest {
     val host = RobolectricHost()
     host.start()
     try {
-      val failure =
-        runCatching {
-            host.submit(
-              RenderRequest.Render(
-                payload =
-                  "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
-                    "functionName=ThemedTintedSquare;" +
-                    "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
-                    "previewParameterRow=PARAM_9;" +
-                    "widthPx=64;heightPx=64;density=1.0;" +
-                    "outputBaseName=preview-parameter-square_PARAM_9"
-              ),
-              timeoutMs = 120_000,
-            )
-          }
-          .exceptionOrNull()
+      val failure = runCatching {
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedTintedSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                "previewParameterRow=PARAM_9;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "outputBaseName=preview-parameter-square_PARAM_9"
+          ),
+          timeoutMs = 120_000,
+        )
+      }
+        .exceptionOrNull()
       assertNotNull("an out-of-range row must fail rather than render value 0", failure)
       val message =
         generateSequence(failure) { it.cause }.mapNotNull { it.message }.joinToString(" ")

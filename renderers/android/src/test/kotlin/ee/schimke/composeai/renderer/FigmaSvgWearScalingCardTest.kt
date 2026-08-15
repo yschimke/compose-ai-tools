@@ -49,8 +49,8 @@ import org.robolectric.annotation.GraphicsMode
  * container shape as the item rides the curved edges. Because that wrapper is not a bare
  * `ColorPainter`, the token resolver used to leave `backgroundColor` unresolved, so the whole card
  * (title + subtitle included) rasterised as one opaque `<image>` and its labels stopped being
- * editable `<text>`. The resolver now unwraps the `BackgroundPainter` to its base `ColorPainter`, so
- * the card exports as a vector fill and the labels stay editable text.
+ * editable `<text>`. The resolver now unwraps the `BackgroundPainter` to its base `ColorPainter`,
+ * so the card exports as a vector fill and the labels stay editable text.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -163,7 +163,8 @@ class FigmaSvgWearScalingCardTest {
     // A scaling OutlinedCard fills + outlines through one BackgroundPainter that carries a
     // BorderStroke. We can't yet vectorise that morphing outline, so the fix must NOT silently
     // resolve the fill alone (which would drop the border): the card stays on the raster path,
-    // preserving the outline as pixels. Guard the guarantee that matters — the border is never lost:
+    // preserving the outline as pixels. Guard the guarantee that matters — the border is never
+    // lost:
     // the card is either a raster <image> (pixels preserved) or carries a real vector stroke.
     assertTrue(
       "a bordered scaling card must not export as a fill-only vector with no outline:\n$svg",

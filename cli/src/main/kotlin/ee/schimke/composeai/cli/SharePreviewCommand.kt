@@ -449,12 +449,13 @@ class SharePreviewCommand(
       // stdout — e.g. a `git push` whose server hook is chatty on stderr. Consuming both pipes
       // concurrently is the only safe ordering, and it lets the `waitFor` timeout actually fire.
       val stderrHolder = arrayOfNulls<String>(1)
-      val stderrThread =
-        Thread { stderrHolder[0] = p.errorStream.bufferedReader().use { it.readText() } }
-          .apply {
-            isDaemon = true
-            start()
-          }
+      val stderrThread = Thread {
+        stderrHolder[0] = p.errorStream.bufferedReader().use { it.readText() }
+      }
+        .apply {
+          isDaemon = true
+          start()
+        }
       val stdout = p.inputStream.bufferedReader().use { it.readText() }
       val finished = p.waitFor(120, TimeUnit.SECONDS)
       if (!finished) p.destroyForcibly()

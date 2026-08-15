@@ -3832,7 +3832,8 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val rowExcludes: org.gradle.api.provider.Provider<List<String>>,
-    @get:org.gradle.api.tasks.Input val permutations: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input
+    val permutations: org.gradle.api.provider.Provider<List<String>>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = buildList {
       arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))

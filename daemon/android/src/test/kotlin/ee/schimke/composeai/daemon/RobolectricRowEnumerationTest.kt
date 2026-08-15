@@ -71,9 +71,10 @@ class RobolectricRowEnumerationTest {
    * `runHeldInteractiveSession` draining `interactiveCommands` and never polls `requests`.
    *
    * Enqueueing anyway would block for the full 30s timeout, and because this call is synchronous on
-   * the JSON-RPC reader thread it would also stop the `interactive/stop` that releases the slot from
-   * being read at all — a deterministic stall, not a slow answer. So it must refuse immediately, and
-   * leave nothing on the queue for the session's loop to trip over when it resumes.
+   * the JSON-RPC reader thread it would also stop the `interactive/stop` that releases the slot
+   * from being read at all — a deterministic stall, not a slow answer. So it must refuse
+   * immediately, and leave nothing on the queue for the session's loop to trip over when it
+   * resumes.
    */
   @Test
   fun `a held interactive session makes enumeration refuse rather than stall`() {
@@ -88,7 +89,10 @@ class RobolectricRowEnumerationTest {
         "expected IllegalStateException naming the held session, got $failure",
         failure is IllegalStateException && failure.message?.contains("android-stream-1") == true,
       )
-      assertTrue("must fail fast, not wait out the timeout — took ${elapsedMs}ms", elapsedMs < 5_000)
+      assertTrue(
+        "must fail fast, not wait out the timeout — took ${elapsedMs}ms",
+        elapsedMs < 5_000,
+      )
       assertTrue(
         "a refused enumeration must not leave a request for the held loop to find",
         DaemonHostBridge.slot(0).requests.isEmpty(),
@@ -100,8 +104,10 @@ class RobolectricRowEnumerationTest {
 
   @Test
   fun `an unknown previewId is rejected before any sandbox work`() {
-    val failure =
-      runCatching { router(entry("Screen", null)).previewParameterRows("Nope") }.exceptionOrNull()
+    val failure = runCatching {
+      router(entry("Screen", null)).previewParameterRows("Nope")
+    }
+      .exceptionOrNull()
 
     assertTrue(
       "expected IllegalArgumentException naming the id, got $failure",

@@ -34,40 +34,38 @@ import androidx.compose.ui.layout.ContentScale
 
 @Composable
 internal fun RcPlayerImageLayout(layout: ImageLayout, modifier: Modifier) {
-    // Resolve the image through the pluggable RcImageLoader (default: the document's embedded
-    // bitmap;
-    // a host can override to load from elsewhere) — no image-loading library dependency.
-    val drawable by LocalRcImageLoader.current.loadImage(layout.bitmapId)
-    val alpha by rememberRemoteFloatAsState(layout.alpha)
+  // Resolve the image through the pluggable RcImageLoader (default: the document's embedded
+  // bitmap;
+  // a host can override to load from elsewhere) — no image-loading library dependency.
+  val drawable by LocalRcImageLoader.current.loadImage(layout.bitmapId)
+  val alpha by rememberRemoteFloatAsState(layout.alpha)
 
-    Box(modifier = modifier) {
-        val resolved = drawable
-        if (resolved != null) {
-            Image(
-                painter = remember(resolved) { DrawablePainter(resolved) },
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale =
-                    when (layout.scaleType) {
-                        ImageScaling.SCALE_FIT -> ContentScale.Fit
-                        ImageScaling.SCALE_CROP -> ContentScale.Crop
-                        // No fixed scale-factor plumbing yet; 1:1 (None) is the closest faithful
-                        // fallback and avoids crashing. See operation_coverage.md.
-                        ImageScaling.SCALE_FIXED_SCALE -> ContentScale.None
-                        ImageScaling.SCALE_INSIDE -> ContentScale.Inside
-                        ImageScaling.SCALE_NONE -> ContentScale.None
-                        ImageScaling.SCALE_FILL_BOUNDS -> ContentScale.FillBounds
-                        ImageScaling.SCALE_FILL_HEIGHT -> ContentScale.FillHeight
-                        ImageScaling.SCALE_FILL_WIDTH -> ContentScale.FillWidth
-                        else -> {
-                            println(
-                                "Warning: unknown image scaleType ${layout.scaleType}; using Fit"
-                            )
-                            ContentScale.Fit
-                        }
-                    },
-                alpha = alpha,
-            )
-        }
+  Box(modifier = modifier) {
+    val resolved = drawable
+    if (resolved != null) {
+      Image(
+        painter = remember(resolved) { DrawablePainter(resolved) },
+        contentDescription = null,
+        modifier = Modifier.fillMaxSize(),
+        contentScale =
+          when (layout.scaleType) {
+            ImageScaling.SCALE_FIT -> ContentScale.Fit
+            ImageScaling.SCALE_CROP -> ContentScale.Crop
+            // No fixed scale-factor plumbing yet; 1:1 (None) is the closest faithful
+            // fallback and avoids crashing. See operation_coverage.md.
+            ImageScaling.SCALE_FIXED_SCALE -> ContentScale.None
+            ImageScaling.SCALE_INSIDE -> ContentScale.Inside
+            ImageScaling.SCALE_NONE -> ContentScale.None
+            ImageScaling.SCALE_FILL_BOUNDS -> ContentScale.FillBounds
+            ImageScaling.SCALE_FILL_HEIGHT -> ContentScale.FillHeight
+            ImageScaling.SCALE_FILL_WIDTH -> ContentScale.FillWidth
+            else -> {
+              println("Warning: unknown image scaleType ${layout.scaleType}; using Fit")
+              ContentScale.Fit
+            }
+          },
+        alpha = alpha,
+      )
     }
+  }
 }

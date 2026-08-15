@@ -744,7 +744,10 @@ class ServeWebFixtureTest {
         isPublic = true,
         version = version,
         githubAuth =
-          ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F", login = "yschimke"),
+          ServeWeb.GitHubAuthStatus(
+            loginHref = "/auth/github/start?return=%2F",
+            login = "yschimke",
+          ),
       )
     // The render-history timeline: a viewer served from a delivery branch, so it carries the
     // history.json URL + repo that `viewer-history.js` needs. Registered as its own page fixture so
@@ -4507,7 +4510,10 @@ class ServeWebFixtureTest {
         token,
         isPublic = true,
         githubAuth =
-          ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F", login = "yschimke"),
+          ServeWeb.GitHubAuthStatus(
+            loginHref = "/auth/github/start?return=%2F",
+            login = "yschimke",
+          ),
       )
     assertTrue(
       signed.contains("class=\"cp-gh-auth cp-gh-auth--signed\""),

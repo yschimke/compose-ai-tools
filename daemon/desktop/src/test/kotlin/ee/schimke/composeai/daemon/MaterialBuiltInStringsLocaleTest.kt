@@ -229,9 +229,9 @@ class MaterialBuiltInStringsLocaleTest {
   @Suppress("UNCHECKED_CAST")
   private fun localProvidableLocaleListOrNull(): ProvidableCompositionLocal<LocaleList>? =
     runCatching {
-        Class.forName("androidx.compose.ui.platform.CompositionLocalsKt")
-          .getMethod("getLocalProvidableLocaleList")
-          .invoke(null) as ProvidableCompositionLocal<LocaleList>
-      }
-      .getOrNull()
+      Class.forName("androidx.compose.ui.platform.CompositionLocalsKt")
+        .getMethod("getLocalProvidableLocaleList")
+        .invoke(null) as ProvidableCompositionLocal<LocaleList>
+    }
+    .getOrNull()
 }

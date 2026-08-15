@@ -737,37 +737,39 @@ class DaemonMcpServer(
    */
   internal fun runSourceFreshnessPoll() {
     runCatching {
-        freshnessMetrics.pollingCycles.incrementAndGet()
-        supervisor.listProjects().forEach { project ->
-          project.daemons.forEach { (modulePath, daemon) ->
-            // Manifest stat first — a Gradle `composePreviewDiscover` re-run between renders
-            // rewrites
-            // `previews.json`. Picking that up here means new preview ids land in the catalog
-            // (and `render_preview` works) before the user's next request, without the
-            // restart-the-MCP-server escape hatch reported in issue #834.
-            runCatching { reloadManifestIfChanged(daemon) }
-              .onFailure {
-                System.err.println(
-                  "compose-preview-mcp: manifest reload failed for ${daemon.workspaceId}/${daemon.modulePath}: ${it.message}"
-                )
-              }
-            val byId = catalog[DaemonAddr(project.workspaceId, modulePath)] ?: return@forEach
-            byId.values.forEach { entry ->
-              freshnessMetrics.pollingPreviewsScanned.incrementAndGet()
-              val uri =
-                PreviewUri(
-                  workspaceId = project.workspaceId,
-                  modulePath = modulePath,
-                  previewFqn = entry.fqn,
-                  config = entry.config,
-                )
-              val fired =
-                runCatching { ensureSourceFreshBeforeRender(uri, daemon) }.getOrDefault(false)
-              if (fired) freshnessMetrics.pollingChangesDetected.incrementAndGet()
+      freshnessMetrics.pollingCycles.incrementAndGet()
+      supervisor.listProjects().forEach { project ->
+        project.daemons.forEach { (modulePath, daemon) ->
+          // Manifest stat first — a Gradle `composePreviewDiscover` re-run between renders
+          // rewrites
+          // `previews.json`. Picking that up here means new preview ids land in the catalog
+          // (and `render_preview` works) before the user's next request, without the
+          // restart-the-MCP-server escape hatch reported in issue #834.
+          runCatching { reloadManifestIfChanged(daemon) }
+            .onFailure {
+              System.err.println(
+                "compose-preview-mcp: manifest reload failed for ${daemon.workspaceId}/${daemon.modulePath}: ${it.message}"
+              )
             }
+          val byId = catalog[DaemonAddr(project.workspaceId, modulePath)] ?: return@forEach
+          byId.values.forEach { entry ->
+            freshnessMetrics.pollingPreviewsScanned.incrementAndGet()
+            val uri =
+              PreviewUri(
+                workspaceId = project.workspaceId,
+                modulePath = modulePath,
+                previewFqn = entry.fqn,
+                config = entry.config,
+              )
+            val fired = runCatching {
+              ensureSourceFreshBeforeRender(uri, daemon)
+            }
+              .getOrDefault(false)
+            if (fired) freshnessMetrics.pollingChangesDetected.incrementAndGet()
           }
         }
       }
+    }
       .onFailure {
         // Defensive — the executor swallows uncaught throws and cancels future runs; we'd lose
         // the poller silently. Logging keeps the behaviour observable.
@@ -816,9 +818,9 @@ class DaemonMcpServer(
       runCatching { fileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull() ?: return
     val previews =
       runCatching {
-          val obj = json.parseToJsonElement(text) as? JsonObject ?: return@runCatching null
-          (obj["previews"] as? JsonArray)?.mapNotNull { it as? JsonObject }
-        }
+        val obj = json.parseToJsonElement(text) as? JsonObject ?: return@runCatching null
+        (obj["previews"] as? JsonArray)?.mapNotNull { it as? JsonObject }
+      }
         .getOrNull() ?: return
     manifestState[addr] = ManifestState(mtime, hash)
 
@@ -857,42 +859,40 @@ class DaemonMcpServer(
    */
   internal fun runRandomSamplingProbe() {
     runCatching {
-        val candidates = mutableListOf<Triple<SupervisedDaemon, DaemonAddr, PreviewEntry>>()
-        supervisor.listProjects().forEach { project ->
-          project.daemons.forEach { (modulePath, daemon) ->
-            val addr = DaemonAddr(project.workspaceId, modulePath)
-            catalog[addr]?.values?.forEach { entry -> candidates.add(Triple(daemon, addr, entry)) }
-          }
+      val candidates = mutableListOf<Triple<SupervisedDaemon, DaemonAddr, PreviewEntry>>()
+      supervisor.listProjects().forEach { project ->
+        project.daemons.forEach { (modulePath, daemon) ->
+          val addr = DaemonAddr(project.workspaceId, modulePath)
+          catalog[addr]?.values?.forEach { entry -> candidates.add(Triple(daemon, addr, entry)) }
         }
-        if (candidates.isEmpty()) return@runCatching
-        val pick = candidates.random()
-        val (daemon, addr, entry) = pick
-        val key = PreviewIdKey(addr.workspaceId, addr.modulePath, entry.fqn)
-        if (previewQueues.containsKey(key)) {
-          freshnessMetrics.samplingSkippedBusy.incrementAndGet()
-          return@runCatching
-        }
-        pendingProbes
-          .computeIfAbsent(key) { java.util.concurrent.atomic.AtomicInteger() }
-          .incrementAndGet()
-        freshnessMetrics.samplingProbes.incrementAndGet()
-        runCatching {
-            daemon
-              .clientForRender(entry.fqn)
-              .renderNow(
-                previews = listOf(entry.fqn),
-                tier = RenderTier.FULL,
-                reason = "freshness:sampling",
-              )
-          }
-          .onFailure {
-            // Roll back the pending count on a wire failure so a future renderFinished isn't
-            // misattributed to a probe that never went out.
-            pendingProbes.computeIfPresent(key) { _, c ->
-              if (c.decrementAndGet() <= 0) null else c
-            }
-          }
       }
+      if (candidates.isEmpty()) return@runCatching
+      val pick = candidates.random()
+      val (daemon, addr, entry) = pick
+      val key = PreviewIdKey(addr.workspaceId, addr.modulePath, entry.fqn)
+      if (previewQueues.containsKey(key)) {
+        freshnessMetrics.samplingSkippedBusy.incrementAndGet()
+        return@runCatching
+      }
+      pendingProbes
+        .computeIfAbsent(key) { java.util.concurrent.atomic.AtomicInteger() }
+        .incrementAndGet()
+      freshnessMetrics.samplingProbes.incrementAndGet()
+      runCatching {
+        daemon
+          .clientForRender(entry.fqn)
+          .renderNow(
+            previews = listOf(entry.fqn),
+            tier = RenderTier.FULL,
+            reason = "freshness:sampling",
+          )
+      }
+        .onFailure {
+          // Roll back the pending count on a wire failure so a future renderFinished isn't
+          // misattributed to a probe that never went out.
+          pendingProbes.computeIfPresent(key) { _, c -> if (c.decrementAndGet() <= 0) null else c }
+        }
+    }
       .onFailure {
         System.err.println("compose-preview-mcp: random-sampling probe failed: ${it.message}")
       }
@@ -2300,17 +2300,17 @@ class DaemonMcpServer(
     }
     if (forceReason != null) invalidateClasspathForForce(uri, forceReason)
     return runCatching {
-        if (cropArg != null) {
-          renderCropped(uri, overrides, cropArg, observe)
+      if (cropArg != null) {
+        renderCropped(uri, overrides, cropArg, observe)
+      } else {
+        val bytes = renderAndReadBytes(uri, overrides = overrides)
+        if (observe == "png") {
+          pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
         } else {
-          val bytes = renderAndReadBytes(uri, overrides = overrides)
-          if (observe == "png") {
-            pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
-          } else {
-            renderObservation(uri, bytes, includeSemantics = observe == "semantics")
-          }
+          renderObservation(uri, bytes, includeSemantics = observe == "semantics")
         }
       }
+    }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
   }
 
@@ -2555,17 +2555,19 @@ class DaemonMcpServer(
 
     // Decode + validate EVERY cell before rendering — validateOverrides also checks the `device`
     // catalog id, which varies per cell, so a typo in any cell (not just the first) must be caught.
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return errorCallToolResult("render_matrix: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return errorCallToolResult("render_matrix: daemon spawn failed: ${it.message}")
+      }
     val decodedCells = matrixCells.map { cell ->
-      val overrides =
-        runCatching { cell.toOverrides() }
-          .getOrElse {
-            return errorCallToolResult("render_matrix: invalid axis values: ${it.message}")
-          }
+      val overrides = runCatching {
+        cell.toOverrides()
+      }
+        .getOrElse {
+          return errorCallToolResult("render_matrix: invalid axis values: ${it.message}")
+        }
       cell to overrides
     }
     val violations = decodedCells.flatMap { (_, overrides) -> validateOverrides(overrides, daemon) }
@@ -2574,50 +2576,50 @@ class DaemonMcpServer(
     }
 
     return runCatching {
-        var baselineSha: String? = null
-        // Render every cell, keeping the bytes around so an optional contact sheet can stitch them.
-        val rendered = decodedCells.map { (cell, overrides) ->
-          val bytes = renderAndReadBytes(uri, overrides = overrides)
-          val sha = sha256Hex(bytes)
-          if (baselineSha == null) baselineSha = sha
-          RenderedCell(cell, bytes, sha, pngDimensions(bytes))
-        }
-        val cells = rendered.map { rc ->
-          buildJsonObject {
-            put("overrides", rc.cell.overridesJson())
-            put("label", rc.cell.label)
-            put("sha256", rc.sha)
-            rc.dimensions?.let {
-              put("widthPx", it.first)
-              put("heightPx", it.second)
-            }
-            put("changed", rc.sha != baselineSha)
-          }
-        }
-        val payload = buildJsonObject {
-          put("schema", "compose-preview-matrix/v1")
-          put("uri", uri.toUri())
-          put("cellCount", cells.size)
-          if (contactSheet) put("contactSheet", true)
-          putJsonArray("cells") { cells.forEach { add(it) } }
-        }
-        val blocks = buildList {
-          if (contactSheet) {
-            val sheet =
-              ContactSheet.stitch(rendered.map { ContactSheet.Cell(it.cell.label, it.bytes) })
-            if (sheet != null) {
-              add(
-                ContentBlock.Image(
-                  data = Base64.getEncoder().encodeToString(sheet),
-                  mimeType = "image/png",
-                )
-              )
-            }
-          }
-          add(ContentBlock.Text(payload.toString()))
-        }
-        CallToolResult(content = blocks)
+      var baselineSha: String? = null
+      // Render every cell, keeping the bytes around so an optional contact sheet can stitch them.
+      val rendered = decodedCells.map { (cell, overrides) ->
+        val bytes = renderAndReadBytes(uri, overrides = overrides)
+        val sha = sha256Hex(bytes)
+        if (baselineSha == null) baselineSha = sha
+        RenderedCell(cell, bytes, sha, pngDimensions(bytes))
       }
+      val cells = rendered.map { rc ->
+        buildJsonObject {
+          put("overrides", rc.cell.overridesJson())
+          put("label", rc.cell.label)
+          put("sha256", rc.sha)
+          rc.dimensions?.let {
+            put("widthPx", it.first)
+            put("heightPx", it.second)
+          }
+          put("changed", rc.sha != baselineSha)
+        }
+      }
+      val payload = buildJsonObject {
+        put("schema", "compose-preview-matrix/v1")
+        put("uri", uri.toUri())
+        put("cellCount", cells.size)
+        if (contactSheet) put("contactSheet", true)
+        putJsonArray("cells") { cells.forEach { add(it) } }
+      }
+      val blocks = buildList {
+        if (contactSheet) {
+          val sheet =
+            ContactSheet.stitch(rendered.map { ContactSheet.Cell(it.cell.label, it.bytes) })
+          if (sheet != null) {
+            add(
+              ContentBlock.Image(
+                data = Base64.getEncoder().encodeToString(sheet),
+                mimeType = "image/png",
+              )
+            )
+          }
+        }
+        add(ContentBlock.Text(payload.toString()))
+      }
+      CallToolResult(content = blocks)
+    }
       .getOrElse { errorCallToolResult("render_matrix failed: ${it.message}") }
   }
 
@@ -3064,11 +3066,12 @@ class DaemonMcpServer(
     val ids =
       (args["ids"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
         ?: return errorCallToolResult("$toolName: missing 'ids' array")
-    val daemon =
-      runCatching { supervisor.daemonFor(workspaceId, module) }
-        .getOrElse {
-          return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(workspaceId, module)
+    }
+      .getOrElse {
+        return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
+      }
     runCatching { forward(daemon, ids) }
       .onFailure {
         return errorCallToolResult("$toolName: wire call failed: ${it.message}")
@@ -3087,11 +3090,12 @@ class DaemonMcpServer(
     val module =
       args["module"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("history_list: missing 'module'")
-    val daemon =
-      runCatching { supervisor.daemonFor(workspaceId, module) }
-        .getOrElse {
-          return errorCallToolResult("history_list: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(workspaceId, module)
+    }
+      .getOrElse {
+        return errorCallToolResult("history_list: daemon spawn failed: ${it.message}")
+      }
     val params =
       ee.schimke.composeai.daemon.protocol.HistoryListParams(
         previewId = args["previewId"]?.jsonPrimitive?.contentOrNull,
@@ -3107,11 +3111,12 @@ class DaemonMcpServer(
         sourceKind = args["sourceKind"]?.jsonPrimitive?.contentOrNull,
         sourceId = args["sourceId"]?.jsonPrimitive?.contentOrNull,
       )
-    val result =
-      runCatching { daemon.client.historyList(params) }
-        .getOrElse {
-          return errorCallToolResult("history_list failed: ${it.message}")
-        }
+    val result = runCatching {
+      daemon.client.historyList(params)
+    }
+      .getOrElse {
+        return errorCallToolResult("history_list failed: ${it.message}")
+      }
 
     // Decorate each entry with the matching `compose-preview-history://` URI so clients can
     // call `resources/read` on it directly.
@@ -3156,22 +3161,22 @@ class DaemonMcpServer(
     val to =
       args["to"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("history_diff: missing 'to'")
-    val daemon =
-      runCatching { supervisor.daemonFor(workspaceId, module) }
-        .getOrElse {
-          return errorCallToolResult("history_diff: daemon spawn failed: ${it.message}")
-        }
-    val result =
-      runCatching {
-          daemon.client.historyDiff(
-            fromId = from,
-            toId = to,
-            mode = ee.schimke.composeai.daemon.protocol.HistoryDiffMode.METADATA,
-          )
-        }
-        .getOrElse {
-          return errorCallToolResult("history_diff failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(workspaceId, module)
+    }
+      .getOrElse {
+        return errorCallToolResult("history_diff: daemon spawn failed: ${it.message}")
+      }
+    val result = runCatching {
+      daemon.client.historyDiff(
+        fromId = from,
+        toId = to,
+        mode = ee.schimke.composeai.daemon.protocol.HistoryDiffMode.METADATA,
+      )
+    }
+      .getOrElse {
+        return errorCallToolResult("history_diff failed: ${it.message}")
+      }
 
     val payload = buildJsonObject {
       put("pngHashChanged", JsonPrimitive(result.pngHashChanged))
@@ -3292,12 +3297,13 @@ class DaemonMcpServer(
       for ((mp, daemon) in project.daemons) {
         if (module != null && mp != module) continue
         anyMatched = true
-        val outcome =
-          runCatching { daemon.client.extensionsEnable(ids) }
-            .onSuccess {
-              daemon.dataProductCapabilities = it.dataProducts
-              daemon.dataExtensionDescriptors = it.dataExtensions
-            }
+        val outcome = runCatching {
+          daemon.client.extensionsEnable(ids)
+        }
+          .onSuccess {
+            daemon.dataProductCapabilities = it.dataProducts
+            daemon.dataExtensionDescriptors = it.dataExtensions
+          }
         perDaemon.add(
           buildJsonObject {
             put("workspaceId", project.workspaceId.value)
@@ -3452,11 +3458,12 @@ class DaemonMcpServer(
         "get_preview_data: workspace '${uri.workspaceId.value}' not registered"
       )
     }
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return errorCallToolResult("get_preview_data: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return errorCallToolResult("get_preview_data: daemon spawn failed: ${it.message}")
+      }
     // Cache hit short-circuit: if a previous renderFinished attached this kind (because someone
     // subscribed, or the kind is in the global attachDataProducts set), serve the cached payload
     // and skip the wire round-trip entirely. The cache mirrors the latest render; a new render
@@ -3476,20 +3483,20 @@ class DaemonMcpServer(
       }
     }
     return runCatching {
-        // Try the fetch directly first — works whenever the preview has rendered at least once.
-        // On `DataProductNotAvailable` (-32021) the daemon is telling us the preview has never
-        // rendered; trigger a single render and retry. Folds the two-call agent dance ("render
-        // first, then ask for data") into one tool call. Other wire errors propagate.
-        val result =
-          try {
-            daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
-          } catch (e: DataProductWireException) {
-            if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
-            awaitNextRender(uri)
-            daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
-          }
-        renderDataFetchResult(result)
-      }
+      // Try the fetch directly first — works whenever the preview has rendered at least once.
+      // On `DataProductNotAvailable` (-32021) the daemon is telling us the preview has never
+      // rendered; trigger a single render and retry. Folds the two-call agent dance ("render
+      // first, then ask for data") into one tool call. Other wire errors propagate.
+      val result =
+        try {
+          daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
+        } catch (e: DataProductWireException) {
+          if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
+          awaitNextRender(uri)
+          daemon.client.dataFetch(uri.previewFqn, kind, perKindParams, inline)
+        }
+      renderDataFetchResult(result)
+    }
       .getOrElse { e ->
         when (e) {
           is DataProductWireException ->
@@ -3564,11 +3571,12 @@ class DaemonMcpServer(
         "render_preview_overlay: workspace '${uri.workspaceId.value}' not registered"
       )
     }
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return errorCallToolResult("render_preview_overlay: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return errorCallToolResult("render_preview_overlay: daemon spawn failed: ${it.message}")
+      }
     if (overrides != null) {
       val violations = validateOverrides(overrides, daemon)
       if (violations.isNotEmpty()) {
@@ -3582,53 +3590,52 @@ class DaemonMcpServer(
       )
     }
     return runCatching {
-        // Force a fresh render so the image processor runs against the current source state;
-        // this is the "generate previews with an overlay" entry point that callers expect
-        // to be deterministic vs. cached PNGs.
-        awaitNextRender(uri, overrides = overrides)
-        val fetchResult =
-          daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
-        val pngPath =
-          fetchResult.path
-            ?: return@runCatching errorCallToolResult(
-              "render_preview_overlay: producer for '$kind' returned no path; expected an " +
-                "image-bearing kind"
-            )
-        if (inline) {
-          val file = File(pngPath)
-          if (!file.isFile) {
-            return@runCatching errorCallToolResult(
-              "render_preview_overlay: overlay PNG missing at $pngPath"
-            )
-          }
-          pngCallToolResult(
-            Base64.getEncoder()
-              .encodeToString(fileSystem.read(file.path.toPath()) { readByteArray() })
+      // Force a fresh render so the image processor runs against the current source state;
+      // this is the "generate previews with an overlay" entry point that callers expect
+      // to be deterministic vs. cached PNGs.
+      awaitNextRender(uri, overrides = overrides)
+      val fetchResult = daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
+      val pngPath =
+        fetchResult.path
+          ?: return@runCatching errorCallToolResult(
+            "render_preview_overlay: producer for '$kind' returned no path; expected an " +
+              "image-bearing kind"
           )
-        } else {
-          val payload = buildJsonObject {
-            put("kind", kind)
-            put("schemaVersion", fetchResult.schemaVersion)
-            put("path", pngPath)
-            val extras = fetchResult.extras
-            if (!extras.isNullOrEmpty()) {
-              putJsonArray("extras") {
-                for (extra in extras) {
-                  add(
-                    buildJsonObject {
-                      put("name", extra.name)
-                      put("path", extra.path)
-                      if (extra.mediaType != null) put("mediaType", extra.mediaType)
-                      if (extra.sizeBytes != null) put("sizeBytes", extra.sizeBytes)
-                    }
-                  )
-                }
+      if (inline) {
+        val file = File(pngPath)
+        if (!file.isFile) {
+          return@runCatching errorCallToolResult(
+            "render_preview_overlay: overlay PNG missing at $pngPath"
+          )
+        }
+        pngCallToolResult(
+          Base64.getEncoder()
+            .encodeToString(fileSystem.read(file.path.toPath()) { readByteArray() })
+        )
+      } else {
+        val payload = buildJsonObject {
+          put("kind", kind)
+          put("schemaVersion", fetchResult.schemaVersion)
+          put("path", pngPath)
+          val extras = fetchResult.extras
+          if (!extras.isNullOrEmpty()) {
+            putJsonArray("extras") {
+              for (extra in extras) {
+                add(
+                  buildJsonObject {
+                    put("name", extra.name)
+                    put("path", extra.path)
+                    if (extra.mediaType != null) put("mediaType", extra.mediaType)
+                    if (extra.sizeBytes != null) put("sizeBytes", extra.sizeBytes)
+                  }
+                )
               }
             }
           }
-          textCallToolResult(payload.toString())
         }
+        textCallToolResult(payload.toString())
       }
+    }
       .getOrElse { e ->
         when (e) {
           is DataProductWireException ->
@@ -3660,11 +3667,12 @@ class DaemonMcpServer(
         "get_preview_extras: workspace '${uri.workspaceId.value}' not registered"
       )
     }
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return errorCallToolResult("get_preview_extras: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return errorCallToolResult("get_preview_extras: daemon spawn failed: ${it.message}")
+      }
     val cached =
       dataProductCache[DataAttachKey(uri.workspaceId, uri.modulePath, uri.previewFqn, kind)]
     val cachedExtras = cached?.extras as? JsonArray
@@ -3675,23 +3683,22 @@ class DaemonMcpServer(
         put("cached", true)
         put("extras", cachedExtras)
       } else {
-        val fetched =
-          runCatching {
-              try {
-                daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
-              } catch (e: DataProductWireException) {
-                if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
-                awaitNextRender(uri)
-                daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
-              }
+        val fetched = runCatching {
+          try {
+            daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
+          } catch (e: DataProductWireException) {
+            if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
+            awaitNextRender(uri)
+            daemon.client.dataFetch(uri.previewFqn, kind, params = null, inline = false)
+          }
+        }
+          .getOrElse { e ->
+            return when (e) {
+              is DataProductWireException ->
+                errorCallToolResult("get_preview_extras: ${nameOf(e.code)}: ${e.wireMessage}")
+              else -> errorCallToolResult("get_preview_extras failed: ${e.message}")
             }
-            .getOrElse { e ->
-              return when (e) {
-                is DataProductWireException ->
-                  errorCallToolResult("get_preview_extras: ${nameOf(e.code)}: ${e.wireMessage}")
-                else -> errorCallToolResult("get_preview_extras failed: ${e.message}")
-              }
-            }
+          }
         putJsonArray("extras") {
           for (extra in fetched.extras.orEmpty()) {
             add(
@@ -3806,38 +3813,38 @@ class DaemonMcpServer(
     if (supervisor.project(uri.workspaceId) == null) {
       return null to "$side workspace '${uri.workspaceId.value}' not registered"
     }
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return null to "$side daemon spawn failed: ${it.message}"
-        }
-    val result =
-      runCatching {
-          try {
-            daemon.client.dataFetch(
-              uri.previewFqn,
-              ComposeSemanticsProduct.KIND,
-              null,
-              inline = true,
-            )
-          } catch (e: DataProductWireException) {
-            if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
-            awaitNextRender(uri)
-            daemon.client.dataFetch(
-              uri.previewFqn,
-              ComposeSemanticsProduct.KIND,
-              null,
-              inline = true,
-            )
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return null to "$side daemon spawn failed: ${it.message}"
+      }
+    val result = runCatching {
+      try {
+        daemon.client.dataFetch(
+          uri.previewFqn,
+          ComposeSemanticsProduct.KIND,
+          null,
+          inline = true,
+        )
+      } catch (e: DataProductWireException) {
+        if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
+        awaitNextRender(uri)
+        daemon.client.dataFetch(
+          uri.previewFqn,
+          ComposeSemanticsProduct.KIND,
+          null,
+          inline = true,
+        )
+      }
+    }
+      .getOrElse { e ->
+        return null to
+          when (e) {
+            is DataProductWireException -> "$side ${nameOf(e.code)}: ${e.wireMessage}"
+            else -> "$side fetch failed: ${e.message}"
           }
-        }
-        .getOrElse { e ->
-          return null to
-            when (e) {
-              is DataProductWireException -> "$side ${nameOf(e.code)}: ${e.wireMessage}"
-              else -> "$side fetch failed: ${e.message}"
-            }
-        }
+      }
     return runCatching { decodeSemanticsPayload(result) }
       .map { it to null }
       .getOrElse { null to "$side: could not read compose/semantics (${it.message})" }
@@ -3905,25 +3912,28 @@ class DaemonMcpServer(
     val eventsRaw =
       (args["events"] as? JsonArray)
         ?: return errorCallToolResult("record_preview: missing 'events' (must be array)")
-    val events =
-      runCatching { decodeRecordingEvents(eventsRaw) }
-        .getOrElse {
-          return errorCallToolResult("record_preview: invalid events: ${it.message}")
-        }
+    val events = runCatching {
+      decodeRecordingEvents(eventsRaw)
+    }
+      .getOrElse {
+        return errorCallToolResult("record_preview: invalid events: ${it.message}")
+      }
     // Strict numeric validation — distinguish "absent" (use daemon default) from "malformed"
     // (return a clean diagnostic). The previous lenient `toIntOrNull` / `toFloatOrNull` swallowed
     // typos like `"fps": "fast"` into a silently-defaulted recording, which is hard to trust
     // when a script's timing is wrong but no error surfaces.
-    val fps =
-      runCatching { decodeOptionalInt("fps", args["fps"]) }
-        .getOrElse {
-          return errorCallToolResult("record_preview: invalid fps: ${it.message}")
-        }
-    val scale =
-      runCatching { decodeOptionalFloat("scale", args["scale"]) }
-        .getOrElse {
-          return errorCallToolResult("record_preview: invalid scale: ${it.message}")
-        }
+    val fps = runCatching {
+      decodeOptionalInt("fps", args["fps"])
+    }
+      .getOrElse {
+        return errorCallToolResult("record_preview: invalid fps: ${it.message}")
+      }
+    val scale = runCatching {
+      decodeOptionalFloat("scale", args["scale"])
+    }
+      .getOrElse {
+        return errorCallToolResult("record_preview: invalid scale: ${it.message}")
+      }
     val formatStr = args["format"]?.jsonPrimitive?.contentOrNull?.lowercase()
     val format =
       when (formatStr) {
@@ -3957,11 +3967,12 @@ class DaemonMcpServer(
         "record_preview: workspace '${uri.workspaceId.value}' not registered"
       )
     }
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return errorCallToolResult("record_preview: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return errorCallToolResult("record_preview: daemon spawn failed: ${it.message}")
+      }
     if (overrides != null) {
       val violations = validateOverrides(overrides, daemon)
       if (violations.isNotEmpty()) {
@@ -3994,151 +4005,146 @@ class DaemonMcpServer(
       )
     }
 
-    val started =
-      runCatching {
-          daemon.client.recordingStart(
-            previewId = uri.previewFqn,
-            fps = fps,
-            scale = scale,
-            overrides = overrides,
-          )
-        }
-        .getOrElse {
-          return errorCallToolResult("record_preview: recording/start failed: ${it.message}")
-        }
+    val started = runCatching {
+      daemon.client.recordingStart(
+        previewId = uri.previewFqn,
+        fps = fps,
+        scale = scale,
+        overrides = overrides,
+      )
+    }
+      .getOrElse {
+        return errorCallToolResult("record_preview: recording/start failed: ${it.message}")
+      }
     val recordingId = started.recordingId
     return runCatching {
-        if (events.isNotEmpty()) {
-          daemon.client.recordingScript(recordingId, events)
-        }
-        val stopResult = daemon.client.recordingStop(recordingId)
-        val frameMetadata = inspectRecordingFrames(File(stopResult.framesDir))
-        val encoded = daemon.client.recordingEncode(recordingId, format)
-        // Only read the encoded bytes when the caller opted into inline media (observe="media");
-        // the default frames observation never touches them (issue #1860).
-        val videoBytes by lazy {
-          fileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
-        }
-        val payload = buildJsonObject {
-          put("observe", observe)
-          if (observe == "frames") {
-            // The encoded artifact still exists on disk at `videoPath`; re-call with
-            // observe="media" to get the bytes inline.
-            put("mediaInline", false)
-          }
-          put("recordingId", recordingId)
-          put("videoPath", encoded.videoPath)
-          put("mimeType", encoded.mimeType)
-          put("sizeBytes", encoded.sizeBytes)
-          put("frameCount", stopResult.frameCount)
-          put("durationMs", stopResult.durationMs)
-          put("frameWidthPx", stopResult.frameWidthPx)
-          put("frameHeightPx", stopResult.frameHeightPx)
-          put("framesDir", stopResult.framesDir)
-          put("changedFrameCount", frameMetadata.count { it.changedFromPrevious })
-          frameMetadata.firstOrNull()?.let { put("firstFramePath", it.path) }
-          frameMetadata.lastOrNull()?.let { put("lastFramePath", it.path) }
-          frameMetadata
-            .firstOrNull { it.changedFromPrevious }
-            ?.let {
-              put("firstChangedFramePath", it.path)
-              put("firstChangedFrameIndex", it.index)
-            }
-          frameMetadata
-            .lastOrNull { it.changedFromPrevious }
-            ?.let {
-              put("lastChangedFramePath", it.path)
-              put("lastChangedFrameIndex", it.index)
-            }
-          putJsonArray("frames") {
-            for (frame in frameMetadata) {
-              add(
-                buildJsonObject {
-                  put("index", frame.index)
-                  put("path", frame.path)
-                  put("sha256", frame.sha256)
-                  put("changedFromPrevious", frame.changedFromPrevious)
-                  frame.changedPixelsFromPrevious?.let { put("changedPixelsFromPrevious", it) }
-                  frame.dimensionChangedFromPrevious?.let {
-                    put("dimensionChangedFromPrevious", it)
-                  }
-                }
-              )
-            }
-          }
-          putJsonArray("scriptEvents") {
-            for (event in stopResult.scriptEvents) {
-              add(
-                buildJsonObject {
-                  put("tMs", event.tMs)
-                  put("kind", event.kind)
-                  put("status", event.status.wireName())
-                  event.label?.let { put("label", it) }
-                  event.checkpointId?.let { put("checkpointId", it) }
-                  event.lifecycleEvent?.let { put("lifecycleEvent", it) }
-                  if (event.tags.isNotEmpty()) {
-                    putJsonArray("tags") { for (tag in event.tags) add(JsonPrimitive(tag)) }
-                  }
-                  event.message?.let { put("message", it) }
-                  // #1784 — structured semantic-target miss: code + matchCount + candidate nodes so
-                  // the agent disambiguates (picks a candidate `ref`) without re-rendering.
-                  event.targetUnresolvedReason?.let {
-                    put(
-                      "targetUnresolvedReason",
-                      json.encodeToJsonElement(
-                        ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
-                          .serializer(),
-                        it,
-                      ),
-                    )
-                  }
-                }
-              )
-            }
-          }
-        }
-        // Per the MCP 2025-06-18 spec, only `image/*` mimeTypes belong in `ContentBlock.Image`;
-        // strict clients reject mismatches. APNG (`image/apng`) round-trips as an image; mp4 /
-        // webm route through `EmbeddedResource` wrapping a `Blob` so a client that already
-        // understands `resources/read` reads them via the same code path.
-        val mediaBlock: ContentBlock? =
-          if (observe != "media") {
-            null
-          } else if (encoded.mimeType.startsWith("image/")) {
-            ContentBlock.Image(
-              data = Base64.getEncoder().encodeToString(videoBytes),
-              mimeType = encoded.mimeType,
-            )
-          } else {
-            ContentBlock.EmbeddedResource(
-              resource =
-                ResourceContents.Blob(
-                  uri = "compose-preview-recording://$recordingId",
-                  mimeType = encoded.mimeType,
-                  blob = Base64.getEncoder().encodeToString(videoBytes),
-                )
-            )
-          }
-        CallToolResult(
-          content =
-            buildList {
-              // observe="media" (opt-in): the inline APNG/MP4/WebM bytes lead the result, as
-              // before. observe="frames" (default): structured per-frame observation only.
-              mediaBlock?.let { add(it) }
-              add(ContentBlock.Text(payload.toString()))
-              // #1786 — opt-in: turn the recorded interaction into a runnable Compose UI test
-              // (the codegen analogue). Built from the recording's applied evidence so an
-              // unresolved target is a skipped-step comment, not a fabricated performClick.
-              if (args["emitTest"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true) {
-                add(
-                  ContentBlock.Text(
-                    generateRecordingTestSource(uri, events, stopResult.scriptEvents)
-                  )
-                )
-              }
-            }
-        )
+      if (events.isNotEmpty()) {
+        daemon.client.recordingScript(recordingId, events)
       }
+      val stopResult = daemon.client.recordingStop(recordingId)
+      val frameMetadata = inspectRecordingFrames(File(stopResult.framesDir))
+      val encoded = daemon.client.recordingEncode(recordingId, format)
+      // Only read the encoded bytes when the caller opted into inline media (observe="media");
+      // the default frames observation never touches them (issue #1860).
+      val videoBytes by lazy {
+        fileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
+      }
+      val payload = buildJsonObject {
+        put("observe", observe)
+        if (observe == "frames") {
+          // The encoded artifact still exists on disk at `videoPath`; re-call with
+          // observe="media" to get the bytes inline.
+          put("mediaInline", false)
+        }
+        put("recordingId", recordingId)
+        put("videoPath", encoded.videoPath)
+        put("mimeType", encoded.mimeType)
+        put("sizeBytes", encoded.sizeBytes)
+        put("frameCount", stopResult.frameCount)
+        put("durationMs", stopResult.durationMs)
+        put("frameWidthPx", stopResult.frameWidthPx)
+        put("frameHeightPx", stopResult.frameHeightPx)
+        put("framesDir", stopResult.framesDir)
+        put("changedFrameCount", frameMetadata.count { it.changedFromPrevious })
+        frameMetadata.firstOrNull()?.let { put("firstFramePath", it.path) }
+        frameMetadata.lastOrNull()?.let { put("lastFramePath", it.path) }
+        frameMetadata
+          .firstOrNull { it.changedFromPrevious }
+          ?.let {
+            put("firstChangedFramePath", it.path)
+            put("firstChangedFrameIndex", it.index)
+          }
+        frameMetadata
+          .lastOrNull { it.changedFromPrevious }
+          ?.let {
+            put("lastChangedFramePath", it.path)
+            put("lastChangedFrameIndex", it.index)
+          }
+        putJsonArray("frames") {
+          for (frame in frameMetadata) {
+            add(
+              buildJsonObject {
+                put("index", frame.index)
+                put("path", frame.path)
+                put("sha256", frame.sha256)
+                put("changedFromPrevious", frame.changedFromPrevious)
+                frame.changedPixelsFromPrevious?.let { put("changedPixelsFromPrevious", it) }
+                frame.dimensionChangedFromPrevious?.let { put("dimensionChangedFromPrevious", it) }
+              }
+            )
+          }
+        }
+        putJsonArray("scriptEvents") {
+          for (event in stopResult.scriptEvents) {
+            add(
+              buildJsonObject {
+                put("tMs", event.tMs)
+                put("kind", event.kind)
+                put("status", event.status.wireName())
+                event.label?.let { put("label", it) }
+                event.checkpointId?.let { put("checkpointId", it) }
+                event.lifecycleEvent?.let { put("lifecycleEvent", it) }
+                if (event.tags.isNotEmpty()) {
+                  putJsonArray("tags") { for (tag in event.tags) add(JsonPrimitive(tag)) }
+                }
+                event.message?.let { put("message", it) }
+                // #1784 — structured semantic-target miss: code + matchCount + candidate nodes so
+                // the agent disambiguates (picks a candidate `ref`) without re-rendering.
+                event.targetUnresolvedReason?.let {
+                  put(
+                    "targetUnresolvedReason",
+                    json.encodeToJsonElement(
+                      ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
+                        .serializer(),
+                      it,
+                    ),
+                  )
+                }
+              }
+            )
+          }
+        }
+      }
+      // Per the MCP 2025-06-18 spec, only `image/*` mimeTypes belong in `ContentBlock.Image`;
+      // strict clients reject mismatches. APNG (`image/apng`) round-trips as an image; mp4 /
+      // webm route through `EmbeddedResource` wrapping a `Blob` so a client that already
+      // understands `resources/read` reads them via the same code path.
+      val mediaBlock: ContentBlock? =
+        if (observe != "media") {
+          null
+        } else if (encoded.mimeType.startsWith("image/")) {
+          ContentBlock.Image(
+            data = Base64.getEncoder().encodeToString(videoBytes),
+            mimeType = encoded.mimeType,
+          )
+        } else {
+          ContentBlock.EmbeddedResource(
+            resource =
+              ResourceContents.Blob(
+                uri = "compose-preview-recording://$recordingId",
+                mimeType = encoded.mimeType,
+                blob = Base64.getEncoder().encodeToString(videoBytes),
+              )
+          )
+        }
+      CallToolResult(
+        content =
+          buildList {
+            // observe="media" (opt-in): the inline APNG/MP4/WebM bytes lead the result, as
+            // before. observe="frames" (default): structured per-frame observation only.
+            mediaBlock?.let { add(it) }
+            add(ContentBlock.Text(payload.toString()))
+            // #1786 — opt-in: turn the recorded interaction into a runnable Compose UI test
+            // (the codegen analogue). Built from the recording's applied evidence so an
+            // unresolved target is a skipped-step comment, not a fabricated performClick.
+            if (args["emitTest"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true) {
+              add(
+                ContentBlock.Text(generateRecordingTestSource(uri, events, stopResult.scriptEvents))
+              )
+            }
+          }
+      )
+    }
       .getOrElse { errorCallToolResult("record_preview failed: ${it.message}") }
   }
 
@@ -4212,12 +4218,11 @@ class DaemonMcpServer(
     var previous: java.awt.image.BufferedImage? = null
     return frames.mapIndexed { index, frame ->
       // Read the PNG bytes through Okio, then decode from memory (ImageIO is the codec boundary).
-      val image =
-        runCatching {
-            val bytes = fileSystem.read(frame.path.toPath()) { readByteArray() }
-            ImageIO.read(bytes.inputStream())
-          }
-          .getOrNull()
+      val image = runCatching {
+        val bytes = fileSystem.read(frame.path.toPath()) { readByteArray() }
+        ImageIO.read(bytes.inputStream())
+      }
+        .getOrNull()
       val previousImage = previous
       val changedPixels =
         if (previousImage != null && image != null && sameDimensions(previousImage, image)) {
@@ -4440,32 +4445,33 @@ class DaemonMcpServer(
     if (supervisor.project(uri.workspaceId) == null) {
       return errorCallToolResult("$toolName: workspace '${uri.workspaceId.value}' not registered")
     }
-    val daemon =
-      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
-        .getOrElse {
-          return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
-        }
+    val daemon = runCatching {
+      supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    }
+      .getOrElse {
+        return errorCallToolResult("$toolName: daemon spawn failed: ${it.message}")
+      }
     // Refcount across MCP sessions so multiple agents subscribed to the same (uri, kind) only
     // pay one wire-level `data/subscribe`. The daemon doesn't multiplex per-session; one
     // subscribe is enough for as many MCP sessions as want it. Wire forwards happen only on
     // first-ref / last-ref transitions.
     return runCatching {
-        if (subscribe) {
-          val firstRef = subscriptions.subscribeData(uriStr, kind, session)
-          if (firstRef) daemon.client.dataSubscribe(uri.previewFqn, kind)
-          textCallToolResult(
-            "$toolName: ok ($kind for ${uri.previewFqn}, " +
-              if (firstRef) "first session)" else "shared with N≥2 sessions)"
-          )
-        } else {
-          val lastRef = subscriptions.unsubscribeData(uriStr, kind, session)
-          if (lastRef) daemon.client.dataUnsubscribe(uri.previewFqn, kind)
-          textCallToolResult(
-            "$toolName: ok ($kind for ${uri.previewFqn}, " +
-              if (lastRef) "released)" else "still shared with other sessions)"
-          )
-        }
+      if (subscribe) {
+        val firstRef = subscriptions.subscribeData(uriStr, kind, session)
+        if (firstRef) daemon.client.dataSubscribe(uri.previewFqn, kind)
+        textCallToolResult(
+          "$toolName: ok ($kind for ${uri.previewFqn}, " +
+            if (firstRef) "first session)" else "shared with N≥2 sessions)"
+        )
+      } else {
+        val lastRef = subscriptions.unsubscribeData(uriStr, kind, session)
+        if (lastRef) daemon.client.dataUnsubscribe(uri.previewFqn, kind)
+        textCallToolResult(
+          "$toolName: ok ($kind for ${uri.previewFqn}, " +
+            if (lastRef) "released)" else "still shared with other sessions)"
+        )
       }
+    }
       .getOrElse { errorCallToolResult("$toolName failed: ${it.message}") }
   }
 
@@ -4820,14 +4826,15 @@ class DaemonMcpServer(
     }
 
     daemonLifecycleExecutor.execute {
-      val outcome =
-        runCatching { supervisor.daemonFor(workspaceId, modulePath) }
-          .onFailure {
-            System.err.println(
-              "DaemonMcpServer: classpathDirty respawn failed for $workspaceId/$modulePath: " +
-                "${it.message}"
-            )
-          }
+      val outcome = runCatching {
+        supervisor.daemonFor(workspaceId, modulePath)
+      }
+        .onFailure {
+          System.err.println(
+            "DaemonMcpServer: classpathDirty respawn failed for $workspaceId/$modulePath: " +
+              "${it.message}"
+          )
+        }
       if (outcome.isSuccess) {
         // Reset the attempt counter on a clean respawn — a future classpathDirty starts fresh.
         respawnAttempts.remove(attemptKey)

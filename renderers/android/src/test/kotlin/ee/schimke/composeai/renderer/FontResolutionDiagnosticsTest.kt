@@ -15,9 +15,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Unit tests for [FontResolutionDiagnostics], [FontFallbackException], and [RenderWarningsSidecar] —
- * the surfacing that turns a silent downloadable-font fallback into either a fatal per-preview error
- * or a `<png>.warnings.json` sidecar. Pure JVM: no Robolectric, no network.
+ * Unit tests for [FontResolutionDiagnostics], [FontFallbackException], and [RenderWarningsSidecar]
+ * — the surfacing that turns a silent downloadable-font fallback into either a fatal per-preview
+ * error or a `<png>.warnings.json` sidecar. Pure JVM: no Robolectric, no network.
  */
 class FontResolutionDiagnosticsTest {
 
@@ -36,7 +36,9 @@ class FontResolutionDiagnosticsTest {
 
   @After
   fun tearDown() {
-    savedProps.forEach { (k, v) -> if (v == null) System.clearProperty(k) else System.setProperty(k, v) }
+    savedProps.forEach { (k, v) ->
+      if (v == null) System.clearProperty(k) else System.setProperty(k, v)
+    }
     FontResolutionDiagnostics.resetForTest()
   }
 
@@ -64,7 +66,9 @@ class FontResolutionDiagnosticsTest {
     assertTrue(FontResolutionDiagnostics.currentFailureReason().contains("offline"))
 
     System.setProperty("composeai.fonts.offline", "false")
-    assertTrue(FontResolutionDiagnostics.currentFailureReason().contains("download from Google Fonts"))
+    assertTrue(
+      FontResolutionDiagnostics.currentFailureReason().contains("download from Google Fonts")
+    )
   }
 
   @Test
@@ -122,7 +126,12 @@ class FontResolutionDiagnosticsTest {
     val json =
       RenderWarningsSidecar.encode(
         listOf(
-          FontResolutionDiagnostics.FontFallback("Orbitron", 500, italic = false, reason = "offline")
+          FontResolutionDiagnostics.FontFallback(
+            "Orbitron",
+            500,
+            italic = false,
+            reason = "offline",
+          )
         )
       )
     assertTrue(json.contains("\"schema\":\"compose-preview-warnings/v1\""))

@@ -90,9 +90,9 @@ import org.robolectric.annotation.GraphicsMode
  * dp->px at that factor; rendering at another density re-lays-out the document.
  *
  * **What a run against `design-artifacts/remote-m3`'s `TitleCardRemote` shows** (kept here because
- * the numbers qualify the claim rather than merely confirm it). The embedded lane exports 2 `<text>`
- * over 10 layout nodes; the view lane exports 0 `<text>` and exactly 1 full-bleed `<image>` over 3
- * nodes — so the text half of the claim holds outright.
+ * the numbers qualify the claim rather than merely confirm it). The embedded lane exports 2
+ * `<text>` over 10 layout nodes; the view lane exports 0 `<text>` and exactly 1 full-bleed
+ * `<image>` over 3 nodes — so the text half of the claim holds outright.
  *
  * The other half is issue #2937 and is what the `drawnContent` assertion below pins. The card's
  * background is painted by one `drawWithContent { executeOperations(…) }` on the component's own
@@ -107,10 +107,10 @@ import org.robolectric.annotation.GraphicsMode
  * The report prints the canvas size next to the document size, so a regression in coverage stays
  * visible without re-deriving it.
  *
- * Runs against a **committed 1 KB fixture** by default, so the coverage actually executes on a plain
- * `check` — unlike the sibling render harnesses, which skip without `rc.embedded.input` because they
- * rasterize a whole catalog. Setting `rc.embedded.input` still wins, so the same assertions can be
- * swept over a staged catalog locally.
+ * Runs against a **committed 1 KB fixture** by default, so the coverage actually executes on a
+ * plain `check` — unlike the sibling render harnesses, which skip without `rc.embedded.input`
+ * because they rasterize a whole catalog. Setting `rc.embedded.input` still wins, so the same
+ * assertions can be swept over a staged catalog locally.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -122,12 +122,13 @@ class RcFigmaSvgExportTest {
   @Test
   fun embeddedPlayerExportsVectorContent() {
     val doc = document()
-    val lane = export("embedded", doc) { bytes ->
-      ExperimentalRemoteDocumentPlayer(
-        document = remember { RemoteDocument(bytes) },
-        modifier = Modifier.fillMaxSize(),
-      )
-    }
+    val lane =
+      export("embedded", doc) { bytes ->
+        ExperimentalRemoteDocumentPlayer(
+          document = remember { RemoteDocument(bytes) },
+          modifier = Modifier.fillMaxSize(),
+        )
+      }
     report(doc, lane)
 
     assert(lane.svg.isNotEmpty()) { "the embedded lane wrote no compose-figma.svg at all" }
@@ -139,7 +140,8 @@ class RcFigmaSvgExportTest {
       "the embedded lane's SVG is essentially just raster crops (${lane.images} <image> of " +
         "${lane.elements} elements):\n${lane.head()}"
     }
-    // Issue #2937: text alone was never enough. The document's *drawn* content — the card's fill and
+    // Issue #2937: text alone was never enough. The document's *drawn* content — the card's fill
+    // and
     // shape — has to reach the SVG too, or the export is a cropped fragment that loses everything
     // that isn't a string (a gradient sticker exported as invisible white text on transparent).
     assert(lane.paths + lane.rects + lane.images > 0) {
@@ -164,14 +166,15 @@ class RcFigmaSvgExportTest {
   @Test
   fun viewPlayerExportsOneFlatRaster() {
     val doc = document()
-    val lane = export("view", doc) { bytes ->
-      val document = remember { RemoteDocument(bytes) }
-      RemoteDocumentPlayer(
-        document = document.document,
-        documentWidth = doc.width,
-        documentHeight = doc.height,
-      )
-    }
+    val lane =
+      export("view", doc) { bytes ->
+        val document = remember { RemoteDocument(bytes) }
+        RemoteDocumentPlayer(
+          document = document.document,
+          documentWidth = doc.width,
+          documentHeight = doc.height,
+        )
+      }
     report(doc, lane)
 
     // Pinned tightly, because this lane is the *control*: the embedded lane's result is only
@@ -312,21 +315,20 @@ class RcFigmaSvgExportTest {
   }
 
   private fun report(doc: Doc, lane: Lane) {
-    val text =
-      buildString {
-        appendLine("document: ${doc.id}  (${doc.width}x${doc.height})")
-        appendLine("lane: ${lane.name}  [${lane.note}]")
-        appendLine("layout-inspector nodes: ${lane.layoutNodes}")
-        appendLine("semantics text nodes: ${lane.semanticsTexts}")
-        appendLine(
-          "svg elements=${lane.elements} text=${lane.texts} image=${lane.images} " +
-            "path=${lane.paths} rect=${lane.rects} g=${lane.groups} bytes=${lane.svg.length}"
-        )
-        val (w, h) = lane.canvas()
-        appendLine("svg canvas: ${w}x$h  (document is ${doc.width}x${doc.height})")
-        appendLine("--- svg head ---")
-        appendLine(lane.head())
-      }
+    val text = buildString {
+      appendLine("document: ${doc.id}  (${doc.width}x${doc.height})")
+      appendLine("lane: ${lane.name}  [${lane.note}]")
+      appendLine("layout-inspector nodes: ${lane.layoutNodes}")
+      appendLine("semantics text nodes: ${lane.semanticsTexts}")
+      appendLine(
+        "svg elements=${lane.elements} text=${lane.texts} image=${lane.images} " +
+          "path=${lane.paths} rect=${lane.rects} g=${lane.groups} bytes=${lane.svg.length}"
+      )
+      val (w, h) = lane.canvas()
+      appendLine("svg canvas: ${w}x$h  (document is ${doc.width}x${doc.height})")
+      appendLine("--- svg head ---")
+      appendLine(lane.head())
+    }
     System.getProperty(REPORT_PROPERTY)?.let { File("$it.${lane.name}.svg-report").writeText(text) }
     println(text)
   }
@@ -348,8 +350,8 @@ class RcFigmaSvgExportTest {
    * fixture — so this **always runs**, including on a plain `check` in CI.
    *
    * The sibling render harnesses legitimately skip without `rc.embedded.input`: they rasterize the
-   * whole catalog for the `rc-compare` page, which is inherently a bulk operation over artefacts too
-   * large to commit. This test isn't that. It pins one qualitative property of the export, one
+   * whole catalog for the `rc-compare` page, which is inherently a bulk operation over artefacts
+   * too large to commit. This test isn't that. It pins one qualitative property of the export, one
    * document is enough to pin it, and a document is 1 KB — so skipping without a staged catalog
    * would mean the regression coverage silently never runs, which is the same as not having it.
    *
@@ -374,10 +376,10 @@ class RcFigmaSvgExportTest {
   }
 
   /**
-   * `TitleCardRemote` as the `design-catalog-remote-m3` sample bakes it — the same document a staged
-   * run picks, captured from `design-artifacts/remote-m3` and committed at 1 KB. Its size is in the
-   * filename because a `.rc` carries its own layout but not the frame it was captured for, and the
-   * export needs the frame to compare the canvas against.
+   * `TitleCardRemote` as the `design-catalog-remote-m3` sample bakes it — the same document a
+   * staged run picks, captured from `design-artifacts/remote-m3` and committed at 1 KB. Its size is
+   * in the filename because a `.rc` carries its own layout but not the frame it was captured for,
+   * and the export needs the frame to compare the canvas against.
    */
   private fun fixtureDocument(): Doc {
     val bytes =

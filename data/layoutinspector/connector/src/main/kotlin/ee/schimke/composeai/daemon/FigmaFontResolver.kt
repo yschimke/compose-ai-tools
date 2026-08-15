@@ -131,31 +131,29 @@ class GoogleFontsWoff2Resolver(
     }
 
     /** Lowercase, non-alphanumerics → `-`, trimmed — matches the renderer's font-cache slug. */
-    fun slugify(name: String): String =
-      buildString {
-          var prevDash = true
-          for (ch in name) {
-            val lower = ch.lowercaseChar()
-            if (lower in 'a'..'z' || lower in '0'..'9') {
-              append(lower)
-              prevDash = false
-            } else if (!prevDash) {
-              append('-')
-              prevDash = true
-            }
-          }
+    fun slugify(name: String): String = buildString {
+      var prevDash = true
+      for (ch in name) {
+        val lower = ch.lowercaseChar()
+        if (lower in 'a'..'z' || lower in '0'..'9') {
+          append(lower)
+          prevDash = false
+        } else if (!prevDash) {
+          append('-')
+          prevDash = true
         }
-        .trim('-')
-        .ifEmpty { "font" }
+      }
+    }
+      .trim('-')
+      .ifEmpty { "font" }
   }
 }
 
-private fun defaultFontHttpGet(url: String, userAgent: String): ByteArray? =
-  runCatching {
-      val conn = (URL(url).openConnection() as HttpURLConnection)
-      conn.connectTimeout = 10_000
-      conn.readTimeout = 15_000
-      conn.setRequestProperty("User-Agent", userAgent)
-      conn.inputStream.use { if (conn.responseCode == 200) it.readBytes() else null }
-    }
-    .getOrNull()
+private fun defaultFontHttpGet(url: String, userAgent: String): ByteArray? = runCatching {
+  val conn = (URL(url).openConnection() as HttpURLConnection)
+  conn.connectTimeout = 10_000
+  conn.readTimeout = 15_000
+  conn.setRequestProperty("User-Agent", userAgent)
+  conn.inputStream.use { if (conn.responseCode == 200) it.readBytes() else null }
+}
+  .getOrNull()

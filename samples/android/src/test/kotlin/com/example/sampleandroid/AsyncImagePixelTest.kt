@@ -12,13 +12,13 @@ import org.junit.Test
  * `test` task via `renderBeforeUnitTests`) and asserts the two halves of the bug independently,
  * because they fail for different reasons and a fix could plausibly address only one:
  *
- *  1. **the pixels** — the artwork band carries several distinct colours, not one flat fill. Before
- *     the fix the whole capture was a single background colour.
- *  2. **the layout** — the caption below the image is still on screen. An unresolved
- *     `AsyncImagePainter` reports no intrinsic size, so `ContentScale.FillWidth` grew it to the
- *     parent's full height and pushed the caption out of frame. Asserting "the bottom strip is not
- *     the same colour as the middle" catches that collapse even if the image itself somehow
- *     resolved.
+ * 1. **the pixels** — the artwork band carries several distinct colours, not one flat fill. Before
+ *    the fix the whole capture was a single background colour.
+ * 2. **the layout** — the caption below the image is still on screen. An unresolved
+ *    `AsyncImagePainter` reports no intrinsic size, so `ContentScale.FillWidth` grew it to the
+ *    parent's full height and pushed the caption out of frame. Asserting "the bottom strip is not
+ *    the same colour as the middle" catches that collapse even if the image itself somehow
+ *    resolved.
  *
  * A third test covers the diagnostic half: a model that genuinely can't be fetched must draw its
  * request placeholder and leave a `<png>.warnings.json` naming the unresolved model.

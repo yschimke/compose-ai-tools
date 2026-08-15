@@ -27,9 +27,9 @@ import androidx.compose.ui.viewinterop.AndroidView
  * `?attr/sampleBodyTextAppearance`, an **app-owned** theme attribute, and this module is a library
  * — so there is no `<application android:theme>` for the preview host activity to inherit and the
  * attribute resolves against the platform default, which has never heard of it. Inflation throws
- * `UnsupportedOperationException: Failed to resolve attribute at index N`, that escapes composition,
- * and the render dies before writing anything. The design-artifacts export then drops the component
- * from the candidate join as "no static PNG".
+ * `UnsupportedOperationException: Failed to resolve attribute at index N`, that escapes
+ * composition, and the render dies before writing anything. The design-artifacts export then drops
+ * the component from the candidate join as "no static PNG".
  *
  * What makes it render is `composePreview { hostTheme.set("@style/Theme.SampleLibrary") }` in this
  * module's `build.gradle.kts`: the renderer's `PreviewHostTheme` resolves that name and applies the

@@ -48,8 +48,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
  */
 @Stable
 public fun interface RcImageLoader : RcImageSource {
-    /** A reactive holder for the [Drawable] of [bitmapId]; `null` until/unless one is available. */
-    public fun loadImage(bitmapId: Int): State<Drawable?>
+  /** A reactive holder for the [Drawable] of [bitmapId]; `null` until/unless one is available. */
+  public fun loadImage(bitmapId: Int): State<Drawable?>
 }
 
 /**
@@ -59,25 +59,25 @@ public fun interface RcImageLoader : RcImageSource {
  * cached per id so repeated requests (composable + canvas) share one instance.
  */
 internal class EmbeddedRcImageLoader(private val context: RemoteContext) : RcImageLoader {
-    private val cache = HashMap<Int, State<Drawable?>>()
+  private val cache = HashMap<Int, State<Drawable?>>()
 
-    override fun loadImage(bitmapId: Int): State<Drawable?> =
-        cache.getOrPut(bitmapId) {
-            // Trigger the lazy decode (a snapshot write, done outside any derived read), then
-            // expose
-            // the store-backed bitmap reactively as a Drawable.
-            resolveBitmap(context, bitmapId)
-            var lastBitmap: Bitmap? = null
-            var lastDrawable: Drawable? = null
-            derivedStateOf {
-                val bitmap = context.mRemoteComposeState.getFromId(bitmapId) as? Bitmap
-                if (bitmap !== lastBitmap) {
-                    lastBitmap = bitmap
-                    lastDrawable = bitmap?.let { BitmapDrawable(Resources.getSystem(), it) }
-                }
-                lastDrawable
-            }
+  override fun loadImage(bitmapId: Int): State<Drawable?> =
+    cache.getOrPut(bitmapId) {
+      // Trigger the lazy decode (a snapshot write, done outside any derived read), then
+      // expose
+      // the store-backed bitmap reactively as a Drawable.
+      resolveBitmap(context, bitmapId)
+      var lastBitmap: Bitmap? = null
+      var lastDrawable: Drawable? = null
+      derivedStateOf {
+        val bitmap = context.mRemoteComposeState.getFromId(bitmapId) as? Bitmap
+        if (bitmap !== lastBitmap) {
+          lastBitmap = bitmap
+          lastDrawable = bitmap?.let { BitmapDrawable(Resources.getSystem(), it) }
         }
+        lastDrawable
+      }
+    }
 }
 
 /**
@@ -85,6 +85,6 @@ internal class EmbeddedRcImageLoader(private val context: RemoteContext) : RcIma
  * override it — via [RcPlayer]'s `imageLoader` parameter — to plug in its own image library.
  */
 public val LocalRcImageLoader: ProvidableCompositionLocal<RcImageLoader> =
-    staticCompositionLocalOf {
-        error("No RcImageLoader provided")
-    }
+  staticCompositionLocalOf {
+    error("No RcImageLoader provided")
+  }

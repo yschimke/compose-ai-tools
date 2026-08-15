@@ -33,21 +33,21 @@ import androidx.compose.ui.Modifier
 @OptIn(ExperimentalRemotePlayerApi::class)
 @Composable
 public fun ExperimentalRemoteDocumentPlayer(
-    document: RemoteDocument,
-    modifier: Modifier = Modifier,
-    namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
-    imageLoader: RcImageLoader? = null,
-    isShaderValid: (shaderSource: String) -> Boolean = { true },
-    onAction: (actionId: Int, value: String?) -> Unit = { _, _ -> },
-    onNamedAction: (name: String, value: Any?, stateUpdater: StateUpdater) -> Unit = { _, _, _ -> },
+  document: RemoteDocument,
+  modifier: Modifier = Modifier,
+  namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
+  imageLoader: RcImageLoader? = null,
+  isShaderValid: (shaderSource: String) -> Boolean = { true },
+  onAction: (actionId: Int, value: String?) -> Unit = { _, _ -> },
+  onNamedAction: (name: String, value: Any?, stateUpdater: StateUpdater) -> Unit = { _, _, _ -> },
 ) {
-    RcPlayer(
-        document = document.document,
-        modifier = modifier,
-        namedColorOverrides = namedColorOverrides,
-        imageLoader = imageLoader,
-        isShaderValid = isShaderValid,
-        onAction = onAction,
-        onNamedAction = onNamedAction,
-    )
+  RcPlayer(
+    document = document.document,
+    modifier = modifier,
+    namedColorOverrides = namedColorOverrides,
+    imageLoader = imageLoader,
+    isShaderValid = isShaderValid,
+    onAction = onAction,
+    onNamedAction = onNamedAction,
+  )
 }

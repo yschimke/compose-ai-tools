@@ -15,9 +15,10 @@ import org.robolectric.annotation.Config
 
 /**
  * Verifies [PlaceholderFallbackResources] substitutes an obvious placeholder for a **missing**
- * resource id while passing **resolvable** framework resources straight through. This is the graceful
- * degradation that keeps a packed-bundle render from aborting with `Resources$NotFoundException` when
- * the app resource table is absent or stale (the live-server `wear-m3` failure mode).
+ * resource id while passing **resolvable** framework resources straight through. This is the
+ * graceful degradation that keeps a packed-bundle render from aborting with
+ * `Resources$NotFoundException` when the app resource table is absent or stale (the live-server
+ * `wear-m3` failure mode).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -77,9 +78,13 @@ class PlaceholderFallbackResourcesTest {
     // Regression for issue #2976: a density-aware caller (image loaders, RemoteViews / ImageView
     // inflation, `ResourcesCompat.getDrawableForDensity`) reaches `ResourcesImpl.loadDrawable`
     // without funnelling through the plain `getDrawable`, so guarding only the latter let the miss
-    // abort the whole render (`NotFoundException: Drawable …/splash_background with resource ID …`).
+    // abort the whole render (`NotFoundException: Drawable …/splash_background with resource ID
+    // …`).
     @Suppress("DEPRECATION")
-    assertNotNull("2-arg density variant must degrade to a placeholder", fallback.getDrawableForDensity(missingId, 160))
+    assertNotNull(
+      "2-arg density variant must degrade to a placeholder",
+      fallback.getDrawableForDensity(missingId, 160),
+    )
     assertNotNull(
       "3-arg density+theme variant must degrade to a placeholder",
       fallback.getDrawableForDensity(missingId, 160, null),
@@ -90,8 +95,10 @@ class PlaceholderFallbackResourcesTest {
   fun `fallback delegates through a wrapped Resources implementation before substituting`() {
     // The live daemon stacks resource wrappers: recorders, pseudolocale, and the placeholder
     // fallback can all sit between LocalContext and the raw Android table. The placeholder wrapper
-    // must call its wrapped Resources instance first, not `super`, or it bypasses an inner wrapper's
-    // successful drawable substitution and returns magenta for resources that were actually handled.
+    // must call its wrapped Resources instance first, not `super`, or it bypasses an inner
+    // wrapper's
+    // successful drawable substitution and returns magenta for resources that were actually
+    // handled.
     val handledColor = 0xFF123456.toInt()
     val handled =
       object : Resources(base.assets, base.displayMetrics, base.configuration) {

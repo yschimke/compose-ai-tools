@@ -10,9 +10,9 @@ import org.junit.Test
  * something installed while recording it.
  *
  * Every sticker is captured under the default theme, so the document carries the stock scheme as
- * named state (`USER:WearM3.<role>`). A theme is then a map of overrides onto those names, which the
- * player's `setNamedColorOverride` applies with no recomposition — which is what lets a *published*
- * catalog, whose bytecode was dropped at pack time, still be re-themed.
+ * named state (`USER:WearM3.<role>`). A theme is then a map of overrides onto those names, which
+ * the player's `setNamedColorOverride` applies with no recomposition — which is what lets a
+ * *published* catalog, whose bytecode was dropped at pack time, still be re-themed.
  *
  * The keys are therefore load-bearing in a way ordinary constants are not: they have to match the
  * names the document actually emits, or the override silently no-ops and the render comes back
@@ -58,7 +58,9 @@ class RemoteCatalogThemeTest {
     assertThat(remoteCatalogThemeColors("Google Sans Flex")).isEmpty()
   }
 
-  /** Coral and Teal are the single-role edits the sibling makes: primary + secondary, nothing else. */
+  /**
+   * Coral and Teal are the single-role edits the sibling makes: primary + secondary, nothing else.
+   */
   @Test
   fun `the single-role palettes move only primary and secondary`() {
     for (name in listOf("Coral", "Teal")) {
@@ -67,7 +69,9 @@ class RemoteCatalogThemeTest {
     }
   }
 
-  /** KotlinConf carries the fuller seed ramp — both families, containers and `on*` roles included. */
+  /**
+   * KotlinConf carries the fuller seed ramp — both families, containers and `on*` roles included.
+   */
   @Test
   fun `KotlinConf carries the full primary and secondary ramp`() {
     val keys = remoteCatalogThemeColors("KotlinConf").keys
@@ -89,8 +93,8 @@ class RemoteCatalogThemeTest {
 
   /**
    * Coral and Teal must not move the face: a palette that also changed the type would make a
-   * side-by-side against M3 a type *and* colour comparison. KotlinConf is the deliberate exception —
-   * its identity is a palette *and* a type pairing, matching the Wear sibling.
+   * side-by-side against M3 a type *and* colour comparison. KotlinConf is the deliberate exception
+   * — its identity is a palette *and* a type pairing, matching the Wear sibling.
    */
   @Test
   fun `only the type-moving themes name their own body face`() {

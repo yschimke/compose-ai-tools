@@ -927,7 +927,9 @@ internal object ComposePreviewTasks {
       // keep; see `PreviewExtension.fixedTime`.
       systemProperties.put(
         "composeai.daemon.perfettoTrace",
-        AndroidPreviewSupport.resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
+        AndroidPreviewSupport.resolveComposeAiTraceEnabled(project, extension).map {
+          it.toString()
+        },
       )
       systemProperties.put(
         "composeai.daemon.userClassDirs",
@@ -1908,8 +1910,8 @@ internal object ComposePreviewTasks {
             if (!sidecarFile.isFile) null
             else
               runCatching {
-                  json.decodeFromString(ErrorSidecar.serializer(), sidecarFile.readText())
-                }
+                json.decodeFromString(ErrorSidecar.serializer(), sidecarFile.readText())
+              }
                 .getOrNull()
           }
           .firstOrNull()

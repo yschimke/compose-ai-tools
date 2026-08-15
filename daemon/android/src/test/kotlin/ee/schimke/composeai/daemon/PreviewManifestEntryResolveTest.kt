@@ -36,7 +36,8 @@ class PreviewManifestEntryResolveTest {
   @Test
   fun `widthDp only wraps height - the TcpConnectPanel component shape`() {
     // `@Preview(showBackground = true, name = "TcpConnectPanel — idle", widthDp = 340)` — the exact
-    // annotation that collapsed. Width is pinned (340dp); height must wrap so the panel measures its
+    // annotation that collapsed. Width is pinned (340dp); height must wrap so the panel measures
+    // its
     // natural ~789 px instead of reflowing everything below the 320 px frame to zero.
     val raw =
       """{"id":"tcp","className":"X","functionName":"R",""" +
@@ -132,7 +133,8 @@ class PreviewManifestEntryResolveTest {
     // Tile / notification / Glance render helpers consume the concrete widthPx/heightPx; they must
     // not be handed a wrapped sandbox bound. Regression: an early version of the wrap fix used the
     // 400x800 sandbox as the fallback unconditionally, resizing every no-size notification preview
-    // (their baselines all changed). A pinned, no-size preview must keep the historical 320px frame.
+    // (their baselines all changed). A pinned, no-size preview must keep the historical 320px
+    // frame.
     val raw =
       """{"id":"notif","className":"X","functionName":"R",""" +
         """"params":{"kind":"NOTIFICATION","density":2.0}}"""

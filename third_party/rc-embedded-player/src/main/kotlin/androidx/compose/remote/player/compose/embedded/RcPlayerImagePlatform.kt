@@ -60,23 +60,23 @@ import androidx.compose.ui.graphics.asImageBitmap
  * are cheap. Returns null if there is no bitmap or metadata for the id.
  *
  * The draw path takes the [ImageBitmap] projections below; the framework [Bitmap] itself is still
- * needed by the Android-only surfaces that have no portable equivalent yet — the AGSL `BitmapShader`
- * ([RcPlayerShaders]), the reactive [rememberRemoteBitmapAsState], and the host [RcImageLoader] — so
- * this stays `internal` rather than private to the seam.
+ * needed by the Android-only surfaces that have no portable equivalent yet — the AGSL
+ * `BitmapShader` ([RcPlayerShaders]), the reactive [rememberRemoteBitmapAsState], and the host
+ * [RcImageLoader] — so this stays `internal` rather than private to the seam.
  */
 internal fun resolveBitmap(remoteContext: RemoteContext, id: Int): Bitmap? {
-    val cached = remoteContext.mRemoteComposeState.getFromId(id)
-    if (cached is Bitmap) return cached
-    // Not decoded yet: find the registered BitmapData and decode it now (apply = putObject +
-    // loadBitmap, which caches the decoded Bitmap under the id).
-    val data = remoteContext.mRemoteComposeState.getObject(id) as? BitmapData ?: return null
-    data.apply(remoteContext)
-    return remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap
+  val cached = remoteContext.mRemoteComposeState.getFromId(id)
+  if (cached is Bitmap) return cached
+  // Not decoded yet: find the registered BitmapData and decode it now (apply = putObject +
+  // loadBitmap, which caches the decoded Bitmap under the id).
+  val data = remoteContext.mRemoteComposeState.getObject(id) as? BitmapData ?: return null
+  data.apply(remoteContext)
+  return remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap
 }
 
 /** [resolveBitmap] projected to a Compose [ImageBitmap]; null when there is no bitmap. */
 internal fun resolveImage(remoteContext: RemoteContext, id: Int): ImageBitmap? =
-    resolveBitmap(remoteContext, id)?.asImageBitmap()
+  resolveBitmap(remoteContext, id)?.asImageBitmap()
 
 /**
  * Resolves a document image draw to an [ImageBitmap] through the pluggable [RcImageLoader] (on
@@ -85,17 +85,17 @@ internal fun resolveImage(remoteContext: RemoteContext, id: Int): ImageBitmap? =
  * it arrives.
  *
  * The canvas blit ops need pixels (for src/dst sub-rect blitting), so only a [BitmapDrawable] from
- * the loader is used directly; any other host [android.graphics.drawable.Drawable] falls back to the
- * embedded bitmap. (The composable Image layout, by contrast, can render any Drawable.)
+ * the loader is used directly; any other host [android.graphics.drawable.Drawable] falls back to
+ * the embedded bitmap. (The composable Image layout, by contrast, can render any Drawable.)
  */
 internal fun resolveCanvasImage(
-    graph: GraphContext?,
-    remoteContext: RemoteContext,
-    id: Int,
+  graph: GraphContext?,
+  remoteContext: RemoteContext,
+  id: Int,
 ): ImageBitmap? {
-    val loaded = (graph?.imageLoader as? RcImageLoader)?.loadImage(id)?.value
-    if (loaded is BitmapDrawable) return loaded.bitmap.asImageBitmap()
-    return resolveImage(remoteContext, id)
+  val loaded = (graph?.imageLoader as? RcImageLoader)?.loadImage(id)?.value
+  if (loaded is BitmapDrawable) return loaded.bitmap.asImageBitmap()
+  return resolveImage(remoteContext, id)
 }
 
 /**
@@ -103,29 +103,29 @@ internal fun resolveCanvasImage(
  * points a Compose `Canvas` at. Returns null when the target id has no bitmap (nothing to redirect
  * onto — the caller leaves the on-screen canvas in place).
  *
- * Decoded document bitmaps are immutable, so an immutable target is copied into a mutable
- * ARGB_8888 bitmap and stored back under the same id, so a later `DrawBitmap` of this id reads the
- * rendered content. When [initialize] is true the target is erased to [color] first
- * (`MODE_NO_INITIALIZE` clears it). This is the same framework `Bitmap` dance the op did inline;
- * only the `asImageBitmap()` view crosses back out.
+ * Decoded document bitmaps are immutable, so an immutable target is copied into a mutable ARGB_8888
+ * bitmap and stored back under the same id, so a later `DrawBitmap` of this id reads the rendered
+ * content. When [initialize] is true the target is erased to [color] first (`MODE_NO_INITIALIZE`
+ * clears it). This is the same framework `Bitmap` dance the op did inline; only the
+ * `asImageBitmap()` view crosses back out.
  */
 internal fun prepareOffscreenTarget(
-    remoteContext: RemoteContext,
-    bitmapId: Int,
-    color: Int,
-    initialize: Boolean,
+  remoteContext: RemoteContext,
+  bitmapId: Int,
+  color: Int,
+  initialize: Boolean,
 ): ImageBitmap? {
-    val stored = resolveBitmap(remoteContext, bitmapId) ?: return null
-    val target =
-        if (stored.isMutable) {
-            stored
-        } else {
-            stored.copy(Bitmap.Config.ARGB_8888, true).also {
-                remoteContext.mRemoteComposeState.cacheData(bitmapId, it)
-            }
-        }
-    if (initialize) {
-        target.eraseColor(color)
+  val stored = resolveBitmap(remoteContext, bitmapId) ?: return null
+  val target =
+    if (stored.isMutable) {
+      stored
+    } else {
+      stored.copy(Bitmap.Config.ARGB_8888, true).also {
+        remoteContext.mRemoteComposeState.cacheData(bitmapId, it)
+      }
     }
-    return target.asImageBitmap()
+  if (initialize) {
+    target.eraseColor(color)
+  }
+  return target.asImageBitmap()
 }

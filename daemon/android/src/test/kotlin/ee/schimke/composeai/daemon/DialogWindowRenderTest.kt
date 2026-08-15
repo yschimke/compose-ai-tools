@@ -33,8 +33,8 @@ class DialogWindowRenderTest {
 
   /**
    * The shape real component previews are declared in — no `widthDp` / `heightDp`, so both axes
-   * wrap. With the activity root selected the wrap crop measures the *empty* activity content, which
-   * is how these previews reached the published bundle as blank stickers.
+   * wrap. With the activity root selected the wrap crop measures the *empty* activity content,
+   * which is how these previews reached the published bundle as blank stickers.
    */
   @Test
   fun rendersAndExportsTheDialogWindowForAWrapContentPreview() {
@@ -134,10 +134,15 @@ class DialogWindowRenderTest {
       )
 
       // …and that the sticker is framed to the dialog subject, not to the activity window it floats
-      // in. Fixed-size @Preview annotations still preserve their Studio frame after the dialog crop;
+      // in. Fixed-size @Preview annotations still preserve their Studio frame after the dialog
+      // crop;
       // wrap-content previews crop to the fixture's 64 dp dialog at density 1.
       val size = ImageIO.read(png)
-      assertEquals("captured width must match the dialog preview frame", expectedFramePx, size.width)
+      assertEquals(
+        "captured width must match the dialog preview frame",
+        expectedFramePx,
+        size.width,
+      )
       assertEquals(
         "captured height must match the dialog preview frame",
         expectedFramePx,

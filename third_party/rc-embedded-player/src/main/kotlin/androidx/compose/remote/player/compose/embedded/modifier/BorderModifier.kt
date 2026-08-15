@@ -37,32 +37,32 @@ import androidx.compose.ui.platform.LocalDensity
 
 @get:Composable
 private val BorderModifierOperation.color: Color
-    get() {
-        val data = readDataReflection()
-        if (data.useColorId) {
-            return rememberRemoteColorAsState(data.colorId).value
-        }
-        return Color(data.r, data.g, data.b, data.a)
+  get() {
+    val data = readDataReflection()
+    if (data.useColorId) {
+      return rememberRemoteColorAsState(data.colorId).value
     }
+    return Color(data.r, data.g, data.b, data.a)
+  }
 
 @Composable
 internal fun Modifier.border(op: BorderModifierOperation): Modifier {
-    // mBorderWidth and mRoundedCorner may be NaN-encoded variable/expression ids (e.g. dp values
-    // recorded against the density variable), so resolve them reactively before scaling —
-    // remote-core
-    // applies the density behavior afterwards (see rawDimensionDp). The shape mirrors
-    // BorderModifierOperation.paint: a plain rectangle, a circle, or a rounded rectangle.
-    val density = LocalDensity.current.density
-    val behavior = LocalCoreDocument.current.densityBehavior
-    val data = op.readDataReflection()
-    val width = rememberRemoteFloatAsState(data.borderWidth).value
-    val corner = rememberRemoteFloatAsState(data.roundedCorner).value
-    val shape: Shape =
-        when (data.shapeType) {
-            ShapeType.RECTANGLE -> RectangleShape
-            ShapeType.CIRCLE -> CircleShape
-            else -> RoundedCornerShape(rawDimensionDp(corner, behavior, density))
-        }
+  // mBorderWidth and mRoundedCorner may be NaN-encoded variable/expression ids (e.g. dp values
+  // recorded against the density variable), so resolve them reactively before scaling —
+  // remote-core
+  // applies the density behavior afterwards (see rawDimensionDp). The shape mirrors
+  // BorderModifierOperation.paint: a plain rectangle, a circle, or a rounded rectangle.
+  val density = LocalDensity.current.density
+  val behavior = LocalCoreDocument.current.densityBehavior
+  val data = op.readDataReflection()
+  val width = rememberRemoteFloatAsState(data.borderWidth).value
+  val corner = rememberRemoteFloatAsState(data.roundedCorner).value
+  val shape: Shape =
+    when (data.shapeType) {
+      ShapeType.RECTANGLE -> RectangleShape
+      ShapeType.CIRCLE -> CircleShape
+      else -> RoundedCornerShape(rawDimensionDp(corner, behavior, density))
+    }
 
-    return this.border(rawDimensionDp(width, behavior, density), op.color, shape)
+  return this.border(rawDimensionDp(width, behavior, density), op.color, shape)
 }

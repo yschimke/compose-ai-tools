@@ -525,11 +525,11 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
         .header(HttpHeaders.Accept, "application/vnd.github+json")
         .build()
     return runCatching {
-        client.newCall(request).execute().use { response ->
-          if (!response.isSuccessful) return@use null
-          JSON.decodeFromString(GitHubRepositoryResponse.serializer(), response.body.string())
-        }
+      client.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) return@use null
+        JSON.decodeFromString(GitHubRepositoryResponse.serializer(), response.body.string())
       }
+    }
       .getOrNull()
   }
 

@@ -187,23 +187,23 @@ class ServeProjectHistory(
  */
 private fun gitCatFileBlob(repoRoot: File, sha: String): ByteArray? {
   return runCatching {
-      val process =
-        ProcessBuilder("git", "cat-file", "blob", sha)
-          .directory(repoRoot)
-          .redirectErrorStream(false)
-          .start()
-      val bytes = process.inputStream.use { it.readNBytes(MAX_CAT_FILE_BYTES + 1) }
-      // Drained so a failing `cat-file` can't block on a full stderr pipe and hit the timeout.
-      process.errorStream.use { it.readBytes() }
-      if (!process.waitFor(CAT_FILE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-        process.destroyForcibly()
-        null
-      } else if (process.exitValue() != 0 || bytes.isEmpty() || bytes.size > MAX_CAT_FILE_BYTES) {
-        null
-      } else {
-        bytes
-      }
+    val process =
+      ProcessBuilder("git", "cat-file", "blob", sha)
+        .directory(repoRoot)
+        .redirectErrorStream(false)
+        .start()
+    val bytes = process.inputStream.use { it.readNBytes(MAX_CAT_FILE_BYTES + 1) }
+    // Drained so a failing `cat-file` can't block on a full stderr pipe and hit the timeout.
+    process.errorStream.use { it.readBytes() }
+    if (!process.waitFor(CAT_FILE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+      process.destroyForcibly()
+      null
+    } else if (process.exitValue() != 0 || bytes.isEmpty() || bytes.size > MAX_CAT_FILE_BYTES) {
+      null
+    } else {
+      bytes
     }
+  }
     .getOrNull()
 }
 

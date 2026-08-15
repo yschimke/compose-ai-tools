@@ -326,12 +326,13 @@ class BundleRenderer(
     pb.redirectErrorStream(true)
     val proc = pb.start()
     val sb = StringBuilder()
-    val drain =
-      Thread { proc.inputStream.bufferedReader().forEachLine { sb.appendLine(it) } }
-        .apply {
-          isDaemon = true
-          start()
-        }
+    val drain = Thread {
+      proc.inputStream.bufferedReader().forEachLine { sb.appendLine(it) }
+    }
+      .apply {
+        isDaemon = true
+        start()
+      }
     val finished = proc.waitFor(RENDER_PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     if (!finished) proc.destroyForcibly()
     drain.join(DRAIN_FLUSH_MILLIS)

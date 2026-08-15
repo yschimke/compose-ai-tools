@@ -101,8 +101,8 @@ internal object BundleSigning {
     }
     val raw = bytes ?: return null
     return runCatching {
-        json.decodeFromString(Signatures.serializer(), raw.toString(Charsets.UTF_8))
-      }
+      json.decodeFromString(Signatures.serializer(), raw.toString(Charsets.UTF_8))
+    }
       .getOrNull()
   }
 
@@ -138,12 +138,12 @@ internal object BundleSigning {
   /** Verify [signatureBytes] over [digest] against an Ed25519 [publicKey]. */
   fun verifyEd25519(publicKey: PublicKey, digest: ByteArray, signatureBytes: ByteArray): Boolean =
     runCatching {
-        val sig = java.security.Signature.getInstance("Ed25519")
-        sig.initVerify(publicKey)
-        sig.update(digest)
-        sig.verify(signatureBytes)
-      }
-      .getOrDefault(false)
+      val sig = java.security.Signature.getInstance("Ed25519")
+      sig.initVerify(publicKey)
+      sig.update(digest)
+      sig.verify(signatureBytes)
+    }
+    .getOrDefault(false)
 
   /** A fresh Ed25519 keypair, base64-encoded: private = PKCS#8 DER, public = X.509 SPKI DER. */
   data class KeyPairB64(val privateKeyB64: String, val publicKeyB64: String)

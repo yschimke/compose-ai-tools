@@ -28,23 +28,19 @@ import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.rememberMutableRemoteInt
-import androidx.compose.remote.creation.compose.state.ri
-import androidx.compose.remote.creation.compose.state.selectIfGt
-import androidx.compose.remote.creation.compose.state.tween
-import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
-import ee.schimke.composeai.daemon.rememberOverridableRemoteDp
-import ee.schimke.composeai.daemon.rememberOverridableRemoteFloat
-import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 import androidx.compose.remote.creation.compose.state.rf
+import androidx.compose.remote.creation.compose.state.ri
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.remote.creation.compose.state.rsp
+import androidx.compose.remote.creation.compose.state.selectIfGt
+import androidx.compose.remote.creation.compose.state.tween
 import androidx.compose.remote.creation.compose.text.RemoteFontFamily
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.remote.material3.RemoteAppCard
@@ -63,6 +59,10 @@ import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.RemoteTextButton
 import androidx.wear.compose.remote.material3.RemoteTitleCard
 import androidx.wear.compose.remote.material3.buttonSizeModifier
+import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
+import ee.schimke.composeai.daemon.rememberOverridableRemoteDp
+import ee.schimke.composeai.daemon.rememberOverridableRemoteFloat
+import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 
 // ---------------------------------------------------------------------------
 // Remote Compose design-catalog sticker sheet.
@@ -93,8 +93,8 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
 @Suppress("unused") private val hostSignalAction = hostAction("catalogAction".rs, 1.rf)
 
 /**
- * A click counter that lives **inside the RemoteDocument** — Remote Compose's answer to
- * `remember { mutableStateOf(0) }`.
+ * A click counter that lives **inside the RemoteDocument** — Remote Compose's answer to `remember {
+ * mutableStateOf(0) }`.
  *
  * Returns the label to draw and the [Action] to hand a component's `onClick`. The action is a
  * [valueChange] that writes `clicks + 1` back into a [rememberMutableRemoteInt], so the player
@@ -481,12 +481,14 @@ fun TruncatedTextRemote() = RemoteSticker {
 // The text primitive carrying a *named* font family rather than one of the four generic
 // typefaces — the Remote parallel of the compose-m3 catalog's `text-branded` specimen, which says
 // `namedFontFamily("Orbitron")` for the same reason. This is the only sticker in any catalog whose
-// `.rc` document names a family, and it exists to keep that path rendered and diffed: a named family
+// `.rc` document names a family, and it exists to keep that path rendered and diffed: a named
+// family
 // reaches the player as a *text id*, not a name, so it is resolved by a code path no other document
 // exercises.
 //
 // `google:` namespaces the name as a Google Fonts family — `RemoteFontFamily.Named` carries an
-// opaque string, so the prefix is what tells both render lanes where the face comes from rather than
+// opaque string, so the prefix is what tells both render lanes where the face comes from rather
+// than
 // leaving them to guess from the name. Orbitron because the catalog already vendors its faces
 // (`role: "named"` in the fonts manifest), so the snapshot renderer resolves it locally while the
 // browser fetches the same family, and the parity page compares like with like.
@@ -502,14 +504,17 @@ fun BrandedTextRemote() = RemoteSticker {
 }
 
 // A *specimen sheet*: four branded families, each drawing its own name. One sticker, four different
-// typefaces — which is the point. A lane that cannot resolve a named family substitutes one face for
+// typefaces — which is the point. A lane that cannot resolve a named family substitutes one face
+// for
 // all four, and four identical-looking lines is a failure nobody has to measure to see; a single
 // branded line (`BrandedTextRemote` above) only looks "a bit off" unless you already know the face.
 //
 // The four are the ones the catalog vendors (`role: "named"` in the wasm app's fonts manifest), and
 // they are deliberately unalike — geometric, script, grotesk, monospace — so a substitution cannot
-// hide in a family resemblance. `google:` namespaces each name as a Google Fonts family: the browser
-// lane fetches it from the CSS API, the wasm lane reads the vendored copy, and the server-side lanes
+// hide in a family resemblance. `google:` namespaces each name as a Google Fonts family: the
+// browser
+// lane fetches it from the CSS API, the wasm lane reads the vendored copy, and the server-side
+// lanes
 // resolve it through the shared font cache.
 @CatalogRemoteLarge
 @Composable
@@ -567,7 +572,8 @@ fun VariableWeightRemote() = RemoteSticker {
 // The `wdth` axis of the same variable font — the axis a weight-only implementation misses.
 //
 // Weight is the axis every text stack can fake: a player that ignores `wght` but honours
-// `FontWeight` still lands near the right thickness, so a `wght` ramp alone cannot tell "applied the
+// `FontWeight` still lands near the right thickness, so a `wght` ramp alone cannot tell "applied
+// the
 // axis" from "synthesised a bold". Width can't be faked — nothing in a text API asks for a narrower
 // face — so three lines at `wdth` 25 / 100 / 151 either differ in set width or the axes were
 // dropped. Roboto Flex serves that whole range from the one file.

@@ -97,8 +97,9 @@ object RenderDataArtifactContextKeys {
   val FontScale: ExtensionContextKey<Float> = RenderArtifactContextKeys.FontScale
 
   /**
-   * Whether the render's device masks its frame to a circle (round Wear), so the `compose/figma-svg`
-   * export clips to the same circle. Delegates to [RenderArtifactContextKeys.RoundClip].
+   * Whether the render's device masks its frame to a circle (round Wear), so the
+   * `compose/figma-svg` export clips to the same circle. Delegates to
+   * [RenderArtifactContextKeys.RoundClip].
    */
   val RoundClip = RenderArtifactContextKeys.RoundClip
 

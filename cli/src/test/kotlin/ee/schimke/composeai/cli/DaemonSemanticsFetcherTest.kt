@@ -482,11 +482,11 @@ class DaemonSemanticsFetcherTest {
       // each individual gap inside it (issue #2948).
       if (staggerMs > 0) {
         Thread {
-            for (id in previewIds) {
-              Thread.sleep(staggerMs)
-              emitTerminal(id)
-            }
+          for (id in previewIds) {
+            Thread.sleep(staggerMs)
+            emitTerminal(id)
           }
+        }
           .apply { isDaemon = true }
           .start()
         return RenderNowResult(queued = previewIds, rejected = emptyList())

@@ -33,21 +33,21 @@ class SharedNativeRuntimeLockTest {
 
     repeat(threads) {
       Thread {
-          try {
-            start.await()
-            SharedNativeRuntimeLoader.withExclusiveCacheLock(lockPath) {
-              peak.accumulateAndGet(concurrent.incrementAndGet(), ::maxOf)
-              // Long enough that an overlapping acquisition would land inside this window.
-              Thread.sleep(25)
-              concurrent.decrementAndGet()
-              completed.incrementAndGet()
-            }
-          } catch (t: Throwable) {
-            failure.compareAndSet(null, t)
-          } finally {
-            done.countDown()
+        try {
+          start.await()
+          SharedNativeRuntimeLoader.withExclusiveCacheLock(lockPath) {
+            peak.accumulateAndGet(concurrent.incrementAndGet(), ::maxOf)
+            // Long enough that an overlapping acquisition would land inside this window.
+            Thread.sleep(25)
+            concurrent.decrementAndGet()
+            completed.incrementAndGet()
           }
+        } catch (t: Throwable) {
+          failure.compareAndSet(null, t)
+        } finally {
+          done.countDown()
         }
+      }
         .apply { isDaemon = true }
         .start()
     }

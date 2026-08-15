@@ -62,9 +62,9 @@ class SandboxProcessPool(
   private val workers = arrayOfNulls<Worker>(workerCount)
 
   /**
-   * Bound lazily on the first [bootWorker] so a host that never starts its pool (`sandboxCount = 1`,
-   * or a host constructed but never started) opens no socket at all. Loopback-bound: workers are
-   * always local children.
+   * Bound lazily on the first [bootWorker] so a host that never starts its pool (`sandboxCount =
+   * 1`, or a host constructed but never started) opens no socket at all. Loopback-bound: workers
+   * are always local children.
    */
   private var serverSocket: ServerSocket? = null
 
@@ -72,13 +72,12 @@ class SandboxProcessPool(
 
   @Volatile private var closed = false
 
-  private fun ensureServerSocket(): ServerSocket =
-    serverLock.withLock {
-      serverSocket
-        ?: ServerSocket(0, workerCount + 4, InetAddress.getLoopbackAddress()).also {
-          serverSocket = it
-        }
-    }
+  private fun ensureServerSocket(): ServerSocket = serverLock.withLock {
+    serverSocket
+      ?: ServerSocket(0, workerCount + 4, InetAddress.getLoopbackAddress()).also {
+        serverSocket = it
+      }
+  }
 
   /**
    * Spawns worker [index] and blocks until it reports [WorkerResponse.Ready] (its Robolectric
@@ -87,7 +86,9 @@ class SandboxProcessPool(
    * aborts the host (eager boot), exactly as the in-JVM path did.
    */
   fun bootWorker(index: Int) {
-    require(index in 0 until workerCount) { "worker index $index out of range 0..${workerCount - 1}" }
+    require(index in 0 until workerCount) {
+      "worker index $index out of range 0..${workerCount - 1}"
+    }
     check(!closed) { "SandboxProcessPool is closed" }
     val server = ensureServerSocket()
     val process = launchWorkerProcess(index, server.localPort)
@@ -142,9 +143,9 @@ class SandboxProcessPool(
   fun workerPids(): List<Long?> = workers.map { if (it?.dead == false) it.pid else null }
 
   /**
-   * Dispatches [request] to worker [index] and blocks for its result. Re-throws a worker-side render
-   * failure as a [RemoteSandboxRenderException] carrying the worker's flattened cause chain, so
-   * `JsonRpcServer`'s existing Throwable path turns it into the same typed `renderFailed` an
+   * Dispatches [request] to worker [index] and blocks for its result. Re-throws a worker-side
+   * render failure as a [RemoteSandboxRenderException] carrying the worker's flattened cause chain,
+   * so `JsonRpcServer`'s existing Throwable path turns it into the same typed `renderFailed` an
    * in-process failure produces.
    */
   fun submit(index: Int, request: RenderRequest.Render, timeoutMs: Long): RenderResult {
@@ -177,7 +178,9 @@ class SandboxProcessPool(
     for (worker in workers) {
       if (worker == null || worker.dead) continue
       try {
-        worker.lock.withLock { exchange(worker, WorkerRequest.Swap, readTimeoutMs = SWAP_TIMEOUT_MS) }
+        worker.lock.withLock {
+          exchange(worker, WorkerRequest.Swap, readTimeoutMs = SWAP_TIMEOUT_MS)
+        }
       } catch (t: Throwable) {
         markDead(worker, "classloader swap failed", t)
       }
@@ -269,11 +272,14 @@ class SandboxProcessPool(
   }
 
   private fun pumpToStderr(stream: java.io.InputStream, tag: String) {
-    Thread({
-        stream.bufferedReader().useLines { lines ->
-          for (line in lines) System.err.println("[$tag] $line")
-        }
-      }, "compose-ai-$tag-log")
+    Thread(
+        {
+          stream.bufferedReader().useLines { lines ->
+            for (line in lines) System.err.println("[$tag] $line")
+          }
+        },
+        "compose-ai-$tag-log",
+      )
       .apply {
         isDaemon = true
         start()
@@ -306,8 +312,8 @@ class SandboxProcessPool(
    *
    * Overridden per worker: `sandboxCount` is forced to 1 (a worker JVM hosts exactly one sandbox —
    * the whole point), background boot is off (the worker's own `start()` must block until its
-   * sandbox is up, because that is what the ready handshake means), and the boot-time warm render is
-   * left to the parent, which already warms each slot as it comes up.
+   * sandbox is up, because that is what the ready handshake means), and the boot-time warm render
+   * is left to the parent, which already warms each slot as it comes up.
    */
   private fun workerSysprops(index: Int, port: Int): Map<String, String> {
     val forwarded = linkedMapOf<String, String>()

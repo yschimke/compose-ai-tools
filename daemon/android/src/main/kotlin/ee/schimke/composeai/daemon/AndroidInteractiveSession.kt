@@ -66,10 +66,10 @@ internal constructor(
    */
   internal val streamId: String,
   /**
-   * The sandbox slot this session was acquired against — slot 0, the in-process sandbox, since
-   * #3072. Carried explicitly rather than re-derived because the host's
-   * routing code (`acquireInteractiveSession`) already chose it; passing it in keeps the session
-   * itself slot-policy-agnostic so v4 (multi-target Android) can reuse this class unchanged.
+   * The sandbox slot this session was acquired against — slot 0, the in-process sandbox,
+   * since #3072. Carried explicitly rather than re-derived because the host's routing code
+   * (`acquireInteractiveSession`) already chose it; passing it in keeps the session itself
+   * slot-policy-agnostic so v4 (multi-target Android) can reuse this class unchanged.
    */
   private val slot: SandboxSlot,
   /**
@@ -298,11 +298,11 @@ internal constructor(
       val reason =
         replyUnresolvedReasonJson?.get()?.let { json ->
           runCatching {
-              UNRESOLVED_REASON_JSON.decodeFromString(
-                SemanticsTargetUnresolvedReason.serializer(),
-                json,
-              )
-            }
+            UNRESOLVED_REASON_JSON.decodeFromString(
+              SemanticsTargetUnresolvedReason.serializer(),
+              json,
+            )
+          }
             .getOrNull()
         }
       if (reason != null) throw SemanticsTargetUnresolvedException(reason, message)

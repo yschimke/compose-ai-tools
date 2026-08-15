@@ -90,9 +90,9 @@ private val grayscalePaint =
 private fun Modifier.ambientGray(ambientMode: AmbientMode): Modifier =
   if (ambientMode is AmbientMode.Ambient) {
     graphicsLayer {
-        scaleX = 0.9f
-        scaleY = 0.9f
-      }
+      scaleX = 0.9f
+      scaleY = 0.9f
+    }
       .drawWithContent {
         drawIntoCanvas { canvas ->
           canvas.withSaveLayer(size.toRect(), grayscalePaint) { drawContent() }

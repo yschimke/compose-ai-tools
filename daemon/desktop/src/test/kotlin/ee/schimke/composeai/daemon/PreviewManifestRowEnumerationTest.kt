@@ -75,11 +75,10 @@ class PreviewManifestRowEnumerationTest {
    */
   @Test
   fun `a declared provider that does not exist fails loudly`() {
-    val failure =
-      runCatching {
-          router(entry("Screen", "com.example.NotOnTheClasspath")).previewParameterRows("Screen")
-        }
-        .exceptionOrNull()
+    val failure = runCatching {
+      router(entry("Screen", "com.example.NotOnTheClasspath")).previewParameterRows("Screen")
+    }
+      .exceptionOrNull()
     assertNotNull("a missing provider class must not be swallowed as 'no rows'", failure)
   }
 
@@ -135,8 +134,10 @@ class PreviewManifestRowEnumerationTest {
 
   @Test
   fun `an unknown previewId is rejected as an argument error`() {
-    val failure =
-      runCatching { router(entry("Screen", null)).previewParameterRows("Nope") }.exceptionOrNull()
+    val failure = runCatching {
+      router(entry("Screen", null)).previewParameterRows("Nope")
+    }
+      .exceptionOrNull()
     assertTrue(
       "expected IllegalArgumentException naming the id, got $failure",
       failure is IllegalArgumentException && failure.message?.contains("Nope") == true,

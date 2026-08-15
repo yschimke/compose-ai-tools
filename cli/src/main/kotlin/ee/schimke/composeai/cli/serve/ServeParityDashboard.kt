@@ -177,61 +177,60 @@ object ServeParityDashboard {
     val codeEvents = activity?.code?.events.orEmpty()
     val figmaLane = activity?.figma
 
-    val feed =
-      buildList {
-          for (event in codeEvents) {
-            val ids = event.previewIds.filter { it in live }
-            add(
-              FeedEntry(
-                lane = Lane.CODE,
-                at = event.at,
-                title = event.subject,
-                author = event.author,
-                detail = "commit ${event.sha.take(7)}",
-                href = ServeParityActivityStore.commitUrl(activity?.code?.repo, event.sha),
-                hrefLabel = "view commit",
-                previewIds = ids,
-                components = displayComponents(event.components, ids, previewToComponent),
-              )
-            )
-          }
-          for (version in figmaLane?.versions.orEmpty()) {
-            add(
-              FeedEntry(
-                lane = Lane.FIGMA_VERSION,
-                at = version.at,
-                title = version.label?.takeIf { it.isNotBlank() } ?: "Autosaved version",
-                author = version.author,
-                detail = version.description,
-                href = ServeParityActivityStore.fileUrl(figmaLane?.fileKey),
-                hrefLabel = "open file",
-              )
-            )
-          }
-          for (comment in figmaLane?.comments.orEmpty()) {
-            val ids = comment.previewIds.filter { it in live }
-            add(
-              FeedEntry(
-                lane = Lane.FIGMA_COMMENT,
-                at = comment.at,
-                title = comment.message,
-                author = comment.author,
-                detail = comment.nodeId?.let { "node $it" },
-                href =
-                  ServeParityActivityStore.nodeUrl(figmaLane?.fileKey, comment.nodeId)
-                    ?: ServeParityActivityStore.fileUrl(figmaLane?.fileKey),
-                hrefLabel = if (comment.nodeId != null) "open node" else "open file",
-                previewIds = ids,
-                components = displayComponents(comment.components, ids, previewToComponent),
-                resolved = comment.resolved,
-              )
-            )
-          }
-        }
-        // Ties broken by lane so a code commit and a Figma save stamped to the same minute keep a
-        // stable order across rebuilds — the fixture goldens depend on it.
-        .sortedWith(compareByDescending<FeedEntry> { it.at }.thenBy { it.lane.ordinal })
-        .take(FEED_CAP)
+    val feed = buildList {
+      for (event in codeEvents) {
+        val ids = event.previewIds.filter { it in live }
+        add(
+          FeedEntry(
+            lane = Lane.CODE,
+            at = event.at,
+            title = event.subject,
+            author = event.author,
+            detail = "commit ${event.sha.take(7)}",
+            href = ServeParityActivityStore.commitUrl(activity?.code?.repo, event.sha),
+            hrefLabel = "view commit",
+            previewIds = ids,
+            components = displayComponents(event.components, ids, previewToComponent),
+          )
+        )
+      }
+      for (version in figmaLane?.versions.orEmpty()) {
+        add(
+          FeedEntry(
+            lane = Lane.FIGMA_VERSION,
+            at = version.at,
+            title = version.label?.takeIf { it.isNotBlank() } ?: "Autosaved version",
+            author = version.author,
+            detail = version.description,
+            href = ServeParityActivityStore.fileUrl(figmaLane?.fileKey),
+            hrefLabel = "open file",
+          )
+        )
+      }
+      for (comment in figmaLane?.comments.orEmpty()) {
+        val ids = comment.previewIds.filter { it in live }
+        add(
+          FeedEntry(
+            lane = Lane.FIGMA_COMMENT,
+            at = comment.at,
+            title = comment.message,
+            author = comment.author,
+            detail = comment.nodeId?.let { "node $it" },
+            href =
+              ServeParityActivityStore.nodeUrl(figmaLane?.fileKey, comment.nodeId)
+                ?: ServeParityActivityStore.fileUrl(figmaLane?.fileKey),
+            hrefLabel = if (comment.nodeId != null) "open node" else "open file",
+            previewIds = ids,
+            components = displayComponents(comment.components, ids, previewToComponent),
+            resolved = comment.resolved,
+          )
+        )
+      }
+    }
+      // Ties broken by lane so a code commit and a Figma save stamped to the same minute keep a
+      // stable order across rebuilds — the fixture goldens depend on it.
+      .sortedWith(compareByDescending<FeedEntry> { it.at }.thenBy { it.lane.ordinal })
+      .take(FEED_CAP)
 
     return Dashboard(
       coverage = coverage,

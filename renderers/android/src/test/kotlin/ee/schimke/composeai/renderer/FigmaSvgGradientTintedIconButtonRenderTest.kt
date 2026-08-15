@@ -99,7 +99,8 @@ class FigmaSvgGradientTintedIconButtonRenderTest {
         ?: Regex("""<rect[^>]*stroke="url\(#[^"]+\)"[^>]*\bwidth="(\d+)"""").find(svg)
     assertTrue("a gradient-stroked ring must be emitted:\n$svg", ring != null)
     val width = ring!!.groupValues[1].toInt()
-    // …ringing the inner 63px control (minus a 1px stroke inset each side ≈ 61), NOT the padded 85px
+    // …ringing the inner 63px control (minus a 1px stroke inset each side ≈ 61), NOT the padded
+    // 85px
     // root (which would draw the ring ~83px wide).
     assertTrue(
       "the ring must ring the inner control (~61px), not the padded root (~83px), got $width:\n$svg",

@@ -41,24 +41,23 @@ import androidx.compose.ui.unit.constrainWidth
  */
 @Composable
 internal fun RcPlayerFitBoxLayout(layout: FitBoxLayout, modifier: Modifier) {
-    Layout(content = { RcPlayerChildren(layout) }, modifier = modifier) { measurables, constraints
-        ->
-        val placeables = measurables.map { it.measure(Constraints()) }
-        val maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
-        val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
+  Layout(content = { RcPlayerChildren(layout) }, modifier = modifier) { measurables, constraints ->
+    val placeables = measurables.map { it.measure(Constraints()) }
+    val maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
+    val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
 
-        var chosen = placeables.indexOfFirst { it.width <= maxWidth && it.height <= maxHeight }
-        if (chosen < 0) chosen = if (placeables.isEmpty()) -1 else 0
+    var chosen = placeables.indexOfFirst { it.width <= maxWidth && it.height <= maxHeight }
+    if (chosen < 0) chosen = if (placeables.isEmpty()) -1 else 0
 
-        val picked = placeables.getOrNull(chosen)
-        val width = constraints.constrainWidth(picked?.width ?: 0)
-        val height = constraints.constrainHeight(picked?.height ?: 0)
-        layout(width, height) {
-            if (picked != null) {
-                val x = ((width - picked.width) / 2).coerceAtLeast(0)
-                val y = ((height - picked.height) / 2).coerceAtLeast(0)
-                picked.placeRelative(x, y)
-            }
-        }
+    val picked = placeables.getOrNull(chosen)
+    val width = constraints.constrainWidth(picked?.width ?: 0)
+    val height = constraints.constrainHeight(picked?.height ?: 0)
+    layout(width, height) {
+      if (picked != null) {
+        val x = ((width - picked.width) / 2).coerceAtLeast(0)
+        val y = ((height - picked.height) / 2).coerceAtLeast(0)
+        picked.placeRelative(x, y)
+      }
     }
+  }
 }

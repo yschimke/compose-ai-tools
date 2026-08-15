@@ -114,7 +114,8 @@ class RcLayoutTreeTest {
 
     assertEquals(
       RcHostAction(77),
-      assertIs<RcLinkedNode.Operation>(canvas.modifiers.clicks.single().children.single()).operation,
+      assertIs<RcLinkedNode.Operation>(canvas.modifiers.clicks.single().children.single())
+        .operation,
     )
   }
 

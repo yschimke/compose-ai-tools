@@ -78,16 +78,16 @@ object FontSubsetter {
     // Cyrillic, CJK, …) render one glyph per code point with no reordering, so stripping is safe.
     if (requiresShaping(codePoints)) return null
     return runCatching {
-        val ttf = TTFParser(true).parse(RandomAccessReadBuffer(fontBytes))
-        // TTFSubsetter rebuilds `glyf`/`loca`; a CFF/PostScript-outline `.otf` has no `glyf`, so
-        // don't try — return null and let the caller embed the full face instead.
-        if (ttf.tableMap["glyf"] == null) return@runCatching null
-        val subsetter = TTFSubsetter(ttf)
-        subsetter.addAll(codePoints)
-        val subset = ByteArrayOutputStream().also { subsetter.writeToStream(it) }.toByteArray()
-        val stripped = stripTables(repairMalformedOs2Table(subset), DROPPABLE)
-        stripped.takeIf { it.size < fontBytes.size }
-      }
+      val ttf = TTFParser(true).parse(RandomAccessReadBuffer(fontBytes))
+      // TTFSubsetter rebuilds `glyf`/`loca`; a CFF/PostScript-outline `.otf` has no `glyf`, so
+      // don't try — return null and let the caller embed the full face instead.
+      if (ttf.tableMap["glyf"] == null) return@runCatching null
+      val subsetter = TTFSubsetter(ttf)
+      subsetter.addAll(codePoints)
+      val subset = ByteArrayOutputStream().also { subsetter.writeToStream(it) }.toByteArray()
+      val stripped = stripTables(repairMalformedOs2Table(subset), DROPPABLE)
+      stripped.takeIf { it.size < fontBytes.size }
+    }
       .getOrNull()
   }
 

@@ -120,9 +120,10 @@ class SubspaceSceneWriterTest {
     assertThat(sceneFile.exists()).isTrue()
 
     // The emitted scene parses back, and each texture path resolves to a written PNG in the dir.
-    val decoded =
-      Json { ignoreUnknownKeys = true }
-        .decodeFromString(SpatialScene.serializer(), sceneFile.readText())
+    val decoded = Json {
+      ignoreUnknownKeys = true
+    }
+      .decodeFromString(SpatialScene.serializer(), sceneFile.readText())
     assertThat(decoded.panels.map { it.id }).containsExactly("top", "bottom")
     for (panel in decoded.panels) {
       assertThat(File(dir, panel.texture).exists()).isTrue()

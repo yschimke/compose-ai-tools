@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,15 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalScrollCaptureInProgress
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalScrollCaptureInProgress
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,12 +34,11 @@ import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CardDefaults
-import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
@@ -49,6 +48,7 @@ import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
+import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
@@ -335,8 +335,8 @@ fun ActivityListGifPreview() {
  * Regression fixture for the Confetti `HomeListViewLongPreview` shape: LONG and GIF from ONE
  * annotation, no `reduceMotion` configuration. Each medium gets its one sensible setting
  * automatically — the LONG stitch always flattens `TransformingLazyColumn` motion (mid-scale items
- * baked into slices produce ghost/duplicate card bands the stitcher cannot collapse), while the
- * GIF always keeps the morph animation its frames can genuinely express. Confetti used to force
+ * baked into slices produce ghost/duplicate card bands the stitcher cannot collapse), while the GIF
+ * always keeps the morph animation its frames can genuinely express. Confetti used to force
  * `reduceMotion = false` to keep its GIF lively and shipped ghost-banded LONG stitches for months.
  * Guarded by `LongScrollPreviewPixelTest`.
  */
@@ -391,7 +391,11 @@ private fun SettingsMainScreen(
       }
     },
   ) { contentPadding ->
-    TransformingLazyColumn(contentPadding = contentPadding, state = listState, modifier = modifier) {
+    TransformingLazyColumn(
+      contentPadding = contentPadding,
+      state = listState,
+      modifier = modifier,
+    ) {
       item {
         ListHeader(
           modifier =

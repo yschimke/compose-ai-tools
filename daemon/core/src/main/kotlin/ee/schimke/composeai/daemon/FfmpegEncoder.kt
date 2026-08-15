@@ -117,27 +117,26 @@ object FfmpegEncoder {
     // merged into stdout via `redirectErrorStream`); not draining causes the encoder to stall on
     // a small clip after a few hundred KB of output.
     val log = StringBuilder()
-    val drainThread =
-      Thread {
-          try {
-            proc.inputStream.bufferedReader().useLines { lines ->
-              lines.forEach { line ->
-                synchronized(log) {
-                  log.appendLine(line)
-                  if (log.length > MAX_LOG_BYTES) {
-                    log.delete(0, log.length - MAX_LOG_BYTES)
-                  }
-                }
+    val drainThread = Thread {
+      try {
+        proc.inputStream.bufferedReader().useLines { lines ->
+          lines.forEach { line ->
+            synchronized(log) {
+              log.appendLine(line)
+              if (log.length > MAX_LOG_BYTES) {
+                log.delete(0, log.length - MAX_LOG_BYTES)
               }
             }
-          } catch (_: Throwable) {
-            // Process exited; drain done.
           }
         }
-        .apply {
-          isDaemon = true
-          start()
-        }
+      } catch (_: Throwable) {
+        // Process exited; drain done.
+      }
+    }
+      .apply {
+        isDaemon = true
+        start()
+      }
 
     val finished = proc.waitFor(ENCODE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     if (!finished) {

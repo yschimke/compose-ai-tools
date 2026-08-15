@@ -49,85 +49,84 @@ import androidx.compose.ui.unit.constrainWidth
  */
 @Composable
 internal fun RcPlayerCollapsible(
-    layout: LayoutComponent,
-    modifier: Modifier,
-    vertical: Boolean,
-    spacedBy: Float,
+  layout: LayoutComponent,
+  modifier: Modifier,
+  vertical: Boolean,
+  spacedBy: Float,
 ) {
-    val orientation = if (vertical) CollapsiblePriority.VERTICAL else CollapsiblePriority.HORIZONTAL
-    val behavior = LocalCoreDocument.current.densityBehavior
-    val density = LocalDensity.current.density
+  val orientation = if (vertical) CollapsiblePriority.VERTICAL else CollapsiblePriority.HORIZONTAL
+  val behavior = LocalCoreDocument.current.densityBehavior
+  val density = LocalDensity.current.density
 
-    Layout(content = { RcPlayerChildren(layout) { Modifier } }, modifier = modifier) {
-        measurables,
-        constraints ->
-        // spacedBy may be a NaN-encoded variable/expression (dp recorded against the density
-        // variable), resolved by the caller; apply the density behavior here like the plain
-        // Row/Column arrangements do.
-        val spacingPx =
-            if (spacedBy > 0f) rawDimensionDp(spacedBy, behavior, density).roundToPx() else 0
-        // Measure each child at its natural preferred size on the main axis.
-        val childConstraints =
-            if (vertical) constraints.copy(minHeight = 0) else constraints.copy(minWidth = 0)
-        val placeables = measurables.map { it.measure(childConstraints) }
-        val n = placeables.size
+  Layout(content = { RcPlayerChildren(layout) { Modifier } }, modifier = modifier) {
+    measurables,
+    constraints ->
+    // spacedBy may be a NaN-encoded variable/expression (dp recorded against the density
+    // variable), resolved by the caller; apply the density behavior here like the plain
+    // Row/Column arrangements do.
+    val spacingPx =
+      if (spacedBy > 0f) rawDimensionDp(spacedBy, behavior, density).roundToPx() else 0
+    // Measure each child at its natural preferred size on the main axis.
+    val childConstraints =
+      if (vertical) constraints.copy(minHeight = 0) else constraints.copy(minWidth = 0)
+    val placeables = measurables.map { it.measure(childConstraints) }
+    val n = placeables.size
 
-        fun mainSize(p: Placeable) = if (vertical) p.height else p.width
-        fun crossSize(p: Placeable) = if (vertical) p.width else p.height
+    fun mainSize(p: Placeable) = if (vertical) p.height else p.width
+    fun crossSize(p: Placeable) = if (vertical) p.width else p.height
 
-        val available =
-            if (vertical) {
-                if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
-            } else {
-                if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
-            }
+    val available =
+      if (vertical) {
+        if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
+      } else {
+        if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
+      }
 
-        // Core's collapse walk (CollapsibleRowLayout.computeVisibleChildren), replayed against
-        // the Compose-measured sizes: visit children highest-priority-first (core's
-        // sortWithPriorities), keep each that fits, and once one overflows collapse it and
-        // everything after it in priority order. Like core, the walk does not include spacing in
-        // the budget.
-        val children = layout.childrenComponents
-        val indexOfChild = mutableObjectIntMapOf<Component>()
-        children.forEachIndexed { index, child -> indexOfChild[child] = index }
-        val kept = BooleanArray(n)
-        var used = 0
-        var overflow = false
-        for (child in sortWithPriorities(children, orientation)) {
-            val index = indexOfChild.getOrDefault(child, -1)
-            if (index == -1 || index >= n) continue
-            val childSize = mainSize(placeables[index])
-            if (overflow || used + childSize > available) {
-                overflow = true
-                continue
-            }
-            used += childSize
-            kept[index] = true
-        }
-
-        var mainExtent = 0
-        var crossExtent = 0
-        var visible = 0
-        for (i in 0 until n) {
-            if (!kept[i]) continue
-            mainExtent += mainSize(placeables[i])
-            crossExtent = maxOf(crossExtent, crossSize(placeables[i]))
-            visible++
-        }
-        if (visible > 1) mainExtent += spacingPx * (visible - 1)
-        mainExtent = mainExtent.coerceAtMost(available)
-
-        val width = if (vertical) crossExtent else mainExtent
-        val height = if (vertical) mainExtent else crossExtent
-
-        layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
-            var pos = 0
-            for (i in 0 until n) {
-                if (!kept[i]) continue
-                if (vertical) placeables[i].placeRelative(0, pos)
-                else placeables[i].placeRelative(pos, 0)
-                pos += mainSize(placeables[i]) + spacingPx
-            }
-        }
+    // Core's collapse walk (CollapsibleRowLayout.computeVisibleChildren), replayed against
+    // the Compose-measured sizes: visit children highest-priority-first (core's
+    // sortWithPriorities), keep each that fits, and once one overflows collapse it and
+    // everything after it in priority order. Like core, the walk does not include spacing in
+    // the budget.
+    val children = layout.childrenComponents
+    val indexOfChild = mutableObjectIntMapOf<Component>()
+    children.forEachIndexed { index, child -> indexOfChild[child] = index }
+    val kept = BooleanArray(n)
+    var used = 0
+    var overflow = false
+    for (child in sortWithPriorities(children, orientation)) {
+      val index = indexOfChild.getOrDefault(child, -1)
+      if (index == -1 || index >= n) continue
+      val childSize = mainSize(placeables[index])
+      if (overflow || used + childSize > available) {
+        overflow = true
+        continue
+      }
+      used += childSize
+      kept[index] = true
     }
+
+    var mainExtent = 0
+    var crossExtent = 0
+    var visible = 0
+    for (i in 0 until n) {
+      if (!kept[i]) continue
+      mainExtent += mainSize(placeables[i])
+      crossExtent = maxOf(crossExtent, crossSize(placeables[i]))
+      visible++
+    }
+    if (visible > 1) mainExtent += spacingPx * (visible - 1)
+    mainExtent = mainExtent.coerceAtMost(available)
+
+    val width = if (vertical) crossExtent else mainExtent
+    val height = if (vertical) mainExtent else crossExtent
+
+    layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
+      var pos = 0
+      for (i in 0 until n) {
+        if (!kept[i]) continue
+        if (vertical) placeables[i].placeRelative(0, pos) else placeables[i].placeRelative(pos, 0)
+        pos += mainSize(placeables[i]) + spacingPx
+      }
+    }
+  }
 }

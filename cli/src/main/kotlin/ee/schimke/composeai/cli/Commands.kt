@@ -1186,7 +1186,9 @@ internal fun manifestsDeclareExactId(
 ): Boolean =
   declaresExactId(
     exactId,
-    manifests.asSequence().flatMap { (_, manifest) -> manifest.previews.asSequence().map { it.id } },
+    manifests.asSequence().flatMap { (_, manifest) ->
+      manifest.previews.asSequence().map { it.id }
+    },
   )
 
 /**

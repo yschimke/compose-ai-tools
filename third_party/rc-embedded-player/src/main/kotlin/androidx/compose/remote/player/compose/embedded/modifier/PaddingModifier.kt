@@ -28,19 +28,19 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun Modifier.padding(op: PaddingModifierOperation): Modifier {
-    // Padding values arrive in pixels (authoring stores RemoteDp via toPx()), so convert back to dp
-    // by dividing by density — consistent with WidthModifier/BorderModifier/OffsetModifier. Without
-    // this the padding was ~density× too large, shrinking the content so FILL children collapsed.
-    val density = LocalDensity.current.density
-    val left = rememberRemoteFloatAsState(op.left).value
-    val top = rememberRemoteFloatAsState(op.top).value
-    val right = rememberRemoteFloatAsState(op.right).value
-    val bottom = rememberRemoteFloatAsState(op.bottom).value
+  // Padding values arrive in pixels (authoring stores RemoteDp via toPx()), so convert back to dp
+  // by dividing by density — consistent with WidthModifier/BorderModifier/OffsetModifier. Without
+  // this the padding was ~density× too large, shrinking the content so FILL children collapsed.
+  val density = LocalDensity.current.density
+  val left = rememberRemoteFloatAsState(op.left).value
+  val top = rememberRemoteFloatAsState(op.top).value
+  val right = rememberRemoteFloatAsState(op.right).value
+  val bottom = rememberRemoteFloatAsState(op.bottom).value
 
-    return this.padding(
-        start = (left / density).dp,
-        top = (top / density).dp,
-        end = (right / density).dp,
-        bottom = (bottom / density).dp,
-    )
+  return this.padding(
+    start = (left / density).dp,
+    top = (top / density).dp,
+    end = (right / density).dp,
+    bottom = (bottom / density).dp,
+  )
 }

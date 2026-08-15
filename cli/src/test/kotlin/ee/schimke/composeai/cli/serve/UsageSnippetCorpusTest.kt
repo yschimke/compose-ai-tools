@@ -299,12 +299,13 @@ class UsageSnippetCorpusTest {
           continue
         }
         val (file, anchor) = found
-        val cleaned =
-          runCatching { PlaygroundSourceCleaner.clean(file.readText(), anchor, rules, strings) }
-            .getOrElse { e ->
-              report.appendLine("- ${sample.kind}/${sample.function}: THREW ${e::class.simpleName}")
-              null
-            }
+        val cleaned = runCatching {
+          PlaygroundSourceCleaner.clean(file.readText(), anchor, rules, strings)
+        }
+          .getOrElse { e ->
+            report.appendLine("- ${sample.kind}/${sample.function}: THREW ${e::class.simpleName}")
+            null
+          }
         if (cleaned == null) {
           report.appendLine("- ${sample.kind}/${sample.function}: DECLINED (would seed verbatim)")
           continue

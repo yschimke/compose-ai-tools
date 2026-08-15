@@ -44,63 +44,63 @@ import kotlin.math.roundToInt
  * document's notchMax is a layout-computed variable the embedded player doesn't populate).
  */
 private fun evenNotchCount(op: ScrollModifierOperation): Int {
-    val touch = op.list.firstOrNull { it is TouchExpression } as? TouchExpression ?: return 0
-    if (touchStopMode(touch) != TouchExpression.STOP_NOTCHES_EVEN) return 0
-    val spec = touchStopSpec(touch) ?: return 0
-    return spec.firstOrNull()?.toInt()?.coerceAtLeast(0) ?: 0
+  val touch = op.list.firstOrNull { it is TouchExpression } as? TouchExpression ?: return 0
+  if (touchStopMode(touch) != TouchExpression.STOP_NOTCHES_EVEN) return 0
+  val spec = touchStopSpec(touch) ?: return 0
+  return spec.firstOrNull()?.toInt()?.coerceAtLeast(0) ?: 0
 }
 
 @Composable
 internal fun Modifier.scroll(op: ScrollModifierOperation): Modifier {
-    val remoteContext = LocalRemoteContext.current
-    val scrollState = rememberScrollState()
+  val remoteContext = LocalRemoteContext.current
+  val scrollState = rememberScrollState()
 
-    // The document binds the scroll offset to a variable (mPositionExpression, the output of the
-    // scroll's TouchExpression). The embedded player drives scroll with Compose's native gesture +
-    // fling rather than the core touch engine — which hit-tests against core-layout bounds the
-    // embedded player doesn't populate — and reproduces the relevant TouchExpression semantics in
-    // pure Compose: the live offset is published back to the bound variable (so expressions reading
-    // scroll position — progress indicators, parallax — react), and an even-notch stop spec is
-    // honored
-    // with a snapping fling. The core works in pixels and scrollState.value is px, so it's written
-    // directly.
-    val positionId =
-        remember(op) {
-            val raw = scrollPosition(op)
-            if (Utils.isVariable(raw)) Utils.idFromNan(raw) else -1
-        }
-    if (positionId > 0) {
-        LaunchedEffect(scrollState, positionId) {
-            snapshotFlow { scrollState.value }
-                .collect { px -> remoteContext.overrideFloat(positionId, px.toFloat()) }
-        }
+  // The document binds the scroll offset to a variable (mPositionExpression, the output of the
+  // scroll's TouchExpression). The embedded player drives scroll with Compose's native gesture +
+  // fling rather than the core touch engine — which hit-tests against core-layout bounds the
+  // embedded player doesn't populate — and reproduces the relevant TouchExpression semantics in
+  // pure Compose: the live offset is published back to the bound variable (so expressions reading
+  // scroll position — progress indicators, parallax — react), and an even-notch stop spec is
+  // honored
+  // with a snapping fling. The core works in pixels and scrollState.value is px, so it's written
+  // directly.
+  val positionId =
+    remember(op) {
+      val raw = scrollPosition(op)
+      if (Utils.isVariable(raw)) Utils.idFromNan(raw) else -1
     }
-
-    // Even-notch scrolling: snap the fling to one of `notches` evenly-spaced positions over the
-    // scrollable range (Compose's scrollState.maxValue), mirroring the TouchExpression's
-    // STOP_NOTCHES_EVEN settle.
-    val notches = remember(op) { evenNotchCount(op) }
-    val flingBehavior =
-        if (notches > 0) {
-            val provider =
-                remember(scrollState, notches) {
-                    object : SnapLayoutInfoProvider {
-                        override fun calculateSnapOffset(velocity: Float): Float {
-                            val max = scrollState.maxValue
-                            if (max <= 0) return 0f
-                            val step = max.toFloat() / notches
-                            if (step <= 0f) return 0f
-                            val current = scrollState.value.toFloat()
-                            return (current / step).roundToInt() * step - current
-                        }
-                    }
-                }
-            rememberSnapFlingBehavior(provider)
-        } else null
-
-    return if (op.isVerticalScroll) {
-        this.verticalScroll(scrollState, flingBehavior = flingBehavior)
-    } else {
-        this.horizontalScroll(scrollState, flingBehavior = flingBehavior)
+  if (positionId > 0) {
+    LaunchedEffect(scrollState, positionId) {
+      snapshotFlow { scrollState.value }
+        .collect { px -> remoteContext.overrideFloat(positionId, px.toFloat()) }
     }
+  }
+
+  // Even-notch scrolling: snap the fling to one of `notches` evenly-spaced positions over the
+  // scrollable range (Compose's scrollState.maxValue), mirroring the TouchExpression's
+  // STOP_NOTCHES_EVEN settle.
+  val notches = remember(op) { evenNotchCount(op) }
+  val flingBehavior =
+    if (notches > 0) {
+      val provider =
+        remember(scrollState, notches) {
+          object : SnapLayoutInfoProvider {
+            override fun calculateSnapOffset(velocity: Float): Float {
+              val max = scrollState.maxValue
+              if (max <= 0) return 0f
+              val step = max.toFloat() / notches
+              if (step <= 0f) return 0f
+              val current = scrollState.value.toFloat()
+              return (current / step).roundToInt() * step - current
+            }
+          }
+        }
+      rememberSnapFlingBehavior(provider)
+    } else null
+
+  return if (op.isVerticalScroll) {
+    this.verticalScroll(scrollState, flingBehavior = flingBehavior)
+  } else {
+    this.horizontalScroll(scrollState, flingBehavior = flingBehavior)
+  }
 }

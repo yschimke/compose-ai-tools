@@ -29,8 +29,8 @@ import org.robolectric.annotation.GraphicsMode
  * break it here: it is a custom lazy layout that computes its own scroll semantics.
  *
  * This test doesn't assert a specific encoding — it asserts the *property the driver depends on*:
- * that `maxValue - value` is a usable pixel distance. If it isn't, the driver's arithmetic is
- * wrong regardless of what the numbers happen to mean.
+ * that `maxValue - value` is a usable pixel distance. If it isn't, the driver's arithmetic is wrong
+ * regardless of what the numbers happen to mean.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])

@@ -2554,17 +2554,16 @@ class ServeHttpServer(
       call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
       return
     }
-    val entry =
-      runCatching {
-          JSON.decodeFromString(ServeCatalogsConfig.Entry.serializer(), body.decodeToString())
-        }
-        .getOrElse {
-          call.respondText(
-            "invalid catalog entry: ${it.message}",
-            status = HttpStatusCode.BadRequest,
-          )
-          return
-        }
+    val entry = runCatching {
+      JSON.decodeFromString(ServeCatalogsConfig.Entry.serializer(), body.decodeToString())
+    }
+      .getOrElse {
+        call.respondText(
+          "invalid catalog entry: ${it.message}",
+          status = HttpStatusCode.BadRequest,
+        )
+        return
+      }
     // The fetch runs off the request dispatcher: publishing a catalog clones a delivery branch.
     respondAdminResult(withContext(Dispatchers.IO) { admin.register(entry) })
   }
@@ -2616,14 +2615,13 @@ class ServeHttpServer(
       call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
       return
     }
-    val group =
-      runCatching {
-          JSON.decodeFromString(ServeCatalogsConfig.Group.serializer(), body.decodeToString())
-        }
-        .getOrElse {
-          call.respondText("invalid group: ${it.message}", status = HttpStatusCode.BadRequest)
-          return
-        }
+    val group = runCatching {
+      JSON.decodeFromString(ServeCatalogsConfig.Group.serializer(), body.decodeToString())
+    }
+      .getOrElse {
+        call.respondText("invalid group: ${it.message}", status = HttpStatusCode.BadRequest)
+        return
+      }
     respondAdminResult(withContext(Dispatchers.IO) { admin.upsertGroup(group) })
   }
 
@@ -2658,12 +2656,13 @@ class ServeHttpServer(
       call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
       return
     }
-    val entry =
-      runCatching { JSON.decodeFromString(AdminTrustEntry.serializer(), body.decodeToString()) }
-        .getOrElse {
-          call.respondText("invalid trust entry: ${it.message}", status = HttpStatusCode.BadRequest)
-          return
-        }
+    val entry = runCatching {
+      JSON.decodeFromString(AdminTrustEntry.serializer(), body.decodeToString())
+    }
+      .getOrElse {
+        call.respondText("invalid trust entry: ${it.message}", status = HttpStatusCode.BadRequest)
+        return
+      }
     respondAdminTrustResult(withContext(Dispatchers.IO) { admin.add(entry) })
   }
 
@@ -2745,8 +2744,10 @@ class ServeHttpServer(
    * One percent-decoded path segment, or the segment verbatim when it isn't valid encoding. Used to
    * compare a first path segment against a catalog id; a bad escape simply won't match one.
    */
-  private fun decodeSegment(raw: String): String =
-    runCatching { java.net.URLDecoder.decode(raw, Charsets.UTF_8) }.getOrDefault(raw)
+  private fun decodeSegment(raw: String): String = runCatching {
+    java.net.URLDecoder.decode(raw, Charsets.UTF_8)
+  }
+    .getOrDefault(raw)
 
   /**
    * `/playground?from=<system>/<previewId>` for a preview, or null when this host would not honour

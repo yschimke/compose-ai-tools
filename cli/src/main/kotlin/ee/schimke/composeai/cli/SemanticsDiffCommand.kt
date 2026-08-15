@@ -172,18 +172,18 @@ internal fun readSemanticsPayload(
 internal fun formatSemanticsDeltaHuman(delta: SemanticsDelta): String {
   if (delta.isEmpty) return "No semantic changes."
   return buildString {
-      appendLine(
-        "${delta.added.size} added, ${delta.removed.size} removed, ${delta.changed.size} changed"
-      )
-      delta.removed.forEach { appendLine("  - removed ${describeNode(it)}") }
-      delta.added.forEach { appendLine("  + added ${describeNode(it)}") }
-      delta.changed.forEach { change ->
-        appendLine("  ~ ${change.anchor ?: change.ref}")
-        change.changes.forEach { field ->
-          appendLine("      ${field.field}: ${field.from ?: "∅"} → ${field.to ?: "∅"}")
-        }
+    appendLine(
+      "${delta.added.size} added, ${delta.removed.size} removed, ${delta.changed.size} changed"
+    )
+    delta.removed.forEach { appendLine("  - removed ${describeNode(it)}") }
+    delta.added.forEach { appendLine("  + added ${describeNode(it)}") }
+    delta.changed.forEach { change ->
+      appendLine("  ~ ${change.anchor ?: change.ref}")
+      change.changes.forEach { field ->
+        appendLine("      ${field.field}: ${field.from ?: "∅"} → ${field.to ?: "∅"}")
       }
     }
+  }
     .trimEnd()
 }
 

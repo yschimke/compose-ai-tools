@@ -41,102 +41,102 @@ import kotlin.math.min
 
 @Composable
 internal fun Modifier.clipRect(op: ClipRectModifierOperation): Modifier {
-    return this.clip(RectangleShape)
+  return this.clip(RectangleShape)
 }
 
 @Composable
 internal fun Modifier.roundedClipRect(op: RoundedClipRectModifierOperation): Modifier {
-    val data = op.readDataReflection()
-    val behavior = LocalCoreDocument.current.densityBehavior
-    val shape =
-        RemoteRoundedClipShape(
-            topStart = rememberRemoteFloatAsState(data.x1Value),
-            topEnd = rememberRemoteFloatAsState(data.y1Value),
-            bottomEnd = rememberRemoteFloatAsState(data.y2Value),
-            bottomStart = rememberRemoteFloatAsState(data.x2Value),
-            densityBehavior = behavior,
-        )
+  val data = op.readDataReflection()
+  val behavior = LocalCoreDocument.current.densityBehavior
+  val shape =
+    RemoteRoundedClipShape(
+      topStart = rememberRemoteFloatAsState(data.x1Value),
+      topEnd = rememberRemoteFloatAsState(data.y1Value),
+      bottomEnd = rememberRemoteFloatAsState(data.y2Value),
+      bottomStart = rememberRemoteFloatAsState(data.x2Value),
+      densityBehavior = behavior,
+    )
 
-    // remote-core applies the rounded clip to the component's complete paint output. DrawContent
-    // precedes this operation in the wire modifier list, but appending Compose's clip would leave
-    // that draw node outside the clip. Prepend it so generated background paths are clipped too.
-    return Modifier.clip(shape).then(this)
+  // remote-core applies the rounded clip to the component's complete paint output. DrawContent
+  // precedes this operation in the wire modifier list, but appending Compose's clip would leave
+  // that draw node outside the clip. Prepend it so generated background paths are clipped too.
+  return Modifier.clip(shape).then(this)
 }
 
 internal data class RemoteRoundedClipShape(
-    val topStart: State<Float>,
-    val topEnd: State<Float>,
-    val bottomEnd: State<Float>,
-    val bottomStart: State<Float>,
-    val densityBehavior: Int,
+  val topStart: State<Float>,
+  val topEnd: State<Float>,
+  val bottomEnd: State<Float>,
+  val bottomStart: State<Float>,
+  val densityBehavior: Int,
 ) : Shape {
-    override fun createOutline(
-        size: Size,
-        layoutDirection: LayoutDirection,
-        density: Density,
-    ): Outline {
-        val minDimension = size.minDimension
-        val fallback = minDimension / 2f
-        fun radius(corner: State<Float>) =
-            corner.value.resolveRadius(fallback, minDimension, densityBehavior, density.density)
-        val topStartRadius = radius(topStart)
-        val topEndRadius = radius(topEnd)
-        val bottomEndRadius = radius(bottomEnd)
-        val bottomStartRadius = radius(bottomStart)
-        val radiusScale =
-            roundedRectRadiusScale(
-                size,
-                topStartRadius,
-                topEndRadius,
-                bottomEndRadius,
-                bottomStartRadius,
-            )
+  override fun createOutline(
+    size: Size,
+    layoutDirection: LayoutDirection,
+    density: Density,
+  ): Outline {
+    val minDimension = size.minDimension
+    val fallback = minDimension / 2f
+    fun radius(corner: State<Float>) =
+      corner.value.resolveRadius(fallback, minDimension, densityBehavior, density.density)
+    val topStartRadius = radius(topStart)
+    val topEndRadius = radius(topEnd)
+    val bottomEndRadius = radius(bottomEnd)
+    val bottomStartRadius = radius(bottomStart)
+    val radiusScale =
+      roundedRectRadiusScale(
+        size,
+        topStartRadius,
+        topEndRadius,
+        bottomEndRadius,
+        bottomStartRadius,
+      )
 
-        return Outline.Rounded(
-            RoundRect(
-                rect = Rect(0f, 0f, size.width, size.height),
-                topLeft = CornerRadius(topStartRadius * radiusScale),
-                topRight = CornerRadius(topEndRadius * radiusScale),
-                bottomRight = CornerRadius(bottomEndRadius * radiusScale),
-                bottomLeft = CornerRadius(bottomStartRadius * radiusScale),
-            )
-        )
-    }
+    return Outline.Rounded(
+      RoundRect(
+        rect = Rect(0f, 0f, size.width, size.height),
+        topLeft = CornerRadius(topStartRadius * radiusScale),
+        topRight = CornerRadius(topEndRadius * radiusScale),
+        bottomRight = CornerRadius(bottomEndRadius * radiusScale),
+        bottomLeft = CornerRadius(bottomStartRadius * radiusScale),
+      )
+    )
+  }
 }
 
 /** Matches the radius normalization performed by Android's Path.addRoundRect in remote-core. */
 private fun roundedRectRadiusScale(
-    size: Size,
-    topStart: Float,
-    topEnd: Float,
-    bottomEnd: Float,
-    bottomStart: Float,
+  size: Size,
+  topStart: Float,
+  topEnd: Float,
+  bottomEnd: Float,
+  bottomStart: Float,
 ): Float {
-    fun scaleFor(limit: Float, first: Float, second: Float): Float {
-        val sum = first + second
-        return if (sum > limit && sum != 0f) limit / sum else 1f
-    }
+  fun scaleFor(limit: Float, first: Float, second: Float): Float {
+    val sum = first + second
+    return if (sum > limit && sum != 0f) limit / sum else 1f
+  }
 
-    return min(
-        min(scaleFor(size.width, topStart, topEnd), scaleFor(size.width, bottomStart, bottomEnd)),
-        min(scaleFor(size.height, topStart, bottomStart), scaleFor(size.height, topEnd, bottomEnd)),
-    )
+  return min(
+    min(scaleFor(size.width, topStart, topEnd), scaleFor(size.width, bottomStart, bottomEnd)),
+    min(scaleFor(size.height, topStart, bottomStart), scaleFor(size.height, topEnd, bottomEnd)),
+  )
 }
 
 internal fun Float.resolveRadius(
-    fallback: Float,
-    minDimension: Float,
-    densityBehavior: Int,
-    density: Float,
+  fallback: Float,
+  minDimension: Float,
+  densityBehavior: Int,
+  density: Float,
 ): Float {
-    if (!isFinite()) return fallback
+  if (!isFinite()) return fallback
 
-    // Percent corners can briefly arrive as 0..1 fractions before the component-size expression
-    // settles. RoundRect normalizes an oversized result, so this remains safe under DP scaling.
-    val resolved = if (this > 0f && this <= 1f) this * minDimension else this
+  // Percent corners can briefly arrive as 0..1 fractions before the component-size expression
+  // settles. RoundRect normalizes an oversized result, so this remains safe under DP scaling.
+  val resolved = if (this > 0f && this <= 1f) this * minDimension else this
 
-    // Match remote-core's RoundedClipRectModifierOperation.paint exactly: updateVariables first
-    // resolves literals and NaN-backed variables into mX1..mY2, then DP behavior scales every
-    // resolved corner. Legacy and pixel behavior both pass the resolved value through unchanged.
-    return if (densityBehavior == CoreDocument.DENSITY_BEHAVIOR_DP) resolved * density else resolved
+  // Match remote-core's RoundedClipRectModifierOperation.paint exactly: updateVariables first
+  // resolves literals and NaN-backed variables into mX1..mY2, then DP behavior scales every
+  // resolved corner. Legacy and pixel behavior both pass the resolved value through unchanged.
+  return if (densityBehavior == CoreDocument.DENSITY_BEHAVIOR_DP) resolved * density else resolved
 }

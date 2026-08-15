@@ -31,26 +31,26 @@ import kotlin.math.roundToInt
  * intrinsic size (if known) lets `Image` size itself when no explicit size is given.
  */
 internal class DrawablePainter(private val drawable: Drawable) : Painter() {
-    private var drawAlpha: Float = 1f
+  private var drawAlpha: Float = 1f
 
-    override val intrinsicSize: Size
-        get() =
-            if (drawable.intrinsicWidth >= 0 && drawable.intrinsicHeight >= 0) {
-                Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
-            } else {
-                Size.Unspecified
-            }
+  override val intrinsicSize: Size
+    get() =
+      if (drawable.intrinsicWidth >= 0 && drawable.intrinsicHeight >= 0) {
+        Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
+      } else {
+        Size.Unspecified
+      }
 
-    override fun applyAlpha(alpha: Float): Boolean {
-        drawAlpha = alpha
-        return true
+  override fun applyAlpha(alpha: Float): Boolean {
+    drawAlpha = alpha
+    return true
+  }
+
+  override fun DrawScope.onDraw() {
+    drawIntoCanvas { canvas ->
+      drawable.alpha = (drawAlpha * 255f).roundToInt().coerceIn(0, 255)
+      drawable.setBounds(0, 0, size.width.roundToInt(), size.height.roundToInt())
+      drawable.draw(canvas.nativeCanvas)
     }
-
-    override fun DrawScope.onDraw() {
-        drawIntoCanvas { canvas ->
-            drawable.alpha = (drawAlpha * 255f).roundToInt().coerceIn(0, 255)
-            drawable.setBounds(0, 0, size.width.roundToInt(), size.height.roundToInt())
-            drawable.draw(canvas.nativeCanvas)
-        }
-    }
+  }
 }

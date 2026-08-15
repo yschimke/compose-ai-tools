@@ -65,8 +65,8 @@ private class StubClasspath(private val names: Map<String, Class<*>>) {
 /**
  * The reflective half of [LocaleCompositionLocals], driven against stub classpaths.
  *
- * The stand-in classpath is injected as a lookup function rather than a class loader: `Class.forName`
- * rejects a class whose name doesn't match the one requested, so a loader that maps
+ * The stand-in classpath is injected as a lookup function rather than a class loader:
+ * `Class.forName` rejects a class whose name doesn't match the one requested, so a loader that maps
  * `androidx.compose…` to a fake can never satisfy it. Deliberately NOT a Robolectric test either —
  * the sandbox resolves `Class.forName` against its own loader regardless of what is passed in.
  */

@@ -30,16 +30,16 @@ import androidx.compose.ui.Modifier
 
 @Composable
 internal fun RcPlayerBox(layout: BoxLayout, modifier: Modifier) {
-    val remoteContext = LocalRemoteContext.current
-    val graph = LocalGraphContext.current
-    Box(
-        modifier = modifier,
-        contentAlignment =
-            boxContentAlignment(
-                layout.horizontalPositioningReflection,
-                layout.verticalPositioningReflection,
-            ),
-    ) {
-        RcPlayerChildren(layout)
-    }
+  val remoteContext = LocalRemoteContext.current
+  val graph = LocalGraphContext.current
+  Box(
+    modifier = modifier,
+    contentAlignment =
+      boxContentAlignment(
+        layout.horizontalPositioningReflection,
+        layout.verticalPositioningReflection,
+      ),
+  ) {
+    RcPlayerChildren(layout)
+  }
 }

@@ -18,8 +18,8 @@ import org.junit.Test
  * end: it reports the row as unscored and moves on. Nothing fails, and the catalog keeps shipping a
  * sticker with no pixels in it.
  *
- * This is that missing end. It fails the build instead, at the point where the capture is produced —
- * which is also the only place that can tell "this preview draws nothing" from "this preview was
+ * This is that missing end. It fails the build instead, at the point where the capture is produced
+ * — which is also the only place that can tell "this preview draws nothing" from "this preview was
  * never rendered".
  *
  * Alpha > 8 is the same threshold the differ uses for "opaque" (see
@@ -27,8 +27,8 @@ import org.junit.Test
  *
  * Deliberately *not* a minimum-coverage assertion: several stickers are legitimately sparse — a
  * one-word outlined button, a hairline card border, a single icon on a 200dp canvas all land under
- * 1% — and a floor tight enough to catch anything real would fail them. "Something was drawn" is the
- * invariant that holds for every sticker in the sheet.
+ * 1% — and a floor tight enough to catch anything real would fail them. "Something was drawn" is
+ * the invariant that holds for every sticker in the sheet.
  */
 class StickerBakeCoverageTest {
 

@@ -236,8 +236,8 @@ fun LauncherWidgetClampedPreview() {
  * future Phase-B stitch will encode them into an animated GIF.
  *
  * The `"Resize walk"` title is the only deliberate difference from production — it labels the
- * flipbook. The content below it comes from [weatherRemoteViews] so the same body is walked
- * through every stop, including at `1×1` where the text clips exactly as the real widget would.
+ * flipbook. The content below it comes from [weatherRemoteViews] so the same body is walked through
+ * every stop, including at `1×1` where the text clips exactly as the real widget would.
  */
 @Preview(
   name = "Launcher widget — resize 1×1 → 4×2",

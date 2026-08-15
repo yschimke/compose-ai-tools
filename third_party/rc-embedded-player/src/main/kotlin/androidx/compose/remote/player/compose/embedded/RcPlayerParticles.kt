@@ -46,35 +46,35 @@ import androidx.compose.ui.graphics.nativeCanvas
  * [GraphContext]) because unlike the View player the embedded player never "paints" the setup ops.
  */
 internal fun DrawScope.drawParticles(
-    loop: ParticlesLoop,
-    remoteContext: RemoteContext,
-    paintState: ComposeLocalPaint,
-    graph: GraphContext,
+  loop: ParticlesLoop,
+  remoteContext: RemoteContext,
+  paintState: ComposeLocalPaint,
+  graph: GraphContext,
 ) {
-    val source = loop.particlesSourceReflection ?: return
-    withCorePaintContext(remoteContext, paintState, graph) { paintContext ->
-        // Seed once per document via the core seeding path (ParticlesCreate.paint initializes
-        // every particle from its initial-value equations).
-        if (graph.particlesInitialized.add(System.identityHashCode(loop))) {
-            source.updateVariables(remoteContext)
-            source.paint(paintContext)
-        }
-        loop.updateVariables(remoteContext)
-        loop.paint(paintContext)
+  val source = loop.particlesSourceReflection ?: return
+  withCorePaintContext(remoteContext, paintState, graph) { paintContext ->
+    // Seed once per document via the core seeding path (ParticlesCreate.paint initializes
+    // every particle from its initial-value equations).
+    if (graph.particlesInitialized.add(System.identityHashCode(loop))) {
+      source.updateVariables(remoteContext)
+      source.paint(paintContext)
     }
+    loop.updateVariables(remoteContext)
+    loop.paint(paintContext)
+  }
 }
 
 /** [ParticlesCompare] (particle interaction pass), reusing the core implementation. */
 internal fun DrawScope.drawParticlesCompare(
-    op: ParticlesCompare,
-    remoteContext: RemoteContext,
-    paintState: ComposeLocalPaint,
-    graph: GraphContext,
+  op: ParticlesCompare,
+  remoteContext: RemoteContext,
+  paintState: ComposeLocalPaint,
+  graph: GraphContext,
 ) {
-    withCorePaintContext(remoteContext, paintState, graph) { paintContext ->
-        op.updateVariables(remoteContext)
-        op.paint(paintContext)
-    }
+  withCorePaintContext(remoteContext, paintState, graph) { paintContext ->
+    op.updateVariables(remoteContext)
+    op.paint(paintContext)
+  }
 }
 
 /**
@@ -83,33 +83,33 @@ internal fun DrawScope.drawParticlesCompare(
  * dispatch via `Operation.apply`) render into the Compose draw pass. See the file doc.
  */
 private inline fun DrawScope.withCorePaintContext(
-    remoteContext: RemoteContext,
-    paintState: ComposeLocalPaint,
-    graph: GraphContext,
-    block: (PaintContext) -> Unit,
+  remoteContext: RemoteContext,
+  paintState: ComposeLocalPaint,
+  graph: GraphContext,
+  block: (PaintContext) -> Unit,
 ) {
-    // Observe the frame clock so the draw re-runs each tick (continuous simulation).
-    graph.getFloat(RemoteContext.ID_TIME_IN_SEC)
-    val canvas = drawContext.canvas.nativeCanvas
-    val currentPaintContext = remoteContext.paintContext
-    val paintContext =
-        if (currentPaintContext is AndroidPaintContext) {
-            currentPaintContext.reset()
-            currentPaintContext.setCanvas(canvas)
-            currentPaintContext
-        } else {
-            AndroidPaintContext(remoteContext, canvas).also { remoteContext.setPaintContext(it) }
-        }
-    // Seed the core paint from the paint ops the Compose dispatcher already consumed into
-    // ComposeLocalPaint, so paint set *outside* this subtree (color, stroke, …) still applies.
-    for (bundle in paintState.sourceBundles) {
-        paintContext.applyPaint(bundle)
+  // Observe the frame clock so the draw re-runs each tick (continuous simulation).
+  graph.getFloat(RemoteContext.ID_TIME_IN_SEC)
+  val canvas = drawContext.canvas.nativeCanvas
+  val currentPaintContext = remoteContext.paintContext
+  val paintContext =
+    if (currentPaintContext is AndroidPaintContext) {
+      currentPaintContext.reset()
+      currentPaintContext.setCanvas(canvas)
+      currentPaintContext
+    } else {
+      AndroidPaintContext(remoteContext, canvas).also { remoteContext.setPaintContext(it) }
     }
-    val previousMode = remoteContext.mode
-    remoteContext.mode = RemoteContext.ContextMode.PAINT
-    try {
-        block(paintContext)
-    } finally {
-        remoteContext.mode = previousMode
-    }
+  // Seed the core paint from the paint ops the Compose dispatcher already consumed into
+  // ComposeLocalPaint, so paint set *outside* this subtree (color, stroke, …) still applies.
+  for (bundle in paintState.sourceBundles) {
+    paintContext.applyPaint(bundle)
+  }
+  val previousMode = remoteContext.mode
+  remoteContext.mode = RemoteContext.ContextMode.PAINT
+  try {
+    block(paintContext)
+  } finally {
+    remoteContext.mode = previousMode
+  }
 }

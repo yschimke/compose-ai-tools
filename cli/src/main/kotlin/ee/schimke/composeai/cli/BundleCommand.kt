@@ -333,12 +333,11 @@ private class PackSubcommand(private val args: List<String>) {
                 "bundle pack: --with-semantics needs a render; ignoring it because --no-render was passed."
               )
             }
-            val tasks =
-              buildList {
-                  if (!noRender) add(":${target.gradlePath}:composePreviewRender")
-                  add(":${target.gradlePath}:composePreviewBundle")
-                }
-                .toTypedArray()
+            val tasks = buildList {
+              if (!noRender) add(":${target.gradlePath}:composePreviewRender")
+              add(":${target.gradlePath}:composePreviewBundle")
+            }
+              .toTypedArray()
             val ok = runGradle(gradle, *tasks, arguments = gradleArgsWithForce(gradleArgs))
             if (!ok) {
               System.err.println(
@@ -1424,9 +1423,10 @@ private fun renderBundleWithOverrides(
  * resource is missing / fails its sha256+size check.
  */
 private fun resolveExternalResources(bundleFile: File, pool: File?, destDir: File): File? {
-  val resources =
-    runCatching { BundleReader.readMetadata(bundleFile).manifest.externalResources }
-      .getOrDefault(emptyList())
+  val resources = runCatching {
+    BundleReader.readMetadata(bundleFile).manifest.externalResources
+  }
+    .getOrDefault(emptyList())
   return materializeExternalResources(resources, pool, destDir)
 }
 
@@ -2101,11 +2101,11 @@ internal object BundleReader {
             // Best-effort: labels are a nicety. A malformed/foreign previews.json must not sink the
             // embed — we still have ids from bundle.json to fall back on.
             runCatching {
-                previewsJson.decodeFromString(
-                  PreviewManifest.serializer(),
-                  zin.readBytes().toString(Charsets.UTF_8),
-                )
-              }
+              previewsJson.decodeFromString(
+                PreviewManifest.serializer(),
+                zin.readBytes().toString(Charsets.UTF_8),
+              )
+            }
               .getOrNull()
               ?.previews
               ?.forEach { labels[it.id] = it.functionName.ifBlank { it.id } }

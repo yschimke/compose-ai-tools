@@ -15,8 +15,8 @@ import org.junit.Test
  * label expression conditional on that counter — so the player updates itself, no host round-trip.
  *
  * This has to be a **sidecar** assertion, not a pixel one, and that is the whole point: at rest the
- * counter is 0, so the conditional resolves to the bare label and the baked PNG is byte-identical to
- * the one this catalog has always published (that parity is the feature, not a gap). The counter
+ * counter is 0, so the conditional resolves to the bare label and the baked PNG is byte-identical
+ * to the one this catalog has always published (that parity is the feature, not a gap). The counter
  * branch is only reachable once a player dispatches a real touch, which a static render never does.
  * The evidence therefore lives in the encoded document — where the branch's own string literals are
  * stored as UTF-8, exactly as [WidgetContainerIrCaptureTest] reads them.
@@ -46,8 +46,8 @@ class InteractiveActionCaptureTest {
     )
 
   /**
-   * The fragments `countedRemote` concatenates around the counter (`"<base> (" + n + ")"`). They are
-   * in the document only because the counter branch was encoded — the resting label never draws
+   * The fragments `countedRemote` concatenates around the counter (`"<base> (" + n + ")"`). They
+   * are in the document only because the counter branch was encoded — the resting label never draws
    * them.
    */
   private val counterFragments = listOf(" (", ")")

@@ -21,10 +21,10 @@ import androidx.compose.ui.unit.dp
  *
  * The `showBackground` fill must cover the **whole** 100×26dp root, not shrink-wrap to the 1dp
  * divider. The bug sized the layered-SVG background rect to the divider's bounds, so the SVG was
- * transparent almost everywhere while the PNG correctly filled the whole preview — the two disagreed
- * only on the dark variant, which is why it slipped past when the night annotation used to render as
- * light. Kept deliberately `Surface`-free so the backing colour (not a surface fill) is what covers
- * the frame. Pair-asserted end-to-end by [DividerShowBackgroundPreviewPixelTest].
+ * transparent almost everywhere while the PNG correctly filled the whole preview — the two
+ * disagreed only on the dark variant, which is why it slipped past when the night annotation used
+ * to render as light. Kept deliberately `Surface`-free so the backing colour (not a surface fill)
+ * is what covers the frame. Pair-asserted end-to-end by [DividerShowBackgroundPreviewPixelTest].
  */
 @Preview(
   name = "Divider Dark",
@@ -38,13 +38,11 @@ fun DividerShowBackgroundDarkPreview() {
   MaterialTheme(colorScheme = darkColorScheme()) {
     Box(modifier = Modifier.size(width = 100.dp, height = 26.dp)) {
       // A hairline divider — the only thing that paints. Translucent white, like a Material
-      // `HorizontalDivider`, so the dark backing shows through and the two must agree pixel-for-pixel.
+      // `HorizontalDivider`, so the dark backing shows through and the two must agree
+      // pixel-for-pixel.
       Box(
         modifier =
-          Modifier.align(Alignment.Center)
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(Color(0x1FFFFFFF))
+          Modifier.align(Alignment.Center).fillMaxWidth().height(1.dp).background(Color(0x1FFFFFFF))
       )
     }
   }

@@ -44,16 +44,16 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Regression for #3057 — a lazy-list item straddling the viewport edge kept its surface but lost its
- * text.
+ * Regression for #3057 — a lazy-list item straddling the viewport edge kept its surface but lost
+ * its text.
  *
- * The two producers disagree about clipping: the layout-inspector records every node's **unclipped**
- * box (`localBoundingBoxOf(clipBounds = false)`), while a semantics node's `boundsInRoot` is
- * **clipped** by its ancestors. For a fully visible row the two agree, so the exporter's
- * bounds-matching attaches the text to its layer. For the first/last row of a `LazyColumn` — half
- * above the viewport's top edge, half below the bottom — they differ by exactly the clipped-away
- * strip, which blows past the 2px matching tolerance, so the text was never attached and the row's
- * `<g>` came out empty while the PNG painted the visible lines.
+ * The two producers disagree about clipping: the layout-inspector records every node's
+ * **unclipped** box (`localBoundingBoxOf(clipBounds = false)`), while a semantics node's
+ * `boundsInRoot` is **clipped** by its ancestors. For a fully visible row the two agree, so the
+ * exporter's bounds-matching attaches the text to its layer. For the first/last row of a
+ * `LazyColumn` — half above the viewport's top edge, half below the bottom — they differ by exactly
+ * the clipped-away strip, which blows past the 2px matching tolerance, so the text was never
+ * attached and the row's `<g>` came out empty while the PNG painted the visible lines.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -89,10 +89,7 @@ class FigmaSvgClippedLazyItemTextTest {
           LazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
             items(ROWS) { label ->
               Box(
-                Modifier.fillMaxWidth()
-                  .height(120.dp)
-                  .padding(8.dp)
-                  .background(Color(0xFFE7E0EC))
+                Modifier.fillMaxWidth().height(120.dp).padding(8.dp).background(Color(0xFFE7E0EC))
               ) {
                 Text(label, Modifier.padding(12.dp))
               }
@@ -157,7 +154,8 @@ class FigmaSvgClippedLazyItemTextTest {
   }
 
   private companion object {
-    val ROWS = listOf("Alpha row", "Bravo row", "Charlie row", "Delta row", "Echo row", "Foxtrot row")
+    val ROWS =
+      listOf("Alpha row", "Bravo row", "Charlie row", "Delta row", "Echo row", "Foxtrot row")
   }
 }
 

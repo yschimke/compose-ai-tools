@@ -226,14 +226,13 @@ class PlaygroundSandboxProbeTest {
   /**
    * True when [argv] runs and exits 0 — the tool exists and the kernel permits what it asks for.
    */
-  private fun toolAvailable(argv: List<String>): Boolean =
-    runCatching {
-        val process =
-          ProcessBuilder(argv)
-            .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-            .start()
-        process.waitFor(20, TimeUnit.SECONDS) && process.exitValue() == 0
-      }
-      .getOrDefault(false)
+  private fun toolAvailable(argv: List<String>): Boolean = runCatching {
+    val process =
+      ProcessBuilder(argv)
+        .redirectErrorStream(true)
+        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        .start()
+    process.waitFor(20, TimeUnit.SECONDS) && process.exitValue() == 0
+  }
+    .getOrDefault(false)
 }

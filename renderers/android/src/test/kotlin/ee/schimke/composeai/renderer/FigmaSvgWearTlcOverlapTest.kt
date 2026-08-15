@@ -115,7 +115,8 @@ class FigmaSvgWearTlcOverlapTest {
         val y = m.groupValues[1].toDouble()
         y to y + m.groupValues[2].toDouble()
       }
-      // Only the card containers — ignore hairline dividers/indicators and the full-face background.
+      // Only the card containers — ignore hairline dividers/indicators and the full-face
+      // background.
       .filter { (top, bottom) -> bottom - top in MIN_CARD_PX..MAX_CARD_PX }
       .sortedBy { it.first }
       .toList()
@@ -155,8 +156,10 @@ class FigmaSvgWearTlcOverlapTest {
           val outDir = File("build/figma-svg-wear-tlc").apply { mkdirs() }
           frame.copyTo(File(outDir, "$previewId-frame.png"), overwrite = true)
           // A self-contained copy with the raster sidecars (the `ScrollIndicator`'s
-          // `drawWithContent` chrome, which doesn't vectorise) base64-inlined, so the export renders
-          // standalone for PR evidence instead of showing a broken-image icon where the indicator is.
+          // `drawWithContent` chrome, which doesn't vectorise) base64-inlined, so the export
+          // renders
+          // standalone for PR evidence instead of showing a broken-image icon where the indicator
+          // is.
           var inlined = svg
           File(rootDir, "$previewId/figma-raster").listFiles().orEmpty().forEach { png ->
             val b64 = java.util.Base64.getEncoder().encodeToString(png.readBytes())

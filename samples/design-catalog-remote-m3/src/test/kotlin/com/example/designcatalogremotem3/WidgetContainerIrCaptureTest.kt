@@ -5,14 +5,14 @@ import java.io.File
 import org.junit.Test
 
 /**
- * Guards that the widget-container stickers carry their **encoded RemoteCompose document**, not just
- * pixels.
+ * Guards that the widget-container stickers carry their **encoded RemoteCompose document**, not
+ * just pixels.
  *
  * Every other sticker in this sheet captures through `RemoteOverridablePreview`, which offers the
  * document to `IrSidecarChannel` so the render lands a `<stem>.rc` and `BundlePreviewTask
  * .resolvePreviewIr` packs it as the sticker's IR. The widget-container stickers went through
- * upstream's `WearWidgetPreview` instead, which captures the document internally and keeps the bytes
- * to itself — so they rendered fine while silently riding the bundle as compiled `@Preview`
+ * upstream's `WearWidgetPreview` instead, which captures the document internally and keeps the
+ * bytes to itself — so they rendered fine while silently riding the bundle as compiled `@Preview`
  * bytecode. `CapturingWearWidgetPreview` closed that gap; this test is what keeps it closed.
  *
  * It is a *sidecar* assertion rather than a pixel one on purpose: the failure mode being guarded
@@ -25,7 +25,11 @@ class WidgetContainerIrCaptureTest {
   private val rendersDir = File("build/compose-previews/renders")
 
   private val widgetStickers =
-    listOf("WidgetContainerSmallRemote", "WidgetContainerLargeRemote", "WidgetContainerGradientRemote")
+    listOf(
+      "WidgetContainerSmallRemote",
+      "WidgetContainerLargeRemote",
+      "WidgetContainerGradientRemote",
+    )
 
   @Test
   fun `every widget container sticker renders`() {

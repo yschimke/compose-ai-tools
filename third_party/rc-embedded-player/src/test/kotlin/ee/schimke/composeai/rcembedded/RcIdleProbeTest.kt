@@ -63,8 +63,9 @@ class RcIdleProbeTest {
   @Test(timeout = 120_000)
   fun compositionReachesIdleWithThePlayerRunning() {
     val bytes =
-      checkNotNull(javaClass.getResourceAsStream("/rc-fixtures/TitleCardRemote-640x480.rc"))
-        .use { it.readBytes() }
+      checkNotNull(javaClass.getResourceAsStream("/rc-fixtures/TitleCardRemote-640x480.rc")).use {
+        it.readBytes()
+      }
 
     composeRule.setContent {
       Box(

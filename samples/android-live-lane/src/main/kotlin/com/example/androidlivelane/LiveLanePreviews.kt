@@ -15,8 +15,8 @@ import ee.schimke.composeai.overrides.previewOverrideString
 /**
  * The preview the Android serve-lane e2e renders.
  *
- * The declared `label` string knob is the contract `preview-harness/serve-lanes.spec.mjs` selects on
- * (`overrides[].key == "label"`), so this preview drives the same PNG / SVG / Live-WebSocket
+ * The declared `label` string knob is the contract `preview-harness/serve-lanes.spec.mjs` selects
+ * on (`overrides[].key == "label"`), so this preview drives the same PNG / SVG / Live-WebSocket
  * assertions the desktop `compose-m3` lane runs — only here the render comes from the Robolectric
  * daemon, whose sandbox has to survive this module's deliberately unresolvable manifest
  * `Application` (see `AndroidManifest.xml`).

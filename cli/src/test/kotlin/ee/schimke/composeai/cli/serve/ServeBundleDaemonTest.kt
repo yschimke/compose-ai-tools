@@ -554,9 +554,10 @@ class ServeBundleDaemonTest {
       return
     }
     // Sanity: the descriptor really is the android launch (Robolectric flags present).
-    val parsed =
-      Json { ignoreUnknownKeys = true }
-        .decodeFromString(DaemonLaunchDescriptor.serializer(), state.descriptor.readText())
+    val parsed = Json {
+      ignoreUnknownKeys = true
+    }
+      .decodeFromString(DaemonLaunchDescriptor.serializer(), state.descriptor.readText())
     assertEquals("android", parsed.variant, "wear-m3 bundle should materialize an android daemon")
     assertTrue(
       parsed.systemProperties["robolectric.graphicsMode"] == "NATIVE",

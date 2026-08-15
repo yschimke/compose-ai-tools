@@ -42,17 +42,18 @@ import org.robolectric.annotation.GraphicsMode
  * [RcIdleProbeTest] pins the half of the story that #2945 fixed: the composition reaches idle, so
  * `waitForIdle()` works and the harnesses no longer drive `mainClock` by hand. The capture half did
  * *not* follow, and the reason has nothing to do with the player. `captureToImage()` goes through
- * `WindowCapture.forceRedraw`, which registers a `ViewTreeObserver.OnDrawListener`, invalidates, and
- * waits 2s for a draw pass. Robolectric never runs one, so the call times out — for **any** content.
+ * `WindowCapture.forceRedraw`, which registers a `ViewTreeObserver.OnDrawListener`, invalidates,
+ * and waits 2s for a draw pass. Robolectric never runs one, so the call times out — for **any**
+ * content.
  *
  * This composes a 10dp red `Box` with no Remote Compose document anywhere near it and asserts the
- * timeout, so the constraint is attributed to the environment rather than re-blamed on `RcPlayer` the
- * next time someone reads the harnesses.
+ * timeout, so the constraint is attributed to the environment rather than re-blamed on `RcPlayer`
+ * the next time someone reads the harnesses.
  *
  * **When this test fails, that is the good outcome**: Robolectric (or `compose-ui-test`) has grown
- * the draw pass, and [RcEmbeddedRenderHarness], [RcViewPlayerRenderHarness] and [RcFigmaSvgExportTest]
- * can drop the manual `measure`/`layout`/`draw` for a `captureToImage()` — with a fresh md5 sweep,
- * since that changes how the reference pixels are produced.
+ * the draw pass, and [RcEmbeddedRenderHarness], [RcViewPlayerRenderHarness] and
+ * [RcFigmaSvgExportTest] can drop the manual `measure`/`layout`/`draw` for a `captureToImage()` —
+ * with a fresh md5 sweep, since that changes how the reference pixels are produced.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -66,8 +67,7 @@ class RobolectricCaptureToImageProbeTest {
     composeRule.setContent { Box(Modifier.testTag(TAG).size(10.dp).background(Color.Red)) }
     composeRule.waitForIdle()
 
-    val failure =
-      runCatching { composeRule.onNodeWithTag(TAG).captureToImage() }.exceptionOrNull()
+    val failure = runCatching { composeRule.onNodeWithTag(TAG).captureToImage() }.exceptionOrNull()
 
     assert(failure is ComposeTimeoutException) {
       "captureToImage() no longer times out under Robolectric (got ${failure ?: "a real image"}) — " +

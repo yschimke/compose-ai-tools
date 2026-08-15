@@ -6,8 +6,8 @@ import coil.EventListener
 import coil.ImageLoader
 import coil.intercept.Interceptor
 import coil.request.ErrorResult
-import coil.request.ImageResult
 import coil.request.ImageRequest
+import coil.request.ImageResult
 import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
 
@@ -81,9 +81,9 @@ internal class Coil2PreviewInstaller : CoilPreviewInstaller {
    * sticker.
    *
    * This replaces any `eventListener` the consumer set on their loader (coil exposes no way to read
-   * the existing one back off a builder, so chaining isn't possible). That's a deliberate trade:
-   * an app-side analytics listener firing during an off-device preview render has no audience,
-   * whereas "why is this preview blank" is the exact question this whole file exists to answer.
+   * the existing one back off a builder, so chaining isn't possible). That's a deliberate trade: an
+   * app-side analytics listener firing during an off-device preview render has no audience, whereas
+   * "why is this preview blank" is the exact question this whole file exists to answer.
    */
   private object DiagnosticEventListener : EventListener {
     override fun onStart(request: ImageRequest) {

@@ -34,13 +34,11 @@ import ee.schimke.composeai.overrides.placeholderActive
  * exists** (issue #3675). It used to default to `placeholderActive(default = false)`, which made a
  * reusable application component source its production loading state from *preview* infrastructure
  * — the one thing a consumer must not copy out of a sample, since it inverts the dependency
- * (product code depending on the tool that photographs it) and silently changes on-device
- * behaviour if the override runtime is ever on the release classpath. State is hoisted; the caller
- * decides.
+ * (product code depending on the tool that photographs it) and silently changes on-device behaviour
+ * if the override runtime is ever on the release classpath. State is hoisted; the caller decides.
  *
- * The `placeholderActive` seam is still exercised, one level up, by
- * [PlaceholderCardOverrideDriven] — see its doc for why that separation is the point rather than a
- * workaround.
+ * The `placeholderActive` seam is still exercised, one level up, by [PlaceholderCardOverrideDriven]
+ * — see its doc for why that separation is the point rather than a workaround.
  */
 @Composable
 fun PlaceholderCard(loading: Boolean) {
@@ -71,8 +69,8 @@ fun PlaceholderCardLoading() = MaterialTheme { PlaceholderCard(loading = true) }
  *
  * It reads [placeholderActive], the opt-in seam the daemon's
  * `renderNow.overrides.placeholderActive` (`?placeholderActive=true` on `serve`) drives, and
- * forwards the answer into [PlaceholderCard]'s hoisted `loading` parameter. That keeps issue
- * #2646's acceptance criterion — *live `placeholderActive` overrides still work* — genuinely
+ * forwards the answer into [PlaceholderCard]'s hoisted `loading` parameter. That keeps
+ * issue #2646's acceptance criterion — *live `placeholderActive` overrides still work* — genuinely
  * exercised end to end: a live session can flip **this** preview between states on demand, without
  * the reusable component underneath having any idea a renderer is involved.
  *
@@ -84,5 +82,6 @@ fun PlaceholderCardLoading() = MaterialTheme { PlaceholderCard(loading = true) }
  */
 @Preview(device = "id:wearos_small_round", showBackground = true, backgroundColor = 0xFF000000)
 @Composable
-fun PlaceholderCardOverrideDriven() =
-  MaterialTheme { PlaceholderCard(loading = placeholderActive(default = false)) }
+fun PlaceholderCardOverrideDriven() = MaterialTheme {
+  PlaceholderCard(loading = placeholderActive(default = false))
+}

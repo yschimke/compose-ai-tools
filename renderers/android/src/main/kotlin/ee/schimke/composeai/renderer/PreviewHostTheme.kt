@@ -12,7 +12,6 @@ import android.content.Context
  * *theme attributes*. When the attribute is app-owned — `?attr/primary_text_01` in a
  * `TextAppearance` style, say — and the host activity's theme has never heard of it, the resolve
  * fails hard:
- *
  * ```
  * UnsupportedOperationException: Failed to resolve attribute at index 3: TypedValue{t=0x2/d=0x7f0405b0 …}
  * ```

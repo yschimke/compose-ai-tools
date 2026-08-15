@@ -108,9 +108,9 @@ class ServeSessionRegistryTest {
           val resumed = AtomicReference<ServeHost?>(null)
           val resumeReturned = CountDownLatch(1)
           Thread {
-              resumed.set(reg.acquire("a"))
-              resumeReturned.countDown()
-            }
+            resumed.set(reg.acquire("a"))
+            resumeReturned.countDown()
+          }
             .start()
           assertTrue(
             !resumeReturned.await(300, TimeUnit.MILLISECONDS),

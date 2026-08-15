@@ -113,18 +113,19 @@ object LinkBufferComposer {
     raw: String? = System.getProperty(PROPERTY),
   ): Outcome {
     if (!requested(raw)) return Outcome.NotRequested
-    val field =
-      runCatching { Class.forName(FLAGS_CLASS, /* initialize= */ true, classLoader) }
-        .mapCatching { it.getDeclaredField(FLAG_FIELD) }
-        .getOrElse { failure ->
-          throw IllegalStateException(
-            "compose-preview: -D$PROPERTY=true was requested, but this render's Compose runtime " +
-              "has no $FLAGS_CLASS.$FLAG_FIELD. The rewritten SlotTable opt-in needs Compose " +
-              "1.11.x or newer, and is removed again once the new composer becomes the only " +
-              "implementation. Drop the flag, or move the module to a Compose version that has it.",
-            failure,
-          )
-        }
+    val field = runCatching {
+      Class.forName(FLAGS_CLASS, /* initialize= */ true, classLoader)
+    }
+      .mapCatching { it.getDeclaredField(FLAG_FIELD) }
+      .getOrElse { failure ->
+        throw IllegalStateException(
+          "compose-preview: -D$PROPERTY=true was requested, but this render's Compose runtime " +
+            "has no $FLAGS_CLASS.$FLAG_FIELD. The rewritten SlotTable opt-in needs Compose " +
+            "1.11.x or newer, and is removed again once the new composer becomes the only " +
+            "implementation. Drop the flag, or move the module to a Compose version that has it.",
+          failure,
+        )
+      }
     field.isAccessible = true
     field.setBoolean(/* obj= */ null, true)
     return Outcome.Enabled

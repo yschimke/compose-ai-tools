@@ -297,17 +297,17 @@ internal class RcJvmWorkerPool(
 
     init {
       Thread {
-          try {
-            process.errorStream.bufferedReader().forEachLine { line ->
-              synchronized(stderrTail) {
-                stderrTail.addLast(line)
-                while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.pollFirst()
-              }
+        try {
+          process.errorStream.bufferedReader().forEachLine { line ->
+            synchronized(stderrTail) {
+              stderrTail.addLast(line)
+              while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.pollFirst()
             }
-          } catch (_: IOException) {
-            // The process went away; nothing to drain.
           }
+        } catch (_: IOException) {
+          // The process went away; nothing to drain.
         }
+      }
         .apply {
           name = "rcjvm-worker-stderr"
           isDaemon = true

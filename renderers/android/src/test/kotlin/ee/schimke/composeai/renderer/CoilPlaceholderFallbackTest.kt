@@ -46,7 +46,10 @@ class CoilPlaceholderFallbackTest {
         .placeholder(placeholder)
         .build()
 
-    assertSame(placeholder, coil3ImageWithPlaceholderFallback(request, loaded = null, empty = empty))
+    assertSame(
+      placeholder,
+      coil3ImageWithPlaceholderFallback(request, loaded = null, empty = empty),
+    )
   }
 
   @Test
@@ -59,6 +62,9 @@ class CoilPlaceholderFallbackTest {
         .placeholder(placeholder)
         .build()
 
-    assertSame(loaded, coil3ImageWithPlaceholderFallback(request, loaded = loaded, empty = placeholder))
+    assertSame(
+      loaded,
+      coil3ImageWithPlaceholderFallback(request, loaded = loaded, empty = placeholder),
+    )
   }
 }

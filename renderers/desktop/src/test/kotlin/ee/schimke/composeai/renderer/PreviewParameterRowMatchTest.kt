@@ -56,16 +56,15 @@ class PreviewParameterRowMatchTest {
             "x"
           }
       }
-    val failure =
-      runCatching {
-          PreviewParameterSupport.resolve(
-            clazz = provider.javaClass,
-            functionName = "Irrelevant",
-            providerClassName = provider.javaClass.name,
-            row = "PARAM_${PreviewParameterSupport.MAX_ROW_SCAN}",
-          )
-        }
-        .exceptionOrNull()
+    val failure = runCatching {
+      PreviewParameterSupport.resolve(
+        clazz = provider.javaClass,
+        functionName = "Irrelevant",
+        providerClassName = provider.javaClass.name,
+        row = "PARAM_${PreviewParameterSupport.MAX_ROW_SCAN}",
+      )
+    }
+      .exceptionOrNull()
     assertEquals(false, enumerated)
     assertEquals(
       true,

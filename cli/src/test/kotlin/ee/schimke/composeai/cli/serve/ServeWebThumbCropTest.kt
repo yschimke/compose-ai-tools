@@ -255,7 +255,8 @@ class ServeWebThumbCropTest {
         trust = null,
         sourceRepo = "someorg/somecat",
         heroPreviewId = null,
-        group = ServeWeb.HomeGroup(heading = "<script>x</script>", repos = setOf("someorg/somecat")),
+        group =
+          ServeWeb.HomeGroup(heading = "<script>x</script>", repos = setOf("someorg/somecat")),
       )
 
     val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)

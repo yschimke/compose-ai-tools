@@ -33,29 +33,28 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun Modifier.height(op: HeightModifierOperation): Modifier {
-    val density = LocalDensity.current.density
-    return when (op.type) {
-        DimensionModifierOperation.Type.EXACT,
-        DimensionModifierOperation.Type.EXACT_DP -> {
-            // See WidthModifier.width: resolve the raw source value (`mValue`, the variable id for
-            // dynamic dimensions) reactively rather than the core-flattened `getValue()`, so
-            // time-/animation-/host-driven heights update like normal Compose.
-            val resolved = rememberRemoteFloatAsState(dimensionRawValue(op)).value
-            val heightDp =
-                if (op.type == DimensionModifierOperation.Type.EXACT) resolved / density
-                else resolved
-            this.height(heightDp.dp)
-        }
-        DimensionModifierOperation.Type.FILL -> this.fillMaxHeight()
-        DimensionModifierOperation.Type.WRAP -> this // Default
-        else -> this
+  val density = LocalDensity.current.density
+  return when (op.type) {
+    DimensionModifierOperation.Type.EXACT,
+    DimensionModifierOperation.Type.EXACT_DP -> {
+      // See WidthModifier.width: resolve the raw source value (`mValue`, the variable id for
+      // dynamic dimensions) reactively rather than the core-flattened `getValue()`, so
+      // time-/animation-/host-driven heights update like normal Compose.
+      val resolved = rememberRemoteFloatAsState(dimensionRawValue(op)).value
+      val heightDp =
+        if (op.type == DimensionModifierOperation.Type.EXACT) resolved / density else resolved
+      this.height(heightDp.dp)
     }
+    DimensionModifierOperation.Type.FILL -> this.fillMaxHeight()
+    DimensionModifierOperation.Type.WRAP -> this // Default
+    else -> this
+  }
 }
 
 @Composable
 internal fun Modifier.heightIn(op: HeightInModifierOperation): Modifier {
-    val density = LocalDensity.current.density
-    val heightMinDp = rememberRemoteFloatAsState(op.min).value.constraintPxToDp(density)
-    val heightMaxDp = rememberRemoteFloatAsState(op.max).value.constraintPxToDp(density)
-    return this.heightIn(heightMinDp, heightMaxDp)
+  val density = LocalDensity.current.density
+  val heightMinDp = rememberRemoteFloatAsState(op.min).value.constraintPxToDp(density)
+  val heightMaxDp = rememberRemoteFloatAsState(op.max).value.constraintPxToDp(density)
+  return this.heightIn(heightMinDp, heightMaxDp)
 }

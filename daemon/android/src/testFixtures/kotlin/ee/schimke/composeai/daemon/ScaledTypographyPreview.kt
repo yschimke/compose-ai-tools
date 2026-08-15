@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The JetNews article-header shape that exposed issue #3024: a **display-sized heading** and
- * **body text** in the same column, both wrapped hard against a fixed width.
+ * The JetNews article-header shape that exposed issue #3024: a **display-sized heading** and **body
+ * text** in the same column, both wrapped hard against a fixed width.
  *
  * The pairing is the point. Compose resolves `sp` through the platform `FontScaleConverter` on API
  * 34+, and that curve is *non-linear* in the font scale — 14sp body text takes the full multiplier

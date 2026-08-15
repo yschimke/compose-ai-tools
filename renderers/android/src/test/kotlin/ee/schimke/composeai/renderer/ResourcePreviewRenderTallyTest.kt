@@ -12,8 +12,9 @@ import org.junit.Test
  * Pure-JVM coverage for [ResourcePreviewRenderTest.tallyRenders] — the per-capture isolation that
  * keeps one un-rasterisable resource (an adaptive launcher icon / a vector Robolectric's NATIVE
  * graphics can't draw) from aborting the whole `composePreviewRenderAndroidResources` batch and
- * turning into a hard `rc=2` before the CLI's `--missing-renders` policy can downgrade it (issue
- * #2589). No Robolectric needed: the isolation contract is exercised with a plain rendering lambda.
+ * turning into a hard `rc=2` before the CLI's `--missing-renders` policy can downgrade it
+ * (issue #2589). No Robolectric needed: the isolation contract is exercised with a plain rendering
+ * lambda.
  */
 class ResourcePreviewRenderTallyTest {
 
@@ -41,7 +42,9 @@ class ResourcePreviewRenderTallyTest {
       ResourcePreviewRenderTest.tallyRenders(
         listOf(1, 2, 3, 4),
         onError = { _, _ -> errors.add("err") },
-      ) { it % 2 == 0 } // even → rendered, odd → skipped (false)
+      ) {
+        it % 2 == 0
+      } // even → rendered, odd → skipped (false)
 
     assertEquals(2, rendered)
     assertEquals(2, missing)
@@ -74,7 +77,8 @@ class ResourcePreviewRenderTallyTest {
         }
       }
     assertEquals(boom, thrown)
-    // A fatal failure propagates immediately — it is NOT routed through onError as a missing render.
+    // A fatal failure propagates immediately — it is NOT routed through onError as a missing
+    // render.
     assertTrue("fatal failures must not be reported as missing", errors.isEmpty())
   }
 

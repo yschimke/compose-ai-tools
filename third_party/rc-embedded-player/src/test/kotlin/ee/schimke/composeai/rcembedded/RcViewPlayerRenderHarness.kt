@@ -45,8 +45,8 @@ import org.robolectric.annotation.GraphicsMode
  * `remote-player-view`-backed [RemoteDocumentPlayer] in an otherwise identical harness — same
  * Robolectric config, same density, same `waitForIdle()` + software-canvas capture.
  *
- * This exists to make divergences *attributable*. A row where the embedded player disagrees with the
- * baked PNG has at least three possible causes:
+ * This exists to make divergences *attributable*. A row where the embedded player disagrees with
+ * the baked PNG has at least three possible causes:
  *
  * 1. the embedded player renders it differently (a real finding),
  * 2. software-canvas rasterization can't reproduce it — AGSL `RuntimeShader` in particular needs a

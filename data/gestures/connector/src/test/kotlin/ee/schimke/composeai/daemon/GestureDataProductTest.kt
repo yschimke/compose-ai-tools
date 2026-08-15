@@ -22,9 +22,9 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Mirror of `AmbientDataProductTest` for the `compose/gestures` data product. Covers the extension's
- * hook shape, the planner's plan/abstain semantics, the registry capabilities + fetch outcomes, and
- * the on-render capture path that snapshots [GestureStateController].
+ * Mirror of `AmbientDataProductTest` for the `compose/gestures` data product. Covers the
+ * extension's hook shape, the planner's plan/abstain semantics, the registry capabilities + fetch
+ * outcomes, and the on-render capture path that snapshots [GestureStateController].
  */
 class GestureDataProductTest {
 
@@ -90,8 +90,18 @@ class GestureDataProductTest {
 
   @Test
   fun `onRender with gestures override snapshots the controller registry`() {
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
-    GestureStateController.register(GestureKindOverride.DISMISS, "Back", hintAvailable = false, enabled = true) {}
+    GestureStateController.register(
+      GestureKindOverride.PRIMARY,
+      "Play",
+      hintAvailable = true,
+      enabled = true,
+    ) {}
+    GestureStateController.register(
+      GestureKindOverride.DISMISS,
+      "Back",
+      hintAvailable = false,
+      enabled = true,
+    ) {}
     GestureStateController.set(GestureOverride(showHints = true))
 
     val registry = GestureDataProductRegistry()
@@ -117,7 +127,12 @@ class GestureDataProductTest {
   @Test
   fun `onRender without gestures override clears the payload`() {
     val registry = GestureDataProductRegistry()
-    GestureStateController.register(GestureKindOverride.PRIMARY, "Play", hintAvailable = true, enabled = true) {}
+    GestureStateController.register(
+      GestureKindOverride.PRIMARY,
+      "Play",
+      hintAvailable = true,
+      enabled = true,
+    ) {}
     registry.onRender(
       "preview-1",
       RenderResult(id = 1L, classLoaderHashCode = 0, classLoaderName = "test"),

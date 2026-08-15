@@ -36,18 +36,16 @@ import ee.schimke.composeai.overrides.previewOverrideString
  */
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {
-  WearCatalogTheme {
-    Box(Modifier.padding(8.dp)) { content() }
-  }
+  WearCatalogTheme { Box(Modifier.padding(8.dp)) { content() } }
 }
 
 /**
  * The Wear catalog theme, with the typeface and palette read from the override surface so the
- * preview server can re-skin any sticker (`knob.theme.font` / `knob.theme.colors`) without a preview
- * change — the previews stay clean. Absent an override both resolve to the Wear M3 default, so an
- * un-overridden render is pixel-identical. The choices are the declared `@TypographyCatalog` /
- * `@ColorCatalog` names in `WearCatalogFonts.kt`; this is the one place that maps a selected name to
- * its family / scheme.
+ * preview server can re-skin any sticker (`knob.theme.font` / `knob.theme.colors`) without a
+ * preview change — the previews stay clean. Absent an override both resolve to the Wear M3 default,
+ * so an un-overridden render is pixel-identical. The choices are the declared `@TypographyCatalog`
+ * / `@ColorCatalog` names in `WearCatalogFonts.kt`; this is the one place that maps a selected name
+ * to its family / scheme.
  *
  * The type scale comes from [wearCatalogTypography] — which re-points each role explicitly, because
  * `Typography(defaultFontFamily = …)` silently does nothing on Wear (see its KDoc) — and the
@@ -65,7 +63,8 @@ fun WearCatalogTheme(content: @Composable () -> Unit) {
   }
 
   val font = previewOverrideFont("theme.font", "Roboto Flex", suggestions = WEAR_FONT_NAMES)
-  val colorScheme = wearColorScheme(previewOverrideString("theme.colors", "M3"), MaterialTheme.colorScheme)
+  val colorScheme =
+    wearColorScheme(previewOverrideString("theme.colors", "M3"), MaterialTheme.colorScheme)
   MaterialTheme(typography = wearCatalogTypography(font), colorScheme = colorScheme) { content() }
 }
 
@@ -76,7 +75,9 @@ fun WearCatalogTheme(content: @Composable () -> Unit) {
 val WEAR_FONT_NAMES: List<String> =
   listOf("Roboto Flex", "Google Sans Flex", "Lobster Two", "JetBrains Mono", "Inter")
 
-/** Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily]. */
+/**
+ * Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily].
+ */
 fun wearCatalogFont(name: String): FontFamily =
   when (name) {
     "Google Sans Flex" -> GoogleSansFlex
@@ -196,8 +197,7 @@ internal val LocalWearCatalogThemeOverride = compositionLocalOf { false }
  * system clock, so every render is deterministic and the weekly design-artifacts bundle doesn't
  * churn on wall-clock time.
  */
-@Composable
-fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
+@Composable fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
 
 /**
  * Frame for **full-screen** Wear screens (scaffolds, lists, the EdgeButton) — as opposed to the

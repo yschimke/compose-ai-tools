@@ -182,7 +182,8 @@ public enum class RcTextGuide(
     orientation = RcGuideOrientation.HORIZONTAL,
     colorArgb = 0xffb26b00.toInt(),
     label = "cap top",
-    description = "Ink top of `H`. Baseline-relative, so negative; the cap height is its magnitude.",
+    description =
+      "Ink top of `H`. Baseline-relative, so negative; the cap height is its magnitude.",
   ),
   X_TOP(
     key = "xTop",

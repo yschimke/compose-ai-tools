@@ -38,152 +38,134 @@ import androidx.compose.ui.platform.LocalDensity
 
 @Composable
 internal fun RcPlayerRow(layout: RowLayout, modifier: Modifier) {
-    val remoteContext = LocalRemoteContext.current
-    val graph = LocalGraphContext.current
-    val behavior = LocalCoreDocument.current.densityBehavior
-    val density = LocalDensity.current.density
-    // Resolve spacedBy (may be a NaN-encoded variable/expression) before scaling.
-    val spacedBy = rememberRemoteFloatAsState(rowSpacedBy(layout)).value
-    if (layout is CollapsibleRowLayout) {
-        // Priority-aware collapsing: drop lowest-CollapsiblePriority children until the rest fit.
-        RcPlayerCollapsible(layout, modifier, vertical = false, spacedBy = spacedBy)
-    } else {
-        Row(
-            modifier = modifier,
-            horizontalArrangement =
-                rowHorizontalArrangement(
-                    layout.horizontalPositioningReflection,
-                    spacedBy,
-                    behavior,
-                    density,
-                ),
-            verticalAlignment = rowVerticalAlignment(layout.verticalPositioningReflection),
-        ) {
-            RcPlayerChildren(layout) { child ->
-                val mods =
-                    (child as? androidx.compose.remote.core.operations.layout.LayoutComponent)
-                        ?.componentModifiers
-                        ?.getList()
-                var childModifier: Modifier = Modifier
+  val remoteContext = LocalRemoteContext.current
+  val graph = LocalGraphContext.current
+  val behavior = LocalCoreDocument.current.densityBehavior
+  val density = LocalDensity.current.density
+  // Resolve spacedBy (may be a NaN-encoded variable/expression) before scaling.
+  val spacedBy = rememberRemoteFloatAsState(rowSpacedBy(layout)).value
+  if (layout is CollapsibleRowLayout) {
+    // Priority-aware collapsing: drop lowest-CollapsiblePriority children until the rest fit.
+    RcPlayerCollapsible(layout, modifier, vertical = false, spacedBy = spacedBy)
+  } else {
+    Row(
+      modifier = modifier,
+      horizontalArrangement =
+        rowHorizontalArrangement(
+          layout.horizontalPositioningReflection,
+          spacedBy,
+          behavior,
+          density,
+        ),
+      verticalAlignment = rowVerticalAlignment(layout.verticalPositioningReflection),
+    ) {
+      RcPlayerChildren(layout) { child ->
+        val mods =
+          (child as? androidx.compose.remote.core.operations.layout.LayoutComponent)
+            ?.componentModifiers
+            ?.getList()
+        var childModifier: Modifier = Modifier
 
-                val weightOp =
-                    mods?.find {
-                        it is
-                            androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation &&
-                            it.getType() ==
-                                androidx.compose.remote.core.operations.layout.modifiers
-                                    .DimensionModifierOperation
-                                    .Type
-                                    .WEIGHT
-                    }
-                        as?
-                        androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
-                if (weightOp != null) {
-                    childModifier = childModifier.weight(weightOp.getValue())
-                }
-
-                val alignByOp =
-                    mods?.find {
-                        it is
-                            androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
-                    }
-                        as?
-                        androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
-                if (alignByOp != null) {
-                    val line = alignByOp.lineReflection
-                    if (androidx.compose.remote.core.operations.Utils.isVariable(line)) {
-                        val id = androidx.compose.remote.core.operations.Utils.idFromNan(line)
-                        if (
-                            id ==
-                                androidx.compose.remote.core.operations.layout.modifiers
-                                    .AlignByModifierOperation
-                                    .ID_FIRST_BASELINE ||
-                                id ==
-                                    androidx.compose.remote.core.operations.layout.modifiers
-                                        .AlignByModifierOperation
-                                        .ID_LAST_BASELINE
-                        ) {
-                            childModifier = childModifier.alignByBaseline()
-                        }
-                    }
-                }
-                childModifier
-            }
+        val weightOp =
+          mods?.find {
+            it is androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation &&
+              it.getType() ==
+                androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
+                  .Type
+                  .WEIGHT
+          } as? androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
+        if (weightOp != null) {
+          childModifier = childModifier.weight(weightOp.getValue())
         }
+
+        val alignByOp =
+          mods?.find {
+            it is androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+          } as? androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+        if (alignByOp != null) {
+          val line = alignByOp.lineReflection
+          if (androidx.compose.remote.core.operations.Utils.isVariable(line)) {
+            val id = androidx.compose.remote.core.operations.Utils.idFromNan(line)
+            if (
+              id ==
+                androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+                  .ID_FIRST_BASELINE ||
+                id ==
+                  androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+                    .ID_LAST_BASELINE
+            ) {
+              childModifier = childModifier.alignByBaseline()
+            }
+          }
+        }
+        childModifier
+      }
     }
+  }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun RcPlayerFlowRow(layout: FlowLayout, modifier: Modifier) {
-    val remoteContext = LocalRemoteContext.current
-    val graph = LocalGraphContext.current
-    val behavior = LocalCoreDocument.current.densityBehavior
-    val density = LocalDensity.current.density
-    val spacedBy = rememberRemoteFloatAsState(rowSpacedBy(layout)).value
-    FlowRow(
-        modifier = modifier,
-        horizontalArrangement =
-            rowHorizontalArrangement(
-                layout.horizontalPositioningReflection,
-                spacedBy,
-                behavior,
-                density,
-            ),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Top,
-        itemVerticalAlignment = rowVerticalAlignment(layout.verticalPositioningReflection),
-        maxItemsInEachRow = layout.mMaxItemsInEachRow,
-        maxLines = layout.mMaxLines,
-    ) {
-        RcPlayerChildren(layout) { child ->
-            val mods =
-                (child as? androidx.compose.remote.core.operations.layout.LayoutComponent)
-                    ?.componentModifiers
-                    ?.getList()
-            var childModifier: Modifier = Modifier
+  val remoteContext = LocalRemoteContext.current
+  val graph = LocalGraphContext.current
+  val behavior = LocalCoreDocument.current.densityBehavior
+  val density = LocalDensity.current.density
+  val spacedBy = rememberRemoteFloatAsState(rowSpacedBy(layout)).value
+  FlowRow(
+    modifier = modifier,
+    horizontalArrangement =
+      rowHorizontalArrangement(
+        layout.horizontalPositioningReflection,
+        spacedBy,
+        behavior,
+        density,
+      ),
+    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Top,
+    itemVerticalAlignment = rowVerticalAlignment(layout.verticalPositioningReflection),
+    maxItemsInEachRow = layout.mMaxItemsInEachRow,
+    maxLines = layout.mMaxLines,
+  ) {
+    RcPlayerChildren(layout) { child ->
+      val mods =
+        (child as? androidx.compose.remote.core.operations.layout.LayoutComponent)
+          ?.componentModifiers
+          ?.getList()
+      var childModifier: Modifier = Modifier
 
-            val weightOp =
-                mods?.find {
-                    it is
-                        androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation &&
-                        it.getType() ==
-                            androidx.compose.remote.core.operations.layout.modifiers
-                                .DimensionModifierOperation
-                                .Type
-                                .WEIGHT
-                }
-                    as?
-                    androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
-            if (weightOp != null) {
-                childModifier = childModifier.weight(weightOp.getValue())
-            }
+      val weightOp =
+        mods?.find {
+          it is androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation &&
+            it.getType() ==
+              androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
+                .Type
+                .WEIGHT
+        } as? androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
+      if (weightOp != null) {
+        childModifier = childModifier.weight(weightOp.getValue())
+      }
 
-            val alignByOp =
-                mods?.find {
-                    it is
-                        androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
-                }
-                    as?
-                    androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
-            if (alignByOp != null) {
-                val line = alignByOp.lineReflection
-                if (androidx.compose.remote.core.operations.Utils.isVariable(line)) {
-                    val id = androidx.compose.remote.core.operations.Utils.idFromNan(line)
-                    if (
-                        id ==
-                            androidx.compose.remote.core.operations.layout.modifiers
-                                .AlignByModifierOperation
-                                .ID_FIRST_BASELINE ||
-                            id ==
-                                androidx.compose.remote.core.operations.layout.modifiers
-                                    .AlignByModifierOperation
-                                    .ID_LAST_BASELINE
-                    ) {
-                        childModifier = childModifier.alignByBaseline()
-                    }
-                }
-            }
-            childModifier
+      val alignByOp =
+        mods?.find {
+          it is androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+        } as? androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+      if (alignByOp != null) {
+        val line = alignByOp.lineReflection
+        if (androidx.compose.remote.core.operations.Utils.isVariable(line)) {
+          val id = androidx.compose.remote.core.operations.Utils.idFromNan(line)
+          if (
+            id ==
+              androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+                .ID_FIRST_BASELINE ||
+              id ==
+                androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
+                  .ID_LAST_BASELINE
+          ) {
+            childModifier = childModifier.alignByBaseline()
+          }
         }
+      }
+      childModifier
     }
+  }
 }

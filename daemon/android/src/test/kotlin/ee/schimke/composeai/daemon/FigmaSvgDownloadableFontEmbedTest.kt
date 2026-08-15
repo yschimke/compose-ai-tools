@@ -23,17 +23,17 @@ import org.junit.rules.TemporaryFolder
  * `@font-face` despite the seam-level tests all passing.
  *
  * The JetLagged shape reproduced by [JetLaggedHeadingText]: a single `Font(GoogleFont("Lato"))`
- * declared at its default weight, drawn at a heavier heading weight the family never declares a face
- * for. The downloadable provider is requested at — and the cache holds — the *declared face* weight,
- * while the export's `<text>` asks about the *heading* weight, so the recovery has to bridge the two
- * by the matched face rather than by reconstructing the heading weight's filename. The old
- * exact-weight lookup couldn't, so it dropped the `@font-face` entirely.
+ * declared at its default weight, drawn at a heavier heading weight the family never declares a
+ * face for. The downloadable provider is requested at — and the cache holds — the *declared face*
+ * weight, while the export's `<text>` asks about the *heading* weight, so the recovery has to
+ * bridge the two by the matched face rather than by reconstructing the heading weight's filename.
+ * The old exact-weight lookup couldn't, so it dropped the `@font-face` entirely.
  *
  * The warmed face is a distinctive stand-in TTF (Orbitron — the assertions read its real family out
- * of the bytes exactly as the export does, so the test never depends on which stand-in warms it). It
- * is warmed at the declared face weight the provider actually requests and caches, so the recovery
- * embeds the exact face the render resolved — never a nearby weight the shared cache happens to hold
- * but this render never drew.
+ * of the bytes exactly as the export does, so the test never depends on which stand-in warms it).
+ * It is warmed at the declared face weight the provider actually requests and caches, so the
+ * recovery embeds the exact face the render resolved — never a nearby weight the shared cache
+ * happens to hold but this render never drew.
  *
  * This test cannot be executed in the daemon's Robolectric unit tier (SDK 35 / JDK 17): building a
  * file-backed downloadable `Typeface` there NPEs, and the pre-existing sibling
@@ -63,7 +63,8 @@ class FigmaSvgDownloadableFontEmbedTest {
         RenderEngine.OUTPUT_DIR_PROP to outputDir.absolutePath,
         "roborazzi.test.record" to "true",
         "composeai.fonts.cacheDir" to cacheDir.absolutePath,
-        // Closed egress + a warm cache is the catalog-render case from the issue: the export's WOFF2
+        // Closed egress + a warm cache is the catalog-render case from the issue: the export's
+        // WOFF2
         // resolver must not reach the network, so the only way an `@font-face` can appear is the
         // render-side recovery embedding the cached TTF.
         "composeai.fonts.offline" to "true",
@@ -74,7 +75,8 @@ class FigmaSvgDownloadableFontEmbedTest {
       )
     val restore = priors.keys.associateWith { System.getProperty(it) }
     priors.forEach { (k, v) -> System.setProperty(k, v) }
-    // The registry is process-wide by design; clear it so a sibling test's "Lato" can't stand in for
+    // The registry is process-wide by design; clear it so a sibling test's "Lato" can't stand in
+    // for
     // the registration this test is meant to prove happens.
     FigmaResourceFonts.clear()
 
@@ -128,7 +130,8 @@ class FigmaSvgDownloadableFontEmbedTest {
         "the <text> must name the embedded family '$embeddedFamily', got:\n" + fontLinesOf(svg),
         svg.contains("font-family=\"$embeddedFamily"),
       )
-      // A healthy embed leaves no font-warnings sidecar behind (that is the degraded-export marker).
+      // A healthy embed leaves no font-warnings sidecar behind (that is the degraded-export
+      // marker).
       assertFalse(
         "no font-warnings sidecar should be written for a fully-embedded export",
         previewDataDir.resolve(ComposeFigmaSvgDataProducer.FILE_FONT_WARNINGS).exists(),
@@ -151,8 +154,8 @@ class FigmaSvgDownloadableFontEmbedTest {
    * classpath wins outright. A module's own `src/test/resources/fonts/` sorts ahead of
    * `nativeruntime-dist-compat`, which shadowed `fonts/fonts.xml` and the ~200 system faces with
    * this single TTF. `Typeface.loadPreinstalledSystemFontMap()` then built a font map with no
-   * `sans-serif` entry and `setSystemFontMap` NPE'd on the null family, taking down *every*
-   * sandbox bootstrap in this module (see #3086). Keep test font fixtures out of `/fonts/`.
+   * `sans-serif` entry and `setSystemFontMap` NPE'd on the null family, taking down *every* sandbox
+   * bootstrap in this module (see #3086). Keep test font fixtures out of `/fonts/`.
    */
   private fun readFixtureFont(): ByteArray {
     val url =
