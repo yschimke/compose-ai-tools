@@ -1765,9 +1765,22 @@ object ServeWeb {
           append("    <ul class=\"cp-tree-children cp-page-sections\" id=\"$listId\">\n")
           page.sections.forEach { section ->
             val sectionName = WebEscaping.htmlEscape(section.name)
-            // The fragment is BUILT from the node id (nodeAnchorId), never interpolated raw: the
-            // id is free text from a third-party manifest and this is a URL.
-            val sectionHref = "$pageUrl#${nodeAnchorId(section.nodeId)}"
+            // The row opens the SHEET, with no fragment — for now.
+            //
+            // A section is a COMPONENT_SET, and the page view draws nothing for one: it anchors
+            // components, and `isComponent` excludes containers because nothing implements a set.
+            // An earlier revision inferred a target by taking the first deeper node after the set,
+            // which is precisely the inference `PageNode.container`'s own contract forbids — "a
+            // manifest lists components and nothing else, so an unlisted frame between two of them
+            // lets a shallower node be followed by a deeper one that is NOT inside it". On an empty
+            // set that silently linked to an unrelated component, which is worse than not linking:
+            // a wrong destination is indistinguishable from a right one until you read the sheet.
+            //
+            // Landing on the section itself needs the page to emit an anchor for the container,
+            // which is the deep-link work this is a step toward. Until then the honest link is the
+            // sheet, and the section names still do the job they were added for — making a page
+            // findable by what is on it.
+            val sectionHref = pageUrl
             append("      <li><a class=\"cp-tree-variant cp-tree-link\"")
             append(" href=\"${WebEscaping.htmlEscape(sectionHref)}\"")
             append(" data-search=\"$sectionName\">$sectionName</a></li>\n")
@@ -3103,15 +3116,33 @@ object ServeWeb {
     val paneWiring =
       if (!hasPanes) ""
       else
-      // The twisty on a page row. `preventDefault` only when the twisty itself is hit — the row
-      // is a real link to the whole sheet and must stay one; it is the arrow that folds.
+      // The twisty on a page row, and the keys that do the same job.
+      //
+      // The row is a real LINK to the whole sheet as well as a fold, which is the whole difficulty:
+      // the pointer distinguishes the two by where it lands (the arrow, or the label), and the
+      // keyboard has no such position. So the two are split by input rather than shared: a pointer
+      // click inside the arrow's 14px folds, and Right/Left fold from the keyboard — the same two
+      // keys the component tree binds one pane over. Enter is left alone and follows the link.
       "\n      pageRows.forEach(function (p) {" +
           "\n        if (!p.hasAttribute(\"aria-expanded\")) return;" +
+          "\n        function fold(open) {" +
+          "\n          p.setAttribute(\"aria-expanded\", open ? \"true\" : \"false\");" +
+          "\n        }" +
+          "\n        p.addEventListener(\"keydown\", function (e) {" +
+          "\n          if (e.key !== \"ArrowRight\" && e.key !== \"ArrowLeft\") return;" +
+          "\n          var open = e.key === \"ArrowRight\";" +
+          "\n          if ((p.getAttribute(\"aria-expanded\") === \"true\") === open) return;" +
+          "\n          e.preventDefault();" +
+          "\n          fold(open);" +
+          "\n        });" +
           "\n        p.addEventListener(\"click\", function (e) {" +
+          // A keyboard Enter synthesizes a click with `detail === 0` and no meaningful pointer
+          // position, so `offsetX` reads 0 — inside the arrow — and the row would fold instead of
+          // following its link. Hence pointer-only here, and the keydown above for the keyboard.
+          "\n          if (!e.detail) return;" +
           "\n          if (e.offsetX > 14) return;" +
           "\n          e.preventDefault();" +
-          "\n          var open = p.getAttribute(\"aria-expanded\") !== \"true\";" +
-          "\n          p.setAttribute(\"aria-expanded\", open ? \"true\" : \"false\");" +
+          "\n          fold(p.getAttribute(\"aria-expanded\") !== \"true\");" +
           "\n        });" +
           "\n      });" +
           "\n      paneTabs.forEach(function (t) {" +

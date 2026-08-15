@@ -3341,7 +3341,7 @@ class ServeWebFixtureTest {
           " aria-expanded=\"true\" aria-controls=\"cp-page-sections-shape\">Shape"
       ) &&
         landingGrouped.contains(
-          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape#cp-node-1-20\"" +
+          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape\"" +
             " data-search=\"Corner radius\">Corner radius</a>"
         ) &&
         landingGrouped.contains("data-search=\"Shape scale\">Shape scale</a>"),
@@ -3355,6 +3355,30 @@ class ServeWebFixtureTest {
           " data-search=\"Typography\">Typography</a>"
       ) && landingGrouped.contains("<a class=\"cp-pane-all\" href=\"/pages\">All pages</a>"),
       "a page with no sections stays a plain filterable row, and the index link survives",
+    )
+    // THE JOIN, asserted rather than assumed: every fragment a section row links to must exist as
+    // an id on the page view it points at. These are two different goldens built by two different
+    // functions, and the first version of this shipped links to `#cp-node-<setId>` — anchors that
+    // the page never emits, because it draws one per COMPONENT and a component set is not one. The
+    // links resolved to nothing and no test noticed, since each golden was self-consistent.
+    val sectionFragments =
+      Regex("""href="[^"]*#(cp-node-[^"]*)"""").findAll(landingGrouped).map { it.groupValues[1] }
+    val pageAnchors =
+      Regex("""id="(cp-node-[^"]*)"""").findAll(designPageHtml).map { it.groupValues[1] }
+    val pageAnchorSet = pageAnchors.toSet()
+    val dangling = sectionFragments.filterNot { it in pageAnchorSet }.toList()
+    assertTrue(
+      pageAnchorSet.isNotEmpty() && dangling.isEmpty(),
+      "every section link lands on an anchor the page view actually emits; dangling: $dangling",
+    )
+    // Today that holds trivially, because a section links to the sheet and carries no fragment at
+    // all — a set has nothing on the page to land on, and inferring one from depth is what the
+    // `PageNode.container` contract forbids. Stated out loud so the guard above is not mistaken
+    // for proof that targeting works: it proves only that nothing dangles, which is the property
+    // that has to survive when the deep-link work adds real container anchors.
+    assertTrue(
+      sectionFragments.none(),
+      "a section link carries no fragment until the page view anchors containers",
     )
     // The pane the switch reveals ships hidden, and the tree keeps the column when it is showing.
     assertTrue(

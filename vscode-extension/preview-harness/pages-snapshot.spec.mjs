@@ -2379,6 +2379,42 @@ test("contract · the sidebar filter follows the pane it is pointed at", async (
     await expect.poll(shownCards).toBeLessThan(allCards);
 });
 
+test("contract · a page branch opens from the keyboard, and Enter still follows it", async ({
+    page,
+}) => {
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+        );
+    }
+    await page.route("**/render/**", (route) =>
+        route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+    );
+    await page.goto("/preview-harness/fixtures/pages/serve-landing-grouped.html");
+    await page.click('.cp-pane-tab[data-pane="pages"]');
+
+    const branch = page.locator("#cp-pane-pages .cp-page-branch > .cp-tree-page").first();
+    // Collapse it first, so what follows is the state every page but the first ships in.
+    await branch.evaluate((el) => el.setAttribute("aria-expanded", "false"));
+    await branch.focus();
+
+    // The fold is pointer-only (a keyboard click reports offsetX 0, inside the twisty), so without
+    // an explicit key a collapsed branch would be mouse-only — its sections are `display: none`
+    // while it is shut. Right opens and Left closes, the two keys the component tree already binds.
+    await page.keyboard.press("ArrowRight");
+    await expect(branch).toHaveAttribute("aria-expanded", "true");
+    await expect(
+        page.locator("#cp-pane-pages .cp-page-sections a").first(),
+    ).toBeVisible();
+    await page.keyboard.press("ArrowLeft");
+    await expect(branch).toHaveAttribute("aria-expanded", "false");
+
+    // …and Enter still does what a link does. This is the half that regressed first: the fold used
+    // to swallow keyboard activation, so Enter expanded the row instead of opening the sheet.
+    await page.keyboard.press("Enter");
+    await page.waitForURL(/\/pages\/shape/);
+});
+
 test("contract · Back to an unthemed entry hands the chrome back to the OS", async ({
     page,
 }) => {

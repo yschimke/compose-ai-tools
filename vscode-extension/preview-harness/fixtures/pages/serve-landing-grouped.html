@@ -140,8 +140,8 @@
   <li class="cp-page-branch">
     <a class="cp-tree-page cp-tree-link" href="/pages/shape" data-search="Shape" aria-expanded="true" aria-controls="cp-page-sections-shape">Shape<span class="cp-tree-count">2</span></a>
     <ul class="cp-tree-children cp-page-sections" id="cp-page-sections-shape">
-      <li><a class="cp-tree-variant cp-tree-link" href="/pages/shape#cp-node-1-20" data-search="Corner radius">Corner radius</a></li>
-      <li><a class="cp-tree-variant cp-tree-link" href="/pages/shape#cp-node-1-21" data-search="Shape scale">Shape scale</a></li>
+      <li><a class="cp-tree-variant cp-tree-link" href="/pages/shape" data-search="Corner radius">Corner radius</a></li>
+      <li><a class="cp-tree-variant cp-tree-link" href="/pages/shape" data-search="Shape scale">Shape scale</a></li>
     </ul>
   </li>
   <li><a class="cp-tree-page cp-tree-link" href="/pages/type" data-search="Typography">Typography</a></li>
@@ -479,11 +479,21 @@ applyThemeChoice();
       });
       pageRows.forEach(function (p) {
         if (!p.hasAttribute("aria-expanded")) return;
+        function fold(open) {
+          p.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+        p.addEventListener("keydown", function (e) {
+          if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+          var open = e.key === "ArrowRight";
+          if ((p.getAttribute("aria-expanded") === "true") === open) return;
+          e.preventDefault();
+          fold(open);
+        });
         p.addEventListener("click", function (e) {
+          if (!e.detail) return;
           if (e.offsetX > 14) return;
           e.preventDefault();
-          var open = p.getAttribute("aria-expanded") !== "true";
-          p.setAttribute("aria-expanded", open ? "true" : "false");
+          fold(p.getAttribute("aria-expanded") !== "true");
         });
       });
       paneTabs.forEach(function (t) {
