@@ -6856,6 +6856,21 @@ $rows
    * recorded rectangle would be a second answer to that question, and a worse one — Figma's export
    * box includes effect bleed, so it and the drawn shape disagree on anything with a shadow.
    *
+   * ## Zoom
+   *
+   * The sheet is drawn at the size the design file drew it — m3-catalog's Styles page is 6263 px
+   * across — and it lands in a content column a sixth of that, so every type specimen and swatch
+   * number on it is sub-pixel. The `<cp-page-zoom>` element this page declares — a Lit component in
+   * `cli/serve-web`, not part of the legacy `design-page.js` — therefore makes the stage zoomable:
+   * double-click drills one addressable level in (Figma's own gesture, and free here because a
+   * Figma export is a tree of `<g data-node-id>`, so "one level in" is the next element down the
+   * hit-test chain), ⌘/Ctrl + wheel zooms about the pointer, and dragging pans. That is also the
+   * only reason the `.cp-page-canvas` wrapper exists: the export, the overlays over it and the
+   * renders inside them are moved by ONE transform, so a slot cannot drift off the shape it stands
+   * in at any factor. The tip and the corner zoom bar sit OUTSIDE it, since a tooltip that scaled
+   * 12x would be unreadable and a control that panned away with the sheet could not be reached to
+   * undo the pan.
+   *
    * ## Trust
    *
    * [page] is third-party data — layer names are free text authored in the design file — so every
@@ -7054,6 +7069,7 @@ $rows
             </div>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
+            <span class="cp-page-hint">Double-click a section to zoom · ⌘/Ctrl-scroll · drag to pan · Esc resets</span>
           </div>
           <div class="cp-page-legend" hidden>
             <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>
@@ -7063,11 +7079,14 @@ $rows
           </div>
           <div class="cp-page-layout">
             <div class="cp-page-stage" style="--cp-page-aspect:$aspect">
-              $svg
-              <template data-cp-page-render-source>$renders</template>
-              <template data-cp-page-diff-links>$diffLinks</template>
-              $outlines
+              <div class="cp-page-canvas" data-cp-page-canvas>
+                $svg
+                <template data-cp-page-render-source>$renders</template>
+                <template data-cp-page-diff-links>$diffLinks</template>
+                $outlines
+              </div>
               <div class="cp-page-tip" data-cp-page-tip hidden aria-live="polite"></div>
+              <cp-page-zoom hidden></cp-page-zoom>
             </div>
             <details class="cp-page-nodes">
               <summary>$linked of $total components implemented</summary>
@@ -7077,6 +7096,9 @@ $rows
             </details>
           </div>
         </div>
+        <!-- The zoom lives in the Lit bundle (`<cp-page-zoom>`); the sheet's overlays, lanes and
+             per-node scoring are still `design-page.js`, awaiting their own port. -->
+        ${scriptTag("serve-components.js")}
         ${scriptTag("format-compare.js")}
         ${scriptTag("design-page.js")}
         """

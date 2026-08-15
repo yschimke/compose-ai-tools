@@ -129,6 +129,26 @@ against a moving fixture baseline:
 Ported so far: `bg-toggle.js` → `<cp-bg-toggle>`, `backend-badge.js` →
 `<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`.
 
+**New behaviour on a page that has not been ported yet starts here anyway.**
+`<cp-page-zoom>` (the design page's zoom: double-click to drill into a section,
+⌘/Ctrl + wheel, drag to pan) is the first component with no legacy file behind it.
+`assets/design-page.js` is still an IIFE — it measures an overlay onto every node,
+flips the lanes, scores the per-node diff — and adding three hundred lines of
+gesture handling to it would have made that port harder and left the feature
+testable only through a browser. So the rule is *port a file when you touch it,
+and write anything new in here regardless*, with the coupling one-way and through
+the DOM: `<cp-page-zoom>` reads `.cp-page-selected` to know the page has a
+selection (so Escape unwinds that before the zoom) and writes `--cp-page-zoom` on
+the stage for `serve.css` to counter-scale the marks by. The legacy file knows
+nothing about the element.
+
+That component is also where the geometry-in-a-pure-module shape came from:
+`src/zoom/viewport.ts` holds the framing, clamping and level-picking arithmetic
+with no DOM in it, so the cases that actually broke it — a full-height section on
+a 3.4:1 specimen sheet frames at 1.0x and looks like a dead gesture — are unit
+tests rather than screenshots. Reach for the same split whenever a component's
+real content is a calculation.
+
 Next, cheapest seam first: `rc-fonts.js` (50 lines), `page-theme.js` (103), then
 `url-state.js` itself — that one is the shared global every legacy script reads
 at IIFE time, so it wants its own change once more than one component here needs

@@ -23,6 +23,16 @@
   var svg = stage && stage.querySelector("svg");
   if (!stage || !svg) return;
 
+  // The zooming layer, transformed by `<cp-page-zoom>`: the export, the overlays and the renders
+  // inside them, moved by ONE transform so nothing can come unstuck from the shape it marks.
+  // Everything measured below is measured against this element rather than against the stage,
+  // because it is the box the overlays' percentages are relative to — and, being transformed, their
+  // containing block as well. The ratios that placement is written in survive any transform, which
+  // is why a zoom needs no re-measure here.
+  // Named for the LAYER rather than for its class, because `canvas` in this file also means a
+  // `<canvas>` element — the one the ink fit rasterises a render into a few hundred lines down.
+  var zoomLayer = stage.querySelector("[data-cp-page-canvas]") || stage;
+
   var lanes = root.querySelectorAll("[data-cp-page-lane]");
   var outlinesToggle = root.querySelector("[data-cp-page-outlines]");
   var unlinkedToggle = root.querySelector("[data-cp-page-unlinked]");
@@ -125,7 +135,11 @@
   }
 
   function measure() {
-    var box = stage.getBoundingClientRect();
+    // The CANVAS, not the stage. A zoomed canvas is larger than its stage and offset within it, so
+    // measuring against the stage would divide a zoomed distance by an unzoomed span and put every
+    // overlay somewhere else. Against the canvas the two are the same transform and the ratio comes
+    // out identical at any zoom, which is why nothing here has to be recomputed when one is applied.
+    var box = zoomLayer.getBoundingClientRect();
     // A stage with no size yet (a page opened in a background tab, a font still loading) would put
     // every overlay at 0×0 and cache that. Leave the previous placement alone and wait for the
     // observer to fire again with a real box.
@@ -681,7 +695,9 @@
   }
 
   // Escape clears the selection from anywhere on the page — including from inside the disclosure,
-  // where a reader who arrived by keyboard is most likely to be.
+  // where a reader who arrived by keyboard is most likely to be. `<cp-page-zoom>` watches for the
+  // same key and defers to this while `.cp-page-selected` is on the sheet, so one press unwinds the
+  // selection and the next unwinds the zoom.
   root.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && described) {
       var spot = null;
