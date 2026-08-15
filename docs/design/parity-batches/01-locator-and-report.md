@@ -44,6 +44,21 @@ Rules that are not negotiable, each because it has a silent failure mode:
   values are free text, so a label of `a;knob.color=red` reads back as two overrides.
 - **Fenced block, not an HTML comment.** A comment is invisible in the rendered issue, so a reporter
   editing the body cannot see they have broken the index.
+- **Reserve `element` and `bounds` as optional `v1` fields now**, even though nothing writes them
+  until [batch 03](03-element-selection.md). This batch freezes the writer, the parser and the shared
+  fixture, and batch 02's index schema is built on top; adding two keys to the same `v1` afterwards
+  means a strict parser rejects the report while a permissive one silently discards the selection.
+  Reserving them costs a line each here and a fixture; retrofitting them costs a version bump across
+  three consumers.
+- **`bounds` cannot be a bare rectangle — it needs its space settled at the same time.** Three
+  coordinate spaces are in play and they do not agree: a tag selection's bounds come from the index in
+  **render pixels** ([D1](00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in)), a
+  drag selection is in **display pixels**, and the acceptance contract wants the element baseline in
+  the **canonical plane**. Freeze a parser that accepts a naked rectangle and batch 03 will persist
+  whichever one it happened to have, so an element that never moved reports as *moved* the moment
+  those planes differ. Either require the comparison to convert into the resolved canonical plane
+  before serialising, or carry and validate a `space` discriminant — the same fix
+  `compose-preview-tags/v1` already needed for exactly this reason, which is the precedent to copy.
 
 ### 2. Emit it
 

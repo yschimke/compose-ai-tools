@@ -68,9 +68,16 @@ projections and nothing more.)
 With overrides, conditional composition or animation in play, a gate fed from either path can
 validate an element against bounds from a **different frame** and let the wrong mask suppress
 pixels. So: establish a shared render generation, or carry the index with the scored pixels, before
-element gates are switched on in [batch 05](05-acceptance-engines.md). Selection and reporting —
-this batch's actual payload — are fine without it, because a reported selection is a claim about
-what the reporter saw, not a verdict.
+element gates are switched on in [batch 05](05-acceptance-engines.md).
+
+**And the exemption for selection is narrower than it first looks.** A *drag* selection is fine
+without coupling — it is derived from the displayed pixels, so it describes what the reporter saw by
+construction. A **tag** selection is not: its bounds come from the index, they are persisted into the
+locator as authoring-time `bounds`, and those bounds become the acceptance's baseline. Bounds read
+from a different frame therefore survive into a record that later reports an unchanged element as
+*moved* — a false invalidation with a plausible explanation attached, which is worse than a missing
+check. So require same-generation coupling for **tag-derived** selection too; leave drag selection
+available meanwhile.
 
 ### 3. Selection
 
@@ -87,6 +94,14 @@ The index already carries `{count, bounds}` per tag, which is everything a selec
 
 Into the locator block from batch 01, as the `element` selector plus its authoring-time `bounds` —
 the same fields the acceptance schema (batch 04) will carry.
+
+**These must be declared as optional `v1` fields in batch 01, not added to `v1` here.** Batch 01
+freezes `compose-parity-locator/v1` — writer, parser and shared fixture — and batch 02's index schema
+is built against it. If this batch then introduces two new keys into the same `v1` block, a strict
+parser rejects the report as mangled and a permissive one silently drops the selection, so the new
+affordance is absent from every downstream consumer while appearing to work in the browser. Either
+reserve `element` and `bounds` as optional in 01, or version the contract here and update the
+producer and reader fixtures together. Reserving them in 01 is much the cheaper of the two.
 
 ## Traps
 

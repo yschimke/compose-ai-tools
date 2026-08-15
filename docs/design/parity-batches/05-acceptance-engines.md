@@ -5,7 +5,7 @@
 [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809) (publish).
 **Depends on:** [04](04-acceptance-schema.md) (schema + fixtures — freeze it first, both sides build
 against one definition), [03](03-element-selection.md) (element gates must not be enabled without a
-selection path), [00](00-decisions.md) D1 and D3.
+selection path), [00](00-decisions.md) **D1, D3 and D5**.
 **Ships:** **yes.** Accepted and unaccepted scores reported separately, on a real catalog.
 
 **Read first:** [`../COMPONENT_PARITY_WORKFLOW.md`](../COMPONENT_PARITY_WORKFLOW.md) §4 — the ten
@@ -23,19 +23,14 @@ can feed is not finished.
 Earlier revisions carried a numbered pipeline and **every version of it had a real defect** — a gate
 placed before the data it reads existed, a resample that mixed what a previous step had separated, a
 delta computed in the wrong direction. What §4 gives instead is ten invariants that are not
-negotiable, plus an explicit list of what this batch has to **decide**:
+negotiable, plus six open questions.
 
-1. the portable pixel path — which resampler, since `drawImage`'s filter is not reproducible
-   off-browser;
-2. whether mask pixels participate in `edgeMask`;
-3. the masked pass's denominator;
-4. what "accepted contribution" means, given it can legitimately go **negative**;
-5. sub-pixel rounding;
-6. the match metric shared by the candidate gate and the resolution test, and whether it is aggregate
-   or per-pixel.
-
-Record each decision in the design doc as it is made. A decision made in code and not written down is
-how the previous three pipelines went wrong.
+**Those six are [batch 00's D5](00-decisions.md#d5--the-pixel-semantics-decided-before-the-fixtures-are-frozen), not this batch's.**
+They were briefly assigned here, which made the plan circular: batch 04 owes a *passing* conformance
+runner with expected intermediate planes, and every one of those expected bytes is a function of the
+six answers. Deciding them here would mean 04 freezing fixtures against a guess and 05 then
+conforming to the guess. Implement against the recorded answers; if one turns out to be wrong, amend
+D5 and the fixtures together, in a change that does nothing else.
 
 ## Facts about the existing scorer that constrain all of it
 
