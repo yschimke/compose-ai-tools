@@ -208,10 +208,27 @@ steps, each of which either already knows what its chip says or names the two
 images to measure, so the five ways a cell can end up without a number are a
 table rather than a promise chain.
 
-Next, cheapest seam first: `spec-compare.js` (373), `catalog-live.js` (400),
-`inspect.js` (424), `design-page.js` (789). The big ones — `format-compare.js`
-(1,706) and `viewer.js` (3,127) — want breaking into pure modules the way the
-drawers were, not porting whole.
+`<cp-spec-compare>` is the first port whose hardest part was not arithmetic but
+a question of authority. Three sources want to pick the spec lane's view — the
+address bar, the design-spec chip, and the visitor — and they are not equal: an
+explicit choice latches and never clears, a named view in the URL *is* an
+explicit choice, and the chip's request is therefore only ever a default that is
+spent the moment it is used. Get any of that backwards and the bug is a view
+that silently changes under the reader, which no screenshot shows.
+`spec/views.ts` makes it a reducer with a table of cases; the element is left
+holding canvases. `spec/sameOrigin.ts` came out with it — the guard on every URL
+reaching `drawImage`, now tried against the schemes it exists to refuse.
+
+`compare/api.ts` arrived at the same time, and is worth knowing about: two
+components now reach for `window.ComposePreviewCompare`, and declaring it in each
+was two `Window` augmentations of one property, which TypeScript rejects outright.
+One declaration, one typed handle. It is NOT a port of `format-compare.js` —
+that file still owns the metric.
+
+Next, cheapest seam first: `catalog-live.js` (400), `inspect.js` (424),
+`design-page.js` (789). The big ones — `format-compare.js` (1,706) and
+`viewer.js` (3,127) — want breaking into pure modules the way the drawers were,
+not porting whole.
 
 ## Two bundles, and which one a thing belongs in
 
@@ -236,7 +253,7 @@ no Lit at all and is *smaller* than the two files it replaced (`url-state.js` +
 
 It also settles load order in one place. `window.cpUrlState` has to exist before
 the component bundle — `backgroundChoice.ts` reads it as `<cp-bg-toggle>`
-upgrades — and before `format-compare.js` and `spec-compare.js`,
+upgrades — and before `format-compare.js`,
 which read it at their own IIFE time. One shell tag ahead of everything replaces
 four per-surface `url-state.js` tags that each had to be kept in the right
 place.

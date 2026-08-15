@@ -8463,7 +8463,7 @@ $rows
       else {
         val tip = "Compare this render against the imported design spec — $specLabel"
         // Hidden until the lane is entered: while a render is on the stage there is no pair to
-        // compare, and a control that acts on nothing is worse than no control. spec-compare.js
+        // compare, and a control that acts on nothing is worse than no control. `<cp-spec-compare>`
         // reveals it from openSpec() and hides it again on the way out.
         val viewButtons =
           specViews.joinToString("") { (value, text) ->
@@ -8779,7 +8779,7 @@ $rows
           "${WebEscaping.htmlEscape("$displayName — design spec")}\">"
     // The comparison surface the Diff / Triptych / Slider views paint into — a second stage child
     // beside [specImg], `hidden` until one of them is picked. Every panel is a `<canvas>` rather
-    // than an `<img>` on purpose: spec-compare.js normalises both frames to one shared pixel space
+    // than an `<img>` on purpose: `<cp-spec-compare>` normalises both frames to one pixel space
     // before painting (a reference exported at a different scale than the render is the normal
     // case), and only canvases can carry that redrawn result. Nothing is fetched until a
     // comparison view is actually chosen.
@@ -8803,7 +8803,13 @@ $rows
           "min=\"0\" max=\"100\" value=\"50\" " +
           "aria-label=\"Wipe between the design spec and the Compose render\">" +
           "<span>Render</span></label></div>" +
-          "</div>"
+          "</div>" +
+          // Drives the panel above: the view buttons, the four surfaces, and the verdict on the
+          // design-spec chip. Emitted immediately after it — `viewer.js` calls
+          // `window.cpSpecCompare` on the way into the lane, so the element has to be able to set
+          // itself up the moment the tag upgrades rather than one parse later. Renders nothing;
+          // `serve.css` hides the tag.
+          "<cp-spec-compare></cp-spec-compare>"
       }
     // The Source lane's hidden mode radio. It is not a render lane, but it joins the same radio
     // group as the rest so it inherits every mechanism they get for free: `?mode=source` in the
@@ -9375,15 +9381,14 @@ $rows
         .joinToString("\n")
     // `format-compare.js` holds the comparison primitives — content-box normalisation, the
     // edge-tolerant score, the magenta delta map — that BOTH the SVG/PNG fidelity toggle and the
-    // spec lane's
-    // Diff / Triptych / Slider views draw from, so it loads for either. `spec-compare.js` sits on
-    // top of it and must be defined before `viewer.js`, which calls into `window.cpSpecCompare` on
-    // the way into (and out of) the lane.
+    // spec lane's Diff / Triptych / Slider views draw from, so it loads for either.
+    //
+    // `<cp-spec-compare>` sits on top of it and publishes `window.cpSpecCompare`, which `viewer.js`
+    // calls on the way into (and out of) the lane. The components bundle is emitted above both, and
+    // the element wires itself up as soon as its tag upgrades, so the ordering `spec-compare.js`
+    // needed is preserved without a script tag of its own.
     val compareScriptTags =
-      listOfNotNull(
-          scriptTag("format-compare.js").takeIf { hasSvgExport || specRasterUrl != null },
-          scriptTag("spec-compare.js").takeIf { specRasterUrl != null },
-        )
+      listOfNotNull(scriptTag("format-compare.js").takeIf { hasSvgExport || specRasterUrl != null })
         .joinToString("") { "$it\n      " }
     // The provenance row (source / playground / report an issue / figma spec) no longer sits under
     // the title. It is *about* the preview rather than a control over it, and four lines of small
@@ -9738,7 +9743,7 @@ $rows
     // enhancement scripts read it at their own IIFE time. It is unconditional because it also
     // carries the Page theme setting, which every page has — and it can afford to be, at ~1 kB
     // gzipped with no Lit in it. Deliberately NOT commented in the emitted HTML: a note naming
-    // those script files would ship to every visitor, and `html.contains("spec-compare.js")` is
+    // those script files would ship to every visitor, and `html.contains("format-compare.js")` is
     // exactly how several tests ask whether a lane is loaded.
     return """
     <!doctype html>

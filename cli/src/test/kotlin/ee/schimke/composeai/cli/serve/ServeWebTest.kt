@@ -1028,7 +1028,7 @@ class ServeWebTest {
     )
     assertEquals(1, Regex("aria-pressed=\"true\"").findAll(html).count(), "one view is pressed")
     // Hidden until the lane is entered — while a render is on the stage there is no pair to
-    // compare, and spec-compare.js reveals the group from openSpec().
+    // compare, and `<cp-spec-compare>` reveals the group from openSpec().
     assertTrue(
       html.contains("id=\"cp-spec-views\" role=\"group\" aria-label=\"Design comparison\" hidden"),
       html,
@@ -1047,13 +1047,17 @@ class ServeWebTest {
     }
     assertTrue(html.contains("id=\"cp-spec-wipe-range\""), "the wipe carries a range control")
     assertTrue(html.contains("id=\"cp-spec-score\""), "the match readout is rendered")
-    // Load order is load-bearing: viewer.js calls window.cpSpecCompare on the way into the lane,
-    // and spec-compare.js draws every surface from format-compare.js's primitives.
+    // Load order is load-bearing: `viewer.js` calls `window.cpSpecCompare` on the way into the
+    // lane, and `<cp-spec-compare>` draws every surface from format-compare.js's primitives. The
+    // element wires itself up as its tag upgrades, so the components bundle has to be requested
+    // before viewer.js, and the tag itself before the bundle that defines it.
+    val tag = html.indexOf("<cp-spec-compare>")
+    val components = html.indexOf("serve-components.js")
     val formatCompare = html.indexOf("format-compare.js")
-    val specCompare = html.indexOf("spec-compare.js")
     val viewer = html.indexOf("/viewer.js")
-    assertTrue(formatCompare in 1 until specCompare, "format-compare.js precedes spec-compare.js")
-    assertTrue(specCompare in 1 until viewer, "spec-compare.js precedes viewer.js")
+    assertTrue(tag in 1 until components, "the tag is parsed before the bundle upgrades it")
+    assertTrue(components in 1 until viewer, "the components bundle precedes viewer.js")
+    assertTrue(formatCompare in 1 until viewer, "format-compare.js precedes viewer.js")
   }
 
   @Test
@@ -1074,7 +1078,7 @@ class ServeWebTest {
     // the script that drives them.
     assertFalse(html.contains("cp-spec-compare"), "no comparison surface without a reference")
     assertFalse(html.contains("data-cp-spec-view"), "no diff options without a reference")
-    assertFalse(html.contains("spec-compare.js"), "spec-compare.js is not loaded without a lane")
+    assertFalse(html.contains("cp-spec-compare"), "no <cp-spec-compare> without a lane")
   }
 
   @Test

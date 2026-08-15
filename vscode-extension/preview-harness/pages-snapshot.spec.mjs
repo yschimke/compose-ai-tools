@@ -310,7 +310,6 @@ const SERVE_ASSETS = [
     ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
-    ["spec-compare.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
     ["design-page.js", "text/javascript"],
@@ -1315,7 +1314,7 @@ const FIXTURE_STATES = [
         },
     },
     // The three comparison views the spec lane offers once it is up. Each is drawn entirely at
-    // runtime — pre-normalised canvases painted by `spec-compare.js` — so the committed HTML holds
+    // runtime — pre-normalised canvases painted by `<cp-spec-compare>` — so the committed HTML holds
     // four empty `<canvas>` elements and none of what these views actually look like. Capturing
     // them here is what puts the diff colouring, the triptych's three-up rhythm and the wipe's seam
     // under the visual-diff bot, so a later change to any of them moves a baseline instead of
