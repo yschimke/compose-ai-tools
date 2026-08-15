@@ -254,6 +254,10 @@ dependencies {
   // (payload schema only; the alpha `androidx.compose.remote.*` deps live in the connector, not
   // here), so it stays off the renderer/daemon boundary the CLI guards.
   implementation(project(":data-remotecompose-core"))
+  // Reads a captured `.rc` document's override surface (`RcDocumentCapabilities`) so the serve
+  // layer can answer "does this override survive a replay?" per document instead of from a
+  // hand-maintained allow-list of axes. Pulls `:rc-player-protocol` transitively for the codec.
+  implementation(project(":rc-player-runtime"))
   // Public render-session library — the CLI consumes its own published API for daemon-driven
   // commands (`compose-preview a11y` etc.) instead of touching DaemonClient directly. We eat
   // our own dog food: anything the CLI can do, a third-party tooling consumer can do via the

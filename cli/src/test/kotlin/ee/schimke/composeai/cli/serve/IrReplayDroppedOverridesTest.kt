@@ -6,6 +6,12 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
+import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
+import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.runtime.RcDocumentCapabilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -187,6 +193,111 @@ class IrReplayDroppedOverridesTest {
               namedValues = mapOf("text" to RemoteNamedValue.StringValue("body"))
             ),
         ),
+      ),
+    )
+  }
+
+  // ——— per-document answers (the capability argument) ———
+
+  /** A document's declarations, through the wire, exactly as the serve layer reads them. */
+  private fun capsOf(vararg named: Pair<String, Int>): RcDocumentCapabilities =
+    requireNotNull(
+      RcDocumentCapabilities.of(
+        RcDocumentCodec.encode(
+          RcDocument(
+            RcHeader(RcVersion(1, 0, 0)),
+            named.mapIndexed { i, (name, type) -> RcNamedVariable(i + 1, type, name) },
+          )
+        )
+      )
+    )
+
+  /**
+   * The finding that motivated reading the document: of `remote-m3`'s 27 published documents 16
+   * declare colour state a palette can move and 11 declare none, so no single answer for
+   * `themeProvider` is right even inside one catalog.
+   */
+  @Test
+  fun `themeProvider lands on a document that declares colour slots`() {
+    val overrides = PreviewOverrides(themeProvider = "coral")
+    assertEquals(
+      emptyList(),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        overrides,
+        capsOf("USER:WearM3.onSurface" to RcNamedVariable.COLOR_TYPE),
+      ),
+    )
+    assertEquals(
+      listOf("themeProvider"),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        overrides,
+        capsOf("USER:light.kitchen.is_on" to RcNamedVariable.INT_TYPE),
+      ),
+    )
+  }
+
+  /**
+   * No document to read means no claim that an override applies — the answer stays conservative.
+   */
+  @Test
+  fun `without a document the conservative answer is kept`() {
+    assertEquals(
+      listOf("themeProvider"),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        PreviewOverrides(themeProvider = "coral"),
+        caps = null,
+      ),
+    )
+  }
+
+  /**
+   * New precision the allow-list could not reach: a seed aimed at a name no document carries was
+   * reported as applied, because the list only knew about the value's *type*.
+   */
+  @Test
+  fun `an rc seed for an undeclared name is reported as dropped`() {
+    val overrides =
+      PreviewOverrides(
+        remoteCompose =
+          RemoteComposeOverride(
+            namedValues = mapOf("progress" to RemoteNamedValue.FloatValue(0.5f))
+          )
+      )
+    assertEquals(
+      emptyList(),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        overrides,
+        capsOf("USER:progress" to RcNamedVariable.FLOAT_TYPE),
+      ),
+    )
+    assertEquals(
+      listOf("rc.progress"),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        overrides,
+        capsOf("USER:somethingElse" to RcNamedVariable.FLOAT_TYPE),
+      ),
+    )
+  }
+
+  /** A string seed stays named even where the document declares it — the gap is player-side. */
+  @Test
+  fun `a declared string seed is still dropped`() {
+    assertEquals(
+      listOf("rc.label"),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        PreviewOverrides(
+          remoteCompose =
+            RemoteComposeOverride(
+              namedValues = mapOf("label" to RemoteNamedValue.StringValue("hi"))
+            )
+        ),
+        capsOf("USER:label" to RcNamedVariable.STRING_TYPE),
       ),
     )
   }

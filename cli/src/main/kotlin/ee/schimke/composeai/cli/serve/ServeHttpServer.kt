@@ -8,6 +8,7 @@ import ee.schimke.composeai.data.layoutinspector.ExplodedSvg
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.designpages.DesignPage
+import ee.schimke.composeai.rcplayer.runtime.RcDocumentCapabilities
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -5116,11 +5117,39 @@ class ServeHttpServer(
       // A real render happened — and still could not apply everything, because this preview is
       // replayed from its captured document rather than recomposed. See
       // [CatalogLiveRouting.irReplayDroppedOverrideNames] for which axes that costs and why the
-      // list is narrow.
-      CatalogLiveRouting.irReplayDroppedOverrideNames(previewId, overrides)
+      // list is narrow. The document itself decides the axes it can: a palette lands only where
+      // the bytes declare colour slots, and an `rc.` seed only where they declare its name.
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        previewId,
+        overrides,
+        documentCapabilities(renderHost, previewId),
+      )
     } else {
       emptyList()
     }
+
+  /**
+   * [previewId]'s captured document read as an override surface, or null when the host carries no
+   * document or the bytes don't decode — both of which mean "cannot establish support", so the
+   * caller keeps its conservative answer rather than claiming an override applies.
+   *
+   * Memoised per preview: the documents are small (a few hundred bytes to a few KB) but this is on
+   * the render-response path, and the bytes for a given id do not change while the host is up.
+   */
+  private val documentCapabilityCache =
+    java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<RcDocumentCapabilities>>()
+
+  private fun documentCapabilities(
+    renderHost: ServeHost,
+    previewId: String,
+  ): RcDocumentCapabilities? =
+    documentCapabilityCache
+      .computeIfAbsent(previewId) { id ->
+        java.util.Optional.ofNullable(
+          renderHost.remoteComposeDoc(id)?.let { RcDocumentCapabilities.of(it) }
+        )
+      }
+      .orElse(null)
 
   /**
    * Whether a refusal for [previewId] is **terminal** — retrying can never apply the override. True
