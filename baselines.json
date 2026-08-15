@@ -568,26 +568,38 @@
     "serve-landing-grouped-pages-filtered.dark.png": {
       "fixture": "serve-landing-grouped-pages-filtered",
       "theme": "dark",
-      "sha256": "70da36c33ba38166307099ca6ad54983f775df2bd3887bf3ccbb4275544337d4",
-      "size": 96676
+      "sha256": "44ab84585f8433c6f290490be6bc2d4a901d2ee161dbc79e491944ab2faca20c",
+      "size": 98909
     },
     "serve-landing-grouped-pages-filtered.light.png": {
       "fixture": "serve-landing-grouped-pages-filtered",
       "theme": "light",
-      "sha256": "e9dc3262ba088e2483c6e9f10ea70543994f99a9fb1fee3f1db9fbd50475b9e8",
-      "size": 95409
+      "sha256": "cfdab450ce04789f5e5875b705f6e487b0717f57401a2ebeda86d37307f1b977",
+      "size": 97664
     },
     "serve-landing-grouped-pages-pane.dark.png": {
       "fixture": "serve-landing-grouped-pages-pane",
       "theme": "dark",
-      "sha256": "095b16a0f997962213a84779e99511d9909aeecc290036d83aacf4926671d13c",
-      "size": 96336
+      "sha256": "53b1d8138d6b20ca61206444a34160f395eb7dfbb9feb9540e39045e471b8df8",
+      "size": 98591
     },
     "serve-landing-grouped-pages-pane.light.png": {
       "fixture": "serve-landing-grouped-pages-pane",
       "theme": "light",
-      "sha256": "b03a5e48d96cdeafeef9d00549a62a1ac32e7fb89fb6cb2d91622301b60d5432",
-      "size": 95079
+      "sha256": "6e226a3bd01185740373c35a9f4a4696682d9d37872b2c7a131fd2cf7ac503cc",
+      "size": 97396
+    },
+    "serve-landing-grouped-pages-section-match.dark.png": {
+      "fixture": "serve-landing-grouped-pages-section-match",
+      "theme": "dark",
+      "sha256": "5d4728b5b9c25744c5c4e3443c4511dfdbef900fe019277ecb1baf7321576b8e",
+      "size": 97716
+    },
+    "serve-landing-grouped-pages-section-match.light.png": {
+      "fixture": "serve-landing-grouped-pages-section-match",
+      "theme": "light",
+      "sha256": "868f86789dfe2a0d038ee296b12532b668bc6457fda30e088499f756d7d48839",
+      "size": 96471
     },
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",
