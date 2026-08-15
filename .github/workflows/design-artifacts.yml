@@ -34,9 +34,9 @@ on:
   # `renderers/`, `cli/`). They do affect the output, but they're touched by most
   # merges, and each system's render is ~90 minutes — a push trigger there would
   # run hours of render on nearly every commit to `main`. Renderer drift is picked
-  # up by the Monday cron and by the release chain (`release-please.yml` →
-  # `workflow_call`); dispatch manually if a renderer change needs to land in the
-  # delivery branches sooner.
+  # up by the Monday cron and by the release chain
+  # (`post-release-design-artifacts.yml` → `workflow_call`); dispatch manually if a
+  # renderer change needs to land in the delivery branches sooner.
   push:
     branches: [main]
     paths:
@@ -46,11 +46,13 @@ on:
       - '.github/ci/remote-m3-cmp-wasm-allowlist.json'
       - '.github/workflows/design-artifacts.yml'
       - '.github/workflows/design-artifacts-reusable.yml'
-  # Also invoked automatically at the tail of a published release (release-please.yml
+  # Also invoked automatically after a published release (post-release-design-artifacts.yml
   # → this workflow) so the design-artifacts/<system> delivery branches regenerate with
-  # the just-released preview-runtime coordinates without a manual dispatch. Chained via
-  # workflow_call rather than a dispatch because the release run is authenticated with the
-  # default GITHUB_TOKEN, whose events don't start new workflow runs (the same reason
+  # the just-released preview-runtime coordinates without a manual dispatch. That caller
+  # is a separate run hanging off release-please.yml's completion via `workflow_run`, so
+  # ~90 minutes of render per system no longer holds the release run open; it chains via
+  # workflow_call from there because the release run is authenticated with the default
+  # GITHUB_TOKEN, whose events don't start new workflow runs (the same reason
   # release-please.yml calls release.yml / preview-host-image.yml this way).
   workflow_call:
     inputs:
@@ -106,14 +108,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT: ${{ github.event_name }}
-          # A reusable workflow inherits the CALLER's github context, so on the
-          # release chain (release-please.yml is itself `on: push`) `event_name` is
-          # `push` and `event.before…sha` is the release merge — which touches
-          # CHANGELOG / gradle.properties and matches no catalog, so pure event
-          # sniffing would silently skip every system on exactly the run that must
-          # republish them all. `inputs.force-all` is the explicit signal; it is
-          # empty for push/cron (the `inputs` context is only populated for
-          # workflow_call / workflow_dispatch) and defaults to true for callers.
+          # A reusable workflow inherits the CALLER's github context, so `event_name`
+          # here is the caller's event, never `workflow_call`. Event sniffing alone is
+          # therefore not safe to rely on: the release chain's caller is
+          # post-release-design-artifacts.yml (`on: workflow_run`) today, but when it
+          # was a job in release-please.yml (`on: push`) this read as a `push` whose
+          # `event.before…sha` was the release merge — CHANGELOG / gradle.properties,
+          # matching no catalog — and would have silently skipped every system on
+          # exactly the run that must republish them all. `inputs.force-all` is the
+          # explicit signal that survives the caller moving; it is empty for push/cron
+          # (the `inputs` context is only populated for workflow_call /
+          # workflow_dispatch) and defaults to true for callers.
           FORCE_ALL: ${{ inputs.force-all }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}

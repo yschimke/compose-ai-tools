@@ -1,0 +1,131 @@
+name: Post-release design artifacts
+
+# Regenerate the `design-artifacts/<system>` delivery branches for the runtime a
+# release just published. Every sticker bundle pins the RELEASED preview-runtime
+# coordinates (`composeaiReleasedRuntimeVersion` in gradle.properties, which the
+# merged release PR bumps), so the published bundles go stale the instant a
+# release cuts — this rebuilds them instead of waiting for the Monday cron.
+#
+# This used to be a `regenerate-design-artifacts` job inside release-please.yml.
+# It was moved out because an all-systems regeneration takes 31–38 minutes (see
+# docs/design/DESIGN_CATALOGS.md) and it ran at the TAIL of the release: the
+# artifacts were long since published and the Release un-drafted, yet the Release
+# PR run stayed "in progress" for another half hour afterwards.
+# That is not free — a run that is still going cannot be re-run ("Re-run failed
+# jobs" answers 403 `This workflow is already running`), so a tolerated failure
+# earlier in the release (`publish-design-map`, `publish-vscode-extension`) could
+# not be retried until the renders finished. Splitting it into its own run leaves
+# the release run finishing when the release does.
+#
+# Chained on `workflow_run` rather than by the release run dispatching it: the
+# release chain is authenticated with the default GITHUB_TOKEN, whose events do
+# not start new workflow runs (the same constraint that makes release-please.yml
+# call release.yml / preview-host-image.yml over `workflow_call`). `workflow_run`
+# is the one trigger that fires from a GITHUB_TOKEN-driven run's completion.
+#
+# NOTE: `workflow_run` only fires for the copy of this file on the DEFAULT branch,
+# so a change here cannot be exercised from a PR branch — it takes effect once
+# merged. It also fires on EVERY "Release PR" run (i.e. every push to main); the
+# `gate` job below costs a few seconds and skips all but the release ones.
+
+on:
+  workflow_run:
+    workflows: ["Release PR"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+# Shares design-artifacts.yml's own concurrency group semantics: that workflow
+# groups on `github.ref`, which for a workflow_run event is the default branch —
+# the same value a push run uses — so a post-release regeneration and a
+# catalog-merge regeneration queue behind each other instead of racing for the
+# same delivery branch.
+concurrency:
+  group: post-release-design-artifacts-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  # Did the run that just finished actually publish a release?
+  #
+  # "Release PR" completes on every push to main; only the runs that merged a
+  # release PR should regenerate anything. The test is that the newest PUBLISHED
+  # release's tag points at exactly the commit that run built. That is a stronger
+  # signal than the run's conclusion or its commit message: it is only true after
+  # `finalize-release` un-drafted the Release and marked it latest, which is
+  # precisely the gate the in-chain job used (`needs.finalize-release.result ==
+  # 'success'`). A draft release — the state a missing-asset failure leaves behind
+  # — is invisible to `releases/latest`, so this fails closed.
+  gate:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      released: ${{ steps.check.outputs.released }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Read from the env, never interpolated into the script body, per the
+          # repo zizmor policy (template-injection).
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          released=false
+
+          # Exactly one `released=` line reaches $GITHUB_OUTPUT (written once at the
+          # end): a file carrying the key twice would leave which value wins up to
+          # the runner's parser.
+          tag=$(gh api "repos/${GH_REPO}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+          if [ -z "${tag}" ]; then
+            echo "no published release — nothing to regenerate."
+          else
+            # `git/ref/tags/<tag>` answers with the ref object for an exact match and
+            # an ARRAY of near-misses otherwise; `--jq` over the array yields nothing,
+            # which lands in the mismatch branch below. Fails closed either way.
+            sha=$(gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --jq '.object.sha' 2>/dev/null || true)
+            type=$(gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --jq '.object.type' 2>/dev/null || true)
+            # release-please's fallback step creates a lightweight ref, but an
+            # annotated tag would point at a tag object — dereference it to the commit.
+            if [ "${type}" = "tag" ] && [ -n "${sha}" ]; then
+              sha=$(gh api "repos/${GH_REPO}/git/tags/${sha}" --jq '.object.sha' 2>/dev/null || true)
+            fi
+
+            if [ -n "${sha}" ] && [ "${sha}" = "${HEAD_SHA}" ]; then
+              released=true
+              echo "${tag} is published at ${HEAD_SHA} — regenerating every system."
+              echo "Regenerating delivery branches for **${tag}**." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "latest release ${tag} points at ${sha:-nothing}, not ${HEAD_SHA} — not a release run."
+            fi
+          fi
+
+          {
+            echo "released=${released}"
+            echo "tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+  # Same call the release chain used to make: every bundle pins the released
+  # runtime, so a release republishes all of them, not just the catalogs whose
+  # sources happened to change. `force-all` is passed explicitly rather than left
+  # to the input default — a called workflow inherits THIS workflow's event, and
+  # design-artifacts' change-scoping only special-cases `push`.
+  #
+  # Unlike the in-chain job this renders the head of the default branch rather
+  # than the release commit itself (a workflow_run run checks out the default
+  # branch), exactly as the Monday cron does. The coordinate the bundles pin comes
+  # from `composeaiReleasedRuntimeVersion`, which the release PR already bumped on
+  # main, so the published bundles still name the just-released runtime; a catalog
+  # that landed in the minutes after the release is simply included early.
+  regenerate:
+    needs: gate
+    if: ${{ needs.gate.outputs.released == 'true' }}
+    uses: ./.github/workflows/design-artifacts.yml
+    with:
+      force-all: true
+    secrets: inherit
+    permissions:
+      contents: write   # publish the design-artifacts/<system> delivery branches

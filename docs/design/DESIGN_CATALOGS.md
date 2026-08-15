@@ -77,8 +77,10 @@ and the `validate-samples` test runs that over every catalog in this repo.
 The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow
 runs **on every merge to `main` that touches a catalog** (`samples/design-catalog-*`,
 `samples/cmp-wasm-catalog`) or the export driver (`scripts/design-artifacts/`),
-plus every Monday, at the tail of a release, and on demand via
-`workflow_dispatch`. A merge-triggered run is scoped by its `changes` job to only
+plus every Monday, after a release
+([`post-release-design-artifacts`](../../.github/workflows/post-release-design-artifacts.yml)
+picks the finished release run up via `workflow_run`, so the renders run alongside
+the release rather than inside it), and on demand via `workflow_dispatch`. A merge-triggered run is scoped by its `changes` job to only
 the systems whose inputs moved — the mapping lives in
 [`scope-systems.sh`](../../scripts/design-artifacts/scope-systems.sh) and is
 guarded by `test-scope-systems.sh` in CI — so a one-catalog change regenerates one
