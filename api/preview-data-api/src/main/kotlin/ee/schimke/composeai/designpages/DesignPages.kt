@@ -172,10 +172,27 @@ public data class PageNode(
    * — you implement the component, and an instance only points at one — so an unlinked placement is
    * never a gap.
    *
-   * What makes dropping it lossless rather than a blind spot is that the definition it points at is
-   * listed on the sheet in its own right. The kit's Sheets page is the clearest case: four `Side
-   * Sheet` instances sit beside the `Side Sheet` `COMPONENT_SET` whose four variants are already
-   * counted, so counting both reported the same missing component twice.
+   * Dropping one is not a blind spot, because a placement is not where a kit *states* a component.
+   * A specimen sheet states its components as `COMPONENT` / `COMPONENT_SET`, and those are counted
+   * on their own; the instances scattered around them are the page header, the parts of an example
+   * composition, and the illustration beside a variant grid. The kit's Sheets page shows the last
+   * of those plainly: four `Side Sheet` instances sit beside the `Side Sheet` `COMPONENT_SET` whose
+   * four variants are already counted, so counting both reported one missing component twice. Its
+   * Toolbars page shows the middle one: the `Toolbar`+`FAB` pairs are a demo of a toolbar with a
+   * button beside it, and the toolbars themselves are stated — and implemented — further up.
+   *
+   * This deliberately does NOT try to prove the definition exists before dropping the placement.
+   * The definition is often on another sheet (`Scrim` is drawn on Sheets and defined on Utilities),
+   * so a same-page lookup would be wrong; and matching a placement to its definition by layer name
+   * is the class of guess this whole change exists to remove — the leading-dot rule it replaces
+   * failed exactly because a name is not a fact. Figma's own answer is an `INSTANCE`'s
+   * `componentId`, which the manifest does not carry yet; recording it is what would turn this from
+   * a sound default into a decision per node.
+   *
+   * Until then the exposure is bounded and one-directional: a component the kit shows ONLY as an
+   * instance stops being counted, rather than being counted as done. The numerator cannot move —
+   * across the whole Material 3 kit this changes the total on 27 sheets and the implemented count
+   * on none of them.
    *
    * A **linked** instance is the exception and stays a component. Naming an instance's node id in
    * `design-map.json` is a deliberate claim that this placement is the thing we draw, and the
