@@ -41,10 +41,22 @@ import { catalogSlug } from "./catalog-image-path.mjs";
 const MOTION_EXTENSIONS = [".apng", ".gif"];
 
 /**
- * The disambiguating suffix `PreviewDiscovery` appends when one `@Preview` function carries both an
- * interaction and something else that would claim the same filename.
+ * The disambiguating suffixes `PreviewDiscovery` appends when one `@Preview` function carries a
+ * motion annotation *and* something else that would claim the same filename — `_interaction` when an
+ * interaction shares with a GIF-producing peer, `_anim` when an animation shares with a scroll /
+ * timing fan-out or a `@FocusedPreview(gif = true)`. Both are appended to the preview id, so
+ * stripping them recovers the id the sibling sticker is named from.
+ *
+ * `_focus_gif` is deliberately absent: a focused GIF carries neither an `interaction` nor an
+ * `animation` declaration, so `motionDeclarationOf` never classifies it as motion and no artifact
+ * reaches here under that name.
  */
-const INTERACTION_SUFFIX = "_interaction";
+const MOTION_SUFFIXES = ["_interaction", "_anim"];
+
+/** The disambiguator [leaf] ends with, or `null` when it carries none. */
+function motionSuffixOf(leaf) {
+  return MOTION_SUFFIXES.find((suffix) => leaf.endsWith(suffix)) ?? null;
+}
 
 /** The branch directory motion artifacts publish under, beside `images/`. */
 export const MOTION_DIR = "motion";
@@ -53,9 +65,10 @@ export const MOTION_DIR = "motion";
  * The preview id of the **still** a bundle-internal motion artifact sits beside.
  *
  * `previews/Switch_Dark.apng` was rendered from preview `Switch_Dark`, whose sticker is
- * `previews/Switch_Dark.png` — so the leaf minus its extension is already the join key. The one
- * exception is a function carrying two motion annotations, which `PreviewDiscovery` disambiguates
- * by suffixing `_interaction`; stripping that recovers the same key.
+ * `previews/Switch_Dark.png` — so the leaf minus its extension is already the join key. The
+ * exception is a function whose motion capture had to share its filename space, which
+ * `PreviewDiscovery` disambiguates with a `_interaction` / `_anim` suffix; stripping that recovers
+ * the same key.
  *
  * @param {string} artifactPath a bundle-relative `previews/…` path.
  * @returns {string|null} the sibling still's preview id, or `null` if this isn't a motion artifact.
@@ -64,7 +77,8 @@ export function motionSiblingPreviewId(artifactPath) {
   const extension = motionExtensionOf(artifactPath);
   if (!extension) return null;
   const leaf = artifactPath.slice(artifactPath.lastIndexOf("/") + 1, -extension.length);
-  return leaf.endsWith(INTERACTION_SUFFIX) ? leaf.slice(0, -INTERACTION_SUFFIX.length) : leaf;
+  const suffix = motionSuffixOf(leaf);
+  return suffix ? leaf.slice(0, -suffix.length) : leaf;
 }
 
 /** The motion extension [artifactPath] ends with, or `null`. */
@@ -77,9 +91,9 @@ function motionExtensionOf(artifactPath) {
  *
  * With a sibling sticker resolved, the name is that sticker's:
  * `images/switch-on/ideal__default__dark.png` becomes
- * `motion/switch-on/ideal__default__dark.apng`, carrying the `__interaction` disambiguator through
- * as a variant segment when the artifact had one — so a function publishing both an
- * interaction and an animation can't have one silently overwrite the other.
+ * `motion/switch-on/ideal__default__dark.apng`, carrying the `__interaction` / `__anim`
+ * disambiguator through as a variant segment when the artifact had one — so a function publishing
+ * both an interaction and an animation can't have one silently overwrite the other.
  *
  * Without one (an image the live-preview bridge deliberately left unstamped, so no `previewId` to
  * join on) the artifact still publishes, under its own leaf in the component's directory. The bytes
@@ -97,8 +111,9 @@ export function motionPublishPath(componentId, artifactPath, imagePath) {
   if (imagePath?.startsWith("images/") && imagePath.endsWith(".png")) {
     const stem = imagePath.slice("images/".length, -".png".length);
     const leaf = artifactPath.slice(artifactPath.lastIndexOf("/") + 1, -extension.length);
-    const suffix = leaf.endsWith(INTERACTION_SUFFIX) ? `__${INTERACTION_SUFFIX.slice(1)}` : "";
-    return `${MOTION_DIR}/${stem}${suffix}${extension}`;
+    const suffix = motionSuffixOf(leaf);
+    const segment = suffix ? `__${suffix.slice(1)}` : "";
+    return `${MOTION_DIR}/${stem}${segment}${extension}`;
   }
   const leaf = artifactPath.slice(artifactPath.lastIndexOf("/") + 1);
   return `${MOTION_DIR}/${catalogSlug(componentId)}/${leaf}`;

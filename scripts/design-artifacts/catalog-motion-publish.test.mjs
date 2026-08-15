@@ -17,10 +17,13 @@ test("the sibling still is the artifact's own leaf", () => {
   assert.equal(motionSiblingPreviewId("previews/Spinner_Light.gif"), "Spinner_Light");
 });
 
-test("the _interaction disambiguator is stripped to reach the still", () => {
-  // A function carrying both annotations renders its interaction under a suffixed name, but the
-  // sticker it sits beside is still the unsuffixed preview.
+test("a disambiguated capture is stripped back to reach the still", () => {
+  // A motion capture that had to share its filename space renders under a suffixed name, but the
+  // sticker it sits beside is still the unsuffixed preview. `_interaction` is what discovery
+  // appends to an interaction sharing with a GIF-producing peer; `_anim` is what it appends to an
+  // animation sharing with a scroll / timing fan-out or a `@FocusedPreview(gif = true)`.
   assert.equal(motionSiblingPreviewId("previews/Spinner_Dark_interaction.apng"), "Spinner_Dark");
+  assert.equal(motionSiblingPreviewId("previews/Spinner_Dark_anim.gif"), "Spinner_Dark");
 });
 
 test("a still is not a motion artifact", () => {
@@ -53,6 +56,9 @@ test("the sticker's full variant name is inherited, not re-derived", () => {
 });
 
 test("two captures on one function keep separate names", () => {
+  // Discovery suffixes BOTH sides when a function's captures share a filename space, and the
+  // published names have to stay as distinct as the bundle's — otherwise one silently overwrites
+  // the other on the branch.
   const still = "images/spinner/ideal__default__dark.png";
   assert.equal(
     motionPublishPath("Spinner", "previews/Spinner_Dark.gif", still),
@@ -62,6 +68,28 @@ test("two captures on one function keep separate names", () => {
     motionPublishPath("Spinner", "previews/Spinner_Dark_interaction.apng", still),
     "motion/spinner/ideal__default__dark__interaction.apng",
   );
+  assert.equal(
+    motionPublishPath("Spinner", "previews/Spinner_Dark_anim.gif", still),
+    "motion/spinner/ideal__default__dark__anim.gif",
+  );
+});
+
+test("an _anim animation joins its sticker rather than falling back to the bundle leaf", () => {
+  // The regression the fallback would have hidden: an `@AnimatedPreview` sharing its function with
+  // a scroll / timing fan-out publishes as `<previewId>_anim.gif`, and a helper that stripped only
+  // `_interaction` would miss the join and quietly name it from the bundle instead of the sticker.
+  const { moves, unresolved } = planMotionPublish({
+    components: [
+      {
+        componentId: "Spinner",
+        images: [{ previewId: "Spinner_Dark", path: "images/spinner/ideal__default__dark.png" }],
+        motion: [{ path: "previews/Spinner_Dark_anim.gif", kind: "animation", theme: "dark" }],
+      },
+    ],
+  });
+  assert.equal(unresolved, 0);
+  assert.equal(moves[0].viaSibling, true);
+  assert.equal(moves[0].target, "motion/spinner/ideal__default__dark__anim.gif");
 });
 
 test("an artifact with no sibling still publishes under its own leaf", () => {
@@ -228,6 +256,7 @@ test("the join holds for the fully-qualified ids a real catalog carries", () => 
   const id = "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark";
   assert.equal(motionSiblingPreviewId(`previews/${id}.apng`), id);
   assert.equal(motionSiblingPreviewId(`previews/${id}_interaction.apng`), id);
+  assert.equal(motionSiblingPreviewId(`previews/${id}_anim.gif`), id);
 
   const manifest = {
     components: [
