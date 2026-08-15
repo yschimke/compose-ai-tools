@@ -2482,12 +2482,10 @@ test("contract · the render history is a menu in the toggle row, and the fit ca
         route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
     );
 
-    // The fixture carries an INLINE history payload, which viewer-history.js consumes
-    // synchronously — and it is ordered ahead of viewer.js, so the strip is already in the DOM
-    // before the first fit is measured. That is the one arrangement in which this bug cannot
-    // happen. Strip the inline payload so the fetch path runs instead: that is the delivery-backed
-    // shape, where the manifest arrives over the network and the strip lands long after viewer.js
-    // has measured and fitted.
+    // The fixture carries an INLINE history payload, which `<cp-history-menu>` reads without a
+    // round trip, so the menu lands close behind the first fit. Strip the inline payload so the
+    // fetch path runs instead: that is the delivery-backed shape, where the manifest arrives over
+    // the network and the menu lands long after viewer.js has measured and fitted.
     await page.route(
         "**/fixtures/pages/serve-viewer-history.html",
         async (route) => {

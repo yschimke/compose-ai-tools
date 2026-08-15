@@ -9403,8 +9403,18 @@ $rows
     // page had no single answer to "what can I put away". Ordered as the surfaces they own read on
     // the page (left column, then the two rows below the title, then the right column), and each
     // closed one still names its current value, so folding a row never costs the fact it carried.
+    // The render-history menu sits after Revision — both answer "which version of these pixels am
+    // I looking at" — and before the Overrides drawer, which stays last where the thumb expects it.
+    // `viewer-history.js` used to build the menu at runtime and then go looking for somewhere to
+    // put it, with a fallback for a page whose toggle row predated it; the server knows where the
+    // control belongs, so it declares the tag here and the placement question stops existing. The
+    // element draws nothing at all when the timeline is too short to be one, so an empty tag is the
+    // no-history case rather than an empty control.
+    val historyMenu = if (historyAttrs.isEmpty()) "" else "<cp-history-menu></cp-history-menu>"
     val headToggles =
-      listOf(navToggle, themeToggle, revisionMenu, controlsToggle).filter { it.isNotBlank() }
+      listOf(navToggle, themeToggle, revisionMenu, historyMenu, controlsToggle).filter {
+        it.isNotBlank()
+      }
     val headTogglesHtml =
       if (headToggles.isEmpty()) ""
       else "\n        <div class=\"cp-head-toggles\">${headToggles.joinToString("")}</div>"
@@ -9494,7 +9504,6 @@ $rows
       <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
-      ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
       $compareScriptTags${scriptTag("viewer.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """

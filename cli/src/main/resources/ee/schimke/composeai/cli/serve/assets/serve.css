@@ -1240,8 +1240,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   margin-left: auto; align-self: center; }
 .cp-head-toggles .cp-revisions { margin: 0; font-size: inherit; }
 .cp-head-toggles .cp-revisions-btn { min-height: 34px; padding: 6px 14px; }
-/* The history menu joins this row from a fetch (viewer-history.js), so it takes the row's sizing
-   the same way its neighbour does rather than carrying a second set of numbers. */
+/* The history menu fills itself in from a manifest, so it takes the row's sizing the same way its
+   neighbour does rather than carrying a second set of numbers. `<cp-history-menu>` is the tag the
+   server declares in this row; `display: contents` drops it out of layout so the `<details>` it
+   renders is the flex item, exactly as the old script's free-standing `<details>` was — otherwise
+   the row's `gap` would be spent on a wrapper that is empty whenever there is no timeline. */
+cp-history-menu { display: contents; }
 .cp-head-toggles .cp-history-menu { font-size: inherit; }
 .cp-head-toggles .cp-history-btn { min-height: 34px; padding: 6px 14px; }
 .cp-theme-menu { position: relative; }

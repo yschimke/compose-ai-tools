@@ -15,7 +15,7 @@ import kotlin.concurrent.withLock
  * in the clone (`compose-preview/main`, or its remote-tracking twin). So the same timeline is
  * derived on demand — [PreviewHistory.read] over the local objects, joined to preview ids through
  * the `baselines.json` that ships on that same ref — and inlined into the viewer page, which
- * `viewer-history.js` already prefers over the fetch.
+ * `<cp-history-menu>` already prefers over the fetch.
  *
  * ### What a chip links to
  *
@@ -77,7 +77,7 @@ class ServeProjectHistory(
    *
    * Scoped to the single preview rather than shipping the whole branch's manifest (531 previews on
    * `compose-preview/main`) into every page. Versions below two are dropped here for the same
-   * reason `viewer-history.js` refuses to draw them: one version is not a timeline, so carrying the
+   * reason `<cp-history-menu>` refuses to draw them: one version is not a timeline, so carrying the
    * payload would cost bytes for a strip that never appears.
    */
   fun timelineJsonFor(previewId: String): String? {

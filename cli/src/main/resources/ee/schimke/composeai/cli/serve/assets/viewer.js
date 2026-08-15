@@ -77,7 +77,7 @@
   window.addEventListener("resize", refit);
   // A resize is not the only thing that invalidates the cap: fitCap() measures from the stage's
   // TOP, so anything inserted above the stage moves it down and shortens the space it has. The
-  // render-history strip does exactly that — viewer-history.js fetches its manifest and inserts
+  // render-history menu does exactly that — <cp-history-menu> fetches its manifest and inserts
   // `.cp-history` between the toolbar and the stage well after this first ran — and a DOM
   // insertion fires no `resize`, so a delivery-backed viewer kept a cap measured for a stage that
   // had since moved, pushing a tall history strip's preview back below the fold.

@@ -1173,7 +1173,10 @@ class ServeWebTest {
       "viewer must tell the client where the manifest lives",
     )
     assertTrue(html.contains("data-history-repo=\"yschimke/compose-ai-tools\""))
-    assertTrue(html.contains("viewer-history.js"), "the timeline script is loaded")
+    assertTrue(
+      html.contains("<cp-history-menu></cp-history-menu>"),
+      "the timeline control is declared beside the other head toggles",
+    )
   }
 
   @Test

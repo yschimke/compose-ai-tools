@@ -49,7 +49,6 @@ internal object ServeWebAssets {
       // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
       // by a viewer whose host can produce at least one of them.
       "inspect.js" to "text/javascript; charset=utf-8",
-      "viewer-history.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
       // The viewer's design-spec comparison views (diff / triptych / slider); loaded only by a
       // viewer whose catalog published a design reference for that exact preview. Builds on
