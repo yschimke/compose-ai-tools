@@ -618,5 +618,6 @@ jobs:
       # it is a gate, not enrichment — a document it cannot draw fails the render rather than
       # dropping a column — so it stays where someone is watching the result.
       rc-cmp-wasm-lane: true
+      rc-cmp-wasm-allowlist: .github/ci/remote-m3-cmp-wasm-allowlist.json
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

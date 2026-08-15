@@ -48,7 +48,7 @@ export function motionPreviewFor(component) {
  *
  * @param {{entries?: Record<string, unknown>, previews?: Array<object>}} bundle
  * @param {string} functionName the `@Preview` function to collect for.
- * @returns {Array<{path: string, kind: string, caption?: string, theme?: string}>}
+ * @returns {Array<{path: string, previewId: string, kind: string, caption?: string, theme?: string}>}
  */
 export function motionArtifactsFor(bundle, functionName) {
   const out = [];
@@ -61,6 +61,10 @@ export function motionArtifactsFor(bundle, functionName) {
       if (!path) continue;
       out.push({
         path,
+        // Kept until `foldMotion`: a separately named motion function has a different filename
+        // stem from the still, so its position in the function's preview fan-out is the only
+        // reliable bridge back to the already-resolved static axes.
+        previewId: preview.id,
         kind: declaration.kind,
         ...(declaration.caption ? { caption: declaration.caption } : {}),
       });
@@ -111,21 +115,43 @@ function bundleEntryFor(bundle, previewId, renderOutput) {
  * capture's own id carries the same `_Dark` / `_Light` suffix, but re-deriving it here would be a
  * second implementation of the mode-naming rule that `catalog-themes.mjs` already owns, and the two
  * would eventually disagree about a catalog with unusual mode names. Matching positionally against
- * the images the join already resolved keeps one rule.
+ * the images the join already resolved keeps one rule. When `motionPreview` names a separate
+ * function, its filenames necessarily have different stems. In that case [previewIds] and
+ * [motionPreviewIds] describe the two functions' equivalent fan-outs in discovery order; the join
+ * maps the motion id to the corresponding still id before reading the still's resolved theme.
  *
  * @param {Array<{path: string, theme?: string}>} images the component's baked stills.
- * @param {Array<{path: string, kind: string, caption?: string}>} artifacts from [motionArtifactsFor].
+ * @param {Array<{path: string, previewId?: string, kind: string, caption?: string}>} artifacts from [motionArtifactsFor].
+ * @param {string[]} previewIds ids emitted by the component's static preview function.
+ * @param {string[]} motionPreviewIds ids emitted by its motion preview function.
  * @returns {Array<object>} one motion entry per artifact, theme-tagged where it could be resolved.
  */
-export function foldMotion(images, artifacts) {
+export function foldMotion(images, artifacts, previewIds = [], motionPreviewIds = []) {
   if (!artifacts?.length) return [];
+  const correspondingStillIds = equivalentFanOut(previewIds, motionPreviewIds);
   return artifacts.map((artifact) => {
-    const theme = themeForArtifact(images, artifact.path);
+    const { previewId, ...published } = artifact;
+    const theme = themeForArtifact(
+      images,
+      artifact.path,
+      correspondingStillIds.get(previewId),
+    );
     return {
-      ...artifact,
+      ...published,
       ...(theme !== undefined ? { theme } : {}),
     };
   });
+}
+
+/**
+ * Map equivalent cells of two separately named functions' preview fan-outs. Only an equal-length
+ * fan-out is safe to join positionally; otherwise leave the artifacts untagged rather than attach
+ * a confidently wrong theme.
+ */
+function equivalentFanOut(previewIds, motionPreviewIds) {
+  if (previewIds.length === 0 || previewIds.length !== motionPreviewIds.length)
+    return new Map();
+  return new Map(motionPreviewIds.map((id, index) => [id, previewIds[index]]));
 }
 
 /**
@@ -135,10 +161,16 @@ export function foldMotion(images, artifacts) {
  * share every character but the extension — which is exactly the join, and needs no knowledge of
  * how modes are spelled.
  */
-function themeForArtifact(images, artifactPath) {
+function themeForArtifact(images, artifactPath, correspondingStillId) {
   const stem = artifactPath.replace(/\.[^.]+$/, "");
   for (const image of images ?? []) {
     if (image?.path?.replace(/\.[^.]+$/, "") === stem) return image.theme;
+  }
+  if (correspondingStillId !== undefined) {
+    const stillStem = `previews/${correspondingStillId}`;
+    for (const image of images ?? []) {
+      if (image?.path?.replace(/\.[^.]+$/, "") === stillStem) return image.theme;
+    }
   }
   return undefined;
 }

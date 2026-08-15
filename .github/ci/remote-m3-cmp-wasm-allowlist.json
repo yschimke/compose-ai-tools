@@ -1,0 +1,34 @@
+{
+  "entries": [
+    {
+      "id": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconLabelRemoteButton_width_200dp_height_200dp_dpi_320",
+      "reason": "CMP/Wasm does not yet implement the intrinsic WidthModifier/HeightModifier dimension used by this component; observed in actions/runs/31898714419.",
+      "expires": "2026-09-15"
+    },
+    {
+      "id": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconOnlyRemoteButton_width_200dp_height_200dp_dpi_320",
+      "reason": "CMP/Wasm does not yet implement the intrinsic WidthModifier/HeightModifier dimension used by this component; observed in actions/runs/31898714419.",
+      "expires": "2026-09-15"
+    },
+    {
+      "id": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledRemoteButton_width_200dp_height_200dp_dpi_320",
+      "reason": "CMP/Wasm cannot resolve the disabled content dynamic color emitted by Remote Material 3; observed in actions/runs/31898714419.",
+      "expires": "2026-09-15"
+    },
+    {
+      "id": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelRemoteButton_width_320dp_height_240dp_dpi_320",
+      "reason": "CMP/Wasm does not yet implement the intrinsic WidthModifier/HeightModifier dimension used by this component; observed in actions/runs/31898714419.",
+      "expires": "2026-09-15"
+    },
+    {
+      "id": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelSecondaryRemoteButton_width_320dp_height_240dp_dpi_320",
+      "reason": "CMP/Wasm lacks the intrinsic dimension and dynamic color support required by this component; observed in actions/runs/31898714419.",
+      "expires": "2026-09-15"
+    },
+    {
+      "id": "com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320",
+      "reason": "CMP/Wasm currently draws no pixels for the Remote Material 3 indeterminate clock animation; observed in actions/runs/31898714419.",
+      "expires": "2026-09-15"
+    }
+  ]
+}
