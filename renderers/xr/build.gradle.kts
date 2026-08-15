@@ -26,8 +26,8 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.renderer.xr"
-  // `androidx.xr.compose` declares `minCompileSdk = 36`.
-  compileSdk = 36
+  // Compose 1.12 (BOM 2026.08.00) publishes minCompileSdk 37 metadata.
+  compileSdk = 37
   buildFeatures { compose = true }
   testOptions {
     unitTests.all {

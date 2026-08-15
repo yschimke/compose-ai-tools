@@ -127,7 +127,10 @@ tasks.withType(Test::class.java).configureEach {
 }
 
 dependencies {
-  implementation(platform(libs.compose.bom.stable))
+  // This matrix deliberately exercises compileSdk 35/36 clients too. Compose 1.12 itself requires
+  // compileSdk 37, so use compose-preview's supported compatibility floor here; the regular samples
+  // exercise the current stable BOM.
+  implementation(platform(libs.compose.bom.compat))
   implementation(libs.compose.ui)
   implementation(libs.compose.material3)
   implementation(libs.compose.ui.tooling.preview)

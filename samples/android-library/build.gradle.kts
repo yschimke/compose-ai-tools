@@ -33,6 +33,8 @@ composePreview {
 
 android {
   namespace = "com.example.samplelibrary"
+  // Compose 1.12 (BOM 2026.08.00) publishes minCompileSdk 37 metadata.
+  compileSdk = 37
 
   buildFeatures { compose = true }
 

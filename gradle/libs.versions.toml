@@ -44,7 +44,7 @@ classgraph = "4.8.186"
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.06.01"
+compose-bom-stable = "2026.08.00"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
