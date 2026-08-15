@@ -101,4 +101,63 @@ class DesignPagesCoverageTest {
 
     assertEquals(listOf("Banner"), subject.coverageGaps.map { it.name })
   }
+
+  /**
+   * The kit names the Shape page's header `.Header` and every other page's plain `Header`, so the
+   * leading-dot rule alone cleared the one sheet it was written against and left the header red and
+   * clickable on the other twenty-seven. The type is the durable fact: a header is an `INSTANCE`
+   * wherever it is drawn, whatever the designer called the layer.
+   */
+  @Test
+  fun `a page header is furniture even when the designer left the dot off`() {
+    val subject =
+      page(
+        node("1:8", "Basic dialog", 2, PageNodeLink.UNLINKED, type = "COMPONENT_SET"),
+        node("1:9", "Icon=False", 3, PageNodeLink.MANIFEST, type = "COMPONENT"),
+        node("1:10", "Header", 2, PageNodeLink.UNLINKED, type = "INSTANCE"),
+      )
+
+    assertEquals(emptyList(), subject.coverageGaps.map { it.name })
+    assertEquals(1, subject.coverageTotal)
+    // Not a gap AND not a component: `isComponent` is what earns a node its outline and its hit
+    // area, so this is the half of the fix that stops the header being selectable at all.
+    assertEquals(listOf("Icon=False"), subject.nodes.filter { it.isComponent }.map { it.name })
+  }
+
+  /**
+   * Why a placement is dropped rather than the walk being taught to skip instances: the definition
+   * is on the sheet too. The kit's Sheets page draws four `Side Sheet` instances beside the variant
+   * set that defines them, so counting both reported one missing component twice.
+   */
+  @Test
+  fun `an instance beside the set that defines it is not a second missing component`() {
+    val subject =
+      page(
+        node("1:1", "Side Sheet", 2, PageNodeLink.UNLINKED, type = "INSTANCE"),
+        node("1:2", "Side Sheet", 2, PageNodeLink.UNLINKED, type = "COMPONENT_SET"),
+        node("1:3", "Type=Modal", 3, PageNodeLink.UNLINKED, type = "COMPONENT"),
+      )
+
+    assertEquals(listOf("Type=Modal"), subject.coverageGaps.map { it.name })
+    assertEquals(1, subject.coverageTotal)
+  }
+
+  /**
+   * The exception, and the reason this is gated on the link rather than on the type alone. Naming
+   * an instance's node id in `design-map.json` is a deliberate claim that this placement is the
+   * thing we draw — the Snackbar sheet does it for six of its ten snackbars — and an authored
+   * mapping outranks the node's type.
+   */
+  @Test
+  fun `an instance the manifest maps is still a component we implement`() {
+    val subject =
+      page(
+        node("1:1", "Snackbar", 3, PageNodeLink.MANIFEST, type = "INSTANCE"),
+        node("1:2", "Snackbar", 3, PageNodeLink.UNLINKED, type = "INSTANCE"),
+      )
+
+    assertEquals(listOf("Snackbar"), subject.linked.map { it.name })
+    assertEquals(emptyList(), subject.coverageGaps.map { it.name })
+    assertEquals(1, subject.coverageTotal)
+  }
 }
