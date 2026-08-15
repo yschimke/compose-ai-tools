@@ -19,6 +19,7 @@
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { whenParsed } from "../dom/whenParsed.js";
+import { compareApi, type CompareApi } from "../compare/api.js";
 import {
     checkingOf,
     findingResult,
@@ -33,17 +34,6 @@ import {
     type Measurement,
     type ScoreCell,
 } from "../parity/findings.js";
-
-/** The slice of `format-compare.js`'s global this band uses. */
-interface CompareApi {
-    scoreImageUrls(reference: string, actual: string): Promise<Measurement>;
-}
-
-declare global {
-    interface Window {
-        ComposePreviewCompare?: CompareApi;
-    }
-}
 
 /** Four queues overlap image decoding without swamping a large catalog. */
 const LANES = 4;
@@ -67,7 +57,7 @@ export class ParityScores extends LitElement {
     }
 
     private async scan(): Promise<void> {
-        const compare = window.ComposePreviewCompare;
+        const compare = compareApi();
         this.rows = Array.from(
             document.querySelectorAll<HTMLElement>("[data-parity-comparison]"),
         );

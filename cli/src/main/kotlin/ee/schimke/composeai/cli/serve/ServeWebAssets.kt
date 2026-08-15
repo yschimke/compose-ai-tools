@@ -50,10 +50,6 @@ internal object ServeWebAssets {
       // by a viewer whose host can produce at least one of them.
       "inspect.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
-      // The viewer's design-spec comparison views (diff / triptych / slider); loaded only by a
-      // viewer whose catalog published a design reference for that exact preview. Builds on
-      // `format-compare.js`, which is loaded alongside it.
-      "spec-compare.js" to "text/javascript; charset=utf-8",
       // The design page's node measuring and render-swap controls; loaded only by a
       // `/{system}/pages/{id}` view, which exists only for a catalog that published one.
       "design-page.js" to "text/javascript; charset=utf-8",
