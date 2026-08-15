@@ -811,7 +811,7 @@ class ServeWebFixtureTest {
           ),
       )
     // The render-history timeline: a viewer served from a delivery branch, so it carries the
-    // history.json URL + repo that `viewer-history.js` needs. Registered as its own page fixture so
+    // history.json URL + repo that `<cp-history-menu>` needs. Registered as its own page fixture so
     // the harness captures the strip on every future change, rather than only when someone
     // remembers to screenshot it.
     val viewerHistory =

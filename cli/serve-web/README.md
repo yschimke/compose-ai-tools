@@ -166,10 +166,20 @@ a 3.4:1 specimen sheet frames at 1.0x and looks like a dead gesture — are unit
 tests rather than screenshots. Reach for the same split whenever a component's
 real content is a calculation.
 
+`<cp-history-menu>` is the same split applied to a component whose real content
+is URL arithmetic: `viewer/historyUrls.ts` decides which links can be built at
+all (and safely — every one of them is DOM text landing in an `href`, the
+`js/xss-through-dom` flow three earlier attempts got wrong the same way), and
+`viewer/historyModel.ts` decides which of them are worth showing. The element is
+left with a fetch and a template. The port also deleted `place()`: the old script
+built the menu at runtime and then went looking for somewhere to put it, and the
+server already knows where the control belongs, so it declares the tag in the
+toggle row and the placement question stops existing.
+
 Next, cheapest seam first: `parity.js` (124 lines, the design-parity page only),
-`spec-compare.js` (290), `viewer-history.js` (243). The big ones —
-`format-compare.js` (1,686) and `viewer.js` (2,906) — want breaking into pure
-modules the way the drawers were, not porting whole.
+`spec-compare.js` (290). The big ones — `format-compare.js` (1,686) and
+`viewer.js` (2,906) — want breaking into pure modules the way the drawers were,
+not porting whole.
 
 ## Two bundles, and which one a thing belongs in
 

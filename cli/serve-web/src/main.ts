@@ -13,6 +13,7 @@ import "./components/BackendBadge.js";
 import "./components/BgToggle.js";
 import "./components/CatalogToolbar.js";
 import "./components/GroupMemory.js";
+import "./components/HistoryMenu.js";
 import "./components/PageZoom.js";
 import "./components/ViewerDrawers.js";
 // Not a component: installs `window.cpRcFonts` for the legacy lanes to call.
