@@ -42,11 +42,36 @@ export class CatalogToolbar extends LitElement {
     private bar: Element | null = null;
     private actions: Element | null = null;
     private search: Element | null = null;
+    private sub: Element | null = null;
     private homes: Home[] = [];
     /** Whether the rows are currently in the toolbar rather than where the server put them. */
     private moved = false;
     private themeObserver: MutationObserver | null = null;
     private readonly onBreakpoint = () => this.reflow();
+
+    /**
+     * A menu closes when it is used.
+     *
+     * Picking a theme re-renders the grid in place — no navigation, nothing to dismiss the panel —
+     * so the menu stayed open over the previews the visitor had just asked to see, for as long as
+     * the declared-theme renders took to arrive. The same for Transparent, which is a toggle on the
+     * cards behind it. The chips are the disclosure's SIBLINGS, so `closest()` cannot reach the
+     * `<details>` the way the viewer's own theme menu does (`viewer-drawers.js`): the elements are
+     * held here instead. A link in the actions panel navigates and takes the whole page with it,
+     * closed or not.
+     *
+     * On `document`, not on each panel: the panels are moved in and out of the toolbar by the
+     * reflow above, and a listener on the thing being moved is a listener that has to be re-bound
+     * every time the viewport crosses the breakpoint.
+     */
+    private readonly onPick = (event: Event) => {
+        const target = event.target as Element | null;
+        if (!target?.closest) return;
+        if (target.closest(".cp-catalog-theme + .cp-theme .cp-theme-btn"))
+            this.close(".cp-catalog-theme");
+        if (target.closest(".cp-actions-panel .cp-bg-btn"))
+            this.close(".cp-actions-menu");
+    };
 
     protected createRenderRoot(): HTMLElement {
         return this;
@@ -62,9 +87,11 @@ export class CatalogToolbar extends LitElement {
             document.querySelector(".cp-catalog-actions");
         this.actions = document.querySelector(".cp-catalog-actions");
         this.search = document.querySelector(".cp-catalog-menu .cp-searchbar");
+        this.sub = document.querySelector(".cp-sub");
         // Ordered as the row should read — the filter is the wide one, the menus bracket it —
-        // rather than as the markup happens to run.
-        this.homes = [this.search, this.actions]
+        // rather than as the markup happens to run. The summary line comes last and does not join
+        // the row at all; see `placeOnPhone`.
+        this.homes = [this.search, this.actions, this.sub]
             .filter((el): el is Element => !!el && el !== this.bar)
             .map((el) => ({
                 el,
@@ -75,13 +102,20 @@ export class CatalogToolbar extends LitElement {
         this.phone?.addEventListener?.("change", this.onBreakpoint);
         this.reflow();
         this.watchThemeValue();
+        document.addEventListener("click", this.onPick);
     }
 
     disconnectedCallback(): void {
         this.phone?.removeEventListener?.("change", this.onBreakpoint);
+        document.removeEventListener("click", this.onPick);
         this.themeObserver?.disconnect();
         this.themeObserver = null;
         super.disconnectedCallback();
+    }
+
+    private close(selector: string): void {
+        const menu = document.querySelector(selector);
+        if (menu instanceof HTMLDetailsElement) menu.open = false;
     }
 
     private reflow(): void {
@@ -95,18 +129,34 @@ export class CatalogToolbar extends LitElement {
         // page capture caught it. Nothing to do until the shape actually changes.
         if (phone === this.moved) return;
         this.moved = phone;
-        if (phone) {
-            for (const { el } of this.homes) {
-                // Appending puts the filter after the Theme pill and before the `⋯`. When the bar
-                // IS the actions row there is nothing to append after, so the filter goes first.
-                if (el === this.search && this.bar === this.actions)
-                    this.bar.insertBefore(el, this.bar.firstChild);
-                else this.bar.appendChild(el);
-            }
-        } else {
+        if (phone) for (const { el } of this.homes) this.placeOnPhone(el);
+        else
             for (const { el, parent, next } of this.homes)
                 parent.insertBefore(el, next);
+    }
+
+    /** Where a moved block goes on a phone. */
+    private placeOnPhone(el: Element): void {
+        if (!this.bar) return;
+        // The summary line — "1194 preview(s) · 186 views · hold a card for a live session" — is a
+        // TALLY, not a control: it says what the catalog holds, which is a thing to read once and
+        // never again, and on a phone it was the last row standing between the toolbar and the
+        // previews it counts. It goes below the grid, beside the download action and the
+        // provenance strip, where the rest of the catalog's own metadata already sits. Not
+        // hidden: the live-session hint in it is the only place a phone is told a card can be
+        // held, and a phone is where that gesture exists.
+        if (el === this.sub) {
+            const download = document.querySelector(".cp-catalog-download");
+            if (download?.parentNode)
+                download.parentNode.insertBefore(el, download);
+            else document.querySelector(".cp-main")?.appendChild(el);
+            return;
         }
+        // Appending puts the filter after the Theme pill and before the `⋯`. When the bar IS the
+        // actions row there is nothing to append after, so the filter goes first.
+        if (el === this.search && this.bar === this.actions)
+            this.bar.insertBefore(el, this.bar.firstChild);
+        else this.bar.appendChild(el);
     }
 
     /**

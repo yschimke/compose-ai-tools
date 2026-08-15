@@ -14,9 +14,10 @@ import "../src/components/CatalogToolbar.js";
 
 /** A sectioned catalog: the filter lives in the tree's sidebar, not the toolbar. */
 const SECTIONED = `
+  <p class="cp-sub">9 preview(s)</p>
   <div class="cp-catalog-actions">
     <details class="cp-actions-menu"><summary>⋯</summary></details>
-    <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a></div>
+    <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a><button class="cp-bg-btn">Transparent</button></div>
   </div>
   <div class="cp-catalog-tools">
     <div class="cp-toolbar">
@@ -35,13 +36,14 @@ const SECTIONED = `
       <nav class="cp-tree"></nav>
     </aside>
     <div class="cp-grid"></div>
-  </div>`;
+  </div>
+  <div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>`;
 
 /** A catalog with one theme: no Theme control, so no `.cp-catalog-tools` at all. */
 const NO_THEME = `
   <div class="cp-catalog-actions">
     <details class="cp-actions-menu"><summary>⋯</summary></details>
-    <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a></div>
+    <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a><button class="cp-bg-btn">Transparent</button></div>
   </div>
   <div class="cp-catalog-body">
     <aside class="cp-catalog-menu">
@@ -177,6 +179,60 @@ describe("<cp-catalog-toolbar>", () => {
         );
         await flush();
         assert.equal(value.textContent, "Dark");
+    });
+
+    it("moves the summary line below the grid, not into the row", async () => {
+        // It is a tally, not a control: on a phone it was the last row between the toolbar and the
+        // previews it counts, so it goes down with the catalog's other metadata.
+        stubBreakpoint(true);
+        await mount(SECTIONED);
+        const main = document.body;
+        const sub = document.querySelector(".cp-sub")!;
+        assert.equal(
+            sub.nextElementSibling?.className,
+            "cp-catalog-download",
+            "the summary sits just above the download action",
+        );
+        assert.ok(
+            main
+                .querySelector(".cp-catalog-body")!
+                .compareDocumentPosition(sub) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+            "and below the grid",
+        );
+    });
+
+    it("closes the Theme menu once a theme is picked", async () => {
+        // Picking re-renders the grid in place, so nothing else would dismiss the panel — it sat
+        // over the previews the visitor had just asked to look at.
+        stubBreakpoint(true);
+        await mount(SECTIONED);
+        const menu = document.querySelector(
+            ".cp-catalog-theme",
+        ) as HTMLDetailsElement;
+        menu.open = true;
+        (
+            document.querySelector(
+                '.cp-theme .cp-theme-btn[data-theme-choice="dark"]',
+            ) as HTMLElement
+        ).click();
+        assert.equal(menu.open, false);
+    });
+
+    it("closes the actions menu when Transparent is toggled", async () => {
+        // The links in that panel navigate; Transparent is a toggle on the cards behind it.
+        stubBreakpoint(true);
+        await mount(SECTIONED);
+        const menu = document.querySelector(
+            ".cp-actions-menu",
+        ) as HTMLDetailsElement;
+        menu.open = true;
+        (
+            document.querySelector(
+                ".cp-actions-panel .cp-bg-btn",
+            ) as HTMLElement
+        ).click();
+        assert.equal(menu.open, false);
     });
 
     it("does nothing on a page with no toolbar and no actions", async () => {
