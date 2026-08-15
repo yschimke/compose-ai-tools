@@ -70,6 +70,16 @@ See the `rc-embedded` column of the catalogs' `rc-compare.html` for the current 
 the baked PNG. Local deltas over the upstream snapshot are listed here as they are made, each with
 the upstream tracking issue it was reported under.
 
+- **Default Compose paint colour aligned with the framework player** (`RcPlayerPaint.kt`).
+  `ComposeLocalPaint.color` initialized to transparent ARGB `0`, while `android.graphics.Paint`
+  initializes to opaque black. A Remote Compose icon paint bundle sets a `SRC_IN` colour filter but
+  no base `COLOR`; the Compose renderer therefore tinted a transparent source and drew no icon,
+  while the View renderer tinted its default-black source successfully. The default is now
+  `Color.Black`, while `isColorSet` remains false so an implicit default is still distinguishable
+  from an explicit `COLOR` operation. `RcPlayerPaintTest` pins the player default and
+  `ComposePathColorFilterRobolectricReproTest` independently demonstrates the SrcIn behaviour using
+  only standard Compose drawing.
+
 ### Resolved: the two action-dispatch deltas (restored at alpha17)
 
 Two deltas used to live here — the `LocalRemoteNamedActionHandler` block and the `CapturedDocument`
