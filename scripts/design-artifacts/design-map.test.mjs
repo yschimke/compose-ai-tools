@@ -131,6 +131,50 @@ test("variantSeeds falls back to seeds for a hand-written override variant", () 
   assert.deepEqual(variantSeeds(preview), [{ key: "size", raw: "l" }]);
 });
 
+test("variantSeeds turns an interaction variant into a state seed", () => {
+  // `@OverrideVariant(interaction = Pressed)` seeds no knob — the renderer drives a real press
+  // against the composed node. A kit models that as a value of the same `State` axis that carries
+  // Enabled and Disabled, so it has to enter resolution as a `state` seed or the render declares
+  // nothing and is dropped.
+  for (const interaction of ["Hovered", "Focused", "Pressed"]) {
+    assert.deepEqual(
+      variantSeeds(overrideVariant("Button", interaction.toLowerCase(), { interaction })),
+      [{ key: "state", raw: interaction.toLowerCase() }],
+    );
+  }
+});
+
+test("variantSeeds ignores the None interaction, which is the absence of one", () => {
+  assert.deepEqual(variantSeeds(overrideVariant("Button", "x", { interaction: "None" })), []);
+});
+
+test("variantSeeds keeps an interaction beside the knobs a variant also seeds", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("Button", "l-pressed", {
+        interaction: "Pressed",
+        seeds: [{ key: "size", kind: "STRING", raw: "l" }],
+      }),
+    ),
+    [
+      { key: "size", raw: "l" },
+      { key: "state", raw: "pressed" },
+    ],
+  );
+});
+
+test("variantSeeds does not double up when the variant already names a state", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("Button", "disabled", {
+        interaction: "Pressed",
+        seeds: [{ key: "state", kind: "STRING", raw: "disabled" }],
+      }),
+    ),
+    [{ key: "state", raw: "disabled" }],
+  );
+});
+
 test("variantSeeds reads a CatalogVariant's props, and its state shorthand", () => {
   assert.deepEqual(
     variantSeeds(catalogVariant("FabLarge", "Fab", { props: [{ key: "size", value: "large" }] })),

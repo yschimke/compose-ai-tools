@@ -114,10 +114,22 @@ export function variantSeeds(preview) {
 
   const overrides = preview.overrides;
   if (!overrides) return [];
-  if (overrides.props?.length) {
-    return overrides.props.map((p) => ({ key: p.key, raw: p.value }));
+
+  const seeds = overrides.props?.length
+    ? overrides.props.map((p) => ({ key: p.key, raw: p.value }))
+    : (overrides.seeds ?? []).map((s) => ({ key: s.key, raw: s.raw }));
+
+  // An interaction variant seeds no knob — the renderer drives real hover, focus or press against
+  // the composed node instead, so the difference lives in the harness rather than in the data.
+  // A design kit models it as a value of the same `State` axis that carries Enabled and Disabled,
+  // so it enters resolution as a seed of the `state` knob and reaches the kit through the alias
+  // that knob already has. Without this the variant declares nothing: `seeds` is empty, an empty
+  // vector matches every sibling, and the render is dropped as "names no axis".
+  const interaction = overrides.interaction;
+  if (interaction && interaction !== "None" && !seeds.some((s) => s.key === "state")) {
+    seeds.push({ key: "state", raw: String(interaction).toLowerCase() });
   }
-  return (overrides.seeds ?? []).map((s) => ({ key: s.key, raw: s.raw }));
+  return seeds;
 }
 
 /** The name a variant render goes by, for a report and for the design-map `state` slot. */
