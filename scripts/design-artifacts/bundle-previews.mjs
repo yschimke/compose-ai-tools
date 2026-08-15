@@ -65,3 +65,52 @@ export function candidatePreviewBundle(bundle) {
   });
   return { bundle: { ...bundle, previews }, dropped };
 }
+
+/** Zip directory every per-preview artifact lands under. */
+const PREVIEWS_DIR = "previews/";
+
+/**
+ * The ids of previews the bundle actually **captured** — those carrying at least one
+ * `previews/<id>.*` artifact of any kind.
+ *
+ * Deliberately "any artifact", not "a PNG": [candidatePreviewBundle] already answers the PNG
+ * question, and the two are asking different things. Plenty of previews are PNG-less *by design*
+ * — an animated `ScrollMode.GIF` capture emits only a `.gif`, a `@ColorCatalog` / `@ThemeCatalog`
+ * sheet only a `.catalog.json`, a `"capture": "none"` entry nothing raster at all — so a PNG check
+ * would call all of those a loss. What no captured preview ever lacks is *every* artifact: a pack
+ * runs `--with-semantics`, so even a raster-less preview comes back with its `.semantics.json`.
+ *
+ * A preview an `--exclude-preview-id` pattern matched, by contrast, is skipped in **both** passes
+ * (that is the whole point of the CLI applying the same exclusion list to the render and the
+ * semantics capture), so it comes back with nothing at all under `previews/`. That asymmetry is
+ * what makes "no artifact whatsoever" a precise signal for *excluded* rather than *PNG-less*, and
+ * it is what `verify-shard-renders.mjs` compares the shard plans against after a sharded merge.
+ *
+ * Ids are returned in the caller's namespace: bundle entries are stored under filename-safe ids
+ * while shard plans and `design-map.json` are authored against the canonical discovery id, so
+ * [rawIdFor] maps one to the other (`rawPreviewIdForEntry` from `@design-parity/candidate`). It
+ * defaults to the entry id, which is correct whenever no sanitising happened.
+ *
+ * @param {{previews?: Array<{id: string}>, entries?: Record<string, unknown>}} bundle
+ * @param {(bundle: object, entry: object) => string} [rawIdFor]
+ * @returns {Set<string>} the captured ids.
+ */
+export function capturedPreviewIds(bundle, rawIdFor = (_bundle, entry) => entry.id) {
+  const byEntryId = new Map((bundle?.previews ?? []).map((p) => [p.id, p]));
+  const captured = new Set();
+  for (const path of Object.keys(bundle?.entries ?? {})) {
+    if (!path.startsWith(PREVIEWS_DIR)) continue;
+    const rest = path.slice(PREVIEWS_DIR.length);
+    // An artifact is `<id>.<ext>`, and neither the id nor the extension is dot-free in general
+    // (`Foo.semantics.json`, and an id may carry a dot of its own), so walk the dots left to right
+    // and take the first split whose left half is a preview this bundle declares.
+    for (let dot = rest.indexOf("."); dot > 0; dot = rest.indexOf(".", dot + 1)) {
+      const entry = byEntryId.get(rest.slice(0, dot));
+      if (entry) {
+        captured.add(rawIdFor(bundle, entry));
+        break;
+      }
+    }
+  }
+  return captured;
+}
