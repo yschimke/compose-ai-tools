@@ -318,6 +318,15 @@ async function openThemeBar(page) {
         await page.click("#cp-theme-toggle");
 }
 
+// A phone, in CSS pixels. The serve pages carry a whole `@media (max-width: 640px)` layout — a
+// stacked viewer, drawers that become bottom sheets, a sticky title row, and the single-row chip
+// scrollers that keep a catalog's chrome off the fold — and until these states existed NOTHING
+// captured it: every baseline was shot at 1024, so the mobile half of the stylesheet could
+// regress, or be deleted, without moving a single pixel of evidence. A state carrying `viewport`
+// is captured at that size and the runner puts the viewport back afterwards, so a mobile shot can
+// sit anywhere in a fixture's state list without shifting the states after it.
+const PHONE_VIEWPORT = { width: 412, height: 800 };
+
 const FIXTURE_STATES = [
     {
         // A component under the POINTER. The sheet carries no resting marks, so this is the whole
@@ -931,6 +940,18 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The catalog landing ON A PHONE — the shot that says whether opening a catalog leads with
+        // its components. Everything between the heading and the first card is chrome, and the two
+        // chip GROUPS in that gap (the catalog's actions, and one Theme chip per declared theme)
+        // each used to grow a line per chip; this fixture declares five themes, and a published
+        // design system declares a dozen. Shot FIRST, on the untouched page, so it is the resting
+        // catalog rather than one of the daemon/theme-error states below it.
+        fixture: "serve-landing-declared-themes",
+        suffix: "mobile",
+        viewport: PHONE_VIEWPORT,
+        apply: async () => {},
+    },
+    {
         // The render-server badge (#3274). Catalogs open their daemon on first use, so whether one
         // is up is a real question the page now answers — and "connected" is the state a visitor
         // sees while anything is warm. Stubbed rather than faked: the pill's text and styling come
@@ -1299,6 +1320,21 @@ const FIXTURE_STATES = [
             await page.waitForSelector(".cp-viewer.cp-nav-closed");
         },
     },
+    {
+        // The component page ON A PHONE, and the claim is simply that the render is on screen. Two
+        // things stand between the title and the stage at this width: the disclosure pills, which
+        // are now every control the viewer has and wrapped to two rows twelve pixels short of
+        // fitting on one, and the renderer row, which wraps to three. Both are `@media` decisions
+        // no 1024px baseline can hold.
+        //
+        // Shot at the END of this fixture's states — it has none of its own today, and a viewport
+        // change here is undone by the runner regardless, but a mobile shot that also depended on
+        // a preceding state's mutation would be two claims in one baseline.
+        fixture: "serve-viewer-variants",
+        suffix: "mobile",
+        viewport: PHONE_VIEWPORT,
+        apply: async () => {},
+    },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
@@ -1434,6 +1470,22 @@ for (const fixture of listPageFixtures()) {
 
             // Extra runtime states of this same fixture, shot from the already-loaded page.
             for (const state of FIXTURE_STATES.filter((s) => s.fixture === fixture)) {
+                // A state may declare its own viewport (`PHONE_VIEWPORT` above). Restored after
+                // the shot rather than left in place, because states run in order against the SAME
+                // page: a mobile shot that leaked its 412px viewport would silently re-capture
+                // every state after it at phone width. Restored to whatever the page was actually
+                // at — the spec's own `nav-closed` state widens to 1280 mid-list, so a constant
+                // here would undo that instead of preserving it.
+                const restoreViewport = state.viewport ? page.viewportSize() : null;
+                if (state.viewport) {
+                    await page.setViewportSize(state.viewport);
+                    // The mobile layout is JS-assisted: `viewer-drawers.js` resolves the component
+                    // list against the breakpoint on a `matchMedia` change, and the sticky rows
+                    // reflow. Give the page a frame to settle before the shutter.
+                    await page.evaluate(
+                        () => new Promise((r) => requestAnimationFrame(() => r())),
+                    );
+                }
                 await state.apply(page);
                 // Opt-IN pointer parking (issue #3837). `page.click()` leaves
                 // the mouse where it clicked, and an `apply` that expands
@@ -1463,6 +1515,7 @@ for (const fixture of listPageFixtures()) {
                     fullPage: true,
                     animations: "disabled",
                 });
+                if (restoreViewport) await page.setViewportSize(restoreViewport);
             }
         });
     }

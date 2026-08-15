@@ -1956,10 +1956,42 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   .cp-disclosure > summary { align-items: flex-start; }
   .cp-disclosure-hint { display: none; }
   .cp-section-title { margin-bottom: 10px; }
-  .cp-catalog-tools { margin-left: -14px; margin-right: -14px; padding: 8px 14px; }
+  .cp-catalog-tools { margin-left: -14px; margin-right: -14px; margin-bottom: 12px;
+    padding: 8px 14px; }
   /* The trust badge can carry a long branch string; constrain it to the viewport and let it
      wrap instead of forcing a horizontal scroll. */
   .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  /* ── A catalog leads with its components ────────────────────────────────────────────────────
+     Everything between the heading and the first card is chrome, and on a phone every one of these
+     rows is bought out of the ~800px a visitor can actually see. Two chip GROUPS sat there, and
+     both grew a line per chip: the catalog's actions (compare SVG / compare to Figma / try in
+     playground / Transparent) ran to two rows, and the Theme group — one chip per declared theme —
+     ran to five on a design system that publishes a dozen. Together they pushed the first preview
+     off the bottom of the screen, which is the one thing opening a catalog is for.
+
+     The fix is the rule the viewer's theme bar already states for exactly this reason: ONE row, not
+     a block that grows a line per chip. Each group scrolls within itself instead of wrapping, so no
+     chip is lost — the same treatment `.cp-theme-bar` uses, down to the scrollbar clearance and the
+     scroll padding that keeps a keyboard-focused chip off the clipped edge. Deliberately NOT a
+     re-order: the rows stay where the DOM puts them, so tab order still matches what is on screen.
+     `.cp-theme` is `inline-flex` at large sizes; a scroller has to be a block-level flex box that
+     fills the toolbar, hence the `display: flex` and the elastic `.cp-toolbar` around it. */
+  .cp-catalog-tools .cp-toolbar { flex: 1 1 100%; min-width: 0; }
+  .cp-catalog-tools .cp-theme { display: flex; }
+  .cp-catalog-tools .cp-theme, .cp-catalog-actions {
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+    padding-bottom: 4px; scroll-padding-inline: 8px; }
+  /* `flex: none` on the chips themselves, not on `> *`: `<cp-bg-toggle>` is `display: contents`,
+     so the Transparent button — not the element — is the actual flex item of the actions row. */
+  .cp-catalog-tools .cp-theme .cp-theme-btn,
+  .cp-catalog-actions .cp-action-chip, .cp-catalog-actions .cp-bg-btn {
+    flex: none; white-space: nowrap; }
+  /* The gaps between those rows are sized for a desktop column. Tightened here — four blocks at
+     ~20px each is another quarter of a phone row given back to the grid. */
+  .cp-catalog-title { margin-bottom: 2px; }
+  .cp-sub { margin-bottom: 10px; }
+  .cp-catalog-actions { margin-bottom: 10px; }
+  .cp-catalog-menu { margin-bottom: 14px; }
   /* Sticky disclosure row so ⚙ Overrides / ☰ Components — and now the State and Theme folds —
      stay one tap away without scrolling past a tall preview. The row that sticks is the title row,
      because that is where all four toggles live; the opaque preview id goes, since it is the one
@@ -1971,11 +2003,30 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   /* The name is NOT clamped to one line here, though it would buy a row back: the trust verdict is
      a `<span>` inside the `<h1>`, so an ellipsis on the headline eats the badge — and "is this
      render trustworthy" is not a fact to drop for 24px of a sticky row. */
-  .cp-head-toggles { margin-left: 0; }
+  /* …and the pills on it fit on ONE line rather than two. Every control the viewer has that is
+     not the render itself now lives here (Components, the Theme menu, Overrides), and at desktop
+     padding the three come to ~396px against a phone's ~384px of content width — twelve pixels
+     short, paid for with a whole 42px row. Tightening the pills' padding and the gap between them
+     is what buys that row back for the render; the labels are untouched, so nothing is abbreviated
+     to get there. */
+  .cp-head-toggles { margin-left: 0; gap: 6px; }
+  .cp-head-toggles .cp-drawer-toggle { padding: 8px 12px; }
+  .cp-head-toggles .cp-drawer-toggle.cp-axis-toggle { padding: 6px 10px; }
   /* The bar's controls alone fill a phone's width, so it wraps again here. The theme group keeps
      its own single scrolling row — that is its own axis, not the bar's. */
   .cp-viewer-bar { margin: 0 0 10px; flex-wrap: wrap; }
   .cp-theme-bar { flex-basis: 100%; }
+  /* The renderer row — the lane toggle, the format chips a catalog offers (Snapshot · Figma ·
+     Source, SVG, 3D), Transparent, Fit width, and the hint that names the current lane — is the
+     last block above the stage, and on a phone it wrapped to three lines. One scrolling row, same
+     rule as the two chip groups on the landing: the render is what the page is for, so the row
+     before it should cost one line, not three. */
+  .cp-preview-primary { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: thin; padding-bottom: 4px; scroll-padding-inline: 8px; }
+  .cp-preview-primary > * { flex: none; }
+  /* The hint is prose, not a chip: left to wrap inside a nowrap row it would size to its own
+     max-content and push everything after it off the row's scrollable width for no gain. */
+  .cp-preview-primary .cp-mode-hint { white-space: nowrap; }
   .cp-viewer { gap: 16px; }
   /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
      selects/inputs) shrink below their content's intrinsic width instead of overflowing. */
