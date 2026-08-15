@@ -14,3 +14,5 @@ import "./components/BgToggle.js";
 import "./components/CatalogToolbar.js";
 import "./components/GroupMemory.js";
 import "./components/PageZoom.js";
+// Not a component: installs `window.cpRcFonts` for the legacy lanes to call.
+import "./rcFonts.js";

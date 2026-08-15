@@ -24,7 +24,8 @@ internal object ServeWebAssets {
       // `<cp-bg-toggle>` (the Transparent toggle shared by the catalog grid and the viewer),
       // `<cp-backend-badge>` (the viewer stage's provenance badge, formerly `backend-badge.js`) and
       // `<cp-group-memory>` (the control drawers' remembered open state, formerly
-      // `viewer-groups.js`). Loaded whole rather than per-page: Lit is ~6 kB gzipped and an element
+      // `viewer-groups.js`), plus `window.cpRcFonts`, the Remote Compose font preloader that was
+      // `rc-fonts.js`. Loaded whole rather than per-page: Lit is ~6 kB gzipped and an element
       // whose tag isn't on the page costs nothing but its bytes, so splitting would buy less than
       // it costs. The heavy per-page scripts selective loading exists for (`codemirror.js`,
       // `viewer.js`, `format-compare.js`) are untouched and keep their own tags.
@@ -36,11 +37,6 @@ internal object ServeWebAssets {
       // The grid's long-press live lane; loaded only by a catalog page whose session can actually
       // stream (see [ServeWeb.catalogLiveScript]).
       "catalog-live.js" to "text/javascript; charset=utf-8",
-      // Forces the vendored `@font-face` block ([ServeRcFonts]) to load before a client-side Remote
-      // Compose lane paints — canvas never drives a lazy face itself. Loaded only by a page that
-      // carries such a lane (the viewer with an `.rc` document, the format-compare wall, a shared
-      // Remote Compose document page).
-      "rc-fonts.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
       // by a viewer whose host can produce at least one of them.

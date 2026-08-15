@@ -127,7 +127,8 @@ against a moving fixture baseline:
    take it seriously rather than re-running until it agrees.
 
 Ported so far: `bg-toggle.js` → `<cp-bg-toggle>`, `backend-badge.js` →
-`<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`.
+`<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`, `rc-fonts.js` →
+`window.cpRcFonts`.
 
 **New behaviour on a page that has not been ported yet starts here anyway.**
 `<cp-page-zoom>` (the design page's zoom: double-click to drill into a section,
@@ -149,10 +150,23 @@ a 3.4:1 specimen sheet frames at 1.0x and looks like a dead gesture — are unit
 tests rather than screenshots. Reach for the same split whenever a component's
 real content is a calculation.
 
-Next, cheapest seam first: `rc-fonts.js` (50 lines), `page-theme.js` (103), then
-`url-state.js` itself — that one is the shared global every legacy script reads
-at IIFE time, so it wants its own change once more than one component here needs
-it.
+Next: `page-theme.js` (103 lines), then `url-state.js` — that one is the shared
+global every legacy script reads at IIFE time, so it wants its own change once
+more than one thing here needs it.
+
+**Both of those are blocked on where the bundle is loaded from, and that is the
+decision to make before either.** `ServeWeb` emits `serve-components.js` from a
+handful of surfaces rather than from the page shell, so it does not reach every
+page; `page-theme.js` does, because the shell (`document()`) emits it for
+everything. So porting a piece of shared chrome means the bundle has to come
+from the shell too, and the shell's script slot is the last line of `<body>`,
+after the surface's own scripts. That is fine for a component (it upgrades
+whenever the definition lands) and wrong for a global that a legacy script calls
+as it starts — which is exactly why `rc-fonts.js` became a per-surface swap
+rather than a shell change. Moving the bundle to the top of `<body>` fixes the
+ordering and makes every page carry it; it also puts a render-blocking bundle on
+the front door, which the prebaked landing imagery exists to avoid. Weigh that
+before porting `page-theme.js`, don't discover it halfway through.
 
 ## New behaviour lands here too, not just ports
 
@@ -173,7 +187,7 @@ missing, and the only thing that noticed was a page capture of a state two steps
 later. The test now asserts *no element is moved at all* above the breakpoint,
 because "ends up in the right place" was true the whole time it was broken.
 
-Two shapes have shown up, and it is worth naming which one a script is before
+Three shapes have shown up, and it is worth naming which one a script is before
 porting it:
 
 - **A control the server declares** (`<cp-bg-toggle>`): the element renders its
@@ -185,6 +199,12 @@ porting it:
   live region created by script with its text already in it is not announced —
   and `<cp-group-memory>` is a page-level controller because `<details>` cannot
   be a custom element and eight marker children would be worse than one.
+- **A global the legacy scripts call** (`window.cpRcFonts`): not an element at
+  all. `viewer.js`, `format-compare.js` and the inline doc-player script read it
+  at call time, so the port keeps the global and moves only the implementation.
+  Changing the seam as well would mean editing three untyped callers in the same
+  change, which is the opposite of one reviewable step — the seam goes when
+  those callers do.
 
 Whichever shape it is, the same rule holds for the elements the server emits:
 they are declared in the page's HTML, so a fixture regeneration and a pixel
