@@ -2330,8 +2330,16 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   display: block;
 }
 /* Zoomed in, the sheet is bigger than its window, so the stage becomes something you drag. Grab
-   rather than `move`: the hand says "the surface comes with you", which is what a pan does. */
-.cp-page-zoomed { cursor: grab; }
+   rather than `move`: the hand says "the surface comes with you", which is what a pan does.
+
+   `touch-action: none` is what makes that drag work with a FINGER. Without it the browser is free
+   to claim the gesture for its own scroll or pinch, and the moment it does it fires `pointercancel`
+   — the pan stops receiving moves a few pixels in, so the advertised interaction half-works.
+   Scoped to the zoomed state, so at 1:1 the stage is an ordinary part of a scrollable page. */
+.cp-page-zoomed {
+  cursor: grab;
+  touch-action: none;
+}
 .cp-page-zoomed.cp-page-panning { cursor: grabbing; }
 /* A pan must not select the sheet's text on the way past, and an overlay is an `<a>` — which a
    browser will happily start dragging as a link instead. */

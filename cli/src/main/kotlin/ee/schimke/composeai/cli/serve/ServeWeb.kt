@@ -7069,7 +7069,8 @@ $rows
             </div>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
-            <span class="cp-page-hint">Double-click a section to zoom · ⌘/Ctrl-scroll · drag to pan · Esc resets</span>
+            <span class="cp-page-hint">Double-click a section to zoom · ⌘/Ctrl-scroll · drag to pan
+              · + / &#8722; / 0 by keyboard · Esc resets</span>
           </div>
           <div class="cp-page-legend" hidden>
             <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>

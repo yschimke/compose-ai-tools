@@ -1312,6 +1312,11 @@ Three gestures, named next to the controls because none of them is guessable:
   surface that swallowed the wheel would trap the reader inside it. It is also what a trackpad pinch
   already sends, so pinch-to-zoom works for free.
 - **Drag pans**, once there is more sheet than window.
+- **`+` / `-` / `0`** do the same three things from the keyboard. Every other gesture here needs a
+  pointer and the corner control is hidden at 1:1, so without these a keyboard-only reader would have
+  no way to enlarge a sheet whose text is sub-pixel. They are reachable because every component
+  overlay on the sheet is a real anchor in the tab order, and they are inert while a control has
+  focus.
 
 ![A section framed by a double-click, the rest of the sheet cropped away, with the corner readout](design/evidence/serve-design-page/serve-design-page-zoom-section.light.png)
 

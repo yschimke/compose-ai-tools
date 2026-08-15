@@ -85,6 +85,9 @@ export class PageZoom extends LitElement {
     /** The stage's size at the last commit, so a resize can carry the pan across it. */
     private stageSize: Box | null = null;
 
+    /** The page this sheet belongs to — the scope the keyboard shortcuts answer in. */
+    private page: HTMLElement | null = null;
+
     // Bound once so `removeEventListener` in `disconnectedCallback` matches.
     private readonly onDblClick = (event: MouseEvent) => this.drill(event);
     private readonly onWheel = (event: WheelEvent) => this.wheel(event);
@@ -111,6 +114,8 @@ export class PageZoom extends LitElement {
         this.reveal(event.target as Element | null);
     };
     private readonly onKeyDown = (event: KeyboardEvent) => this.escape(event);
+    private readonly onPageKeyDown = (event: KeyboardEvent) =>
+        this.shortcut(event);
     private readonly onResize = () => {
         const box = this.stageBox();
         const was = this.stageSize;
@@ -162,6 +167,14 @@ export class PageZoom extends LitElement {
         // selection it clears is already gone, and one press would unwind both the
         // selection and the zoom. Capture runs before it and still sees the mark.
         document.addEventListener("keydown", this.onKeyDown, true);
+        // A KEYBOARD WAY IN, and the only one there is. Every other gesture here needs a
+        // pointer — a double-click, a modified wheel, a drag — and the corner control is
+        // hidden at 1:1 by design, so without this a keyboard-only reader has no way to
+        // enlarge a sheet whose text is sub-pixel. `+` / `-` / `0`, on the page rather
+        // than the document so the keys are inert everywhere else, and reachable because
+        // every component overlay on the sheet is a real anchor in the tab order.
+        this.page = this.closest<HTMLElement>("#cp-design-page") ?? this.stage;
+        this.page.addEventListener("keydown", this.onPageKeyDown);
         // A resize moves the pan limits with the stage — a sheet panned to its right
         // edge in a wide window is panned past it in a narrow one — and it moves the
         // reader's place, which `rescale` is what preserves. Both signals are wired:
@@ -189,6 +202,7 @@ export class PageZoom extends LitElement {
         window.removeEventListener("pointercancel", this.onPointerUp);
         window.removeEventListener("resize", this.onResize);
         document.removeEventListener("keydown", this.onKeyDown, true);
+        this.page?.removeEventListener("keydown", this.onPageKeyDown);
         this.observer?.disconnect();
         this.observer = null;
         super.disconnectedCallback();
@@ -316,34 +330,50 @@ export class PageZoom extends LitElement {
             typeof document.elementsFromPoint === "function"
                 ? document.elementsFromPoint(clientX, clientY)
                 : [];
-        let found = hit.filter(
-            (el) =>
-                el !== svg &&
-                svg.contains(el) &&
-                el.hasAttribute("data-node-id"),
-        );
-        if (!found.length) {
-            found = Array.from(svg.querySelectorAll("[data-node-id]")).filter(
-                (el) => {
-                    const box = el.getBoundingClientRect();
-                    return (
-                        box.width > 0 &&
-                        box.height > 0 &&
-                        clientX >= box.left &&
-                        clientX <= box.left + box.width &&
-                        clientY >= box.top &&
-                        clientY <= box.top + box.height
-                    );
-                },
-            );
+        // The topmost thing PAINTED here, and then ITS OWN ancestors — a lineage, not a
+        // pile. `elementsFromPoint` also hands back overlapping SIBLINGS (a badge over a
+        // card, a shadow layer beside it), and ordering those by area invents a
+        // parent-child relationship the export does not have: the drill would frame one
+        // sibling and then "descend" into another that never contained it.
+        const top = hit.find((el) => el !== svg && svg.contains(el));
+        if (top) {
+            const lineage: Element[] = [];
+            for (
+                let el: Element | null = top;
+                el && el !== svg;
+                el = el.parentElement
+            ) {
+                if (el.hasAttribute("data-node-id")) lineage.unshift(el);
+            }
+            if (lineage.length) return lineage.map((node) => this.level(node));
         }
-        return found
-            .map((node) => ({ node, box: node.getBoundingClientRect() as Box }))
+        // Nothing painted here, or nothing addressable above what is: the gaps between
+        // specimens on a sheet with no background fill. There is no lineage to read, so
+        // fall back to every box that CONTAINS the point, outermost first — which for
+        // nested frames is the same answer, and for overlapping siblings is a guess the
+        // reader can see rather than a wrong tree.
+        return Array.from(svg.querySelectorAll("[data-node-id]"))
+            .filter((el) => {
+                const box = el.getBoundingClientRect();
+                return (
+                    box.width > 0 &&
+                    box.height > 0 &&
+                    clientX >= box.left &&
+                    clientX <= box.left + box.width &&
+                    clientY >= box.top &&
+                    clientY <= box.top + box.height
+                );
+            })
+            .map((node) => this.level(node))
             .filter((level) => level.box.width * level.box.height > 0)
             .sort(
                 (a, b) =>
                     b.box.width * b.box.height - a.box.width * a.box.height,
             );
+    }
+
+    private level(node: Element): Level<Element> {
+        return { node, box: node.getBoundingClientRect() as Box };
     }
 
     /**
@@ -364,6 +394,12 @@ export class PageZoom extends LitElement {
      * a reader zooming into "Typography" clicks.
      */
     private drill(event: MouseEvent): void {
+        // The corner controls are ON the stage but are not the sheet. A quick pair of
+        // clicks on `+` arrives here as a double-click over the bar, and drilling from a
+        // button's coordinates either frames whatever the sheet paints beneath it or
+        // spends the gesture stepping back out — so two clicks on `+` would net one.
+        // Same guard, same reason, as the one `startPan` takes.
+        if (this.contains(event.target as Node)) return;
         const target =
             event.altKey || event.shiftKey
                 ? null
@@ -446,16 +482,20 @@ export class PageZoom extends LitElement {
         // pinch-to-zoom works with no gesture handler.
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
-        // DOM_DELTA_LINE reports in lines, not pixels; a browser using it would
-        // otherwise zoom in increments a hundredth the size.
-        const delta = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+        const box = this.stageBox();
+        // `deltaMode` is not always pixels: DOM_DELTA_LINE counts lines and DOM_DELTA_PAGE
+        // counts PAGES, where a whole notch arrives as ±1. Taken at face value that is a
+        // factor of 1.002 — the readout stays at 100% and the gesture looks broken on the
+        // browsers that use those units.
+        const unit =
+            event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? box.height : 1;
         this.apply(
             zoomAbout(
                 this.view,
-                this.stageBox(),
+                box,
                 event.clientX,
                 event.clientY,
-                Math.exp(-delta * 0.0022),
+                Math.exp(-event.deltaY * unit * 0.0022),
             ),
             false,
         );
@@ -539,6 +579,25 @@ export class PageZoom extends LitElement {
         if (event.key !== "Escape" || !zoomed(this.view)) return;
         if (this.stage?.querySelector(".cp-page-selected")) return;
         this.reset();
+    }
+
+    /**
+     * `+` zooms in, `-` out, `0` back to 1:1 — the same three steps the corner buttons
+     * take, about the middle of the view.
+     *
+     * Ignored while a control has focus, so the keys still belong to a checkbox, a radio
+     * or anything with text in it rather than to the sheet.
+     */
+    private shortcut(event: KeyboardEvent): void {
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("input, textarea, select, [contenteditable]"))
+            return;
+        if (event.key === "+" || event.key === "=") this.step(STEP);
+        else if (event.key === "-" || event.key === "_") this.step(1 / STEP);
+        else if (event.key === "0") this.reset();
+        else return;
+        event.preventDefault();
     }
 
     /** Pan a focused node into view. Does nothing at 1:1, or off the sheet. */

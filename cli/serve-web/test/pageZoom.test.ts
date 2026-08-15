@@ -105,17 +105,26 @@ function stubLayout(): void {
             : el('[data-node-id="shape-a1"]');
         (node as HTMLElement).getBoundingClientRect = () => mapped(box);
     }
-    // The browser's hit test, over the same model: every addressable box the point
-    // lands in, which is the ancestor chain plus nothing else in this fixture.
+    // The browser's hit test, over the same model — TOPMOST FIRST, which is the order a
+    // real one answers in and the order `chainAt` reads a lineage from.
     document.elementsFromPoint = ((x: number, y: number) =>
-        Array.from(document.querySelectorAll("[data-node-id]")).filter(
-            (node) => {
+        Array.from(document.querySelectorAll("[data-node-id]"))
+            .filter((node) => {
                 const r = node.getBoundingClientRect();
                 return (
                     x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
                 );
-            },
-        )) as typeof document.elementsFromPoint;
+            })
+            .sort(topmostFirst)) as typeof document.elementsFromPoint;
+}
+
+/**
+ * Document order, REVERSED — which is paint order for an SVG, and therefore the order a
+ * real `elementsFromPoint` answers in. It gets both cases the drill cares about right: a
+ * child paints over its parent, and a later sibling paints over an earlier one.
+ */
+function topmostFirst(a: Element, b: Element): number {
+    return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : -1;
 }
 
 async function mount(markup = PAGE): Promise<void> {
@@ -456,6 +465,126 @@ describe("<cp-page-zoom>", () => {
             true,
             "…with the transition off, so the node is where it will be measured",
         );
+    });
+
+    it("drills the tree, not whatever else is painted under the pointer", async () => {
+        // Two OVERLAPPING SIBLINGS: a badge drawn over the left card, big enough to be
+        // drillable. Ordering every hit by area would make the card look like the badge's
+        // parent and let a second double-click "descend" from one into the other, which is
+        // a relationship the export does not have.
+        await mount(`
+          <div id="cp-design-page">
+          <div class="cp-page-stage">
+            <div class="cp-page-canvas" data-cp-page-canvas>
+              <svg data-box="0,0,1200,800">
+                <g data-node-id="card-a" data-box="40,90,560,690">
+                  <g data-node-id="slot-a1" data-box="90,115,460,200"></g>
+                </g>
+                <g data-node-id="badge" data-box="100,120,300,150"></g>
+              </svg>
+            </div>
+            <cp-page-zoom hidden></cp-page-zoom>
+          </div>
+          </div>`);
+        // A point inside the badge, the card and the slot at once. The badge is the
+        // topmost thing painted there, so the drill takes the badge's own lineage — and
+        // the badge has no addressable parent, so that is where it stops.
+        dblclick(at(200, 200));
+        await flush();
+        const framed = percent();
+        assert.ok(framed > 100, "the badge is framed");
+        dblclick(at(200, 200));
+        await flush();
+        assert.ok(
+            percent() < framed,
+            "and there is nowhere deeper to go — a sibling is not a child",
+        );
+    });
+
+    it("gives a keyboard reader a way in and out", async () => {
+        await mount();
+        // The sheet is at 1:1 with the corner control hidden, and every other gesture here
+        // needs a pointer. Focus lands on an overlay the way Tab puts it there.
+        const spot = el<HTMLElement>(".cp-page-node");
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        await flush();
+        assert.ok(percent() > 100, "+ zooms in from rest");
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "-", bubbles: true }),
+        );
+        await flush();
+        assert.equal(percent(), 100, "- comes back");
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        await flush();
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "0", bubbles: true }),
+        );
+        await flush();
+        assert.equal(percent(), 100, "0 resets");
+    });
+
+    it("leaves the keys to a control that has focus", async () => {
+        await mount();
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        el("#cp-design-page").appendChild(box);
+        box.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        await flush();
+        assert.equal(percent(), 100);
+    });
+
+    it("treats a page-mode wheel as a page, not as a pixel", async () => {
+        await mount();
+        // DOM_DELTA_PAGE sends ±1 for a whole notch; read as pixels that is a factor of
+        // 1.002 and the gesture looks inert.
+        wheel({ x: 600, y: 400 }, -1, true, 2);
+        await flush();
+        assert.ok(
+            percent() > 105,
+            `a page-mode notch must zoom, got ${percent()}%`,
+        );
+    });
+
+    it("does not drill when the double-click is on its own buttons", async () => {
+        await mount();
+        const [out, into] = document.querySelectorAll<HTMLButtonElement>(
+            "cp-page-zoom .cp-page-zoom-step",
+        );
+        into.click();
+        await flush();
+        const once = percent();
+        into.click();
+        await flush();
+        const twice = percent();
+        assert.ok(twice > once, "two presses of + are two steps in");
+        // …and the `dblclick` those two presses also produce must not be read as a
+        // gesture on the sheet: drilling from the button's coordinates would either
+        // frame whatever is painted under the bar or spend a step zooming back out.
+        into.dispatchEvent(
+            new MouseEvent("dblclick", {
+                bubbles: true,
+                clientX: 1150,
+                clientY: 760,
+            }),
+        );
+        await flush();
+        assert.equal(
+            percent(),
+            twice,
+            "the double-click over the control changed nothing",
+        );
+        out.click();
+        await flush();
+        assert.equal(percent(), once, "and the buttons still work either way");
     });
 
     it("is inert on a stage with no canvas to transform", async () => {
