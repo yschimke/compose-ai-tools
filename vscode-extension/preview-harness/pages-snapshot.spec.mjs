@@ -1166,6 +1166,13 @@ const FIXTURE_STATES = [
             await page.waitForFunction(
                 () => document.getElementById("cp-spec-img")?.hidden === false,
             );
+            // Park the pointer, as the mobile-menu shot does: it otherwise rests on the chip it
+            // just clicked, and a hover wash on one segment is not what this shot is evidence for.
+            // This used to be hidden — `viewer-drawers.js` re-inserted the row on load, which
+            // detaches it and drops `:hover` with it, so the capture accidentally showed a
+            // pointer-free page. `<cp-viewer-drawers>` only moves a row that needs moving, so the
+            // hover now persists and has to be parked deliberately.
+            await page.mouse.move(0, 0);
         },
     },
     // The three comparison views the spec lane offers once it is up. Each is drawn entirely at
@@ -1189,6 +1196,8 @@ const FIXTURE_STATES = [
                     return score && score.textContent && score.textContent !== "comparing…";
                 })
                 .catch(() => {});
+            // Off the view segment it just clicked — see `spec-lane` above.
+            await page.mouse.move(0, 0);
         },
     })),
     {
