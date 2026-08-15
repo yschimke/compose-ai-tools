@@ -694,12 +694,7 @@ class ServeWebFixtureTest {
               "shape",
               "Shape",
               listOf(
-                // Anchored at the set's first descendant component, not at the set: the page view
-                // draws an anchor per component and `isComponent` excludes containers, so a link
-                // to the set's own id would resolve to nothing.
-                ServeWeb.PageSection("1:20", "Corner radius", "1:1"),
-                // …and a set with no descendant component, which must link to the sheet plainly
-                // rather than carry a fragment that lands nowhere.
+                ServeWeb.PageSection("1:20", "Corner radius"),
                 ServeWeb.PageSection("1:21", "Shape scale"),
               ),
             ),
@@ -2070,12 +2065,7 @@ class ServeWebFixtureTest {
               "shape",
               "Shape",
               listOf(
-                // Anchored at the set's first descendant component, not at the set: the page view
-                // draws an anchor per component and `isComponent` excludes containers, so a link
-                // to the set's own id would resolve to nothing.
-                ServeWeb.PageSection("1:20", "Corner radius", "1:1"),
-                // …and a set with no descendant component, which must link to the sheet plainly
-                // rather than carry a fragment that lands nowhere.
+                ServeWeb.PageSection("1:20", "Corner radius"),
                 ServeWeb.PageSection("1:21", "Shape scale"),
               ),
             ),
@@ -3298,15 +3288,10 @@ class ServeWebFixtureTest {
           " aria-expanded=\"true\" aria-controls=\"cp-page-sections-shape\">Shape"
       ) &&
         landingGrouped.contains(
-          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape#cp-node-1-1\"" +
+          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape\"" +
             " data-search=\"Corner radius\">Corner radius</a>"
         ) &&
-        // A section with no anchor target carries no fragment — a `#` that resolves to nothing
-        // looks like a broken link and behaves like one.
-        landingGrouped.contains(
-          "<a class=\"cp-tree-variant cp-tree-link\" href=\"/pages/shape\"" +
-            " data-search=\"Shape scale\">Shape scale</a>"
-        ),
+        landingGrouped.contains("data-search=\"Shape scale\">Shape scale</a>"),
       "a page's major sections hang under it, each linking to that node's anchor",
     )
     // …and a page with NO sections stays a leaf: named, filterable, and carrying neither a twisty
@@ -3332,6 +3317,15 @@ class ServeWebFixtureTest {
     assertTrue(
       pageAnchorSet.isNotEmpty() && dangling.isEmpty(),
       "every section link lands on an anchor the page view actually emits; dangling: $dangling",
+    )
+    // Today that holds trivially, because a section links to the sheet and carries no fragment at
+    // all — a set has nothing on the page to land on, and inferring one from depth is what the
+    // `PageNode.container` contract forbids. Stated out loud so the guard above is not mistaken
+    // for proof that targeting works: it proves only that nothing dangles, which is the property
+    // that has to survive when the deep-link work adds real container anchors.
+    assertTrue(
+      sectionFragments.none(),
+      "a section link carries no fragment until the page view anchors containers",
     )
     // The pane the switch reveals ships hidden, and the tree keeps the column when it is showing.
     assertTrue(
