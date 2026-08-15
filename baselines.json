@@ -2076,7 +2076,7 @@
     "functionName": "ShaderFbmAnimatedPreview",
     "module": "samples:cmp",
     "renderBasename": "ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated-dfc4241c.gif",
-    "sha256": "f7d28f7d85179eea5894cbe9fbc371eae617b56bd5f449be6b266025d0b3952d",
+    "sha256": "30293b7323ec350187a732b3520712a41a7e72af024e3fb2beffdb45fa2f6079",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds": {
@@ -2092,7 +2092,7 @@
     "functionName": "ShaderJuliaAnimatedPreview",
     "module": "samples:cmp",
     "renderBasename": "ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated-1a96bf57.gif",
-    "sha256": "13d5421cf9eae7714c8b600e06bb6dcdb04ec027d23ceb03e04eec89ea195c09",
+    "sha256": "5e5035b1b2b9fe41abb43824ecdcc9230ef42b2fec610f6a0db35f3784435476",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set": {
@@ -2108,7 +2108,7 @@
     "functionName": "ShaderRaymarchAnimatedPreview",
     "module": "samples:cmp",
     "renderBasename": "ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated-05596e54.gif",
-    "sha256": "40bc9683053c935060981f752a1aef727ebd44ea8797776916b6e01fa54d6015",
+    "sha256": "520ac1d324aa485764e9efe68b14d2c0d1d5a9d31c1167ac2ddae8d7adf0c226",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF": {
@@ -2132,7 +2132,7 @@
     "functionName": "RuntimeShaderAnimatedBlobPreview",
     "module": "samples:cmp",
     "renderBasename": "RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob-76f00020.gif",
-    "sha256": "96c6d2a06c75bcd79cac4b3f29c19cf395e9dd45310d4a62afb9cc3672378d72",
+    "sha256": "98c9acf3efb093cae2cc7b05b90663fc702d9c6be1e3dd3a25572e1aa153e593",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob": {
@@ -2700,7 +2700,7 @@
     "functionName": "SwitchOn",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SwitchOn_Dark-d0f22b72.apng",
-    "sha256": "35e0b1980bd9dfceaabdb1ef2974375592bd850674631af3216ec60e28fc9a17",
+    "sha256": "76813e4dc354bb31a68ada26ba1c030d345003104ee17f854904593e2d1a6add",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark_VARIANT_off": {
@@ -2724,7 +2724,7 @@
     "functionName": "SwitchOn",
     "module": "samples:design-catalog-m3",
     "renderBasename": "SwitchOn_Light-c16813d5.apng",
-    "sha256": "98b9b62496818f8f2f9e46b0310c8025953029dcd894d0c9ff09e84e51b08948",
+    "sha256": "ce595e78ad211da6ce1fe2311270ad19bb071185faaa50997395660a3e1f2d6d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light_VARIANT_off": {
