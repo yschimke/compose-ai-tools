@@ -17,7 +17,6 @@ internal object ServeWebAssets {
       // code-running surface and leak visitors to it.
       "codemirror.css" to "text/css; charset=utf-8",
       "codemirror.js" to "text/javascript; charset=utf-8",
-      "url-state.js" to "text/javascript; charset=utf-8",
       // The Lit component bundle, built from `cli/serve-web/` and committed here so the Gradle
       // build and the release chain stay node-free (`npm run verify` in that directory, wired into
       // CI, fails if the committed bytes drift from the source). Carries every ported component:
@@ -32,10 +31,14 @@ internal object ServeWebAssets {
       // it costs. The heavy per-page scripts selective loading exists for (`codemirror.js`,
       // `viewer.js`, `format-compare.js`) are untouched and keep their own tags.
       "serve-components.js" to "text/javascript; charset=utf-8",
-      // The header's Settings menu and the Page theme setting it holds — whether the chrome follows
-      // the selected preview theme or the OS. Loaded by every page, because the menu is in the site
-      // header rather than on one surface.
-      "page-theme.js" to "text/javascript; charset=utf-8",
+      // The page-shell bundle, the second half of the same build. Carries what EVERY page needs —
+      // `window.cpUrlState` (formerly `url-state.js`) and the Page theme setting (formerly
+      // `page-theme.js`) — so `ServeWeb.document` emits it unconditionally, ahead of the surface's
+      // own scripts, because they read those globals. Neither module is a custom element, so this
+      // bundle carries no Lit and lands around 1 kB gzipped; folding it into the component bundle
+      // would put Lit's 12 kB on the front door, whose imagery is prebaked precisely so a visit
+      // costs the HTML and nothing else.
+      "serve-chrome.js" to "text/javascript; charset=utf-8",
       // The grid's long-press live lane; loaded only by a catalog page whose session can actually
       // stream (see [ServeWeb.catalogLiveScript]).
       "catalog-live.js" to "text/javascript; charset=utf-8",

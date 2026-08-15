@@ -293,8 +293,7 @@ const STYLED_FIXTURES = new Set([
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["playground.css", "text/css"],
-    ["url-state.js", "text/javascript"],
-    ["page-theme.js", "text/javascript"],
+    ["serve-chrome.js", "text/javascript"],
     ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
