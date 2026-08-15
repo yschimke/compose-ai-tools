@@ -688,9 +688,11 @@ html.cp-js .cp-section-head { display: none; }
    `display: contents` drops the wrapper out of layout entirely, so the .cp-bg-btn inside stays the
    toolbar's own flex item and the upgraded control lays out exactly as the bare button did. */
 cp-bg-toggle { display: contents; }
-/* `<cp-group-memory>` (serve-components.js) only wires the control drawers' remembered open
-   state; it has nothing to draw, and an inline box here would sit in the viewer's flow. */
-cp-group-memory, cp-catalog-toolbar { display: none; }
+/* The controller elements (serve-components.js): each only wires behaviour onto markup the server
+   already rendered — remembered fold state, the phone's toolbar reflow, the viewer's drawers — and
+   none of them has anything to draw. An autonomous custom element defaults to `display: inline`,
+   so without this each would sit in its page's flow as an empty inline box. */
+cp-group-memory, cp-catalog-toolbar, cp-viewer-drawers { display: none; }
 /* …and the same filter chip for the theme chips and for the two standalone toggles that used to
    be segmented pairs — Transparent (<cp-bg-toggle>) and the viewer's Fit width (.cp-zoom-toggle).
    One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's
@@ -1609,7 +1611,15 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   border: 1px solid var(--md-sys-color-outline); background: transparent;
   color: var(--md-sys-color-on-surface-variant); cursor: pointer;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-fmt-toggle:hover, .cp-spec-chip:hover:not(:disabled) {
+/* `:not([aria-pressed="true"])` on BOTH, so hover cannot outrank the pressed fill below. It
+   already could on `.cp-spec-chip`: `:hover:not(:disabled)` is (0,3,0) against the pressed rule's
+   (0,2,0), so resting the pointer on the active Source or Figma chip replaced its
+   secondary-container fill with the neutral hover wash — the chip stopped looking selected while
+   you were pointing at the thing that selected it. `.cp-fmt-toggle` was only accidentally safe,
+   both rules being (0,2,0) and pressed coming second; stating it makes the two agree rather than
+   leaving one of them right by declaration order. */
+.cp-fmt-toggle:hover:not([aria-pressed="true"]),
+.cp-spec-chip:hover:not(:disabled):not([aria-pressed="true"]) {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-fmt-toggle[aria-pressed="true"], .cp-spec-chip[aria-pressed="true"] {
   background: var(--md-sys-color-secondary-container);

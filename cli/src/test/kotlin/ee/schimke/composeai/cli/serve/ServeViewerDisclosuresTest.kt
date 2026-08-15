@@ -209,13 +209,10 @@ class ServeViewerDisclosuresTest {
       "an untagged preview opens on Day; the toggle must not say Night: $untagged",
     )
     // The theme is picked without a page load, so the server-rendered label would go stale on the
-    // first click; the drawer script mirrors whichever chip viewer.js marks pressed.
-    val script = ServeWebAssets.load("viewer-drawers.js")!!.bytes.decodeToString()
-    assertTrue(
-      script.contains("""themeBar.querySelector('.cp-theme-btn[aria-pressed="true"]')"""),
-      script,
-    )
-    assertTrue(script.contains("attributeFilter: [\"aria-pressed\"]"), script)
+    // first click; `<cp-viewer-drawers>` mirrors whichever chip viewer.js marks pressed. That it
+    // does is asserted against the element in `cli/serve-web/test/viewerDrawers.test.ts`
+    // ("mirrors the pressed theme chip into the toggle's value"), which a substring match on a
+    // minified bundle could not do.
   }
 
   @Test
@@ -228,17 +225,10 @@ class ServeViewerDisclosuresTest {
       css.contains(".cp-viewer:not(.cp-nav-open):not(.cp-nav-closed) .cp-nav { display: flex; }"),
       css.substringAfter("@media (min-width: 1100px)").take(400),
     )
-    val script = ServeWebAssets.load("viewer-drawers.js")!!.bytes.decodeToString()
-    assertTrue(
-      script.contains("""viewer.classList.toggle("cp-nav-closed", !open);"""),
-      "closing the list must say so out loud, or the desktop default keeps winning",
-    )
-    // Remembered per visitor, the same way the override groups are (`cp-grp.<id>`): putting a wide
-    // axis away is a statement about the catalog, not about one preview.
-    // Scoped to the catalog, as `cp-theme:<catalog>` and `cp-tab:<catalog>` are: localStorage is
-    // per-origin and one host serves many catalogs, so an unscoped key would let folding this
-    // catalog's wide axis fold a normally-inline one on every unrelated catalog beside it.
-    assertTrue(script.contains("""return "cp-fold:" + foldScope + "." + id;"""), script)
+    // That closing the list says so out loud (`cp-nav-closed`), and that the fold keys are scoped
+    // per catalog, are asserted against the real element and the rule module in
+    // `cli/serve-web/test/viewerDrawers.test.ts` and `test/drawerState.test.ts`. What stays here
+    // is the half Kotlin owns: that the server names the catalog those folds belong to.
     assertTrue(
       ServeWeb.viewerPage(
           ServePreview("button__ideal__default__light", "Button"),
@@ -249,42 +239,19 @@ class ServeViewerDisclosuresTest {
         .contains("data-fold-scope=\"compose-m3\""),
       "the viewer names the catalog its folds belong to",
     )
-    for (id in listOf("cp-nav-toggle", "cp-controls-toggle")) {
-      assertTrue(script.contains("\"$id\""), "$id participates in the remembered folds: $script")
-    }
   }
 
-  @Test
-  fun `the phone's component sheet is transient, and the desktop default stays responsive`() {
-    val script = ServeWebAssets.load("viewer-drawers.js")!!.bytes.decodeToString()
-    // Below 640px BOTH drawers are modal bottom sheets over the preview, opened for one thing and
-    // dismissed. Remembering either open would restore the sheet on the page you navigate to next,
-    // so every component you pick would arrive covered — and since the drawers close each other
-    // there, it would store a state the visitor never chose.
-    assertTrue(
-      script.contains("if (isMobile()) return;"),
-      "a phone's sheets must store nothing: $script",
-    )
-    assertTrue(
-      script.contains("if (isMobile()) return false;"),
-      "…and the list must not be restored from a desktop visit's preference: $script",
-    )
-    // The overrides drawer's own restore is the same rule, phrased where it is applied: the phone
-    // branch collapses it and stops, rather than collapsing it and then reading a preference back.
-    assertTrue(
-      script.contains("""if (isMobile()) setOpen("cp-controls-open", false);""") &&
-        script.contains(
-          """    if (controlsPref !== null) setOpen("cp-controls-open", controlsPref === "1");"""
-        ),
-      "the stored overrides state is honoured only off the phone: $script",
-    )
-    // Making the state explicit cost the CSS default its own responsiveness, so the resolution has
-    // to re-run when the viewport crosses a breakpoint — otherwise a window opened wide and then
-    // narrowed keeps `cp-nav-open`, which below 640px drops a sheet and a scrim over the viewer.
-    assertTrue(script.contains("""setOpen("cp-nav-open", resolvedNavOpen());"""), script)
-    assertTrue(
-      script.contains("""query.addEventListener("change", function () {"""),
-      "the width default has to be re-resolved on a breakpoint change: $script",
-    )
-  }
+  // `the phone's component sheet is transient, and the desktop default stays responsive` used to
+  // live here as six substring matches on `viewer-drawers.js` — `if (isMobile()) return;`,
+  // `setOpen("cp-nav-open", resolvedNavOpen());`, and so on. Every one of them proved a line
+  // existed in a file, none proved a drawer behaved, and none can survive a minified bundle. The
+  // rules are now a table in `cli/serve-web/test/drawerState.test.ts` (three viewport bands ×
+  // stored preference × server default) and the wiring is exercised against the real element in
+  // `test/viewerDrawers.test.ts`, including the resize this file could only assert as the presence
+  // of an `addEventListener` call:
+  //
+  //   - "stores nothing about the drawers on a phone"
+  //   - "is closed on a phone whatever a desktop visit stored"
+  //   - "restores a stored choice over the server default"
+  //   - "drops the nav when a wide window narrows to a phone"
 }

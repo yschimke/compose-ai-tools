@@ -9077,7 +9077,9 @@ $rows
       <cp-group-memory></cp-group-memory>
       ${scriptTag("url-state.js")}
       ${scriptTag("serve-components.js")}
-      ${scriptTag("viewer-drawers.js")}
+      <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
+           filter. Renders nothing; `serve.css` hides the tag. -->
+      <cp-viewer-drawers></cp-viewer-drawers>
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
       $compareScriptTags${scriptTag("viewer.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
