@@ -706,8 +706,8 @@
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "light",
-      "sha256": "2db181e5d7b8620411e4c062a40aa94bb66f3dca0581b40015c92e0c94665098",
-      "size": 66768
+      "sha256": "37b8eded8d560107a44feffdd84b01510e37279670b9fff177f8c75db354be96",
+      "size": 64984
     },
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
@@ -853,17 +853,29 @@
       "sha256": "d06323e622c9eb059e606cb63be94fb8c0874db57d4e29ce3837cff7e246cadd",
       "size": 25612
     },
+    "serve-parity-visual-findings.dark.png": {
+      "fixture": "serve-parity-visual-findings",
+      "theme": "dark",
+      "sha256": "bc4c2fb2a58258f70490d0e94e1f2596ad80092a6e4e3215ce3cb36c979d9dd5",
+      "size": 265119
+    },
+    "serve-parity-visual-findings.light.png": {
+      "fixture": "serve-parity-visual-findings",
+      "theme": "light",
+      "sha256": "625535c22228db3054360b4f21f98b1fd1e60d53427d5f39b4a3f9d9b8182f53",
+      "size": 258996
+    },
     "serve-parity.dark.png": {
       "fixture": "serve-parity",
       "theme": "dark",
-      "sha256": "394a275a7e2f6fb5ca75bdc2135dc8e8ed4c282152ff45d618d56fa213d8fc0b",
-      "size": 254718
+      "sha256": "9eb7b9b4b62eadaf1628637535fc4e696f3d6a1d41013eaf5e38de55b438ea26",
+      "size": 255394
     },
     "serve-parity.light.png": {
       "fixture": "serve-parity",
       "theme": "light",
-      "sha256": "99da4929633e9e2f776e758958b33d6244262bed61d51e60e24c21b1fea8fa8a",
-      "size": 248722
+      "sha256": "f7e8df789800da534c22f61c382dd285bb4e862d4e26bd1c5efc0efd95a64257",
+      "size": 249422
     },
     "serve-playground-android-catalog.dark.png": {
       "fixture": "serve-playground-android-catalog",

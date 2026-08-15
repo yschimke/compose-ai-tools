@@ -508,6 +508,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-parity/dark](renders/serve-parity.dark.png) |
 | `light` | ![serve-parity/light](renders/serve-parity.light.png) |
 
+## serve-parity-visual-findings
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-parity-visual-findings/dark](renders/serve-parity-visual-findings.dark.png) |
+| `light` | ![serve-parity-visual-findings/light](renders/serve-parity-visual-findings.light.png) |
+
 ## serve-playground
 
 | Theme | Capture |
