@@ -2267,18 +2267,27 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-page-hide-design .cp-page-replaced { visibility: hidden; }
 /* A hit area, drawn as nothing. The sheet is the content, so the resting state of every node is
    invisible — a mark appears where the reader is pointing, or across the board once they ask for
-   the layer. `transparent` rather than no border at all keeps the box the same size in both
-   states, so turning outlines on doesn't nudge thirty-eight rectangles by a pixel. */
+   the layer.
+
+   An INSET OUTLINE and not a border, because this element is also the slot our render stands in.
+   A border is layout: it shrinks the padding box, which is what `inset: 0` on the render resolves
+   against, so a 2px transparent border drew every render 4px narrower and shorter than the node
+   the design drew — a uniform ~4% shrink on this catalog's Shape page, and worse the smaller the
+   node. An outline is paint only, so the padding box IS the measured node box and the render fills
+   it exactly; `outline-offset: -2px` puts the mark back where the inner border drew it, and an
+   outline still doesn't move anything when it goes from transparent to coloured. */
 .cp-page-node {
   position: absolute;
   display: block;
   padding: 0;
-  border: 2px solid transparent;
+  border: 0;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
   border-radius: 3px;
   background: transparent;
   text-decoration: none;
   cursor: pointer;
-  transition: background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease, outline-color 120ms ease;
 }
 /* Colour by *how* the placement was linked, so the weak links read as weak at a glance. An
    unlinked rectangle — a part of the sheet no code implements — is the dashed red one, and is the
@@ -2294,10 +2303,10 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 /* The opt-in layer: every node marked at once, which is the coverage read rather than the reading
    view. */
 .cp-page-outlines-on .cp-page-node {
-  border-color: var(--cp-page-node-color, #2da44e);
+  outline-color: var(--cp-page-node-color, #2da44e);
   background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 10%, transparent);
 }
-.cp-page-outlines-on .cp-page-node[data-link="unlinked"] { border-style: dashed; }
+.cp-page-outlines-on .cp-page-node[data-link="unlinked"] { outline-style: dashed; }
 .cp-page-outlines-on .cp-page-node[data-cp-gap] {
   background: color-mix(in srgb, #cf222e 8%, transparent);
 }
@@ -2308,13 +2317,12 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-page-node:hover,
 .cp-page-node:focus-visible,
 .cp-page-node.cp-page-active {
-  border-color: var(--cp-page-node-color, #2da44e);
+  outline-color: var(--cp-page-node-color, #2da44e);
   background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 18%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-page-node-color, #2da44e) 45%, transparent);
-  outline: none;
 }
 .cp-page-node.cp-page-selected {
-  border-color: var(--cp-page-node-color, #2da44e);
+  outline-color: var(--cp-page-node-color, #2da44e);
   background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 12%, transparent);
   box-shadow:
     0 0 0 2px #fff,
@@ -2332,12 +2340,22 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   opacity: 0.12;
   pointer-events: none;
 }
-/* A render is pinned to its node's top-left and scaled to the node's WIDTH, keeping its own aspect
-   ratio — deliberately not stretched to fill the box. A component that renders taller than the
-   design drew it is a real finding, and stretching would hide exactly that.
+/* A render fills the slot the design left, scaled UNIFORMLY and centred — never stretched. A
+   component that renders taller than the design drew it is a real finding, and stretching to the
+   box would hide exactly that.
 
-   `object-fit: contain` with the node's full height is what centres it in the slot the design left,
-   which is how the swapped-in render lands where the eye expects it rather than hugging the top. */
+   What gets fitted is the render's DRAWN PIXELS, not its canvas. `design-page.js` measures the
+   image's ink box once it loads and writes `left`/`top`/`width`/`height` here, because the two
+   sides of this swap are boxes of different kinds: the design node's box is the tight bounds of
+   the shape Figma drew, while a render is a fixed canvas with the component sitting inside it and
+   transparent margin around. Fitting canvas-to-ink letterboxes our half against the design's — on
+   this catalog's Shape page the semicircle landed at 58% of the size the design drew it, which is
+   the "everything scales when you flip the lane" the two lanes exist to rule out.
+
+   The `inset: 0` + `object-fit: contain` below is the FALLBACK, and the whole rule while the image
+   is still loading: an ink box needs a decoded image and a canvas read, and neither is guaranteed
+   (a cross-origin render taints the canvas, a fully transparent one has no ink). It is exactly the
+   behaviour this lane had before ink-fitting, so the degraded case is the old case. */
 .cp-page-render {
   position: absolute;
   inset: 0;

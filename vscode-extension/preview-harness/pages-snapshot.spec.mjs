@@ -53,6 +53,15 @@ const renderSvgPlaceholder = resolve(pagesDir, "_render-placeholder.svg");
 // the exploded viewer is the real projection — every change to the camera, the sheet split, or the
 // labels moves this baseline on its own.
 const renderExplodedPlaceholder = resolve(pagesDir, "_render-placeholder-exploded.svg");
+// The design page's own render stub, and the ONLY fixture that gets it. Every other page shows a
+// render as a picture; the design page drops it into the slot the design left for that node, and
+// what it fits there is the render's DRAWN pixels — the component — not its canvas. The flat
+// placeholder above is opaque edge to edge, so under it ink-fitting and canvas-fitting are the same
+// operation and the behaviour this page turns on would move no baseline at all. This one is what a
+// real render looks like to that code: a 240×240 canvas with a 200×112 component centred in it and
+// transparent margin around, non-square on purpose so a slot filled by the CANVAS and a slot filled
+// by the COMPONENT are told apart by eye.
+const designRenderPlaceholder = resolve(pagesDir, "_design-render-placeholder.png");
 // Fixtures navigated with a query string, because the state they capture lives in the URL rather
 // than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
 // what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
@@ -1396,6 +1405,12 @@ for (const fixture of listPageFixtures()) {
                     const url = new URL(route.request().url());
                     const svg = url.pathname.endsWith(".svg");
                     const exploded = svg && url.searchParams.get("exploded") === "1";
+                    if (!svg && fixture === "serve-design-page") {
+                        return route.fulfill({
+                            path: designRenderPlaceholder,
+                            contentType: "image/png",
+                        });
+                    }
                     return route.fulfill({
                         path: exploded
                             ? renderExplodedPlaceholder
@@ -1478,6 +1493,58 @@ for (const fixture of listPageFixtures()) {
                                 .textContent.includes("comparing"),
                     )
                     .catch(() => {});
+            }
+
+            // THE SWAP IS TO SCALE. Asserted on the default shot rather than as a state of its
+            // own, because the page already opens on the render lane — this is the picture being
+            // captured, not another one.
+            //
+            // What is checked is the render's DRAWN box against the design node's, not the
+            // `<img>`'s. Those are different boxes, and the difference is the whole behaviour: an
+            // image is a canvas with the component somewhere inside it, so an `<img>` sized exactly
+            // to the slot can still draw a component half that size. Reading the drawn box back
+            // out of the ink measurement is what fails if the fit ever goes back to the canvas —
+            // this catalog's own Shape page shipped that way, drawing a semicircle at 58% of the
+            // size the design drew it while every lane, number and screenshot looked plausible.
+            //
+            // Uniform scale is asserted too: the fit must never stretch. A render whose aspect
+            // differs from the design's is a finding about the code, and a fit that squared it up
+            // would report every component as the right shape.
+            if (fixture === "serve-design-page") {
+                const fits = await page.evaluate(() => {
+                    const stage = document.querySelector(".cp-page-stage");
+                    const svg = stage.querySelector("svg");
+                    return Array.from(stage.querySelectorAll(".cp-page-render"))
+                        .filter((img) => !img.hidden && img.naturalWidth > 0)
+                        .map((img) => {
+                            const id = img.getAttribute("data-cp-node");
+                            const node = Array.from(svg.querySelectorAll("[data-node-id]")).find(
+                                (el) => el.getAttribute("data-node-id") === id,
+                            );
+                            if (!node) return null;
+                            const slot = node.getBoundingClientRect();
+                            const drawn = img.getBoundingClientRect();
+                            // The placeholder's ink box, as a fraction of its canvas — the stub is
+                            // committed, so these are fixed: a 200×112 component in 240×240.
+                            const inkW = (drawn.width * 202) / 240;
+                            const inkH = (drawn.height * 114) / 240;
+                            return {
+                                id,
+                                filled: Math.max(inkW / slot.width, inkH / slot.height),
+                                aspect: inkW / inkH,
+                            };
+                        })
+                        .filter(Boolean);
+                });
+                expect(fits.length).toBeGreaterThan(0);
+                for (const fit of fits) {
+                    // One axis is flush against the slot, and neither spills out of it.
+                    expect(fit.filled).toBeGreaterThan(0.98);
+                    expect(fit.filled).toBeLessThan(1.02);
+                    // Never stretched: the stub's own 202:114 stays 202:114 in the slot.
+                    expect(fit.aspect).toBeGreaterThan(202 / 114 - 0.05);
+                    expect(fit.aspect).toBeLessThan(202 / 114 + 0.05);
+                }
             }
 
             await page.screenshot({
