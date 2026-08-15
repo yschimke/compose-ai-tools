@@ -627,22 +627,57 @@ object ServeWeb {
         <div class="cp-site-lead">
           <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
             <span class="cp-site-mark" aria-hidden="true">◇</span>
-            <span>compose-preview</span>
+            <span class="cp-site-wordmark">compose-preview</span>
           </a>$name$crumb
         </div>
         <div class="cp-site-status">
           <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
         </div>
         <nav class="cp-site-nav" aria-label="Primary navigation">
-          <a href="/$navSuffix">Catalogs</a>
-          <a href="/status$navSuffix">Status</a>
-          <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
-          ${settingsMenuHtml().prependIndent("          ").trimStart()}
+          <details class="cp-site-menu" id="cp-site-menu" open>
+            <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu">
+              <span aria-hidden="true">⋮</span>
+            </summary>
+            <div class="cp-site-menu-panel">
+              <a href="/$navSuffix">Catalogs</a>
+              <a href="/status$navSuffix">Status</a>
+              <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
+              ${settingsMenuHtml().prependIndent("              ").trimStart()}
+            </div>
+          </details>
         </nav>
       </header>
+      $siteMenuCollapseScript
       """
       .trimIndent()
   }
+
+  /**
+   * Collapse the header's navigation into its `⋮` menu on a narrow viewport.
+   *
+   * The links are ONE copy in the markup — a real `<nav>` with real anchors, not a desktop row plus
+   * a phone duplicate — so which of the two shapes they take has to be decided somewhere. The
+   * server emits the disclosure `open`, which is the desktop shape (the summary is `display: none`
+   * there and the panel lays out as the inline row it has always been) and is also the shape a
+   * client with no JavaScript keeps at every width: the links stack under the bar rather than
+   * vanishing behind a button that cannot open.
+   *
+   * Inline, and immediately after the header it acts on, for the same reason the theme restore in
+   * [document] is inline in the `<head>`: this runs while the parser is still inside the document,
+   * before the first paint of the page below it, so a phone never shows the open row and then
+   * snatches it back. `page-theme.js` re-resolves it when the viewport crosses the breakpoint.
+   *
+   * It also marks `<html>`, and the phone's menu styling hangs off that mark rather than off the
+   * breakpoint alone. Without it the panel is a floating card **anchored under a button that
+   * nothing ever closed** — a `<details>` toggles with no JavaScript at all, but the *initial*
+   * state here is the server's `open`, so a scripting-less phone would open on a menu dropped over
+   * its own page. Marked, the two states are honest: with script, a menu; without, the plain row of
+   * links wrapped under the bar, which is what this bar has always degraded to.
+   */
+  private val siteMenuCollapseScript: String =
+    "<script>try{var m=document.getElementById(\"cp-site-menu\");" +
+      "if(m&&window.matchMedia){document.documentElement.classList.add(\"cp-menu-js\");" +
+      "if(window.matchMedia(\"(max-width: 640px)\").matches)m.open=false;}}catch(e){}</script>"
 
   /**
    * The header's **Settings** menu: standing per-visitor preferences, as opposed to the controls

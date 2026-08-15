@@ -952,6 +952,24 @@ const FIXTURE_STATES = [
         apply: async () => {},
     },
     {
+        // …and that bar's `⋮` OPEN. The phone bar is one row because the navigation — Catalogs,
+        // Status, GitHub, the page's own action, Settings — collapses behind that button, so the
+        // menu is where all of it went: if it stopped opening, or opened empty, the bar would
+        // still look right in every other shot. Only the initial closed state is script-set
+        // (`ServeWeb.siteMenuCollapseScript`); the toggle itself is a bare `<details>`, and
+        // clicking the summary is what a visitor does.
+        fixture: "serve-landing-declared-themes",
+        suffix: "mobile-menu",
+        viewport: PHONE_VIEWPORT,
+        apply: async (page) => {
+            await page.click("#cp-site-menu > summary");
+            await page.waitForSelector("#cp-site-menu[open] .cp-site-menu-panel");
+            // The pointer rests on the summary otherwise, which is a hover state on the button and
+            // not part of what this shot is about.
+            await page.mouse.move(0, 0);
+        },
+    },
+    {
         // The render-server badge (#3274). Catalogs open their daemon on first use, so whether one
         // is up is a real question the page now answers — and "connected" is the state a visitor
         // sees while anything is warm. Stubbed rather than faked: the pill's text and styling come

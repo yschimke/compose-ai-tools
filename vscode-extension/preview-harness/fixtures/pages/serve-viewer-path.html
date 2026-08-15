@@ -18,7 +18,7 @@
   <div class="cp-site-lead">
     <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
       <span class="cp-site-mark" aria-hidden="true">◇</span>
-      <span>compose-preview</span>
+      <span class="cp-site-wordmark">compose-preview</span>
     </a>
     <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/meshcore-mobile/?token=demo-token-fixture">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
   </div>
@@ -26,31 +26,39 @@
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
   </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
-    <a href="/?token=demo-token-fixture">Catalogs</a>
-    <a href="/status?token=demo-token-fixture">Status</a>
-    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
-    <details class="cp-settings">
-      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
-        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+    <details class="cp-site-menu" id="cp-site-menu" open>
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu">
+        <span aria-hidden="true">⋮</span>
       </summary>
-      <div class="cp-settings-panel">
-        <fieldset class="cp-settings-group">
-          <legend class="cp-settings-legend">Page theme</legend>
-          <label class="cp-settings-option">
-            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-            <span>Match the preview theme</span>
-          </label>
-          <label class="cp-settings-option">
-            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-            <span>Follow my system</span>
-          </label>
-          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-            match. Turn it off to keep the page on your operating system's setting.</p>
-        </fieldset>
+      <div class="cp-site-menu-panel">
+        <a href="/?token=demo-token-fixture">Catalogs</a>
+        <a href="/status?token=demo-token-fixture">Status</a>
+        <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+        <details class="cp-settings">
+          <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+            <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+          </summary>
+          <div class="cp-settings-panel">
+            <fieldset class="cp-settings-group">
+              <legend class="cp-settings-legend">Page theme</legend>
+              <label class="cp-settings-option">
+                <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+                <span>Match the preview theme</span>
+              </label>
+              <label class="cp-settings-option">
+                <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+                <span>Follow my system</span>
+              </label>
+              <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+                match. Turn it off to keep the page on your operating system's setting.</p>
+            </fieldset>
+          </div>
+        </details>
       </div>
     </details>
   </nav>
 </header>
+<script>try{var m=document.getElementById("cp-site-menu");if(m&&window.matchMedia){document.documentElement.classList.add("cp-menu-js");if(window.matchMedia("(max-width: 640px)").matches)m.open=false;}}catch(e){}</script>
         <main class="cp-main">
               <div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">Profile screen</h1>
