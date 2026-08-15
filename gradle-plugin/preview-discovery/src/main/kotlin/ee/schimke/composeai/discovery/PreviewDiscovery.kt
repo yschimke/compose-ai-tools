@@ -247,6 +247,13 @@ object PreviewDiscovery {
   // Animation-window capture — sibling annotation to @ScrollingPreview, same
   // FQN-match policy. See `AnimatedPreview.kt`.
   private const val ANIMATED_PREVIEW_FQN = "ee.schimke.composeai.preview.AnimatedPreview"
+  // Pointer-driven motion capture — sibling annotation to @AnimatedPreview (the self-driven half),
+  // same FQN-match policy. See `InteractionPreview.kt`.
+  private const val INTERACTION_PREVIEW_FQN = "ee.schimke.composeai.preview.InteractionPreview"
+  // `InteractionGesture` entry names, matched off the ClassGraph `AnnotationEnumValue` rather than
+  // by loading the enum class (the plugin has no Compose / annotation artifact on its classpath).
+  private const val INTERACTION_GESTURE_TAP = "Tap"
+  private const val INTERACTION_GESTURE_PRESS_AND_HOLD = "PressAndHold"
   // Focus-state capture — sibling annotation to @ScrollingPreview /
   // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
   private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
@@ -1891,6 +1898,9 @@ object PreviewDiscovery {
     val wrapperFqn = extractWrapperFqn(method, scanResult)
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
+    // `@InteractionPreview` is single-shot for the same reason as `@AnimatedPreview` — one
+    // recording per function — and applies to every `@Preview` expansion the same way.
+    val interactionSpec = extractInteractionSpec(annotations)
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
@@ -2008,6 +2018,7 @@ object PreviewDiscovery {
             wrapperFqn,
             scrollSpecs,
             animationSpec,
+            interactionSpec,
             focusSpecs,
             focusGifSpec,
             ambientSpec,
@@ -2036,6 +2047,7 @@ object PreviewDiscovery {
           wrapperFqn,
           scrollSpecs,
           animationSpec,
+          interactionSpec,
           focusSpecs,
           focusGifSpec,
           ambientSpec,
@@ -2064,6 +2076,7 @@ object PreviewDiscovery {
           spec.toParams(wrapperFqn, previewParameter),
           scrollSpecs,
           animationSpec,
+          interactionSpec,
           focusSpecs,
           focusGifSpec,
           ambientSpec,
@@ -2095,7 +2108,18 @@ object PreviewDiscovery {
       id = base.id + tag,
       overrides = spec,
       captures =
-        base.captures.map { capture ->
+        base.captures
+          // An `@InteractionPreview` script does NOT fan out across `@OverrideVariant`s. A variant
+          // exists to document a different *resting* state, and the interaction is the same script
+          // either way — a switch's "off" variant tapped twice records the same two-way travel its
+          // parent already recorded, in a file the catalog has nowhere distinct to show. Since each
+          // recording is a full 60fps frame sequence, letting it multiply across every variant
+          // would be the single most expensive thing in a catalog render, bought for duplicates.
+          //
+          // Dropping the whole capture (rather than clearing the `interaction` field) is what keeps
+          // the variant from writing an undriven still into a filename that claims an interaction.
+          .filter { it.interaction == null }
+          .map { capture ->
           val tagged = capture.copy(renderOutput = insertRenderTag(capture.renderOutput, tag))
           when (spec.interaction) {
             OverrideVariantInteraction.Focused ->
@@ -2788,6 +2812,7 @@ object PreviewDiscovery {
     previewId: String,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
+    interaction: InteractionCapture?,
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
@@ -2839,6 +2864,9 @@ object PreviewDiscovery {
     // Tile / notification previews don't go through `mainClock` — there's no animation surface to
     // drive.
     val effectiveAnimation = if (nonComposable) null else animation
+    // `@InteractionPreview` needs a Compose pointer pipeline and a `mainClock` — a tile /
+    // notification / Glance / XR preview has neither, so the script has nothing to dispatch into.
+    val effectiveInteraction = if (nonComposable) null else interaction
     // `@FocusedPreview` only applies to Compose previews (the focus owner is a Compose construct).
     // `gif = true` swaps the per-step PNG fan-out for a single GIF capture, so skip the per-step
     // PNG path entirely when a GIF spec is set.
@@ -2873,6 +2901,35 @@ object PreviewDiscovery {
         effectiveTimings.isNotEmpty() ||
         effectiveLauncherWidgetResize != null ||
         (effectiveAnimation != null && effectiveFocusGif != null)
+
+    // `@InteractionPreview` writes `renders/<id>.apng` by default, which collides with nothing —
+    // but a consumer that asks for `format = Gif` lands on the same `<id>.gif` an `@AnimatedPreview`
+    // or `@FocusedPreview(gif = true)` on the same function already owns. Suffix it whenever
+    // anything else on the function could claim that name, on the same "disambiguate rather than
+    // silently overwrite" rule as `gifSharesFn`.
+    val interactionSharesFn =
+      gifSharesFn || effectiveAnimation != null || effectiveFocusGif != null
+
+    // One interaction capture per annotated function, dimension-flat — it doesn't cross with the
+    // scroll / time / focus fan-out, mirroring `@AnimatedPreview`'s single-output pattern. Built
+    // here so both the resize branch below and the ordinary path emit an identical capture.
+    val interactionCaptures: List<Capture> =
+      if (effectiveInteraction == null) emptyList()
+      else {
+        val suffix = if (interactionSharesFn) "_interaction" else ""
+        listOf(
+          Capture(
+            interaction = effectiveInteraction,
+            // Same reason the animation branch carries this: the renderer resolves the permissions
+            // extension by scanning a preview's captures for the first non-null `permissions`, and
+            // an `@InteractionPreview` that owns the function outright leaves nothing else to find.
+            permissions = effectivePermissions,
+            renderOutput =
+              "renders/${previewId}${suffix}.${effectiveInteraction.format.extension}",
+            cost = INTERACTION_COST,
+          )
+        )
+      }
 
     // `@LauncherWidgetResize` owns the static capture list when present — it walks N whole-cell
     // stops between source and target sizes and emits one PNG per stop. Coexisting with the
@@ -2942,7 +2999,7 @@ object PreviewDiscovery {
           )
         }
       return PreviewOutputPlan(
-        captures = resizeCaptures + focusGifCaptures + animationCaptures,
+        captures = resizeCaptures + focusGifCaptures + animationCaptures + interactionCaptures,
         dataProducts = emptyList(),
       )
     }
@@ -3141,7 +3198,7 @@ object PreviewDiscovery {
     }
 
     return PreviewOutputPlan(
-      captures = scrollTimeCaptures + animationCaptures + focusGifCaptures,
+      captures = scrollTimeCaptures + animationCaptures + focusGifCaptures + interactionCaptures,
       dataProducts = dataProducts,
     )
   }
@@ -3267,12 +3324,75 @@ object PreviewDiscovery {
     val durationMs = (pv.getValue("durationMs") as? Int)?.coerceAtLeast(0) ?: 0
     val frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.takeIf { it > 0 } ?: 33
     val showCurves = (pv.getValue("showCurves") as? Boolean) ?: true
+    val formatName = (pv.getValue("format") as? AnnotationEnumValue)?.valueName
     return AnimationCapture(
       durationMs = durationMs,
       frameIntervalMs = frameIntervalMs,
       showCurves = showCurves,
+      // GIF is the default here and APNG is the default on `@InteractionPreview`: this annotation
+      // has published `renders/<id>.gif` for long enough that consumers reference the path, and a
+      // silent extension change would break them.
+      format = motionFormatOf(formatName, default = MotionFormat.GIF),
+      caption = (pv.getValue("caption") as? String).orEmpty(),
     )
   }
+
+  /**
+   * Reads `@InteractionPreview(gesture, targets, caption, holdMs, gapMs, leadInMs, frameIntervalMs,
+   * format)` off the function annotation list. Single-shot like [extractAnimationSpec] — one script
+   * per function, because the artifact is one recording and a second script on the same function
+   * would have nowhere distinct to write.
+   *
+   * Returns `null` when the annotation is absent, and also when it named **no targets**: an empty
+   * target list is a script that dispatches nothing, so the capture would be indistinguishable from
+   * an `@AnimatedPreview` while claiming in its filename to document an interaction. Declining here
+   * keeps the annotation's promise honest — a capture that exists showed a gesture.
+   */
+  private fun extractInteractionSpec(annotations: List<AnnotationInfo>): InteractionCapture? {
+    val ann = annotations.firstOrNull { it.name == INTERACTION_PREVIEW_FQN } ?: return null
+    val pv = ann.parameterValues
+    val gestureName =
+      (pv.getValue("gesture") as? AnnotationEnumValue)?.valueName ?: INTERACTION_GESTURE_TAP
+    val gesture =
+      when (gestureName) {
+        INTERACTION_GESTURE_PRESS_AND_HOLD -> InteractionGesture.PRESS_AND_HOLD
+        else -> InteractionGesture.TAP
+      }
+    // Negative indices can't address a node; drop them rather than failing discovery, and let an
+    // all-negative list collapse to "no targets" and decline above. Order and repeats are load-
+    // bearing (`[0, 0, 0]` is how a toggle is spelled), so unlike `@FocusedPreview`'s indices these
+    // are NOT sorted or de-duplicated.
+    val targets =
+      when (val raw = pv.getValue("targets")) {
+        is IntArray -> raw.toList()
+        is Array<*> -> raw.filterIsInstance<Int>()
+        else -> emptyList()
+      }.filter { it >= 0 }
+    if (targets.isEmpty()) return null
+    val formatName = (pv.getValue("format") as? AnnotationEnumValue)?.valueName
+    return InteractionCapture(
+      gesture = gesture,
+      targets = targets,
+      caption = (pv.getValue("caption") as? String).orEmpty(),
+      holdMs = (pv.getValue("holdMs") as? Int)?.takeIf { it > 0 } ?: 600,
+      gapMs = (pv.getValue("gapMs") as? Int)?.takeIf { it > 0 } ?: 700,
+      leadInMs = (pv.getValue("leadInMs") as? Int)?.coerceAtLeast(0) ?: 250,
+      frameIntervalMs = (pv.getValue("frameIntervalMs") as? Int)?.takeIf { it > 0 } ?: 16,
+      format = motionFormatOf(formatName, default = MotionFormat.APNG),
+    )
+  }
+
+  /**
+   * Translates a `MotionFormat` annotation enum name into the discovery-side [MotionFormat],
+   * falling back to [default] for an absent or unrecognised value — a consumer compiled against a
+   * newer annotation artifact than the plugin must not sink discovery over a format name.
+   */
+  private fun motionFormatOf(name: String?, default: MotionFormat): MotionFormat =
+    when (name?.uppercase()) {
+      "APNG" -> MotionFormat.APNG
+      "GIF" -> MotionFormat.GIF
+      else -> default
+    }
 
   /**
    * Filename suffix for a single [FocusCapture]. Traversal mode emits `step<n>_<direction>` so
@@ -3952,6 +4072,7 @@ object PreviewDiscovery {
     wrapperClassName: String?,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
+    interaction: InteractionCapture?,
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
@@ -3971,6 +4092,7 @@ object PreviewDiscovery {
       params,
       scrolls,
       animation,
+      interaction,
       focuses,
       focusGif,
       ambient,
@@ -3998,6 +4120,7 @@ object PreviewDiscovery {
     params: PreviewParams,
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
+    interaction: InteractionCapture?,
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
@@ -4017,6 +4140,7 @@ object PreviewDiscovery {
         id,
         scrolls,
         animation,
+        interaction,
         focuses,
         focusGif,
         ambient,

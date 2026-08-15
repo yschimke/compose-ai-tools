@@ -4,27 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.currentComposer
-import androidx.compose.runtime.reflect.ComposableMethod
-import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asSkiaBitmap
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
-import ee.schimke.composeai.scroll.ScrollGifEncoder
-import java.awt.image.BufferedImage
 import java.io.File
-import javax.imageio.ImageIO
-import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image as SkiaImage
 
 /**
  * Hard cap on the captured window, mirroring `@AnimatedPreview`'s 5000ms bound, to keep GIFs sane.
@@ -92,6 +78,8 @@ fun renderAnimatedPreview(
   durationMs: Int,
   frameIntervalMs: Int,
   showCurves: Boolean,
+  format: MotionFormatKind = MotionFormatKind.GIF,
+  uiMode: Int = 0,
   fontScale: Float = 1.0f,
   classLoader: ClassLoader? = null,
 ) {
@@ -102,14 +90,7 @@ fun renderAnimatedPreview(
     )
   }
 
-  val clazz =
-    if (classLoader != null) Class.forName(className, true, classLoader)
-    else Class.forName(className)
-  // `openForInvoke` keeps `private fun` previews renderable on the GIF path too — issue #3873.
-  val composableMethod =
-    (if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
-      else findComposableMethodForAnimation(clazz, functionName, previewArgs))
-      .openForInvoke()
+  val composableMethod = resolveMotionComposable(className, functionName, previewArgs, classLoader)
 
   val frameInterval =
     if (frameIntervalMs > 0) frameIntervalMs else DEFAULT_ANIMATION_FRAME_INTERVAL_MS
@@ -134,8 +115,7 @@ fun renderAnimatedPreview(
   val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
 
-  val frames = mutableListOf<BufferedImage>()
-  val delays = mutableListOf<Int>()
+  val collector = MotionFrameCollector(format, outputFile)
 
   runSkikoComposeUiTest(
     size = Size(widthPx.toFloat(), heightPx.toFloat()),
@@ -150,33 +130,14 @@ fun renderAnimatedPreview(
           showBackground -> Color.White
           else -> Color.Transparent
         }
-      val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
-        if (rtl) {
-          CompositionLocalProvider(
-            LocalInspectionMode provides false,
-            LocalDensity provides sceneDensity,
-            androidx.compose.ui.platform.LocalLayoutDirection provides
-              androidx.compose.ui.unit.LayoutDirection.Rtl,
-          ) {
-            inner()
-          }
-        } else {
-          CompositionLocalProvider(
-            LocalInspectionMode provides false,
-            LocalDensity provides sceneDensity,
-          ) {
-            inner()
-          }
-        }
-      }
-      baseProviders {
+      MotionPreviewProviders(rtl = rtl, sceneDensity = sceneDensity, uiMode = uiMode) {
         val body: @Composable () -> Unit = {
           Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
-            InvokeAnimatedComposable(composableMethod, null, previewArgs)
+            InvokeMotionComposable(composableMethod, null, previewArgs)
           }
         }
         if (wrapperClassName != null) {
-          InvokeAnimatedWrappedComposable(wrapperClassName, classLoader, body)
+          InvokeMotionWrappedComposable(wrapperClassName, classLoader, body)
         } else {
           body()
         }
@@ -188,89 +149,15 @@ fun renderAnimatedPreview(
     mainClock.advanceTimeByFrame()
 
     repeat(frameCount) {
-      frames += captureRootBufferedImage()
-      delays += frameInterval
+      collector.capture(captureRootPngBytes())
       mainClock.advanceTimeBy(frameInterval.toLong())
     }
   }
 
-  val written =
-    ScrollGifEncoder.encode(
-      frames = frames,
-      outputFile = outputFile,
-      frameDelaysMs = delays.toIntArray(),
-    )
-      ?: throw IllegalStateException(
-        "@AnimatedPreview: GIF encoder declined for ${outputFile.name}"
-      )
+  val frameTotal = collector.frameCount
+  val written = collector.encode(frameIntervalMs = frameInterval)
   System.err.println(
-    "@AnimatedPreview on ${written.name}: encoded ${frames.size} frame(s) over ${totalDuration}ms " +
-      "@ ${frameInterval}ms."
+    "@AnimatedPreview on ${written.name}: encoded $frameTotal frame(s) over ${totalDuration}ms " +
+      "@ ${frameInterval}ms (${format.name.lowercase()})."
   )
-}
-
-/**
- * Captures the rendered root as a [BufferedImage] via Skia PNG round-trip — same path
- * [DesktopScrollRenderer]'s `captureRootFrame` uses, but in-memory (no temp slice files needed for
- * a fixed-position animation capture).
- */
-@OptIn(ExperimentalTestApi::class)
-private fun androidx.compose.ui.test.SkikoComposeUiTest.captureRootBufferedImage(): BufferedImage {
-  val bitmap = onRoot().captureToImage()
-  val skiaImage = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
-  try {
-    val pngData =
-      skiaImage.encodeToData(EncodedImageFormat.PNG)
-        ?: error("Failed to encode animation frame to PNG")
-    try {
-      return ImageIO.read(pngData.bytes.inputStream())
-        ?: error("Animation frame PNG couldn't be decoded back to a BufferedImage")
-    } finally {
-      pngData.close()
-    }
-  } finally {
-    skiaImage.close()
-  }
-}
-
-@Composable
-private fun InvokeAnimatedComposable(
-  composableMethod: ComposableMethod,
-  instance: Any?,
-  previewArgs: List<Any?>,
-) {
-  composableMethod.invoke(currentComposer, instance, *previewArgs.toTypedArray())
-}
-
-@Composable
-private fun InvokeAnimatedWrappedComposable(
-  wrapperFqn: String,
-  classLoader: ClassLoader?,
-  body: @Composable () -> Unit,
-) {
-  val resolved =
-    androidx.compose.runtime.remember(wrapperFqn, classLoader) {
-      val cls =
-        if (classLoader != null) Class.forName(wrapperFqn, true, classLoader)
-        else Class.forName(wrapperFqn)
-      val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-      val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java).openForInvoke()
-      method to instance
-    }
-  resolved.first.invoke(currentComposer, resolved.second, body)
-}
-
-private fun findComposableMethodForAnimation(
-  clazz: Class<*>,
-  name: String,
-  previewArgs: List<Any?>,
-): ComposableMethod {
-  val argCount = previewArgs.size
-  val candidate =
-    clazz.declaredMethods.firstOrNull { m -> m.name == name && m.parameterCount >= argCount + 2 }
-      ?: throw NoSuchMethodException(
-        "Couldn't find composable method $name on ${clazz.name} taking $argCount parameter(s)"
-      )
-  val declaredTypes = candidate.parameterTypes.take(argCount).toTypedArray()
-  return clazz.getDeclaredComposableMethod(name, *declaredTypes)
 }

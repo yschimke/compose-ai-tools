@@ -3,6 +3,7 @@ package com.example.designcatalogm3
 import androidx.compose.runtime.Composable
 import com.example.designcatalogm3.shared.CatalogComponent
 import ee.schimke.composeai.preview.CatalogComponent
+import ee.schimke.composeai.preview.InteractionPreview
 import ee.schimke.composeai.preview.OverrideVariant
 
 // --- Selection controls — checked/selected states (the primary mode to show). ---
@@ -21,6 +22,10 @@ import ee.schimke.composeai.preview.OverrideVariant
 @Composable
 fun CheckboxChecked() = Sticker("checkbox-checked")
 
+// The interaction capture rides the SAME function as the sticker rather than a duplicated
+// `SwitchOnInteraction` wrapper: the component keeps its static card and gains a motion artifact
+// beside it. `targets = [0, 0]` is how a toggle is spelled — one tap off, one tap back on — so a
+// reader sees the thumb travel in both directions and can judge the spring on each.
 @CatalogComponent(
   id = "Switch/On",
   group = "Selection",
@@ -28,6 +33,12 @@ fun CheckboxChecked() = Sticker("checkbox-checked")
 )
 @CatalogModes
 @OverrideVariant(name = "off", booleans = ["checked=false"])
+@InteractionPreview(
+  targets = [0, 0],
+  caption =
+    "Toggle off and back on. The thumb resolves through the theme's spatial motion spec — " +
+      "the travel and its settle are what a still frame of either end state cannot show.",
+)
 @Composable
 fun SwitchOn() = Sticker("switch-on")
 

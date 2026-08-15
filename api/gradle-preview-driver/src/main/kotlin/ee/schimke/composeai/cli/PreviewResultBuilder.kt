@@ -149,7 +149,8 @@ object PreviewResultBuilder {
     val isImageOrAnimation =
       mediaTypes.any { it.startsWith("image/") } ||
         output.endsWith(".png") ||
-        output.endsWith(".gif")
+        output.endsWith(".gif") ||
+        output.endsWith(".apng")
     if (!isImageOrAnimation) return null
     if (!module.projectDir.resolve("build/compose-previews/$output").exists()) return null
     return Capture(advanceTimeMillis = advanceTimeMillis, scroll = scroll, renderOutput = output)

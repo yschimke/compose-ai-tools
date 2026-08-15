@@ -552,6 +552,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           outputFile = outputFile,
           scroll = capture.scroll,
           animation = capture.animation,
+          interaction = capture.interaction,
           focus = capture.focus,
           hover = capture.hover,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
@@ -594,6 +595,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture? = null,
+    interaction: ee.schimke.composeai.discovery.InteractionCapture? = null,
     focus: FocusCapture? = null,
     hover: ee.schimke.composeai.discovery.HoverCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
@@ -609,6 +611,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         outputFile = outputFile,
         scroll = scroll,
         animation = animation,
+        interaction = interaction,
         focus = focus,
         hover = hover,
         fanoutSiblingStems = fanoutSiblingStems,
@@ -843,6 +846,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture?,
+    interaction: ee.schimke.composeai.discovery.InteractionCapture?,
     focus: FocusCapture?,
     hover: ee.schimke.composeai.discovery.HoverCapture?,
     fanoutSiblingStems: List<String>,
@@ -955,6 +959,26 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // 39th — addressable `@OverrideVariant(interaction = Hovered)` target. Kept separate from
       // focus so hovering never has to focus a node merely to discover where to send the pointer.
       (hover?.targetIndex ?: -1).toString(),
+      // 40th–46th — `@InteractionPreview` script (the pointer-driven motion capture). An empty
+      // gesture at arg 40 means "no interaction intent", which is what every preview without the
+      // annotation sends, so those captures stay on the untouched paths. Desktop-only, like the
+      // focus tail above: the Android lane reads the same state off the manifest it already loads.
+      //
+      // The script travels as its parts rather than as a duration because the *renderer* derives
+      // the capture window from them (lead-in, plus one press and one settle window per target).
+      // Sending a pre-computed duration alongside the script would give two places to state the
+      // same fact, and a skewed renderer would then cut a recording short mid-gesture.
+      (interaction?.gesture?.name).orEmpty(),
+      interaction?.targets?.joinToString("|").orEmpty(),
+      (interaction?.holdMs ?: 0).toString(),
+      (interaction?.gapMs ?: 0).toString(),
+      (interaction?.leadInMs ?: 0).toString(),
+      (interaction?.frameIntervalMs ?: 0).toString(),
+      (interaction?.format?.name).orEmpty(),
+      // 47th — `@AnimatedPreview(format = …)`. Empty (and any unrecognised value) keeps the
+      // historical GIF, so an older plugin driving a newer renderer publishes exactly the bytes it
+      // did before the format axis existed.
+      (animation?.format?.name).orEmpty(),
     )
 }
 

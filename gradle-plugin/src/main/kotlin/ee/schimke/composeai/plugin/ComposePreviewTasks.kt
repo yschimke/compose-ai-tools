@@ -2252,7 +2252,12 @@ internal object ComposePreviewTasks {
 
     rendersDir
       .walkBottomUp()
-      .filter { it.isFile && (it.extension == "png" || it.extension == "gif") }
+      // `.apng` joins the sweep now that a motion capture can choose its container — a stale
+      // interaction recording is exactly as misleading as a stale PNG, and one left behind by a
+      // renamed preview would keep publishing a gesture the catalog no longer declares.
+      .filter {
+        it.isFile && (it.extension == "png" || it.extension == "gif" || it.extension == "apng")
+      }
       .forEach { f ->
         val rel = f.relativeTo(rendersDir).invariantSeparatorsPath
         if (rel in expectedRelPaths) return@forEach
