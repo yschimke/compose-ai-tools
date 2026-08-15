@@ -3135,6 +3135,206 @@
     "sha256": "9f42911067e4394c43a28a7adb3efe835bebdc7ab0806abe20501d3d4ce3822e",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconLabelRemoteButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "CompactIconLabelRemoteButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "CompactIconLabelRemoteButton_width_200dp_height_200dp_dpi_320-10546e96.png",
+    "sha256": "2b308f8049db5e80f4fdbc0215bf0385d3c8cabba37ff0bc3d5f2d8017b9844b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconOnlyRemoteButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "CompactIconOnlyRemoteButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "CompactIconOnlyRemoteButton_width_200dp_height_200dp_dpi_320-b75dc272.png",
+    "sha256": "2c1351b0523c48e34a68a5d81df174efd553ff96183d89bee16f53954d7b8450",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledCircularProgressRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "DisabledCircularProgressRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "DisabledCircularProgressRemote_width_200dp_height_200dp_dpi_320-4d8e778c.png",
+    "sha256": "0fa52b5c5437bce218663efc00983207223e6e437e5aee31ee8e7638eb98d244",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledRemoteButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "DisabledRemoteButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "DisabledRemoteButton_width_200dp_height_200dp_dpi_320-6a5fcde6.png",
+    "sha256": "377c4e690d97c21fe7a84f42d37809db139cd76605f04713970b533f209aae34",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.ExtraSmallRemoteIconButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "ExtraSmallRemoteIconButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "ExtraSmallRemoteIconButton_width_200dp_height_200dp_dpi_320-129d5c18.png",
+    "sha256": "f89f9c16d2e06db9cafbfe2c83ba3e560a4635cf210c8a7d1b4f617fe6ca6b51",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteIconButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "FilledRemoteIconButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "FilledRemoteIconButton_width_200dp_height_200dp_dpi_320-6ef461ca.png",
+    "sha256": "5e6083a63144fce87d462c07296427abc577dc421f74b836a1e51adc66bf4070",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteTextButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "FilledRemoteTextButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "FilledRemoteTextButton_width_200dp_height_200dp_dpi_320-c034f9e0.png",
+    "sha256": "03b376f61fcc8238f199743328dc2c06e725b709b68c980247f7dbb50846482a",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.HorizontalPageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "HorizontalPageIndicatorRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "HorizontalPageIndicatorRemote_width_200dp_height_200dp_dpi_320-6c054c6d.png",
+    "sha256": "050c325f14d3659fa2e71e7f715c9cf6904c246aaba43a44c66f82d7e706fc63",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelRemoteButton_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "IconLabelRemoteButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "IconLabelRemoteButton_width_320dp_height_240dp_dpi_320-d431fa0f.png",
+    "sha256": "1ff3f11ac2626021298ff8e34f89506015a9cf7ae786da8fb3754975b5c51233",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelSecondaryRemoteButton_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "IconLabelSecondaryRemoteButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "IconLabelSecondaryRemoteButton_width_320dp_height_240dp_dpi_320-2f89a268.png",
+    "sha256": "2de44f86d850b13844e19e96e4a3979b69e126330c8cd7aaae0ce7fce0ec03dd",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressMotionRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "IndeterminateCircularProgressMotionRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "IndeterminateCircularProgressMotionRemote_width_200dp_height_200dp_dpi_320-276f344c.gif",
+    "sha256": "066bcde58cfbd0d8dfc57680cb2132838b8f6a0c6c34fa8b934eda6ab0b6374b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "IndeterminateCircularProgressRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
+    "sha256": "4db09c882efba902cd21b121375ba36dcd14e6828e6b6005a6602c47b7c53ce4",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "InteractivePageIndicatorRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "InteractivePageIndicatorRemote_width_200dp_height_200dp_dpi_320-c33829cb.png",
+    "sha256": "7fdd80396caa554cc74ec8091a72028b6ffd7ee058fd1f52aba1be4459560ba1",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteIconButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "LargeRemoteIconButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "LargeRemoteIconButton_width_200dp_height_200dp_dpi_320-7673092a.png",
+    "sha256": "64f03fab56d0c970dbfc86b4259f4b18d95b586d1c8de5817f9d6f5c3bb10be3",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteTextButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "LargeRemoteTextButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "LargeRemoteTextButton_width_200dp_height_200dp_dpi_320-549e574e.png",
+    "sha256": "ace0926ba65f8bac5995164206956890ad67a32be53268183c4a3497968150eb",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteIconButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "OutlinedRemoteIconButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "OutlinedRemoteIconButton_width_200dp_height_200dp_dpi_320-0b6dbe86.png",
+    "sha256": "dd5d41e03721d58ecb5c155571ce1882004295841cc48c93bc0bb0e61a29eb3f",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteTextButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "OutlinedRemoteTextButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "OutlinedRemoteTextButton_width_200dp_height_200dp_dpi_320-c3437e61.png",
+    "sha256": "ca29a08b5eab2f9b17801c98f040725535a1cb3f8ff1bb0ba6b3a983e2da788b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.PageIndicatorMotionRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "PageIndicatorMotionRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "PageIndicatorMotionRemote_width_200dp_height_200dp_dpi_320-50316762.gif",
+    "sha256": "cb01db02707a470b5453ac079d1c4caed0a047a8977ba45df3e73b42bfe8d216",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteIconButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "SmallRemoteIconButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "SmallRemoteIconButton_width_200dp_height_200dp_dpi_320-d13aebe7.png",
+    "sha256": "c480cf22d63779241529e072ffc1b2de5c2b76800bc5964a09a2111ccc9875e4",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteTextButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "SmallRemoteTextButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "SmallRemoteTextButton_width_200dp_height_200dp_dpi_320-c65978c9.png",
+    "sha256": "6944dd762d8a78a682f2fcb573559c70d527cc50325798cab99438fb7adcee80",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeContentRemoteTitleCard_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "TimeContentRemoteTitleCard",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "TimeContentRemoteTitleCard_width_320dp_height_240dp_dpi_320-5f946c02.png",
+    "sha256": "73613d05204d9efe04862389332c9e2199f3c2d7d45f9d82b7e54a75b649ceec",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeRemoteAppCard_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "TimeRemoteAppCard",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "TimeRemoteAppCard_width_320dp_height_240dp_dpi_320-147ffe47.png",
+    "sha256": "e0633a78224fdc4b6f8006a3b658cedd97b7b27ea92465cce33a3f465a45d84d",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TitleOnlyRemoteTitleCard_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "TitleOnlyRemoteTitleCard",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "TitleOnlyRemoteTitleCard_width_320dp_height_240dp_dpi_320-5e3c7a41.png",
+    "sha256": "b025b96fed8f1b3358bd7e0233631bfd1e84785cd32ae62a2bda1e1a66375ebd",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TonalRemoteButton_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "TonalRemoteButton",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "TonalRemoteButton_width_200dp_height_200dp_dpi_320-9b96aafe.png",
+    "sha256": "df4e3c3a9b5db3ff336a6662dd69c1c5a32ee3bed8be69938fa1980e979cabc9",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.VerticalPageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "VerticalPageIndicatorRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "VerticalPageIndicatorRemote_width_200dp_height_200dp_dpi_320-99119bcd.png",
+    "sha256": "0327b8e6377b2c5b77caae55fef51d03b1b135fede179078e2b99f055994d2b2",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
+  },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerGradientRemote": {
     "captureLabel": "",
     "functionName": "WidgetContainerGradientRemote",
