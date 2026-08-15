@@ -862,6 +862,37 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // Found by a SECTION name. "corner" appears nowhere in either page's title — it is the name
+        // of one grouping on the Shape sheet — so a page surfacing here is the whole reason the
+        // sections are in the sidebar rather than only on the page itself. The page is kept and
+        // OPENED, showing just the sections that matched: a hit you have to expand a twisty to see
+        // is a hit the filter did not really surface.
+        fixture: "serve-landing-grouped",
+        suffix: "pages-section-match",
+        apply: async (page) => {
+            await page.fill("#cp-search", "corner");
+            await page.waitForFunction(() => {
+                const shape = document.querySelector(
+                    '#cp-pane-pages .cp-tree-page[data-search="Shape"]',
+                );
+                const type = document.querySelector(
+                    '#cp-pane-pages .cp-tree-page[data-search="Typography"]',
+                );
+                const kept = document.querySelectorAll(
+                    "#cp-pane-pages .cp-page-sections li:not([hidden])",
+                );
+                return (
+                    shape &&
+                    !shape.parentElement.hidden &&
+                    shape.getAttribute("aria-expanded") === "true" &&
+                    type &&
+                    type.parentElement.hidden &&
+                    kept.length === 1
+                );
+            });
+        },
+    },
+    {
         fixture: "serve-landing-sections",
         suffix: "filter-focus",
         parkPointer: true,
