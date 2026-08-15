@@ -546,6 +546,7 @@ class ServeCatalogStore(
     writeAnnotations(base, staging)
     writeTagIndex(base, staging)
     writeParityActivity(base, staging)
+    writeParityIssues(base, staging)
     writeDesignPages(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
@@ -1594,6 +1595,20 @@ class ServeCatalogStore(
     dir.mkdirs()
     File(dir, ParityActivity.FILE)
       .writeText(json.encodeToString(ParityActivity.serializer(), activity))
+  }
+
+  /** Stage the validated GitHub issue snapshot published beside the parity activity feed. */
+  private fun writeParityIssues(base: String, staging: File) {
+    val bytes =
+      runCatching { fetchCatalogAsset("$base${ParityIssues.DIRECTORY}/${ParityIssues.FILE}") }
+        .getOrNull() ?: return
+    val issues =
+      runCatching { json.decodeFromString(ParityIssues.serializer(), bytes.decodeToString()) }
+        .getOrNull()
+        ?.let { ServeParityIssuesStore.sanitize(it) } ?: return
+    val dir = File(staging, ParityIssues.DIRECTORY)
+    dir.mkdirs()
+    File(dir, ParityIssues.FILE).writeText(json.encodeToString(ParityIssues.serializer(), issues))
   }
 
   /**

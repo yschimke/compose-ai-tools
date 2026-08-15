@@ -1906,7 +1906,9 @@ class ServeHttpServer(
           // Same condition `handleParity` serves on, so the link never leads to that route's 404.
           hasParityView =
             renderHost.parityActivity() != null ||
+              renderHost.parityIssues() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
+          parityIssues = renderHost.parityIssues()?.issues.orEmpty(),
           // Same condition `handleDesignPageIndex` serves on, for the same reason. Listed by name
           // in the navigation tree, so the landing has to know what they are called, not just how
           // many there are.
@@ -2163,7 +2165,8 @@ class ServeHttpServer(
       val activity = renderHost.parityActivity()
       val hasReference = { id: String -> renderHost.designReferencesFor(id).isNotEmpty() }
       val mapped = renderHost.previews.any { hasReference(it.id) }
-      if (activity == null && !mapped) {
+      val issues = renderHost.parityIssues()?.issues.orEmpty()
+      if (activity == null && !mapped && issues.isEmpty()) {
         if (json) call.respond(HttpStatusCode.NotFound)
         else
           respondNotFoundHtml(
@@ -2181,7 +2184,7 @@ class ServeHttpServer(
       if (json) {
         markGeneration("parity", pageCacheControl())
         call.respondText(
-          JSON.encodeToString(ParityResponse.serializer(), ParityResponse.of(dashboard)),
+          JSON.encodeToString(ParityResponse.serializer(), ParityResponse.of(dashboard, issues)),
           ContentType.Application.Json,
         )
         return@withLeasedSession
@@ -2201,6 +2204,7 @@ class ServeHttpServer(
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
+          parityIssues = issues,
           // Same derivation the landing uses to label its "compare to Figma" action, so the page a
           // visitor arrives on names the tool the same way the link that brought them here did.
           designToolLabel =
@@ -2541,6 +2545,12 @@ class ServeHttpServer(
             if (pinned) emptyList() else renderHost.annotationsForReference(reference.id),
           actualAnnotations =
             if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
+          parityIssues =
+            renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
+              preview.id in issue.previewIds ||
+                reference.id in issue.referenceIds ||
+                (preview.componentId != null && issue.component == preview.componentId)
+            },
           revisions = revisions,
           overrides = overrideParams,
           reportIssue = reportIssue,
@@ -4600,6 +4610,11 @@ class ServeHttpServer(
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
           revisions = revisions,
+          parityIssues =
+            renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
+              preview.id in issue.previewIds ||
+                (preview.componentId != null && issue.component == preview.componentId)
+            },
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
           sessionInOrigin = siteSystem() != null,
@@ -6416,9 +6431,14 @@ private data class ParityResponse(
   val drift: List<ParityDriftDto> = emptyList(),
   val activity: List<ParityEventDto> = emptyList(),
   val gaps: List<ParityGapDto> = emptyList(),
+  /** Validated GitHub issue rows published by the catalog, including closed rows. */
+  val issues: List<ParityIssue> = emptyList(),
 ) {
   companion object {
-    fun of(dashboard: ServeParityDashboard.Dashboard): ParityResponse =
+    fun of(
+      dashboard: ServeParityDashboard.Dashboard,
+      issues: List<ParityIssue> = emptyList(),
+    ): ParityResponse =
       ParityResponse(
         generatedAt = dashboard.generatedAt,
         windowDays = dashboard.windowDays,
@@ -6471,6 +6491,7 @@ private data class ParityResponse(
               component = it.component,
             )
           },
+        issues = issues,
       )
   }
 }

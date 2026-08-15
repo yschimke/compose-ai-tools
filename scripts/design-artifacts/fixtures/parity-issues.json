@@ -1,0 +1,32 @@
+{
+  "schema": "compose-preview-issues/v1",
+  "generatedAt": "2026-08-15T10:00:00Z",
+  "issues": [
+    {
+      "repository": "yschimke/m3-catalog",
+      "number": 40,
+      "title": "IconButton/Tonal uses a darker glyph colour",
+      "url": "https://github.com/yschimke/m3-catalog/issues/40",
+      "state": "open",
+      "area": "component",
+      "parity": "known-difference",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewIds": ["iconbutton-tonal__ideal__default__light"],
+      "referenceIds": ["iconbutton-tonal-figma"]
+    },
+    {
+      "repository": "yschimke/m3-catalog",
+      "number": 41,
+      "title": "Verify the disabled state after the token update",
+      "url": "https://github.com/yschimke/m3-catalog/issues/41",
+      "state": "closed",
+      "area": "preview",
+      "parity": "verification-needed",
+      "system": "m3",
+      "component": "IconButton/Tonal",
+      "previewIds": ["iconbutton-tonal__ideal__default__light"],
+      "referenceIds": ["iconbutton-tonal-figma"]
+    }
+  ]
+}

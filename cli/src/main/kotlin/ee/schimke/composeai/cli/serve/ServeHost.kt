@@ -69,6 +69,9 @@ interface ServeHost : AutoCloseable {
    */
   fun parityActivity(): ParityActivity? = null
 
+  /** The validated GitHub issue snapshot this catalog published. */
+  fun parityIssues(): ParityIssues? = null
+
   /**
    * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
    * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host

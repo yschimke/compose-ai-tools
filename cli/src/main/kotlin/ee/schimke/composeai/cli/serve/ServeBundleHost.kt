@@ -195,6 +195,10 @@ class ServeBundleHost(
 
   override fun parityActivity(): ParityActivity? = parityActivity
 
+  private val parityIssues = ServeParityIssuesStore.load(bundleDir, fileSystem)
+
+  override fun parityIssues(): ParityIssues? = parityIssues
+
   private val annotations = ServeAnnotationStore.load(bundleDir, fileSystem)
 
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =

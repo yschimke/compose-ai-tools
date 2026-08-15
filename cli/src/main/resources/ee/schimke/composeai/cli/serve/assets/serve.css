@@ -1676,6 +1676,16 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   border-radius: 6px; }
 .cp-rc-px { color: var(--cp-fg-muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
 .cp-reference-meta { margin: 12px 0 20px; color: var(--cp-fg-muted); font-size: 0.82rem; }
+.cp-parity-issues { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 12px; background: var(--md-sys-color-surface-container); }
+.cp-parity-issues ul { list-style: none; margin: 7px 0 0; padding: 0; display: grid; gap: 6px; }
+.cp-parity-issue { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+.cp-parity-issue > span { color: var(--cp-fg-muted); font-size: .75rem; white-space: nowrap; }
+.cp-parity-issue.closed { opacity: .58; }
+.cp-issue-badge { display: inline-flex; width: fit-content; margin-top: 5px; padding: 2px 7px;
+  border-radius: 999px; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+  font-size: .68rem; font-weight: 650; }
+.cp-parity-issue-group h3 { margin-bottom: 0; }
 .cp-reference-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin: 14px 0 10px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-reference-picker > span { margin-right: 2px; font-weight: 650; }

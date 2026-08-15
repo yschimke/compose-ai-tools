@@ -634,6 +634,33 @@ class ServeWebFixtureTest {
     val update =
       System.getenv("UPDATE_SERVE_WEB_FIXTURES") == "true" ||
         System.getProperty("updateServeWebFixtures") == "true"
+    val parityIssues =
+      listOf(
+        ParityIssue(
+          repository = "yschimke/m3-catalog",
+          number = 40,
+          title = "Glyph colour is darker than the design token",
+          url = "https://github.com/yschimke/m3-catalog/issues/40",
+          state = "open",
+          area = "component",
+          parity = "known-difference",
+          component = "IconButton/Tonal",
+          previewIds =
+            listOf("com.example.ProfileScreenPreview", "button-filled__ideal__default__light"),
+        ),
+        ParityIssue(
+          repository = "yschimke/m3-catalog",
+          number = 41,
+          title = "Verify the disabled state after the token update",
+          url = "https://github.com/yschimke/m3-catalog/issues/41",
+          state = "closed",
+          area = "preview",
+          parity = "verification-needed",
+          component = "IconButton/Tonal",
+          previewIds =
+            listOf("com.example.ProfileScreenPreview", "button-filled__ideal__default__light"),
+        ),
+      )
 
     // Render the fixtures with a producer-trust badge so the visual-diff harness captures it: a
     // trusted (signature) landing and an unverified viewer exercise both badge styles.
@@ -661,6 +688,7 @@ class ServeWebFixtureTest {
         // lists these by name instead.
         designPages =
           listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
+        parityIssues = parityIssues,
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -853,6 +881,7 @@ class ServeWebFixtureTest {
         // host with the compile lane renders — the row is where every one of these affordances
         // lands, so a change to its rhythm shows up here.
         playgroundHref = "/playground?from=compose-m3/com.example.ProfileScreenPreview",
+        parityIssues = parityIssues,
       )
     // A second viewer carrying the in-browser Wasm tier, so the harness captures the "Run in
     // browser (Wasm)" toggle + iframe seam a CMP catalog session shows.
@@ -1447,6 +1476,7 @@ class ServeWebFixtureTest {
         // The catalog names its design tool, so the page's way back out to the whole-catalog
         // comparison table is captured with the same wording as the link that leads here.
         designToolLabel = "Figma",
+        parityIssues = parityIssues,
       )
     val referenceComparison =
       ServeWeb.referenceComparisonPage(
@@ -1584,6 +1614,7 @@ class ServeWebFixtureTest {
                 ),
             ),
           ),
+        parityIssues = parityIssues,
       )
     // The same comparison, PINNED to an older publish (issue #3723) — the state a shared permalink
     // opens in. Captured because it is where the feature is visible: the banner naming the
