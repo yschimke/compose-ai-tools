@@ -337,10 +337,6 @@ object PlaygroundSourceCleaner {
     out =
       if (parser != null) applySubstituteParsed(out, rules, addedImports, parser)
       else applySubstitute(out, rules, addedImports)
-    // After SUBSTITUTE, so a knob in the initializer (`toggleable(catalogEnabled())`) is already
-    // plain by the time the state declaration quotes it. Parsed-only by design — see
-    // [UsageRules.Kind.DESTRUCTURE].
-    if (parser != null) out = applyDestructureParsed(out, rules, addedImports, parser)
     out = applyInline(out, rules, addedImports)
     out = applyDrop(out, rules, residue)
     out = applyRename(out, rules, addedImports)
@@ -380,8 +376,15 @@ object PlaygroundSourceCleaner {
    * invisible in the first place.
    */
   private fun unqualifyScaffoldCalls(text: String, rules: UsageRules): String {
-    if (rules.scaffolds.isEmpty() || rules.scaffoldPackages.isEmpty()) return text
-    val names = rules.scaffolds.keys.joinToString("|") { Regex.escape(it) }
+    // Only helpers a pass will actually rewrite. Unqualifying is a *setup* step — it exists so the
+    // kind passes, which match a bare name, can see a package-qualified call. Doing it for a
+    // [UsageRules.Kind.UNKNOWN] helper strips the qualifier and then no pass rewrites the call and
+    // no pass adds an import, turning `ee.schimke.m3catalog.toggleable(true)` — which resolved —
+    // into a bare `toggleable(true)` that does not. Left qualified, the call keeps working and
+    // still lands in residue via `mentionsQualifiedCall`.
+    val rewritable = rules.scaffolds.filterValues { it.kind != UsageRules.Kind.UNKNOWN }
+    if (rewritable.isEmpty() || rules.scaffoldPackages.isEmpty()) return text
+    val names = rewritable.keys.joinToString("|") { Regex.escape(it) }
     val packages = rules.scaffoldPackages.joinToString("|") { Regex.escape(it) }
     // `[({]` and not just `(`: a trailing-lambda call — `counted { }` — has no parentheses at all,
     // and that is the shape most scaffolding wrappers are written in.
@@ -588,106 +591,6 @@ object PlaygroundSourceCleaner {
       }
     }
     return bound.toList()
-  }
-
-  /**
-   * `val (checked, onCheckedChange) = toggleable(true)` → `var checked by remember {
-   * mutableStateOf(true) }`, with every use of `onCheckedChange` becoming `{ checked = it }`.
-   *
-   * ### Why this one could not be a text pass
-   *
-   * The other kinds rewrite an expression or delete a binding. This replaces a **declaration** and
-   * rebinds a *second* name that the declaration introduced — so it has to know the destructuring
-   * exists, which names it binds, in what order, and where its initializer starts and ends. A regex
-   * that thought it knew those things is how this file earned most of its review findings, which is
-   * why the kind is gated on the parser being staged rather than degrading to a guess.
-   *
-   * ### All or nothing, per declaration
-   *
-   * The same discipline [applyDrop] uses. If the template cites an argument the call does not have,
-   * or the declaration binds a shape the rule does not describe (one name, or three), the whole
-   * rewrite is abandoned for that declaration and the helper is left exactly as the catalog wrote
-   * it — reported as residue. A half-applied state rewrite compiles to something subtly wrong,
-   * which is worse than a snippet that visibly still calls a helper.
-   */
-  private fun applyDestructureParsed(
-    text: String,
-    rules: UsageRules,
-    addedImports: MutableSet<String>,
-    parser: UsageSourceParser,
-  ): String {
-    if (rules.scaffolds.none { it.value.kind == UsageRules.Kind.DESTRUCTURE }) return text
-    var out = text
-    var guard = 0
-    while (guard++ < MAX_REWRITES) {
-      val facts = parser.facts(out) ?: return out
-      val rewrite =
-        facts.destructurings
-          .asSequence()
-          .mapNotNull { declaration ->
-            // The initializer, as a call: the facts report the two separately, and the call is what
-            // carries the callee, its arguments and its receiver.
-            val call =
-              facts.calls.firstOrNull {
-                it.replaceStart == declaration.initializerStart ||
-                  it.start == declaration.initializerStart
-              } ?: return@mapNotNull null
-            val scaffold = rules.scaffolds[call.callee] ?: return@mapNotNull null
-            if (scaffold.kind != UsageRules.Kind.DESTRUCTURE) return@mapNotNull null
-            // Same guard the substitution pass carries: a matching name on somebody else's receiver
-            // is not this scaffold.
-            if (call.receiver != null && call.receiver !in rules.scaffoldPackages) {
-              return@mapNotNull null
-            }
-            val plain = scaffold.plain ?: return@mapNotNull null
-            // Exactly the value/setter pair the kind describes. Anything else is a shape the rule
-            // does not speak for.
-            if (declaration.names.size != 2) return@mapNotNull null
-            val (value, setterName) = declaration.names
-            if (value.isEmpty() || setterName.isEmpty()) return@mapNotNull null
-            val args = facts.bind(call, scaffold.params) ?: return@mapNotNull null
-            val render = { template: String ->
-              Regex("""\$(\d+)|\${'$'}value|\${'$'}setter""").replace(template) { m ->
-                when (m.value) {
-                  "\$value" -> value
-                  "\$setter" -> setterName
-                  else -> args.getOrNull(m.groupValues[1].toInt()) ?: m.value
-                }
-              }
-            }
-            val declarationText = render(plain)
-            val setterText = scaffold.setter?.let(render)
-            if (declarationText.contains(Regex("""\${'$'}\d"""))) return@mapNotNull null
-            if (setterText?.contains(Regex("""\${'$'}\d""")) == true) return@mapNotNull null
-            Triple(declaration, declarationText to setterText, scaffold)
-          }
-          .firstOrNull() ?: return out
-
-      val (declaration, replacements, scaffold) = rewrite
-      val (declarationText, setterText) = replacements
-      if (declaration.start < 0 || declaration.end > out.length) return out
-
-      // The declaration and every reference to the setter name, from **one** parse, applied
-      // right-to-left so earlier offsets stay valid. Not `replaceWord`: that also rewrites the
-      // argument *label* in `Switch(onCheckedChange = onCheckedChange)`, which produced
-      // `{ checked = it } = { checked = it }` — the parse separates a label from a reference and a
-      // word scan cannot.
-      val edits = buildList {
-        add(declaration.start to declaration.end to declarationText)
-        if (setterText != null) {
-          facts.references
-            .filter { it.name == declaration.names[1] && it.start >= declaration.end }
-            .forEach { add(it.start to it.end to setterText) }
-        }
-      }
-      for ((range, replacement) in edits.sortedByDescending { it.first.first }) {
-        val (start, end) = range
-        if (start < 0 || end > out.length || start >= end) return out
-        out = out.substring(0, start) + replacement + out.substring(end)
-      }
-      addedImports.addAll(scaffold.imports)
-    }
-    return out
   }
 
   /**

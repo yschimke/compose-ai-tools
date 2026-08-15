@@ -383,6 +383,121 @@ class PlaygroundSourceCleanerTest {
   }
 
   /**
+   * One rule this build cannot read must not cost a catalog every *other* rule in its file.
+   *
+   * A rules file is read at whatever ref the catalog was published from, so its vocabulary can be
+   * older than the server's. `ignoreUnknownKeys` covers an unknown key; an unknown enum *value*
+   * throws, and [UsageRules.parse] turns any throw into "no rules at all". Retiring the
+   * `DESTRUCTURE` kind (#3884) therefore meant a catalog pinned to a ref that still declared one
+   * silently lost `Sticker` and `catalogButtonSize` too and fell back to GENERIC — the scaffolding
+   * leak this whole file exists to prevent, arriving through the compatibility door.
+   */
+  @Test
+  fun `a rule kind this build does not know costs only that rule`() {
+    val rules =
+      assertNotNull(
+        UsageRules.parse(
+          """
+          {
+            "scaffolds": {
+              "Sticker": { "kind": "RENAME", "renameTo": "MaterialTheme" },
+              "catalogButtonSize": { "kind": "DROP" },
+              "toggleable": { "kind": "DESTRUCTURE", "plain": "x", "setter": "y" }
+            }
+          }
+          """
+            .trimIndent()
+        )
+      )
+    // The rules either side of the retired one survived, which is the whole point.
+    assertEquals(UsageRules.Kind.RENAME, rules.scaffolds["Sticker"]?.kind)
+    assertEquals("MaterialTheme", rules.scaffolds["Sticker"]?.renameTo)
+    assertEquals(UsageRules.Kind.DROP, rules.scaffolds["catalogButtonSize"]?.kind)
+    assertEquals(UsageRules.Kind.UNKNOWN, rules.scaffolds["toggleable"]?.kind)
+  }
+
+  /**
+   * Forgiving about the *kind* vocabulary is not the same as forgiving about the rest of the
+   * document. A rules file this code cannot honour must still take the safe GENERIC fallback: an
+   * `INLINE` rule with a null member map would otherwise decode to an empty one, and `applyInline`
+   * would delete the binding while leaving its member references pointing at nothing.
+   */
+  @Test
+  fun `tolerating an unknown kind does not make the rest of the document forgiving`() {
+    assertNull(UsageRules.parse("""{"scaffolds":{"counted":{"kind":"INLINE","members":null}}}"""))
+    assertNull(UsageRules.parse("""{"scaffoldPackages":null}"""))
+  }
+
+  /**
+   * Unqualifying is setup for the kind passes, so a helper no pass will rewrite must not be put
+   * through it: stripping the qualifier off a call nothing then rewrites — and nothing imports —
+   * turns code that resolved into code that does not.
+   */
+  @Test
+  fun `an unknown kind keeps the package qualifier that makes it resolve`() {
+    val rules =
+      assertNotNull(
+        UsageRules.parse(
+          """
+          {
+            "scaffoldPackages": ["ee.schimke.m3catalog"],
+            "scaffolds": { "toggleable": { "kind": "DESTRUCTURE" } }
+          }
+          """
+            .trimIndent()
+        )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Switch
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun SwitchSticker() {
+        var checked by ee.schimke.m3catalog.toggleable(true)
+        Switch(checked = checked, onCheckedChange = { checked = it })
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), rules)
+      )
+    assertTrue(result.text.contains("ee.schimke.m3catalog.toggleable(true)"), result.text)
+    assertTrue(result.residue.contains("toggleable"), "${result.residue}")
+  }
+
+  /** An unknown kind fires no pass, so the helper survives the clean and is reported as residue. */
+  @Test
+  fun `a helper whose kind is unknown is left alone and reported`() {
+    val rules =
+      assertNotNull(UsageRules.parse("""{"scaffolds":{"toggleable":{"kind":"DESTRUCTURE"}}}"""))
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Switch
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.toggleable
+
+      @Composable
+      fun SwitchSticker() {
+        var checked by toggleable(true)
+        Switch(checked = checked, onCheckedChange = { checked = it })
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), rules)
+      )
+    assertTrue(result.text.contains("toggleable(true)"), result.text)
+    assertTrue(result.residue.contains("toggleable"), "${result.residue}")
+  }
+
+  /**
    * The preview-override knobs are this repo's API, not a catalog's, so a catalog that declares its
    * own scaffolding must still get them — before this, declaring `compose-usage.json` *replaced*
    * the generic rules, so the catalogs that had done the work were the only ones leaking
@@ -572,11 +687,11 @@ class PlaygroundSourceCleanerTest {
   }
 
   /**
-   * `addImports` is not a DESTRUCTURE field.
+   * `addImports` belongs to every kind that emits a replacement.
    *
-   * m3-catalog's state helpers return a `MutableState` now, so their rules are ordinary SUBSTITUTE
-   * — and the substitution emitted `var checked by remember { mutableStateOf(true) }` against a
-   * snippet with no `remember` import, because only DESTRUCTURE read the plural field.
+   * m3-catalog's state helpers return a `MutableState`, so their rules are ordinary SUBSTITUTE —
+   * and the substitution emitted `var checked by remember { mutableStateOf(true) }` against a
+   * snippet with no `remember` import, because only one rewrite read the plural field.
    * Perfect-looking Kotlin that does not compile, which the corpus gate caught and no unit test
    * would have.
    */
@@ -679,105 +794,6 @@ class PlaygroundSourceCleanerTest {
     )
     assertTrue(result.text.contains("import android.util.Log"), result.text)
     assertEquals(emptyList(), result.residue)
-  }
-
-  /**
-   * The `$known-gaps` entry m3-catalog's `compose-usage.json` carried: `toggleable` and friends
-   * return `Pair<T, (T) -> Unit>` destructured into a value and a setter, and the plain reading is
-   * real state rather than a value. Roughly 18 stickers were affected.
-   */
-  @Test
-  fun `a destructured state helper becomes remembered state`() {
-    val destructuring =
-      UsageRules(
-        scaffolds =
-          mapOf(
-            "toggleable" to
-              UsageRules.Scaffold(
-                kind = UsageRules.Kind.DESTRUCTURE,
-                plain = "var \$value by remember { mutableStateOf(\$0) }",
-                setter = "{ \$value = it }",
-                addImports =
-                  listOf(
-                    "androidx.compose.runtime.getValue",
-                    "androidx.compose.runtime.mutableStateOf",
-                    "androidx.compose.runtime.remember",
-                    "androidx.compose.runtime.setValue",
-                  ),
-              )
-          )
-      )
-    val source =
-      """
-      package ee.schimke.m3catalog.sections
-
-      import androidx.compose.material3.Switch
-      import androidx.compose.runtime.Composable
-      import ee.schimke.m3catalog.toggleable
-
-      @Composable
-      fun SwitchSticker() {
-        val (checked, onCheckedChange) = toggleable(true)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-      }
-      """
-        .trimIndent()
-    val result =
-      assertNotNull(
-        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), destructuring)
-      )
-    assertTrue(
-      result.text.contains("var checked by remember { mutableStateOf(true) }"),
-      result.text,
-    )
-    // The setter name no longer exists, so every use of it has to be rebound — a declaration
-    // rewritten without this leaves code that reads fine and does not compile.
-    assertTrue(result.text.contains("onCheckedChange = { checked = it }"), result.text)
-    assertFalse(result.text.contains("toggleable"), result.text)
-    // `by` needs `getValue`/`setValue`, which nothing in the snippet mentions by name.
-    for (import in listOf("getValue", "setValue", "remember", "mutableStateOf")) {
-      assertTrue(result.text.contains("import androidx.compose.runtime.$import"), result.text)
-    }
-    assertEquals(emptyList(), result.residue)
-  }
-
-  /**
-   * A declaration binding a shape the rule does not describe is left alone, and reported — the same
-   * all-or-nothing discipline DROP uses. Half-rewritten state compiles to something subtly wrong,
-   * which is worse than a snippet that visibly still calls a helper.
-   */
-  @Test
-  fun `a destructuring the rule does not describe is left as residue`() {
-    val destructuring =
-      UsageRules(
-        scaffolds =
-          mapOf(
-            "triple" to
-              UsageRules.Scaffold(
-                kind = UsageRules.Kind.DESTRUCTURE,
-                plain = "var \$value by remember { mutableStateOf(\$0) }",
-                setter = "{ \$value = it }",
-              )
-          )
-      )
-    val source =
-      """
-      package ee.schimke.m3catalog.sections
-
-      import androidx.compose.runtime.Composable
-      import ee.schimke.m3catalog.triple
-
-      @Composable
-      fun Odd() {
-        val (a, b, c) = triple(1)
-        Text("${'$'}a ${'$'}b ${'$'}c")
-      }
-      """
-        .trimIndent()
-    val result =
-      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Odd"), destructuring))
-    assertTrue(result.text.contains("val (a, b, c) = triple(1)"), result.text)
-    assertTrue(result.residue.contains("triple"), "${result.residue}")
   }
 
   /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */

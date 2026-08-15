@@ -81,7 +81,7 @@ Two things had to follow from putting those knobs in `GENERIC`:
 
 | Cause | Files | Status |
 |---|---|---|
-| ~~`toggleable` / `editable` destructure a `Pair`~~ | ~~2~~ → 0 | **Fixed.** The `DESTRUCTURE` rule kind, which the parse made writable — `val (checked, onCheckedChange) = toggleable(true)` now comes out as `var checked by remember { mutableStateOf(true) }` with the setter rebound at its use sites. One of the two compiled immediately; the other is now blocked only on the `stringResource` row below |
+| ~~`toggleable` / `editable` destructure a `Pair`~~ | ~~2~~ → 0 | **Fixed**, twice. First by the `DESTRUCTURE` rule kind; then properly, by m3-catalog changing the helpers to return a `MutableState` used through `by`, so `var checked by toggleable(true)` is an ordinary `SUBSTITUTE` to `var checked by remember { mutableStateOf(true) }`. `DESTRUCTURE` was removed once that landed. One of the two compiled immediately; the other is now blocked only on the `stringResource` row below |
 | Conditional `stringResource(if (…) Res.string.a else Res.string.b)` | 2 | The inliner only handles the exact single-key form and declines the rest, correctly — but the snippet then keeps an unresolvable `Res` |
 | `CatalogFilledStars`, a catalog-owned `ImageVector` | 4 | No rule; wants substituting with a stock `Icons.Filled.Star` or similar |
 

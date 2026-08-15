@@ -35,27 +35,15 @@ internal class JsonWriter {
       first = false
       val nested = JsonWriter()
       nested.write(item)
-      val body = nested.finishRaw()
-      // A writer whose `write` block emitted a bare value (`raw`) rather than fields is spliced as
-      // that value; otherwise it is an object.
-      if (nested.wroteRaw) out.append(body) else out.append('{').append(body).append('}')
+      out.append('{').append(nested.out).append('}')
     }
     out.append(']')
   }
-
-  fun raw(value: String) {
-    wroteRaw = true
-    out.append(value)
-  }
-
-  private var wroteRaw = false
 
   private fun separator() {
     if (needsComma) out.append(',')
     needsComma = true
   }
-
-  private fun finishRaw(): String = out.toString()
 
   fun finish(): String = "{" + out + "}"
 }

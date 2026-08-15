@@ -1,0 +1,33 @@
+[
+  { "tMs": 0, "kind": "recording.probe", "label": "empty" },
+  { "tMs": 160, "kind": "input.keyDown", "keyCode": "36", "text": "h" },
+  { "tMs": 260, "kind": "input.keyUp", "keyCode": "36", "text": "h" },
+  { "tMs": 340, "kind": "input.keyDown", "keyCode": "33", "text": "e" },
+  { "tMs": 440, "kind": "input.keyUp", "keyCode": "33", "text": "e" },
+  { "tMs": 520, "kind": "input.keyDown", "keyCode": "40", "text": "l" },
+  { "tMs": 620, "kind": "input.keyUp", "keyCode": "40", "text": "l" },
+  { "tMs": 700, "kind": "input.keyDown", "keyCode": "40", "text": "l" },
+  { "tMs": 800, "kind": "input.keyUp", "keyCode": "40", "text": "l" },
+  { "tMs": 880, "kind": "input.keyDown", "keyCode": "43", "text": "o" },
+  { "tMs": 980, "kind": "input.keyUp", "keyCode": "43", "text": "o" },
+  { "tMs": 1060, "kind": "input.keyDown", "keyCode": "62", "text": " " },
+  { "tMs": 1160, "kind": "input.keyUp", "keyCode": "62", "text": " " },
+  { "tMs": 1240, "kind": "input.keyDown", "keyCode": "51", "text": "w" },
+  { "tMs": 1340, "kind": "input.keyUp", "keyCode": "51", "text": "w" },
+  { "tMs": 1420, "kind": "input.keyDown", "keyCode": "43", "text": "o" },
+  { "tMs": 1520, "kind": "input.keyUp", "keyCode": "43", "text": "o" },
+  { "tMs": 1600, "kind": "input.keyDown", "keyCode": "46", "text": "r" },
+  { "tMs": 1700, "kind": "input.keyUp", "keyCode": "46", "text": "r" },
+  { "tMs": 1780, "kind": "input.keyDown", "keyCode": "40", "text": "l" },
+  { "tMs": 1880, "kind": "input.keyUp", "keyCode": "40", "text": "l" },
+  { "tMs": 1960, "kind": "input.keyDown", "keyCode": "32", "text": "d" },
+  { "tMs": 2060, "kind": "input.keyUp", "keyCode": "32", "text": "d" },
+  { "tMs": 2140, "kind": "input.keyDown", "keyCode": "66" },
+  { "tMs": 2240, "kind": "input.keyUp", "keyCode": "66" },
+  {
+    "tMs": 2240,
+    "kind": "assert.textEquals",
+    "target": { "testTag": "message-editor" },
+    "inputText": "hello world"
+  }
+]

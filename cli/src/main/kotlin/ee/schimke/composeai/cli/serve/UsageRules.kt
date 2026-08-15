@@ -1,7 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 
 /**
@@ -80,7 +86,11 @@ data class UsageRules(
   /** What to do with one scaffolding helper. */
   @Serializable
   data class Scaffold(
-    @SerialName("kind") val kind: Kind,
+    /**
+     * What to do with the helper. A kind this build cannot read decodes as [Kind.UNKNOWN] rather
+     * than failing the document — see [Kind.UNKNOWN] and [LenientKind].
+     */
+    @SerialName("kind") @Serializable(with = LenientKind::class) val kind: Kind = Kind.UNKNOWN,
     /** [Kind.RENAME] only: the plain-Compose name to call instead. */
     @SerialName("renameTo") val renameTo: String? = null,
     /** An import the replacement needs, e.g. `androidx.compose.material3.MaterialTheme`. */
@@ -91,8 +101,8 @@ data class UsageRules(
      * delegation reads and which nothing in the snippet mentions by name.
      *
      * Applies alongside [addImport] to every kind that emits a replacement — RENAME, SUBSTITUTE,
-     * DESTRUCTURE, INLINE; see [imports]. DROP and UNWRAP write no new code, so an import declared
-     * on one of those has nothing to serve.
+     * INLINE; see [imports]. DROP and UNWRAP write no new code, so an import declared on one of
+     * those has nothing to serve.
      */
     @SerialName("addImports") val addImports: List<String> = emptyList(),
     /** [Kind.SUBSTITUTE] only: what the call reads as, with `$0`, `$1`… for its arguments. */
@@ -107,15 +117,6 @@ data class UsageRules(
      * call that uses named arguments at all (reporting it as residue) rather than guessing.
      */
     @SerialName("params") val params: List<String> = emptyList(),
-    /**
-     * [Kind.DESTRUCTURE] only: what the **second** destructured name reads as at its use sites.
-     *
-     * `val (checked, onCheckedChange) = toggleable(true)` binds a value and its setter.
-     * [Scaffold.plain] replaces the declaration; this replaces every mention of `onCheckedChange`,
-     * which would otherwise refer to a binding that no longer exists. Cites `$value` for the first
-     * name, so `toggleable` declares `{ $value = it }`.
-     */
-    @SerialName("setter") val setter: String? = null,
     /**
      * [Kind.INLINE] only: member → replacement, where `$0`, `$1`… are the call's arguments.
      * `counted` declares `{"label": "$0", "onClick": "{}"}`, which is the whole of what that helper
@@ -179,30 +180,48 @@ data class UsageRules(
     SUBSTITUTE,
 
     /**
-     * A helper whose result is **destructured into state**, replaced by the state a developer would
-     * write themselves.
+     * A kind this build does not know — a rule kind that has since been retired, or one a newer
+     * catalog declares against a newer server. No pass matches it, so the helper is left exactly as
+     * the catalog wrote it and reported as residue.
      *
-     * m3-catalog's `toggleable` / `selectable` / `multiSelectable` / `draggable` / `editable` each
-     * return `Pair<T, (T) -> Unit>` so one sticker can be frozen on the baked lane and live on the
-     * interactive one:
-     * ```
-     * val (checked, onCheckedChange) = toggleable(true)
-     * ```
+     * Never written in a rules file: it is what [parse] coerces an unrecognised `kind` to, and the
+     * reason a catalog's whole `compose-usage.json` no longer dies on one such entry.
      *
-     * The plain reading is not a *value* — it is real state, `var checked by remember {
-     * mutableStateOf(true) }`, plus a setter at every use site. That is why none of the other four
-     * kinds could express it, and why `compose-usage.json` carried it as a declared gap: RENAME and
-     * SUBSTITUTE rewrite one expression, DROP deletes, INLINE substitutes members of a binding —
-     * none replaces a declaration *and* rebinds a second name.
-     *
-     * Declares [Scaffold.plain] for the declaration, [Scaffold.setter] for the second name's use
-     * sites, and [Scaffold.addImports] for what the replacement needs.
-     *
-     * **Needs the parser.** A destructuring declaration, its entry names and its initializer are
-     * exactly the structure a regex cannot be trusted with, so this kind applies only when
-     * `:usage-source-psi` is staged; without it the helper is reported as residue, as before.
+     * The failure this exists to prevent is not hypothetical. `ignoreUnknownKeys` covers an unknown
+     * *key*; an unknown enum *value* throws, and [parse] catches that and returns null for the
+     * entire document — so retiring the `DESTRUCTURE` kind (#3884) meant a catalog pinned to a ref
+     * that still declared one lost every other rule in the file too, `Sticker` and
+     * `catalogButtonSize` included, and silently fell back to [GENERIC]. A rules file is read at
+     * whatever ref the catalog was published from, so its vocabulary is always potentially older
+     * than this build's.
      */
-    DESTRUCTURE,
+    UNKNOWN,
+  }
+
+  /**
+   * Decodes an unrecognised [Kind] name as [Kind.UNKNOWN] instead of throwing.
+   *
+   * Deliberately a serializer on this one field rather than `coerceInputValues` on the whole
+   * document. That option is global and coerces *any* explicit `null` to its property's default, so
+   * it also quietly repaired malformed rules this code cannot honour — an `INLINE` rule with
+   * `"members": null` would decode to an empty member map, and [PlaygroundSourceCleaner] would then
+   * delete the binding while leaving its member references pointing at nothing. Only the *kind*
+   * vocabulary is expected to drift across refs, so only the kind is forgiving; everything else
+   * still fails the document and takes the safe [GENERIC] fallback.
+   */
+  internal object LenientKind : KSerializer<Kind> {
+    override val descriptor: SerialDescriptor =
+      PrimitiveSerialDescriptor(
+        "ee.schimke.composeai.cli.serve.UsageRules.Kind",
+        PrimitiveKind.STRING,
+      )
+
+    override fun serialize(encoder: Encoder, value: Kind) = encoder.encodeString(value.name)
+
+    override fun deserialize(decoder: Decoder): Kind {
+      val name = decoder.decodeString()
+      return Kind.entries.firstOrNull { it.name == name } ?: Kind.UNKNOWN
+    }
   }
 
   companion object {

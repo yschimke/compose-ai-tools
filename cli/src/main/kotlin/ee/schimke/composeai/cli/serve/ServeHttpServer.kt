@@ -2468,6 +2468,50 @@ class ServeHttpServer(
         respondNotFoundHtml("That preview has no matching design reference.")
         return@withLeasedSession
       }
+      val overrideParams =
+        call.request.queryParameters
+          .entries()
+          .mapNotNull { (key, values) ->
+            val value = values.firstOrNull() ?: return@mapNotNull null
+            if (ServeOverrides.isOverrideParam(key)) key to value else null
+          }
+          .toMap()
+          .let { ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it) }
+      val bundleHost = catalogBundleHost(renderHost)
+      val sourceHref =
+        bundleHost?.catalogSource?.let { source ->
+          ServeUrls.githubBlobUrl(source.repo, source.ref, source.module, preview.sourceFile)
+        }
+      val reportContext =
+        ServeIssueReport.Context(
+          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+          previewId = preview.id,
+          previewLabel = preview.label,
+          system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+          componentId = ServeIssueReport.componentIdFor(preview),
+          referenceId = reference.id,
+          variant = ServeIssueReport.variantFor(preview),
+          overrides = overrideParams,
+          sourceUrl = sourceHref,
+          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
+          toolVersion = bundleHost?.provenance?.toolVersion,
+          comparisonUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+          renderUrl =
+            ServeIssueReport.withoutToken(
+              "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png" +
+                requestQuerySuffix()
+            ),
+          publicRender = isPublic,
+        )
+      val reportIssue =
+        ServeWeb.ReportIssue(
+          action = ServeIssueReport.action(reportContext.repo),
+          title = ServeIssueReport.title(reportContext),
+          body = ServeIssueReport.body(reportContext),
+          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
+          repo = reportContext.repo,
+          login = githubAuth?.currentLogin(call),
+        )
       val revisions = catalogRevisions(renderHost)
       val pinned = revisions.pinned != null
       markGeneration("static-page", pageCacheControl())
@@ -2498,6 +2542,8 @@ class ServeHttpServer(
           actualAnnotations =
             if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
           revisions = revisions,
+          overrides = overrideParams,
+          reportIssue = reportIssue,
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
           // drop the `?session=` the rooted legacy form would add. See [ServeSites].
           sessionInOrigin = siteSystem() != null,
@@ -4401,35 +4447,6 @@ class ServeHttpServer(
         bundleHost?.catalogSource?.let { src ->
           ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
         }
-      // The prefilled "report an issue" link. Both URLs it carries are stripped of the session
-      // token: on a token-gated box every link on the page bakes the token in, and that token is
-      // the capability to drive this server — it must not ride along into a public issue body.
-      val reportContext =
-        ServeIssueReport.Context(
-          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
-          previewId = preview.id,
-          previewLabel = preview.label,
-          system = basePath.trim('/').takeIf { it.isNotEmpty() },
-          sourceUrl = sourceHref,
-          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
-          toolVersion = bundleHost?.provenance?.toolVersion,
-          viewerUrl = ServeIssueReport.withoutToken(externalPageUrl()),
-          renderUrl = ServeIssueReport.withoutToken(imageUrl),
-          // A token-gated box 404s the tokenless render URL this body carries, so its report keeps
-          // the link form rather than embedding an image that could never load.
-          publicRender = isPublic,
-        )
-      val reportIssue =
-        ServeWeb.ReportIssue(
-          action = ServeIssueReport.action(reportContext.repo),
-          title = ServeIssueReport.title(reportContext),
-          body = ServeIssueReport.body(reportContext),
-          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
-          repo = reportContext.repo,
-          // Named in the tooltip when this box has a GitHub session for the visitor, so they know
-          // whose account the issue will be authored by before they leave the page.
-          login = githubAuth?.currentLogin(call),
-        )
       val liveAuthPrompt =
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
@@ -4545,7 +4562,9 @@ class ServeHttpServer(
             ),
           version = BUNDLE_VERSION,
           sourceHref = sourceHref,
-          reportIssue = reportIssue,
+          // A viewer cannot reliably name the selected design reference or the parity score.
+          // Reporting lives on the focused comparison, where both are concrete.
+          reportIssue = null,
           // The Figma node this preview is specified by, when the catalog publishes a Figma-backed
           // design reference for it. Resolved from data the catalog already carries — nothing is
           // fetched from Figma, here or anywhere else in serve.

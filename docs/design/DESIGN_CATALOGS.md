@@ -777,6 +777,48 @@ by count — two runners that saw `["a"]` and `["b"]` are disjoint with a union 
 pairwise disjoint, and a complete cover. A disagreement would otherwise surface as a
 completeness-gate failure naming a component, with nothing pointing at the shards.
 
+**Then the merged bundle is checked back against those plans**
+([`verify-shard-renders.mjs`](../../scripts/design-artifacts/verify-shard-renders.mjs)), because the
+plan and the outcome are different questions and only the first one used to be asked. A plan check
+confirms the shards *intended* a disjoint cover; it passes whether or not a single preview came
+back. m3-catalog run 31217598543 lived precisely in that gap — it partitioned 1095 previews
+correctly, printed `6 shard(s) cover 1095 preview(s) exactly once`, and merged 267 of them, because
+each shard's exclusion list was unanchored and so also deleted the `_VARIANT_` fan-out of every id it
+excluded. **The run was green**, and the loss reached the operator as a downstream warning about
+previews with no static PNG — which reads like a list of token sheets, not three quarters of a
+render. Anchoring the exclusions fixed the cause; this closes the silence, which is what made it
+expensive.
+
+The comparison is "did this preview come back with **any** `previews/<id>.*` artifact", not "did it
+come back with a PNG": a PNG check would flag every animated `ScrollMode.GIF` capture, every
+`@ColorCatalog` / `@ThemeCatalog` sheet and every `"capture": "none"` entry as a loss. An excluded
+preview is skipped in the render *and* the semantics pass, so it comes back with nothing at all —
+that asymmetry is what makes the signal precise. Extra ids are not reported: exclusion leaves
+previews listed in the bundle, and a shard rendering more than its share costs time, not stickers.
+The failure names the shard and its missing ids, so a recurrence points at its own cause.
+
+A render **failure** counts as captured, deliberately. A preview that blew up leaves
+`previews/<id>.error.json` and no PNG, and an excluded preview never reaches the renderer, so an
+error sidecar can never mask an exclusion loss — only cause a misleading report of one. Render
+failures have their own reporting (`render-failures.mjs`, and the completeness gate).
+
+**It disarms itself rather than cry wolf.** "Any artifact" leans on the semantics pass to give a
+raster-less preview *something*, and `packSemanticsBlob` is best-effort — a missing
+`daemon-launch.json`, a session that will not open, or an empty capture each warn and leave the pack
+exiting 0 with no `.semantics.json` anywhere. In that state a legitimately raster-less preview is
+indistinguishable from one an exclusion ate, so the check reports the shortfall as a workflow warning
+and passes instead of failing the run on a signal it cannot read. A gate that fails for the wrong
+reason spends exactly the trust this one exists to rebuild.
+
+The capture is best-effort **per preview** too, and that partial case is handled by declaration
+rather than by threshold. Only one class of preview has no render-side artifact to fall back on: a
+spec's `"capture": "none"` entries. A `ScrollMode.GIF` capture still leaves its `.gif` and a token
+sheet its `.catalog.json` — both written by the render itself, so neither depends on the semantics
+pass succeeding. The merge step therefore passes the catalog spec, and the declared no-sticker
+previews (`noStickerPreviewNames`) are exempt; the completeness gate exempts the same entries from
+its missing-render check, so the two agree about what the declaration buys. Without a readable spec
+the check keeps its old, slightly noisier reading rather than failing.
+
 **The CLI has to be new enough.** The merge runs last, after every shard has spent its twenty
 minutes, so a CLI predating `bundle merge` would fail the run having burned the whole fan-out — and
 that is the *default* configuration's failure mode, since `cli-source: released` +
