@@ -327,6 +327,47 @@ async function openThemeBar(page) {
         await page.click("#cp-theme-toggle");
 }
 
+// A point on the design page's sheet, given in the EXPORT's own user units — the coordinates the
+// fixture SVG is written in. States aim at a card's padding or the gap between two slots, which is
+// where a reader double-clicks to zoom, and neither has a client pixel that survives a viewport
+// change. Correct at any zoom too: the SVG's client rect carries the stage's transform already.
+async function sheetPoint(page, ux, uy) {
+    const at = await page.evaluate(
+        ([x, y]) => {
+            const svg = document.querySelector(".cp-page-stage svg");
+            const rect = svg.getBoundingClientRect();
+            const box = svg.viewBox.baseVal;
+            return {
+                x: rect.left + (x / box.width) * rect.width,
+                y: rect.top + (y / box.height) * rect.height,
+                width: window.innerWidth,
+                height: window.innerHeight,
+            };
+        },
+        [ux, uy],
+    );
+    // A zoom moves the sheet under these coordinates: a spot that was mid-stage at 1:1 can be well
+    // below the fold once a section fills the view, and a click there lands on nothing while
+    // `elementsFromPoint` (which the drill itself uses) answers an empty list for any point outside
+    // the viewport. That reads as "the gesture did nothing", which is exactly the failure these
+    // states exist to catch — so say what actually happened instead of timing out on a wait.
+    if (at.x < 0 || at.y < 0 || at.x > at.width || at.y > at.height) {
+        throw new Error(
+            `sheet point ${ux},${uy} is off-screen at (${Math.round(at.x)}, ${Math.round(at.y)}) ` +
+                `in a ${at.width}x${at.height} viewport — aim at a spot the current view still shows`,
+        );
+    }
+    return at;
+}
+
+// How far in the sheet is, read off the control the reader reads it off.
+async function zoomPercent(page) {
+    return page.evaluate(() => {
+        const level = document.querySelector("[data-cp-page-zoom-level]");
+        return level ? parseInt(level.textContent, 10) : 0;
+    });
+}
+
 // A phone, in CSS pixels. The serve pages carry a whole `@media (max-width: 640px)` layout — a
 // stacked viewer, drawers that become bottom sheets, a sticky title row, and the single-row chip
 // scrollers that keep a catalog's chrome off the fold — and until these states existed NOTHING
@@ -493,6 +534,160 @@ const FIXTURE_STATES = [
             await page.uncheck("[data-cp-page-unlinked]");
             await page.click(".cp-page-nodes > summary");
             await page.waitForSelector(".cp-page-nodes[open]");
+        },
+    },
+    {
+        // ZOOM, LEVEL ONE. A specimen sheet is drawn at the size the design drew it and lands in a
+        // column a fraction of that, so the surface is unreadable until it can be zoomed — and every
+        // part of that is produced at runtime by a transform on `.cp-page-canvas`, so none of it is
+        // in the committed HTML and a regression would otherwise move no baseline at all.
+        //
+        // Driven as a reader drives it: a real double-click on the left card's own ground (its
+        // padding, outside every slot), which is the gesture the hint next to the controls names.
+        // The card fills the stage, its neighbour is cropped away, and the corner readout appears —
+        // the only thing on the page that says how far in you are.
+        fixture: "serve-design-page",
+        suffix: "zoom-section",
+        // The pointer's resting place is incidental here; the claim is the framed card. Left where
+        // the double-click put it, a later state's assertions would inherit a hover on the sheet.
+        parkPointer: true,
+        apply: async (page) => {
+            const at = await sheetPoint(page, 65, 430);
+            await page.mouse.dblclick(at.x, at.y);
+            // The readout is the reader's own evidence, so assert on it rather than on the transform
+            // string. Above 150% is the real claim: a drill that framed the whole SHEET (or a
+            // wrapper the same size as it) would settle near 100 and look like a working feature.
+            await page.waitForFunction(() => {
+                // The TAG: the bar is `<cp-page-zoom>`, a Lit element in `cli/serve-web`, and it
+                // is the element itself that hides at 1:1.
+                const bar = document.querySelector("cp-page-zoom");
+                const level = document.querySelector("[data-cp-page-zoom-level]");
+                return bar && !bar.hidden && level && parseInt(level.textContent, 10) > 150;
+            });
+            // The overlays must have come WITH the sheet. They are placed in percentages of the
+            // canvas, so this holds by construction — and it is exactly what breaks if the transform
+            // is ever moved onto the SVG alone, which is the one way this feature can go subtly wrong
+            // (the sheet zooms, every hit area stays behind, and no screenshot of the sheet notices).
+            const aligned = await page.evaluate(() => {
+                const spot = document.querySelector('.cp-page-node[data-cp-node="1:2"]');
+                const node = Array.from(document.querySelectorAll("svg [data-node-id]")).find(
+                    (el) => el.getAttribute("data-node-id") === "1:2",
+                );
+                const a = spot.getBoundingClientRect();
+                const b = node.getBoundingClientRect();
+                return Math.abs(a.left - b.left) + Math.abs(a.top - b.top);
+            });
+            expect(aligned).toBeLessThan(2);
+        },
+    },
+    {
+        // ZOOM, LEVEL TWO — the nesting. The same gesture again, now inside the card, lands on the
+        // SLOT the specimen sits in rather than re-framing the card: one addressable level per
+        // double-click, drilling the export's own `<g data-node-id>` tree the way Figma drills a
+        // frame. Nothing in the markup describes those levels, which is why the fixture's export is
+        // nested (a page holds cards, a card holds slots, a slot holds the component) — while it was
+        // flat this gesture had nothing to walk.
+        fixture: "serve-design-page",
+        suffix: "zoom-nested",
+        parkPointer: true,
+        apply: async (page) => {
+            const was = await zoomPercent(page);
+            // The top slot's own padding: inside the slot panel, outside the component's hit area,
+            // and — with the card now filling the stage — still somewhere the view actually shows. A
+            // double-click ON the component would navigate to its preview instead: the first click of
+            // it follows the overlay's anchor, which is deliberate and documented in `design-page.js`.
+            const at = await sheetPoint(page, 110, 200);
+            await page.mouse.dblclick(at.x, at.y);
+            // STRICTLY deeper. A drill that resolved to the level already framed would leave the
+            // number where it was, which is the failure this whole state exists to catch.
+            await page.waitForFunction((before) => {
+                const level = document.querySelector("[data-cp-page-zoom-level]");
+                return level && parseInt(level.textContent, 10) > before;
+            }, was);
+        },
+    },
+    {
+        // ⌘/Ctrl + WHEEL, zooming about the pointer — the continuous half of the gesture, and the one
+        // that carries the sheet the rest of the way once a drill has framed a section. Reset first,
+        // so the wheel is the only thing this shot is about.
+        //
+        // The modifier is the contract, not a flourish: a plain wheel over the stage must keep
+        // scrolling the document, since the sheet is one element on a taller page and a surface that
+        // swallowed the wheel would trap the reader inside it.
+        fixture: "serve-design-page",
+        suffix: "zoom-wheel",
+        parkPointer: true,
+        apply: async (page) => {
+            await page.click("[data-cp-page-zoom-reset]");
+            const at = await sheetPoint(page, 320, 215);
+            await page.mouse.move(at.x, at.y);
+            await page.keyboard.down("Control");
+            for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -120);
+            await page.keyboard.up("Control");
+            await page.waitForFunction(() => {
+                const level = document.querySelector("[data-cp-page-zoom-level]");
+                return level && parseInt(level.textContent, 10) > 300;
+            });
+            // Zoomed four-odd times over, the instrumentation must NOT have grown with the drawing:
+            // a node's mark is counter-scaled by `--cp-page-zoom` so it stays a hairline over the
+            // shape instead of becoming a slab that hides it.
+            //
+            // The OUTLINE, which is what a node is actually marked with — its `border` is 0, so an
+            // earlier version of this assertion read the border width, got 0, and passed however
+            // wrong the stylesheet was. Reading the property that paints is the difference between a
+            // test and a decoration.
+            const marks = await page.evaluate(() => {
+                const stage = document.querySelector(".cp-page-stage");
+                const spot = document.querySelector('.cp-page-node[data-cp-node="1:1"]');
+                const style = getComputedStyle(spot);
+                return {
+                    zoom: parseFloat(getComputedStyle(stage).getPropertyValue("--cp-page-zoom")),
+                    outline: parseFloat(style.outlineWidth),
+                    offset: parseFloat(style.outlineOffset),
+                };
+            });
+            expect(marks.zoom).toBeGreaterThan(3);
+            // `2px ÷ zoom`, and its inset offset with it — which a browser then floors at one device
+            // pixel, so one is the floor and not a miss. Without the counter-scale both stay at the
+            // specified 2px while the transform paints them four times that, so this still fails the
+            // moment the rule stops applying.
+            expect(marks.outline).toBeLessThanOrEqual(1);
+            expect(Math.abs(marks.offset)).toBeLessThanOrEqual(1);
+        },
+    },
+    {
+        // The way back out, and the reason the corner control exists at all: at 24x, with the sheet
+        // panned somewhere unrecognisable, "where was I?" needs an answer that is one click and not a
+        // reload. Reset restores exactly 1:1 and takes the control off the stage with it, since at
+        // 1:1 there is nothing left to reset.
+        fixture: "serve-design-page",
+        suffix: "zoom-reset",
+        apply: async (page) => {
+            await page.click("[data-cp-page-zoom-reset]");
+            // The bar does NOT vanish under the pointer that just pressed it: hiding a
+            // focused button deletes the focused element, and the browser drops focus to
+            // `<body>` — a keyboard reader who pressed Reset would lose the sheet. It
+            // waits for focus to leave, which is what the blur below is.
+            await page.waitForFunction(() => {
+                const level = document.querySelector("[data-cp-page-zoom-level]");
+                return level && parseInt(level.textContent, 10) === 100;
+            });
+            await page.evaluate(() => document.activeElement?.blur());
+            await page.waitForFunction(() => document.querySelector("cp-page-zoom").hidden);
+            // Back to the IDENTITY, not merely to something small: a reset that left a residual
+            // translate would look right in a screenshot and mis-place every overlay measured after
+            // the next resize. Asserted on the computed transform rather than by comparing the
+            // canvas's box to the stage's — those legitimately differ by the stage's border.
+            const view = await page.evaluate(() => {
+                const canvas = document.querySelector(".cp-page-canvas");
+                const stage = document.querySelector(".cp-page-stage");
+                return {
+                    transform: getComputedStyle(canvas).transform,
+                    zoom: stage.style.getPropertyValue("--cp-page-zoom"),
+                };
+            });
+            expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(view.transform);
+            expect(parseFloat(view.zoom)).toBe(1);
         },
     },
     {

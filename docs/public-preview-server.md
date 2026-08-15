@@ -1294,6 +1294,78 @@ an unmarked sheet would show nothing:
 
 ![Only the unlinked outlines, with everything this catalog implements muted](design/evidence/serve-design-page/serve-design-page-unlinked-only.light.png)
 
+### Zoom — the sheet is drawn at the design's size, not the page's
+
+A specimen sheet is as big as the design file drew it. m3-catalog's Styles page is **6263 px across**
+and lands in a content column a sixth of that, so every type specimen, swatch number and elevation
+label on it is sub-pixel: the page could be looked at, not read. The stage therefore zooms, and
+because the sheet is inlined SVG rather than a raster the zoom is a `transform` — the drawing stays
+vector-sharp all the way in, and the overlays travel in the same layer, so a hit area cannot come
+unstuck from the shape it marks.
+
+Three gestures, named next to the controls because none of them is guessable:
+
+- **Double-click drills in**, one addressable level per click — Figma's own gesture. Double-click a
+  card and it fills the stage; double-click inside it and the slot under the pointer does.
+- **⌘/Ctrl + wheel** zooms about the pointer. The modifier is the contract, not a flourish: a plain
+  wheel must keep scrolling the *document*, since the sheet is one element on a taller page and a
+  surface that swallowed the wheel would trap the reader inside it. It is also what a trackpad pinch
+  already sends, so pinch-to-zoom works for free.
+- **Drag pans**, once there is more sheet than window.
+- **`+` / `-` / `0`** do the same three things from the keyboard. Every other gesture here needs a
+  pointer and the corner control is hidden at 1:1, so without these a keyboard-only reader would have
+  no way to enlarge a sheet whose text is sub-pixel. They are reachable because every component
+  overlay on the sheet is a real anchor in the tab order, and they are inert while a control has
+  focus.
+
+![A section framed by a double-click, the rest of the sheet cropped away, with the corner readout](design/evidence/serve-design-page/serve-design-page-zoom-section.light.png)
+
+**The nesting is the export's own tree, not a model of it.** A Figma export is a tree of
+`<g data-node-id>` — a page holds cards, a card holds slots, a slot holds the component — so "one
+level in" is the next element down the browser's hit-test chain under the pointer. What the page adds
+is only a memory of how deep the reader has walked, so the *next* double-click resolves against the
+level they are on. Depth cannot be inferred from the view instead, which was the first attempt: a
+framed section fills the stage's height but a quarter of its width, or the reverse, so *does this box
+already fill the view* has no answer that holds for both shapes — and getting it wrong means a
+double-click that re-frames the level you are already on, which reads as a broken feature.
+
+**A level that cannot be magnified is not a level.** A section as wide as the sheet frames at 1.0x,
+so the drill keeps descending until it finds something it can actually enlarge, and a point with
+nothing enlargeable under it steps *back out* one level — the gesture undoes itself, and Escape or
+the corner **Reset** undoes all of it at once.
+
+**A section far taller than the viewport is fitted to its width and anchored at the top**, not fitted
+to both axes. The stage wears the sheet's own aspect ratio, and on a 3.4:1 specimen sheet the
+sections are full-height cards: "fit this section" is limited by the height it already fills and
+resolves to a scale of about 1, i.e. the reader double-clicks *Typography* and nothing happens. So a
+tall section is filled to the width and panned down like a column of text, with the crop capped at 3x
+the height that would fit so "zoom to this" can never leave a tenth of the thing on screen. A node
+whose shape is within 1.5x of the stage's is still a plain centred fit that crops nothing.
+
+![Zoomed about the pointer with ⌘/Ctrl + wheel, the overlay still a hairline over the shape](design/evidence/serve-design-page/serve-design-page-zoom-wheel.light.png)
+
+Everything the reader sees *on top of* the sheet is counter-scaled as the drawing grows: an outline
+drawn 2 px at 1x would be a 24 px slab at 12x, and a score badge would be a billboard. The tooltip
+and the zoom bar sit outside the zooming layer entirely — a tooltip scaled 12x is unreadable, and a
+control that panned away with the sheet could not be reached to undo the pan.
+
+Clicking a component still **goes**, at any zoom, so the first click of a double-click over a slot
+follows that anchor rather than drilling. Deferring the anchor behind a *was that a double-click?*
+timer would put a couple of hundred milliseconds on every navigation on the page and reach the
+destination by script rather than by the browser following a link — which is what makes the middle
+click, the modifier click and the status-bar preview work. Drilling is a gesture of the **sheet**;
+going is a gesture of a **slot**. A section's title, its ground and the space between its specimens
+are all sheet, which is where a reader zooming into *Typography* clicks.
+
+Tabbing the sheet while zoomed pans the focused node into view before parking its tooltip there;
+without that, keyboard focus would light up an outline somewhere off-screen.
+
+All of it is `<cp-page-zoom>`, a Lit component in [`cli/serve-web`](../cli/serve-web/README.md)
+rather than a block inside the page's legacy `design-page.js` — the first component of that migration
+with no legacy file behind it. The framing arithmetic (what to fit, when to fill the width instead,
+which level of the tree is "one level in") lives in a DOM-free module beside it, so the cases that
+actually break it are unit tests instead of screenshots.
+
 ### A gap is a component, not everything unlinked
 
 Red is reserved for something a catalog could actually implement and hasn't. Two kinds of unlinked

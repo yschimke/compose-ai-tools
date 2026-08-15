@@ -1667,20 +1667,53 @@ class ServeWebFixtureTest {
     // The design page's inlined export. Run through the real [SvgSanitizer] rather than pasted in
     // whole, so the golden HTML is what the server would actually emit — including anything the
     // sanitizer strips.
+    //
+    // NESTED, like a real one, and that is load-bearing rather than decoration. A Figma export is a
+    // tree — a page holds cards, a card holds slots, a slot holds the component — and
+    // `design-page.js` reads that tree as the levels a double-click drills through (see its zoom
+    // section). While this fixture was FLAT, every node on it was a sibling of every other, so the
+    // whole nested-zoom gesture was unreachable from the harness and a regression in it would have
+    // moved no baseline. The two cards and their slots are also painted, for the same reason:
+    // drilling resolves against the browser's hit test, so a level with nothing drawn in it can
+    // only ever be found by the fallback bbox scan, which is not the path a reader takes.
     val designPageSvg =
       checkNotNull(
         SvgSanitizer.sanitize(
           """
           <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
             <rect width="1200" height="800" fill="#F7F2FA"/>
-            <g data-node-id="1:0"><rect x="120" y="170" width="1020" height="560" fill="none"/></g>
-            <g data-node-id="1:9"><rect x="40" y="32" width="1120" height="64" rx="16" fill="#EADDFF"/></g>
-            <g data-node-id="1:1"><circle cx="180" cy="300" r="90" fill="#6750A4"/></g>
-            <g data-node-id="1:2"><rect x="330" y="210" width="180" height="180" rx="36" fill="#6750A4"/></g>
-            <g data-node-id="1:3"><path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/></g>
-            <g data-node-id="1:4"><rect x="840" y="255" width="240" height="90" rx="45" fill="#6750A4"/></g>
-            <g data-node-id="1:5"><rect x="330" y="500" width="180" height="180" rx="90" fill="#6750A4"/></g>
-            <g data-node-id="1:6"><rect x="600" y="500" width="180" height="180" fill="#6750A4"/></g>
+            <g data-node-id="1:0"><rect x="40" y="90" width="1140" height="690" fill="none"/></g>
+            <g data-node-id="1:9"><rect x="40" y="20" width="1120" height="50" rx="16" fill="#EADDFF"/></g>
+            <g data-node-id="1:20">
+              <rect x="40" y="90" width="560" height="690" rx="20" fill="#FFFFFF"/>
+              <g data-node-id="1:30">
+                <rect x="90" y="115" width="460" height="200" rx="12" fill="#F3EDF7"/>
+                <g data-node-id="1:1"><circle cx="320" cy="215" r="90" fill="#6750A4"/></g>
+              </g>
+              <g data-node-id="1:31">
+                <rect x="90" y="335" width="460" height="200" rx="12" fill="#F3EDF7"/>
+                <g data-node-id="1:2"><rect x="230" y="345" width="180" height="180" rx="36" fill="#6750A4"/></g>
+              </g>
+              <g data-node-id="1:32">
+                <rect x="90" y="555" width="460" height="200" rx="12" fill="#F3EDF7"/>
+                <g data-node-id="1:4"><rect x="200" y="610" width="240" height="90" rx="45" fill="#6750A4"/></g>
+              </g>
+            </g>
+            <g data-node-id="1:21">
+              <rect x="620" y="90" width="560" height="690" rx="20" fill="#FFFFFF"/>
+              <g data-node-id="1:33">
+                <rect x="670" y="115" width="460" height="200" rx="12" fill="#F3EDF7"/>
+                <g data-node-id="1:3"><path d="M900 125 L990 305 L810 305 Z" fill="#6750A4"/></g>
+              </g>
+              <g data-node-id="1:34">
+                <rect x="670" y="335" width="460" height="200" rx="12" fill="#F3EDF7"/>
+                <g data-node-id="1:5"><rect x="810" y="345" width="180" height="180" rx="90" fill="#6750A4"/></g>
+              </g>
+              <g data-node-id="1:35">
+                <rect x="670" y="555" width="460" height="200" rx="12" fill="#F3EDF7"/>
+                <g data-node-id="1:6"><rect x="810" y="565" width="180" height="180" fill="#6750A4"/></g>
+              </g>
+            </g>
           </svg>
           """
             .trimIndent()

@@ -73,6 +73,8 @@
             </div>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
+            <span class="cp-page-hint">Double-click a section to zoom · ⌘/Ctrl-scroll · drag to pan
+              · + / &#8722; / 0 by keyboard · Esc resets</span>
           </div>
           <div class="cp-page-legend" hidden>
             <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>
@@ -82,32 +84,59 @@
           </div>
           <div class="cp-page-layout">
             <div class="cp-page-stage" style="--cp-page-aspect:1.5000">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" height="800" viewBox="0 0 1200 800" width="1200">
+              <div class="cp-page-canvas" data-cp-page-canvas>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" height="800" viewBox="0 0 1200 800" width="1200">
   <rect fill="#F7F2FA" height="800" width="1200"/>
-  <g data-node-id="1:0"><rect fill="none" height="560" width="1020" x="120" y="170"/></g>
-  <g data-node-id="1:9"><rect fill="#EADDFF" height="64" rx="16" width="1120" x="40" y="32"/></g>
-  <g data-node-id="1:1"><circle cx="180" cy="300" fill="#6750A4" r="90"/></g>
-  <g data-node-id="1:2"><rect fill="#6750A4" height="180" rx="36" width="180" x="330" y="210"/></g>
-  <g data-node-id="1:3"><path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/></g>
-  <g data-node-id="1:4"><rect fill="#6750A4" height="90" rx="45" width="240" x="840" y="255"/></g>
-  <g data-node-id="1:5"><rect fill="#6750A4" height="180" rx="90" width="180" x="330" y="500"/></g>
-  <g data-node-id="1:6"><rect fill="#6750A4" height="180" width="180" x="600" y="500"/></g>
+  <g data-node-id="1:0"><rect fill="none" height="690" width="1140" x="40" y="90"/></g>
+  <g data-node-id="1:9"><rect fill="#EADDFF" height="50" rx="16" width="1120" x="40" y="20"/></g>
+  <g data-node-id="1:20">
+    <rect fill="#FFFFFF" height="690" rx="20" width="560" x="40" y="90"/>
+    <g data-node-id="1:30">
+      <rect fill="#F3EDF7" height="200" rx="12" width="460" x="90" y="115"/>
+      <g data-node-id="1:1"><circle cx="320" cy="215" fill="#6750A4" r="90"/></g>
+    </g>
+    <g data-node-id="1:31">
+      <rect fill="#F3EDF7" height="200" rx="12" width="460" x="90" y="335"/>
+      <g data-node-id="1:2"><rect fill="#6750A4" height="180" rx="36" width="180" x="230" y="345"/></g>
+    </g>
+    <g data-node-id="1:32">
+      <rect fill="#F3EDF7" height="200" rx="12" width="460" x="90" y="555"/>
+      <g data-node-id="1:4"><rect fill="#6750A4" height="90" rx="45" width="240" x="200" y="610"/></g>
+    </g>
+  </g>
+  <g data-node-id="1:21">
+    <rect fill="#FFFFFF" height="690" rx="20" width="560" x="620" y="90"/>
+    <g data-node-id="1:33">
+      <rect fill="#F3EDF7" height="200" rx="12" width="460" x="670" y="115"/>
+      <g data-node-id="1:3"><path d="M900 125 L990 305 L810 305 Z" fill="#6750A4"/></g>
+    </g>
+    <g data-node-id="1:34">
+      <rect fill="#F3EDF7" height="200" rx="12" width="460" x="670" y="335"/>
+      <g data-node-id="1:5"><rect fill="#6750A4" height="180" rx="90" width="180" x="810" y="345"/></g>
+    </g>
+    <g data-node-id="1:35">
+      <rect fill="#F3EDF7" height="200" rx="12" width="460" x="670" y="555"/>
+      <g data-node-id="1:6"><rect fill="#6750A4" height="180" width="180" x="810" y="565"/></g>
+    </g>
+  </g>
 </svg>
-              <template data-cp-page-render-source><img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:1" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
+                <template data-cp-page-render-source><img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:1" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
 <img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:2" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
 <img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:3" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
 <img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:404" src="/render/com.example.ProfileCardPreview.png?session=compose-m3"></template>
-              <template data-cp-page-diff-links><a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:1" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
+                <template data-cp-page-diff-links><a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:1" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
 <a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:2" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
 <a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:3" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
 <a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:404" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a></template>
-              <a class="cp-page-node" data-link="manifest" href="/p/com.example.ProfileCardPreview?session=compose-m3" data-cp-node="1:1" title="Shape=Circle — ui/Shapes.kt#CircleShape"><span class="cp-visually-hidden">Shape=Circle — ui/Shapes.kt#CircleShape</span></a>
+                <a class="cp-page-node" data-link="manifest" href="/p/com.example.ProfileCardPreview?session=compose-m3" data-cp-node="1:1" title="Shape=Circle — ui/Shapes.kt#CircleShape"><span class="cp-visually-hidden">Shape=Circle — ui/Shapes.kt#CircleShape</span></a>
 <a class="cp-page-node" data-link="manifest" href="/p/com.example.ProfileCardPreview?session=compose-m3" data-cp-node="1:2" title="Shape=Square — ui/Shapes.kt#SquareShape"><span class="cp-visually-hidden">Shape=Square — ui/Shapes.kt#SquareShape</span></a>
 <a class="cp-page-node" data-link="convention" href="/p/com.example.ProfileCardPreview?session=compose-m3" data-cp-node="1:3" title="Shape=Triangle — ui/Shapes.kt#TriangleShape"><span class="cp-visually-hidden">Shape=Triangle — ui/Shapes.kt#TriangleShape</span></a>
 <a class="cp-page-node" data-link="manifest" href="https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-4" data-cp-node="1:4" title="Shape=Pill — ui/Shapes.kt#PillShape"><span class="cp-visually-hidden">Shape=Pill — ui/Shapes.kt#PillShape</span></a>
 <a class="cp-page-node" data-link="unlinked" data-cp-gap href="https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-6" data-cp-node="1:6" title="Shape=Ghost-ish — no code behind this"><span class="cp-visually-hidden">Shape=Ghost-ish — no code behind this</span></a>
 <a class="cp-page-node" data-link="manifest" href="/p/com.example.ProfileCardPreview?session=compose-m3" data-cp-node="1:404" title="Shape=Flattened — ui/Shapes.kt#FlowerShape"><span class="cp-visually-hidden">Shape=Flattened — ui/Shapes.kt#FlowerShape</span></a>
+              </div>
               <div class="cp-page-tip" data-cp-page-tip hidden aria-live="polite"></div>
+              <cp-page-zoom hidden></cp-page-zoom>
             </div>
             <details class="cp-page-nodes">
               <summary>5 of 6 components implemented</summary>
@@ -122,6 +151,9 @@
             </details>
           </div>
         </div>
+        <!-- The zoom lives in the Lit bundle (`<cp-page-zoom>`); the sheet's overlays, lanes and
+             per-node scoring are still `design-page.js`, awaiting their own port. -->
+        <script src="/assets/serve/fixture/serve-components.js"></script>
         <script src="/assets/serve/fixture/format-compare.js"></script>
         <script src="/assets/serve/fixture/design-page.js"></script>
         </main>

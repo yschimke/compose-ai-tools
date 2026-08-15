@@ -2296,15 +2296,56 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      sheet stays light in dark mode rather than being composited onto a dark surface. */
   background: #fff;
 }
+/* Everything that ZOOMS, in one layer: the export, the overlays over it, the renders inside those.
+   One transform on this element moves the sheet and its whole instrumentation together, so a slot
+   cannot drift off the shape it stands in no matter how far in the reader is — which is the whole
+   reason the transform is here rather than on the SVG.
+
+   Filling the stage exactly (`inset: 0`) is load-bearing twice over: it is what makes the overlays'
+   percentage placement mean "percent of the stage", and `transform` on it makes it their containing
+   block, so that stays true once a zoom is applied. The tip and the zoom bar are deliberately NOT
+   in here — a tooltip that scaled 12x would be unreadable, and a control that panned away with the
+   sheet could not be reached to undo the pan. */
+.cp-page-canvas {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  /* Eased, so a double-click READS as travel into the sheet rather than as a jump cut to somewhere
+     else. Suppressed while a wheel-zoom or a drag is in flight (`.cp-page-canvas-live`), where the
+     gesture is already continuous and a transition would lag the pointer. */
+  transition: transform 170ms ease-out;
+}
+.cp-page-canvas-live { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .cp-page-canvas { transition: none; }
+}
 /* The inlined export. `width/height: 100%` on the element and the frame's own aspect on the stage
    between them make the SVG's user units and the stage's pixels a fixed ratio, which is what lets
    a measured node box stay correct through any resize. */
-.cp-page-stage > svg {
+.cp-page-canvas > svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+}
+/* Zoomed in, the sheet is bigger than its window, so the stage becomes something you drag. Grab
+   rather than `move`: the hand says "the surface comes with you", which is what a pan does.
+
+   `touch-action: none` is what makes that drag work with a FINGER. Without it the browser is free
+   to claim the gesture for its own scroll or pinch, and the moment it does it fires `pointercancel`
+   — the pan stops receiving moves a few pixels in, so the advertised interaction half-works.
+   Scoped to the zoomed state, so at 1:1 the stage is an ordinary part of a scrollable page. */
+.cp-page-zoomed {
+  cursor: grab;
+  touch-action: none;
+}
+.cp-page-zoomed.cp-page-panning { cursor: grabbing; }
+/* A pan must not select the sheet's text on the way past, and an overlay is an `<a>` — which a
+   browser will happily start dragging as a link instead. */
+.cp-page-zoomed .cp-page-canvas {
+  user-select: none;
+  -webkit-user-drag: none;
 }
 /* The design's own drawing of a node we have a render for, hidden so ours can stand in its place.
    `visibility` rather than `display`: a hidden SVG element keeps its box, so the measurement that
@@ -2451,6 +2492,110 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    reads as a link rather than as something to select in place. */
 .cp-page-diff-on .cp-page-node { cursor: zoom-in; }
 .cp-page-diff-link { display: none; }
+/* ── Zoom ──────────────────────────────────────────────────────────────────────────────────────
+   A specimen sheet is 6263 px wide in the design and lands in a column a sixth of that, so its
+   labels are sub-pixel and its swatch numbers are gone. Zoom is what makes the surface readable at
+   all — and it is a TRANSFORM on `.cp-page-canvas`, not a re-render, so the export stays vector
+   sharp all the way in and the overlays stay welded to the shapes they mark.
+
+   Everything the reader sees ON TOP of the sheet is counter-scaled by `--cp-page-zoom` so it keeps
+   its size in screen pixels: a mark drawn 2 px at 1x would be a 24 px slab at 12x, and a score badge
+   would be a billboard. The instrumentation should not grow just because the drawing did.
+
+   The OUTLINE and its offset, not `border-width` — a node's mark is an inset outline precisely so
+   the box it paints on stays the measured node box for the render inside it (see `.cp-page-node`
+   above), and its `border` is 0. Counter-scaling the border is a no-op that looks like it works. */
+.cp-page-node {
+  outline-width: calc(2px / var(--cp-page-zoom, 1));
+  outline-offset: calc(-2px / var(--cp-page-zoom, 1));
+}
+.cp-page-node:hover,
+.cp-page-node:focus-visible,
+.cp-page-node.cp-page-active {
+  box-shadow: 0 0 0 calc(2px / var(--cp-page-zoom, 1))
+    color-mix(in srgb, var(--cp-page-node-color, #2da44e) 45%, transparent);
+}
+.cp-page-node.cp-page-selected {
+  box-shadow:
+    0 0 0 calc(2px / var(--cp-page-zoom, 1)) #fff,
+    0 0 0 calc(4px / var(--cp-page-zoom, 1)) var(--cp-page-node-color, #2da44e);
+}
+/* The badge's SIZE and its INSET both, or the score walks away from the corner it marks: `right`
+   and `bottom` resolve inside the transformed layer, so a 2 px inset paints 24 px in at 12x and 48
+   at the cap — far enough to sit over the middle of the component it is scoring. */
+.cp-page-diff-on .cp-page-score {
+  right: calc(2px / var(--cp-page-zoom, 1));
+  bottom: calc(2px / var(--cp-page-zoom, 1));
+  transform: scale(calc(1 / var(--cp-page-zoom, 1)));
+  transform-origin: 100% 100%;
+}
+/* The way back out, and the readout that says how far in you are — `<cp-page-zoom>`, which renders
+   its own buttons into this pill (light DOM, so these rules reach them). Subtle on purpose: it is
+   parked in the stage's bottom-right corner, it is only there while the sheet IS zoomed (at 1:1 there
+   is nothing to reset, and a permanent control would be chrome over the drawing), and it sits at
+   two-thirds opacity until pointed at.
+
+   `display: flex` beats the `hidden` attribute on its own — the same trap the legend fell into — so
+   the tag has to be told to respect it, or an unzoomed sheet would carry a bar offering to reset a
+   zoom nobody applied. The server ships it `hidden` for that reason too: the element only unhides
+   itself once there is a zoom. */
+cp-page-zoom {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cp-surface, #fff) 88%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+  color: var(--cp-fg-muted);
+  font-size: 0.72rem;
+  opacity: 0.62;
+  transition: opacity 120ms ease;
+}
+cp-page-zoom[hidden] { display: none; }
+cp-page-zoom:hover,
+cp-page-zoom:focus-within { opacity: 1; }
+cp-page-zoom button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.cp-page-zoom-step {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.95rem;
+}
+.cp-page-zoom-reset { padding: 0.3rem 0.5rem; }
+cp-page-zoom button:hover {
+  background: color-mix(in srgb, var(--cp-accent, #6750a4) 14%, transparent);
+  color: var(--cp-fg);
+}
+cp-page-zoom button:focus-visible {
+  outline: 2px solid var(--cp-accent, #6750a4);
+  outline-offset: -1px;
+}
+.cp-page-zoom-level {
+  min-width: 3rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* How the sheet is driven, said once next to the controls rather than discovered by accident.
+   Double-click is not a gesture anyone tries on a picture unprompted, and the modifier on the wheel
+   is the half nobody guesses. */
+.cp-page-hint {
+  color: var(--cp-fg-muted);
+  font-size: 0.72rem;
+}
 .cp-page-controls {
   display: flex;
   flex-wrap: wrap;
