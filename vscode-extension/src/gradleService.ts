@@ -498,6 +498,7 @@ export class GradleService {
     async composePreviewDiscover(
         module: ModuleInfo,
         opts?: TaskOptions,
+        forceFresh = false,
     ): Promise<PreviewManifest | null> {
         if (!isModulePreviewSchedulable(module)) {
             this.logDisabledSkip(module, "composePreviewDiscover");
@@ -506,7 +507,14 @@ export class GradleService {
         const key = module.modulePath;
         const inFlight = this.inFlightDiscover.get(key);
         if (inFlight) {
-            return inFlight;
+            if (!forceFresh) {
+                return inFlight;
+            }
+            try {
+                await inFlight;
+            } catch {
+                /* force-fresh recovery below gets its own attempt */
+            }
         }
         // The cold-start bundle may include `:<module>:composePreviewDiscover` and
         // write the manifest into [manifestCache] on completion. Awaiting an
@@ -520,7 +528,10 @@ export class GradleService {
         // the serialised Gradle queue) and then start a fresh discover.
         const inFlightBundle = this.inFlightColdStart.get(key);
         if (inFlightBundle) {
-            if (this.inFlightColdStartIncludesDiscover.get(key)) {
+            if (
+                !forceFresh &&
+                this.inFlightColdStartIncludesDiscover.get(key)
+            ) {
                 return inFlightBundle;
             }
             try {
@@ -530,11 +541,24 @@ export class GradleService {
             }
         }
         const cached = this.manifestCache.get(key);
-        if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
+        if (
+            !forceFresh &&
+            cached &&
+            Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS
+        ) {
             return cached.manifest;
         }
         const promise = (async (): Promise<PreviewManifest | null> => {
-            await this.runTask(`${key}:composePreviewDiscover`, [], opts);
+            // A daemon `discoveryUpdated.added` is authoritative evidence that compiled bytecode
+            // contains a preview missing from the on-disk manifest. This can happen when a
+            // concurrent render's discovery snapshots Kotlin's output directory during the brief
+            // clean-before-write window and leaves an asset-only `previews.json` behind. Gradle
+            // may subsequently consider that poisoned discovery up-to-date, so the recovery path
+            // must defeat both task history and the build cache (issue #3850).
+            const args = forceFresh
+                ? ["--rerun-tasks", "--no-build-cache"]
+                : [];
+            await this.runTask(`${key}:composePreviewDiscover`, args, opts);
             const manifest = this.readManifest(module);
             if (manifest) {
                 this.manifestCache.set(key, {

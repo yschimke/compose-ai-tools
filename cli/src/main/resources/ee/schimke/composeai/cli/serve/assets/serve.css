@@ -327,7 +327,10 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-section-count { padding: 4px 10px; border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant); font-weight: 500; }
-.cp-catalog-id { margin: 0 0 14px; font-family: var(--md-sys-typescale-mono-font); }
+.cp-catalog-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px;
+  margin: 0 0 4px; }
+.cp-catalog-title .cp-head, .cp-catalog-title .cp-catalog-id { margin: 0; }
+.cp-catalog-id { font-family: var(--md-sys-typescale-mono-font); }
 .cp-catalog-head { font-size: var(--md-sys-typescale-headline-small-size);
   line-height: var(--md-sys-typescale-headline-small-line); }
 /* Per-preview GitHub links under the viewer title: source file, and "report an issue". One flex
@@ -403,8 +406,8 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary);
   text-decoration: none; }
 /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
-   a link to re-run the generating workflow). Shown near the catalog header. */
-.cp-prov { margin: 0 0 18px; padding: 14px 18px; border: 0;
+   a link to re-run the generating workflow). It closes the catalog below its content. */
+.cp-prov { margin: 18px 0 0; padding: 14px 18px; border: 0;
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low);
   font-size: var(--md-sys-typescale-body-small-size);
@@ -451,6 +454,7 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    in `.cp-catalog-tools` directly beneath. */
 .cp-catalog-actions { margin: 0 0 18px; display: flex; align-items: center; flex-wrap: wrap;
   gap: 8px; }
+.cp-catalog-download { margin: 30px 0 0; }
 .cp-action-chip { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
@@ -497,10 +501,14 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 @media (min-width: 960px) {
   .cp-catalog-body { display: grid; grid-template-columns: minmax(168px, 216px) minmax(0, 1fr);
     gap: 32px; align-items: start; }
-  .cp-tree { position: sticky; top: calc(var(--cp-sticky-tools, 64px) + 12px); margin: 0;
-    max-height: calc(100vh - var(--cp-sticky-tools, 64px) - 28px);
+  .cp-catalog-menu { position: sticky; top: calc(var(--cp-sticky-tools, 0px) + 12px);
+    max-height: calc(100vh - var(--cp-sticky-tools, 0px) - 28px);
     overflow-y: auto; overscroll-behavior: contain; }
 }
+.cp-catalog-menu { margin: 0 0 22px; }
+.cp-catalog-menu .cp-searchbar { display: block; margin: 0 0 18px; }
+.cp-catalog-menu .cp-search { width: 100%; min-width: 0; padding-inline: 14px; }
+.cp-catalog-menu .cp-tree { margin: 0; }
 .cp-tree { margin: 0 0 22px; }
 .cp-tree-list, .cp-tree-children { list-style: none; margin: 0; padding: 0; }
 .cp-tree-node[hidden], .cp-tree-children li[hidden] { display: none; }

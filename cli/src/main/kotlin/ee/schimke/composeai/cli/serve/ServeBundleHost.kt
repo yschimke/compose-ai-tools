@@ -203,6 +203,11 @@ class ServeBundleHost(
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     annotations.forReference(referenceId)
 
+  private val tagIndex = ServeTagIndexStore.load(bundleDir, fileSystem)
+
+  override fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
+    tagIndex.forPreview(previewId)
+
   /**
    * Per-preview `state`/`theme` from the catalog's `previews/variants.json` manifest (written by
    * [ServeCatalogStore]). Empty for a plain uploaded bundle that carries no manifest — every

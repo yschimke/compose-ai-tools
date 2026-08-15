@@ -34,18 +34,25 @@ package ee.schimke.composeai.cli.serve
  *    This is the step that turns "expect unresolved references" into a buffer that compiles.
  * 6. **Prune imports** to what survived, add what the rewrites need, stamp a real `@Preview`.
  *
- * ### Why this is a text pass and not a parse
+ * ### Part parse, part text scan
  *
- * A PSI pass would be more general, and it is not available here: the Kotlin frontend is
- * deliberately kept off the CLI's classpath (`cli/build.gradle.kts` — it is staged into `lib-bta/`
- * and loaded in an isolated classloader only for an actual compile). Pulling a compiler frontend
- * into the serve process to prettify a seed would be a bad trade.
+ * This began as pure text, because the Kotlin frontend is deliberately kept off the CLI's classpath
+ * (`cli/build.gradle.kts`). The snippet corpus then showed what that cost: named-argument binding,
+ * a receiver chain mistaken for a package qualifier, a trailing-lambda call with no parentheses, a
+ * qualified call no pass could see — five defects, all of them structure being guessed at.
  *
- * So this scans text, and it is built to **fail in the safe direction**: every pass is masked
- * against string and comment content so it cannot rewrite inside a literal, and anything it does
- * not understand it leaves alone. [Result.residue] reports declared scaffolding that survived, so a
- * seed that came out half-cleaned can say so rather than pretending. The caller falls back to the
- * verbatim slice when [clean] returns null.
+ * So the structural questions now go to a real parse. [UsageSourceParser] loads `:usage-source-psi`
+ * into the *same kind* of isolated classloader the playground compiler already uses, so the
+ * frontend still never reaches the CLI's own classpath; [applySubstituteParsed] and the residue
+ * scan read [UsageSourceFacts] rather than regex. The remaining passes are still text, and the
+ * whole parse is optional: a host with no staged sidecar keeps the text path, which is what shipped
+ * before.
+ *
+ * Either way it is built to **fail in the safe direction**: every text pass is masked against
+ * string and comment content so it cannot rewrite inside a literal, anything it does not understand
+ * it leaves alone, and [Result.residue] reports declared scaffolding that survived — so a seed that
+ * came out half-cleaned says so rather than pretending. The caller falls back to the verbatim slice
+ * when [clean] returns null.
  *
  * The formatting assumptions are ktfmt's (Google style), which every catalog in these repos is
  * formatted with: one argument per line in a wrapped call, a blank line between top-level
@@ -77,6 +84,7 @@ object PlaygroundSourceCleaner {
     bodyLine: Int?,
     rules: UsageRules,
     strings: Map<String, String> = emptyMap(),
+    parser: UsageSourceParser? = UsageSourceParser.of(),
   ): Result? {
     if (bodyLine == null) return null
     val lines = source.lines()
@@ -111,6 +119,7 @@ object PlaygroundSourceCleaner {
           isEntry = index == entryIndex,
           residue = residue,
           addedImports = addedImports,
+          parser = parser,
         )
       cleanedByIndex[index] = cleaned
       for ((name, at) in declaredAt) {
@@ -312,6 +321,7 @@ object PlaygroundSourceCleaner {
     isEntry: Boolean,
     residue: MutableSet<String>,
     addedImports: MutableSet<String>,
+    parser: UsageSourceParser?,
   ): String {
     var out = stripScaffoldAnnotations(text, imports, rules)
     out = inlineStringResources(out, strings)
@@ -322,13 +332,28 @@ object PlaygroundSourceCleaner {
     // substitution lands before DROP inspects the argument it sits in. DROP, then RENAME last —
     // renaming early would hide a name the other passes match on.
     out = applyUnwrap(out, rules)
-    out = applySubstitute(out, rules, addedImports)
+    // The parse settles argument binding, trailing-lambda calls and qualifiers; the text pass is
+    // the fallback for a host with no staged sidecar (see [UsageSourceParser]).
+    out =
+      if (parser != null) applySubstituteParsed(out, rules, addedImports, parser)
+      else applySubstitute(out, rules, addedImports)
+    // After SUBSTITUTE, so a knob in the initializer (`toggleable(catalogEnabled())`) is already
+    // plain by the time the state declaration quotes it. Parsed-only by design — see
+    // [UsageRules.Kind.DESTRUCTURE].
+    if (parser != null) out = applyDestructureParsed(out, rules, addedImports, parser)
     out = applyInline(out, rules)
     out = applyDrop(out, rules, residue)
     out = applyRename(out, rules, addedImports)
     if (isEntry) out = stampPreview(out, rules, addedImports)
+    // Residue: declared scaffolding that survived. With a parse, every *call* is visible however it
+    // is qualified — which is what the text scan structurally could not do, since it rejects a name
+    // after a `.` by design. The word scan stays alongside it for non-call references (a binding, a
+    // resource key) that no call node would report.
+    val calledNames =
+      parser?.facts(out)?.calls?.map { it.callee }?.toSet()
+        ?: rules.scaffolds.keys.filter { mentionsQualifiedCall(out, it) }.toSet()
     for (name in rules.scaffolds.keys) {
-      if (mentionsWord(out, name) || mentionsQualifiedCall(out, name)) residue.add(name)
+      if (name in calledNames || mentionsWord(out, name)) residue.add(name)
     }
     return out.trimEnd()
   }
@@ -563,6 +588,165 @@ object PlaygroundSourceCleaner {
       }
     }
     return bound.toList()
+  }
+
+  /**
+   * `val (checked, onCheckedChange) = toggleable(true)` → `var checked by remember {
+   * mutableStateOf(true) }`, with every use of `onCheckedChange` becoming `{ checked = it }`.
+   *
+   * ### Why this one could not be a text pass
+   *
+   * The other kinds rewrite an expression or delete a binding. This replaces a **declaration** and
+   * rebinds a *second* name that the declaration introduced — so it has to know the destructuring
+   * exists, which names it binds, in what order, and where its initializer starts and ends. A regex
+   * that thought it knew those things is how this file earned most of its review findings, which is
+   * why the kind is gated on the parser being staged rather than degrading to a guess.
+   *
+   * ### All or nothing, per declaration
+   *
+   * The same discipline [applyDrop] uses. If the template cites an argument the call does not have,
+   * or the declaration binds a shape the rule does not describe (one name, or three), the whole
+   * rewrite is abandoned for that declaration and the helper is left exactly as the catalog wrote
+   * it — reported as residue. A half-applied state rewrite compiles to something subtly wrong,
+   * which is worse than a snippet that visibly still calls a helper.
+   */
+  private fun applyDestructureParsed(
+    text: String,
+    rules: UsageRules,
+    addedImports: MutableSet<String>,
+    parser: UsageSourceParser,
+  ): String {
+    if (rules.scaffolds.none { it.value.kind == UsageRules.Kind.DESTRUCTURE }) return text
+    var out = text
+    var guard = 0
+    while (guard++ < MAX_REWRITES) {
+      val facts = parser.facts(out) ?: return out
+      val rewrite =
+        facts.destructurings
+          .asSequence()
+          .mapNotNull { declaration ->
+            // The initializer, as a call: the facts report the two separately, and the call is what
+            // carries the callee, its arguments and its receiver.
+            val call =
+              facts.calls.firstOrNull {
+                it.replaceStart == declaration.initializerStart ||
+                  it.start == declaration.initializerStart
+              } ?: return@mapNotNull null
+            val scaffold = rules.scaffolds[call.callee] ?: return@mapNotNull null
+            if (scaffold.kind != UsageRules.Kind.DESTRUCTURE) return@mapNotNull null
+            // Same guard the substitution pass carries: a matching name on somebody else's receiver
+            // is not this scaffold.
+            if (call.receiver != null && call.receiver !in rules.scaffoldPackages) {
+              return@mapNotNull null
+            }
+            val plain = scaffold.plain ?: return@mapNotNull null
+            // Exactly the value/setter pair the kind describes. Anything else is a shape the rule
+            // does not speak for.
+            if (declaration.names.size != 2) return@mapNotNull null
+            val (value, setterName) = declaration.names
+            if (value.isEmpty() || setterName.isEmpty()) return@mapNotNull null
+            val args = facts.bind(call, scaffold.params) ?: return@mapNotNull null
+            val render = { template: String ->
+              Regex("""\$(\d+)|\${'$'}value|\${'$'}setter""").replace(template) { m ->
+                when (m.value) {
+                  "\$value" -> value
+                  "\$setter" -> setterName
+                  else -> args.getOrNull(m.groupValues[1].toInt()) ?: m.value
+                }
+              }
+            }
+            val declarationText = render(plain)
+            val setterText = scaffold.setter?.let(render)
+            if (declarationText.contains(Regex("""\${'$'}\d"""))) return@mapNotNull null
+            if (setterText?.contains(Regex("""\${'$'}\d""")) == true) return@mapNotNull null
+            Triple(declaration, declarationText to setterText, scaffold)
+          }
+          .firstOrNull() ?: return out
+
+      val (declaration, replacements, scaffold) = rewrite
+      val (declarationText, setterText) = replacements
+      if (declaration.start < 0 || declaration.end > out.length) return out
+
+      // The declaration and every reference to the setter name, from **one** parse, applied
+      // right-to-left so earlier offsets stay valid. Not `replaceWord`: that also rewrites the
+      // argument *label* in `Switch(onCheckedChange = onCheckedChange)`, which produced
+      // `{ checked = it } = { checked = it }` — the parse separates a label from a reference and a
+      // word scan cannot.
+      val edits = buildList {
+        add(declaration.start to declaration.end to declarationText)
+        if (setterText != null) {
+          facts.references
+            .filter { it.name == declaration.names[1] && it.start >= declaration.end }
+            .forEach { add(it.start to it.end to setterText) }
+        }
+      }
+      for ((range, replacement) in edits.sortedByDescending { it.first.first }) {
+        val (start, end) = range
+        if (start < 0 || end > out.length || start >= end) return out
+        out = out.substring(0, start) + replacement + out.substring(end)
+      }
+      scaffold.addImport?.let { addedImports.add(it) }
+      addedImports.addAll(scaffold.addImports)
+    }
+    return out
+  }
+
+  /**
+   * [applySubstitute] over a real parse: the same rules, with the guesswork removed.
+   *
+   * What changes against the text pass, all of it something the snippet corpus caught:
+   * - arguments bind the way Kotlin binds them, named or positional, in any order;
+   * - a trailing-lambda call (`counted { }`) is a call, though it has no parentheses;
+   * - a qualified call replaces as a whole — no separate unqualifying step, and no regex deciding
+   *   from shape whether `state.metrics` was a package.
+   *
+   * Re-parses after each rewrite rather than batching edits, so a knob nested inside another call
+   * (`counted(catalogChoice(…))`) is plain by the time the outer call's argument text is read.
+   * Innermost-first — descending start offset — for the same reason. Blocks are a declaration each
+   * and parsing one costs well under a millisecond, so the loop is cheaper than the bookkeeping
+   * that would replace it.
+   */
+  private fun applySubstituteParsed(
+    text: String,
+    rules: UsageRules,
+    addedImports: MutableSet<String>,
+    parser: UsageSourceParser,
+  ): String {
+    var out = text
+    var guard = 0
+    while (guard++ < MAX_REWRITES) {
+      val facts = parser.facts(out) ?: return out
+      val edit =
+        facts.calls
+          .asSequence()
+          .filter { rules.scaffolds[it.callee]?.kind == UsageRules.Kind.SUBSTITUTE }
+          // A matching *name* is not a matching call. `state.previewOverrideString(…)` is
+          // somebody's
+          // member function, and the replacement range covers the whole qualified expression — so
+          // substituting on the name alone would delete their receiver and their call. Only a bare
+          // call, or one qualified by a package the rules name, is this scaffold.
+          .filter { it.receiver == null || it.receiver in rules.scaffoldPackages }
+          .sortedByDescending { it.start }
+          .mapNotNull { call ->
+            val scaffold = rules.scaffolds.getValue(call.callee)
+            val plain = scaffold.plain ?: return@mapNotNull null
+            val args = facts.bind(call, scaffold.params) ?: return@mapNotNull null
+            val rendered =
+              Regex("""\$(\d+)""").replace(plain) { m ->
+                args.getOrNull(m.groupValues[1].toInt()) ?: m.value
+              }
+            // A template citing an argument the call does not have would emit a literal `$1`. Leave
+            // the call alone; the residue scan then reports it as an unwritten rule.
+            if (rendered.contains(Regex("""\$\d"""))) null
+            else Triple(call.replaceStart, call.replaceEnd, rendered to scaffold)
+          }
+          .firstOrNull() ?: return out
+      val (start, end, replacement) = edit
+      if (start < 0 || end > out.length || start >= end) return out
+      out = out.substring(0, start) + replacement.first + out.substring(end)
+      replacement.second.addImport?.let { addedImports.add(it) }
+    }
+    return out
   }
 
   /**

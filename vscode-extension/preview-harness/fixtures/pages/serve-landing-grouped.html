@@ -53,26 +53,25 @@
   </nav>
 </header>
         <main class="cp-main">
-                <h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1></div>
         <p class="cp-sub">14 preview(s)</p>
         <div class="cp-catalog-actions">
-          <a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a>
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
         </div>
-        <div class="cp-catalog-tools">
-        <div class="cp-toolbar">
+<div class="cp-catalog-tools">
+<div class="cp-toolbar">
   <span class="cp-theme" role="group" aria-label="Preview theme">
     <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
   </span>
 </div>
+</div>
+<div class="cp-catalog-body">
+<aside class="cp-catalog-menu" aria-label="Catalog menu">
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="14"></span>
-  <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
 </div>
-</div>
-        <div class="cp-catalog-body">
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog contents">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog contents">
     <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-button" data-group="cp-group-button" aria-expanded="true" aria-owns="cp-tree-of-cp-group-button">Button<span class="cp-tree-count">3</span></a>
@@ -114,6 +113,7 @@
 </li>
 </ul>
 </nav>
+</aside>
 <div class="cp-grid-groups" id="cp-grid">
 <div class="cp-subgroup" id="cp-group-button">
 <h2 class="cp-group-head">Button</h2>
@@ -410,7 +410,7 @@ applyThemeChoice();
         var tree = document.getElementById("cp-tabs");
         if (!tree) return;
         // The toolbar above pins itself at top:0 over everything, so publish its real height for the
-        // sticky tree's offset and for every scroll target's `scroll-margin-top`. Measured rather
+        // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
         // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
         // and the static fallback in the stylesheet only covers the unwrapped case.
         // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
@@ -653,6 +653,8 @@ applyThemeChoice();
       })();
       apply();
     })();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>
+
 <details class="cp-about cp-disclosure">
   <summary>
     <span class="cp-about-title">About this preview server</span>

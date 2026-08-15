@@ -2202,18 +2202,16 @@ object ServeWeb {
 
   /**
    * The search box for the landing grid: a text input that filters cards to those whose label or id
-   * contains the typed text, plus a live result count. Progressive enhancement — the server emits
-   * every card and [catalogFilterScript] does the hiding, so a no-JS client still sees the full
-   * grid. Shown whenever the module has previews (independent of the theme toggle, which only
-   * appears for per-theme catalogs). [count] seeds the total for the "N of M" readout.
+   * contains the typed text. Progressive enhancement — the server emits every card and
+   * [catalogFilterScript] does the hiding, so a no-JS client still sees the full grid. Shown
+   * whenever the module has previews (independent of the theme toggle, which only appears for
+   * per-theme catalogs).
    */
-  private fun searchBoxHtml(count: Int): String =
+  private fun searchBoxHtml(): String =
     """
     <div class="cp-searchbar">
       <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
         autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-      <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="$count"></span>
-      ${bgPickerHtml("Show the transparent checkerboard behind each preview")}
     </div>
     """
       .trimIndent()
@@ -3027,7 +3025,7 @@ object ServeWeb {
       var tree = document.getElementById("cp-tabs");
       if (!tree) return;
       // The toolbar above pins itself at top:0 over everything, so publish its real height for the
-      // sticky tree's offset and for every scroll target's `scroll-margin-top`. Measured rather
+      // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
       // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
       // and the static fallback in the stylesheet only covers the unwrapped case.
       // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
@@ -5869,13 +5867,16 @@ object ServeWeb {
           append("</div>")
         }
       }
-    // A tree stands BESIDE what it navigates, so a sectioned catalog wraps its nav and its panels
-    // in one two-column container (a single column, tree first, below the sidebar breakpoint). A
-    // flat catalog has no nav to stand beside anything and keeps the bare grid — which is also why
-    // its committed golden is untouched by this.
+    // A tree stands BESIDE what it navigates. Its filter is part of that navigation, so the two
+    // share one sidebar and remain together when the menu becomes sticky. A small catalog with no
+    // tree keeps the filter in the toolbar above its flat grid.
+    val sidebarSearch = if (tabBar.isEmpty() || previews.isEmpty()) "" else searchBoxHtml() + "\n"
     val navAndGrid =
       if (tabBar.isEmpty()) "$tabBar$gridBlock"
-      else "<div class=\"cp-catalog-body\">\n$tabBar$gridBlock\n</div>"
+      else
+        "<div class=\"cp-catalog-body\">\n" +
+          "<aside class=\"cp-catalog-menu\" aria-label=\"Catalog menu\">\n" +
+          "$sidebarSearch$tabBar</aside>\n$gridBlock\n</div>"
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
     val about = if (isPublic) "\n" + aboutSection() else ""
@@ -5886,7 +5887,7 @@ object ServeWeb {
     // catalog page's own heading and grid then start at the top of the content column.
     val back = if (hasHomeIndex) backButton(token, isPublic) else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
-    // link), shown under the header for a served design-system catalog.
+    // link) closes the catalog instead of interrupting the route from its heading to its content.
     val prov = provenance?.let { provenanceSection(it, refreshUrl) + "\n" } ?: ""
     // The Theme control shows when there is more than one theme to choose between: a baked
     // light/dark pair to swap, and/or the app-declared themes this session can re-render under. A
@@ -5899,7 +5900,7 @@ object ServeWeb {
     // Search + empty-state + the combined filter script are shown whenever there are previews to
     // filter, independent of the theme axis.
     val hasPreviews = previews.isNotEmpty()
-    val searchBox = if (hasPreviews) searchBoxHtml(previews.size) + "\n" else ""
+    val searchBox = if (hasPreviews && tabBar.isEmpty()) searchBoxHtml() + "\n" else ""
     val emptyState =
       if (hasPreviews)
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
@@ -5977,7 +5978,6 @@ object ServeWeb {
     }
     val actionChips =
       listOfNotNull(
-          actionChip("$basePath/bundle.zip$q", "download all (.zip)"),
           compareChip("svg", "compare SVG").takeIf { hasSvgComparison },
           compareChip("rc", "compare RC players").takeIf { hasRcComparison },
           // Named after the design tool it compares against when the catalog identifies one —
@@ -6003,6 +6003,26 @@ object ServeWeb {
           playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
         )
         .joinToString("\n          ")
+    val transparentAction =
+      if (hasPreviews) bgPickerHtml("Show the transparent checkerboard behind each preview") else ""
+    val catalogActions =
+      listOf(actionChips, transparentAction).filter { it.isNotBlank() }.joinToString("\n          ")
+    val primaryActions =
+      catalogActions
+        .takeIf { it.isNotBlank() }
+        ?.let { "<div class=\"cp-catalog-actions\">\n          $it\n        </div>\n" } ?: ""
+    val downloadAction =
+      "\n<div class=\"cp-catalog-download\">" +
+        actionChip("$basePath/bundle.zip$q", "download all (.zip)") +
+        "</div>\n"
+    val titleRow =
+      "<div class=\"cp-catalog-title\">" +
+        "<h1 class=\"cp-head cp-catalog-head\">${WebEscaping.htmlEscape(heading)}" +
+        "${compactTrustBadge(trust)}</h1>$catalogId</div>"
+    val tools =
+      (themeToggle + searchBox)
+        .takeIf { it.isNotBlank() }
+        ?.let { "<div class=\"cp-catalog-tools\">\n$it</div>\n" } ?: ""
     return document(
       title = "$heading — compose-preview",
       unfurlTitle = heading,
@@ -6018,14 +6038,9 @@ object ServeWeb {
       declaredThemes = declaredThemeChips,
       body =
         """
-        <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
-        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
-        <div class="cp-catalog-actions">
-          $actionChips
-        </div>
-        $renderFailureSummary<div class="cp-catalog-tools">
-        $themeToggle$searchBox</div>
-        $navAndGrid$emptyState$filterScript$liveScript$about
+        $titleRow
+        ${degradeBanner(degradations)}<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
+        $primaryActions$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction$prov$about
         """
           .trimIndent(),
     )

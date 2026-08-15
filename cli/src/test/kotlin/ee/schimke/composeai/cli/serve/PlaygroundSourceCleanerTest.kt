@@ -535,6 +535,141 @@ class PlaygroundSourceCleanerTest {
     assertTrue(cleaned.residue.contains("counted"), "${cleaned.residue}")
   }
 
+  /**
+   * A matching callee *name* is not a matching call.
+   *
+   * The parsed substitution pass replaces the whole qualified expression, so selecting on the name
+   * alone would delete somebody's receiver along with their call — `state.previewOverrideString(…)`
+   * is an application's own member function that happens to share a name with a scaffold. Only a
+   * bare call, or one qualified by a package the rules name, is the scaffold.
+   */
+  @Test
+  fun `a member call sharing a substitute rule's name keeps its receiver`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Title() {
+        Text(state.previewOverrideString("title", "Shopping"))
+        Text(ee.schimke.composeai.overrides.previewOverrideString("subtitle", "Basket"))
+      }
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(
+      cleaned.text.contains("state.previewOverrideString(\"title\", \"Shopping\")"),
+      "an unrelated member call was rewritten: ${cleaned.text}",
+    )
+    // The package-qualified one is the scaffold, and is substituted.
+    assertTrue(cleaned.text.contains("Text(\"Basket\")"), cleaned.text)
+  }
+
+  /**
+   * The `$known-gaps` entry m3-catalog's `compose-usage.json` carried: `toggleable` and friends
+   * return `Pair<T, (T) -> Unit>` destructured into a value and a setter, and the plain reading is
+   * real state rather than a value. Roughly 18 stickers were affected.
+   */
+  @Test
+  fun `a destructured state helper becomes remembered state`() {
+    val destructuring =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "toggleable" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.DESTRUCTURE,
+                plain = "var \$value by remember { mutableStateOf(\$0) }",
+                setter = "{ \$value = it }",
+                addImports =
+                  listOf(
+                    "androidx.compose.runtime.getValue",
+                    "androidx.compose.runtime.mutableStateOf",
+                    "androidx.compose.runtime.remember",
+                    "androidx.compose.runtime.setValue",
+                  ),
+              )
+          )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Switch
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.toggleable
+
+      @Composable
+      fun SwitchSticker() {
+        val (checked, onCheckedChange) = toggleable(true)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), destructuring)
+      )
+    assertTrue(
+      result.text.contains("var checked by remember { mutableStateOf(true) }"),
+      result.text,
+    )
+    // The setter name no longer exists, so every use of it has to be rebound — a declaration
+    // rewritten without this leaves code that reads fine and does not compile.
+    assertTrue(result.text.contains("onCheckedChange = { checked = it }"), result.text)
+    assertFalse(result.text.contains("toggleable"), result.text)
+    // `by` needs `getValue`/`setValue`, which nothing in the snippet mentions by name.
+    for (import in listOf("getValue", "setValue", "remember", "mutableStateOf")) {
+      assertTrue(result.text.contains("import androidx.compose.runtime.$import"), result.text)
+    }
+    assertEquals(emptyList(), result.residue)
+  }
+
+  /**
+   * A declaration binding a shape the rule does not describe is left alone, and reported — the same
+   * all-or-nothing discipline DROP uses. Half-rewritten state compiles to something subtly wrong,
+   * which is worse than a snippet that visibly still calls a helper.
+   */
+  @Test
+  fun `a destructuring the rule does not describe is left as residue`() {
+    val destructuring =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "triple" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.DESTRUCTURE,
+                plain = "var \$value by remember { mutableStateOf(\$0) }",
+                setter = "{ \$value = it }",
+              )
+          )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.triple
+
+      @Composable
+      fun Odd() {
+        val (a, b, c) = triple(1)
+        Text("${'$'}a ${'$'}b ${'$'}c")
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Odd"), destructuring))
+    assertTrue(result.text.contains("val (a, b, c) = triple(1)"), result.text)
+    assertTrue(result.residue.contains("triple"), "${result.residue}")
+  }
+
   /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */
   @Test
   fun `a knob with reordered named arguments still resolves its default`() {

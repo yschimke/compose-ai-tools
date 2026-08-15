@@ -175,6 +175,7 @@ private fun bundleSidecarSysprop(sidecarName: String): String =
     "lib-renderer" -> "composeai.cli.libRendererDir"
     "lib-rcjvm" -> "composeai.cli.libRcjvmDir"
     "lib-bta" -> "composeai.cli.libBtaDir"
+    "lib-usage-psi" -> "composeai.cli.libUsagePsiDir"
     else -> "composeai.cli.${sidecarName.replace('-', '.')}Dir"
   }
 

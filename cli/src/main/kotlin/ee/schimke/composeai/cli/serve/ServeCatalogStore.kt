@@ -544,6 +544,7 @@ class ServeCatalogStore(
     val referenceBranchPaths =
       writeDesignReferences(manifestReferences + catalog.references, base, staging)
     writeAnnotations(base, staging)
+    writeTagIndex(base, staging)
     writeParityActivity(base, staging)
     writeDesignPages(base, staging)
 
@@ -1534,6 +1535,35 @@ class ServeCatalogStore(
     dir.mkdirs()
     File(dir, ServeAnnotationStore.INDEX_FILE)
       .writeText(json.encodeToString(AnnotationManifest.serializer(), manifest))
+  }
+
+  /**
+   * Stage the published tag index, if the catalog has one.
+   *
+   * Exactly [writeAnnotations]' shape and for the same reason: a served catalog is a fresh staging
+   * directory assembled from explicitly fetched parts, so a file nobody copies is invisible to
+   * [ServeBundleHost] however faithfully the producer published it. Without this the index would be
+   * published by every catalog build and read by nobody — and the element gates it exists for would
+   * stay unreachable on published catalogs, which is the gap this whole path closes.
+   *
+   * One self-contained JSON document, no assets to fetch. Validated here before it is written
+   * rather than only on read, so a malformed index never reaches the staging tree at all.
+   */
+  private fun writeTagIndex(base: String, staging: File) {
+    val bytes =
+      runCatching {
+          fetchCatalogAsset("$base${ServeTagIndexStore.DIRECTORY}/${ServeTagIndexStore.INDEX_FILE}")
+        }
+        .getOrNull() ?: return
+    val manifest =
+      runCatching { json.decodeFromString(TagIndexManifest.serializer(), bytes.decodeToString()) }
+        .getOrNull()
+        ?.takeIf { it.schema == TagIndexManifest.SCHEMA } ?: return
+    if (manifest.previews.isEmpty()) return
+    val dir = File(staging, ServeTagIndexStore.DIRECTORY)
+    dir.mkdirs()
+    File(dir, ServeTagIndexStore.INDEX_FILE)
+      .writeText(json.encodeToString(TagIndexManifest.serializer(), manifest))
   }
 
   /**

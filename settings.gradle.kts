@@ -242,6 +242,7 @@ project(":wear-preview-runtime").projectDir = file("runtimes/wear-preview")
 
 // The usage-snippet compile gate (see its build file). Empty unless `-PusageCorpus=` points it at
 // a generated corpus, so it costs a normal build nothing.
+include(":usage-source-psi")
 include(":tools:usage-compile-check")
 include(":samples:android")
 

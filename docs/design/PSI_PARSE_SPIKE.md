@@ -13,7 +13,7 @@ defect it surfaced was **parser-shaped**:
 | `state.metrics.counted` taken for a package qualifier | qualified expression structure |
 | `counted { }` missed — the regex required `(` | a call is a call |
 | a qualified call neither rewritten nor reported | the callee, regardless of qualifier |
-| `toggleable` destructuring a `Pair` (still open) | destructuring declarations |
+| `toggleable` destructuring a `Pair` | destructuring declarations |
 
 Five symptoms, one missing thing: structure. So: measure before rewriting.
 
@@ -127,11 +127,48 @@ stopping at `getText()`, which returns the view-provider buffer without a tree e
 the pattern outlived its first fix. Both now walk the tree and assert what they find. The rule this
 file should have started with: an assertion over `text` proves nothing about a *parse*.
 
+## What shipped
+
+The spike said yes, so the parse is now in the cleaner. The shape is the one the spike argued for:
+
+- **`:usage-source-psi`** — the parser, compiling `compileOnly` against `kotlin-compiler-embeddable`
+  so the frontend is never a runtime dependency of anything in the main build. It exposes one method,
+  `analyze(String): String`, returning JSON: calls (callee, offsets, arguments with their labels,
+  trailing-lambda ranges, receiver) and destructuring declarations. It reports **facts, never
+  decisions** — `ee.schimke.composeai.overrides` and `state.metrics` are the same tree shape, so it
+  hands over each receiver verbatim and lets the rules' allow-list do the classifying.
+- **Staged as `lib-usage-psi/`**, loaded together with the already-staged `lib-bta/` jars in a
+  `URLClassLoader` parented to the platform loader — the same isolation the playground compiler uses.
+  Nothing crosses the boundary but a `String` in and JSON out, so the two sides share no classes.
+- **`UsageSourceParser`** builds that loader once per process (setup is ~0.5 s, parsing ~3 ms) and
+  `PlaygroundSourceCleaner` uses it for the substitution pass and the residue scan. A host with no
+  staged sidecar keeps the text passes, unchanged — the parse is an upgrade where available, not a
+  new hard requirement.
+
+`:cli:test` forwards the staged jars (`composeai.usagePsi.jars`) so the parsed path is what the tests
+actually exercise. Without that the cleaner would fall back silently and every test would still pass,
+having covered none of it.
+
+**On landing, the corpus ratios were unchanged: m3-catalog 3/10, meshcore-mobile 0/10, same seven
+failures** (the `DESTRUCTURE` kind that followed took m3-catalog to 4/10). That
+is the result to expect and the bar the spike set — parity, per snippet, before anything else. The
+parse fixes shapes the text pass got wrong (an argument binding, a receiver chain, a call with no
+parentheses); none of the seven remaining failures is one of those. Moving the ratio needs the new
+rule vocabulary below, which the facts now make possible.
+
+One bug found while wiring it, worth recording because it would have been silent: `KtLambdaArgument`
+*is* a `KtValueArgument`, so a trailing lambda arrives in the value-argument list and takes a
+positional slot — putting `{ … }` where `default` belongs. Filtered out, and pinned by a test.
+
 ## What this does and does not buy
 
 A parse fixes the **machinery**. It does not move the ratio much on its own:
 
-- m3-catalog's 2 destructuring failures and 2 conditional-`stringResource` failures become tractable.
+- m3-catalog's 2 destructuring failures: **done**, and the ratio moved 3/10 → 4/10. The
+  `DESTRUCTURE` rule kind reads the facts' entries and initialiser; `compose-usage.json`'s
+  `$known-gaps` entry is retired.
+- The 2 conditional-`stringResource` failures become tractable for the same reason: the inliner can
+  see the `if` rather than declining on a regex.
 - `CatalogFilledStars` (×4) still needs a substitution rule — no parse invents an icon.
 - meshcore-mobile's 0/10 stays structural: its previews compose app screens over fixture data, so
   there is no library call site to reduce to.
