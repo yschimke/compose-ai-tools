@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "dcd7f0caf6e4eef108c725f6593b55fd4f58ffa9",
+    "generatedFrom": "13376f1a8f2f84d8859cfdf957d132162db58c40",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -5200,6 +5200,36 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-m3/com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Dark": {
+            "path": "renders/samples:design-catalog-m3/ShapeMorph_Dark-bbb7ab23.png",
+            "versions": [
+                {
+                    "blob": "5fa9092655d31c75c4943938bccdb1006ca3a41e",
+                    "commit": "13376f1a8f2f84d8859cfdf957d132162db58c40",
+                    "date": "2026-08-15T07:54:14Z",
+                    "sourceSha": "ef5d1baa",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-m3/com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Light": {
+            "path": "renders/samples:design-catalog-m3/ShapeMorph_Light-5232ac83.png",
+            "versions": [
+                {
+                    "blob": "c168571b1ffd16b8b4bdbd9febf2410858e49014",
+                    "commit": "13376f1a8f2f84d8859cfdf957d132162db58c40",
+                    "date": "2026-08-15T07:54:14Z",
+                    "sourceSha": "ef5d1baa",
                     "commits": 1
                 }
             ],
