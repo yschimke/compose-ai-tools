@@ -109,10 +109,9 @@ dependencies {
   // be on Media3 / no media stack at all; we don't want to drag this artifact onto every
   // notification-preview consumer.
   implementation("androidx.media:media:1.8.0")
-  // Soft-keyboard data extension — `SoftKeyboardAnimatedPreview` uses
-  // `LocalSoftwareKeyboardController.show()` (the natural app-side IME path the connector's
-  // around-composable shadows) to raise the band, and writes `KeyboardController.notifyKeyDown`
-  // directly to drive per-cap press highlights in the absence of an interactive daemon session.
+  // Soft-keyboard data extension — `SoftKeyboardAnimatedPreview` uses only ordinary Compose text
+  // input, focus, and `LocalSoftwareKeyboardController.show()`. Its committed recording script
+  // drives text and per-cap press highlights through the daemon's public `input.keyboard` path.
   implementation(project(":data-keyboard-connector"))
   // `TypographySpecimen` / `FontFamilySpecimen` / `FallbackCoverageSpecimen` helpers — Material 3
   // type-role audit sheet, font-family weight ladder, and a fixed script-coverage check set,

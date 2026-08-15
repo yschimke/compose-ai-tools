@@ -3982,11 +3982,21 @@ open class RobolectricHost(
             dispatchRotaryScroll(rule, position, delta)
           }
         }
-        "keyDown" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = true)
+        "keyDown" -> {
+          // This must run inside the held Robolectric sandbox. KeyboardController contains Compose
+          // snapshot state and is acquired separately by the sandbox classloader; updating the
+          // daemon-host copy in AndroidInteractiveSession changes no state observed by the
+          // sandbox-rendered keyboard band.
+          KeyboardBandLabels.fromAndroidKeycode(cmd.keyCode)?.let(KeyboardController::notifyKeyDown)
+          dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = true)
+        }
         // The release carries its character too, so a focused field suppresses both halves of the
         // keystroke. Dropping it here would dispatch a physical key-up whose key-down was
         // suppressed — the unpaired release this pairing exists to avoid.
-        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = false)
+        "keyUp" -> {
+          KeyboardBandLabels.fromAndroidKeycode(cmd.keyCode)?.let(KeyboardController::notifyKeyUp)
+          dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = false)
+        }
       }
     }
 
