@@ -381,6 +381,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Dark_VARIANT_off-70b9de89.png" width="150" /> |
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light-c16813d5.png" width="150" /> |
 | `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light_VARIANT_off-64481b2d.png" width="150" /> |
+| `ShapeMorph` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ShapeMorph_Dark-bbb7ab23.png" width="150" /> |
+| `ShapeMorph` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ShapeMorph_Light-5232ac83.png" width="150" /> |
 | `FilledButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonFocused_Dark-5bb3debe.png" width="150" /> |
 | `FilledButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonFocused_Light-9e2ff2e0.png" width="150" /> |
 | `FilledButtonIconLabel` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonIconLabel_Dark-2d53cb0b.png" width="150" /> |

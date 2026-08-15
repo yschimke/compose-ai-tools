@@ -2695,6 +2695,22 @@
     "sha256": "f43eae91d951ca43de0d27898b7cc78572943042ceaa0034caf309ef2470c7b7",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Dark": {
+    "captureLabel": "",
+    "functionName": "ShapeMorph",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "ShapeMorph_Dark-bbb7ab23.png",
+    "sha256": "a40caa2c9b09567b600ede3d6939cff2583ab842f951c84b2e77b940952d3fa9",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogShapes.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogShapesKt.ShapeMorph_Light": {
+    "captureLabel": "",
+    "functionName": "ShapeMorph",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "ShapeMorph_Light-5232ac83.png",
+    "sha256": "54823745c8d74173c6b4db3945e8237291bc22d728ca9499358ea55410b8da6a",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogShapes.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Dark": {
     "captureLabel": "",
     "functionName": "FilledButtonFocused",
