@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "c69edfe20f7c52edfe3e189b00c1cda57ec75714",
+    "generatedFrom": "cff879f37485d6c4e670c8c305416011a51e2a69",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -6271,6 +6271,13 @@
             "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
             "versions": [
                 {
+                    "blob": "c840dd59c8c364633e9c23152209c3c86539cceb",
+                    "commit": "cff879f37485d6c4e670c8c305416011a51e2a69",
+                    "date": "2026-08-15T19:08:52Z",
+                    "sourceSha": "a2c9e430",
+                    "commits": 1
+                },
+                {
                     "blob": "ddb2ab0ec8c29d739b7ab16b622cec47219dc4da",
                     "commit": "c69edfe20f7c52edfe3e189b00c1cda57ec75714",
                     "date": "2026-08-15T18:24:47Z",
@@ -6285,7 +6292,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
@@ -8579,6 +8586,13 @@
             "path": "renders/samples:wear/ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_long.png",
             "versions": [
                 {
+                    "blob": "174707ab2066f1e72ee5ebd3166345d767e845d3",
+                    "commit": "cff879f37485d6c4e670c8c305416011a51e2a69",
+                    "date": "2026-08-15T19:08:52Z",
+                    "sourceSha": "a2c9e430",
+                    "commits": 1
+                },
+                {
                     "blob": "2eb6ffca0613b20314af8349535b969274a5c54c",
                     "commit": "c69edfe20f7c52edfe3e189b00c1cda57ec75714",
                     "date": "2026-08-15T18:24:47Z",
@@ -8593,9 +8607,9 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
-            "flapCount": 0
+            "flapCount": 1
         },
         "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
             "path": "renders/samples:wear/ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_gif.gif",
@@ -9098,6 +9112,13 @@
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
             "versions": [
                 {
+                    "blob": "be99e3b0f71e95d8bb0484b92aa9cc9c67ce54e3",
+                    "commit": "cff879f37485d6c4e670c8c305416011a51e2a69",
+                    "date": "2026-08-15T19:08:52Z",
+                    "sourceSha": "a2c9e430",
+                    "commits": 1
+                },
+                {
                     "blob": "414a9850759727b42c253eb95a410c1bab42c862",
                     "commit": "c69edfe20f7c52edfe3e189b00c1cda57ec75714",
                     "date": "2026-08-15T18:24:47Z",
@@ -9112,13 +9133,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
-            "flapCount": 0
+            "flapCount": 1
         },
         "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer · Pressed Walk#1": {
             "path": "renders/samples:xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
             "versions": [
+                {
+                    "blob": "f7f5a1d2b3c3261ae46703730e19a9442f2340d6",
+                    "commit": "cff879f37485d6c4e670c8c305416011a51e2a69",
+                    "date": "2026-08-15T19:08:52Z",
+                    "sourceSha": "a2c9e430",
+                    "commits": 1
+                },
                 {
                     "blob": "be9272e52809526174afc92f2eb5dd3f5a7c948e",
                     "commit": "c69edfe20f7c52edfe3e189b00c1cda57ec75714",
@@ -9134,7 +9162,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
