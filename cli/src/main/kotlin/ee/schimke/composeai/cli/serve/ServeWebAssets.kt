@@ -46,9 +46,6 @@ internal object ServeWebAssets {
       // stream (see [ServeWeb.catalogLiveScript]).
       "catalog-live.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
-      // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
-      // by a viewer whose host can produce at least one of them.
-      "inspect.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
       // The design page's node measuring and render-swap controls; loaded only by a
       // `/{system}/pages/{id}` view, which exists only for a catalog that published one.

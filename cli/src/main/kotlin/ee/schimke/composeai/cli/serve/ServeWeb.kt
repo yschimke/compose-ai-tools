@@ -9090,7 +9090,7 @@ $rows
       </details>
       """
         .trimIndent()
-    // Inspection layers (see inspect.js): what the frame is MADE OF, drawn client-side over the
+    // Inspection layers (see `<cp-inspect-layers>`): what the frame is MADE OF, drawn over the
     // pixels the server already sent — the accessibility focus map, the resolved typography, the
     // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
     // the legend beside it, so the facts stay legible and hoverable instead of being composited
@@ -9129,10 +9129,10 @@ $rows
             </div>
         """
           .trimIndent()
-    // The legend panel beside the stage, populated client-side by inspect.js and hidden until a
-    // layer is on. Server-rendered (empty) rather than created by the script so the panel has a
-    // stable place in the flex row and the stage doesn't jump sideways the first time a layer is
-    // ticked.
+    // The legend panel beside the stage, populated client-side by `<cp-inspect-layers>` and hidden
+    // until a layer is on. Server-rendered (empty) rather than created by the script so the panel
+    // has a stable place in the flex row and the stage doesn't jump sideways the first time a
+    // layer is ticked.
     val inspectLayerHtml =
       if (inspectRows.isEmpty()) ""
       else "<div class=\"cp-inspect-layer\" id=\"cp-inspect-layer\"></div>"
@@ -9140,7 +9140,11 @@ $rows
       if (inspectRows.isEmpty()) ""
       else
         "<div class=\"cp-inspect-legend\" id=\"cp-inspect-legend\" role=\"region\" " +
-          "aria-label=\"Inspection legend\" hidden></div>"
+          "aria-label=\"Inspection legend\" hidden></div>" +
+          // Fills the layer and the legend above from the frame on screen. Emitted after both, so
+          // everything it reads exists the moment the tag upgrades. Renders nothing; `serve.css`
+          // hides the tag.
+          "<cp-inspect-layers></cp-inspect-layers>"
     // Live overlay toggles (touch visualization). The daemon composites these onto the held
     // session's frames, so they mean nothing on a baked PNG — offered only when a Live Compose
     // stream is available, and omitted entirely otherwise rather than left permanently dead.
@@ -9512,7 +9516,7 @@ $rows
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
-      $compareScriptTags${scriptTag("viewer.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
+      $compareScriptTags${scriptTag("viewer.js")}
       """
         .trimIndent()
         .lineSequence()
