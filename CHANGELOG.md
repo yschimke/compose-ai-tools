@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7.0](https://github.com/yschimke/compose-ai-tools/compare/v1.6.0...v1.7.0) (2026-08-15)
+
+
+### Features
+
+* **design-artifacts:** emit design-map.json from the catalog annotations ([#3894](https://github.com/yschimke/compose-ai-tools/issues/3894)) ([811be0b](https://github.com/yschimke/compose-ai-tools/commit/811be0b16ec70d02c713876369566c1c157878ff))
+* **preview:** capture a preview's interaction as a 60fps motion artifact ([#3897](https://github.com/yschimke/compose-ai-tools/issues/3897)) ([f19e499](https://github.com/yschimke/compose-ai-tools/commit/f19e499dfe143f7d0ff8d2f1158aa2af029e0b63))
+* **serve:** a phone gets the bar, the title, and the page ([#3898](https://github.com/yschimke/compose-ai-tools/issues/3898)) ([97130be](https://github.com/yschimke/compose-ai-tools/commit/97130be5909dd6da301289132262797e4264f67a))
+* **serve:** add parity locator reporting ([#3887](https://github.com/yschimke/compose-ai-tools/issues/3887)) ([3bd6ecd](https://github.com/yschimke/compose-ai-tools/commit/3bd6ecd62d05421ed9b10e685cb192023053876b))
+
+
+### Bug Fixes
+
+* **design-artifacts:** exempt declared no-sticker previews from the shard render check ([#3888](https://github.com/yschimke/compose-ai-tools/issues/3888)) ([9391cbf](https://github.com/yschimke/compose-ai-tools/commit/9391cbfedf4a2ccbc6dd423bff79712ba2656a1b))
+* **design-artifacts:** fail a sharded render that lost previews ([#3885](https://github.com/yschimke/compose-ai-tools/issues/3885)) ([4485b19](https://github.com/yschimke/compose-ai-tools/commit/4485b19dc7bf8618827e3b9fab0582aa6bfd0d02))
+* **serve:** give a phone screen back to the previews ([#3895](https://github.com/yschimke/compose-ai-tools/issues/3895)) ([b94413d](https://github.com/yschimke/compose-ai-tools/commit/b94413df3a2e901b718ced2f1c3e31d2036ecee9))
+* **serve:** scope unknown-kind tolerance to the kind field ([#3891](https://github.com/yschimke/compose-ai-tools/issues/3891)) ([bfff6ee](https://github.com/yschimke/compose-ai-tools/commit/bfff6ee9e989e682b21351b8d2261ec09154dd32))
+* **serve:** tolerate a usage rule kind this build does not know ([#3890](https://github.com/yschimke/compose-ai-tools/issues/3890)) ([ca45e8d](https://github.com/yschimke/compose-ai-tools/commit/ca45e8df4e3dbc9fac71b9dbb2a40f101a3619a7))
+
 ## [1.6.0](https://github.com/yschimke/compose-ai-tools/compare/v1.5.0...v1.6.0) (2026-08-15)
 
 
