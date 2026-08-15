@@ -444,13 +444,14 @@ class AndroidInteractiveSessionTest {
       )
 
       val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
-      val once = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
-      val duplicated = pixelMatchPct(after, DUPLICATED_RGB, perChannelTolerance = 8)
+      // A key press makes the soft keyboard visible, so measure only the content above its band.
+      val once = topStripMatchPct(after, GREEN_RGB)
+      val duplicated = topStripMatchPct(after, DUPLICATED_RGB)
       assertTrue(
         "one keystroke must insert exactly one character; got " +
           "${"%.2f".format(once * 100)}% green (one) / " +
           "${"%.2f".format(duplicated * 100)}% orange (not one — a double commit)",
-        once >= 0.6,
+        once >= 0.8,
       )
     }
   }
