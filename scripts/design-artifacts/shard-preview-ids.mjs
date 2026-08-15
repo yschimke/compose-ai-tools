@@ -70,6 +70,11 @@
  *    fewer previews than the others for no reason. Removing them first means the shards balance
  *    over the set that is actually going to render, and the deferral still applies within each.
  *
+ * Planning is only half of it. [verifyShardPlans] checks that the shards agreed on a disjoint
+ * cover — their *intent* — and [verifyShardRenders] checks what the merged bundle actually came back
+ * with, because a correct partition that renders nothing passes the first check and used to pass the
+ * whole run. See [verifyShardRenders] for the run that did exactly that.
+ *
  * One axis this cannot balance: a `@PreviewParameter` provider's rows. Discovery emits one id for
  * the parameterized function and the renderer expands the rows later, so such a preview travels
  * whole — it lands in one shard carrying however many rows it expands to. That is correct (the rows
@@ -317,6 +322,96 @@ export function verifyShardPlans(plans) {
     );
   }
   return { ok: problems.length === 0, problems };
+}
+
+/**
+ * Cross-check what the shards actually **captured** against what they planned to render, after the
+ * merge and before anything downstream trusts the bundle.
+ *
+ * [verifyShardPlans] checks the shards' *intent*: it reads the plans they uploaded and confirms they
+ * form a disjoint cover of one agreed discovery set. That is a check of the partition, and it passes
+ * whether or not a single preview came back. The failure this repo actually shipped lived entirely
+ * on the other side of it — m3-catalog run 31217598543 partitioned 1095 previews correctly across
+ * six shards, printed `6 shard(s) cover 1095 preview(s) exactly once`, and merged 267 of them,
+ * because each shard's unanchored exclusion list also deleted the `_VARIANT_` fan-out of every id it
+ * excluded. **The run was green.** The loss surfaced only as a downstream warning about previews
+ * with no static PNG, which reads like a catalogue of PNG-less sheets rather than three quarters of
+ * a render going missing.
+ *
+ * Anchoring the exclusions (#3561) fixed that cause. This closes the *silence*, which is the part
+ * that made it expensive: any future path that drops a shard's work — a matcher regression, a
+ * mis-emitted pattern, a render that half-failed without failing the step — now fails the run
+ * naming the shard and the ids, instead of publishing a thinner catalog on a green tick.
+ *
+ * The comparison is only meaningful because [capturedIds] means "came back with *some* artifact",
+ * not "came back with a PNG" — see `capturedPreviewIds` in `bundle-previews.mjs` for why a
+ * PNG-based check would flag every animated capture and token sheet as a loss.
+ *
+ * **[semanticsRan] is what keeps that reading honest.** The "any artifact" signal leans on the
+ * semantics pass to give a raster-less preview *something*, and that pass is best-effort: a missing
+ * daemon descriptor, a session that would not open, or an empty capture all leave `bundle pack`
+ * exiting 0 with no `.semantics.json` anywhere. A catalog holding a legitimately raster-less preview
+ * would then look exactly like one whose shards ate their own work, and this gate would fail a run
+ * for a reason that has nothing to do with sharding. So when the caller reports the semantics pass
+ * produced nothing (`bundleCapturedSemantics`), the answer is "cannot tell", not "lost": the check
+ * passes with the reason recorded in [notes]. It has no teeth in that state, and pretending
+ * otherwise would spend the operator's trust on a false alarm — the very thing that made the
+ * original bug expensive.
+ *
+ * Extra ids are not a problem and are not reported: a merged bundle legitimately carries the whole
+ * discovery set (exclusion leaves previews listed), and a shard rendering *more* than its share
+ * costs time, not stickers.
+ *
+ * @param {Array<{index: number, previews: string[]}>} plans the uploaded per-shard plans.
+ * @param {Iterable<string>} capturedIds ids the merged bundle captured.
+ * @param {{semanticsRan?: boolean}} [opts] `semanticsRan: false` disarms the check — see above.
+ * @returns {{ok: boolean, problems: string[], notes: string[],
+ *   missing: Array<{id: string, shard: number}>}} `missing` is sorted by shard then id; `problems`
+ *   is empty iff every planned id came back or the check declined to judge.
+ */
+export function verifyShardRenders(plans, capturedIds, { semanticsRan = true } = {}) {
+  const captured = new Set(capturedIds ?? []);
+  const missing = [];
+  for (const plan of [...(plans ?? [])].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0))) {
+    for (const id of [...(plan?.previews ?? [])].sort()) {
+      if (!captured.has(id)) missing.push({ id, shard: plan?.index ?? 0 });
+    }
+  }
+  if (missing.length === 0) return { ok: true, problems: [], notes: [], missing };
+  if (!semanticsRan) {
+    return {
+      ok: true,
+      problems: [],
+      notes: [
+        `${missing.length} planned preview(s) came back with no artifact, but the bundle carries no ` +
+          `semantics at all — the capture pass produced nothing, so a preview that is raster-less by ` +
+          `design is indistinguishable from one an exclusion ate. Not judging. Fix the semantics ` +
+          `capture (see the pack's own warning) to restore this check.`,
+      ],
+      missing,
+    };
+  }
+
+  const planned = (plans ?? []).reduce((n, p) => n + (p?.previews?.length ?? 0), 0);
+  const byShard = new Map();
+  for (const { id, shard } of missing) byShard.set(shard, [...(byShard.get(shard) ?? []), id]);
+  const problems = [
+    `${missing.length} of ${planned} planned preview(s) came back with no artifact at all`,
+    ...[...byShard.entries()]
+      .sort((a, b) => a[0] - b[0])
+      // Naming a few ids per shard is what turns this from "something went wrong" into a lead; the
+      // full list is the plan file, which the run already uploaded.
+      .map(([shard, ids]) => {
+        const shown = ids.slice(0, 5).join(", ");
+        return `shard ${shard} planned ${ids.length} preview(s) that were never captured: ${shown}` +
+          (ids.length > 5 ? `, … (+${ids.length - 5} more)` : "");
+      }),
+  ];
+  problems.push(
+    "if the semantics capture also failed for exactly these previews, that — not sharding — is the " +
+      "cause; the pack step's own warnings say which.",
+  );
+  return { ok: false, problems, notes: [], missing };
 }
 
 // --- CLI ----------------------------------------------------------------------

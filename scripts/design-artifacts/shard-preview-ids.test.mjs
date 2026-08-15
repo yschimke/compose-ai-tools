@@ -10,6 +10,7 @@ import {
   renderableDigest,
   shardRenderPlan,
   verifyShardPlans,
+  verifyShardRenders,
 } from "./shard-preview-ids.mjs";
 
 const preview = (id) => ({ id, functionName: id.replace(/_(Light|Dark)$/, "") });
@@ -341,4 +342,91 @@ test("the plan's previews stay PLAIN ids while its exclusions are patterns", () 
     verifyShardPlans(plan.shards.map((s) => ({ ...s, total: plan.total, renderable: plan.renderable, digest: plan.digest }))),
     { ok: true, problems: [] },
   );
+});
+
+// --- the OUTCOME check: what the shards actually captured --------------------------------------
+
+test("verifyShardRenders accepts a merge in which every planned preview came back", () => {
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  const { ok, problems, missing } = verifyShardRenders(plans, ["a", "b", "c", "d"]);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(missing, []);
+  assert.ok(ok);
+});
+
+test("verifyShardRenders catches the loss the plan check passes", () => {
+  // The m3-catalog#15 shape: the partition is a perfect disjoint cover — `verifyShardPlans` is
+  // happy — and the shards' unanchored exclusions ate the variants anyway.
+  const ids = ["Switch_Light", "Switch_Light_VARIANT_off", "Card_Light", "Card_Light_VARIANT_alt"];
+  const plans = plansFor(ids, 2);
+  assert.ok(verifyShardPlans(plans).ok, "the plans themselves are fine");
+
+  const { ok, problems, missing } = verifyShardRenders(plans, ["Card_Light", "Switch_Light"]);
+  assert.equal(ok, false);
+  assert.deepEqual(missing.map((m) => m.id).sort(), [
+    "Card_Light_VARIANT_alt",
+    "Switch_Light_VARIANT_off",
+  ]);
+  assert.match(problems[0], /2 of 4 planned preview\(s\) came back with no artifact at all/);
+  assert.match(
+    problems.join("\n"),
+    /shard 2 planned 2 preview\(s\) that were never captured: Card_Light_VARIANT_alt, Switch_Light_VARIANT_off/,
+  );
+});
+
+test("verifyShardRenders attributes each missing id to the shard that planned it", () => {
+  const plans = [
+    { index: 1, previews: ["a", "c"] },
+    { index: 2, previews: ["b", "d"] },
+  ];
+  const { missing } = verifyShardRenders(plans, ["a"]);
+  assert.deepEqual(missing, [
+    { id: "c", shard: 1 },
+    { id: "b", shard: 2 },
+    { id: "d", shard: 2 },
+  ]);
+});
+
+test("verifyShardRenders truncates a long id list but reports the true count", () => {
+  const ids = Array.from({ length: 9 }, (_, i) => `P${i}`);
+  const { problems } = verifyShardRenders([{ index: 1, previews: ids }], []);
+  assert.match(problems[1], /P0, P1, P2, P3, P4, … \(\+4 more\)/);
+  assert.match(problems[1], /planned 9 preview\(s\)/);
+});
+
+test("verifyShardRenders ignores extra captures — a merged bundle carries the whole set", () => {
+  // Exclusion leaves excluded previews listed, and a shard rendering more than its share costs
+  // time, not stickers. Only a shortfall is a failure.
+  const plans = plansFor(["a", "b"], 2);
+  assert.ok(verifyShardRenders(plans, ["a", "b", "deferred_Dark", "z"]).ok);
+});
+
+test("verifyShardRenders is vacuously satisfied by a no-op shard", () => {
+  // More shards than previews: the extra shard uploads a plan with an empty partition.
+  assert.ok(verifyShardRenders([{ index: 1, previews: ["a"] }, { index: 2, previews: [] }], ["a"]).ok);
+});
+
+test("verifyShardRenders declines to judge when the semantics pass produced nothing", () => {
+  // `--with-semantics` is best-effort: a failed daemon open leaves the pack exiting 0 with no
+  // semantics anywhere, so a raster-less preview has no artifact for a reason that is not sharding.
+  // Failing there would spend the operator's trust on a false alarm.
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  const { ok, problems, notes, missing } = verifyShardRenders(plans, ["a", "b"], {
+    semanticsRan: false,
+  });
+  assert.ok(ok, "the run is not failed");
+  assert.deepEqual(problems, []);
+  assert.equal(missing.length, 2, "the shortfall is still reported for the caller to log");
+  assert.match(notes.join("\n"), /carries no semantics at all/);
+});
+
+test("verifyShardRenders keeps its teeth once semantics did run", () => {
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  assert.equal(verifyShardRenders(plans, ["a", "b"], { semanticsRan: true }).ok, false);
+  assert.equal(verifyShardRenders(plans, ["a", "b"]).ok, false, "defaults to armed");
+});
+
+test("verifyShardRenders names the semantics pass as the rival explanation", () => {
+  const { problems } = verifyShardRenders([{ index: 1, previews: ["a"] }], []);
+  assert.match(problems.at(-1), /if the semantics capture also failed for exactly these previews/);
 });

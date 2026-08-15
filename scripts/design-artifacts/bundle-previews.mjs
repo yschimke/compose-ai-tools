@@ -65,3 +65,83 @@ export function candidatePreviewBundle(bundle) {
   });
   return { bundle: { ...bundle, previews }, dropped };
 }
+
+/** Zip directory every per-preview artifact lands under. */
+const PREVIEWS_DIR = "previews/";
+
+/**
+ * The ids of previews the bundle actually **captured** — those carrying at least one
+ * `previews/<id>.*` artifact of any kind.
+ *
+ * Deliberately "any artifact", not "a PNG": [candidatePreviewBundle] already answers the PNG
+ * question, and the two are asking different things. Plenty of previews are PNG-less *by design*
+ * — an animated `ScrollMode.GIF` capture emits only a `.gif`, a `@ColorCatalog` / `@ThemeCatalog`
+ * sheet only a `.catalog.json`, a `"capture": "none"` entry nothing raster at all — so a PNG check
+ * would call all of those a loss. What no captured preview ever lacks is *every* artifact: a pack
+ * runs `--with-semantics`, so even a raster-less preview comes back with its `.semantics.json`.
+ *
+ * A preview an `--exclude-preview-id` pattern matched, by contrast, is skipped in **both** passes
+ * (that is the whole point of the CLI applying the same exclusion list to the render and the
+ * semantics capture), so it comes back with nothing at all under `previews/`. That asymmetry is
+ * what makes "no artifact whatsoever" a precise signal for *excluded* rather than *PNG-less*, and
+ * it is what `verify-shard-renders.mjs` compares the shard plans against after a sharded merge.
+ *
+ * The one hole in that reasoning is that semantics capture is **best-effort** — a missing daemon
+ * descriptor, a failed session open, or an empty capture leaves `packSemanticsBlob` returning null
+ * and the pack succeeding anyway — so a bundle can carry no `.semantics.json` at all. A raster-less
+ * preview then really does have zero artifacts for a reason that has nothing to do with sharding.
+ * [bundleCapturedSemantics] is how the caller detects that and declines to judge; see
+ * `verifyShardRenders`.
+ *
+ * Ids are returned in the caller's namespace: bundle entries are stored under filename-safe ids
+ * while shard plans and `design-map.json` are authored against the canonical discovery id, so
+ * [rawIdFor] maps one to the other (`rawPreviewIdForEntry` from `@design-parity/candidate`). It
+ * defaults to the entry id, which is correct whenever no sanitising happened.
+ *
+ * @param {{previews?: Array<{id: string}>, entries?: Record<string, unknown>}} bundle
+ * @param {(bundle: object, entry: object) => string} [rawIdFor]
+ * @returns {Set<string>} the captured ids.
+ */
+export function capturedPreviewIds(bundle, rawIdFor = (_bundle, entry) => entry.id) {
+  const byEntryId = new Map((bundle?.previews ?? []).map((p) => [p.id, p]));
+  const captured = new Set();
+  for (const path of Object.keys(bundle?.entries ?? {})) {
+    if (!path.startsWith(PREVIEWS_DIR)) continue;
+    const rest = path.slice(PREVIEWS_DIR.length);
+    // An artifact is `<id>.<ext>`, and neither half is dot-free in general (`Foo.semantics.json`,
+    // and an id may carry a dot of its own), so walk every dot and keep the LONGEST declared id
+    // that fits. Taking the first match instead would be wrong exactly where ids nest: with both
+    // `pkg.Screen` and `pkg.Screen.Dark` declared, `previews/pkg.Screen.Dark.png` would be credited
+    // to `pkg.Screen` and the longer preview — fully rendered — would be reported as lost. That is
+    // the same substring confusion that caused the bug this check exists to catch, so it would be a
+    // poor place to repeat it.
+    let longest;
+    for (let dot = rest.indexOf("."); dot > 0; dot = rest.indexOf(".", dot + 1)) {
+      const entry = byEntryId.get(rest.slice(0, dot));
+      if (entry) longest = entry;
+    }
+    if (longest) captured.add(rawIdFor(bundle, longest));
+  }
+  return captured;
+}
+
+/**
+ * True when [bundle] carries at least one `previews/<id>.semantics.json` — i.e. the semantics pass
+ * actually ran and produced something.
+ *
+ * Load-bearing for [capturedPreviewIds]'s "any artifact" reading. `packSemanticsBlob` is documented
+ * best-effort: a missing `daemon-launch.json`, a session that would not open, or a capture that
+ * returned nothing all warn to stderr and leave the *already-written* bundle alone, so `bundle pack`
+ * exits 0 having carried no semantics for any preview. In that state a preview with no raster of its
+ * own — an animated `ScrollMode.GIF` capture, a token sheet, a `"capture": "none"` entry — has
+ * genuinely zero artifacts, and "no artifact" no longer means "excluded". A caller that would
+ * otherwise fail a run on that signal should check here first and decline to judge instead.
+ *
+ * @param {{entries?: Record<string, unknown>}} bundle
+ * @returns {boolean}
+ */
+export function bundleCapturedSemantics(bundle) {
+  return Object.keys(bundle?.entries ?? {}).some(
+    (path) => path.startsWith(PREVIEWS_DIR) && path.endsWith(".semantics.json"),
+  );
+}
