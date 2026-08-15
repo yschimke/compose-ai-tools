@@ -25,7 +25,7 @@ import { parseArgs } from "node:util";
 
 import { readPreviewBundle, rawPreviewIdForEntry } from "@design-parity/candidate";
 
-import { capturedPreviewIds } from "./bundle-previews.mjs";
+import { bundleCapturedSemantics, capturedPreviewIds } from "./bundle-previews.mjs";
 import { verifyShardRenders } from "./shard-preview-ids.mjs";
 
 const { values, positionals } = parseArgs({
@@ -43,7 +43,15 @@ if (!values.bundle || positionals.length === 0) {
 const plans = positionals.map((file) => JSON.parse(readFileSync(file, "utf8")));
 const bundle = await readPreviewBundle(values.bundle);
 const captured = capturedPreviewIds(bundle, rawPreviewIdForEntry);
-const { ok, problems } = verifyShardRenders(plans, captured);
+// `--with-semantics` is best-effort: a failed daemon open leaves the pack exiting 0 with no
+// semantics anywhere, and a raster-less preview then has no artifact for a reason that is not
+// sharding. Tell the check, so it declines to judge rather than crying wolf.
+const semanticsRan = bundleCapturedSemantics(bundle);
+const { ok, problems, notes } = verifyShardRenders(plans, captured, { semanticsRan });
+
+for (const note of notes) {
+  console.error(`::warning title=Shard render check disarmed::verify-shard-renders: ${note}`);
+}
 
 if (!ok) {
   for (const problem of problems) {
@@ -60,7 +68,9 @@ if (!ok) {
 }
 
 const planned = plans.reduce((n, p) => n + (p?.previews?.length ?? 0), 0);
-console.error(
-  `verify-shard-renders: all ${planned} preview(s) the ${plans.length} shard(s) planned came back ` +
-    `in the merged bundle`,
-);
+if (notes.length === 0) {
+  console.error(
+    `verify-shard-renders: all ${planned} preview(s) the ${plans.length} shard(s) planned came ` +
+      `back in the merged bundle`,
+  );
+}

@@ -405,3 +405,28 @@ test("verifyShardRenders is vacuously satisfied by a no-op shard", () => {
   // More shards than previews: the extra shard uploads a plan with an empty partition.
   assert.ok(verifyShardRenders([{ index: 1, previews: ["a"] }, { index: 2, previews: [] }], ["a"]).ok);
 });
+
+test("verifyShardRenders declines to judge when the semantics pass produced nothing", () => {
+  // `--with-semantics` is best-effort: a failed daemon open leaves the pack exiting 0 with no
+  // semantics anywhere, so a raster-less preview has no artifact for a reason that is not sharding.
+  // Failing there would spend the operator's trust on a false alarm.
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  const { ok, problems, notes, missing } = verifyShardRenders(plans, ["a", "b"], {
+    semanticsRan: false,
+  });
+  assert.ok(ok, "the run is not failed");
+  assert.deepEqual(problems, []);
+  assert.equal(missing.length, 2, "the shortfall is still reported for the caller to log");
+  assert.match(notes.join("\n"), /carries no semantics at all/);
+});
+
+test("verifyShardRenders keeps its teeth once semantics did run", () => {
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  assert.equal(verifyShardRenders(plans, ["a", "b"], { semanticsRan: true }).ok, false);
+  assert.equal(verifyShardRenders(plans, ["a", "b"]).ok, false, "defaults to armed");
+});
+
+test("verifyShardRenders names the semantics pass as the rival explanation", () => {
+  const { problems } = verifyShardRenders([{ index: 1, previews: ["a"] }], []);
+  assert.match(problems.at(-1), /if the semantics capture also failed for exactly these previews/);
+});

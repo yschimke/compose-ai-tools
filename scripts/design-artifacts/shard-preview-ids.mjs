@@ -347,16 +347,29 @@ export function verifyShardPlans(plans) {
  * not "came back with a PNG" — see `capturedPreviewIds` in `bundle-previews.mjs` for why a
  * PNG-based check would flag every animated capture and token sheet as a loss.
  *
+ * **[semanticsRan] is what keeps that reading honest.** The "any artifact" signal leans on the
+ * semantics pass to give a raster-less preview *something*, and that pass is best-effort: a missing
+ * daemon descriptor, a session that would not open, or an empty capture all leave `bundle pack`
+ * exiting 0 with no `.semantics.json` anywhere. A catalog holding a legitimately raster-less preview
+ * would then look exactly like one whose shards ate their own work, and this gate would fail a run
+ * for a reason that has nothing to do with sharding. So when the caller reports the semantics pass
+ * produced nothing (`bundleCapturedSemantics`), the answer is "cannot tell", not "lost": the check
+ * passes with the reason recorded in [notes]. It has no teeth in that state, and pretending
+ * otherwise would spend the operator's trust on a false alarm — the very thing that made the
+ * original bug expensive.
+ *
  * Extra ids are not a problem and are not reported: a merged bundle legitimately carries the whole
  * discovery set (exclusion leaves previews listed), and a shard rendering *more* than its share
  * costs time, not stickers.
  *
  * @param {Array<{index: number, previews: string[]}>} plans the uploaded per-shard plans.
  * @param {Iterable<string>} capturedIds ids the merged bundle captured.
- * @returns {{ok: boolean, problems: string[], missing: Array<{id: string, shard: number}>}}
- *   `missing` is sorted by shard then id; `problems` is empty iff every planned id came back.
+ * @param {{semanticsRan?: boolean}} [opts] `semanticsRan: false` disarms the check — see above.
+ * @returns {{ok: boolean, problems: string[], notes: string[],
+ *   missing: Array<{id: string, shard: number}>}} `missing` is sorted by shard then id; `problems`
+ *   is empty iff every planned id came back or the check declined to judge.
  */
-export function verifyShardRenders(plans, capturedIds) {
+export function verifyShardRenders(plans, capturedIds, { semanticsRan = true } = {}) {
   const captured = new Set(capturedIds ?? []);
   const missing = [];
   for (const plan of [...(plans ?? [])].sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0))) {
@@ -364,7 +377,20 @@ export function verifyShardRenders(plans, capturedIds) {
       if (!captured.has(id)) missing.push({ id, shard: plan?.index ?? 0 });
     }
   }
-  if (missing.length === 0) return { ok: true, problems: [], missing };
+  if (missing.length === 0) return { ok: true, problems: [], notes: [], missing };
+  if (!semanticsRan) {
+    return {
+      ok: true,
+      problems: [],
+      notes: [
+        `${missing.length} planned preview(s) came back with no artifact, but the bundle carries no ` +
+          `semantics at all — the capture pass produced nothing, so a preview that is raster-less by ` +
+          `design is indistinguishable from one an exclusion ate. Not judging. Fix the semantics ` +
+          `capture (see the pack's own warning) to restore this check.`,
+      ],
+      missing,
+    };
+  }
 
   const planned = (plans ?? []).reduce((n, p) => n + (p?.previews?.length ?? 0), 0);
   const byShard = new Map();
@@ -381,7 +407,11 @@ export function verifyShardRenders(plans, capturedIds) {
           (ids.length > 5 ? `, … (+${ids.length - 5} more)` : "");
       }),
   ];
-  return { ok: false, problems, missing };
+  problems.push(
+    "if the semantics capture also failed for exactly these previews, that — not sharding — is the " +
+      "cause; the pack step's own warnings say which.",
+  );
+  return { ok: false, problems, notes: [], missing };
 }
 
 // --- CLI ----------------------------------------------------------------------

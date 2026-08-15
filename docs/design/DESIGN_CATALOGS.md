@@ -797,6 +797,14 @@ that asymmetry is what makes the signal precise. Extra ids are not reported: exc
 previews listed in the bundle, and a shard rendering more than its share costs time, not stickers.
 The failure names the shard and its missing ids, so a recurrence points at its own cause.
 
+**It disarms itself rather than cry wolf.** "Any artifact" leans on the semantics pass to give a
+raster-less preview *something*, and `packSemanticsBlob` is best-effort — a missing
+`daemon-launch.json`, a session that will not open, or an empty capture each warn and leave the pack
+exiting 0 with no `.semantics.json` anywhere. In that state a legitimately raster-less preview is
+indistinguishable from one an exclusion ate, so the check reports the shortfall as a workflow warning
+and passes instead of failing the run on a signal it cannot read. A gate that fails for the wrong
+reason spends exactly the trust this one exists to rebuild.
+
 **The CLI has to be new enough.** The merge runs last, after every shard has spent its twenty
 minutes, so a CLI predating `bundle merge` would fail the run having burned the whole fan-out — and
 that is the *default* configuration's failure mode, since `cli-source: released` +

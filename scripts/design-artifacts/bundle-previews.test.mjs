@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  bundleCapturedSemantics,
   candidatePreviewBundle,
   capturedPreviewIds,
   daemonPreviewIdsByFunction,
@@ -184,4 +185,36 @@ test("capturedPreviewIds ignores entries outside previews/ and unknown ids", () 
 test("capturedPreviewIds is empty for a bundle with nothing in it", () => {
   assert.equal(capturedPreviewIds({}).size, 0);
   assert.equal(capturedPreviewIds(undefined).size, 0);
+});
+
+test("capturedPreviewIds credits an artifact to the LONGEST declared id that fits", () => {
+  // Ids can carry dots of their own, so `pkg.Screen` and `pkg.Screen.Dark` can both be declared.
+  // Stopping at the first dot boundary would credit `previews/pkg.Screen.Dark.png` to `pkg.Screen`
+  // and report the longer preview — fully rendered — as lost.
+  const bundle = {
+    previews: [{ id: "pkg.Screen" }, { id: "pkg.Screen.Dark" }],
+    entries: {
+      "previews/pkg.Screen.png": enc("png"),
+      "previews/pkg.Screen.Dark.png": enc("png"),
+    },
+  };
+  assert.deepEqual([...capturedPreviewIds(bundle)].sort(), ["pkg.Screen", "pkg.Screen.Dark"]);
+});
+
+test("capturedPreviewIds still resolves a dotted id's multi-extension sidecar", () => {
+  const bundle = {
+    previews: [{ id: "pkg.Screen" }],
+    entries: { "previews/pkg.Screen.semantics.json": enc("{}") },
+  };
+  assert.deepEqual([...capturedPreviewIds(bundle)], ["pkg.Screen"]);
+});
+
+test("bundleCapturedSemantics reports whether the best-effort semantics pass produced anything", () => {
+  const withSemantics = {
+    entries: { "previews/A.png": enc("png"), "previews/A.semantics.json": enc("{}") },
+  };
+  assert.equal(bundleCapturedSemantics(withSemantics), true);
+  // A failed daemon open leaves the pack exiting 0 with the PNGs but no semantics at all.
+  assert.equal(bundleCapturedSemantics({ entries: { "previews/A.png": enc("png") } }), false);
+  assert.equal(bundleCapturedSemantics({}), false);
 });
