@@ -23,9 +23,6 @@
     <span class="cp-site-catalog">compose-m3</span>
     <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/compare?session=compose-m3&amp;fontScale=1.5&amp;knob.label=Send%3Bnow%3Dx">compose-m3</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Design comparison</span></nav>
   </div>
-  <div class="cp-site-status">
-    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
-  </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
     <details class="cp-site-menu" id="cp-site-menu">
       <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
@@ -33,7 +30,8 @@
     </details>
     <div class="cp-site-menu-panel" id="cp-site-menu-panel">
       <a href="/">Catalogs</a>
-      <a href="/status">Status</a>
+      <a class="cp-site-status-link" id="cp-status-link" href="/status">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
       <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
       <details class="cp-settings">
         <summary class="cp-settings-btn" title="Settings" aria-label="Settings">

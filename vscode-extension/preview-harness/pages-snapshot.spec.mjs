@@ -327,6 +327,30 @@ async function openThemeBar(page) {
         await page.click("#cp-theme-toggle");
 }
 
+/**
+ * Open the overrides drawer — the COLUMN, not the groups inside it.
+ *
+ * Everything a viewer can be told to do lives in there (the knobs, the size and locale groups, the
+ * inspection layers, the exploded camera), and the drawer is revealed by `cp-controls-open` on
+ * `.cp-viewer`. The server stopped emitting that class in #3893, so the drawer now starts closed at
+ * every width and `.cp-viewer:not(.cp-controls-open) .cp-controls { display: none }` hides every
+ * group whatever its own `open` says. Six states and contracts here reached straight for a group's
+ * summary or a knob and found it resolvable, invisible, and unclickable — which is a sixty-second
+ * timeout each, and is what took this suite red on every branch.
+ *
+ * Through the toggle rather than by setting the class, so it keeps testing the control a reader
+ * uses; idempotent, so a caller need not know what the last state left behind.
+ */
+async function openControlsDrawer(page) {
+    const viewer = page.locator(".cp-viewer");
+    if (!(await viewer.count())) return;
+    const open = await viewer.evaluate((v) =>
+        v.classList.contains("cp-controls-open"),
+    );
+    if (!open) await page.click("#cp-controls-toggle");
+    await expect(viewer).toHaveClass(/cp-controls-open/);
+}
+
 // A point on the design page's sheet, given in the EXPORT's own user units — the coordinates the
 // fixture SVG is written in. States aim at a card's padding or the gap between two slots, which is
 // where a reader double-clicks to zoom, and neither has a client pixel that survives a viewport
@@ -775,6 +799,44 @@ const FIXTURE_STATES = [
         apply: async () => {},
     },
     {
+        // The filter field FOCUSED, which is the only way its ring is on screen to be diffed.
+        //
+        // The ring is drawn 5px outside the field (`outline: 3px` + `outline-offset: 2px`) and the
+        // sidebar is a scroll container above 960px, so three of the field's four edges used to be
+        // clipped by it — the top, because the field is the column's first row, and both sides,
+        // because it is full-width and a scroll container clips the axis it was not given as well.
+        // Nothing else in the suite focuses anything in this column, so the clipping survived every
+        // capture: a ring that is not on screen cannot be missing from a baseline.
+        //
+        // The ring is a plain `:focus` rule, so focusing the field is enough to draw it — no
+        // pointer needed, which is why this parks the mouse: the shot is about the ring, and a
+        // cursor resting on some card behind it would be a second change in the same frame.
+        // The render-history menu OPEN. A `<details>` ships closed, so a page screenshot captures
+        // only the trigger — the list, which is the part most likely to break visually, would never
+        // be diffed. Same reasoning (and the same shape) as `serve-viewer-revisions-open`.
+        //
+        // Opened through the summary rather than by setting `.open`, so the shot is a state a
+        // reader can actually produce, and the caret's rotated treatment comes with it.
+        fixture: "serve-viewer-history",
+        suffix: "menu-open",
+        apply: async (page) => {
+            await page.waitForSelector(".cp-history-menu");
+            await page.click(".cp-history-btn");
+            await page.waitForSelector(".cp-history-menu[open] .cp-history-list");
+        },
+    },
+    {
+        fixture: "serve-landing-sections",
+        suffix: "filter-focus",
+        parkPointer: true,
+        apply: async (page) => {
+            await page.locator("#cp-search").focus();
+            await page.waitForFunction(
+                () => document.activeElement?.id === "cp-search",
+            );
+        },
+    },
+    {
         // Switching branches. The committed HTML can only ever hold ONE arrangement — the first
         // section selected and open, the rest collapsed — so the thing the tree is for (open
         // another branch, its sub-groups appear, the grid under it changes) is invisible to a
@@ -931,6 +993,7 @@ const FIXTURE_STATES = [
         apply: async (page) => {
             // The Overrides drawer's groups open on demand; the checkboxes aren't clickable (or
             // visible in the shot) until the Overlays group is expanded.
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="overlays"] > summary');
             await page.check("#cp-inspect-a11y");
             await page.check("#cp-inspect-typography");
@@ -1391,6 +1454,7 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-catalog-knobs",
         suffix: "scroll-full-page",
         apply: async (page) => {
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="scroll"] > summary');
         },
     },
@@ -1404,6 +1468,7 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-wear-screen",
         suffix: "size-open",
         apply: async (page) => {
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="size"] > summary');
             await page.evaluate(() => {
                 const devices = document.getElementById("cp-device");
@@ -1502,6 +1567,7 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-exploded",
         suffix: "controls",
         apply: async (page) => {
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="explode"] > summary');
             await page.locator("#cp-explode-tilt").fill("46");
             await page.locator("#cp-explode-tilt").dispatchEvent("input");
@@ -1529,17 +1595,23 @@ const FIXTURE_STATES = [
         },
     },
     {
-        // The viewer's two in-page folds OPENED. The committed fixture captures the resting state
-        // — a wide state axis and a crowded theme bar both folded behind the title bar — so the
-        // rows themselves, which are what the toggles exist to reveal, would be diffed by nothing.
-        // This is also the only shot in which the toggles carry their expanded (tonal) treatment.
+        // The viewer's disclosures OPENED. The committed fixture captures the resting state — every
+        // control folded behind the title bar — so what the toggles exist to reveal would be
+        // diffed by nothing, and this is the only shot in which they carry their expanded (tonal)
+        // treatment.
+        //
+        // It used to open the state-axis fold and the theme bar. #3893 replaced both: the variant
+        // subtree moved into the component list, and the theme bar became a menu hanging off its
+        // own summary. The state follows them rather than keeping a click on `#cp-axes-toggle`,
+        // which has not existed since — and which is why this shot, and eleven others, timed out
+        // on every branch.
         fixture: "serve-viewer-axes-folded",
         suffix: "disclosures-open",
         apply: async (page) => {
-            await page.click("#cp-axes-toggle");
+            await page.click("#cp-nav-toggle");
             await page.click("#cp-theme-toggle");
-            await page.waitForSelector("#cp-axes:not([hidden])");
-            await page.waitForSelector("#cp-theme-bar:not([hidden])");
+            await page.waitForSelector(".cp-viewer.cp-nav-open");
+            await expect(page.locator("#cp-theme-bar")).toBeVisible();
         },
     },
     {
@@ -1551,8 +1623,12 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-cross-product",
         suffix: "subtree-open",
         apply: async (page) => {
-            await page.click("#cp-axes-toggle");
-            await page.waitForSelector("#cp-axes:not([hidden])");
+            // The subtree moved into the component list in #3893 (`.cp-nav-current`), which is
+            // where those labels are read now; the fold it used to live in is gone.
+            await page.click("#cp-nav-toggle");
+            await expect(
+                page.locator(".cp-nav-current .cp-tree-variants"),
+            ).toBeVisible();
         },
     },
     {
@@ -1565,7 +1641,8 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-axes-folded",
         suffix: "nav-closed",
         apply: async (page) => {
-            await page.click("#cp-axes-toggle");
+            // Re-folds what the state above opened — the theme menu, and then the list itself —
+            // so this shoots one change rather than two.
             await page.click("#cp-theme-toggle");
             await page.setViewportSize({ width: 1280, height: 900 });
             await page.click("#cp-nav-toggle");
@@ -1919,6 +1996,9 @@ test("contract · snapshot overrides stay composed with a declared theme", async
     await page.waitForTimeout(100);
     requests.length = 0;
 
+    // The drawer these groups live in starts closed (see `openControlsDrawer`), so opening the
+    // groups alone leaves their controls hidden and unfillable.
+    await openControlsDrawer(page);
     for (const group of ["size", "locale"]) {
         await page
             .locator(`details[data-cp-group="${group}"]`)
@@ -2014,7 +2094,9 @@ test("contract · an emptied string knob is sent, an emptied typed knob is not",
         "/preview-harness/fixtures/pages/serve-viewer-catalog-knobs.html",
     );
     await expect.poll(() => requests.length).toBeGreaterThan(0);
-    // The knob controls live in the collapsed Overrides drawer; open it so they are editable.
+    // The knob controls live in the Overrides drawer, behind two shut things: the drawer column
+    // itself (see `openControlsDrawer`) and the group inside it.
+    await openControlsDrawer(page);
     await page
         .locator('details[data-cp-group="overrides"]')
         .evaluate((details) => {
@@ -2172,7 +2254,7 @@ test("contract · Back to an unthemed entry hands the chrome back to the OS", as
     await expect.poll(scheme).toBe("");
 });
 
-test("contract · the fit cap re-measures when the history strip lands", async ({
+test("contract · the render history is a menu in the toggle row, and the fit cap agrees", async ({
     page,
 }) => {
     for (const [name, contentType] of SERVE_ASSETS) {
@@ -2227,26 +2309,43 @@ test("contract · the fit cap re-measures when the history strip lands", async (
         .trim();
 
     await page.goto("/preview-harness/fixtures/pages/serve-viewer-history.html");
-    // The strip arrives asynchronously — this is the moment the stage moves down.
-    await page.waitForSelector(".cp-history");
+    // The menu arrives asynchronously, from the fetch above.
+    await page.waitForSelector(".cp-history-menu");
     await page.waitForTimeout(200);
 
-    const { applied, expected, historyHeight } = await page.evaluate(() => {
-        const stage = document.querySelector(".cp-stage");
-        const top = stage.getBoundingClientRect().top + (window.scrollY || 0);
-        return {
-            applied: parseInt(
-                document.getElementById("cp-img").style.maxHeight,
-                10,
-            ),
-            // fitCap()'s own arithmetic, re-run against the geometry as it stands NOW.
-            expected: Math.max(320, Math.round(window.innerHeight - top - 64)),
-            historyHeight: document.querySelector(".cp-history").offsetHeight,
-        };
-    });
+    const { applied, expected, inToggleRow, stageSibling, closed } =
+        await page.evaluate(() => {
+            const stage = document.querySelector(".cp-stage");
+            const menu = document.querySelector(".cp-history-menu");
+            const viewer = document.querySelector(".cp-viewer");
+            const top = stage.getBoundingClientRect().top + (window.scrollY || 0);
+            return {
+                applied: parseInt(
+                    document.getElementById("cp-img").style.maxHeight,
+                    10,
+                ),
+                // fitCap()'s own arithmetic, re-run against the geometry as it stands NOW.
+                expected: Math.max(320, Math.round(window.innerHeight - top - 64)),
+                inToggleRow: !!menu.closest(".cp-head-toggles"),
+                // A band of its own in the viewer's own column is the strip coming back. Being
+                // inside the toggle row means it necessarily PRECEDES the stage in document order,
+                // so document position proves nothing here — what distinguishes the two shapes is
+                // whether it is a sibling of the stage or a control inside a row that already
+                // existed.
+                stageSibling: menu.parentNode === viewer.parentNode,
+                closed: !menu.open,
+            };
+        });
 
-    // Guard the guard: if the strip were too short to move the stage, both numbers would agree no
-    // matter what the code did, and this test would pass against the bug it exists to catch.
-    expect(historyHeight).toBeGreaterThan(0);
+    // The history is a MENU beside Revision, not a strip above the render. Asserted structurally
+    // because that is the regression: the timeline used to be a row of dated chips under the
+    // viewer bar, and restoring it there costs the width above the preview and puts a wall of
+    // chips back on a page that had just replaced one with a dropdown.
+    expect(inToggleRow).toBe(true);
+    expect(stageSibling).toBe(false);
+    // And it ships closed, so it costs one control until someone asks for the list.
+    expect(closed).toBe(true);
+    // The late arrival must still leave the fit cap agreeing with the geometry — the row can wrap
+    // when it takes another control, and a wrapped row moves the stage exactly as the strip did.
     expect(applied).toBe(expected);
 });

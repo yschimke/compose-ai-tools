@@ -27,8 +27,7 @@
   // ServeProjectHistory. Exactly one of the two is ever present.
   var blobUrl = root.getAttribute("data-history-blob-url");
   var previewId = root.getAttribute("data-preview-id");
-  var bar = document.querySelector(".cp-viewer-bar");
-  if (!previewId || !bar) return;
+  if (!previewId) return;
   // `repo` is DOM text and is interpolated into every link's href below. Linking out rather than
   // swapping the stage moved that sink from `img.src` to `a.href` — it did not remove it.
   //
@@ -111,88 +110,60 @@
     return m ? m[1] + "-" + m[2] + "-" + m[3] : "";
   }
 
+  /** One element, created only when it is going to be used. */
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  // A MENU, on the same `<details>` shape as Revision and Theme beside it — not a strip of chips.
+  //
+  // This was a horizontal row of dated chips under the viewer bar, which is the exact pattern
+  // #3858 removed from this page: the revision list used to be several lines of wrapped chips and
+  // became a dropdown, because a wall of chips spends the width above the render on a list nobody
+  // is reading most of the time, and answers "which one am I on?" only by making the reader find
+  // the highlighted one. Render history is the same kind of thing one row further down — a list of
+  // versions of these pixels — so it gets the same treatment rather than reintroducing the wall a
+  // control beside it had just shed.
+  //
+  // Being a menu is also what makes it free at every width: closed it is one control in a row that
+  // already exists, so there is no phone-versus-desktop question about where it goes and nothing
+  // between the title and the render at any size.
   function build(entry) {
     var versions = (entry && entry.versions) || [];
     if (versions.length < 2) return; // A single version is not a timeline.
 
-    var wrap = document.createElement("div");
-    wrap.className = "cp-history";
-    wrap.setAttribute("aria-label", "Render history");
-
-    var head = document.createElement("div");
-    head.className = "cp-history-head";
-    var title = document.createElement("span");
-    title.className = "cp-history-title";
-    title.textContent = "History";
-    head.appendChild(title);
-
-    var count = document.createElement("span");
-    count.className = "cp-history-count";
-    count.textContent =
-      versions.length + " versions over " + (entry.observations || versions.length) + " publishes";
-    head.appendChild(count);
-
-    // Say where the strip came from when it is not describing the stage. Without this the newest
-    // chip reads as "the render above", which in project mode it is not: the stage is rendered from
-    // the working tree and the timeline is the published baseline history.
-    if (local) {
-      var scope = document.createElement("span");
-      scope.className = "cp-history-scope";
-      scope.textContent = "published baselines";
-      scope.title =
-        "Read from the delivery branch in your local checkout. The preview above is rendered from " +
-        "your working tree, so it may differ from the newest entry.";
-      head.appendChild(scope);
-    }
-
-    // Surface instability rather than quietly showing a trimmed list: when a render keeps reverting
-    // to bytes it already had, the entries below are a trimmed view and would otherwise not add up
-    // to the publish count beside them.
-    if (entry.unstable) {
-      var warn = document.createElement("span");
-      warn.className = "cp-history-unstable";
-      warn.textContent = "unstable";
-      warn.title =
-        "This render keeps reverting to bytes it had already moved away from (" +
-        (entry.flapCount || 0) +
-        " returns). The list below is trimmed to the states it flips between.";
-      head.appendChild(warn);
-    }
-    wrap.appendChild(head);
-
-    var list = document.createElement("div");
-    list.className = "cp-history-list";
+    var list = el("nav", "cp-history-list");
+    list.setAttribute("aria-label", "Render history");
     var made = 0;
 
     versions.forEach(function (v, i) {
       // Every entry, including the newest, is addressed from the manifest — never from the stage.
-      // That is what keeps the strip independent of whether the render has loaded yet.
+      // That is what keeps the menu independent of whether the render has loaded yet.
       var url = renderUrlAt(v, entry.path);
       if (!url) return; // Skip an entry we cannot address rather than rendering a dead control.
       var current = i === 0 && !local;
-      var link = document.createElement("a");
-      link.className = "cp-history-item";
+      var link = el("a", "cp-history-item");
       link.href = url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       if (current) link.setAttribute("data-current", "1");
 
-      var date = document.createElement("span");
-      date.className = "cp-history-date";
-      date.textContent = shortDate(v.date);
-      link.appendChild(date);
-
-      var meta = document.createElement("span");
-      meta.className = "cp-history-meta";
+      link.appendChild(el("span", "cp-history-date", shortDate(v.date)));
       // sourceSha is the commit the render was produced from — far more useful to a human than the
       // delivery-branch commit, which is just a publish marker.
-      meta.textContent = current ? "current" : v.sourceSha || (v.commit || "").slice(0, 8);
-      link.appendChild(meta);
+      link.appendChild(
+        el(
+          "span",
+          "cp-history-meta",
+          current ? "current" : v.sourceSha || (v.commit || "").slice(0, 8),
+        ),
+      );
 
       if (v.commits > 1) {
-        var span = document.createElement("span");
-        span.className = "cp-history-span";
-        span.textContent = "×" + v.commits;
+        var span = el("span", "cp-history-span", "×" + v.commits);
         span.title = v.commits + " publishes carried these bytes";
         link.appendChild(span);
       }
@@ -205,8 +176,67 @@
     });
 
     if (made < 2) return;
-    wrap.appendChild(list);
-    bar.parentNode.insertBefore(wrap, bar.nextSibling);
+
+    var menu = el("details", "cp-history-menu");
+    var summary = el("summary", "cp-history-btn");
+    summary.appendChild(el("span", "cp-history-key", "History"));
+    // The closed control still names what it holds — the same rule the other disclosures in this
+    // row follow, so putting the list away never costs the fact it carried.
+    summary.appendChild(
+      el("span", "cp-history-value", made + (made === 1 ? " version" : " versions")),
+    );
+
+    // Surface instability rather than quietly showing a trimmed list: when a render keeps reverting
+    // to bytes it already had, the entries are a trimmed view and would otherwise not add up to the
+    // publish count. On the trigger, not inside the menu, because it is a warning about the whole
+    // list and a closed menu must not hide it.
+    if (entry.unstable) {
+      var warn = el("span", "cp-history-unstable", "unstable");
+      warn.title =
+        "This render keeps reverting to bytes it had already moved away from (" +
+        (entry.flapCount || 0) +
+        " returns). The list is trimmed to the states it flips between.";
+      summary.appendChild(warn);
+    }
+    var caret = el("span", "cp-history-caret", "▾");
+    caret.setAttribute("aria-hidden", "true");
+    summary.appendChild(caret);
+    menu.appendChild(summary);
+
+    var panel = el("div", "cp-history-panel");
+    panel.appendChild(list);
+    // Say where the list came from when it is not describing the stage. Without this the newest
+    // entry reads as "the render on screen", which in project mode it is not: the stage is rendered
+    // from the working tree and the timeline is the published baseline history.
+    panel.appendChild(
+      el(
+        "p",
+        "cp-history-note",
+        local
+          ? "Published baselines, read from the delivery branch in your local checkout. The " +
+              "preview is rendered from your working tree, so it may differ from the newest entry."
+          : "Every publish of this design system that changed these pixels, over " +
+              (entry.observations || versions.length) +
+              " publishes. Opening one shows that render in a new tab.",
+      ),
+    );
+    menu.appendChild(panel);
+    place(menu);
+  }
+
+  // Beside the other disclosures, after Revision — both answer "which version of these pixels am I
+  // looking at", so they belong together, and the Overrides drawer stays last where the thumb
+  // expects it. Falls back to above the stage on a page that has no toggle row at all, which keeps
+  // this working on a surface that predates it without ever reintroducing the strip.
+  function place(menu) {
+    var row = document.querySelector(".cp-head-toggles");
+    if (row) {
+      var controls = document.getElementById("cp-controls-toggle");
+      if (controls && controls.parentNode === row) row.insertBefore(menu, controls);
+      else row.appendChild(menu);
+      return;
+    }
+    root.parentNode.insertBefore(menu, root);
   }
 
   // An inline payload lets a fixture (and any offline viewer) render the strip without reaching
