@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "e98e60ff99981487b81af730ea6ff1e2e7ba36cb",
+    "generatedFrom": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -4048,6 +4048,13 @@
             "path": "renders/samples:cmp/ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated-dfc4241c.gif",
             "versions": [
                 {
+                    "blob": "bd28bbc0ae8fa774ed8b8e22eccd39a84890acc8",
+                    "commit": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+                    "date": "2026-08-15T14:13:31Z",
+                    "sourceSha": "8322d55d",
+                    "commits": 1
+                },
+                {
                     "blob": "06bb00e6a462649c1f246b7b841f565b1ca27bcc",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -4055,7 +4062,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -4078,6 +4085,13 @@
             "path": "renders/samples:cmp/ShaderJuliaAnimatedPreview_Shader_Gallery_Julia_Set_animated-1a96bf57.gif",
             "versions": [
                 {
+                    "blob": "bff4983672fcf2c0336723c429a51c3ab7be3574",
+                    "commit": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+                    "date": "2026-08-15T14:13:31Z",
+                    "sourceSha": "8322d55d",
+                    "commits": 1
+                },
+                {
                     "blob": "c58bce7d816cb7a6f40cd90a94019a9d1c5cbeeb",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -4085,7 +4099,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -4108,6 +4122,13 @@
             "path": "renders/samples:cmp/ShaderRaymarchAnimatedPreview_Shader_Gallery_Raymarch_SDF_animated-05596e54.gif",
             "versions": [
                 {
+                    "blob": "60165355d4a25414604cf5033c8c53d6a30b345d",
+                    "commit": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+                    "date": "2026-08-15T14:13:31Z",
+                    "sourceSha": "8322d55d",
+                    "commits": 1
+                },
+                {
                     "blob": "35f7c42d88a62838579542ce21f3ccc562577bfc",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -4115,7 +4136,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -4153,6 +4174,13 @@
             "path": "renders/samples:cmp/RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob-76f00020.gif",
             "versions": [
                 {
+                    "blob": "2329c1398eb171df628ead3e84096b4858619daa",
+                    "commit": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+                    "date": "2026-08-15T14:13:31Z",
+                    "sourceSha": "8322d55d",
+                    "commits": 1
+                },
+                {
                     "blob": "eea183d7d7b35114ca442a82d8bd6ee698abf357",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -4160,7 +4188,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -5218,6 +5246,13 @@
             "path": "renders/samples:design-catalog-m3/SwitchOn_Dark-d0f22b72.apng",
             "versions": [
                 {
+                    "blob": "48feb2c9f4a6b0efa57e3dcec1925569d3d18c92",
+                    "commit": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+                    "date": "2026-08-15T14:13:31Z",
+                    "sourceSha": "8322d55d",
+                    "commits": 1
+                },
+                {
                     "blob": "20b33d4188d836b4064ecd04eb77e2731f98580f",
                     "commit": "e98e60ff99981487b81af730ea6ff1e2e7ba36cb",
                     "date": "2026-08-15T11:09:03Z",
@@ -5225,7 +5260,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -5263,6 +5298,13 @@
             "path": "renders/samples:design-catalog-m3/SwitchOn_Light-c16813d5.apng",
             "versions": [
                 {
+                    "blob": "a73c02d0ab48038f6aebd1d2206cd60d22ddfb5a",
+                    "commit": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+                    "date": "2026-08-15T14:13:31Z",
+                    "sourceSha": "8322d55d",
+                    "commits": 1
+                },
+                {
                     "blob": "9b235df908d6463624e0c30b72cfe779acb6a47b",
                     "commit": "e98e60ff99981487b81af730ea6ff1e2e7ba36cb",
                     "date": "2026-08-15T11:09:03Z",
@@ -5270,7 +5312,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
