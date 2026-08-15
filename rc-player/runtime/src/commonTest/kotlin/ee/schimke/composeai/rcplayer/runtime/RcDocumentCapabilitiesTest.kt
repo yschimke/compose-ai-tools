@@ -1,5 +1,17 @@
-package ee.schimke.composeai.rcplayer.protocol
+package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
+import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
+import ee.schimke.composeai.rcplayer.protocol.RcNoArg
+import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcOperation
+import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -113,17 +125,80 @@ class RcDocumentCapabilitiesTest {
   }
 
   @Test
-  fun `unspecified and system sections gate nothing`() {
-    // `isThemeVisible` shows an UNSPECIFIED section under every request, so it filters nothing.
-    for (theme in listOf(RcTheme.UNSPECIFIED, RcTheme.SYSTEM)) {
-      val caps = roundTrip(doc(RcTheme(theme), RcTextData(1, "copy")))
-      assertTrue(caps.themeGatedSections.isEmpty(), "theme=$theme should gate nothing")
-      assertFalse(caps.supportsUiMode, "theme=$theme should not carry uiMode")
-    }
+  fun `only unspecified is a wildcard - a system section gates content`() {
+    // `isThemeVisible` treats ONLY UNSPECIFIED as the wildcard on either side, so a SYSTEM-tagged
+    // operation is filtered out under a requested LIGHT or DARK — it gates just like they do.
+    val unspecified = roundTrip(doc(RcTheme(RcTheme.UNSPECIFIED), RcTextData(1, "copy")))
+    assertTrue(unspecified.themeGatedSections.isEmpty())
+    assertFalse(unspecified.supportsUiMode)
+
+    val system = roundTrip(doc(RcTheme(RcTheme.SYSTEM), RcTextData(1, "copy")))
+    assertEquals(setOf(RcTheme.SYSTEM), system.themeGatedSections)
+    assertTrue(system.supportsUiMode)
   }
 
   @Test
-  fun `a trailing marker with no content after it gates nothing`() {
+  fun `a marker does not leak past the end of its container`() {
+    // `drawOperations` declares `currentTheme` per invocation and recurses per container, so a
+    // trailing marker inside a nested container cannot gate a later sibling of that container.
+    val caps =
+      roundTrip(
+        doc(
+          RcBoxLayout(1, 0, 0, 0),
+          RcTheme(RcTheme.DARK),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcTextData(2, "sibling after the container"),
+        )
+      )
+    assertTrue(caps.themeGatedSections.isEmpty(), "a trailing nested marker gates nothing")
+    assertFalse(caps.supportsUiMode)
+  }
+
+  @Test
+  fun `a marker is not inherited into a nested container`() {
+    // Every container starts over at UNSPECIFIED, so content inside is ungated by the parent's
+    // section. The parent's own following content is still gated.
+    val caps =
+      roundTrip(
+        doc(
+          RcTheme(RcTheme.DARK),
+          RcBoxLayout(1, 0, 0, 0),
+          RcTextData(2, "nested, ungated"),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        )
+      )
+    assertTrue(caps.themeGatedSections.isEmpty())
+  }
+
+  @Test
+  fun `a gated section inside a container is still found`() {
+    val caps =
+      roundTrip(
+        doc(
+          RcBoxLayout(1, 0, 0, 0),
+          RcTheme(RcTheme.LIGHT),
+          RcTextData(2, "light, inside"),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        )
+      )
+    assertEquals(setOf(RcTheme.LIGHT), caps.themeGatedSections)
+    assertTrue(caps.supportsUiMode)
+  }
+
+  @Test
+  fun `an unqualified name resolves against the USER domain`() {
+    // `rc.shaderColor` parses to the bare key `shaderColor`, is applied via `setUserLocal*`, and
+    // the player prefixes `USER:` — so the captured declaration is `USER:shaderColor`. Matching
+    // only the exact string would reject every ordinary `rc.` override.
+    val caps = roundTrip(doc(RcNamedVariable(1, RcNamedVariable.COLOR_TYPE, "USER:shaderColor")))
+    assertTrue(caps.supportsNamedValue("shaderColor"))
+    assertEquals(RcNamedVariable.COLOR_TYPE, caps.namedValueType("shaderColor"))
+    assertTrue(caps.supportsNamedValue("USER:shaderColor"))
+    assertFalse(caps.supportsNamedValue("somethingElse"))
+  }
+
+  @Test
+  fun `a trailing top-level marker with no content after it gates nothing`() {
     val caps = roundTrip(doc(RcTextData(1, "copy"), RcTheme(RcTheme.DARK)))
     assertTrue(caps.themeGatedSections.isEmpty())
     assertFalse(caps.supportsUiMode)
