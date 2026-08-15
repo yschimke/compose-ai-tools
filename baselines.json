@@ -1647,6 +1647,22 @@
     "sha256": "57a0775ae7ee07ef3e0d95c9ddb964a311c99769af512f7797bf26a3d797161f",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.InteractionPreviewsKt.ExpandableMenuInteractionPreview_Interaction \u2014 Expandable Menu": {
+    "captureLabel": "",
+    "functionName": "ExpandableMenuInteractionPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.png",
+    "sha256": "abce53bc0adeb6d317de9a0bc6d4b440787d1b8808f251bccf7d2189496167ca",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/InteractionPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.InteractionPreviewsKt.ExpandableMenuInteractionPreview_Interaction \u2014 Expandable Menu#1": {
+    "captureLabel": "",
+    "functionName": "ExpandableMenuInteractionPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.apng",
+    "sha256": "93c1ad08d6d1610e6ea10eda6dd739076f4fbe273ad314da66554029a4a2efd8",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/InteractionPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
     "captureLabel": "",
     "functionName": "KeyboardDemoPreview",

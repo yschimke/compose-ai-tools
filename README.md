@@ -240,6 +240,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FontScale100Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale100Preview_Font_scale_1_0x-966325ac.png" width="150" /> |
 | `FontScale150Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale150Preview_Font_scale_1_5x-8dbcc4ab.png" width="150" /> |
 | `FontScale200Preview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/FontScale200Preview_Font_scale_2_0x-cb8aeba5.png" width="150" /> |
+| `ExpandableMenuInteractionPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.png" width="150" /> |
+| `ExpandableMenuInteractionPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.apng" width="150" /> |
 | `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/KeyboardDemoPreview_Keyboard_Demo-08ecc5ac.png" width="150" /> |
 | `LottieSpinQuarterPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/LottieSpinQuarterPreview-d4eed04d.png" width="150" /> |
 | `LottieSpinStartPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/LottieSpinStartPreview-5e829e09.png" width="150" /> |
