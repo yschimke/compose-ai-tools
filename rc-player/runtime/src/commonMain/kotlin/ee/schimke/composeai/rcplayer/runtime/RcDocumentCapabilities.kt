@@ -60,7 +60,10 @@ public data class RcDocumentCapabilities(
 ) {
   /** Colour-typed entries of [namedValues] — the slots a palette override can overwrite. */
   public val colorNamedValues: Set<String>
-    get() = namedValues.filterValues { it == RcNamedVariable.COLOR_TYPE }.keys
+    get() =
+      namedValues
+        .filter { (name, type) -> name.contains(':') && type == RcNamedVariable.COLOR_TYPE }
+        .keys
 
   /**
    * Whether a `themeProvider` palette can reach this document, i.e. whether it declares colour

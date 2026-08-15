@@ -43,6 +43,7 @@ on:
       - 'samples/design-catalog-*/**'
       - 'samples/cmp-wasm-catalog/**'
       - 'scripts/design-artifacts/**'
+      - '.github/ci/remote-m3-cmp-wasm-allowlist.json'
       - '.github/workflows/design-artifacts.yml'
       - '.github/workflows/design-artifacts-reusable.yml'
   # Also invoked automatically at the tail of a published release (release-please.yml

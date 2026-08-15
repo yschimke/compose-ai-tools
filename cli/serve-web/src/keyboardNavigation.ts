@@ -69,7 +69,13 @@ function dedupe<T>(items: T[], key: (item: T) => string): T[] {
 }
 
 function componentKey(element: HTMLAnchorElement): string {
-    const targetId = element.hash.slice(1);
+    const encodedTargetId = element.hash.slice(1);
+    let targetId = encodedTargetId;
+    try {
+        targetId = decodeURIComponent(encodedTargetId);
+    } catch (_) {
+        // A malformed fragment still has a stable URL key; it simply cannot resolve a card.
+    }
     const target = targetId ? document.getElementById(targetId) : null;
     return target instanceof HTMLAnchorElement &&
         target.matches(".cp-card[href]")
@@ -232,7 +238,12 @@ class KeyboardNavigation {
             detail: element.getAttribute("title") || "Open component",
             keywords: `${text(element)} ${element.getAttribute("data-search") || ""}`,
             href: element.href,
-            run: () => element.click(),
+            run: () => {
+                // Fragment navigation does not unload the document, so it cannot rely on browser
+                // teardown to dismiss the modal command palette before revealing the card.
+                this.closeOverlay();
+                element.click();
+            },
         }));
     }
 

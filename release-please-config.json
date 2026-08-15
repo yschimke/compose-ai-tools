@@ -24,6 +24,18 @@
         },
         {
           "type": "generic",
+          "path": ".github/actions/apply/action.yml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/actions/a11y-report/action.yml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/actions/notification-previews/action.yml"
+        },
+        {
+          "type": "generic",
           "path": "deploy/image/Dockerfile"
         },
         {

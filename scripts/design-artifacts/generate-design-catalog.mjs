@@ -97,6 +97,7 @@ import {
 } from "./render-fonts-manifest.mjs";
 import {
   candidatePreviewBundle,
+  daemonPreviewCellsByFunction,
   daemonPreviewIdsByFunction,
 } from "./bundle-previews.mjs";
 
@@ -650,8 +651,8 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       const motion = foldMotion(
         baked,
         motionArtifactsFor(opts.motionBundle, motionPreviewFor(component)),
-        opts.previewIdsByFunction?.get(component.preview),
-        opts.previewIdsByFunction?.get(motionPreviewFor(component)),
+        opts.previewCellsByFunction?.get(component.preview),
+        opts.previewCellsByFunction?.get(motionPreviewFor(component)),
       );
       if (motion.length > 0) source.motion = motion;
       // A group may declare a top-level `section` (the tab the preview server
@@ -1057,6 +1058,10 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
     // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
     // gets declared even though no image of them exists to fold.
     previewIdsByFunction: daemonPreviewIdsByFunction([bundle, extraBundle]),
+    // The same fan-outs with their render parameters. A separately named motion function may
+    // declare annotations in a different order, so theme inheritance joins by axis identity rather
+    // than zipping the two id arrays.
+    previewCellsByFunction: daemonPreviewCellsByFunction([bundle, extraBundle]),
     // The bundle motion artifacts are read from. The primary only: a motion capture is published
     // by the module that owns the component, and a supplementary render exists to fill in stills
     // the primary could not produce.

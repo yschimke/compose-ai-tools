@@ -32,6 +32,7 @@ expect() {
 # --- one catalog changes → exactly that system -----------------------------
 expect 'wear catalog'            'wear-m3'   'samples/design-catalog-wear-m3/src/main/kotlin/CatalogTheme.kt'
 expect 'remote catalog'          'remote-m3' 'samples/design-catalog-remote-m3/catalog.spec.json'
+expect 'remote wasm allowlist'   'remote-m3' '.github/ci/remote-m3-cmp-wasm-allowlist.json'
 expect 'compose-m3 CMP tier'     'compose-m3' 'samples/design-catalog-m3/src/main/kotlin/A.kt'
 expect 'compose-m3 android tier' 'compose-m3' 'samples/design-catalog-m3-android/src/main/kotlin/A.kt'
 expect 'compose-m3 shared tier'  'compose-m3' 'samples/design-catalog-m3-shared/src/main/kotlin/A.kt'

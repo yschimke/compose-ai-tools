@@ -36,7 +36,7 @@ system_pattern() {
   case "$1" in
     compose-m3) echo '^samples/(design-catalog-m3(-android|-shared)?|cmp-wasm-catalog)/' ;;
     wear-m3)    echo '^samples/design-catalog-wear-m3/' ;;
-    remote-m3)  echo '^samples/design-catalog-remote-m3/' ;;
+    remote-m3)  echo '^(samples/design-catalog-remote-m3/|\.github/ci/remote-m3-cmp-wasm-allowlist\.json$)' ;;
     *) echo "unknown system: $1" >&2; exit 2 ;;
   esac
 }

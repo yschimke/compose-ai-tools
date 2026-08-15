@@ -129,6 +129,10 @@ class RcDocumentCapabilitiesTest {
     val bareOnly = roundTrip(doc(RcNamedVariable(1, RcNamedVariable.FLOAT_TYPE, "shaderColor")))
     assertFalse(bareOnly.declaresNamedValue("shaderColor"))
 
+    val bareColor = roundTrip(doc(RcNamedVariable(1, RcNamedVariable.COLOR_TYPE, "shaderColor")))
+    assertTrue(bareColor.colorNamedValues.isEmpty())
+    assertFalse(bareColor.supportsThemeProvider)
+
     val both =
       roundTrip(
         doc(
