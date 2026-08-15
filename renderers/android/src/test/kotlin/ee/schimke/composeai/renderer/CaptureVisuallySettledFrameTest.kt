@@ -11,6 +11,28 @@ import org.junit.Test
 class CaptureVisuallySettledFrameTest {
 
   @Test
+  fun `settling may advance only an untimed final job`() {
+    assertTrue(
+      shouldAdvanceClockForVisualSettling(
+        advanceTimeMillis = null,
+        hasFollowingJobs = false,
+      )
+    )
+    assertFalse(
+      shouldAdvanceClockForVisualSettling(
+        advanceTimeMillis = 200L,
+        hasFollowingJobs = false,
+      )
+    )
+    assertFalse(
+      shouldAdvanceClockForVisualSettling(
+        advanceTimeMillis = null,
+        hasFollowingJobs = true,
+      )
+    )
+  }
+
+  @Test
   fun `fast path accepts the first two identical frames`() {
     val file = File.createTempFile("settled_final_", ".png").apply { deleteOnExit() }
     var captures = 0
