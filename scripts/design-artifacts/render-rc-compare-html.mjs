@@ -9,7 +9,7 @@
  * every player's render, which is what you want when the question is "what does
  * each player draw?". Diffing is opt-in: pick **one** column as the reference in
  * the toolbar and every other column grows a pixel diff beneath its render plus a
- * mismatch chip in the row's meta cell. Picking `baked PNG` reuses the diffs the
+ * mismatch chip in the row's meta cell. Picking `AndroidX Java` reuses the diffs the
  * driver already computed at build time (exact `pixelmatch` numbers, no work in
  * the browser); picking any *player* as the reference — e.g. "how far is cmp-wasm
  * from cmp-jvm?", a question the build-time lane-vs-baked diffs cannot answer —
@@ -23,12 +23,12 @@
  * driven by the row model it also inlines as JSON.
  *
  * Player lanes, each its own column and its own build-time mismatch % against the
- * baked PNG (the summary header keeps reporting those, since they are the
+ * AndroidX Java render (the summary header keeps reporting those, since they are the
  * recorded parity numbers):
  *
  * * **JS player** — the vendored TypeScript `RC.RcdPlayer` on a `<canvas>`, the
  *   browser render lane.
- * * **embedded player** — the vendored AndroidX `RcPlayer`
+ * * **AndroidX Embedded** — the vendored AndroidX `RcPlayer`
  *   (`:third-party-rc-embedded-player`), a pure-Compose interpreter of the same
  *   document. This is the lane that differs from `remote-player-view`'s
  *   `RemoteComposePlayer` (an Android `View` painting to a framework `Canvas`),
@@ -51,7 +51,7 @@
  *       mismatchPct,         // 0..100, null when !rendered
  *       mismatchPx,          // integer, null when !rendered
  *       baked, rc, diff,     // out-relative image paths ('' when absent)
- *       referenceBlank,      // true when the baked PNG is fully transparent — see below
+ *       referenceBlank,      // true when the AndroidX Java render is fully transparent — see below
  *
  *       embeddedRendered,    // false when the embedded player could not render it
  *       embeddedNote,        // optional reason when !embeddedRendered
@@ -66,13 +66,13 @@
  * older summary, or a run where the lane was skipped) omits that column entirely
  * rather than showing it empty, and the lane never appears in the reference picker.
  *
- * `referenceBlank` marks a preview whose baked PNG carries no opaque pixel at all
+ * `referenceBlank` marks a preview whose AndroidX Java render carries no opaque pixel at all
  * (a capture that produced nothing). Both sides flatten onto the same neutral
  * background before diffing, so a player that also draws nothing scores an exact
  * 0.00% — a green "good" band for a comparison that never happened. Such rows are
  * shown (the blank baked capture is itself the finding) but excluded from every
  * mean, sorted with the unrenderable rows, and score `no reference` whenever the
- * baked PNG is the selected reference. Choosing a *player* as the reference scores
+ * AndroidX Java is the selected reference. Choosing another player as the reference scores
  * them normally: two player renders are a real comparison even when the baked
  * capture is empty.
  */
@@ -110,8 +110,18 @@ export function hasCmpWasmLane(rows = []) {
 const LANES = [
   {
     id: "baked",
-    label: "baked PNG",
-    short: "baked",
+    // The AndroidX `RemoteComposePlayer` — an Android `View` painting to a framework `Canvas` —
+    // rendered offline under Robolectric/Skiko. Named for the player rather than the file it
+    // arrives as: "baked PNG" said how it got here, not what drew it.
+    // Assumes the bundle's baked PNGs came from the View-backed player, which is true of every
+    // catalog scored today: `remote-m3` is the only published system with an `ir/*.rc` corpus, and
+    // it wraps nothing in `RemoteEmbeddedPreviewWrapper`. A preview that DOES carry that wrapper
+    // bakes its PNG through the embedded `RcPlayer` instead — `samples/remotecompose` has two — and
+    // neither the bundle nor the summary records which renderer produced a row, so a catalog mixing
+    // the two would be mislabelled here rather than detected. Carry provenance per row before
+    // scoring such a catalog.
+    label: "AndroidX Java",
+    short: "java",
     always: true,
     src: (r) => r.baked,
     rendered: (r) => Boolean(r.baked),
@@ -131,7 +141,9 @@ const LANES = [
   },
   {
     id: "embedded",
-    label: "RC · embedded player",
+    // AndroidX's `RcPlayer`, vendored here as `:third-party-rc-embedded-player`. Named for
+    // whose player it is, not for the fact that this repo carries a copy.
+    label: "AndroidX Embedded",
     short: "embedded",
     present: hasEmbeddedLane,
     src: (r) => r.embedded,
@@ -176,11 +188,11 @@ export function activeLanes(rows = []) {
 /**
  * Aggregate stats over the rows — mean mismatch across *scored* rows, counts.
  *
- * These are the **build-time** numbers: every lane against the baked PNG, computed by the driver.
+ * These are the **build-time** numbers: every lane against AndroidX Java, computed by the driver.
  * The page's reference picker re-scores rows in the browser, but the header keeps reporting these,
  * because they are what the run recorded and what the summary JSON and the CI gate use.
  *
- * A row whose baked PNG is fully transparent (`referenceBlank`) is rendered but **not scored**: with
+ * A row whose AndroidX Java render is fully transparent (`referenceBlank`) is rendered but **not scored**: with
  * nothing in the reference, a player that draws nothing flattens to the same neutral background and
  * scores a perfect 0.00%, which reads as a green "good" band for a comparison that never happened.
  * Those rows are excluded from the mean and counted separately, so a catalog that bakes blanks can't
@@ -309,7 +321,7 @@ function rowHtml(r, lanes, index) {
     <div class="scores" data-scores></div>
     ${
       r.referenceBlank
-        ? `<div class="blanknote">baked PNG is fully transparent — nothing to compare against</div>`
+        ? `<div class="blanknote">the AndroidX Java render is fully transparent — nothing to compare against</div>`
         : ""
     }
     ${dims}
@@ -319,9 +331,9 @@ function rowHtml(r, lanes, index) {
 
 /**
  * The row model the inlined script diffs over: per lane, where its render lives, what the driver
- * already measured against the baked PNG, and whether it rendered at all. Keeping it as data (rather
+ * already measured against AndroidX Java, and whether it rendered at all. Keeping it as data (rather
  * than scraping the DOM) is what lets the client pick the exact build-time diff when the reference
- * *is* the baked PNG and fall back to canvas only when it isn't.
+ * *is* AndroidX Java and fall back to canvas only when it isn't.
  */
 function clientModel(rows, lanes) {
   return {
@@ -524,7 +536,7 @@ function clientScript(threshold) {
         scores.append(chip(lane.short, data.note || "no render", null, null));
         continue;
       }
-      // Build-time fast path: the driver's own pixelmatch result against the baked PNG.
+      // Build-time fast path: the driver's own pixelmatch result against AndroidX Java.
       if (ref === "baked" && data.diff && data.pct != null) {
         scores.append(chip(lane.short, data.pct.toFixed(2) + "%", data.pct, data.px));
         showDiff(row, lane.id, data.diff);
@@ -600,7 +612,7 @@ function clientScript(threshold) {
     }
     status.textContent =
       ref === "baked"
-        ? "showing the build-time pixelmatch diffs against the baked PNG"
+        ? "showing the build-time pixelmatch diffs against AndroidX Java"
         : "diffing in the browser against " + laneLabel(ref) + " — no anti-aliasing pass, so text-heavy previews read slightly higher than the build-time numbers";
     for (const row of rows) observer.observe(row);
   }
@@ -651,7 +663,7 @@ export function renderRcCompareHtml(model, opts = {}) {
     (stats.unsupported ? ` · ${stats.unsupported} not decodable` : "") +
     blankTxt +
     (withEmbedded
-      ? `<br><strong>embedded player:</strong> ${stats.embeddedScored} scored · mean mismatch <strong>${embMeanTxt}</strong>` +
+      ? `<br><strong>AndroidX Embedded:</strong> ${stats.embeddedScored} scored · mean mismatch <strong>${embMeanTxt}</strong>` +
         (stats.embeddedUnsupported ? ` · ${stats.embeddedUnsupported} not rendered` : "") +
         blankTxt
       : "") +
@@ -760,12 +772,13 @@ ${rows.map((r, i) => rowHtml(r, lanes, i)).join("\n")}
   ${genNote}
   ${picker}
 </header>
-<p class="lede">Every preview across every player: its baked <strong>PNG</strong> (the offline
-Robolectric/Skiko render) next to the same <code>ir/*.rc</code> document as each player renders it.
+<p class="lede">Every preview across every player: <strong>AndroidX Java</strong> (the offline
+Robolectric/Skiko render of AndroidX's <code>RemoteComposePlayer</code>) next to the same
+<code>ir/*.rc</code> document as each player renders it.
 ${[
   `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
   withEmbedded &&
-    `the <strong>embedded player</strong> is AndroidX's <code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than painting into an Android <code>View</code> the way <code>remote-player-view</code> does`,
+    `<strong>AndroidX Embedded</strong> is AndroidX's <code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than painting into an Android <code>View</code> the way <code>remote-player-view</code> does`,
   withEmbeddedJvm &&
     `the <strong>cmp-jvm player</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen`,
   withCmpWasm &&
@@ -774,11 +787,11 @@ ${[
   .filter(Boolean)
   .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}
 <strong>Nothing is diffed until you ask for it:</strong> pick a column in <em>Diff against</em> and every
-other column grows a pixel diff plus a mismatch chip. Choosing the baked PNG replays the build-time
+other column grows a pixel diff plus a mismatch chip. Choosing AndroidX Java replays the build-time
 <code>pixelmatch</code> diffs; choosing a player diffs in the browser, which is how you compare two
 players directly. Rows sort worst-match-first${
     laneNames.length > 1 ? " on the worst-scoring player" : ""
-  } using the build-time scores in the header. A preview whose baked PNG is
+  } using the build-time scores in the header. A preview whose AndroidX Java render is
 <strong>fully transparent</strong> is shown but not scored against it: with nothing in the reference, a
 player that draws nothing would score a perfect 0% — so those rows read <code>no reference</code> and
 stay out of the means.</p>

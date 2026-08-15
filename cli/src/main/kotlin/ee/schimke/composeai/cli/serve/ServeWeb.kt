@@ -6740,13 +6740,13 @@ object ServeWeb {
 
   /**
    * The **Remote Compose players** view: every player's published render of every `ir/<id>.rc`
-   * document, one column per player, with the baked PNG (the offline Robolectric/Skiko render, and
+   * document, one column per player, with AndroidX Java (the offline Robolectric/Skiko render, and
    * the reference the offline run scored everything against) first.
    *
    * Nothing is diffed until asked. Picking a column as the reference gives every *other* column a
    * pixel diff and a mismatch chip — which is the point of the view: "how far is cmp-wasm from
    * cmp-jvm?" is a question no build-time artifact answers, because the offline run only ever
-   * diffed each player against the baked PNG.
+   * diffed each player against AndroidX Java.
    *
    * The whole thing replays what the delivery branch already published, so the page costs a few
    * `<img>` loads rather than a `.rc` fetch plus a canvas render per preview — and it shows five
@@ -6831,7 +6831,7 @@ object ServeWeb {
           <th scope="row">
             <a href="$viewer">${WebEscaping.htmlEscape(label)}</a>
             ${if (dims.isNotEmpty()) "<div class=\"cp-rc-dims\">$dims</div>" else ""}
-            ${if (row.referenceBlank) "<div class=\"cp-rc-blank\">baked PNG is fully transparent — nothing to compare against</div>" else ""}
+            ${if (row.referenceBlank) "<div class=\"cp-rc-blank\">the AndroidX Java render is fully transparent — nothing to compare against</div>" else ""}
             <div class="cp-rc-scores" data-scores></div>
           </th>$cells
         </tr>
@@ -6866,7 +6866,7 @@ object ServeWeb {
     return """
       <section id="cp-rc-lanes" hidden>
         <p class="cp-sub">Pick a column and every other column grows a pixel diff and a mismatch chip.
-          The baked PNG replays the build-time <code>pixelmatch</code> diffs; a player diffs in your browser,
+          AndroidX Java replays the build-time <code>pixelmatch</code> diffs; another player diffs in your browser,
           which is how you compare two players directly.</p>
         <div class="cp-compare-controls">
           <span class="cp-compare-control-label">Diff against</span>

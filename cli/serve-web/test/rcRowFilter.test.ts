@@ -75,8 +75,8 @@ describe("statusFor", () => {
 
     it("names the build-time numbers as build-time", () => {
         assert.equal(
-            statusFor("baked", "baked"),
-            "showing the build-time pixel diffs against the baked PNG",
+            statusFor("baked", "java"),
+            "showing the build-time pixel diffs against AndroidX Java",
         );
     });
 
