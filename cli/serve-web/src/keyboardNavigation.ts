@@ -68,6 +68,15 @@ function dedupe<T>(items: T[], key: (item: T) => string): T[] {
     });
 }
 
+function componentKey(element: HTMLAnchorElement): string {
+    const targetId = element.hash.slice(1);
+    const target = targetId ? document.getElementById(targetId) : null;
+    return target instanceof HTMLAnchorElement &&
+        target.matches(".cp-card[href]")
+        ? target.href
+        : element.href;
+}
+
 class KeyboardNavigation {
     private enabled = stored(ENABLED_KEY) === "1";
     private overlay: HTMLElement | null = null;
@@ -152,12 +161,13 @@ class KeyboardNavigation {
     }
 
     private onKeyDown(event: KeyboardEvent): void {
+        if (this.overlay && event.key === "Escape") {
+            event.preventDefault();
+            this.closeOverlay();
+            return;
+        }
         if (!this.enabled) return;
         if (this.overlay) {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                this.closeOverlay();
-            }
             return;
         }
         if (
@@ -201,12 +211,20 @@ class KeyboardNavigation {
     }
 
     private componentCommands(): Command[] {
-        const elements = Array.from(
+        const navigationElements = Array.from(
             document.querySelectorAll<HTMLAnchorElement>(
-                "#cp-nav-list .cp-nav-item, .cp-catalog-menu .cp-tree-component[href], .cp-card[href]:not(.cp-sys)",
+                "#cp-nav-list .cp-nav-item, .cp-catalog-menu .cp-tree-component[href]",
             ),
         );
-        return dedupe(elements, (element) => element.href).map((element) => ({
+        const cardElements = Array.from(
+            document.querySelectorAll<HTMLAnchorElement>(
+                ".cp-card[href]:not(.cp-sys)",
+            ),
+        );
+        return dedupe(
+            [...navigationElements, ...cardElements],
+            componentKey,
+        ).map((element) => ({
             section: "components",
             label:
                 text(element.querySelector(".cp-nav-name, .cp-label")) ||
@@ -243,17 +261,29 @@ class KeyboardNavigation {
                 ".cp-preview-primary button:not([disabled]), .cp-theme-bar .cp-theme-btn:not([disabled])",
             )
             .forEach((button) => {
-                const label = text(button);
+                const liveToggle = button.id === "cp-live-toggle";
+                const selected = button.getAttribute("aria-pressed") === "true";
+                const label = liveToggle
+                    ? selected
+                        ? "Static snapshot"
+                        : "Live preview"
+                    : text(button);
                 if (!label) return;
                 commands.push({
                     section: "modes",
                     label,
-                    detail:
-                        button.getAttribute("aria-pressed") === "true"
-                            ? "Selected"
-                            : "Select mode",
-                    keywords: `${label} renderer theme format zoom`,
-                    run: () => button.click(),
+                    detail: liveToggle
+                        ? selected
+                            ? "Switch to static mode"
+                            : "Switch to interactive mode"
+                        : selected
+                          ? "Selected"
+                          : "Select mode",
+                    keywords: `${label} ${text(button)} renderer theme format zoom`,
+                    run: () => {
+                        button.click();
+                        this.closeOverlay();
+                    },
                 });
             });
         document
@@ -273,6 +303,7 @@ class KeyboardNavigation {
                             select.dispatchEvent(
                                 new Event("change", { bubbles: true }),
                             );
+                            this.closeOverlay();
                         },
                     });
                 });
@@ -288,6 +319,10 @@ class KeyboardNavigation {
             document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
                 "#cp-controls input:not([type='hidden']):not([disabled]), #cp-controls select:not([disabled])",
             ),
+        ).filter(
+            (control) =>
+                !control.closest("[aria-hidden='true']") &&
+                !control.closest("[hidden]"),
         );
         return controls.flatMap((control) => {
             const label = controlLabel(control);
@@ -363,10 +398,18 @@ class KeyboardNavigation {
                 ? this.componentCommands()
                 : this.variantCommands();
         if (!commands.length) return;
-        const currentHref = location.href.split("#")[0];
+        const currentHref = location.href;
         let current = commands.findIndex(
-            (command) => command.href?.split("#")[0] === currentHref,
+            (command) => command.href === currentHref,
         );
+        if (current < 0 && !location.hash) {
+            current = commands.findIndex(
+                (command) =>
+                    command.href != null &&
+                    !new URL(command.href).hash &&
+                    command.href.split("#")[0] === currentHref,
+            );
+        }
         if (current < 0) current = direction > 0 ? -1 : 0;
         commands[
             (current + direction + commands.length) % commands.length
@@ -445,7 +488,11 @@ class KeyboardNavigation {
                         shown.length) %
                     Math.max(1, shown.length);
                 this.renderCommands();
-            } else if (event.key === "Enter" && shown[this.selected]) {
+            } else if (
+                event.key === "Enter" &&
+                event.target === this.paletteInput &&
+                shown[this.selected]
+            ) {
                 event.preventDefault();
                 shown[this.selected].run();
             }
@@ -487,6 +534,7 @@ class KeyboardNavigation {
             }
             const button = document.createElement("button");
             button.type = "button";
+            button.tabIndex = -1;
             button.className = "cp-command-item";
             button.id = `cp-command-option-${index}`;
             button.setAttribute("role", "option");
