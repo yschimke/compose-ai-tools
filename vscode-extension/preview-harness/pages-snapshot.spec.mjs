@@ -787,6 +787,21 @@ const FIXTURE_STATES = [
         // The ring is a plain `:focus` rule, so focusing the field is enough to draw it — no
         // pointer needed, which is why this parks the mouse: the shot is about the ring, and a
         // cursor resting on some card behind it would be a second change in the same frame.
+        // The render-history menu OPEN. A `<details>` ships closed, so a page screenshot captures
+        // only the trigger — the list, which is the part most likely to break visually, would never
+        // be diffed. Same reasoning (and the same shape) as `serve-viewer-revisions-open`.
+        //
+        // Opened through the summary rather than by setting `.open`, so the shot is a state a
+        // reader can actually produce, and the caret's rotated treatment comes with it.
+        fixture: "serve-viewer-history",
+        suffix: "menu-open",
+        apply: async (page) => {
+            await page.waitForSelector(".cp-history-menu");
+            await page.click(".cp-history-btn");
+            await page.waitForSelector(".cp-history-menu[open] .cp-history-list");
+        },
+    },
+    {
         fixture: "serve-landing-sections",
         suffix: "filter-focus",
         parkPointer: true,
@@ -2195,7 +2210,7 @@ test("contract · Back to an unthemed entry hands the chrome back to the OS", as
     await expect.poll(scheme).toBe("");
 });
 
-test("contract · the fit cap re-measures when the history strip lands", async ({
+test("contract · the render history is a menu in the toggle row, and the fit cap agrees", async ({
     page,
 }) => {
     for (const [name, contentType] of SERVE_ASSETS) {
@@ -2250,26 +2265,43 @@ test("contract · the fit cap re-measures when the history strip lands", async (
         .trim();
 
     await page.goto("/preview-harness/fixtures/pages/serve-viewer-history.html");
-    // The strip arrives asynchronously — this is the moment the stage moves down.
-    await page.waitForSelector(".cp-history");
+    // The menu arrives asynchronously, from the fetch above.
+    await page.waitForSelector(".cp-history-menu");
     await page.waitForTimeout(200);
 
-    const { applied, expected, historyHeight } = await page.evaluate(() => {
-        const stage = document.querySelector(".cp-stage");
-        const top = stage.getBoundingClientRect().top + (window.scrollY || 0);
-        return {
-            applied: parseInt(
-                document.getElementById("cp-img").style.maxHeight,
-                10,
-            ),
-            // fitCap()'s own arithmetic, re-run against the geometry as it stands NOW.
-            expected: Math.max(320, Math.round(window.innerHeight - top - 64)),
-            historyHeight: document.querySelector(".cp-history").offsetHeight,
-        };
-    });
+    const { applied, expected, inToggleRow, stageSibling, closed } =
+        await page.evaluate(() => {
+            const stage = document.querySelector(".cp-stage");
+            const menu = document.querySelector(".cp-history-menu");
+            const viewer = document.querySelector(".cp-viewer");
+            const top = stage.getBoundingClientRect().top + (window.scrollY || 0);
+            return {
+                applied: parseInt(
+                    document.getElementById("cp-img").style.maxHeight,
+                    10,
+                ),
+                // fitCap()'s own arithmetic, re-run against the geometry as it stands NOW.
+                expected: Math.max(320, Math.round(window.innerHeight - top - 64)),
+                inToggleRow: !!menu.closest(".cp-head-toggles"),
+                // A band of its own in the viewer's own column is the strip coming back. Being
+                // inside the toggle row means it necessarily PRECEDES the stage in document order,
+                // so document position proves nothing here — what distinguishes the two shapes is
+                // whether it is a sibling of the stage or a control inside a row that already
+                // existed.
+                stageSibling: menu.parentNode === viewer.parentNode,
+                closed: !menu.open,
+            };
+        });
 
-    // Guard the guard: if the strip were too short to move the stage, both numbers would agree no
-    // matter what the code did, and this test would pass against the bug it exists to catch.
-    expect(historyHeight).toBeGreaterThan(0);
+    // The history is a MENU beside Revision, not a strip above the render. Asserted structurally
+    // because that is the regression: the timeline used to be a row of dated chips under the
+    // viewer bar, and restoring it there costs the width above the preview and puts a wall of
+    // chips back on a page that had just replaced one with a dropdown.
+    expect(inToggleRow).toBe(true);
+    expect(stageSibling).toBe(false);
+    // And it ships closed, so it costs one control until someone asks for the list.
+    expect(closed).toBe(true);
+    // The late arrival must still leave the fit cap agreeing with the geometry — the row can wrap
+    // when it takes another control, and a wrapped row moves the stage exactly as the strip did.
     expect(applied).toBe(expected);
 });
