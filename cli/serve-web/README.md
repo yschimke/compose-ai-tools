@@ -128,7 +128,15 @@ against a moving fixture baseline:
 
 Ported so far: `bg-toggle.js` → `<cp-bg-toggle>`, `backend-badge.js` →
 `<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`, `rc-fonts.js` →
-`window.cpRcFonts`.
+`window.cpRcFonts`, `viewer-drawers.js` → `<cp-viewer-drawers>`.
+
+**Port the file whose bugs you keep paying for, not the smallest one left.**
+`viewer-drawers.js` was fifth by the cheapest-seam ordering and first by every
+other measure: it owns both drawers, the phone row order, the theme toggle's
+value and the component filter, and #3893 changed one of its inputs without a
+single test noticing until page captures started timing out weeks later. Three
+suites were red by then. A file that can only be exercised through a browser is
+a file whose defaults drift, so the ones with defaults are worth taking early.
 
 **New behaviour on a page that has not been ported yet starts here anyway.**
 `<cp-page-zoom>` (the design page's zoom: double-click to drill into a section,
@@ -143,7 +151,14 @@ selection (so Escape unwinds that before the zoom) and writes `--cp-page-zoom` o
 the stage for `serve.css` to counter-scale the marks by. The legacy file knows
 nothing about the element.
 
-That component is also where the geometry-in-a-pure-module shape came from:
+`<cp-viewer-drawers>` uses that same split, and it is the clearest argument for
+it: `viewer/drawerState.ts` holds three viewport bands crossed with a stored
+preference and the server's own default, with no DOM in it, so the case that
+actually broke — `isWide` is not `!isMobile`, and each band answers "is the nav
+open" its own way — is a 13-line table rather than a screenshot nobody reads.
+`viewer/navFilter.ts` does the same for the filter's three exceptions.
+
+That shape came from `<cp-page-zoom>`:
 `src/zoom/viewport.ts` holds the framing, clamping and level-picking arithmetic
 with no DOM in it, so the cases that actually broke it — a full-height section on
 a 3.4:1 specimen sheet frames at 1.0x and looks like a dead gesture — are unit
