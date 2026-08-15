@@ -995,6 +995,122 @@ test("static and unbridged images retain the density of the preview that rendere
   assert.equal(manifest.components[0].images[0].previewId, undefined);
 });
 
+test("an @OverrideVariant state is stamped with the density of the annotation that rendered it", () => {
+  // The regression this closes: an `@OverrideVariant` state has NO spec `variants` entry, so
+  // `resolveFunction` finds no function for it and the image went out with no density at all.
+  // `FigmaRestRasterizer.scaleFor` cannot request an export scale without one, so it throws and the
+  // reference is dropped — which is how m3-catalog published 4 of 436 variant references and served
+  // every `@OverrideVariant` page with no design-spec lane.
+  const spec = {
+    groups: [{ components: [{ componentId: "Tabs/Primary", preview: "PrimaryTabs" }] }],
+  };
+  const manifest = {
+    components: [
+      {
+        componentId: "Tabs/Primary",
+        images: [
+          { state: "default", theme: "light", path: "default.png" },
+          { state: "icon-label", path: "icon-label.png" },
+          { state: "icon-label", theme: "dark", path: "icon-label-dark.png" },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "TabsKt.PrimaryTabs_Light", functionName: "PrimaryTabs", params: { density: 2.625 } },
+      {
+        id: "TabsKt.PrimaryTabs_Dark",
+        functionName: "PrimaryTabs",
+        params: { density: 2.625, uiMode: 0x20 },
+      },
+      // The synthetic variants discovery mints, as `overrideVariantPreview` builds them: the
+      // base's `functionName` and the base's `params`, under a `_VARIANT_`-suffixed id.
+      {
+        id: "TabsKt.PrimaryTabs_Light_VARIANT_icon-label",
+        functionName: "PrimaryTabs",
+        params: { density: 2.625 },
+      },
+      {
+        id: "TabsKt.PrimaryTabs_Dark_VARIANT_icon-label",
+        functionName: "PrimaryTabs",
+        params: { density: 2.625, uiMode: 0x20 },
+      },
+    ],
+  };
+
+  assert.equal(stampPreviewDensities(manifest, spec, [bundle]), 3);
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.density),
+    [2.625, 2.625, 2.625],
+  );
+});
+
+test("a variant density comes from the variant's own record, not the base's", () => {
+  const spec = {
+    groups: [{ components: [{ componentId: "Tabs/Primary", preview: "PrimaryTabs" }] }],
+  };
+  const manifest = {
+    components: [
+      { componentId: "Tabs/Primary", images: [{ state: "icon", path: "icon.png" }] },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "PrimaryTabs", functionName: "PrimaryTabs", params: { density: 2.625 } },
+      // Deliberately not the base's 2.625: the value must be read off the variant's own record.
+      { id: "PrimaryTabs_VARIANT_icon", functionName: "PrimaryTabs", params: { density: 3 } },
+    ],
+  };
+
+  assert.equal(stampPreviewDensities(manifest, spec, [bundle]), 1);
+  assert.equal(manifest.components[0].images[0].density, 3);
+});
+
+test("a state that rendered no _VARIANT_ preview is left unstamped rather than given the base's", () => {
+  // A density is a statement about the annotation that drew these pixels. Inventing one for a
+  // sticker no bundle carries would hand the rasteriser a scale for a render that never happened.
+  const spec = {
+    groups: [{ components: [{ componentId: "Tabs/Primary", preview: "PrimaryTabs" }] }],
+  };
+  const manifest = {
+    components: [
+      { componentId: "Tabs/Primary", images: [{ state: "ghost", path: "ghost.png" }] },
+    ],
+  };
+  const bundle = {
+    previews: [{ id: "PrimaryTabs", functionName: "PrimaryTabs", params: { density: 2.625 } }],
+  };
+
+  assert.equal(stampPreviewDensities(manifest, spec, [bundle]), 0);
+  assert.equal(manifest.components[0].images[0].density, undefined);
+});
+
+test("a props-bearing image is not stamped through the @OverrideVariant fallback", () => {
+  // Props variants are a spec-declared axis. Reaching the fallback for one would mean the spec is
+  // incomplete, and borrowing a density from the base sticker would paper over that silently.
+  const spec = {
+    groups: [{ components: [{ componentId: "Tabs/Primary", preview: "PrimaryTabs" }] }],
+  };
+  const manifest = {
+    components: [
+      {
+        componentId: "Tabs/Primary",
+        images: [{ state: "large", props: { fontScale: "2.0" }, path: "large.png" }],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "PrimaryTabs", functionName: "PrimaryTabs", params: { density: 2.625 } },
+      { id: "PrimaryTabs_VARIANT_large", functionName: "PrimaryTabs", params: { density: 2.625 } },
+    ],
+  };
+
+  assert.equal(stampPreviewDensities(manifest, spec, [bundle]), 0);
+  assert.equal(manifest.components[0].images[0].density, undefined);
+});
+
 // --- deferred (live-only) records -------------------------------------------------------------
 
 test("a mode-deferred record resolves the annotation its theme names, not the first id", () => {
