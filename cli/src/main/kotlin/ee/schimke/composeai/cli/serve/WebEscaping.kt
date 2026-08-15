@@ -9,6 +9,16 @@ package ee.schimke.composeai.cli.serve
  */
 internal object WebEscaping {
 
+  /**
+   * A percentage as the viewer prints it: fixed decimals, locale-independent.
+   *
+   * `Locale.ROOT` is the whole point — a box with a comma decimal separator would render "99,7%
+   * match" on a page whose readout, computed in the browser by `toFixed`, says "99.7%". The two
+   * numbers are the same comparison and must not be spelled differently.
+   */
+  fun formatPercent(value: Double, decimals: Int = 1): String =
+    String.format(java.util.Locale.ROOT, "%.${decimals}f%%", value)
+
   /** Escape HTML-significant characters for safe interpolation into text or quoted attributes. */
   fun htmlEscape(s: String): String =
     buildString(s.length) {

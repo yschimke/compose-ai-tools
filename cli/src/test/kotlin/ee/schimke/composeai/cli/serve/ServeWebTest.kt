@@ -925,6 +925,77 @@ class ServeWebTest {
     )
   }
 
+  /** A viewer page for one preview carrying a Figma reference with [match]. */
+  private fun chipHtmlFor(match: DesignReferenceMatch?): String {
+    val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")
+    return ServeWeb.viewerPage(
+      preview,
+      token = "t",
+      basePath = "/meshcore-mobile",
+      siblings = listOf(preview),
+      designReference =
+        DesignReference(
+          id = "contact-chat-figma",
+          previewId = preview.id,
+          label = "Contact chat",
+          raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
+          source = DesignReferenceSource(provider = "figma"),
+          match = match,
+        ),
+    )
+  }
+
+  @Test
+  fun `the design-spec chip states the published match score`() {
+    val html = chipHtmlFor(DesignReferenceMatch(percent = 96.34, changedPercent = 29.7))
+    // The catalog exists to answer "does this render match its design?", and before the verdict
+    // moved onto the chip no page answered it at rest — the number was a click and two raster
+    // decodes away, on every page, including the ones where the answer is 57%.
+    assertTrue(html.contains(">Figma 96.3%</button>"), "the chip states the score: $html")
+    assertTrue(html.contains("data-spec-match=\"off\""), "96.3% is below the close band: $html")
+    // The exact numbers stay available without entering the lane.
+    assertTrue(
+      html.contains("96.3% match against the imported Figma spec · 29.70% pixels differ"),
+      "the tooltip carries the full comparison: $html",
+    )
+    // The bare provider name is kept so the client can rebuild the label around a live score.
+    assertTrue(html.contains("data-spec-chip-name=\"Figma\""), html)
+  }
+
+  @Test
+  fun `the match band colours the chip without deciding whether the number shows`() {
+    // Bands are read off the distribution a real catalog produces, not off round numbers: across
+    // m3-catalog's 120 published pairs the median is 99.70%, so `match` is the quiet majority.
+    listOf(100.0 to "match", 99.5 to "match", 99.49 to "close", 97.0 to "close", 96.99 to "off")
+      .forEach { (percent, band) ->
+        val html = chipHtmlFor(DesignReferenceMatch(percent = percent))
+        assertTrue(
+          html.contains("data-spec-match=\"$band\""),
+          "$percent%% falls in the $band band: $html",
+        )
+        // Always printed, never hidden behind a "clean" threshold — suppressing it would make its
+        // absence ambiguous with "not scored".
+        assertTrue(
+          html.contains(">Figma ${"%.1f".format(java.util.Locale.ROOT, percent)}%</button>"),
+          "$percent%% is printed on the chip: $html",
+        )
+      }
+  }
+
+  @Test
+  fun `a reference with no published score keeps the plain provider chip`() {
+    // Every catalog published before the producer existed, and any run whose driver had no browser
+    // to score with. The lane still computes the same number live on entry, so this must degrade to
+    // exactly the chip it had before rather than to an empty or zeroed verdict.
+    val html = chipHtmlFor(null)
+    assertTrue(html.contains(">Figma</button>"), "the chip is the bare provider name: $html")
+    assertFalse(html.contains("data-spec-match="), "no band is claimed: $html")
+    assertTrue(
+      html.contains("Put the imported Figma spec on the stage instead of the render"),
+      "the original tooltip is kept: $html",
+    )
+  }
+
   @Test
   fun `the spec lane offers diff triptych and slider beside the plain spec`() {
     val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")

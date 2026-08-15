@@ -2322,7 +2322,15 @@
   if (specChip) {
     specChip.addEventListener("click", function () {
       if (specActive()) setMode("png");
-      else if (specAvailable()) setMode("spec");
+      else if (specAvailable()) {
+        // Straight into Diff, not onto the spec-on-the-stage view the lane used to open on. The
+        // chip now STATES the divergence ("Figma 96.3%"), and a number like that raises exactly one
+        // question — where? Opening on the spec alone answers a question nobody asked and leaves
+        // the delta another click away. A visitor who wants the spec by itself has the view group
+        // right there, and a URL that already names a view still wins (see cpSpecCompare.prefer).
+        if (window.cpSpecCompare) window.cpSpecCompare.prefer("diff");
+        setMode("spec");
+      }
     });
   }
   // The Source chip: in and straight back out, like the spec chip. Leaving returns to the static

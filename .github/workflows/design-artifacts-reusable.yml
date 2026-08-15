@@ -1106,15 +1106,17 @@ jobs:
             echo "No design-map.json in this repo — no design references to publish."
             exit 0
           fi
-          # Chromium rasterises committed HTML mocks. Idempotent: a no-op when the
-          # Remote Compose lane below already installed it in this job.
-          if grep -q '\.html"' design-map.json; then
-            install_log="$RUNNER_TEMP/playwright-install-references.log"
-            if ! (cd compose-ai-tools/scripts/design-artifacts &&
-                  npx playwright install --with-deps chromium) >"$install_log" 2>&1; then
-              echo "::warning title=Chromium install failed::HTML design references will be skipped."
-              tail -n 40 "$install_log" >&2
-            fi
+          # Chromium rasterises committed HTML mocks AND scores every published reference against
+          # its sticker — the driver drives the viewer's own `format-compare.js` in a headless page
+          # rather than reimplementing it, so the baked verdict on the design-spec chip and the
+          # number the lane computes live cannot disagree. That is why this is no longer gated on
+          # the design-map containing `.html`: a Figma-only catalog needs the browser too.
+          # Idempotent: a no-op when the Remote Compose lane below already installed it in this job.
+          install_log="$RUNNER_TEMP/playwright-install-references.log"
+          if ! (cd compose-ai-tools/scripts/design-artifacts &&
+                npx playwright install --with-deps chromium) >"$install_log" 2>&1; then
+            echo "::warning title=Chromium install failed::HTML design references will be skipped and references will publish without a match score."
+            tail -n 40 "$install_log" >&2
           fi
           # `--spec` must be the caller's configured path, not the emitter's root default:
           # this repo's own catalogs live at samples/design-catalog-*/catalog.spec.json.

@@ -1602,6 +1602,19 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
 .cp-spec-chip:disabled { opacity: 0.38; cursor: default; }
+/* The design-spec chip's **verdict dot**. The chip states the match score at rest ("Figma 96.3%"),
+   and the dot is what makes the number scannable without reading it — one glance says whether this
+   page is worth opening. Colour only: the number is always printed, so a reader who cannot separate
+   the hues (or a band that drifts against the producer's) loses nothing but the shortcut.
+
+   Bands come from the distribution a real catalog produces, not from round numbers — see
+   `ServeWeb.specMatchBand`. Rendered as a pseudo-element rather than a nested span so the chip's
+   accessible name stays the plain label text. */
+.cp-spec-chip[data-spec-match]::before { content: ""; width: 8px; height: 8px; margin-right: 8px;
+  border-radius: 50%; flex: none; background: var(--cp-spec-match-dot); }
+.cp-spec-chip[data-spec-match="match"] { --cp-spec-match-dot: light-dark(#146c2e, #6dd58c); }
+.cp-spec-chip[data-spec-match="close"] { --cp-spec-match-dot: light-dark(#8f5000, #ffb787); }
+.cp-spec-chip[data-spec-match="off"] { --cp-spec-match-dot: var(--md-sys-color-error); }
 .cp-format-link { color: var(--cp-fg-muted); font-size: 0.75rem; white-space: nowrap; }
 .cp-format-link:hover { color: var(--cp-accent-strong); }
 /* Score chips: M3 assist-chip shape, literal semantic colours. */
