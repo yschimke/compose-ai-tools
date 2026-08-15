@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
 import { listThemes } from "./_fixtures.mjs";
+import { openControlsDrawer } from "./_viewer.mjs";
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(harnessDir, "out");
@@ -931,6 +932,7 @@ const FIXTURE_STATES = [
         apply: async (page) => {
             // The Overrides drawer's groups open on demand; the checkboxes aren't clickable (or
             // visible in the shot) until the Overlays group is expanded.
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="overlays"] > summary');
             await page.check("#cp-inspect-a11y");
             await page.check("#cp-inspect-typography");
@@ -1391,6 +1393,7 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-catalog-knobs",
         suffix: "scroll-full-page",
         apply: async (page) => {
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="scroll"] > summary');
         },
     },
@@ -1404,6 +1407,7 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-wear-screen",
         suffix: "size-open",
         apply: async (page) => {
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="size"] > summary');
             await page.evaluate(() => {
                 const devices = document.getElementById("cp-device");
@@ -1502,6 +1506,7 @@ const FIXTURE_STATES = [
         fixture: "serve-viewer-exploded",
         suffix: "controls",
         apply: async (page) => {
+            await openControlsDrawer(page);
             await page.click('[data-cp-group="explode"] > summary');
             await page.locator("#cp-explode-tilt").fill("46");
             await page.locator("#cp-explode-tilt").dispatchEvent("input");
@@ -1919,6 +1924,7 @@ test("contract · snapshot overrides stay composed with a declared theme", async
     await page.waitForTimeout(100);
     requests.length = 0;
 
+    await openControlsDrawer(page);
     for (const group of ["size", "locale"]) {
         await page
             .locator(`details[data-cp-group="${group}"]`)
@@ -2015,6 +2021,7 @@ test("contract · an emptied string knob is sent, an emptied typed knob is not",
     );
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     // The knob controls live in the collapsed Overrides drawer; open it so they are editable.
+    await openControlsDrawer(page);
     await page
         .locator('details[data-cp-group="overrides"]')
         .evaluate((details) => {
