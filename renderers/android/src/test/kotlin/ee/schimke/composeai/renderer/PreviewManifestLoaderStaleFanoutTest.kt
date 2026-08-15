@@ -62,8 +62,7 @@ class PreviewManifestLoaderStaleFanoutTest {
       id = id,
       functionName = id,
       className = "com.example.PreviewsKt",
-      params =
-        RenderPreviewParams(previewParameterProviderClassName = "com.example.UserProvider"),
+      params = RenderPreviewParams(previewParameterProviderClassName = "com.example.UserProvider"),
       captures = emptyList(),
       dataProducts = listOf(RenderPreviewArtifact(kind = "render/scroll/long", output = output)),
     )
