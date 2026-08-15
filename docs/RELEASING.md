@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-**Merge the open `chore(main): release X.Y.Z` PR.** That's it — `release-please.yml` creates the tag and a **draft** GitHub Release, chains into `release.yml` to build the CLI, VS Code extension, Gradle plugin, and Android renderer AAR onto that draft, then **finalizes** (un-drafts) it once every required asset is verified present. Because the Release stays a draft until it's fully populated, `/releases/latest` and the `latest/download/…` URLs never point at a version whose tarball hasn't uploaded yet — closing the "release not found" install window.
+**Merge the open `chore(main): release X.Y.Z` PR.** That's it — `release-please.yml` creates the tag and a **draft** GitHub Release, chains into `release.yml` to build the CLI, VS Code extension, Gradle plugin, and Android renderer AAR onto that draft, then **finalizes** (un-drafts) it once every required asset is verified present. Because the Release stays a draft until it's fully populated, `/releases/latest` and the `latest/download/…` URLs never point at a version whose tarball hasn't uploaded yet — closing the "release not found" install window. You don't have to watch the logs after that: the chain [comments the two milestones back on the PR you merged](#milestones-are-posted-back-on-the-release-pr) — when `preview.coo.ee` is running the new version, and when the artifacts resolve from Maven Central.
 
 ## Prerequisites (one-time)
 
@@ -23,6 +23,21 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
    > **Why draft-then-finalize.** release-please used to publish the Release immediately on merge, so `/releases/latest` flipped to the new version ~20 min before the CLI tarball finished uploading — anyone installing in that window hit "release not found" (a 404 on `latest/download/compose-preview-<v>.tar.gz`). A **draft** Release is excluded from `/releases/latest` and the `latest/download/…` redirect, so those endpoints only expose releases whose assets are present. GitHub does include drafts in the public Atom feed used by the rate-limit-resistant bootstrap installer; marker-era releases are therefore eligible only after their CLI tarball and Maven-readiness marker are downloadable, while older releases retain direct artifact probes. One other gotcha the workflow handles: a draft Release does **not** create its git tag (GitHub writes the tag only on publish), so `release-please.yml` creates the tag itself at the merge commit before the build jobs check it out.
 
    > **The heavy CI suite is skipped on release PRs, so no admin bypass is needed to merge.** A release PR only bumps the version manifest / `CHANGELOG.md` / version strings in docs — no source or build inputs change. The build/test/security/preview workflows (`ci`, `codeql`, `compose-preview`, `daemon-harness`, `integration`, `report-schemas`, `format`) gate each job with `if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}`, so they report **skipped** only on a release PR — i.e. one whose head branch is `release-please--*` **and** whose author is the release bot. (The branch name alone is contributor-controlled, so the author check is what stops a human/fork PR from naming its branch `release-please--…` to skip CI and abuse "skipped == passing"; switch the login if you move release-please to a GitHub App token.) Branch protection treats a skipped required check as passing, so the required checks go green instantly. The cheap PR-hygiene checks (`pr-title`, `no-agent-attribution`) still run — a release PR passes both. The guard is at job level on purpose: a `branches` filter on the trigger would leave the required check stuck *pending* and block the merge instead.
+
+### Milestones are posted back on the release PR
+
+Merging the PR is the last thing you do, and everything after it happens in workflow logs. Two moments are worth knowing about without going looking, so the release chain comments them on the PR you just merged:
+
+| Milestone | Posted by | Roughly when |
+|---|---|---|
+| 🚀 **Server deployed** — `preview.coo.ee` is serving the new version, with its catalog count | `preview-host-image.yml`, right after the rollout convergence check | a few minutes in, in parallel with the core release |
+| 📦 **Artifacts on Maven Central** — the plugin classpath resolves from the public consumer endpoint | `maven-readiness.yml`, right after the readiness marker uploads | after finalization; Central propagation has taken anywhere from a minute to ~20 |
+
+Both are **pure reporting and cannot slow a release down.** Each fires after a check that already existed for its own reasons (the deployment convergence poll; the Central resolution loop), adds no waiting of its own, and runs `continue-on-error` so a GitHub API blip can't touch a publish that already succeeded. Nothing downstream gates on them.
+
+Both go through [`.github/scripts/comment-release-milestone.sh`](../.github/scripts/comment-release-milestone.sh), which finds the PR from the release commit — keeping only a PR whose head branch is `release-please--*` **and** whose author is `github-actions[bot]`, the same pair the CI-skip guard above uses. So a `workflow_dispatch` repair run or a manually tagged release posts nothing rather than commenting on an unrelated PR. Each milestone carries a hidden marker, so re-running a failed **Maven readiness** job updates its existing comment instead of stacking a second one. Its rules are pinned by `test-comment-release-milestone.sh`, run by CI.
+
+If a milestone comment never appears, the release itself is unaffected — check the corresponding job. A missing deploy comment usually means the rollout never converged (or the deployer has no `DEPLOY_HOOK_TOKEN`, as on a fork); a missing Maven comment means the readiness job is still polling or failed, which is the thing that actually matters, and is covered under [Fallback paths](#fallback-paths).
 
 ## Versioning after 1.0.0
 

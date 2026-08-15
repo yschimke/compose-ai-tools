@@ -1217,6 +1217,11 @@ jobs:
       # a dropped `listed: false` or `group` silently moves a card on the front page.
       - name: Run publish-config reconcile tests
         run: ./.github/scripts/test-publish-config-to-box.sh
+      # The release milestone comments only ever run during a release, where a mistake is either
+      # invisible (nothing posted) or lands on the wrong PR. The stubbed test pins the targeting
+      # rule and the update-don't-duplicate behaviour so neither has to be discovered live.
+      - name: Run release milestone comment tests
+        run: ./.github/scripts/test-comment-release-milestone.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
 

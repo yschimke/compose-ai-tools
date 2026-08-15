@@ -52,6 +52,10 @@ on:
 permissions:
   contents: read
   packages: write
+  # Post the "server deployed" milestone on the merged release PR. A called workflow can only
+  # narrow what the caller granted, so release-please.yml's `preview-host-image` job grants this
+  # too — dropping it there makes the milestone step 403 (tolerated, but silent).
+  pull-requests: write
 
 jobs:
   publish:
@@ -215,6 +219,7 @@ jobs:
       # image tag (it can't be parameterised to run anything else), so the call is a
       # bounded no-op, not an RCE lever. See deploy/image/deploy-hook.sh.
       - name: Notify preview.coo.ee to roll (best-effort)
+        id: rollout
         env:
           HOOK_URL: ${{ vars.DEPLOY_HOOK_URL || 'https://preview.coo.ee/__hooks/rollout' }}
           HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
@@ -256,6 +261,16 @@ jobs:
               else
                 echo "preview.coo.ee now serving ${V} with ${loaded}/${total} catalogs loaded."
               fi
+              # Hand the converged state to the milestone comment below. `problems` is flattened
+              # to one line first: a catalog's loadError can carry newlines, and an unflattened
+              # value would break $GITHUB_OUTPUT's key=value framing.
+              {
+                echo "deployed=true"
+                echo "base_url=${base}"
+                echo "catalogs_loaded=${loaded}"
+                echo "catalogs_total=${total}"
+                echo "catalog_problems=$(printf '%s' "${problems}" | tr '\n\r' '  ')"
+              } >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "waiting for preview.coo.ee: version=${live:-?}/${V}, catalogs=${loaded}/${total}, failed=${failed} (attempt ${i}/30)…"
@@ -263,6 +278,47 @@ jobs:
           done
           echo "::error::preview.coo.ee did not converge to ${V} with a readable catalog status within ~10 min." >&2
           exit 1
+
+      # Tell the person who merged the release PR that the server is up, on the PR they merged.
+      # This is the first of two milestones posted there (the other is Maven readiness, from
+      # maven-readiness.yml) and it fires at the earliest honest moment: the step above just
+      # proved the box serves this exact version and could read its catalog status.
+      #
+      # Costs the release nothing. It runs AFTER the convergence poll that already existed, adds
+      # no waiting of its own, and `continue-on-error` keeps a GitHub API hiccup from touching a
+      # publish that already succeeded. `deployed == 'true'` means the poll converged — a skipped
+      # notify (no DEPLOY_HOOK_TOKEN, i.e. a fork or another deployer) or a timeout leaves the
+      # output unset and posts nothing, because neither one proved a running server.
+      - name: Comment the deploy milestone on the release PR (best-effort)
+        if: ${{ steps.rollout.outputs.deployed == 'true' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MILESTONE_KEY: server-deployed
+          MILESTONE_TAG: v${{ steps.ver.outputs.version }}
+          V: ${{ steps.ver.outputs.version }}
+          BASE_URL: ${{ steps.rollout.outputs.base_url }}
+          LOADED: ${{ steps.rollout.outputs.catalogs_loaded }}
+          TOTAL: ${{ steps.rollout.outputs.catalogs_total }}
+          PROBLEMS: ${{ steps.rollout.outputs.catalog_problems }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/compose-preview-host
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          # Built line by line with printf rather than as one indented here-string: the markdown
+          # must start at column 0, and a heredoc inside a YAML block scalar makes that depend on
+          # indentation nobody checks — an extra level silently turns the whole comment into a
+          # code block.
+          md="$RUNNER_TEMP/deploy-milestone.md"
+          {
+            printf '### 🚀 Server deployed — `%s` is running `%s`\n\n' "${BASE_URL#https://}" "${V}"
+            printf -- '- **Live version** — [`/version`](%s/version) reports `%s`\n' "${BASE_URL}" "${V}"
+            printf -- '- **Catalogs** — %s/%s loaded\n' "${LOADED}" "${TOTAL}"
+            printf -- '- **Image** — `%s:%s`\n' "${IMAGE}" "${V}"
+            [ -n "${PROBLEMS}" ] && printf '\n> ⚠️ Catalogs are partial: %s\n' "${PROBLEMS}"
+            printf '\n<sub>Preview host rollout · [workflow run](%s)</sub>\n' "${RUN_URL}"
+          } > "$md"
+          MILESTONE_BODY="$(cat "$md")" .github/scripts/comment-release-milestone.sh
 
       # Push the DEPLOYMENT's config onto the now-rolled box. /config/catalogs.json and
       # /config/producers.json are seeded on first boot and never overwritten after (deliberately,
