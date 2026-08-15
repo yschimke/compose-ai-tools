@@ -311,7 +311,6 @@ const SERVE_ASSETS = [
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
     ["spec-compare.js", "text/javascript"],
-    ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
     ["design-page.js", "text/javascript"],
@@ -1739,6 +1738,42 @@ const FIXTURE_STATES = [
             await page.click('[data-rc-ref="baked"]');
             await page.waitForFunction(
                 () => document.querySelector(".cp-rc-row .cp-rc-score") !== null,
+            );
+        },
+    },
+    {
+        // The player wall's OTHER diff path, and the only one with no coverage of any kind: picking
+        // a player as the reference means nothing was precomputed, so the two renders are decoded
+        // onto a canvas and diffed here. `diff-baked` above never reaches that code — it replays
+        // the offline run's PNGs — so an in-browser pass that threw, or produced no image at all,
+        // would leave every shot in this suite unchanged.
+        //
+        // The harness serves ONE placeholder for every `/rc-compare/` URL, so the honest numbers
+        // here are 0.00%: what this holds is the pipeline (load → canvas → getImageData → diff →
+        // data URL → an `<img>` that renders) and the status line that admits an in-browser number
+        // is not the build's measurement. The arithmetic is `pixelDiff.test.ts`'s job, down to the
+        // bytes of the red overlay.
+        fixture: "serve-rc-lanes",
+        suffix: "diff-player",
+        apply: async (page) => {
+            await page.click('[data-rc-ref="cmp-jvm"]');
+            // Every started row FINISHED, not "the first diff image appeared". A row measures its
+            // lanes one after another, and several rows are in flight at once, so the first image
+            // lands while most of the wall is still decoding — a baseline taken there would hold
+            // whichever subset happened to win the race that run, and re-diff itself forever.
+            // `<cp-rc-lanes>` marks each row `pending` then `done` for exactly this.
+            await page.waitForFunction(() => {
+                const started = document.querySelectorAll(".cp-rc-row[data-scored]");
+                const done = document.querySelectorAll('.cp-rc-row[data-scored="done"]');
+                return started.length > 0 && started.length === done.length;
+            });
+            // …and then the diff images themselves. `data-scored="done"` covers the COMPUTATION:
+            // the element sets each `img.src` to a fresh data URL and moves on without awaiting the
+            // decode, and the runner's generic `document.images` wait already ran, before any state
+            // was applied. Screenshotting between the two would catch empty diff slots — the same
+            // race one layer down.
+            await page.waitForFunction(() =>
+                Array.from(document.images).every((img) => img.complete),
             );
         },
     },

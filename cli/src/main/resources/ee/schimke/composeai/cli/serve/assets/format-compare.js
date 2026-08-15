@@ -1426,7 +1426,7 @@
   var themeButtons = root.querySelectorAll("[data-compare-theme]");
   var rows = Array.prototype.slice.call(root.querySelectorAll(".cp-compare-row"));
   var body = root.querySelector("#cp-compare-formats tbody");
-  // The published Remote Compose player wall (rc-lanes.js), when this catalog has one. It replaces
+  // The published Remote Compose player wall (`<cp-rc-lanes>`), when this catalog has one. It replaces
   // the client-rendered `rc` lane wholesale: it shows every player rather than the one that runs in
   // a browser, and it replays renders the delivery branch already carries instead of decoding a
   // document per preview here.

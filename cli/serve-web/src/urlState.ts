@@ -26,7 +26,8 @@ export interface UrlState {
         owned: (name: string) => boolean,
         replace: boolean,
     ): void;
-    onPop(callback: () => void): void;
+    /** Subscribe to Back/Forward. @return an unsubscribe, for a caller that can be torn down. */
+    onPop(callback: () => void): () => void;
 }
 
 declare global {

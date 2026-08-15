@@ -196,10 +196,22 @@ served pages only got away with it because their script tags happen to sit near
 the end of `<body>`. Every component that reads outside its own subtree now waits
 for the parse.
 
-Next, cheapest seam first: `spec-compare.js` (373), `rc-lanes.js` (337),
-`catalog-live.js` (400), `inspect.js` (424), `design-page.js` (789). The big ones
-— `format-compare.js` (1,706) and `viewer.js` (3,127) — want breaking into pure
-modules the way the drawers were, not porting whole.
+`<cp-rc-lanes>` is where the split paid off most, because the thing it split out
+had never been checked at all: `rc/pixelDiff.ts` is pixelmatch's YIQ metric,
+hand-transcribed into nine magic constants and a threshold scale, and it produces
+the only number on the compare page the offline run did not compute. It now has
+15 tests, one of which sweeps the RGB cube to confirm the transform still tops
+out at the 35,215 its threshold is expressed against — the constant everything
+else on that page is scaled by, and previously a number nothing could disagree
+with. `rc/rowPlan.ts` holds the rest: a row against a reference is a list of
+steps, each of which either already knows what its chip says or names the two
+images to measure, so the five ways a cell can end up without a number are a
+table rather than a promise chain.
+
+Next, cheapest seam first: `spec-compare.js` (373), `catalog-live.js` (400),
+`inspect.js` (424), `design-page.js` (789). The big ones — `format-compare.js`
+(1,706) and `viewer.js` (3,127) — want breaking into pure modules the way the
+drawers were, not porting whole.
 
 ## Two bundles, and which one a thing belongs in
 
@@ -224,7 +236,7 @@ no Lit at all and is *smaller* than the two files it replaced (`url-state.js` +
 
 It also settles load order in one place. `window.cpUrlState` has to exist before
 the component bundle — `backgroundChoice.ts` reads it as `<cp-bg-toggle>`
-upgrades — and before `format-compare.js`, `rc-lanes.js` and `spec-compare.js`,
+upgrades — and before `format-compare.js` and `spec-compare.js`,
 which read it at their own IIFE time. One shell tag ahead of everything replaces
 four per-surface `url-state.js` tags that each had to be kept in the right
 place.
