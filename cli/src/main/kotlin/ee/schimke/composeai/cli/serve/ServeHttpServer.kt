@@ -49,6 +49,7 @@ import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
@@ -5425,10 +5426,27 @@ class ServeHttpServer(
       call.respondText("", status = HttpStatusCode.NotFound)
       return
     }
-    // Same caching posture as a baked render: the bytes under an id are immutable for a publish,
-    // and a capture is heavy enough that re-fetching it per scrub would be the whole cost of the
-    // feature.
-    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
+    // Revalidated, NOT `immutable` — and the distinction is the whole point of this block.
+    //
+    // Every other user of [prebakedImageCacheControl] is content-addressed: its URL carries the
+    // bytes' own hash, which is what earns the year-long `immutable` promise that what the URL
+    // names can never change. A capture's URL is derived from the STICKER it accompanies
+    // (`motion/switch-on/ideal__default__dark.apng`), so a re-publish replaces the recording behind
+    // the same path — and a client that watched the old one would have been told to keep it for a
+    // year with nothing to revalidate against.
+    //
+    // The ETag is what makes revalidating cheap enough to be the right answer here rather than a
+    // compromise: a capture is many frames, so a 304 saves far more on this route than on a still.
+    val etag = "\"" + motionEtag(bytes) + "\""
+    call.response.headers.append(
+      HttpHeaders.CacheControl,
+      if (isPublic) MOTION_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL,
+    )
+    call.response.headers.append(HttpHeaders.ETag, etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
     call.respondBytes(bytes, ContentType.parse(MOTION_CONTENT_TYPES.getValue(extension)))
   }
 
@@ -6089,6 +6107,21 @@ class ServeHttpServer(
      * catalog changes the hash, hence the URL, so there is nothing to invalidate.
      */
     private const val HERO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+    /**
+     * A published capture. Public and cacheable by a shared proxy for a few minutes, but always
+     * revalidated by the client, because this route's URL is derived from the sticker the capture
+     * accompanies rather than from its bytes — see [handleMotion]. On a token-gated catalog the
+     * bytes follow the same `no-store` policy as every other private response.
+     */
+    internal const val MOTION_CACHE_CONTROL = "public, max-age=0, s-maxage=300, must-revalidate"
+
+    /** The bytes' own hash, so a re-published capture under the same id revalidates to a miss. */
+    internal fun motionEtag(bytes: ByteArray): String =
+      MessageDigest.getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString("") { "%02x".format(it) }
+        .take(16)
 
     /**
      * Caching for the site icons ([ServeSiteIcon]). Public on every server, token-gated or not:

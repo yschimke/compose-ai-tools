@@ -37,6 +37,25 @@ class ServeAuthTest {
   }
 
   @Test
+  fun `a published capture is revalidated rather than promised immutable`() {
+    // `immutable` is a promise that what a URL names can never change, and every other route that
+    // claims it earns the claim by carrying the bytes' own hash in the path. A capture's URL is
+    // derived from the STICKER it accompanies, so re-publishing a changed recording reuses it —
+    // and a client told to keep the old bytes for a year would have nothing to revalidate against.
+    assertFalse(
+      ServeHttpServer.MOTION_CACHE_CONTROL.contains("immutable"),
+      "a sticker-derived URL must not borrow the content-addressed lanes' immutable promise",
+    )
+    assertTrue(ServeHttpServer.MOTION_CACHE_CONTROL.contains("must-revalidate"))
+
+    // …and the ETag is what keeps revalidating cheap: it is over the BYTES, so a re-publish under
+    // the same id misses and an unchanged one answers 304 without resending many frames.
+    val one = ServeHttpServer.motionEtag(byteArrayOf(1, 2, 3))
+    assertEquals(one, ServeHttpServer.motionEtag(byteArrayOf(1, 2, 3)))
+    assertFalse(one == ServeHttpServer.motionEtag(byteArrayOf(1, 2, 4)))
+  }
+
+  @Test
   fun `public mode authorizes every request regardless of token`() {
     assertTrue(ServeHttpServer.isAuthorized(token, null, isPublic = true))
     assertTrue(ServeHttpServer.isAuthorized(token, "wrong", isPublic = true))
