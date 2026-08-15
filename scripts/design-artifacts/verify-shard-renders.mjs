@@ -20,22 +20,28 @@
  * dependency-free so a shard job can run it without installing anything.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 import { readPreviewBundle, rawPreviewIdForEntry } from "@design-parity/candidate";
 
-import { bundleCapturedSemantics, capturedPreviewIds } from "./bundle-previews.mjs";
+import {
+  bundleCapturedSemantics,
+  capturedPreviewIds,
+  daemonPreviewIdsByFunction,
+} from "./bundle-previews.mjs";
+import { noStickerPreviewNames } from "./capture-mode.mjs";
 import { verifyShardRenders } from "./shard-preview-ids.mjs";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { bundle: { type: "string" } },
+  options: { bundle: { type: "string" }, spec: { type: "string" } },
 });
 
 if (!values.bundle || positionals.length === 0) {
   console.error(
-    "usage: verify-shard-renders.mjs --bundle <merged-bundle.png> <shard-plan.json>…",
+    "usage: verify-shard-renders.mjs --bundle <merged-bundle.png> [--spec <catalog.spec.json>] " +
+      "<shard-plan.json>…",
   );
   process.exit(2);
 }
@@ -47,7 +53,31 @@ const captured = capturedPreviewIds(bundle, rawPreviewIdForEntry);
 // semantics anywhere, and a raster-less preview then has no artifact for a reason that is not
 // sharding. Tell the check, so it declines to judge rather than crying wolf.
 const semanticsRan = bundleCapturedSemantics(bundle);
-const { ok, problems, notes } = verifyShardRenders(plans, captured, { semanticsRan });
+
+// The per-preview version of the same caveat. A `"capture": "none"` entry is the one class with no
+// render-side artifact to fall back on (a GIF capture still leaves its `.gif`, a token sheet its
+// `.catalog.json`), so an individual semantics miss leaves it looking exactly like a preview an
+// exclusion ate. The spec declares them, so exempt them rather than guess. Optional and
+// non-fatal: without a readable spec the check simply keeps its old, slightly noisier reading.
+let exemptIds = [];
+if (values.spec) {
+  if (existsSync(values.spec)) {
+    const idsByFunction = daemonPreviewIdsByFunction(bundle);
+    exemptIds = noStickerPreviewNames(JSON.parse(readFileSync(values.spec, "utf8"))).flatMap(
+      (fn) => idsByFunction.get(fn) ?? [],
+    );
+    if (exemptIds.length > 0) {
+      console.error(
+        `verify-shard-renders: ${exemptIds.length} preview(s) declared \`"capture": "none"\` are ` +
+          `exempt — they export no sticker by design.`,
+      );
+    }
+  } else {
+    console.error(`verify-shard-renders: no spec at ${values.spec}; not exempting any preview.`);
+  }
+}
+
+const { ok, problems, notes } = verifyShardRenders(plans, captured, { semanticsRan, exemptIds });
 
 for (const note of notes) {
   console.error(`::warning title=Shard render check disarmed::verify-shard-renders: ${note}`);

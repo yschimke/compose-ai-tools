@@ -50,3 +50,34 @@ export function captureMode(entry) {
 export function exportsNoSticker(entry) {
   return captureMode(entry) === "none";
 }
+
+/**
+ * The `@Preview` function names a [spec] declares export no sticker (`"capture": "none"`), across
+ * components and their variants.
+ *
+ * These are the only entries with **no render-side artifact at all**, which is what makes them worth
+ * naming separately. Every other PNG-less preview still leaves something the render itself wrote — a
+ * `ScrollMode.GIF` capture leaves `previews/<id>.gif`, a `@ColorCatalog` / `@ThemeCatalog` sheet
+ * leaves `previews/<id>.catalog.json` — so it is visible whether or not the *semantics* pass (which
+ * is best-effort, per preview) succeeded for it. A `"capture": "none"` entry has neither, so after a
+ * partial semantics failure it is indistinguishable from a preview an exclusion ate.
+ *
+ * `verify-shard-renders.mjs` exempts them for exactly that reason: it is the one class where "no
+ * artifact" cannot be read as "lost", and it is declared rather than guessed. The completeness gate
+ * exempts the same entries from the missing-render check, so the two agree about what the
+ * declaration buys.
+ *
+ * @param {{groups?: Array<object>}} spec a parsed catalog spec.
+ * @returns {string[]} sorted, de-duplicated `@Preview` function names.
+ */
+export function noStickerPreviewNames(spec) {
+  const names = new Set();
+  for (const group of Array.isArray(spec?.groups) ? spec.groups : []) {
+    for (const comp of Array.isArray(group?.components) ? group.components : []) {
+      for (const entry of [comp, ...(Array.isArray(comp?.variants) ? comp.variants : [])]) {
+        if (typeof entry?.preview === "string" && exportsNoSticker(entry)) names.add(entry.preview);
+      }
+    }
+  }
+  return [...names].sort();
+}

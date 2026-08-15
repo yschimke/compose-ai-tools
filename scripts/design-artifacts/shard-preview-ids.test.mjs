@@ -430,3 +430,22 @@ test("verifyShardRenders names the semantics pass as the rival explanation", () 
   const { problems } = verifyShardRenders([{ index: 1, previews: ["a"] }], []);
   assert.match(problems.at(-1), /if the semantics capture also failed for exactly these previews/);
 });
+
+test("verifyShardRenders exempts declared no-sticker previews from the shortfall", () => {
+  // The partial-semantics window: a `"capture": "none"` preview has no render-side artifact to fall
+  // back on, so an individual semantics miss makes it look exactly like one an exclusion ate.
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  const armed = verifyShardRenders(plans, ["a", "b", "c"]);
+  assert.equal(armed.ok, false, "unexempted, the missing id fails the run");
+
+  const exempted = verifyShardRenders(plans, ["a", "b", "c"], { exemptIds: ["d"] });
+  assert.ok(exempted.ok);
+  assert.deepEqual(exempted.missing, []);
+});
+
+test("verifyShardRenders still fails on a real loss alongside an exemption", () => {
+  const plans = plansFor(["a", "b", "c", "d"], 2);
+  const { ok, missing } = verifyShardRenders(plans, ["a", "b"], { exemptIds: ["d"] });
+  assert.equal(ok, false, "exempting one id must not blanket the rest");
+  assert.deepEqual(missing.map((m) => m.id), ["c"]);
+});

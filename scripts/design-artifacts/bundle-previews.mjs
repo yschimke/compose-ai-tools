@@ -86,6 +86,13 @@ const PREVIEWS_DIR = "previews/";
  * what makes "no artifact whatsoever" a precise signal for *excluded* rather than *PNG-less*, and
  * it is what `verify-shard-renders.mjs` compares the shard plans against after a sharded merge.
  *
+ * A render **failure** counts as captured, deliberately: a preview that blew up leaves
+ * `previews/<id>.error.json` and no PNG, and it is not what this signal is looking for. An excluded
+ * preview never reaches the renderer, so it can never carry an error sidecar — meaning the sidecar
+ * cannot mask an exclusion loss, only cause a misleading one. Render failures have their own
+ * reporting (`render-failures.mjs`, and the completeness gate); crediting them here keeps the shard
+ * check from failing a run with the wrong diagnosis.
+ *
  * The one hole in that reasoning is that semantics capture is **best-effort** — a missing daemon
  * descriptor, a failed session open, or an empty capture leaves `packSemanticsBlob` returning null
  * and the pack succeeding anyway — so a bundle can carry no `.semantics.json` at all. A raster-less

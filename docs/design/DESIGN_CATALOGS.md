@@ -797,6 +797,11 @@ that asymmetry is what makes the signal precise. Extra ids are not reported: exc
 previews listed in the bundle, and a shard rendering more than its share costs time, not stickers.
 The failure names the shard and its missing ids, so a recurrence points at its own cause.
 
+A render **failure** counts as captured, deliberately. A preview that blew up leaves
+`previews/<id>.error.json` and no PNG, and an excluded preview never reaches the renderer, so an
+error sidecar can never mask an exclusion loss — only cause a misleading report of one. Render
+failures have their own reporting (`render-failures.mjs`, and the completeness gate).
+
 **It disarms itself rather than cry wolf.** "Any artifact" leans on the semantics pass to give a
 raster-less preview *something*, and `packSemanticsBlob` is best-effort — a missing
 `daemon-launch.json`, a session that will not open, or an empty capture each warn and leave the pack
@@ -804,6 +809,15 @@ exiting 0 with no `.semantics.json` anywhere. In that state a legitimately raste
 indistinguishable from one an exclusion ate, so the check reports the shortfall as a workflow warning
 and passes instead of failing the run on a signal it cannot read. A gate that fails for the wrong
 reason spends exactly the trust this one exists to rebuild.
+
+The capture is best-effort **per preview** too, and that partial case is handled by declaration
+rather than by threshold. Only one class of preview has no render-side artifact to fall back on: a
+spec's `"capture": "none"` entries. A `ScrollMode.GIF` capture still leaves its `.gif` and a token
+sheet its `.catalog.json` — both written by the render itself, so neither depends on the semantics
+pass succeeding. The merge step therefore passes the catalog spec, and the declared no-sticker
+previews (`noStickerPreviewNames`) are exempt; the completeness gate exempts the same entries from
+its missing-render check, so the two agree about what the declaration buys. Without a readable spec
+the check keeps its old, slightly noisier reading rather than failing.
 
 **The CLI has to be new enough.** The merge runs last, after every shard has spent its twenty
 minutes, so a CLI predating `bundle merge` would fail the run having burned the whole fan-out — and

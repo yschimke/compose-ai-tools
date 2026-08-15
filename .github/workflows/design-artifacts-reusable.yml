@@ -911,7 +911,7 @@ jobs:
           # excluded. Anchoring (#3561) fixed the cause; this makes any future recurrence loud,
           # naming the shard and the ids instead of thinning the published catalog in silence.
           node compose-ai-tools/scripts/design-artifacts/verify-shard-renders.mjs \
-            --bundle "$GITHUB_WORKSPACE/bundle.png" "${plans[@]}"
+            --bundle "$GITHUB_WORKSPACE/bundle.png" --spec "${{ inputs.spec }}" "${plans[@]}"
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}

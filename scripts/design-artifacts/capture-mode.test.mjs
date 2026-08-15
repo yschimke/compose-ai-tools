@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { CAPTURE_MODES, captureMode, exportsNoSticker } from "./capture-mode.mjs";
+import {
+  CAPTURE_MODES,
+  captureMode,
+  exportsNoSticker,
+  noStickerPreviewNames,
+} from "./capture-mode.mjs";
 
 test("absent capture reads as static — the strict default", () => {
   assert.equal(captureMode({ componentId: "Button/Filled", preview: "FilledButton" }), "static");
@@ -22,4 +27,35 @@ test("only the declared modes exist — a typo is not an exemption", () => {
   assert.equal(exportsNoSticker({ capture: "animated" }), false);
   assert.equal(exportsNoSticker({ capture: "gif" }), false);
   assert.equal(exportsNoSticker({ capture: "None" }), false);
+});
+
+test("noStickerPreviewNames collects capture:none entries from components and variants", () => {
+  const spec = {
+    groups: [
+      {
+        components: [
+          { componentId: "Buttons/Filled", preview: "FilledButtonPreview" },
+          {
+            componentId: "Views/Hosted",
+            preview: "HostedViewPreview",
+            capture: "none",
+            variants: [
+              { preview: "HostedViewDisabledPreview", capture: "none" },
+              { preview: "HostedViewPressedPreview" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(noStickerPreviewNames(spec), [
+    "HostedViewDisabledPreview",
+    "HostedViewPreview",
+  ]);
+});
+
+test("noStickerPreviewNames is empty for an annotation-first spec with no groups", () => {
+  assert.deepEqual(noStickerPreviewNames({}), []);
+  assert.deepEqual(noStickerPreviewNames(undefined), []);
+  assert.deepEqual(noStickerPreviewNames({ groups: [{ components: [{ preview: "A" }] }] }), []);
 });
