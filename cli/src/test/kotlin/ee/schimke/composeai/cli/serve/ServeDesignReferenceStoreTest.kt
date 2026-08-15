@@ -92,6 +92,80 @@ class ServeDesignReferenceStoreTest {
     assertContentEquals(validBytes, store.raster("valid"))
   }
 
+  /**
+   * A record whose optional `match` this reader cannot decode must cost only itself.
+   *
+   * The regression: `match` was decoded as part of the enclosing manifest, so `"match": {}` (a
+   * half-written producer, `percent` missing) threw while parsing the envelope, the whole decode
+   * landed in `load`'s `runCatching`, and the store came back EMPTY — one bad record and the
+   * catalog's entire design-spec lane went dark on every page, silently. The per-record validation
+   * that exists to drop exactly this never got to run.
+   */
+  @Test
+  fun `a record with an undecodable match is dropped without taking the manifest with it`() {
+    val goodRaster = pngBytes("good")
+    val badRaster = pngBytes("bad")
+    fileSystem.createDirectories(root / "references")
+    fileSystem.write(root / "references/good.png") { write(goodRaster) }
+    fileSystem.write(root / "references/bad.png") { write(badRaster) }
+    // Hand-written rather than round-tripped through the serializer: the point is a document no
+    // producer in this repo would emit, which is precisely the case a fail-soft reader must
+    // survive.
+    fileSystem.write(root / "references/index.json") {
+      writeUtf8(
+        """
+        {
+          "schema": "compose-preview-references/v1",
+          "references": [
+            {
+              "id": "bad",
+              "previewId": "com.example.BadPreview",
+              "raster": { "path": "references/bad.png" },
+              "match": {}
+            },
+            {
+              "id": "good",
+              "previewId": "com.example.GoodPreview",
+              "raster": { "path": "references/good.png" },
+              "match": { "percent": 98.5 }
+            }
+          ]
+        }
+        """
+          .trimIndent()
+      )
+    }
+
+    val store = ServeDesignReferenceStore.load(File("/bundle"), fileSystem)
+
+    assertEquals(emptyList(), store.forPreview("com.example.BadPreview"))
+    assertEquals(1, store.all.size, "the readable record still serves")
+    assertEquals(98.5, store.forPreview("com.example.GoodPreview").single().match?.percent)
+  }
+
+  @Test
+  fun `a nonsense percentage is dropped without dropping its reference`() {
+    // A verdict is printed on a chip. A percentage outside 0..100 is a producer bug, and the cost
+    // of ignoring it is a chip with no number — where the cost of trusting it is a chip stating a
+    // falsehood, and the cost of dropping the record is a page with no design spec at all.
+    val raster = pngBytes("out-of-range")
+    val reference =
+      DesignReference(
+        id = "wild",
+        previewId = "com.example.WildPreview",
+        raster = DesignReferenceRaster(path = "references/wild.png"),
+        match = DesignReferenceMatch(percent = 4200.0),
+      )
+    writeManifest(listOf(reference))
+    fileSystem.write(root / "references/wild.png") { write(raster) }
+
+    val store = ServeDesignReferenceStore.load(File("/bundle"), fileSystem)
+
+    val loaded = store.forPreview("com.example.WildPreview").single()
+    assertEquals("wild", loaded.id, "the reference itself still serves")
+    assertNull(loaded.match, "the nonsense verdict is not published")
+  }
+
   private fun writeManifest(references: List<DesignReference>) {
     fileSystem.createDirectories(root / "references")
     fileSystem.write(root / "references/index.json") {

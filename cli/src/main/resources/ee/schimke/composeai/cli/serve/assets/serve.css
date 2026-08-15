@@ -1611,10 +1611,14 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    `ServeWeb.specMatchBand`. Rendered as a pseudo-element rather than a nested span so the chip's
    accessible name stays the plain label text. */
 .cp-spec-chip[data-spec-match]::before { content: ""; width: 8px; height: 8px; margin-right: 8px;
-  border-radius: 50%; flex: none; background: var(--cp-spec-match-dot); }
-.cp-spec-chip[data-spec-match="match"] { --cp-spec-match-dot: light-dark(#146c2e, #6dd58c); }
-.cp-spec-chip[data-spec-match="close"] { --cp-spec-match-dot: light-dark(#8f5000, #ffb787); }
-.cp-spec-chip[data-spec-match="off"] { --cp-spec-match-dot: var(--md-sys-color-error); }
+  border-radius: 50%; flex: none; }
+/* Painted straight onto the dot rather than through a `--cp-` variable: that namespace is the
+   THEME PROJECTION's, and `ServeThemeCssTest` holds it to "every var(--cp-…) the sheet uses is one
+   the projection emits". A band is a fixed semantic colour, not a themed role, so it has no
+   business in that palette — and the indirection bought nothing here anyway. */
+.cp-spec-chip[data-spec-match="match"]::before { background: light-dark(#146c2e, #6dd58c); }
+.cp-spec-chip[data-spec-match="close"]::before { background: light-dark(#8f5000, #ffb787); }
+.cp-spec-chip[data-spec-match="off"]::before { background: var(--md-sys-color-error); }
 .cp-format-link { color: var(--cp-fg-muted); font-size: 0.75rem; white-space: nowrap; }
 .cp-format-link:hover { color: var(--cp-accent-strong); }
 /* Score chips: M3 assist-chip shape, literal semantic colours. */

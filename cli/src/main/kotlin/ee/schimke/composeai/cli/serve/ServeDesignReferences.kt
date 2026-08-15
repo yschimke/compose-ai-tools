@@ -4,6 +4,8 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 import okio.ByteString.Companion.toByteString
 import okio.FileSystem
 import okio.Path
@@ -129,6 +131,20 @@ private constructor(
     return candidate.takeIf { fileSystem.exists(it) }
   }
 
+  /**
+   * The manifest as read from disk, with its records left as raw JSON.
+   *
+   * [DesignReferenceManifest] is the schema producers write against; this is what a fail-soft
+   * READER needs, and they differ in exactly one way that matters: decoding a `List<JsonElement>`
+   * cannot fail on the contents of any one record, so [load] can decode them individually and drop
+   * only what it cannot read.
+   */
+  @Serializable
+  private data class RawManifest(
+    val schema: String = DesignReferenceManifest.SCHEMA,
+    val references: List<JsonElement> = emptyList(),
+  )
+
   companion object {
     const val DIRECTORY = "references"
     const val INDEX_FILE = "index.json"
@@ -145,7 +161,7 @@ private constructor(
       val manifestPath = root / DIRECTORY / INDEX_FILE
       val manifest = runCatching {
         if (!fileSystem.exists(manifestPath)) return@runCatching null
-        JSON.decodeFromString<DesignReferenceManifest>(fileSystem.read(manifestPath) { readUtf8() })
+        JSON.decodeFromString<RawManifest>(fileSystem.read(manifestPath) { readUtf8() })
       }
         .getOrNull()
         ?.takeIf { it.schema == DesignReferenceManifest.SCHEMA }
@@ -154,6 +170,16 @@ private constructor(
       val seen = HashSet<String>()
       val valid =
         manifest.references
+          // Decoded ONE RECORD AT A TIME, so a record this reader cannot understand costs only
+          // itself. Decoding the whole array in one call makes any single malformed entry — a
+          // `"match": {}` from a half-written producer, a null where a number belongs — throw while
+          // parsing the envelope, which lands in the `runCatching` above and returns an EMPTY
+          // store: one bad record and the catalog's entire design-spec lane goes dark, on every
+          // page, silently. That is the opposite of this class's stated contract, and the
+          // per-record validation below (ids, paths, hashes, [isSaneMatch]) never gets to run.
+          .mapNotNull {
+            runCatching { JSON.decodeFromJsonElement<DesignReference>(it) }.getOrNull()
+          }
           .filter { reference ->
             if (!hasValidMetadata(reference)) return@filter false
             val rasterPath = root / reference.raster.path.toPath()
