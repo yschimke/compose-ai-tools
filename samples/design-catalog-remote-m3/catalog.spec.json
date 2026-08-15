@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
-  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode — and because those colours come from RemoteMaterialTheme (the Wear Compose Material 3 scheme, which is dark-first), that one mode is DARK: the stickers rasterise light content on transparency (a white RemoteIcon/RemoteText, a near-black RemoteCard surface). Hence `modes: [\"dark\"]` and `display.surface: \"dark\"` — without the explicit surface the preview server's fallback id heuristic (`wear|watch` token) doesn't match `remote-m3`, backs the sheet on the default white stage, and the white-on-transparent stickers vanish. The component set mirrors the androidx.wear.compose.remote.material3 surface (the port of Wear Compose Material 3 to Remote Compose), minus the two non-component helpers RemoteContainerPainter (a painter factory) and RemoteTypographyTokens (the raw token table behind RemoteTypography). Each component carries a `parallel` field naming its Wear Compose Material 3 counterpart (a componentId in samples/design-catalog-wear-m3); the design-artifacts cross-system compare page pairs them side by side. The Scaffold templates group is not a component but a whole-screen template — the catalog's declared `display.hero`, so the preview server's front door features a real Remote Compose screen instead of a lone button; it parallels the Wear M3 sibling's `Template/TimeText/largeRound` (that catalog publishes its full-screen templates one component per breakpoint, so the parallel names the large-round card rather than a bare id). The Widget Container group is the other Remote-only extra besides the shader: the squircle frame the Wear widget host draws around widget content, rendered through androidx.glance.wear:wear-tooling-preview's WearWidgetPreview wrapper (no remote-material3 or Wear M3 peer — it is a host frame, not a component). Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
+  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Every sticker is a real RemoteDocument rasterised by the Remote Compose player. The document carries explicit dark-first Material colours, hence the single dark mode and dark display surface. The inventory covers the renderable androidx.wear.compose.remote.material3 component surface plus focused size, style, content-slot, interaction and motion variants. RemoteContainerPainter and RemoteTypographyTokens are helpers rather than components. RemoteTimeText has source samples but no catalog sticker because the resolved player still rejects its DrawTextOnCircle opcode (57). Each component carries a Wear Material 3 parallel where one exists. The Scaffold template is the catalog hero; Widget Container and the shader are Remote-only extras. Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
   "system": "remote-m3",
   "title": "Remote Compose Material 3",
   "library": [
@@ -21,10 +21,25 @@
       "name": "Buttons",
       "components": [
         { "componentId": "Button/Filled", "preview": "FilledRemoteButton", "parallel": "Button/Filled", "caption": "Remote Material 3 filled button — the primary action." },
+        { "componentId": "Button/Tonal", "preview": "TonalRemoteButton", "parallel": "Button/FilledTonal", "caption": "Tonal button using the theme's secondary-container emphasis." },
         { "componentId": "Button/Outlined", "preview": "OutlinedRemoteButton", "parallel": "Button/Outlined", "caption": "Remote Material 3 outlined-emphasis button (RemoteButton with an explicit border + border colour)." },
+        { "componentId": "Button/Disabled", "preview": "DisabledRemoteButton", "parallel": "Button/Filled", "caption": "Filled button with the library's disabled container and content colours." },
+        { "componentId": "Button/IconLabel", "preview": "IconLabelRemoteButton", "parallel": "Button/Filled", "caption": "Opinionated RemoteButton overload with its recommended icon and label slots." },
+        { "componentId": "Button/IconLabelSecondary", "preview": "IconLabelSecondaryRemoteButton", "parallel": "Button/Filled", "caption": "Two-line RemoteButton with a large icon, primary label and secondary label." },
         { "componentId": "Button/Text", "preview": "TextRemoteButton", "parallel": "Button/Child", "caption": "Low-emphasis round text button (RemoteTextButton)." },
+        { "componentId": "Button/Text-Small", "preview": "SmallRemoteTextButton", "parallel": "Button/Child", "caption": "Small RemoteTextButton at the defined 48dp size." },
+        { "componentId": "Button/Text-Large", "preview": "LargeRemoteTextButton", "parallel": "Button/Child", "caption": "Large RemoteTextButton at the defined 60dp size and labelLarge typography." },
+        { "componentId": "Button/Text-Filled", "preview": "FilledRemoteTextButton", "parallel": "Button/Filled", "caption": "Round text button with a filled primary container." },
+        { "componentId": "Button/Text-Outlined", "preview": "OutlinedRemoteTextButton", "parallel": "Button/Outlined", "caption": "Round text button with an explicit outline treatment." },
         { "componentId": "Button/Icon", "preview": "IconRemoteButton", "parallel": "IconButton", "caption": "Round icon button (RemoteIconButton) carrying a single RemoteIcon." },
+        { "componentId": "Button/Icon-ExtraSmall", "preview": "ExtraSmallRemoteIconButton", "parallel": "IconButton", "caption": "Extra-small RemoteIconButton at the defined 32dp size." },
+        { "componentId": "Button/Icon-Small", "preview": "SmallRemoteIconButton", "parallel": "IconButton", "caption": "Small RemoteIconButton at the defined 48dp size." },
+        { "componentId": "Button/Icon-Large", "preview": "LargeRemoteIconButton", "parallel": "IconButton", "caption": "Large RemoteIconButton at the defined 60dp size." },
+        { "componentId": "Button/Icon-Filled", "preview": "FilledRemoteIconButton", "parallel": "IconButton", "caption": "RemoteIconButton with a filled primary container." },
+        { "componentId": "Button/Icon-Outlined", "preview": "OutlinedRemoteIconButton", "parallel": "IconButton", "caption": "RemoteIconButton with an explicit outline treatment." },
         { "componentId": "Button/Compact", "preview": "CompactRemoteButton", "parallel": "CompactButton", "caption": "Compact single-line button (RemoteCompactButton)." },
+        { "componentId": "Button/Compact-IconLabel", "preview": "CompactIconLabelRemoteButton", "parallel": "CompactButton", "caption": "Compact button with the defined extra-small icon plus a label." },
+        { "componentId": "Button/Compact-IconOnly", "preview": "CompactIconOnlyRemoteButton", "parallel": "CompactButton", "caption": "Icon-only compact button using its dedicated 52dp visible width." },
         { "componentId": "Button/Group", "preview": "ButtonGroupRemote", "parallel": "ButtonGroup", "caption": "Two buttons laid out edge-to-edge by RemoteButtonGroup." },
         { "componentId": "Button/CustomShape", "preview": "CustomShapeRemoteButton", "parallel": "Button/Filled", "caption": "Filled button with a RemoteRoundedCornerShape override." },
         { "componentId": "Button/NamedLabel", "preview": "NamedLabelRemoteButton", "parallel": "Button/Filled", "caption": "Filled button whose label is bound to a Remote Compose named value — the connector flips it live (default render shows \"Tap me\")." }
@@ -36,7 +51,10 @@
         { "componentId": "Card", "preview": "CardRemote", "parallel": "Card", "caption": "Remote Material 3 card." },
         { "componentId": "Card/Outlined", "preview": "OutlinedCardRemote", "parallel": "Card/Outlined", "caption": "Outlined card variant (RemoteOutlinedCard)." },
         { "componentId": "TitleCard", "preview": "TitleCardRemote", "parallel": "TitleCard", "caption": "Card with title, subtitle and supporting text slots." },
-        { "componentId": "AppCard", "preview": "AppCardRemote", "parallel": "AppCard", "caption": "App card with app name, icon, time and content slots." }
+        { "componentId": "TitleCard/TitleOnly", "preview": "TitleOnlyRemoteTitleCard", "parallel": "TitleCard", "caption": "Minimal title-card layout with no optional time, subtitle or body slots." },
+        { "componentId": "TitleCard/TimeContent", "preview": "TimeContentRemoteTitleCard", "parallel": "TitleCard", "caption": "Title card with time and supporting content, exercising the alternate title-row layout." },
+        { "componentId": "AppCard", "preview": "AppCardRemote", "parallel": "AppCard", "caption": "App card with app name, icon and content slots." },
+        { "componentId": "AppCard/Time", "preview": "TimeRemoteAppCard", "parallel": "AppCard", "caption": "App card with the optional time slot and no app image." }
       ]
     },
     {
@@ -48,7 +66,12 @@
     {
       "name": "Communication",
       "components": [
-        { "componentId": "Progress/Circular", "preview": "CircularProgressRemote", "parallel": "Progress/Circular", "caption": "Determinate circular progress indicator at a fixed 66%." }
+        { "componentId": "Progress/Circular", "preview": "CircularProgressRemote", "parallel": "Progress/Circular", "caption": "Determinate circular progress indicator at a fixed 66%." },
+        { "componentId": "Progress/Circular-Disabled", "preview": "DisabledCircularProgressRemote", "parallel": "Progress/Circular", "caption": "Determinate progress using the component's disabled indicator and track brushes." },
+        { "componentId": "Progress/Circular-Indeterminate", "preview": "IndeterminateCircularProgressRemote", "parallel": "Progress/Circular-Indeterminate", "caption": "Indeterminate circular progress; a companion motion preview captures its continuous remote-clock animation." },
+        { "componentId": "PageIndicator/Horizontal", "preview": "HorizontalPageIndicatorRemote", "parallel": "PageIndicator/Horizontal", "caption": "Five-page horizontal indicator curved along the bottom edge." },
+        { "componentId": "PageIndicator/Vertical", "preview": "VerticalPageIndicatorRemote", "parallel": "PageIndicator/Vertical", "caption": "Eight-page vertical indicator exercising the scrolling-dot window." },
+        { "componentId": "PageIndicator/Interactive", "preview": "InteractivePageIndicatorRemote", "parallel": "PageIndicator/Horizontal", "caption": "Interactive page indicator: tapping Next animates the worm between adjacent pages inside the RemoteDocument." }
       ]
     },
     {

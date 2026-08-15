@@ -43,6 +43,17 @@ class InteractiveActionCaptureTest {
       "OutlinedCardRemote" to "Card",
       "TitleCardRemote" to "Morning run",
       "AppCardRemote" to "Morning run",
+      "TonalRemoteButton" to "Tonal",
+      "IconLabelRemoteButton" to "Favourite",
+      "IconLabelSecondaryRemoteButton" to "Morning run",
+      "CompactIconLabelRemoteButton" to "Add",
+      "SmallRemoteTextButton" to "Aa",
+      "LargeRemoteTextButton" to "Aa",
+      "FilledRemoteTextButton" to "OK",
+      "OutlinedRemoteTextButton" to "More",
+      "TitleOnlyRemoteTitleCard" to "Morning run",
+      "TimeContentRemoteTitleCard" to "Morning run",
+      "TimeRemoteAppCard" to "New message",
     )
 
   /**
