@@ -234,11 +234,35 @@ export class PageZoom extends LitElement {
                 class="cp-page-zoom-reset"
                 data-cp-page-zoom-reset
                 aria-label="Reset zoom"
-                @click=${() => this.reset()}
+                @click=${() => this.reset(true)}
             >
                 Reset
             </button>
         `;
+    }
+
+    /**
+     * Put the canvas exactly where `this.view` says it is, right now.
+     *
+     * Every measurement here — a drill target, a focused node — is a
+     * `getBoundingClientRect`, and during the 170 ms travel that answers with the
+     * INTERPOLATED position while `this.view` already holds the destination.
+     * `frameRect` assumes the two describe the same view, so a second double-click
+     * landing mid-flight would frame the next level from a box measured in one view
+     * and a transform taken from another: a wild over-zoom, off centre.
+     *
+     * Cheapest correct fix: kill the transition, write the destination, and force the
+     * browser to lay it out before reading anything. The move that follows re-enables
+     * easing, so it still travels — from where the sheet had actually got to.
+     */
+    private settle(): void {
+        if (!this.canvas) return;
+        const { scale, x, y } = this.view;
+        this.canvas.classList.add("cp-page-canvas-live");
+        this.canvas.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        // Reading a layout property is what flushes the style change; without it the
+        // rects below are still the ones being animated away from.
+        void this.canvas.getBoundingClientRect();
     }
 
     private stageBox(): Box {
@@ -287,7 +311,7 @@ export class PageZoom extends LitElement {
         this.percent = Math.round(scale * 100);
     }
 
-    private step(factor: number): void {
+    private step(factor: number, eased = true): void {
         const box = this.stageBox();
         this.apply(
             zoomAbout(
@@ -297,13 +321,14 @@ export class PageZoom extends LitElement {
                 box.top + box.height / 2,
                 factor,
             ),
+            eased,
         );
     }
 
-    private reset(): void {
+    private reset(eased = true): void {
         // The stack is cleared by `apply` itself, which is what makes every other route
         // back to 1:1 behave like this one.
-        this.apply(rest());
+        this.apply(rest(), eased);
     }
 
     /**
@@ -400,6 +425,9 @@ export class PageZoom extends LitElement {
         // spends the gesture stepping back out — so two clicks on `+` would net one.
         // Same guard, same reason, as the one `startPan` takes.
         if (this.contains(event.target as Node)) return;
+        // A second double-click can land inside the first one's travel; measure the
+        // sheet where it is going, not where it currently is.
+        this.settle();
         const target =
             event.altKey || event.shiftKey
                 ? null
@@ -437,6 +465,7 @@ export class PageZoom extends LitElement {
             start,
             this.stageBox(),
             this.svg.getBoundingClientRect(),
+            this.view.scale,
         );
         if (level) this.drilled.push(level.node);
         return level;
@@ -593,16 +622,39 @@ export class PageZoom extends LitElement {
         const target = event.target as HTMLElement | null;
         if (target?.closest("input, textarea, select, [contenteditable]"))
             return;
-        if (event.key === "+" || event.key === "=") this.step(STEP);
-        else if (event.key === "-" || event.key === "_") this.step(1 / STEP);
-        else if (event.key === "0") this.reset();
+        if (event.key === "+" || event.key === "=") this.step(STEP, false);
+        else if (event.key === "-" || event.key === "_")
+            this.step(1 / STEP, false);
+        else if (event.key === "0") this.reset(false);
         else return;
         event.preventDefault();
+        this.reparkTip();
+    }
+
+    /**
+     * Tell the page to describe the focused node again, now that the sheet has moved
+     * under it.
+     *
+     * `design-page.js` parks its tooltip at the node's measured box when focus lands
+     * there, and a keyboard zoom moves that box without producing a new focus event —
+     * so the tip would be left behind, stranded over whatever the pan brought under
+     * it. Re-dispatching `focus` at the element it is already on makes that page
+     * re-measure and re-park, which is why the two keyboard steps above are applied
+     * UN-eased: the box has to be final before anything measures it.
+     *
+     * A one-way nudge through the DOM, like reading `.cp-page-selected` — the legacy
+     * file still knows nothing about this element.
+     */
+    private reparkTip(): void {
+        const focused = document.activeElement;
+        if (!focused || !this.canvas?.contains(focused)) return;
+        focused.dispatchEvent(new FocusEvent("focus"));
     }
 
     /** Pan a focused node into view. Does nothing at 1:1, or off the sheet. */
     private reveal(target: Element | null): void {
         if (!target || !zoomed(this.view)) return;
+        this.settle();
         // Only the sheet's own overlays: a row in the audit list below is not
         // something the stage can bring into view, and asking it to would pan the
         // sheet to nowhere in answer to a focus that never left the list.

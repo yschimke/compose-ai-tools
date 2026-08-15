@@ -207,6 +207,7 @@ export function pickLevel<T>(
     start: number,
     box: Box,
     outer: Box,
+    scale = 1,
 ): Level<T> | null {
     const current = start >= 0 ? chain[start].box : outer;
     for (let i = start + 1; i < chain.length; i++) {
@@ -223,7 +224,14 @@ export function pickLevel<T>(
         // A hairline or a single glyph stroke: filling the stage with one edge
         // loses the reader entirely, and the level above it is the thing worth
         // looking at.
-        if (level.box.width < 6 || level.box.height < 6) continue;
+        //
+        // Measured in the SHEET's own pixels, not the screen's. These boxes come
+        // from `getBoundingClientRect`, so they already carry the zoom — and a
+        // fixed screen cutoff therefore stops filtering anything once the reader
+        // is in far enough: at 12x a 1 px stroke measures 12 and sails through the
+        // guard that exists to reject it.
+        if (level.box.width / scale < 6 || level.box.height / scale < 6)
+            continue;
         // A level that cannot be MAGNIFIED is not a level either, however
         // differently shaped its box is: a section as wide as the sheet frames at
         // 1.0x, so keep descending until something can actually be enlarged.

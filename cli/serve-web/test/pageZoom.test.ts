@@ -124,7 +124,9 @@ function stubLayout(): void {
  * child paints over its parent, and a later sibling paints over an earlier one.
  */
 function topmostFirst(a: Element, b: Element): number {
-    return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : -1;
+    return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
+        ? 1
+        : -1;
 }
 
 async function mount(markup = PAGE): Promise<void> {
@@ -585,6 +587,45 @@ describe("<cp-page-zoom>", () => {
         out.click();
         await flush();
         assert.equal(percent(), once, "and the buttons still work either way");
+    });
+
+    it("re-describes the focused node after a keyboard zoom", async () => {
+        await mount();
+        // `design-page.js` parks its tooltip when focus lands on an overlay, and a
+        // keyboard zoom moves that overlay without producing a new focus event — so
+        // without a nudge the tip is left stranded where the node used to be.
+        const spot = el<HTMLElement>(".cp-page-node");
+        let described = 0;
+        spot.addEventListener("focus", () => described++);
+        spot.focus();
+        const parked = described;
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "+", bubbles: true }),
+        );
+        await flush();
+        assert.ok(percent() > 100, "the sheet zoomed");
+        assert.ok(
+            described > parked,
+            "…and the page was asked to re-measure the tip",
+        );
+    });
+
+    it("writes the settled transform before it measures a target", async () => {
+        await mount();
+        dblclick(at(65, 430));
+        await flush();
+        const framed = view();
+        // What a mid-flight second drill would otherwise read: the canvas still
+        // carrying an interpolated transform while `this.view` holds the destination.
+        // `settle()` has to put the destination back before anything is measured.
+        el<HTMLElement>(".cp-page-canvas").style.transform =
+            "translate(0px, 0px) scale(1.4)";
+        dblclick(at(110, 200));
+        await flush();
+        assert.ok(
+            percent() > Math.round(framed.scale * 100),
+            "the second drill went deeper from the settled view, not from a stale one",
+        );
     });
 
     it("is inert on a stage with no canvas to transform", async () => {

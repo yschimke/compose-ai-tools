@@ -208,6 +208,19 @@ describe("pickLevel", () => {
         assert.equal(pickLevel(chain, 2, STAGE, outer), null);
     });
 
+    it("measures the hairline cutoff in the sheet's pixels, not the screen's", () => {
+        // A 1 px stroke seen at 12x measures 12 on screen and would sail through a
+        // fixed screen cutoff — filling the stage with the exact glyph detail the
+        // guard exists to reject.
+        const zoomedIn = [
+            { node: "column", box: box(0, 0, 400, 600) },
+            { node: "stroke", box: box(10, 10, 12, 480) },
+        ];
+        assert.equal(pickLevel(zoomedIn, 0, STAGE, outer, 12), null);
+        // …and at 1:1 a 12 px node is a real thing to enter.
+        assert.equal(pickLevel(zoomedIn, 0, STAGE, outer, 1)?.node, "stroke");
+    });
+
     it("skips a level it cannot magnify", () => {
         // A band as wide as the sheet: framing it would not move the picture, so the
         // drill must keep going rather than pretend.
