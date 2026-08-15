@@ -402,10 +402,12 @@ object PreviewManifestLoader {
         entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
         entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
       }
-      expandedByEntry.flatMap { it.second }.forEach { row ->
-        row.entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
-        row.entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
-      }
+      expandedByEntry
+        .flatMap { it.second }
+        .forEach { row ->
+          row.entry.captures.mapNotNullTo(this) { captureOutputFile(outDir, it.renderOutput) }
+          row.entry.dataProducts.mapNotNullTo(this) { productOutputFile(productRoot, it.output) }
+        }
     }
     val declaredOutputFiles = buildList {
       allEntries.forEach { entry ->
