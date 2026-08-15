@@ -297,7 +297,6 @@ const SERVE_ASSETS = [
     ["page-theme.js", "text/javascript"],
     ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
-    ["viewer-drawers.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
     ["spec-compare.js", "text/javascript"],
     ["rc-lanes.js", "text/javascript"],

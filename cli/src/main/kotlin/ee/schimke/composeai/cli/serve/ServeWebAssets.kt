@@ -24,8 +24,10 @@ internal object ServeWebAssets {
       // `<cp-bg-toggle>` (the Transparent toggle shared by the catalog grid and the viewer),
       // `<cp-backend-badge>` (the viewer stage's provenance badge, formerly `backend-badge.js`) and
       // `<cp-group-memory>` (the control drawers' remembered open state, formerly
-      // `viewer-groups.js`), plus `window.cpRcFonts`, the Remote Compose font preloader that was
-      // `rc-fonts.js`. Loaded whole rather than per-page: Lit is ~6 kB gzipped and an element
+      // `viewer-groups.js`), `<cp-viewer-drawers>` (the viewer's drawers, phone row order, theme
+      // toggle value and component filter, formerly `viewer-drawers.js`), plus `window.cpRcFonts`,
+      // the Remote Compose font preloader that was `rc-fonts.js`. Loaded whole rather than
+      // per-page: Lit is ~6 kB gzipped and an element
       // whose tag isn't on the page costs nothing but its bytes, so splitting would buy less than
       // it costs. The heavy per-page scripts selective loading exists for (`codemirror.js`,
       // `viewer.js`, `format-compare.js`) are untouched and keep their own tags.
@@ -41,7 +43,6 @@ internal object ServeWebAssets {
       // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
       // by a viewer whose host can produce at least one of them.
       "inspect.js" to "text/javascript; charset=utf-8",
-      "viewer-drawers.js" to "text/javascript; charset=utf-8",
       "viewer-history.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
       // The viewer's design-spec comparison views (diff / triptych / slider); loaded only by a

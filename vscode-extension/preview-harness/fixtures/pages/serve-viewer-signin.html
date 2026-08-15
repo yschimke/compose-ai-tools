@@ -223,7 +223,9 @@
       <cp-group-memory></cp-group-memory>
       <script src="/assets/serve/fixture/url-state.js"></script>
       <script src="/assets/serve/fixture/serve-components.js"></script>
-      <script src="/assets/serve/fixture/viewer-drawers.js"></script>
+      <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
+           filter. Renders nothing; `serve.css` hides the tag. -->
+      <cp-viewer-drawers></cp-viewer-drawers>
       <script src="/assets/serve/fixture/viewer-history.js"></script>
       <script>(function () {
   var el = document.getElementById("cp-theme");

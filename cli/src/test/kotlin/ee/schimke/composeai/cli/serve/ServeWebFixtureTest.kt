@@ -4446,13 +4446,11 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-scrim.cp-scrim-on"),
       "a dismiss scrim backs the open bottom sheet",
     )
-    // The overrides drawer collapses on load on a phone so the preview leads (JS-driven; the
-    // server markup still defaults it open for desktop).
-    assertTrue(
-      assetText("viewer-drawers.js")
-        .contains("if (isMobile()) setOpen(\"cp-controls-open\", false);"),
-      "the overrides drawer starts collapsed on a phone",
-    )
+    // The overrides drawer collapses on load on a phone so the preview leads. That is
+    // `<cp-viewer-drawers>`'s job now, asserted against the element in
+    // `cli/serve-web/test/viewerDrawers.test.ts` ("is closed on a phone so the preview leads");
+    // what the page owes it is the tag.
+    assertTrue(viewer.contains("<cp-viewer-drawers>"), "the viewer wires its drawers")
     // The breakpoint ships on the landing pages too (shared stylesheet).
     val landing = ServeWeb.landingPage(moduleLabel, previews, token)
     assertTrue(

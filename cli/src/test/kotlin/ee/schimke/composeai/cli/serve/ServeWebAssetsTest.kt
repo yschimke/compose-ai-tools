@@ -14,7 +14,6 @@ class ServeWebAssetsTest {
         "serve.css",
         "url-state.js",
         "viewer.js",
-        "viewer-drawers.js",
         "format-compare.js",
         "catalog-live.js",
       )) {
@@ -65,7 +64,6 @@ class ServeWebAssetsTest {
       listOf(
         "url-state.js",
         "viewer.js",
-        "viewer-drawers.js",
         "format-compare.js",
         "catalog-live.js",
       )) {
