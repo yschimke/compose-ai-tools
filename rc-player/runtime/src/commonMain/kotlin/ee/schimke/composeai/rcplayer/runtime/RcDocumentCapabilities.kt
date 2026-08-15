@@ -4,7 +4,6 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
-import ee.schimke.composeai.rcplayer.protocol.RcTheme
 
 /**
  * What a captured Remote Compose document can be told to change **without recomposing it** — read
@@ -22,18 +21,24 @@ import ee.schimke.composeai.rcplayer.protocol.RcTheme
  * "themeProvider" is correct for that catalog, let alone across catalogs. All 164
  * `homeassistant-remotecompose` documents declare none today.
  *
- * **The two colour axes are not the same question**, and the reason is the route each takes to the
- * pixels rather than anything about colour:
- * - a **palette** (`themeProvider`) reaches a replay only as named colour seeds —
- *   `ServeThemeReplay.expand` turns the provider into `rc.<name>` values and
- *   `setNamedColorOverride` applies them — so it needs colour-typed named slots to land on, and
- *   nothing else will do;
- * - **light/dark** (`uiMode`) is resolved by the document against the *requested* theme, with no
- *   host-supplied colours at all.
+ * **Scope: named state and the palette axis.** A palette (`themeProvider`) reaches a replay only as
+ * named colour seeds — `ServeThemeReplay.expand` turns the provider into `rc.<name>` values and
+ * `setNamedColorOverride` applies them — so it needs colour-typed named slots to land on, and
+ * nothing else will do. That is decidable from the declarations alone, and is what this class
+ * answers.
  *
- * A document can have either without the other, so they are reported separately. Everything here is
- * derived from a single pass over [RcDocument.operations]; construct once per document and query
- * per override.
+ * **`uiMode` (light/dark) is deliberately absent, and callers must not infer it from
+ * [colorThemeGroups].** Deciding it needs the player's *execution* semantics, not just the
+ * declarations, and those differ per path in ways that are easy to get wrong:
+ * - in the canvas path, `drawOperations` gates a container on the section in force *before* it and
+ *   then runs the container's children with `filterTheme = false`, so a marker inside a container
+ *   does not filter while the container itself does;
+ * - constants and data operations are preloaded unconditionally by `RcPlayerState.init` and are a
+ *   no-op in `drawOperations`, so a section containing only those changes nothing observable;
+ * - the layout path resolves theme through `applyScope` instead, on different rules again.
+ *
+ * A capability that is wrong here is worse than one that is missing: it would tell a consumer an
+ * override is inert when it is not, or the reverse. It is tracked separately rather than guessed.
  */
 public data class RcDocumentCapabilities(
   /**
@@ -44,34 +49,14 @@ public data class RcDocumentCapabilities(
    */
   public val namedValues: Map<String, Int>,
   /**
-   * `colorGroupId`s of the document's [RcColorTheme] operations — one of the two ways a document
-   * answers a light/dark request. A `ColorTheme` op holds both colours and picks between them from
-   * the requested paint theme.
+   * `colorGroupId`s of the document's [RcColorTheme] operations. Reported as **data, not as a
+   * capability** — see the class note on `uiMode`.
    *
-   * Deliberately **not** evidence of palette support. The colours are captured in the op; there is
-   * no named slot for a provider's colour to be written into, so a `themeProvider` seeded onto such
-   * a document applies nothing and returns unchanged pixels.
+   * Deliberately not evidence of palette support: the colours are captured in the op, so there is
+   * no named slot for a provider's colour to be written into, and a `themeProvider` seeded onto
+   * such a document applies nothing and returns unchanged pixels.
    */
   public val colorThemeGroups: Set<Int>,
-  /**
-   * Specific [RcTheme] values (`LIGHT` / `DARK`) that gate at least one following operation — the
-   * other way a document answers a light/dark request.
-   *
-   * `Theme` is a **container-scoped section marker**, not a document-wide pin. `drawOperations`
-   * declares `var currentTheme = RcTheme.UNSPECIFIED` per invocation and recurses into a fresh
-   * invocation for each container, then skips operations whose section disagrees with the requested
-   * theme. Two consequences the scan has to honour, both of which a flat pass over the operation
-   * list gets wrong: a marker does **not** leak past the end of its container onto later siblings,
-   * and it is **not** inherited into a nested container either — every container starts over at
-   * `UNSPECIFIED`. That is why this walks the linked tree rather than the raw stream, which also
-   * means `ContainerEnd` never appears as an operation to be mistaken for gated content.
-   *
-   * Only `UNSPECIFIED` is excluded, and only because `isThemeVisible` treats it as the wildcard on
-   * both sides. `SYSTEM` is **not** a wildcard there — under a requested `LIGHT` or `DARK` a
-   * `SYSTEM`-tagged operation is filtered out — so a `SYSTEM` section does gate content and does
-   * carry `uiMode`.
-   */
-  public val themeGatedSections: Set<Int>,
 ) {
   /** Colour-typed entries of [namedValues] — the slots a palette override can overwrite. */
   public val colorNamedValues: Set<String>
@@ -84,16 +69,6 @@ public data class RcDocumentCapabilities(
    */
   public val supportsThemeProvider: Boolean
     get() = colorNamedValues.isNotEmpty()
-
-  /**
-   * Whether a light/dark (`uiMode`) request changes anything — by either mechanism: theme-gated
-   * operation sections, or [RcColorTheme] ops selecting between captured colours.
-   *
-   * Palette slots deliberately do not count. Overwriting a named colour is a swap the host drives;
-   * a `uiMode` request carries no colours to swap in.
-   */
-  public val supportsUiMode: Boolean
-    get() = themeGatedSections.isNotEmpty() || colorThemeGroups.isNotEmpty()
 
   /**
    * The [RcNamedVariable] type declared for [name], or null when the document declares no such.
@@ -116,33 +91,25 @@ public data class RcDocumentCapabilities(
     public fun of(document: RcDocument): RcDocumentCapabilities {
       val named = LinkedHashMap<String, Int>()
       val groups = LinkedHashSet<Int>()
-      val gated = LinkedHashSet<Int>()
-
-      // Mirrors `drawOperations`: a fresh `UNSPECIFIED` section per container scope, so a marker
-      // neither leaks onto later siblings of its container nor is inherited into a nested one.
+      // Walks the linked tree rather than the raw stream so nested declarations are found and
+      // structural delimiters never appear as operations. Declaration collection is
+      // scope-independent — `RcPlayerState.init` preloads every declaration in the document
+      // regardless of nesting — so no per-container state is carried.
       fun walk(nodes: List<RcLinkedNode>) {
-        var section = RcTheme.UNSPECIFIED
         for (node in nodes) {
           when (node) {
             is RcLinkedNode.Container -> walk(node.children)
-            is RcLinkedNode.Operation -> {
-              val op = node.operation
-              if (op is RcTheme) {
-                section = op.theme
-                continue
-              }
-              when (op) {
+            is RcLinkedNode.Operation ->
+              when (val op = node.operation) {
                 is RcNamedVariable -> named[op.name] = op.type
                 is RcColorTheme -> groups += op.colorGroupId
                 else -> Unit
               }
-              if (section.gatesContent()) gated += section
-            }
           }
         }
       }
       walk(RcDocumentLinker.link(document).operations)
-      return RcDocumentCapabilities(named, groups, gated)
+      return RcDocumentCapabilities(named, groups)
     }
 
     /**
@@ -154,12 +121,6 @@ public data class RcDocumentCapabilities(
       of(RcDocumentCodec.decode(bytes))
     }
       .getOrNull()
-
-    /**
-     * A section filters content unless it is the wildcard. `isThemeVisible` treats **only**
-     * `UNSPECIFIED` as the wildcard, so `SYSTEM` gates just like `LIGHT` and `DARK` do.
-     */
-    private fun Int.gatesContent(): Boolean = this != RcTheme.UNSPECIFIED
 
     /** Put a bare name in the `USER:` domain; leave an explicitly namespaced one alone. */
     private fun userQualified(name: String): String =

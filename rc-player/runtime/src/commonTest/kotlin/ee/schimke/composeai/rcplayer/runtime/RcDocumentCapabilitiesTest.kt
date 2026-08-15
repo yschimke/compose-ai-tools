@@ -10,7 +10,6 @@ import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
-import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,7 +42,7 @@ class RcDocumentCapabilitiesTest {
     val caps = roundTrip(doc(RcTextData(1, "10:08")))
     assertTrue(caps.namedValues.isEmpty())
     assertFalse(caps.supportsThemeProvider)
-    assertFalse(caps.supportsUiMode)
+    assertTrue(caps.colorThemeGroups.isEmpty())
   }
 
   @Test
@@ -62,8 +61,6 @@ class RcDocumentCapabilitiesTest {
       caps.colorNamedValues,
     )
     assertTrue(caps.supportsThemeProvider)
-    // A palette swap is not a light/dark request; nothing here selects between captured colours.
-    assertFalse(caps.supportsUiMode)
   }
 
   @Test
@@ -88,101 +85,29 @@ class RcDocumentCapabilitiesTest {
   }
 
   @Test
-  fun `ColorTheme carries uiMode but not a palette override`() {
-    // No published catalog emits `ColorTheme` yet — this fixture is what keeps the branch honest
+  fun `ColorTheme is detected but grants no palette override`() {
+    // No published catalog emits `ColorTheme` yet — this fixture is what keeps detection honest
     // until one does. It must NOT claim palette support: the colours live in the op, so a
     // provider's seeds have no named slot to land on and would return unchanged pixels.
     val caps = roundTrip(doc(colorTheme(group = 7), colorTheme(group = 8)))
     assertEquals(setOf(7, 8), caps.colorThemeGroups)
-    assertTrue(caps.supportsUiMode)
     assertFalse(caps.supportsThemeProvider)
   }
 
   @Test
-  fun `theme-gated sections carry uiMode with no ColorTheme at all`() {
-    // `Theme` is a running section marker, not a document-wide pin: the player skips operations
-    // whose section disagrees with the requested theme. A document bracketing a light run and a
-    // dark run therefore answers `uiMode` with no `ColorTheme` anywhere.
-    val caps =
-      roundTrip(
-        doc(
-          RcTheme(RcTheme.LIGHT),
-          RcTextData(1, "light copy"),
-          RcTheme(RcTheme.DARK),
-          RcTextData(2, "dark copy"),
-        )
-      )
-    assertEquals(setOf(RcTheme.LIGHT, RcTheme.DARK), caps.themeGatedSections)
-    assertTrue(caps.supportsUiMode)
-    assertTrue(caps.colorThemeGroups.isEmpty())
-  }
-
-  @Test
-  fun `a single specific section still gates content`() {
-    val caps = roundTrip(doc(RcTextData(1, "always"), RcTheme(RcTheme.DARK), RcTextData(2, "dark")))
-    assertEquals(setOf(RcTheme.DARK), caps.themeGatedSections)
-    assertTrue(caps.supportsUiMode)
-  }
-
-  @Test
-  fun `only unspecified is a wildcard - a system section gates content`() {
-    // `isThemeVisible` treats ONLY UNSPECIFIED as the wildcard on either side, so a SYSTEM-tagged
-    // operation is filtered out under a requested LIGHT or DARK — it gates just like they do.
-    val unspecified = roundTrip(doc(RcTheme(RcTheme.UNSPECIFIED), RcTextData(1, "copy")))
-    assertTrue(unspecified.themeGatedSections.isEmpty())
-    assertFalse(unspecified.supportsUiMode)
-
-    val system = roundTrip(doc(RcTheme(RcTheme.SYSTEM), RcTextData(1, "copy")))
-    assertEquals(setOf(RcTheme.SYSTEM), system.themeGatedSections)
-    assertTrue(system.supportsUiMode)
-  }
-
-  @Test
-  fun `a marker does not leak past the end of its container`() {
-    // `drawOperations` declares `currentTheme` per invocation and recurses per container, so a
-    // trailing marker inside a nested container cannot gate a later sibling of that container.
+  fun `declarations nested in a container are still found`() {
     val caps =
       roundTrip(
         doc(
           RcBoxLayout(1, 0, 0, 0),
-          RcTheme(RcTheme.DARK),
-          RcNoArg(RcOpcodes.CONTAINER_END),
-          RcTextData(2, "sibling after the container"),
-        )
-      )
-    assertTrue(caps.themeGatedSections.isEmpty(), "a trailing nested marker gates nothing")
-    assertFalse(caps.supportsUiMode)
-  }
-
-  @Test
-  fun `a marker is not inherited into a nested container`() {
-    // Every container starts over at UNSPECIFIED, so content inside is ungated by the parent's
-    // section. The parent's own following content is still gated.
-    val caps =
-      roundTrip(
-        doc(
-          RcTheme(RcTheme.DARK),
-          RcBoxLayout(1, 0, 0, 0),
-          RcTextData(2, "nested, ungated"),
+          RcNamedVariable(2, RcNamedVariable.COLOR_TYPE, "USER:WearM3.primary"),
+          colorTheme(group = 3),
           RcNoArg(RcOpcodes.CONTAINER_END),
         )
       )
-    assertTrue(caps.themeGatedSections.isEmpty())
-  }
-
-  @Test
-  fun `a gated section inside a container is still found`() {
-    val caps =
-      roundTrip(
-        doc(
-          RcBoxLayout(1, 0, 0, 0),
-          RcTheme(RcTheme.LIGHT),
-          RcTextData(2, "light, inside"),
-          RcNoArg(RcOpcodes.CONTAINER_END),
-        )
-      )
-    assertEquals(setOf(RcTheme.LIGHT), caps.themeGatedSections)
-    assertTrue(caps.supportsUiMode)
+    assertEquals(setOf("USER:WearM3.primary"), caps.colorNamedValues)
+    assertEquals(setOf(3), caps.colorThemeGroups)
+    assertTrue(caps.supportsThemeProvider)
   }
 
   @Test
@@ -195,27 +120,6 @@ class RcDocumentCapabilitiesTest {
     assertEquals(RcNamedVariable.COLOR_TYPE, caps.namedValueType("shaderColor"))
     assertTrue(caps.supportsNamedValue("USER:shaderColor"))
     assertFalse(caps.supportsNamedValue("somethingElse"))
-  }
-
-  @Test
-  fun `a trailing top-level marker with no content after it gates nothing`() {
-    val caps = roundTrip(doc(RcTextData(1, "copy"), RcTheme(RcTheme.DARK)))
-    assertTrue(caps.themeGatedSections.isEmpty())
-    assertFalse(caps.supportsUiMode)
-  }
-
-  @Test
-  fun `a document can carry both axes independently`() {
-    val caps =
-      roundTrip(
-        doc(
-          RcNamedVariable(1, RcNamedVariable.COLOR_TYPE, "USER:WearM3.onSurface"),
-          RcTheme(RcTheme.DARK),
-          RcTextData(2, "dark copy"),
-        )
-      )
-    assertTrue(caps.supportsThemeProvider)
-    assertTrue(caps.supportsUiMode)
   }
 
   @Test
