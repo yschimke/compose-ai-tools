@@ -206,7 +206,12 @@ fun FilledRemoteIconButton() = RemoteSticker {
             RemoteMaterialTheme.colorScheme.tertiaryContainer,
             on,
           ),
-        contentColor = RemoteMaterialTheme.colorScheme.onPrimary,
+        contentColor =
+          tween(
+            RemoteMaterialTheme.colorScheme.onPrimary,
+            RemoteMaterialTheme.colorScheme.onTertiaryContainer,
+            on,
+          ),
       ),
     content = { RemoteIcon(starIcon, "Favourite".rs) },
   )

@@ -33,6 +33,11 @@ const MOTION_EXTENSIONS = [".apng", ".gif"];
 /** The two ways a capture came to move. */
 export const MOTION_KINDS = ["interaction", "animation"];
 
+/** The preview function whose motion artifacts belong to a catalog component. */
+export function motionPreviewFor(component) {
+  return component?.motionPreview ?? component?.preview;
+}
+
 /**
  * The motion artifacts a bundle carries for one `@Preview` function.
  *
