@@ -1,7 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 
 /**
@@ -81,11 +87,10 @@ data class UsageRules(
   @Serializable
   data class Scaffold(
     /**
-     * What to do with the helper. Defaults to [Kind.UNKNOWN] — not because a rule may omit it, but
-     * because `coerceInputValues` needs a default to coerce an unrecognised kind *to*; see
-     * [Kind.UNKNOWN].
+     * What to do with the helper. A kind this build cannot read decodes as [Kind.UNKNOWN] rather
+     * than failing the document — see [Kind.UNKNOWN] and [LenientKind].
      */
-    @SerialName("kind") val kind: Kind = Kind.UNKNOWN,
+    @SerialName("kind") @Serializable(with = LenientKind::class) val kind: Kind = Kind.UNKNOWN,
     /** [Kind.RENAME] only: the plain-Compose name to call instead. */
     @SerialName("renameTo") val renameTo: String? = null,
     /** An import the replacement needs, e.g. `androidx.compose.material3.MaterialTheme`. */
@@ -193,6 +198,32 @@ data class UsageRules(
     UNKNOWN,
   }
 
+  /**
+   * Decodes an unrecognised [Kind] name as [Kind.UNKNOWN] instead of throwing.
+   *
+   * Deliberately a serializer on this one field rather than `coerceInputValues` on the whole
+   * document. That option is global and coerces *any* explicit `null` to its property's default, so
+   * it also quietly repaired malformed rules this code cannot honour — an `INLINE` rule with
+   * `"members": null` would decode to an empty member map, and [PlaygroundSourceCleaner] would then
+   * delete the binding while leaving its member references pointing at nothing. Only the *kind*
+   * vocabulary is expected to drift across refs, so only the kind is forgiving; everything else
+   * still fails the document and takes the safe [GENERIC] fallback.
+   */
+  internal object LenientKind : KSerializer<Kind> {
+    override val descriptor: SerialDescriptor =
+      PrimitiveSerialDescriptor(
+        "ee.schimke.composeai.cli.serve.UsageRules.Kind",
+        PrimitiveKind.STRING,
+      )
+
+    override fun serialize(encoder: Encoder, value: Kind) = encoder.encodeString(value.name)
+
+    override fun deserialize(decoder: Decoder): Kind {
+      val name = decoder.decodeString()
+      return Kind.entries.firstOrNull { it.name == name } ?: Kind.UNKNOWN
+    }
+  }
+
   companion object {
     /** Every override knob takes `(key, default, index)`; the default is `$1`. */
     private val OVERRIDE_KNOB_PARAMS = listOf("key", "default", "index")
@@ -284,10 +315,6 @@ data class UsageRules(
     private val json = Json {
       ignoreUnknownKeys = true
       isLenient = true
-      // An unrecognised `kind` becomes [Kind.UNKNOWN] — that one rule stops firing, the rest of the
-      // file is honoured. Without it a single retired kind rejects the whole document; see
-      // [Kind.UNKNOWN] for the regression that taught us so.
-      coerceInputValues = true
     }
 
     /**
