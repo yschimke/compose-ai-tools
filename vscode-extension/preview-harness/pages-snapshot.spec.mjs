@@ -825,6 +825,43 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The PAGES pane. The design file's pages used to be a branch at the foot of the component
+        // tree, below every family, component and variant — so on a real catalog they sat past a
+        // hundred-odd rows of the inventory you were not looking for. They are a peer list now,
+        // behind the second half of a segmented switch, and this is the only shot that holds it:
+        // the committed page ships with Components selected, so the pages pane and the switch's
+        // selected treatment would otherwise be diffed by nothing.
+        fixture: "serve-landing-grouped",
+        suffix: "pages-pane",
+        apply: async (page) => {
+            await page.click('.cp-pane-tab[data-pane="pages"]');
+            await page.waitForSelector("#cp-pane-pages:not([hidden])");
+        },
+    },
+    {
+        // …and the pages pane FILTERED, which is the half of this that is not layout. The one
+        // search box serves whichever pane is showing — before this the pages were the only list
+        // in the column the filter could not reach — so the claim is that typing narrows them and
+        // that the box says which list it is about to search ("Filter pages…").
+        //
+        // Runs against the same page as the state above, so it inherits the pages pane.
+        fixture: "serve-landing-grouped",
+        suffix: "pages-filtered",
+        apply: async (page) => {
+            await page.fill("#cp-search", "shape");
+            await page.waitForFunction(() => {
+                const rows = Array.from(
+                    document.querySelectorAll("#cp-pane-pages .cp-tree-page"),
+                );
+                return (
+                    rows.length > 1 &&
+                    rows.some((r) => !r.parentElement.hidden) &&
+                    rows.some((r) => r.parentElement.hidden)
+                );
+            });
+        },
+    },
+    {
         fixture: "serve-landing-sections",
         suffix: "filter-focus",
         parkPointer: true,
@@ -2208,6 +2245,60 @@ test("contract · the spec lane compares the frame that was on the stage", async
     await settled();
     await expect.poll(() => requests.length).toBe(beforeLive + 1);
     expect(requests.at(-1).pathname.endsWith(".png")).toBe(true);
+});
+
+test("contract · the sidebar filter follows the pane it is pointed at", async ({
+    page,
+}) => {
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+        );
+    }
+    await page.route("**/render/**", (route) =>
+        route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+    );
+    await page.goto("/preview-harness/fixtures/pages/serve-landing-grouped.html");
+
+    const shownCards = () =>
+        page.evaluate(
+            () =>
+                Array.from(document.querySelectorAll(".cp-card")).filter(
+                    (c) => !c.hidden,
+                ).length,
+        );
+    const shownPages = () =>
+        page.evaluate(
+            () =>
+                Array.from(
+                    document.querySelectorAll("#cp-pane-pages .cp-tree-page"),
+                ).filter((p) => !p.parentElement.hidden).length,
+        );
+
+    const allCards = await shownCards();
+    const allPages = await shownPages();
+    expect(allCards).toBeGreaterThan(1);
+    expect(allPages).toBeGreaterThan(1);
+
+    // On Components the box is a grid query, exactly as it has always been.
+    await page.fill("#cp-search", "button");
+    await expect.poll(shownCards).toBeLessThan(allCards);
+
+    // Switching to Pages re-points it: the same text now narrows the pages, and RELEASES the grid
+    // rather than leaving it filtered by a query that was never about it. Getting this wrong is
+    // not subtle — it answers a page search with "No previews match your filter" under a sidebar
+    // that just found the page.
+    await page.click('.cp-pane-tab[data-pane="pages"]');
+    await expect.poll(shownCards).toBe(allCards);
+    await page.fill("#cp-search", "shape");
+    await expect.poll(shownPages).toBeLessThan(allPages);
+    await expect.poll(shownPages).toBeGreaterThan(0);
+    expect(await shownCards()).toBe(allCards);
+
+    // …and switching back puts both right again.
+    await page.click('.cp-pane-tab[data-pane="components"]');
+    await expect.poll(shownPages).toBe(allPages);
+    await expect.poll(shownCards).toBeLessThan(allCards);
 });
 
 test("contract · Back to an unthemed entry hands the chrome back to the OS", async ({

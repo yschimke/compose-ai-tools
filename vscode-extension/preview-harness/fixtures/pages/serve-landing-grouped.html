@@ -84,10 +84,21 @@
 </div>
 <div class="cp-catalog-body">
 <aside class="cp-catalog-menu" aria-label="Catalog menu">
+<div class="cp-panes" role="tablist" aria-label="Catalog navigation">
+  <button type="button" class="cp-pane-tab" role="tab" id="cp-pane-tab-components"
+    data-pane="components" aria-controls="cp-pane-components" aria-selected="true">
+    Components<span class="cp-tree-count">14</span>
+  </button>
+  <button type="button" class="cp-pane-tab" role="tab" id="cp-pane-tab-pages"
+    data-pane="pages" aria-controls="cp-pane-pages" aria-selected="false" tabindex="-1">
+    Pages<span class="cp-tree-count">2</span>
+  </button>
+</div>
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
 </div>
+<div class="cp-pane" id="cp-pane-components" role="tabpanel" aria-labelledby="cp-pane-tab-components">
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog contents">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog contents">
     <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-button" data-group="cp-group-button" aria-expanded="true" aria-owns="cp-tree-of-cp-group-button">Button<span class="cp-tree-count">3</span></a>
@@ -120,15 +131,17 @@
         </li>
       </ul>
     </li>
-<li class="cp-tree-node cp-tree-pages" role="none">
-  <a class="cp-tree-pages-row cp-tree-link" role="treeitem" href="/pages" aria-expanded="true" aria-owns="cp-tree-pages-list">Pages<span class="cp-tree-count">2</span></a>
-  <ul class="cp-tree-children cp-tree-components" id="cp-tree-pages-list" role="group">
-    <li role="none"><a class="cp-tree-page cp-tree-link" role="treeitem" href="/pages/shape">Shape</a></li>
-    <li role="none"><a class="cp-tree-page cp-tree-link" role="treeitem" href="/pages/type">Typography</a></li>
-  </ul>
-</li>
 </ul>
 </nav>
+</div>
+<div class="cp-pane cp-pane-pages" id="cp-pane-pages" role="tabpanel" aria-labelledby="cp-pane-tab-pages" hidden>
+<ul class="cp-page-list">
+  <li><a class="cp-tree-page cp-tree-link" href="/pages/shape" data-search="Shape">Shape</a></li>
+  <li><a class="cp-tree-page cp-tree-link" href="/pages/type" data-search="Typography">Typography</a></li>
+</ul>
+<p class="cp-pane-empty" id="cp-pages-empty" hidden>No pages match.</p>
+<a class="cp-pane-all" href="/pages">All pages</a>
+</div>
 </aside>
 <div class="cp-grid-groups" id="cp-grid">
 <div class="cp-subgroup" id="cp-group-button">
@@ -280,6 +293,24 @@
       var treeComponents = document.querySelectorAll(".cp-tree-component");
       var treeLinks = document.querySelectorAll(".cp-tree-link");
       var cpTreeStops = null;
+      var paneTabs = document.querySelectorAll(".cp-pane-tab");
+      var pageRows = document.querySelectorAll("#cp-pane-pages .cp-tree-page");
+      var pagesEmpty = document.getElementById("cp-pages-empty");
+      var pane = urlParam("pane") === "pages" ? "pages" : "components";
+      function reflectPanes() {
+        paneTabs.forEach(function (t) {
+          var on = t.getAttribute("data-pane") === pane;
+          t.setAttribute("aria-selected", on ? "true" : "false");
+          t.tabIndex = on ? 0 : -1;
+          var panel = document.getElementById(t.getAttribute("aria-controls"));
+          if (panel) panel.hidden = !on;
+        });
+        if (input) {
+          var what = pane === "pages" ? "pages" : "previews";
+          input.placeholder = "Filter " + what + "…";
+          input.setAttribute("aria-label", "Filter " + what);
+        }
+      }
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -375,6 +406,8 @@ function applyThemeChoice() {
 }
 applyThemeChoice();
         var q = input ? input.value.trim().toLowerCase() : "";
+        var paneQ = pane === "pages" ? q : "";
+        if (pane === "pages") q = "";
         var shown = 0;
         cards.forEach(function (c) {
           var lab = c.querySelector(".cp-label");
@@ -396,6 +429,14 @@ applyThemeChoice();
           if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
         });
         if (cpTreeStops) cpTreeStops();
+        var pagesShown = 0;
+        pageRows.forEach(function (p) {
+          var hay = (p.getAttribute("data-search") || "").toLowerCase();
+          var keep = paneQ === "" || hay.indexOf(paneQ) !== -1;
+          if (p.parentElement) p.parentElement.hidden = !keep;
+          if (keep) pagesShown++;
+        });
+        if (pagesEmpty) pagesEmpty.hidden = pagesShown !== 0;
       }
       if (input) input.addEventListener("input", function () {
         // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -414,6 +455,15 @@ applyThemeChoice();
           apply();
         });
       });
+      paneTabs.forEach(function (t) {
+        t.addEventListener("click", function () {
+          pane = t.getAttribute("data-pane");
+          reflectPanes();
+          replaceUrl({ pane: pane === "pages" ? "pages" : "" });
+          apply();
+        });
+      });
+      reflectPanes();
       if (urlState) {
         urlState.onPop(function () {
           var poppedTheme = urlParam("theme") || initialTheme;

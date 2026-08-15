@@ -3242,22 +3242,39 @@ class ServeWebFixtureTest {
         landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\">"),
       "a section-less catalog renders an outline tree over its synthesized families",
     )
-    // The design file's pages are a BRANCH OF THE TREE, not a chip in the header row: one row per
-    // page, named, under a row that leads to the index. Always open (`aria-expanded="true"` that
-    // nothing reflects) and carrying no `data-group`, because these rows navigate away rather than
-    // scrolling to something on this page — which is what the click handler's `if (!id) return`
-    // and `reflectTree`'s matching guard rely on.
+    // The design file's pages are their own PANE beside Components, not a branch at the foot of the
+    // tree and not a chip in the header row. The branch put them below every family, component and
+    // variant the catalog has — past a hundred-odd rows on a real one — while answering a different
+    // question from the inventory above them. A segmented switch says which of the two peers the
+    // column is showing.
+    assertTrue(
+      landingGrouped.contains("<div class=\"cp-panes\" role=\"tablist\"") &&
+        landingGrouped.contains("data-pane=\"components\" aria-controls=\"cp-pane-components\"") &&
+        landingGrouped.contains("data-pane=\"pages\" aria-controls=\"cp-pane-pages\""),
+      "a catalog with design pages switches its sidebar between Components and Pages",
+    )
+    // Each page is one row, named, carrying `data-search` so the one filter below the switch can
+    // narrow them the way it narrows components — the pages used to be the only list in this
+    // column the filter could not reach.
     assertTrue(
       landingGrouped.contains(
-        "<a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\" href=\"/pages\"" +
-          " aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">" +
-          "Pages<span class=\"cp-tree-count\">2</span></a>"
+        "<a class=\"cp-tree-page cp-tree-link\" href=\"/pages/shape\" data-search=\"Shape\">Shape</a>"
       ) &&
-        landingGrouped.contains(
-          "<a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\" href=\"/pages/shape\">Shape</a>"
-        ) &&
-        landingGrouped.contains(">Typography</a>"),
-      "a catalog's design pages are listed by name at the foot of its tree",
+        landingGrouped.contains("data-search=\"Typography\">Typography</a>") &&
+        landingGrouped.contains("<a class=\"cp-pane-all\" href=\"/pages\">All pages</a>"),
+      "a catalog's design pages are named rows in the Pages pane, each filterable",
+    )
+    // The pane the switch reveals ships hidden, and the tree keeps the column when it is showing.
+    assertTrue(
+      landingGrouped.contains(
+        "<div class=\"cp-pane cp-pane-pages\" id=\"cp-pane-pages\" role=\"tabpanel\""
+      ) && landingGrouped.contains("aria-labelledby=\"cp-pane-tab-pages\" hidden>"),
+      "the Pages pane starts hidden behind its tab",
+    )
+    // …and the branch it replaced is gone, so nothing lists the pages twice.
+    assertFalse(
+      landingGrouped.contains("cp-tree-pages-row"),
+      "the pages branch does not survive alongside the pane that replaced it",
     )
     assertTrue(
       !landingGrouped.contains("class=\"cp-action-chip\" href=\"/pages\""),

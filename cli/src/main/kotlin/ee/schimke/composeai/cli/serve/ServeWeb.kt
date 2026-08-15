@@ -1663,6 +1663,69 @@ object ServeWeb {
   }
 
   /**
+   * The sidebar's two panes — **Components** and **Pages** — and the strip that switches them.
+   *
+   * The design file's pages used to be a branch at the FOOT of the component tree: below every
+   * family, every component and every variant the catalog has. On m3-catalog that is past ~120
+   * rows, so the pages were reachable only by scrolling the inventory you were not looking for, and
+   * the two lists competed for the same column while answering different questions — *which
+   * component* versus *which page of the design file*. They are peers, so they get peer treatment:
+   * one strip at the top says which of the two the column is showing.
+   *
+   * **Only when there is something to switch between.** A catalog with no design pages keeps the
+   * bare tree it has always had — a tab strip with one tab is a control that cannot be used, and
+   * emitting one would move every committed golden for no reader benefit.
+   *
+   * Both panes are filtered by the one search box below the strip (see [catalogFilterScript]),
+   * which is the other half of what makes them peers: the pages list was previously the only thing
+   * in this column the filter could not reach.
+   */
+  private fun paneTabsHtml(componentCount: Int, pageCount: Int): String =
+    """
+    <div class="cp-panes" role="tablist" aria-label="Catalog navigation">
+      <button type="button" class="cp-pane-tab" role="tab" id="cp-pane-tab-components"
+        data-pane="components" aria-controls="cp-pane-components" aria-selected="true">
+        Components<span class="cp-tree-count">$componentCount</span>
+      </button>
+      <button type="button" class="cp-pane-tab" role="tab" id="cp-pane-tab-pages"
+        data-pane="pages" aria-controls="cp-pane-pages" aria-selected="false" tabindex="-1">
+        Pages<span class="cp-tree-count">$pageCount</span>
+      </button>
+    </div>
+    """
+      .trimIndent()
+
+  /**
+   * The **Pages** pane: the design file's own pages, as a flat list.
+   *
+   * Flat rather than a tree, because it is one: a page has no children, and the branch shape it
+   * used to wear implied a hierarchy that never existed. Each row carries `data-search` so the
+   * shared filter can match it the way it matches a component row — the attribute rather than the
+   * text, so what is matched is decided here and not by whatever the row happens to render.
+   */
+  private fun pagesPaneHtml(pages: List<PageLink>, basePath: String, q: String): String =
+    buildString {
+      append("<div class=\"cp-pane cp-pane-pages\" id=\"cp-pane-pages\" role=\"tabpanel\"")
+      append(" aria-labelledby=\"cp-pane-tab-pages\" hidden>\n")
+      append("<ul class=\"cp-page-list\">\n")
+      pages.forEach { page ->
+        // The page id reaches the URL as one path segment, and the name is free text authored in
+        // the design file — so one is encoded and the other escaped.
+        val href = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}$q"
+        val name = WebEscaping.htmlEscape(page.name)
+        append(
+          "  <li><a class=\"cp-tree-page cp-tree-link\" href=\"${WebEscaping.htmlEscape(href)}\""
+        )
+        append(" data-search=\"$name\">$name</a></li>\n")
+      }
+      append("</ul>\n")
+      append("<p class=\"cp-pane-empty\" id=\"cp-pages-empty\" hidden>No pages match.</p>\n")
+      append("<a class=\"cp-pane-all\" href=\"${WebEscaping.htmlEscape("$basePath/pages$q")}\">")
+      append("All pages</a>\n")
+      append("</div>\n")
+    }
+
+  /**
    * The anchor on a synthesized flat sub-group divider — no section owns it, so it stands alone.
    */
   private fun flatGroupAnchorId(groupSlug: String) = "cp-group-$groupSlug"
@@ -2348,6 +2411,11 @@ object ServeWeb {
      * emits exactly the script it always did.
      */
     presenceUrl: String = "",
+    /**
+     * Whether the sidebar carries the Components/Pages pane strip ([paneTabsHtml]). False for every
+     * catalog without design pages, which then emits this script byte-for-byte as before.
+     */
+    hasPanes: Boolean = false,
   ): String {
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
     val themeLeaseUrlJs = WebEscaping.jsString(themeLeaseUrl)
@@ -2795,6 +2863,34 @@ object ServeWeb {
     // Declared HERE rather than in the tree script, which is spliced in further down: `reflectTabs`
     // runs the moment it is defined and touches `treeGroups`, and a `var` assigned later would only
     // be hoisted, not set.
+    // The Components/Pages switch. Declared inside the filter IIFE, like the section tabs, so the
+    // pane in view and the query filtering it are one piece of state — a strip that lived in its
+    // own script would have to re-enter `apply()` from outside and could disagree with it about
+    // which list is on screen.
+    val paneDecls =
+      if (!hasPanes) ""
+      else
+        "\n      var paneTabs = document.querySelectorAll(\".cp-pane-tab\");" +
+          "\n      var pageRows = document.querySelectorAll(\"#cp-pane-pages .cp-tree-page\");" +
+          "\n      var pagesEmpty = document.getElementById(\"cp-pages-empty\");" +
+          "\n      var pane = urlParam(\"pane\") === \"pages\" ? \"pages\" : \"components\";" +
+          // The filter serves whichever pane is showing, so it says which — the box is the same
+          // control either way and the placeholder is the only thing that can tell you what it is
+          // about to search.
+          "\n      function reflectPanes() {" +
+          "\n        paneTabs.forEach(function (t) {" +
+          "\n          var on = t.getAttribute(\"data-pane\") === pane;" +
+          "\n          t.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");" +
+          "\n          t.tabIndex = on ? 0 : -1;" +
+          "\n          var panel = document.getElementById(t.getAttribute(\"aria-controls\"));" +
+          "\n          if (panel) panel.hidden = !on;" +
+          "\n        });" +
+          "\n        if (input) {" +
+          "\n          var what = pane === \"pages\" ? \"pages\" : \"previews\";" +
+          "\n          input.placeholder = \"Filter \" + what + \"…\";" +
+          "\n          input.setAttribute(\"aria-label\", \"Filter \" + what);" +
+          "\n        }" +
+          "\n      }"
     val treeDecls =
       if (!hasTree) ""
       else
@@ -2901,6 +2997,47 @@ object ServeWeb {
           // Last word on the roving tab stop: the rows that just appeared or vanished change which
           // one should hold it, and `reflectTabs` only ever knew about sections and groups.
           "\n        if (cpTreeStops) cpTreeStops();"
+    // The pages list is filtered by the SAME query as the grid and the tree — one box, one meaning,
+    // whichever pane is showing. Matched against `data-search` rather than the row's text, so what
+    // counts as the page's name is decided by the server that wrote it.
+    val panePost =
+      if (!hasPanes) ""
+      else
+        "\n        var pagesShown = 0;" +
+          "\n        pageRows.forEach(function (p) {" +
+          "\n          var hay = (p.getAttribute(\"data-search\") || \"\").toLowerCase();" +
+          "\n          var keep = paneQ === \"\" || hay.indexOf(paneQ) !== -1;" +
+          "\n          if (p.parentElement) p.parentElement.hidden = !keep;" +
+          "\n          if (keep) pagesShown++;" +
+          "\n        });" +
+          "\n        if (pagesEmpty) pagesEmpty.hidden = pagesShown !== 0;"
+    // ONE box, but it filters the list it is pointed at. On the Pages pane the query is a page
+    // query: applying it to the grid as well would answer "shape" with "No previews match your
+    // filter" under a sidebar that just found the Shape page, which is the box contradicting
+    // itself. The grid belongs to the Components pane, so it is filtered when that pane is the one
+    // showing and left whole otherwise.
+    val paneSplit =
+      if (!hasPanes) ""
+      else
+        "\n        var paneQ = pane === \"pages\" ? q : \"\";" +
+          "\n        if (pane === \"pages\") q = \"\";"
+    val paneWiring =
+      if (!hasPanes) ""
+      else
+        "\n      paneTabs.forEach(function (t) {" +
+          "\n        t.addEventListener(\"click\", function () {" +
+          "\n          pane = t.getAttribute(\"data-pane\");" +
+          "\n          reflectPanes();" +
+          // Replaces rather than pushes, for the same reason typing does: switching a sidebar pane
+          // is not a place you expect Back to undo one step at a time.
+          "\n          replaceUrl({ pane: pane === \"pages\" ? \"pages\" : \"\" });" +
+          // Re-filter: the query in the box now means something else. Switching to Pages with a
+          // live query has to release the grid it was filtering and narrow the pages instead, and
+          // switching back has to put both right again.
+          "\n          apply();" +
+          "\n        });" +
+          "\n      });" +
+          "\n      reflectPanes();"
     val tabWiring =
       if (hasTabs)
         "\n      tabBtns.forEach(function (t) {" +
@@ -2964,11 +3101,11 @@ object ServeWeb {
       function urlParam(n) { return urlState ? urlState.get(n) : ""; }
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
-      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$treeDecls$tabDecls
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$treeDecls$tabDecls$paneDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
-        var q = input ? input.value.trim().toLowerCase() : "";
+        var q = input ? input.value.trim().toLowerCase() : "";$paneSplit
         var shown = 0;
         cards.forEach(function (c) {
           var lab = c.querySelector(".cp-label");
@@ -2979,7 +3116,7 @@ object ServeWeb {
           if ($shownCond) shown++;
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost$treePost
+        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost$treePost$panePost
       }
       if (input) input.addEventListener("input", function () {
         // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -2988,7 +3125,7 @@ object ServeWeb {
         replaceUrl({ q: input.value.trim() });
         apply();
       });
-      $themeWiring$tabWiring$popWiring$treeWiring
+      $themeWiring$tabWiring$paneWiring$popWiring$treeWiring
       apply();$presenceWiring
     })();
     """
@@ -5928,7 +6065,11 @@ object ServeWeb {
     // with no tree (too few previews to synthesize families from, and no authored sections) has
     // nowhere to put them and keeps the header chip instead — see the action row below.
     val hasTree = hasTabs || synthGroups != null
-    val pagesBranch = if (hasTree) pagesBranchHtml(designPages, basePath, q) else ""
+    // Pages become a PANE beside Components rather than a branch under them — but only for a
+    // catalog that has both, since a strip with one tab switches nothing. Without pages the tree
+    // is emitted exactly as before, branch argument and all, so those goldens do not move.
+    val hasPanes = hasTree && designPages.isNotEmpty()
+    val pagesBranch = if (hasTree && !hasPanes) pagesBranchHtml(designPages, basePath, q) else ""
     val tabBar =
       when {
         hasTabs -> catalogTreeHtml(sections, ::treeComponent, pagesBranch)
@@ -5988,12 +6129,27 @@ object ServeWeb {
     // share one sidebar and remain together when the menu becomes sticky. A small catalog with no
     // tree keeps the filter in the toolbar above its flat grid.
     val sidebarSearch = if (tabBar.isEmpty() || previews.isEmpty()) "" else searchBoxHtml() + "\n"
+    // With both lists in play the tree becomes the Components PANE and the pages get their own,
+    // with the switch above the filter that serves them both. The strip leads: it says what the
+    // column is showing, and the filter below it reads as belonging to whichever that is.
+    val sidebarBody =
+      if (!hasPanes) tabBar
+      else
+        paneTabsHtml(previews.size, designPages.size) +
+          "\n" +
+          sidebarSearch +
+          "<div class=\"cp-pane\" id=\"cp-pane-components\" role=\"tabpanel\"" +
+          " aria-labelledby=\"cp-pane-tab-components\">\n" +
+          tabBar +
+          "</div>\n" +
+          pagesPaneHtml(designPages, basePath, q)
+    val sidebarHead = if (hasPanes) "" else sidebarSearch
     val navAndGrid =
       if (tabBar.isEmpty()) "$tabBar$gridBlock"
       else
         "<div class=\"cp-catalog-body\">\n" +
           "<aside class=\"cp-catalog-menu\" aria-label=\"Catalog menu\">\n" +
-          "$sidebarSearch$tabBar</aside>\n$gridBlock\n</div>"
+          "$sidebarHead$sidebarBody</aside>\n$gridBlock\n</div>"
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
     val about = if (isPublic) "\n" + aboutSection() else ""
@@ -6046,6 +6202,7 @@ object ServeWeb {
           themeBaseJs,
           themeLeaseUrl,
           presenceUrl,
+          hasPanes,
         )}</script>"
       else ""
     // The long-press live lane, in the SAME document order as the cards above (and as
