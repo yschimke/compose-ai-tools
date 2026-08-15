@@ -20,9 +20,16 @@
  *
  * ## Failure posture
  *
- * An unmapped component is reported, never fatal: a catalog is allowed to contain components nobody
- * has mapped yet, and failing the build over one would make adding a component a breaking change.
- * `--strict` turns that report into a non-zero exit for a repo that wants its coverage gated.
+ * An unmapped component is reported, never fatal by default: a catalog is allowed to contain
+ * components nobody has mapped yet, and failing the build over one would make adding a component a
+ * breaking change.
+ *
+ * `--strict` is the opposite posture, for a catalog whose whole purpose is to reproduce a kit —
+ * there, a component with no kit node to compare against does not belong in the published
+ * inventory at all, and publishing it means shipping a sticker that can never be checked. It gates
+ * on BOTH kinds of absence: a missing `reference`, and one explained by `noReference`. The
+ * annotation still earns its keep in the default mode, where the two are reported apart so a
+ * retired pattern does not read as neglect; `--strict` simply says there are no exceptions.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -55,6 +62,28 @@ const manifest = JSON.parse(fs.readFileSync(PREVIEWS, "utf8"));
 const { map, variants, diagnostics } = projectDesignMap(manifest.previews ?? [], {
   prefix: PREFIX,
 });
+
+// Gate BEFORE writing, not after. A run that fails should leave the committed map intact rather
+// than replacing it with one CI would then report as merely stale — and an author who dropped a
+// whole group's references wants the list, not one name at a time.
+if (STRICT) {
+  const missing = [
+    ...diagnostics.unmapped.map((id) => `${id} — no reference, and no reason given`),
+    ...diagnostics.statedAbsent.map((s) => `${s.componentId} — ${s.reason}`),
+  ];
+  if (missing.length) {
+    console.error(
+      `::error::--strict: ${missing.length} component(s) carry no ` +
+        `@CatalogComponent(reference = …):`,
+    );
+    for (const line of missing) console.error(`  - ${line}`);
+    console.error(
+      `A catalog that reproduces a kit has nothing to compare these against — remove them, ` +
+        `or drop --strict to publish them unmapped.`,
+    );
+    process.exit(1);
+  }
+}
 
 const serialize = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const mapText = serialize(map);
@@ -123,7 +152,3 @@ if (diagnostics.unmapped.length) {
 }
 
 if (drifted) process.exit(1);
-if (STRICT && diagnostics.unmapped.length) {
-  console.error(`::error::--strict: ${diagnostics.unmapped.length} component(s) are unmapped.`);
-  process.exit(1);
-}
