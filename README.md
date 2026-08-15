@@ -2089,8 +2089,8 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
+| 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 43dp. Consider making the height of this touch target 48dp or larger. |
+| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 43dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `MediaGestureScreenHintPreview` · `wearos_large_round`
 
