@@ -396,6 +396,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-live-live-hint/dark](renders/serve-landing-live-live-hint.dark.png) |
 | `light` | ![serve-landing-live-live-hint/light](renders/serve-landing-live-live-hint.light.png) |
 
+## serve-landing-live-live-refused
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-live-live-refused/dark](renders/serve-landing-live-live-refused.dark.png) |
+| `light` | ![serve-landing-live-live-refused/light](renders/serve-landing-live-live-refused.light.png) |
+
 ## serve-landing-path
 
 | Theme | Capture |
