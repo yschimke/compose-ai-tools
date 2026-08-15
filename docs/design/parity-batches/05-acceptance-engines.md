@@ -79,6 +79,17 @@ rectangle. An acceptance never removes a difference from the report; it moves it
 - **Status precedence is strict**: `refused` → any non-`candidate-changed` invalidation → `resolved` →
   `candidate-changed` → `valid`. `resolved` is guarded on the candidate gate having actually **fired**,
   otherwise a tolerant metric marks an unchanged candidate resolved the moment it is authored.
+- **Open question: an acceptance that accepts nothing.** If `accepted-candidate.png` already agrees
+  with the reference inside the mask, the record encodes no actual difference. The candidate gate
+  compares candidate against `accepted-candidate.png`, so it does not fire, and precedence falls
+  through to `valid` — the mask joins the suppression union having never represented an accepted
+  difference. Note the harm is **not** "a later regression is hidden": a regression inside the mask
+  changes the candidate, fires the gate, and is reported. The real costs are that a *sub-tolerance*
+  regression is suppressed in a region that never differed, and that the mask removes its pixels from
+  the neighbourhood search of everything around it — the same objection the doc already makes to
+  keeping a `resolved` mask. `mask-empty` is already refused for a comparable reason. Decide whether
+  this earns an `acceptance-is-noop` refusal after the fingerprint gate; if it does, it needs a
+  conformance fixture and a doc amendment, so decide it **before** the fixtures are frozen in batch 04.
 
 **Cross-repo.** Sequence after the schema is frozen.
 

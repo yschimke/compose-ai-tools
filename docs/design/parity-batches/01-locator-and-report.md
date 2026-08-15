@@ -70,6 +70,14 @@ href"** rule.
   "a stale bystander"). Overrides are query parameters; *interaction* is not, so a redirect lands the
   reporter on pixels nobody saw. Transferring the displayed frame and its runtime state is a much
   larger piece of work — scope it deliberately, do not smuggle it in here.
+- **Moving the form to the comparison (D2) is not free — the comparison does not carry overrides
+  yet.** `handleReferenceComparison` reads exactly two request values, `name` and `reference`; the
+  Actual render URL `referenceComparisonPage` builds carries authentication and session parameters,
+  not theme, device, font, `knob.*` or `rc.*`. A visitor arriving from an overridden frame would see
+  and report the **default** render while the locator described another state — the same
+  identity-vs-pixels mismatch this batch exists to prevent, arriving from the other direction.
+  Parsing and forwarding the complete normalised override map is a prerequisite of D2, not a
+  follow-up to it.
 - **Pick the surface that knows the score.** The viewer's always-available number is `scoreSvgUrls` —
   PNG against the *generated SVG*, a render-fidelity measurement unrelated to the design reference.
   Emitting it as a parity score produces a plausible, mislabelled number feeding an index. Either

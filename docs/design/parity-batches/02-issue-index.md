@@ -43,17 +43,33 @@ Traps:
 - **Name the permission explicitly:** the App needs **Contents: write** on the catalog repo, because
   that is what `POST /repos/{owner}/{repo}/dispatches` requires. Read-only Contents returns 403 and
   the trigger is silently dead — indistinguishable from "no issues changed".
-- **The cron backstop is not optional.** Per-source-repo credential provisioning is real setup work,
-  and an unwired repo has nothing else to fall back on. That will be the normal state for a while.
+- **The dispatch credential is not the read credential.** Contents: write on the catalog repo is what
+  lets the workflow *fire and commit*; it grants nothing on the **source** repo whose issues are being
+  scanned. For a public source the catalog workflow's own `GITHUB_TOKEN` can read issues, but for a
+  private or permission-restricted one it cannot — the dispatch wakes the workflow and the source's
+  issues are simply absent from the generated index, which looks identical to "that repo has no parity
+  issues". Provision a catalog-side credential with **Issues: read** on every scanned repository, and
+  make an unreadable source repo a loud failure rather than an empty section.
+- **The cron backstop is not optional** — but it only backstops the *trigger*, not the credential.
+  Per-source-repo provisioning is real setup work, and an unwired repo has nothing else to fall back
+  on. That will be the normal state for a while. Carrying the changed issue in the dispatch payload
+  improves the event path and does nothing for the reconciliation cron, which still has to read.
 - **Closed rows are published, not dropped.** An issue referenced by any acceptance stays in the index
   with `state: "closed"`. Absence must never be read as closure — a consumer that cannot find a row
   reports *unknown*. Otherwise the first time the file fails to parse, every acceptance in the catalog
   is marked stale at once. Batch 06 depends on this directly.
-- **The publish race needs care.** `.github/actions/apply/lib/push-branch.sh` computes
-  `TREE=$(git write-tree)` once *before* its retry loop and reparents that stale tree on a
-  non-fast-forward, never merging the fetched parent — so a concurrent render can be silently dropped.
-  Any carry-forward fix must be **opt-in** (an env var naming the paths), since other publishers share
-  the helper.
+- **The publish race needs care, and the two publishers need *different* modes.**
+  `.github/actions/apply/lib/push-branch.sh` computes `TREE=$(git write-tree)` once *before* its retry
+  loop and reparents that stale tree on a non-fast-forward, never merging the fetched parent — so a
+  concurrent render can be silently dropped. Making a carry-forward mode opt-in (an env var naming the
+  paths) is necessary but **not sufficient**, because the two publishers race in opposite directions:
+  - the **render** publisher must carry the fetched parent's `parity/issues.json` **forward**;
+  - the **index** publisher must replace **only its own path** on the fetched tip.
+
+  Applying carry-forward symmetrically discards a freshly generated index; using the whole-tree helper
+  as-is for the index rolls back a concurrent render. Two index jobs overlapping need cancellation or
+  a re-query on retry, so an older snapshot cannot overwrite a newer one. Opt-in is required because
+  other publishers share the helper. Test **both** publish orderings and index-vs-index.
 - **Canonicalise issue URLs** to `owner`/`repo`/`number` before aggregating. Trailing slashes, `www.`,
   and mixed-case owners otherwise split one issue into several groups.
 
@@ -103,6 +119,9 @@ problem"** and the epic's presentation section is satisfied.
 - The reader drops a malformed index wholesale and the session serves exactly as before — asserted,
   not assumed.
 - All six fixtures pass, including the closed row surviving to the consumer.
+- The publish race is covered in **three** orderings: render-then-index, index-then-render, and
+  index-then-index. None of them may lose the other's output.
+- A source repo the credential cannot read fails loudly rather than contributing an empty section.
 - Issue rows are visible on all four surfaces, with an open issue and a closed one both represented.
 
 ## Visual evidence

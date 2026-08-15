@@ -26,6 +26,13 @@ them into `status` would make the conformance fixtures depend on a file outside 
 So the join happens *here* — at the dashboard and the gate — over an acceptance's mandatory `issue`
 URL, producing `open` / `closed` / `unknown` per acceptance. **The evaluation result gains no field.**
 
+**Canonicalise both sides before joining.** Batch 02's reader parses each index row to
+`owner`/`repo`/`number` and rebuilds the URL; an acceptance's `issue` is hand-authored and can carry a
+trailing slash, `www.`, a mixed-case owner, or a `#issuecomment-…` fragment. Joining on the raw
+strings means a genuinely closed issue reports `unknown` and stale detection never fires — a silent
+false negative, which is the worse direction here. Parse both sides to the canonical identity, and use
+that same identity when grouping acceptances for closure.
+
 - **Only one combination is stale**: `closed` **and** status not `resolved`. `resolved` + `closed` is
   the loop having *completed*. `unknown` is never stale.
 - **Stale requires positive evidence of closure, never inference from absence.** The index is
@@ -61,8 +68,19 @@ Document the reporting → triage → acceptance → verification → closure lo
 `docs/public-preview-server.md`, beside the existing parity view section.
 
 This is the **consumer-facing** half. `COMPONENT_PARITY_WORKFLOW.md` is the design record — why each
-rule exists and what breaks without it — and it should stay that. What a catalog owner needs is
-shorter and different in kind:
+rule exists and what breaks without it — and it should stay that.
+
+**But note where consumer docs actually live.** [`docs/AGENTS.md`](../../AGENTS.md) draws a hard line:
+this file and `docs/` are **contributor** docs for working on *this* repo, while consumer docs for the
+published plugin and CLI live in [`yschimke/skills`](https://github.com/yschimke/skills). #3812 names
+`docs/public-preview-server.md`, which is right for the contributor-facing half — how the server
+loads and renders the index — but a **catalog owner** provisioning credentials and authoring
+acceptances is a consumer, and would never find it there. So this batch is two deliverables: the
+mechanism in `docs/public-preview-server.md`, and the workflow + credential setup as a
+`compose-preview-review` reference in the skills repo. Doing only the first leaves the audience this
+material is written for without it.
+
+What a catalog owner needs is shorter and different in kind from the design record:
 
 - how to file a parity issue from a comparison, what the locator block is for, and **that editing it
   breaks the index**;
@@ -99,7 +117,8 @@ whichever way the decision goes.
 - `resolved` + `closed` renders as completion, not as a problem.
 - One real acceptance has gone all the way round: reported, accepted, fixed, deleted, issue closed —
   and the PR that did it is linked from the docs as the worked example.
-- `docs/public-preview-server.md` covers all six bullets above plus the credential setup.
+- `docs/public-preview-server.md` covers the mechanism, **and** the catalog-owner workflow plus
+  credential setup has landed in `yschimke/skills` — both halves, per the AGENTS.md doc split.
 
 ## Visual evidence
 

@@ -1,8 +1,12 @@
 # Batch 03 — element selection on the focused comparison
 
 **Issue:** [#3803](https://github.com/yschimke/compose-ai-tools/issues/3803).
-**Depends on:** [01](01-locator-and-report.md) (the selection rides into the locator). The tag index
-half of this issue's original prerequisite is **already done** — see below.
+**Depends on:** [01](01-locator-and-report.md) (the selection rides into the locator) **and
+[00](00-decisions.md) D1** — a selection persists authoring-time `bounds`, and until the plane
+question is settled those bounds get written in a space nobody has agreed on. Recording them in the
+wrong space makes an unmoved element fail the movement gate later, which is the exact failure the
+element gate exists to detect. The tag index half of this issue's original prerequisite is **already
+done** — see below.
 **Blocks:** the element gates in [batch 05](05-acceptance-engines.md).
 **Ships:** **yes.** Click an element, report *that element* rather than "somewhere in this picture".
 
@@ -51,6 +55,22 @@ not the derived one.)
 the other per-preview JSON the comparison already pulls, and keep the wire type the one
 `ServeTagIndexStore` validates — including `space`, which the reader requires and
 [D1](00-decisions.md#d1--which-plane-the-element-tag-index-reports-bounds-in) governs.
+
+**But that route alone is not enough to enable an element gate, and this is the trap in this batch.**
+`tagIndexForPreview` is the *published static* index, and both live host wrappers delegate it to
+their baked host — so on a daemon-backed or otherwise live comparison it does not describe the frame
+being scored. The live per-render index rides the `.annotations` response instead, and *that* call
+re-renders: it is a separate request from `/render/<id>.png`, so it does not describe the PNG the
+client already fetched either. (This was asserted the other way round while the index was being
+built, and it was wrong. Co-locating `tags` with `annotations` buys agreement between those two
+projections and nothing more.)
+
+With overrides, conditional composition or animation in play, a gate fed from either path can
+validate an element against bounds from a **different frame** and let the wrong mask suppress
+pixels. So: establish a shared render generation, or carry the index with the scored pixels, before
+element gates are switched on in [batch 05](05-acceptance-engines.md). Selection and reporting —
+this batch's actual payload — are fine without it, because a reported selection is a claim about
+what the reporter saw, not a verdict.
 
 ### 3. Selection
 
