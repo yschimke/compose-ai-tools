@@ -579,8 +579,11 @@ class ServeHttpServer(
         }
 
         githubAuth?.let { auth ->
-          get(ServeGithubAuth.START_PATH) { with(auth) { handleStart() } }
-          get(ServeGithubAuth.CALLBACK_PATH) { with(auth) { handleCallback() } }
+          // The site hosts are the allowlist for the post-callback return redirect: the only
+          // hostnames a sign-in started elsewhere may be sent back to. Passed in rather than known
+          // to the auth object, so the site config keeps one home.
+          get(ServeGithubAuth.START_PATH) { with(auth) { handleStart(sites.hosts) } }
+          get(ServeGithubAuth.CALLBACK_PATH) { with(auth) { handleCallback(sites.hosts) } }
         }
 
         // `/status` — the operator/observer view of this running host: published catalogs + their
@@ -1097,20 +1100,23 @@ class ServeHttpServer(
   /**
    * Whether a GitHub sign-in started from *this* request's origin can actually come back to it.
    *
-   * False on a top-level site whose box pins a callback base URL
+   * This used to be false on every top-level site whose box pins a callback base URL
    * (`--github-auth-callback-base-url`, which the deployment sets): the `cp_gh_state` cookie is
-   * host-only, so it is written on the site host while GitHub returns to the pinned one — the
-   * callback then sees no state and answers 401, and its relative return URL could not have come
-   * back to the site anyway. Offering the link would advertise a dead end, so the affordance is
-   * withheld and the surface stays snapshot-only there. Sites on a box with no pinned callback are
-   * unaffected (the callback is derived from the request, so it stays on the site host and the
-   * round trip closes).
+   * host-only, so it was written on the site host while GitHub returned to the pinned one, and the
+   * callback saw no state and answered 401. The affordance was withheld rather than walk a visitor
+   * into that, which left live and playground snapshot-only on every site.
    *
-   * The real fix is an OAuth handoff that carries the originating host through the dance; until
-   * then this keeps the failure honest rather than hidden behind a button.
+   * [ServeGithubAuthConfig.cookieDomain] fixes it at the root: written for the parent domain, both
+   * cookies are sent to the pinned callback host and to every site host under it, so the CSRF check
+   * works where it always did and one session covers the family. The state carries the originating
+   * host purely so the callback knows where to send the visitor back to.
+   *
+   * What stays false is a host outside that domain — an unlisted vhost, or a site on a different
+   * domain entirely. The cookies would not reach it, so a sign-in started there would land the
+   * visitor back signed-out, and offering the link would still be advertising a dead end.
    */
   private fun RoutingContext.oauthCanRoundTrip(): Boolean =
-    siteSystem() == null || githubAuth?.hasPinnedCallback != true
+    githubAuth?.canRoundTrip(requestHost(call), sites.hosts) ?: true
 
   /**
    * The session id to hand [ServeWeb] for nav-marking + link building, and the URL [basePath] its

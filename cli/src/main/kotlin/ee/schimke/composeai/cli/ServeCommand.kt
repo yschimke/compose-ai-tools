@@ -582,6 +582,14 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val githubAuthCallbackBaseUrl: String? =
     args.flagValue("--github-auth-callback-base-url")?.takeIf { it.isNotBlank() }
   /**
+   * Scopes the auth cookies to a parent domain so one sign-in covers it and every `--sites` host
+   * under it (`preview.coo.ee` ⇒ valid on `m3.preview.coo.ee`). Unset keeps them host-only, which
+   * is right for a single-hostname box; it is deliberately explicit rather than derived, since a
+   * cookie domain is the blast radius of a session.
+   */
+  private val githubAuthCookieDomain: String? =
+    args.flagValue("--github-auth-cookie-domain")?.takeIf { it.isNotBlank() }
+  /**
    * Overrides the OAuth scope. Unset derives it from `--github-auth-repo`'s visibility, which is
    * what a deployment wants unless its GitHub App or org policy demands something specific.
    */
@@ -3062,6 +3070,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         repository = githubAuthRepo!!,
         allowedUsers = githubAuthUsers,
         callbackBaseUrl = githubAuthCallbackBaseUrl,
+        cookieDomain = githubAuthCookieDomain,
         oauthScope = githubAuthScope,
       )
     )
@@ -3207,6 +3216,15 @@ class ServeCommand(args: List<String>) : Command(args) {
         --github-auth-callback-base-url <url>
                           External origin for the OAuth callback, e.g. https://preview.example.com.
                           Omit for local use; reverse-proxied deploys should set it explicitly.
+        --github-auth-cookie-domain <domain>
+                          Scope the auth cookies to a parent domain, so one sign-in covers it and
+                          every --sites hostname under it (preview.example.com also signs in
+                          m3.preview.example.com). Required for sign-in to work on a top-level site
+                          when --github-auth-callback-base-url is pinned: without it the cookies are
+                          host-only, the state cookie never reaches the callback origin, and the
+                          server withholds sign-in on site hosts. Omit on a single-hostname box.
+                          Every host under <domain> is inside the session's reach, so name the
+                          narrowest one that covers your sites.
         --github-auth-scope <scope>
                           Override the OAuth scope instead of deriving it from --github-auth-repo's
                           visibility. Only needed when a GitHub App or org policy demands a specific

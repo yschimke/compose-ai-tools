@@ -65,6 +65,10 @@ services:
       SERVE_GITHUB_AUTH_COOKIE_SECRET: "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}"
       SERVE_GITHUB_AUTH_REPO: "${SERVE_GITHUB_AUTH_REPO:-yschimke/compose-ai-tools}"
       SERVE_GITHUB_AUTH_CALLBACK_BASE_URL: "${SERVE_GITHUB_AUTH_CALLBACK_BASE_URL:-}"
+      # Scopes the auth cookies to a parent domain so ONE sign-in covers this host and every
+      # SERVE_SITES hostname under it. Empty derives it from DOMAIN when sites are configured (see
+      # entrypoint.sh); `none` keeps cookies host-only, which withholds sign-in on every site host.
+      SERVE_GITHUB_AUTH_COOKIE_DOMAIN: "${SERVE_GITHUB_AUTH_COOKIE_DOMAIN:-}"
       SERVE_GITHUB_AUTH_USERS: "${SERVE_GITHUB_AUTH_USERS:-}"
       # Empty derives the OAuth scope from the gating repo's visibility (public ⇒ read:user,
       # private ⇒ read:user repo). Only set this when a GitHub App or org policy demands one.
