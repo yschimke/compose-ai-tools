@@ -6799,8 +6799,9 @@ $rows
     // click, the modifier click and the status-bar preview all start working, the destination is
     // announced instead of a pressed state that was never true, and the sheet still navigates with
     // no script at all.
+    val components = page.nodes.filter(PageNode::isComponent)
     val outlines =
-      page.nodes.joinToString("\n") { node ->
+      components.joinToString("\n") { node ->
         val label =
           if (node.isUnlinked) "${node.name} — no code behind this"
           else "${node.name} — ${node.code.orEmpty()}"
@@ -6828,7 +6829,7 @@ $rows
     // to the spec and never flips back pays for nothing, and every URL in it stays server-built and
     // server-escaped (reading one out of the DOM into `img.src` is CodeQL's `js/xss-through-dom`).
     val renders =
-      page.nodes
+      components
         .mapNotNull { node ->
           val previewId = renderable(node) ?: return@mapNotNull null
           "<img class=\"cp-page-render\" alt=\"\" loading=\"lazy\" " +
@@ -6847,7 +6848,7 @@ $rows
     // already avoid, and the destination here is built from a preview id that came off a design
     // file. Cloning a server-built, server-escaped element has no sink in it at all.
     val diffLinks =
-      page.nodes
+      components
         .mapNotNull { node ->
           val previewId = renderable(node) ?: return@mapNotNull null
           val sep = if (q.isEmpty()) "?" else "&"
@@ -6863,7 +6864,7 @@ $rows
     // (the two are the same thing by definition, but `ref` is optional and this deep link is the
     // only link an unlinked node has).
     val rows =
-      page.nodes.joinToString("\n") { node ->
+      components.joinToString("\n") { node ->
         val previewId = renderable(node)
         val href =
           previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }

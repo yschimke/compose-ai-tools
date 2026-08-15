@@ -75,6 +75,7 @@ class ServeWebFixtureTest {
     link: PageNodeLink = PageNodeLink.MANIFEST,
     confidence: PageNodeConfidence? = if (code == null) null else PageNodeConfidence.HIGH,
     depth: Int = 3,
+    type: String? = null,
   ) =
     PageNode(
       nodeId = nodeId,
@@ -85,6 +86,7 @@ class ServeWebFixtureTest {
       previewId = previewId,
       link = link,
       confidence = confidence,
+      type = type,
     )
 
   private val token = "demo-token-fixture"
@@ -1605,6 +1607,7 @@ class ServeWebFixtureTest {
           """
           <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
             <rect width="1200" height="800" fill="#F7F2FA"/>
+            <g data-node-id="1:0"><rect x="120" y="170" width="1020" height="560" fill="none"/></g>
             <g data-node-id="1:9"><rect x="40" y="32" width="1120" height="64" rx="16" fill="#EADDFF"/></g>
             <g data-node-id="1:1"><circle cx="180" cy="300" r="90" fill="#6750A4"/></g>
             <g data-node-id="1:2"><rect x="330" y="210" width="180" height="180" rx="36" fill="#6750A4"/></g>
@@ -1622,8 +1625,8 @@ class ServeWebFixtureTest {
     // component on it. The mix is the point: two `manifest` links whose previews this catalog
     // publishes, one `convention` (low-confidence name match), one `manifest` link to a preview
     // that ISN'T published (outline, no render), one node the manifest names that the export does
-    // not carry, and two `unlinked` — the sheet's own header and a shape no code implements, which
-    // is the finding the surface exists to surface.
+    // not carry, and three `unlinked`: the component-set grid and sheet header (both structure),
+    // plus a specific shape no code implements, which is the finding the surface exists to surface.
     val designPageFixture =
       DesignPage(
         id = "shape",
@@ -1633,6 +1636,13 @@ class ServeWebFixtureTest {
         image = PageImage(uri = "shape.svg"),
         nodes =
           listOf(
+            pageNode(
+              "1:0",
+              "Shape set",
+              link = PageNodeLink.UNLINKED,
+              depth = 1,
+              type = "COMPONENT_SET",
+            ),
             pageNode("1:9", ".Header", link = PageNodeLink.UNLINKED, depth = 2),
             pageNode(
               "1:1",
@@ -2312,6 +2322,23 @@ class ServeWebFixtureTest {
 
     assertGoldensInSync(pagesDir, goldens)
     assertUnfurlCardsInSync(pagesDir, unfurlCards)
+    assertFalse(
+      designPageHtml.contains(
+        "class=\"cp-page-node\" data-link=\"unlinked\" data-cp-node=\"1:0\""
+      ) ||
+        designPageHtml.contains(
+          "class=\"cp-page-row\" data-link=\"unlinked\" data-cp-node=\"1:0\""
+        ),
+      "a component-set grid is page structure, never a giant interactive hotspot or audit row",
+    )
+    assertFalse(
+      designPageHtml.contains("data-cp-node=\"1:9\""),
+      "private sheet furniture is not presented as missing component work",
+    )
+    assertTrue(
+      designPageHtml.contains("data-cp-gap data-cp-node=\"1:6\""),
+      "a concrete unimplemented component remains a focused gap hotspot",
+    )
     // The parity page's load-bearing claims, asserted rather than left to the pixel diff. A
     // comment on Switch (whose code never moved in this window) is one-sided design movement, so
     // it must reach the "needs a look" band; Button moved on both sides and must NOT, because that

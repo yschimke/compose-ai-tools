@@ -18,6 +18,7 @@ class DesignPagesCoverageTest {
     depth: Int,
     link: PageNodeLink,
     container: Boolean = false,
+    type: String? = null,
   ) =
     PageNode(
       nodeId = id,
@@ -26,6 +27,7 @@ class DesignPagesCoverageTest {
       ref = "figma:file/$id",
       link = link,
       container = container,
+      type = type,
     )
 
   private fun page(vararg nodes: PageNode) =
@@ -63,6 +65,20 @@ class DesignPagesCoverageTest {
       )
 
     assertEquals(listOf("Shape=Gem"), subject.coverageGaps.map { it.name })
+    assertEquals(2, subject.coverageTotal)
+  }
+
+  @Test
+  fun `a component set type is a grouping not a giant component hotspot`() {
+    val subject =
+      page(
+        node("1:8", "Input chip", 2, PageNodeLink.UNLINKED, type = "COMPONENT_SET"),
+        node("1:9", "State=Enabled", 3, PageNodeLink.MANIFEST),
+        node("1:10", "State=Dragged", 3, PageNodeLink.UNLINKED),
+      )
+
+    assertEquals(listOf("State=Dragged"), subject.coverageGaps.map { it.name })
+    assertEquals(listOf("State=Enabled"), subject.linked.map { it.name })
     assertEquals(2, subject.coverageTotal)
   }
 

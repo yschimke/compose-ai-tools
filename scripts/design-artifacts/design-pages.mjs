@@ -220,13 +220,9 @@ export function planDesignPages({ manifest, spec, catalog }) {
             ? node.depth
             : 0,
         // The node's type in the design file, republished so the consumer can tell a container from
-        // the components inside it EXACTLY rather than by inference. `DesignPage.coverageGaps`
-        // falls back to "a node followed by a deeper one has children" when no type is stated, and
-        // that fallback is only as good as the walk: an import lists components only, so an unlisted
-        // frame between two of them lets a shallower node be followed by a deeper one that is not
-        // inside it — and the shallower one then drops out of the count as furniture, understating
-        // the gaps. Stripping the field here meant every delivery branch took that fallback, however
-        // carefully the importer had stated the type.
+        // the components inside it exactly. In particular, a COMPONENT_SET is the grid/column that
+        // arranges its concrete variants; treating it as another component produces one enormous
+        // missing-work outline over all of the useful, specific component hotspots.
         //
         // Free text, like the consumer's own field, so a design tool growing a type does not fail
         // the parse — but only a non-empty string, since `""` is not a type and would read as one.

@@ -134,6 +134,13 @@ public data class PageNode(
    * one of its variants), so it is drawn as structure and left out of the coverage count.
    */
   val container: Boolean = false,
+  /**
+   * The node type reported by the design tool, for example `COMPONENT` or `COMPONENT_SET`.
+   *
+   * Kept as free text so a new design-tool type remains an additive manifest change. Consumers only
+   * attach meaning to the grouping type they understand; see [isContainer].
+   */
+  val type: String? = null,
 ) {
   /**
    * A component the design file marks as **private** — Figma's leading-dot convention, used for the
@@ -145,6 +152,20 @@ public data class PageNode(
    */
   public val isPrivate: Boolean
     get() = name.startsWith(".")
+
+  /**
+   * Whether this is a family/grouping rather than one concrete component.
+   *
+   * Current imports preserve Figma's exact `COMPONENT_SET` type. [container] remains as the
+   * backwards-compatible producer hint, but reading [type] is essential: otherwise a whole grid of
+   * variants becomes one enormous "missing component" hotspot over the actual components inside it.
+   */
+  public val isContainer: Boolean
+    get() = container || type.equals("COMPONENT_SET", ignoreCase = true)
+
+  /** A concrete, public component that the page should count and highlight. */
+  public val isComponent: Boolean
+    get() = !isPrivate && !isContainer
 
   /** Whether this node can be drawn by us, i.e. it names a preview we could ask for. */
   public val isRenderable: Boolean
@@ -207,7 +228,7 @@ public data class DesignPage(
 ) {
   /** Nodes with code behind them. */
   public val linked: List<PageNode>
-    get() = nodes.filter { !it.isUnlinked }
+    get() = nodes.filter { it.isComponent && !it.isUnlinked }
 
   /** Nodes with no code behind them. Not the same as [coverageGaps] — see there. */
   public val unlinked: List<PageNode>
@@ -233,7 +254,7 @@ public data class DesignPage(
    * container is visible and harmless; a gap that quietly disappears is neither.
    */
   public val coverageGaps: List<PageNode>
-    get() = nodes.filter { it.isUnlinked && !it.isPrivate && !it.container }
+    get() = nodes.filter { it.isComponent && it.isUnlinked }
 
   /**
    * How many components on this page a catalog could implement — the denominator behind "N of M
