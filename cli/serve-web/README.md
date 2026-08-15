@@ -236,9 +236,24 @@ whose bounds match no node is still a real problem and is surfaced rather than
 dropped; and a too-small touch target is a warning even when nothing else flagged
 the node, because `info` there reads as a pass.
 
-Next, cheapest seam first: `catalog-live.js` (400), `design-page.js` (789). The
-big ones — `format-compare.js` (1,706) and `viewer.js` (3,127) — want breaking
-into pure modules the way the drawers were, not porting whole.
+`<cp-catalog-live>` is the grid's long-press live lane. Its risk was in
+`live/pointerMap.ts`: the canvas is `object-fit: contain`, so a frame whose
+aspect differs from the thumbnail slot is letterboxed inside it, and scaling a
+press against the element's bounding rect rather than the frame's painted rect
+offsets every coordinate by the margin — no error, an identical-looking card,
+and presses reaching a different widget. A press in the margin is refused rather
+than clamped, because clamping invents one on whatever sits at the frame's edge.
+
+It also ended a divergence a comment claimed did not exist: the grid said it
+explained a refused lane "in the same words" as the viewer, and its fallback —
+the branch that fires most — was two-thirds of the viewer's. Nothing rendered
+that surface, which is how it drifted, so the port added a `live-refused`
+harness state alongside the fix. `sameOrigin` moved to `dom/` and is now shared
+rather than copied, with a separate, stricter guard for navigation.
+
+Next: `design-page.js` (789). The big ones — `format-compare.js` (1,706) and
+`viewer.js` (3,127) — want breaking into pure modules the way the drawers were,
+not porting whole.
 
 ## Two bundles, and which one a thing belongs in
 
