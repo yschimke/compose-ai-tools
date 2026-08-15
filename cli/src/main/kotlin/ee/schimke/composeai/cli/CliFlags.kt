@@ -104,6 +104,8 @@ internal object CliFlags {
       "--catalog-branch-prefix",
       "--catalog-refresh-interval",
       "--catalog-max-images",
+      "--catalog-feed-idle-timeout",
+      "--catalog-feed-cache",
       "--catalog-source-root",
       "--wasm-dir",
       "--rc-player-wasm-dir",

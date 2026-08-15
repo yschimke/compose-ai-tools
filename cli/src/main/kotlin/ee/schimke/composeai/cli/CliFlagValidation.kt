@@ -121,6 +121,8 @@ internal object CliFlagValidation {
             "--bundle",
             "--bundles",
             "--catalog-branch-prefix",
+            "--catalog-feed-cache",
+            "--catalog-feed-idle-timeout",
             "--catalog-max-images",
             "--catalog-refresh-interval",
             "--catalog-repo",
