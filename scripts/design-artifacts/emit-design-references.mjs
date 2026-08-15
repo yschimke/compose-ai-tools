@@ -59,6 +59,7 @@ import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
 import { FigmaRestRasterizer, parseFigmaRef } from "./figma-rest-raster.mjs";
+import { openScorer } from "./design-reference-score.mjs";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -430,6 +431,52 @@ for (const record of records) {
     : undefined;
   if (scaled) annotatedReferences[record.id] = { layout: scaled };
 }
+
+// ---- The published verdict ---------------------------------------------------------------------
+//
+// Scored here rather than in the browser on page load because the pair is FIXED for a publish: the
+// reference was just written, the sticker was baked by the render step, and neither can change
+// until the next run. A number computed once at publish is on the chip at first paint, on every
+// page, for nothing — where the same number computed per visit costs two decodes and an
+// edge-tolerant walk before it can be shown, which is why the viewer only ever asked for it after
+// the lane was entered.
+//
+// Every record is scored, primary and secondary alike: a variant's divergence is exactly as worth
+// seeing at rest as its parent's, and it is the variant pages that carry the states nobody thinks
+// to open.
+async function scoreReferences() {
+  const published = records.filter((record) => record.rastered !== false);
+  if (published.length === 0) return;
+  const scorer = await openScorer({ executablePath: EXEC, log: warn });
+  // Absent a browser the manifest simply carries no `match`, and the viewer computes it live on
+  // lane entry exactly as it does today. `openScorer` has already said why.
+  if (!scorer) return;
+  let scored = 0;
+  try {
+    for (const record of published) {
+      const sticker = record.origin?.imagePath;
+      if (typeof sticker !== "string" || sticker === "") continue;
+      let match = null;
+      try {
+        match = await scorer.score(
+          path.join(OUT, record.raster.path),
+          path.join(OUT, sticker),
+        );
+      } catch (error) {
+        warnFor(record, `${record.id}: could not be scored (${error.message})`);
+      }
+      if (match) {
+        record.match = match;
+        scored++;
+      }
+    }
+  } finally {
+    await scorer.close();
+  }
+  console.log(`design-references: scored ${scored} of ${published.length} published reference(s)`);
+}
+
+await scoreReferences();
 
 /**
  * Merge the reference-side annotation layers into the bundle's `annotations/index.json`.

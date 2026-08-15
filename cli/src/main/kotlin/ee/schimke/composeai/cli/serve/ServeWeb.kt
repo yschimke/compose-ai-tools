@@ -115,6 +115,25 @@ object ServeWeb {
 
   private fun assetHref(name: String): String = ServeWebAssets.href(name)
 
+  /**
+   * The verdict band a published match percentage falls in — the chip's colour, and nothing else.
+   *
+   * Restates `matchBand` in `scripts/design-artifacts/design-reference-score.mjs`, where the number
+   * is minted. The thresholds come from the distribution a real catalog produces rather than from
+   * round numbers: across m3-catalog's 120 published pairs the median is 99.70% and 72 sit at or
+   * above 99.5, so `match` is the "nothing to look at" majority, while the 8 below 97 are the
+   * genuine divergences — a 57.98% corner-radius sheet, a 72.80% colour grid, an 85.75% type scale.
+   *
+   * A band never decides whether the number is SHOWN, only how it is coloured, so a drift between
+   * the two copies costs a hue and can never hide a finding.
+   */
+  private fun specMatchBand(percent: Double): String =
+    when {
+      percent >= 99.5 -> "match"
+      percent >= 97.0 -> "close"
+      else -> "off"
+    }
+
   private fun scriptTag(name: String): String = "<script src=\"${assetHref(name)}\"></script>"
 
   private fun viewCountHtml(views: Long): String =
@@ -8208,10 +8227,39 @@ $rows
     val specChipHtml =
       if (specRasterUrl == null || specProviderLabel == null) ""
       else {
-        val label = if (specProviderLabel == "Figma") "Figma" else "Design spec"
-        val tip = "Put the imported $specProviderLabel spec on the stage instead of the render"
-        "<button type=\"button\" id=\"cp-spec-chip\" class=\"cp-spec-chip\" " +
+        val name = if (specProviderLabel == "Figma") "Figma" else "Design spec"
+        // The **verdict**, on the chip, at rest. The catalog exists to answer "does this render
+        // match its design?", and the chip that led to that answer used to say only which tool the
+        // design came from — the question was one click and two raster decodes away, on every page,
+        // including the ones where the answer is 57%.
+        //
+        // One page, one number: a preview has one render and one reference, so there is exactly one
+        // score to state. It is always printed rather than hidden behind a "clean" threshold — a
+        // number that is usually high is still the thing a reader came for, and suppressing it
+        // would make its absence ambiguous with "not scored". The BAND only picks the colour, so a
+        // quiet 99.7% and a loud 85.8% read differently without either being hidden.
+        val match = designReference?.match
+        val band = match?.let { specMatchBand(it.percent) }
+        val label = if (match == null) name else "$name ${WebEscaping.formatPercent(match.percent)}"
+        val tip =
+          if (match == null)
+            "Put the imported $specProviderLabel spec on the stage instead of the render"
+          else
+            buildString {
+              append("${WebEscaping.formatPercent(match.percent)} match against the imported ")
+              append("$specProviderLabel spec")
+              match.changedPercent?.let {
+                append(" · ${WebEscaping.formatPercent(it, 2)} pixels differ")
+              }
+              match.geometry?.let {
+                append(" · ${WebEscaping.formatPercent(it, 1)} proportion difference")
+              }
+              append(" — click to see where")
+            }
+        val bandAttr = band?.let { " data-spec-match=\"$it\"" } ?: ""
+        "<button type=\"button\" id=\"cp-spec-chip\" class=\"cp-spec-chip\"$bandAttr " +
           "aria-pressed=\"false\" data-spec-chip-label=\"${WebEscaping.htmlEscape(label)}\" " +
+          "data-spec-chip-name=\"${WebEscaping.htmlEscape(name)}\" " +
           "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
       }

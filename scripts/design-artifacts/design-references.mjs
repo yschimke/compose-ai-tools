@@ -579,6 +579,11 @@ export function planDesignReferences({ designMap, spec, catalog }) {
           ref: entry.ref,
           previewId: entry.previewId,
           density: entry.density,
+          // The published sticker this reference will be compared against, bundle-relative. Carried
+          // rather than re-derived: `servePreviewId` flattens `/` to `__`, which cannot be inverted
+          // (a component slug may contain either), so the image's own path is the only thing that
+          // still addresses the PNG once the id has been minted from it.
+          imagePath: image.path,
           ...(typeof entry.referenceContentsOnly === "boolean"
             ? { referenceContentsOnly: entry.referenceContentsOnly }
             : typeof specComponent?.referenceContentsOnly === "boolean"

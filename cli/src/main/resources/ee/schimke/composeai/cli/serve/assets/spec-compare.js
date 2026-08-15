@@ -42,8 +42,17 @@
   var wipeCanvas = document.getElementById("cp-spec-wipe-canvas");
   var wipeRange = document.getElementById("cp-spec-wipe-range");
   var referenceUrl = compare.getAttribute("data-reference") || "";
+  var chip = document.getElementById("cp-spec-chip");
+  // The published verdict's band, kept so leaving the lane can put the chip back exactly as the
+  // server rendered it rather than approximating it from the label text.
+  var bakedBand = chip ? chip.getAttribute("data-spec-match") || "" : "";
 
   var view = DEFAULT_VIEW;
+  // The chip's requested entry view, and whether the visitor (or a URL) has spoken for themselves.
+  // `chosen` latches on the first explicit choice from either source and never clears: once someone
+  // has said which view they want, a later chip click must not silently move them off it.
+  var preferred = "";
+  var chosen = false;
   var open = false;
   var actualUrl = "";
   // The normalised pair currently painted, plus the (reference, actual) it was computed from — a
@@ -79,6 +88,38 @@
 
   function setScore(text) {
     if (score) score.textContent = text;
+  }
+
+  /**
+   * Put a freshly-computed match percentage on the design-spec chip, replacing the published one.
+   *
+   * The chip carries the score baked at publish, which describes the PUBLISHED pixels. The moment
+   * an override, a knob or a theme moves the render, that number is describing a frame that is no
+   * longer on the stage — so once this lane has scored the pair actually in front of the visitor,
+   * that is the number the chip must show. Chip and readout are then one instrument reporting one
+   * comparison, which is the whole reason the verdict moved onto the chip.
+   *
+   * Restoring the published label on the way out is deliberate: off the lane there is nothing live
+   * to describe, and leaving a knob-bent number on the chip would misreport every later visit to
+   * the page as if it were the publish.
+   */
+  function setChipVerdict(percent) {
+    if (!chip) return;
+    var name = chip.getAttribute("data-spec-chip-name") || chip.textContent;
+    if (percent === null) {
+      chip.textContent = chip.getAttribute("data-spec-chip-label") || name;
+      if (bakedBand) chip.setAttribute("data-spec-match", bakedBand);
+      else chip.removeAttribute("data-spec-match");
+      return;
+    }
+    chip.textContent = name + " " + percent.toFixed(1) + "%";
+    // Mirrors `ServeWeb.specMatchBand` and `matchBand` in the export driver. A band only colours
+    // the chip — it never decides whether the number appears — so the three copies can only ever
+    // disagree about a hue.
+    chip.setAttribute(
+      "data-spec-match",
+      percent >= 99.5 ? "match" : percent >= 97 ? "close" : "off"
+    );
   }
 
   function splitFraction() {
@@ -165,6 +206,7 @@
                 "% pixels differ" +
                 geometry
             );
+            setChipVerdict(result.percent);
           });
       })
       .catch(function () {
@@ -209,6 +251,7 @@
 
   function setView(next, push) {
     var wanted = VIEWS.indexOf(next) >= 0 ? next : DEFAULT_VIEW;
+    chosen = true;
     if (wanted === view) return;
     view = wanted;
     apply();
@@ -265,8 +308,21 @@
     view: function () {
       return view;
     },
+    /**
+     * The view the NEXT entry should open on, requested by the design-spec chip.
+     *
+     * Honoured only while the visitor has not chosen a view themselves: `hydrate` runs first from
+     * the address bar, so a shared `?specView=triptych` link, or a Back into one, keeps what it
+     * names. Without that guard the chip would overwrite the very state the URL exists to restore.
+     */
+    prefer: function (next) {
+      if (!chosen) preferred = VIEWS.indexOf(next) >= 0 ? next : DEFAULT_VIEW;
+    },
     /** Restore from the address bar (initial load and Back/Forward), without writing it back. */
     hydrate: function (next) {
+      // A named view in the address bar IS an explicit choice — it is either what the visitor
+      // picked before sharing/reloading, or where Back is returning them to.
+      if (VIEWS.indexOf(next) >= 0) chosen = true;
       view = VIEWS.indexOf(next) >= 0 ? next : DEFAULT_VIEW;
       apply();
     },
@@ -277,11 +333,21 @@
     open: function (url) {
       open = true;
       actualUrl = url || "";
+      if (preferred && !chosen) {
+        view = preferred;
+        preferred = "";
+        // Written to the address bar like any other view choice, so the lane a chip click landed on
+        // is the lane a reload or a shared link comes back to.
+        if (window.cpUrlState) {
+          window.cpUrlState.replace({ specView: view === DEFAULT_VIEW ? "" : view });
+        }
+      }
       apply();
     },
     /** The spec lane has been left: put the stage back and stop offering the comparison. */
     close: function () {
       open = false;
+      setChipVerdict(null);
       apply();
     }
   };

@@ -43,6 +43,37 @@ data class DesignReference(
   val source: DesignReferenceSource = DesignReferenceSource(),
   /** Original inert artifact retained by the producer for provenance/download. */
   val artifact: DesignReferenceArtifact? = null,
+  /**
+   * How close the published render is to this reference, scored at publish time.
+   *
+   * The catalog exists to answer this, and until it was carried here no page answered it at rest: a
+   * visitor had to enter the spec lane and wait for two rasters to decode before a number appeared.
+   * Published, it goes on the design-spec chip on first paint.
+   *
+   * Absent on every catalog published before the producer existed, and on any run whose driver had
+   * no browser to score with — so it is a strict enhancement. The lane still computes the same
+   * numbers live on entry, which is what a chip with no verdict falls back to and what an
+   * override-bearing render needs regardless (the baked score describes the PUBLISHED pixels, and a
+   * knob has moved them).
+   */
+  val match: DesignReferenceMatch? = null,
+)
+
+/**
+ * A published render/reference comparison, in the units the viewer's readout already prints:
+ * [percent] is the structural match `ComposePreviewCompare.scoreImages` reports, [changedPercent]
+ * the share of pixels the delta map marks, and [geometry] the content-box proportion difference —
+ * carried only when it is above the threshold at which it describes the design rather than the
+ * rasteriser, which is why it is nullable rather than zero.
+ *
+ * The producer computes these by driving that same asset in a headless page, so the baked numbers
+ * and the lane's live ones come from one implementation and cannot disagree.
+ */
+@Serializable
+data class DesignReferenceMatch(
+  val percent: Double,
+  val changedPercent: Double? = null,
+  val geometry: Double? = null,
 )
 
 @Serializable
@@ -122,17 +153,32 @@ private constructor(
 
       val seen = HashSet<String>()
       val valid =
-        manifest.references.filter { reference ->
-          if (!hasValidMetadata(reference)) return@filter false
-          val rasterPath = root / reference.raster.path.toPath()
-          if (!fileSystem.exists(rasterPath)) return@filter false
-          val bytes =
-            runCatching { fileSystem.read(rasterPath) { readByteArray() } }.getOrNull()
-              ?: return@filter false
-          hasValidRaster(reference, bytes) && seen.add(reference.id)
-        }
+        manifest.references
+          .filter { reference ->
+            if (!hasValidMetadata(reference)) return@filter false
+            val rasterPath = root / reference.raster.path.toPath()
+            if (!fileSystem.exists(rasterPath)) return@filter false
+            val bytes =
+              runCatching { fileSystem.read(rasterPath) { readByteArray() } }.getOrNull()
+                ?: return@filter false
+            hasValidRaster(reference, bytes) && seen.add(reference.id)
+          }
+          .map { it.copy(match = it.match?.takeIf(::isSaneMatch)) }
       return ServeDesignReferenceStore(root, valid, fileSystem)
     }
+
+    /**
+     * Whether a published match is a number a chip can print. Dropped rather than clamped, and
+     * dropped WITHOUT taking the reference with it: a nonsense percentage is a producer bug, and
+     * the lane's live scoring still answers the same question on entry — so the cost of ignoring it
+     * is a chip with no verdict, where the cost of trusting it is a chip stating a falsehood and
+     * the cost of dropping the record is a page with no design spec at all.
+     */
+    private fun isSaneMatch(match: DesignReferenceMatch): Boolean =
+      match.percent.isFinite() &&
+        match.percent in 0.0..100.0 &&
+        (match.changedPercent?.let { it.isFinite() && it in 0.0..100.0 } ?: true) &&
+        (match.geometry?.let { it.isFinite() && it >= 0.0 } ?: true)
 
     internal fun isSafeRelativePath(value: String): Boolean {
       if (value.isBlank() || value.startsWith('/') || value.startsWith('\\')) return false
