@@ -347,6 +347,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-grouped/dark](renders/serve-landing-grouped.dark.png) |
 | `light` | ![serve-landing-grouped/light](renders/serve-landing-grouped.light.png) |
 
+## serve-landing-grouped-pages-filtered
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-grouped-pages-filtered/dark](renders/serve-landing-grouped-pages-filtered.dark.png) |
+| `light` | ![serve-landing-grouped-pages-filtered/light](renders/serve-landing-grouped-pages-filtered.light.png) |
+
+## serve-landing-grouped-pages-pane
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-grouped-pages-pane/dark](renders/serve-landing-grouped-pages-pane.dark.png) |
+| `light` | ![serve-landing-grouped-pages-pane/light](renders/serve-landing-grouped-pages-pane.light.png) |
+
 ## serve-landing-ir-replay-themes
 
 | Theme | Capture |
