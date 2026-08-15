@@ -142,6 +142,14 @@ internal object ServeRcCompare {
         // `Canvas` — rendered offline under Robolectric/Skiko. Named for the player rather
         // than for the file it arrives as: "baked PNG" said how it got here, not what drew it,
         // which is the only thing a reader comparing it against four other players cares about.
+        // Assumes the bundle's baked PNGs came from the View-backed player, which is true of every
+        // catalog scored today: `remote-m3` is the only published system with an `ir/*.rc` corpus,
+        // and it wraps nothing in `RemoteEmbeddedPreviewWrapper`. A preview that DOES carry that
+        // wrapper bakes its PNG through the embedded `RcPlayer` instead (see
+        // `RemoteOverridablePreview.kt`) — `samples/remotecompose` has two — and neither the bundle
+        // nor `rc-compare-summary.json` records which renderer produced a row, so a catalog mixing
+        // the two would be mislabelled here rather than detected. Carry provenance per row before
+        // scoring such a catalog.
         label = "AndroidX Java",
         short = "java",
         renderDir = "rc-baked",

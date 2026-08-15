@@ -113,6 +113,13 @@ const LANES = [
     // The AndroidX `RemoteComposePlayer` — an Android `View` painting to a framework `Canvas` —
     // rendered offline under Robolectric/Skiko. Named for the player rather than the file it
     // arrives as: "baked PNG" said how it got here, not what drew it.
+    // Assumes the bundle's baked PNGs came from the View-backed player, which is true of every
+    // catalog scored today: `remote-m3` is the only published system with an `ir/*.rc` corpus, and
+    // it wraps nothing in `RemoteEmbeddedPreviewWrapper`. A preview that DOES carry that wrapper
+    // bakes its PNG through the embedded `RcPlayer` instead — `samples/remotecompose` has two — and
+    // neither the bundle nor the summary records which renderer produced a row, so a catalog mixing
+    // the two would be mislabelled here rather than detected. Carry provenance per row before
+    // scoring such a catalog.
     label: "AndroidX Java",
     short: "java",
     always: true,
