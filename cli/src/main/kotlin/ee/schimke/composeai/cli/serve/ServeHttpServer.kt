@@ -1008,6 +1008,12 @@ class ServeHttpServer(
         get("/render/{name}") { handleRender(sessionInPath = false) }
         get("/{system}/render/{name}") { handleRender(sessionInPath = true) }
 
+        // The motion lane, beside `/render` rather than inside it: a capture is not a render of a
+        // preview, it is a second artifact about the same component, and folding it into the render
+        // route would mean that route's suffix decided the content type from a fetched path.
+        get("/motion/{name}") { handleMotion(sessionInPath = false) }
+        get("/{system}/motion/{name}") { handleMotion(sessionInPath = true) }
+
         // Project mode only (see [projectHistory]): one version of a render, addressed by its
         // content sha, read straight out of the local repository. Registered conditionally like
         // every other optional lane, so a server without a repo has no such route at all.
@@ -5385,6 +5391,37 @@ class ServeHttpServer(
     return host.bakedRenderSize(name) != null
   }
 
+  /**
+   * Serve one published animated capture.
+   *
+   * The extension is read off the request and matched against the closed set the host accepts, then
+   * passed to it so the lookup and the `Content-Type` are decided by the same string. Anything else
+   * — an unknown suffix, an id the catalog never declared — is a flat 404: this route reaches bytes
+   * fetched from a delivery branch, so it must never be able to serve them under a type the
+   * requester chose.
+   */
+  private suspend fun RoutingContext.handleMotion(sessionInPath: Boolean) {
+    if (rejectHeadProbe()) return
+    val name = call.parameters["name"].orEmpty()
+    val extension = MOTION_CONTENT_TYPES.keys.firstOrNull { name.endsWith(it) }
+    if (extension == null) {
+      call.respondText("", status = HttpStatusCode.NotFound)
+      return
+    }
+    val motionId = name.removeSuffix(extension)
+    val host = sessions.peekHost(selectedSessionId(sessionInPath))
+    val bytes = host?.motionBytes(motionId, extension)
+    if (bytes == null) {
+      call.respondText("", status = HttpStatusCode.NotFound)
+      return
+    }
+    // Same caching posture as a baked render: the bytes under an id are immutable for a publish,
+    // and a capture is heavy enough that re-fetching it per scrub would be the whole cost of the
+    // feature.
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
+    call.respondBytes(bytes, ContentType.parse(MOTION_CONTENT_TYPES.getValue(extension)))
+  }
+
   private suspend fun RoutingContext.rejectHeadProbe(): Boolean {
     if (call.request.local.method != HttpMethod.Head) return false
     call.response.headers.append(HttpHeaders.Allow, HttpMethod.Get.value)
@@ -5794,6 +5831,17 @@ class ServeHttpServer(
   }
 
   companion object {
+    /**
+     * Extensions the motion route serves, and the type each is served as. A closed map rather than
+     * a suffix-to-mime derivation: the key set IS the allowlist, so one place decides both "may
+     * this be served" and "as what", and the two cannot drift apart.
+     *
+     * APNG is deliberately `image/apng`, not `image/png`. Both decode, but the distinction is what
+     * tells a browser — and a reader saving the file — that there is more here than one frame.
+     */
+    val MOTION_CONTENT_TYPES: Map<String, String> =
+      linkedMapOf(".apng" to "image/apng", ".gif" to "image/gif")
+
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
 
     /** Header carrying the `--admin-token` for the `/admin/catalogs` routes. */

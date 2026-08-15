@@ -123,6 +123,22 @@ class ServeBundleHost(
    */
   private val fetchBakedPng: ((String) -> ByteArray?)? = null,
   /**
+   * Ids this catalog publishes an animated capture for.
+   *
+   * Separate from [declaredBaked] because a capture is not a preview: it never appears in the grid,
+   * owns no card, and is only ever reachable from the still it accompanies. Empty for a plain
+   * uploaded bundle and for any catalog exported before the branch carried these bytes.
+   */
+  declaredMotion: List<String> = emptyList(),
+  /**
+   * Fetch one declared capture's bytes from the delivery branch, or null when they can't be had.
+   * Same seam as [fetchBakedPng], for the same reason: the store owns URL assembly, the SSRF gate,
+   * the size cap and the test seam, and this host only names an id it was told about.
+   */
+  private val fetchMotion: ((String) -> ByteArray?)? = null,
+  /** Each declared capture's branch path, so a pinned (`?at=<sha>`) request can resolve one. */
+  private val motionBranchPaths: Map<String, String> = emptyMap(),
+  /**
    * Each declared preview's path on the delivery branch (`images/<slug>/<variant>.png`), which is
    * what a **pinned** request resolves against: the same tree, read at an older commit. Empty for a
    * plain uploaded bundle (nothing to pin to) and for any host with no delivery branch behind it.
@@ -297,6 +313,15 @@ class ServeBundleHost(
    * The declared baked set. An id here is **not** live-only even while its file is missing — that
    * is the whole point of declaring it — so it takes precedence over [liveOnly] below.
    */
+  /**
+   * Ids this catalog publishes a capture for, as a set for the containment check on request.
+   *
+   * Declared here rather than beside the motion fill below because the preview list is built during
+   * construction and reads it — a property initialised later would be empty at that point, and
+   * every capture would be filtered out of the manifest it is supposed to appear in.
+   */
+  private val declaredMotionIds: Set<String> = declaredMotion.toSet()
+
   private val declaredBakedIds: Set<String> =
     declaredBaked.filterTo(LinkedHashSet()) { previewFile(it, PNG_SUFFIX) != null }
 
@@ -335,6 +360,24 @@ class ServeBundleHost(
           id = id,
           label = id,
           componentId = meta?.componentId,
+          // Only captures this host can actually land. A manifest entry with no fetch seam behind
+          // it (a plain bundle, or a catalog whose store didn't register the lane) would offer the
+          // reader a control that 404s, which is worse than not offering it.
+          motion =
+            if (fetchMotion == null) emptyList()
+            else
+              meta
+                ?.motion
+                .orEmpty()
+                .filter { it.id in declaredMotionIds && it.extension in MOTION_EXTENSIONS }
+                .map {
+                  ServeMotion(
+                    id = it.id,
+                    kind = it.kind,
+                    caption = it.caption,
+                    extension = it.extension,
+                  )
+                },
           renderFailure = meta?.renderFailure ?: readRenderFailure(id),
           // A packed sidecar remains authoritative for ordinary uploaded bundles. Published
           // catalogs additionally carry these declarations inline so a supplement-only preview's
@@ -784,6 +827,57 @@ class ServeBundleHost(
   private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
   /**
+   * The staged file for one animated capture, fetching it on first request.
+   *
+   * Deliberately a near-copy of [bakedPngFile] rather than a shared generic: the two lanes differ
+   * in the one place that matters (the extension, which a browser is not free to guess) and share
+   * the part that is merely mechanical. Folding them together would mean threading a suffix through
+   * the fill path, which is how a capture ends up written under a still's name.
+   */
+  private fun motionFile(motionId: String, extension: String): okio.Path? {
+    if (motionId !in declaredMotionIds) return null
+    if (extension !in MOTION_EXTENSIONS) return null
+    // The requested suffix must be the one THIS capture was published as, not merely a format the
+    // lane supports. Checking only the allowlist would let `<id>.gif` serve an APNG's bytes typed
+    // as
+    // a GIF: the same bytes, a content type the requester chose, and a browser that renders one
+    // frame and stops. The declared branch path is the authority on which it is.
+    if (motionBranchPaths[motionId]?.endsWith(extension) != true) return null
+    val path = previewFile(motionId, extension)?.toOkioPath() ?: return null
+    if (fileSystem.exists(path)) return path
+    val fetch = fetchMotion ?: return null
+    // Keyed distinctly from the baked lane: a capture and its sibling still share an id, so one
+    // lock namespace would have a cold capture fetch block a warm sticker read on the same card.
+    synchronized(fillLocks.computeIfAbsent("$MOTION_LOCK_PREFIX$motionId") { Any() }) {
+      if (fileSystem.exists(path)) return path
+      val bytes = runCatching { fetch(motionId) }.getOrNull() ?: return null
+      return runCatching {
+        path.parent?.let(fileSystem::createDirectories)
+        val partial = path.parent!!.resolve(path.name + PARTIAL_SUFFIX)
+        fileSystem.write(partial) { write(bytes) }
+        fileSystem.atomicMove(partial, path)
+        path
+      }
+        .getOrNull()
+    }
+  }
+
+  /**
+   * The bytes of one published capture, or null when this host can't serve it.
+   *
+   * The only motion entry point: a caller names an id and an extension it read off the served
+   * manifest, and gets bytes or nothing. Both are checked against what the catalog declared, so a
+   * request can neither invent an id nor choose the suffix its response is typed with.
+   */
+  override fun motionBytes(motionId: String, extension: String): ByteArray? =
+    motionFile(motionId, extension)?.takeIf(fileSystem::exists)?.let {
+      runCatching { fileSystem.read(it) { readByteArray() } }.getOrNull()
+    }
+
+  /** The branch path of a declared capture, for a pinned request. */
+  fun motionBranchPath(motionId: String): String? = motionBranchPaths[motionId]
+
+  /**
    * The local-pixels fast path. Deliberately [localBakedPng], not [bakedPngFile]: a declared
    * preview whose PNG hasn't arrived yet needs a fetch, and fetching is work that belongs behind
    * admission like any other. Answering null sends it down the ordinary [render] path, which fills
@@ -1015,6 +1109,14 @@ class ServeBundleHost(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+
+    /**
+     * Extensions a published capture may be served under — closed, and checked on every request.
+     */
+    val MOTION_EXTENSIONS = listOf(".apng", ".gif")
+
+    /** Namespaces the motion fill locks apart from the baked ones, which share an id space. */
+    private const val MOTION_LOCK_PREFIX = "motion:"
     private const val RENDER_ERROR_SUFFIX = ".error.json"
     private const val RENDER_ERROR_SCHEMA = "compose-preview-error/v1"
     /** Suffix of the sibling a lazy fill writes before moving it into place atomically. */

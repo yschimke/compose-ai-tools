@@ -61,6 +61,28 @@ interface StreamHandle : AutoCloseable {
 }
 
 /** One servable preview: its id, a human label, and which delivery modes it supports. */
+/**
+ * One animated capture a preview can offer instead of its still.
+ *
+ * Motion answers a question a screenshot cannot: whether a component's own interaction plumbing
+ * actually drives its transition, and how that transition is shaped. It is also not what most
+ * readers came for — so the viewer surfaces this as a control beside the still rather than playing
+ * it by default, and a preview carrying none is presented exactly as it was before.
+ */
+data class ServeMotion(
+  /** The route the bytes are served under (`/motion/<id><extension>`). */
+  val id: String,
+  /** `"interaction"` (a scripted gesture) or `"animation"` (a self-running animation). */
+  val kind: String? = null,
+  /**
+   * The caption the annotation declared — which property the reader is being shown. Without it a
+   * capture tells someone only that *something* moved, so the viewer shows it alongside.
+   */
+  val caption: String? = null,
+  /** `.apng` or `.gif`. Not interchangeable: an APNG typed as a GIF renders one frame and stops. */
+  val extension: String = ".apng",
+)
+
 data class ServePreview(
   val id: String,
   val label: String,
@@ -184,6 +206,15 @@ data class ServePreview(
   val componentId: String? = null,
   /** Published render failure for a catalog card that has no PNG. */
   val renderFailure: CatalogRenderFailure? = null,
+  /**
+   * Animated captures published for this preview. Empty for the overwhelming majority — a still is
+   * the whole artifact for most components — so a viewer treats this as opt-in extra surface and
+   * never as a replacement for the baked pixels.
+   *
+   * Last in the parameter list deliberately: several callers construct a [ServePreview]
+   * positionally, so a new field anywhere earlier silently rebinds their arguments.
+   */
+  val motion: List<ServeMotion> = emptyList(),
 )
 
 /** Structured, catalog-published render failure. Additive to `design-parity-catalog/v1`. */
