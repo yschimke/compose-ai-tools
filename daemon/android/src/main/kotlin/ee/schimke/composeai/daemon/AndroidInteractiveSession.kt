@@ -240,17 +240,6 @@ internal constructor(
     // without a keycode is ordinary (`€` and every other non-US-layout key has no `KEYCODE_*`), so
     // it must not be dropped here — issue #3491.
     if (isKey && input.keyCode.isNullOrBlank() && input.text.isNullOrEmpty()) return
-    if (isKey) {
-      // Mirror the keycode into the soft-keyboard band before the held-rule loop runs the actual
-      // `performKeyInput` so an agent driving keyboard input through `interactive/input` sees the
-      // matching cap light up. The band's "press implies visible" rule also raises the band even
-      // when the consumer hasn't called `keyboardController.show()`.
-      val label = KeyboardBandLabels.fromAndroidKeycode(input.keyCode)
-      if (label != null) {
-        if (input.kind == InteractiveInputKind.KEY_DOWN) KeyboardController.notifyKeyDown(label)
-        else KeyboardController.notifyKeyUp(label)
-      }
-    }
     lastUsedAtMs.set(System.currentTimeMillis())
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
