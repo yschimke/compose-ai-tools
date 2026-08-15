@@ -73,6 +73,9 @@ export class PageZoom extends LitElement {
         id: number;
         x: number;
         y: number;
+        /** Where the gesture started, so `moved` can be a displacement and not a path. */
+        fromX: number;
+        fromY: number;
         moved: number;
         held: boolean;
     } | null = null;
@@ -597,6 +600,8 @@ export class PageZoom extends LitElement {
             id: event.pointerId,
             x: event.clientX,
             y: event.clientY,
+            fromX: event.clientX,
+            fromY: event.clientY,
             moved: 0,
             held: false,
         };
@@ -619,7 +624,17 @@ export class PageZoom extends LitElement {
         const dy = event.clientY - pan.y;
         pan.x = event.clientX;
         pan.y = event.clientY;
-        pan.moved += Math.abs(dx) + Math.abs(dy);
+        // How far the pointer has got FROM WHERE IT STARTED, not how far it has
+        // travelled. A noisy finger or stylus emits a run of tiny oscillating moves
+        // without ever leaving the click radius; summing every delta turns that jitter
+        // into a "drag", which arms the guard below and eats the reader's tap on the
+        // component. The furthest it ever strayed is what decides — so a real drag that
+        // wanders out and comes back still counts as one, because the sheet did move.
+        pan.moved = Math.max(
+            pan.moved,
+            Math.abs(event.clientX - pan.fromX) +
+                Math.abs(event.clientY - pan.fromY),
+        );
         if (pan.moved > DRAG_SLOP && !pan.held) {
             pan.held = true;
             try {

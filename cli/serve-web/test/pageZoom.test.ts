@@ -745,6 +745,46 @@ describe("<cp-page-zoom>", () => {
         );
     });
 
+    it("lets a jittery tap through to the component it landed on", async () => {
+        await mount();
+        wheel({ x: 600, y: 400 }, -300, true);
+        await flush();
+        const spot = el<HTMLElement>(".cp-page-node");
+        let clicked = 0;
+        spot.addEventListener("click", () => clicked++);
+        // A noisy finger: eight moves, none of them more than 2 px from where it landed.
+        // Summed as a path that is 16 px of "drag"; as a displacement it is a tap.
+        pointer("pointerdown", 500, 400);
+        for (let i = 0; i < 4; i++) {
+            pointer("pointermove", 502, 401);
+            pointer("pointermove", 500, 400);
+        }
+        pointer("pointerup", 500, 400);
+        spot.dispatchEvent(
+            new MouseEvent("click", { bubbles: true, detail: 1 }),
+        );
+        assert.equal(clicked, 1, "the tap reached the component's link");
+    });
+
+    it("still swallows the click after a drag that wandered back", async () => {
+        await mount();
+        wheel({ x: 600, y: 400 }, -300, true);
+        await flush();
+        const spot = el<HTMLElement>(".cp-page-node");
+        let clicked = 0;
+        spot.addEventListener("click", () => clicked++);
+        // Out 200 px and back to the start: the sheet was panned and panned back, so the
+        // click that follows is the tail of a drag, not a navigation.
+        pointer("pointerdown", 500, 400);
+        pointer("pointermove", 700, 400);
+        pointer("pointermove", 500, 400);
+        pointer("pointerup", 500, 400);
+        spot.dispatchEvent(
+            new MouseEvent("click", { bubbles: true, detail: 1 }),
+        );
+        assert.equal(clicked, 0, "the drag's click was swallowed");
+    });
+
     it("is inert on a stage with no canvas to transform", async () => {
         await mount(`
           <div class="cp-page-stage">
