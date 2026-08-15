@@ -561,6 +561,17 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-pane[hidden] { display: none; }
 .cp-page-list { list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 2px; }
+/* A page WITH sections is a branch. It reuses the component tree's twisty and child indent rather
+   than inventing a second visual language for the same idea one pane over — the only difference is
+   that this row is a real link to the whole sheet as well as a fold, so the arrow is the part that
+   folds and the label is the part that navigates. */
+.cp-page-branch > .cp-tree-page { justify-content: flex-start; }
+.cp-page-branch > .cp-tree-page .cp-tree-count { margin-left: auto; }
+.cp-page-sections { margin: 2px 0 6px 12px;
+  border-left: 1px solid var(--md-sys-color-outline-variant); padding-left: 8px; }
+html.cp-js .cp-page-branch > .cp-tree-page[aria-expanded="false"] + .cp-page-sections {
+  display: none; }
+.cp-page-sections li[hidden] { display: none; }
 .cp-page-list li[hidden] { display: none; }
 .cp-pane-empty { margin: 10px 2px; color: var(--md-sys-color-on-surface-variant);
   font-size: var(--md-sys-typescale-body-small-size); }

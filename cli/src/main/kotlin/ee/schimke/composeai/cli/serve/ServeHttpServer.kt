@@ -7,6 +7,7 @@ import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ExplodedSvg
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.designpages.DesignPage
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -1924,7 +1925,10 @@ class ServeHttpServer(
           // Same condition `handleDesignPageIndex` serves on, for the same reason. Listed by name
           // in the navigation tree, so the landing has to know what they are called, not just how
           // many there are.
-          designPages = renderHost.designPages().pages.map { ServeWeb.PageLink(it.id, it.name) },
+          designPages =
+            renderHost.designPages().pages.map { page ->
+              ServeWeb.PageLink(page.id, page.name, designPageSections(page))
+            },
           // …and name that action after the design tool the catalog is specified by, read from the
           // references it published (or from the parity feed's Figma lane when the references are
           // rasters with no provider). Null ⇒ the generic "design parity" label.
@@ -5444,6 +5448,30 @@ class ServeHttpServer(
       signedIn = requestIsSignedIn(),
     )
 
+  /**
+   * The **major sections** of a design page, for the catalog sidebar's Pages tree.
+   *
+   * A specimen sheet's grouping nodes — Figma `COMPONENT_SET`s — are what a reader means by its
+   * sections: the `Shape` page's grid of shapes, the `Buttons` page's rows of button families.
+   * Every other node on the sheet is one concrete component, and there are hundreds of them;
+   * listing those in a sidebar would rebuild the wall of rows the pane exists to avoid.
+   *
+   * Two guards, both about the sheet being third-party data:
+   * - **Unnamed sets are dropped.** `name` is free text and may be blank; a row with no label is a
+   *   row a reader cannot choose, and it would still cost a line.
+   * - **Capped.** A manifest may carry up to `MAX_NODES_PER_PAGE` nodes and nothing says how many
+   *   of them are sets. The cap keeps one hostile (or merely enormous) page from turning the
+   *   sidebar into the thing it replaced; past it the page's own row still leads to the whole
+   *   sheet, which is where every section is anyway.
+   */
+  private fun designPageSections(page: DesignPage): List<ServeWeb.PageSection> =
+    page.nodes
+      .asSequence()
+      .filter { it.isContainer && it.name.isNotBlank() }
+      .map { ServeWeb.PageSection(it.nodeId, it.name) }
+      .take(MAX_PAGE_SECTIONS)
+      .toList()
+
   private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
   /**
@@ -5837,6 +5865,13 @@ class ServeHttpServer(
   }
 
   companion object {
+    /**
+     * How many sections one page contributes to the sidebar tree. Above the number of grouping
+     * nodes on the kit's densest sheet, and far below anything that would make the Pages pane the
+     * wall of rows it replaced.
+     */
+    const val MAX_PAGE_SECTIONS = 24
+
     /**
      * Extensions the motion route serves, and the type each is served as. A closed map rather than
      * a suffix-to-mime derivation: the key set IS the allowlist, so one place decides both "may

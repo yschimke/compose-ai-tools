@@ -784,7 +784,39 @@ object ServeWeb {
    * its URL carries. Deliberately not the whole [DesignPage] — the landing lists these, it does not
    * draw them, and a page's node list is megabytes of manifest the tree has no use for.
    */
-  data class PageLink(val id: String, val name: String)
+  data class PageLink(
+    val id: String,
+    val name: String,
+    /** The page's own major sections, in the design file's order. Empty ⇒ a leaf row. */
+    val sections: List<PageSection> = emptyList(),
+  )
+
+  /**
+   * One **major section** of a design page — a Figma `COMPONENT_SET`, which on a specimen sheet is
+   * what a reader means by a heading: the `Shape` page's grid of shapes, the `Buttons` page's row
+   * of button families.
+   *
+   * Grouping nodes only, not every component. A definition sheet carries hundreds of nodes and
+   * listing them in a sidebar would rebuild the wall of rows this navigation exists to avoid; the
+   * sets are the handful of things the page is actually divided into.
+   */
+  data class PageSection(val nodeId: String, val name: String)
+
+  /**
+   * The `id` a page's node hotspot carries, so a link can land on it.
+   *
+   * A design-tool node id (`1:23`) is legal in an HTML `id` but not in a CSS selector or a URL
+   * fragment without escaping, and it is free text from a third-party manifest either way — so the
+   * anchor is *built* from the id rather than being it. Every character outside the safe set
+   * becomes `-`, which can collide in principle; the collision is harmless here, because the worst
+   * case is a fragment landing on the sibling above the one you asked for, and the alternative
+   * (percent-encoding into a fragment) is unreadable in a URL a reader is meant to share.
+   */
+  fun nodeAnchorId(nodeId: String): String =
+    "cp-node-" +
+      nodeId
+        .map { if (it.isLetterOrDigit() || it == '.' || it == '_') it else '-' }
+        .joinToString("")
 
   /**
    * The row under the viewer's title holding the per-preview provenance links: "source" (where the
@@ -1708,15 +1740,39 @@ object ServeWeb {
       append("<div class=\"cp-pane cp-pane-pages\" id=\"cp-pane-pages\" role=\"tabpanel\"")
       append(" aria-labelledby=\"cp-pane-tab-pages\" hidden>\n")
       append("<ul class=\"cp-page-list\">\n")
-      pages.forEach { page ->
+      pages.forEachIndexed { i, page ->
         // The page id reaches the URL as one path segment, and the name is free text authored in
         // the design file — so one is encoded and the other escaped.
-        val href = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}$q"
+        val pageUrl = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}$q"
+        val href = WebEscaping.htmlEscape(pageUrl)
         val name = WebEscaping.htmlEscape(page.name)
-        append(
-          "  <li><a class=\"cp-tree-page cp-tree-link\" href=\"${WebEscaping.htmlEscape(href)}\""
-        )
-        append(" data-search=\"$name\">$name</a></li>\n")
+        if (page.sections.isEmpty()) {
+          append("  <li><a class=\"cp-tree-page cp-tree-link\" href=\"$href\"")
+          append(" data-search=\"$name\">$name</a></li>\n")
+        } else {
+          // A page WITH sections is a branch: the row still leads to the whole sheet, and the
+          // twisty beside it opens the sections that sheet is divided into. Only the first opens,
+          // for the same reason the component tree opens one family — a column that opens
+          // everything is the wall of rows this navigation exists to replace.
+          val listId = "cp-page-sections-${WebEscaping.htmlEscape(page.id)}"
+          val open = i == 0
+          append("  <li class=\"cp-page-branch\">\n")
+          append("    <a class=\"cp-tree-page cp-tree-link\" href=\"$href\"")
+          append(" data-search=\"$name\" aria-expanded=\"${if (open) "true" else "false"}\"")
+          append(" aria-controls=\"$listId\">$name")
+          append("<span class=\"cp-tree-count\">${page.sections.size}</span></a>\n")
+          append("    <ul class=\"cp-tree-children cp-page-sections\" id=\"$listId\">\n")
+          page.sections.forEach { section ->
+            val sectionName = WebEscaping.htmlEscape(section.name)
+            // The fragment is BUILT from the node id (nodeAnchorId), never interpolated raw: the
+            // id is free text from a third-party manifest and this is a URL.
+            val sectionHref = "$pageUrl#${nodeAnchorId(section.nodeId)}"
+            append("      <li><a class=\"cp-tree-variant cp-tree-link\"")
+            append(" href=\"${WebEscaping.htmlEscape(sectionHref)}\"")
+            append(" data-search=\"$sectionName\">$sectionName</a></li>\n")
+          }
+          append("    </ul>\n  </li>\n")
+        }
       }
       append("</ul>\n")
       append("<p class=\"cp-pane-empty\" id=\"cp-pages-empty\" hidden>No pages match.</p>\n")
@@ -2872,6 +2928,7 @@ object ServeWeb {
       else
         "\n      var paneTabs = document.querySelectorAll(\".cp-pane-tab\");" +
           "\n      var pageRows = document.querySelectorAll(\"#cp-pane-pages .cp-tree-page\");" +
+          "\n      var sectionRows = document.querySelectorAll(\"#cp-pane-pages .cp-tree-variant\");" +
           "\n      var pagesEmpty = document.getElementById(\"cp-pages-empty\");" +
           "\n      var pane = urlParam(\"pane\") === \"pages\" ? \"pages\" : \"components\";" +
           // The filter serves whichever pane is showing, so it says which — the box is the same
@@ -3004,10 +3061,31 @@ object ServeWeb {
       if (!hasPanes) ""
       else
         "\n        var pagesShown = 0;" +
+          // Sections first, so a page row can ask whether any of its own survived. A page KEEPS on
+          // its own name or on a section's — searching "circle" must find the Shape page even
+          // though the word is not in its title, which is most of why the sections are here.
+          "\n        sectionRows.forEach(function (sec) {" +
+          "\n          var hay = (sec.getAttribute(\"data-search\") || \"\").toLowerCase();" +
+          "\n          var keep = paneQ === \"\" || hay.indexOf(paneQ) !== -1;" +
+          "\n          if (sec.parentElement) sec.parentElement.hidden = !keep;" +
+          "\n        });" +
           "\n        pageRows.forEach(function (p) {" +
           "\n          var hay = (p.getAttribute(\"data-search\") || \"\").toLowerCase();" +
-          "\n          var keep = paneQ === \"\" || hay.indexOf(paneQ) !== -1;" +
+          "\n          var own = paneQ === \"\" || hay.indexOf(paneQ) !== -1;" +
+          "\n          var list = p.nextElementSibling;" +
+          "\n          var kept = list" +
+          "\n            ? Array.prototype.some.call(list.children, function (li) { return !li.hidden; })" +
+          "\n            : false;" +
+          "\n          var keep = own || kept;" +
+          // A page kept only because a section matched shows just those sections, and opens so they
+          // are on screen — a match you have to expand a twisty to see is a match the filter did
+          // not really surface. A page matching on its own name keeps its whole list.
+          "\n          if (own && list) {" +
+          "\n            Array.prototype.forEach.call(list.children, function (li) { li.hidden = false; });" +
+          "\n          }" +
           "\n          if (p.parentElement) p.parentElement.hidden = !keep;" +
+          "\n          if (p.hasAttribute(\"aria-expanded\") && paneQ !== \"\")" +
+          "\n            p.setAttribute(\"aria-expanded\", keep ? \"true\" : \"false\");" +
           "\n          if (keep) pagesShown++;" +
           "\n        });" +
           "\n        if (pagesEmpty) pagesEmpty.hidden = pagesShown !== 0;"
@@ -3024,7 +3102,18 @@ object ServeWeb {
     val paneWiring =
       if (!hasPanes) ""
       else
-        "\n      paneTabs.forEach(function (t) {" +
+      // The twisty on a page row. `preventDefault` only when the twisty itself is hit — the row
+      // is a real link to the whole sheet and must stay one; it is the arrow that folds.
+      "\n      pageRows.forEach(function (p) {" +
+          "\n        if (!p.hasAttribute(\"aria-expanded\")) return;" +
+          "\n        p.addEventListener(\"click\", function (e) {" +
+          "\n          if (e.offsetX > 14) return;" +
+          "\n          e.preventDefault();" +
+          "\n          var open = p.getAttribute(\"aria-expanded\") !== \"true\";" +
+          "\n          p.setAttribute(\"aria-expanded\", open ? \"true\" : \"false\");" +
+          "\n        });" +
+          "\n      });" +
+          "\n      paneTabs.forEach(function (t) {" +
           "\n        t.addEventListener(\"click\", function () {" +
           "\n          pane = t.getAttribute(\"data-pane\");" +
           "\n          reflectPanes();" +
@@ -7138,6 +7227,10 @@ $rows
         val tag = if (href == null) "span" else "a"
         val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
         "<$tag class=\"cp-page-node\" " +
+          // The anchor a section row in the catalog sidebar lands on. Every node carries one, not
+          // just the sets — a fragment is free, and the id is what lets `design-page.js` find the
+          // node a URL names without a second lookup table.
+          "id=\"${nodeAnchorId(node.nodeId)}\" " +
           "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
           (if (node in gaps) " data-cp-gap" else "") +
           hrefAttr +
