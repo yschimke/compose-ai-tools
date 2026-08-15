@@ -258,12 +258,16 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   font-size: var(--md-sys-typescale-label-large-size);
   line-height: var(--md-sys-typescale-label-large-line);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500; }
-/* The nav's contents live inside a `<details class="cp-site-menu">` that the server emits OPEN, so
-   at this size it is not a menu at all: the summary is removed and the panel lays out as the row
-   of actions it has always been. It becomes a real disclosure only on the phone bar below, where
-   the row has no width to spare — one copy of each link, two shapes. */
-.cp-site-menu, .cp-site-menu-panel { display: flex; align-items: center; gap: 4px; }
-.cp-site-menu-btn { display: none; }
+/* The nav is a `<details>` holding nothing but its button, and the panel of links BESIDE it — the
+   phone bar below opens the one with the other (`[open] + panel`). Here there is nothing to open:
+   the disclosure is removed and the panel is the row of actions it has always been. One copy of
+   each link, two shapes, and no script in either — which is the whole reason the panel is the
+   disclosure's sibling rather than its child. A `<details>` hides its own content when closed, so
+   a panel inside it would have to be served `open`, closed again before first paint on a phone,
+   and re-resolved on every breakpoint crossing: three moving parts, each able to strand the
+   navigation behind a button, to arrive at what one selector says for free. */
+.cp-site-menu { display: none; }
+.cp-site-menu-panel { display: flex; align-items: center; gap: 4px; }
 .cp-site-nav a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
   border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-on-surface-variant);
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
@@ -459,6 +463,13 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    0.75rem grey text links inside the summary sentence, which is where they went unnoticed; a chip
    row states plainly that these are the places you can go from here, and matches the toggle chips
    in `.cp-catalog-tools` directly beneath. */
+/* The landing's Theme group and its action chips each gain the same pair the header bar has: a
+   `<details>` holding only its button, and the chips beside it. At this size the button is removed
+   and the chips are the rows they have always been — `display: contents` on the actions panel so
+   its chips stay `.cp-catalog-actions`'s own flex items rather than gaining a wrapper's box. Both
+   become menus on the phone bar at the bottom of this sheet. */
+.cp-catalog-theme, .cp-actions-menu { display: none; }
+.cp-actions-panel { display: contents; }
 .cp-catalog-actions { margin: 0 0 18px; display: flex; align-items: center; flex-wrap: wrap;
   gap: 8px; }
 .cp-catalog-download { margin: 30px 0 0; }
@@ -670,7 +681,7 @@ html.cp-js .cp-section-head { display: none; }
 cp-bg-toggle { display: contents; }
 /* `<cp-group-memory>` (serve-components.js) only wires the control drawers' remembered open
    state; it has nothing to draw, and an inline box here would sit in the viewer's flow. */
-cp-group-memory { display: none; }
+cp-group-memory, cp-catalog-toolbar { display: none; }
 /* …and the same filter chip for the theme chips and for the two standalone toggles that used to
    be segmented pairs — Transparent (<cp-bg-toggle>) and the viewer's Fit width (.cp-zoom-toggle).
    One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's
@@ -1967,39 +1978,36 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   .cp-site-lead .cp-breadcrumb, .cp-site-catalog { padding-left: 0; border-left: 0;
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cp-site-lead .cp-breadcrumb > a { min-width: 0; }
-  /* …and here the disclosure becomes a real one: a 40px target holding the row that no longer
-     fits, on an M3 menu surface anchored under it. `position: relative` on the nav rather than on
-     the details, so the panel hangs off the bar's trailing edge instead of the button's.
-
-     All of it hangs off `.cp-menu-js`, which the collapse script after the header sets. A page
-     that never ran that script is still showing the server's `open`, and a floating panel nobody
-     closed would be dropped over the top of it; unmarked, the links keep the wrapped row this bar
-     has always degraded to. */
+  /* …and here the disclosure appears: a 40px target, and the panel of links it opens on an M3 menu
+     surface. `position: relative` on the nav rather than on the details, so the panel hangs off the
+     bar's trailing edge instead of the button's. Everything below is `[open] +` — no script decides
+     any of it, so the menu behaves the same whether the bundle loaded or not. */
   .cp-site-nav { justify-self: end; position: relative; }
-  html:not(.cp-menu-js) .cp-site-menu-panel { flex-wrap: wrap; }
-  .cp-menu-js .cp-site-menu { display: block; }
-  .cp-menu-js .cp-site-menu-btn { display: inline-flex; align-items: center;
+  .cp-site-menu { display: block; }
+  .cp-site-menu-btn { display: inline-flex; align-items: center;
     justify-content: center; width: 40px; height: 40px;
     border-radius: var(--md-sys-shape-corner-full);
     color: var(--md-sys-color-on-surface-variant); font-size: 1.25rem; line-height: 1;
     cursor: pointer; list-style: none; user-select: none; }
-  .cp-menu-js .cp-site-menu-btn::-webkit-details-marker { display: none; }
-  .cp-menu-js .cp-site-menu[open] > .cp-site-menu-btn { color: var(--md-sys-color-primary);
+  .cp-site-menu-btn::-webkit-details-marker { display: none; }
+  .cp-site-menu[open] > .cp-site-menu-btn { color: var(--md-sys-color-primary);
     background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
-  .cp-menu-js .cp-site-menu-panel { position: absolute; right: 0; top: calc(100% + 4px);
-    z-index: 60; flex-direction: column; align-items: stretch; gap: 2px; min-width: 11em;
+  .cp-site-menu-panel { display: none; position: absolute; right: 0; top: calc(100% + 4px);
+    z-index: 60; min-width: 11em;
     max-width: min(280px, calc(100vw - 28px)); padding: 8px;
     border-radius: var(--md-sys-shape-corner-medium);
     background: var(--md-sys-color-surface-container-high);
     box-shadow: var(--md-sys-elevation-level2); }
+  .cp-site-menu[open] + .cp-site-menu-panel { display: flex; flex-direction: column;
+    align-items: stretch; gap: 2px; }
   /* GitHub is in the menu now, where a row of its own costs nothing, so it stops being the link a
      narrow bar drops. */
-  .cp-menu-js .cp-site-menu-panel > a,
-  .cp-menu-js .cp-site-menu-panel .cp-settings-btn { padding: 10px 12px;
+  .cp-site-menu-panel > a,
+  .cp-site-menu-panel .cp-settings-btn { padding: 10px 12px;
     border-radius: var(--md-sys-shape-corner-small); }
   /* The settings menu nests inside it: its own panel opens in flow under its row rather than
      floating out of the menu it is already in. */
-  .cp-menu-js .cp-site-menu-panel .cp-settings-panel { position: static; width: auto;
+  .cp-site-menu-panel .cp-settings-panel { position: static; width: auto;
     max-width: none; padding: 0; box-shadow: none; background: transparent; }
   .cp-settings-btn-label { display: inline; }
   .cp-disclosure > summary { align-items: flex-start; }
@@ -2011,36 +2019,73 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      wrap instead of forcing a horizontal scroll. */
   .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   /* ── A catalog leads with its components ────────────────────────────────────────────────────
-     Everything between the heading and the first card is chrome, and on a phone every one of these
-     rows is bought out of the ~800px a visitor can actually see. Two chip GROUPS sat there, and
-     both grew a line per chip: the catalog's actions (compare SVG / compare to Figma / try in
-     playground / Transparent) ran to two rows, and the Theme group — one chip per declared theme —
-     ran to five on a design system that publishes a dozen. Together they pushed the first preview
-     off the bottom of the screen, which is the one thing opening a catalog is for.
+     Everything between the heading and the first card is chrome, and on a phone every row of it is
+     bought out of the ~800px a visitor can actually see. There were four such blocks, each a row or
+     more: the catalog's actions, the Theme group (one chip per declared theme — five rows on a
+     design system that publishes a dozen), the filter field, and on a sectioned catalog the whole
+     navigation tree. Together they put the first preview 500–700px down a 800px screen.
 
-     The fix is the rule the viewer's theme bar already states for exactly this reason: ONE row, not
-     a block that grows a line per chip. Each group scrolls within itself instead of wrapping, so no
-     chip is lost — the same treatment `.cp-theme-bar` uses, down to the scrollbar clearance and the
-     scroll padding that keeps a keyboard-focused chip off the clipped edge. Deliberately NOT a
-     re-order: the rows stay where the DOM puts them, so tab order still matches what is on screen.
-     `.cp-theme` is `inline-flex` at large sizes; a scroller has to be a block-level flex box that
-     fills the toolbar, hence the `display: flex` and the elastic `.cp-toolbar` around it. */
-  .cp-catalog-tools .cp-toolbar { flex: 1 1 100%; min-width: 0; }
-  .cp-catalog-tools .cp-theme { display: flex; }
-  .cp-catalog-tools .cp-theme, .cp-catalog-actions {
-    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
-    padding-bottom: 4px; scroll-padding-inline: 8px; }
-  /* `flex: none` on the chips themselves, not on `> *`: `<cp-bg-toggle>` is `display: contents`,
-     so the Transparent button — not the element — is the actual flex item of the actions row. */
-  .cp-catalog-tools .cp-theme .cp-theme-btn,
-  .cp-catalog-actions .cp-action-chip, .cp-catalog-actions .cp-bg-btn {
-    flex: none; white-space: nowrap; }
-  /* The gaps between those rows are sized for a desktop column. Tightened here — four blocks at
-     ~20px each is another quarter of a phone row given back to the grid. */
-  .cp-catalog-title { margin-bottom: 2px; }
+     They become ONE row: `[Theme ▾] [Filter previews…] [⋯]`. The two chip groups take the same
+     disclosure-plus-sibling-panel the header bar uses, so no script decides whether either is a
+     menu; `<cp-catalog-toolbar>` moves the actions and the filter field — which belongs to the
+     tree's sidebar whenever there is a tree — into the sticky toolbar, in the DOM, so tab order
+     still matches what is on screen. */
+  .cp-catalog-tools, .cp-catalog-actions { flex-wrap: nowrap; gap: 8px; }
+  .cp-catalog-tools .cp-toolbar { flex: none; min-width: 0; position: relative; }
+  .cp-catalog-tools .cp-searchbar, .cp-catalog-actions .cp-searchbar {
+    flex: 1 1 auto; min-width: 0; }
+  .cp-search { min-height: 40px; padding: 8px 14px; }
+  .cp-catalog-tools .cp-catalog-actions { flex: none; margin: 0; position: relative; }
+  /* Each group is a menu here: the summary is the control, and the chips beside it are the panel
+     it opens, on an M3 menu surface under the row. */
+  .cp-catalog-theme, .cp-actions-menu { display: block; }
+  .cp-catalog-theme > summary, .cp-actions-menu > summary { display: inline-flex; list-style: none; }
+  .cp-catalog-theme > summary::-webkit-details-marker,
+  .cp-actions-menu > summary::-webkit-details-marker { display: none; }
+  .cp-catalog-theme + .cp-theme, .cp-actions-panel {
+    display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+    width: max-content; max-width: min(280px, calc(100vw - 28px)); padding: 8px;
+    border-radius: var(--md-sys-shape-corner-medium);
+    background: var(--md-sys-color-surface-container-high);
+    box-shadow: var(--md-sys-elevation-level2); }
+  /* A menu is a column of full-width rows, not a wrapping chip row: the panel is the only place
+     these chips appear on a phone, so each gets its own line and its own hit target. */
+  .cp-catalog-theme[open] + .cp-theme, .cp-actions-menu[open] + .cp-actions-panel {
+    display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+  .cp-catalog-theme + .cp-theme .cp-theme-btn,
+  .cp-actions-panel .cp-action-chip, .cp-actions-panel .cp-bg-btn {
+    width: 100%; min-height: 40px; justify-content: flex-start; text-align: left; }
+  /* The heading is the catalog's name and the bar three rows above it is already the catalog's
+     name. Hidden rather than removed — `clip` keeps it in the accessibility tree, so the document
+     still has its `<h1>` and the page still announces what it is. Only when the bar really is
+     carrying that name: a plain module names itself nowhere else. */
+  html:has(.cp-site-catalog) .cp-catalog-title { position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .cp-sub { margin-bottom: 10px; }
-  .cp-catalog-actions { margin-bottom: 10px; }
   .cp-catalog-menu { margin-bottom: 14px; }
+  /* ── The navigation tree, as one scrolling strip ─────────────────────────────────────────────
+     Above 960px the tree is a sidebar standing beside the grid; below it, it is a full-width
+     outline ABOVE the grid, and on a phone that outline is the single biggest thing between the
+     filter and the previews — a sectioned catalog put its first card 526px down, a grouped one
+     709px. Its top level becomes a row of chips that scrolls sideways, which is how a phone shows
+     a set of sections, and the levels below it fold away: a four-deep outline over a two-up card
+     grid is desktop furniture, and everything it reaches is reachable by picking a section and by
+     the filter field now sitting directly above it. */
+  .cp-catalog-menu .cp-tree-list { display: flex; flex-wrap: nowrap; gap: 6px;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+    padding-bottom: 4px; scroll-padding-inline: 8px; }
+  .cp-catalog-menu .cp-tree-list > li { flex: none; }
+  .cp-catalog-menu .cp-tree-list > li > .cp-tree-children { display: none; }
+  .cp-catalog-menu .cp-tree-list > li > .cp-tree-link,
+  .cp-catalog-menu .cp-tree-list > li > .cp-tab { width: auto; white-space: nowrap; }
+  /* The twisty says a branch opens, and here no branch does. */
+  .cp-catalog-menu .cp-tree-list > li > .cp-tree-link[aria-expanded]::before,
+  .cp-catalog-menu .cp-tree-list > li > .cp-tab[aria-expanded]::before { display: none; }
+  /* The Pages row is divided off from the components above it by a rule and a margin, which in a
+     column reads as a separator and in a row reads as a stray line that also drops the chip below
+     its neighbours' baseline. A row divides the same thing the other way. */
+  .cp-catalog-menu .cp-tree-list > li.cp-tree-pages { margin: 0 0 0 4px; padding: 0 0 0 10px;
+    border-top: 0; border-left: 1px solid var(--md-sys-color-outline-variant); }
   /* The title row, and by now it is only the title: `viewer-drawers.js` has moved the disclosure
      pills below the stage, and the opaque preview id goes because it is the one thing here a phone
      was already ellipsising into a stub (it is in the URL, the export links and the title

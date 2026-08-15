@@ -567,6 +567,19 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The sectioned catalog ON A PHONE, which is the shape most published design systems are
+        // in and the one the phone layout costs the most: above 960px the tree is a sidebar beside
+        // the grid, below it a full-width outline ABOVE the grid, and on a phone that outline put
+        // the first card 526px down an 800px screen. Here the top level is a scrolling strip, the
+        // levels below it are folded away, and the filter field that belongs to that sidebar has
+        // been moved up into the toolbar row — three claims no 1024px baseline can hold, one of
+        // them a DOM move. Shot FIRST, before the section-switching states below reach the page.
+        fixture: "serve-landing-sections",
+        suffix: "mobile",
+        viewport: PHONE_VIEWPORT,
+        apply: async () => {},
+    },
+    {
         // Switching branches. The committed HTML can only ever hold ONE arrangement — the first
         // section selected and open, the rest collapsed — so the thing the tree is for (open
         // another branch, its sub-groups appear, the grid under it changes) is invisible to a
@@ -972,9 +985,26 @@ const FIXTURE_STATES = [
         viewport: PHONE_VIEWPORT,
         apply: async (page) => {
             await page.click("#cp-site-menu > summary");
-            await page.waitForSelector("#cp-site-menu[open] .cp-site-menu-panel");
+            await page.waitForSelector("#cp-site-menu[open] + .cp-site-menu-panel");
             // The pointer rests on the summary otherwise, which is a hover state on the button and
             // not part of what this shot is about.
+            await page.mouse.move(0, 0);
+        },
+    },
+    {
+        // The phone toolbar's Theme menu, open. Folded, that pill is the ONLY thing on the page
+        // that says which theme the grid is on, and its label is written at runtime from whichever
+        // chip the landing's own script marked pressed (`<cp-catalog-toolbar>`), so a shot of the
+        // closed pill proves neither half. Opening it puts both on one baseline: the chips that
+        // were a five-row wall, and the value the pill carries while they are away.
+        fixture: "serve-landing-declared-themes",
+        suffix: "mobile-theme",
+        viewport: PHONE_VIEWPORT,
+        apply: async (page) => {
+            // The state above left the bar's own menu open; they are two menus over one page.
+            await page.click("#cp-site-menu > summary");
+            await page.click(".cp-catalog-theme > summary");
+            await page.waitForSelector(".cp-catalog-theme[open] + .cp-theme");
             await page.mouse.move(0, 0);
         },
     },

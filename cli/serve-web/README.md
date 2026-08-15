@@ -134,6 +134,25 @@ Next, cheapest seam first: `rc-fonts.js` (50 lines), `page-theme.js` (103), then
 at IIFE time, so it wants its own change once more than one component here needs
 it.
 
+## New behaviour lands here too, not just ports
+
+`<cp-catalog-toolbar>` was not ported from anything: the catalog landing's phone
+toolbar needed a DOM reflow, and a new `assets/*.js` IIFE would have been one
+more file for this migration to port later. A component that would have been
+written as a legacy script is written here instead — same rules as a port (light
+DOM, server-declared tag, a behavioural test, regenerate the fixtures, check the
+pixels), so the legacy pile only ever shrinks.
+
+Its test is worth reading before writing another controller like it. The
+component's first version "restored" elements to where they already were on every
+desktop load — a re-`insertBefore` of a node in its own position, which looks
+like a no-op and is not: it detaches and re-attaches the element, and the browser
+rebuilds what hangs off the attachment. The filter field is an
+`<input type="search">`, so its clear button and its focus ring quietly went
+missing, and the only thing that noticed was a page capture of a state two steps
+later. The test now asserts *no element is moved at all* above the breakpoint,
+because "ends up in the right place" was true the whole time it was broken.
+
 Two shapes have shown up, and it is worth naming which one a script is before
 porting it:
 

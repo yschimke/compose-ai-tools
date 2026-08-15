@@ -634,50 +634,21 @@ object ServeWeb {
           <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
         </div>
         <nav class="cp-site-nav" aria-label="Primary navigation">
-          <details class="cp-site-menu" id="cp-site-menu" open>
-            <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu">
-              <span aria-hidden="true">⋮</span>
-            </summary>
-            <div class="cp-site-menu-panel">
-              <a href="/$navSuffix">Catalogs</a>
-              <a href="/status$navSuffix">Status</a>
-              <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
-              ${settingsMenuHtml().prependIndent("              ").trimStart()}
-            </div>
+          <details class="cp-site-menu" id="cp-site-menu">
+            <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+              aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
           </details>
+          <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+            <a href="/$navSuffix">Catalogs</a>
+            <a href="/status$navSuffix">Status</a>
+            <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
+            ${settingsMenuHtml().prependIndent("            ").trimStart()}
+          </div>
         </nav>
       </header>
-      $siteMenuCollapseScript
       """
       .trimIndent()
   }
-
-  /**
-   * Collapse the header's navigation into its `⋮` menu on a narrow viewport.
-   *
-   * The links are ONE copy in the markup — a real `<nav>` with real anchors, not a desktop row plus
-   * a phone duplicate — so which of the two shapes they take has to be decided somewhere. The
-   * server emits the disclosure `open`, which is the desktop shape (the summary is `display: none`
-   * there and the panel lays out as the inline row it has always been) and is also the shape a
-   * client with no JavaScript keeps at every width: the links stack under the bar rather than
-   * vanishing behind a button that cannot open.
-   *
-   * Inline, and immediately after the header it acts on, for the same reason the theme restore in
-   * [document] is inline in the `<head>`: this runs while the parser is still inside the document,
-   * before the first paint of the page below it, so a phone never shows the open row and then
-   * snatches it back. `page-theme.js` re-resolves it when the viewport crosses the breakpoint.
-   *
-   * It also marks `<html>`, and the phone's menu styling hangs off that mark rather than off the
-   * breakpoint alone. Without it the panel is a floating card **anchored under a button that
-   * nothing ever closed** — a `<details>` toggles with no JavaScript at all, but the *initial*
-   * state here is the server's `open`, so a scripting-less phone would open on a menu dropped over
-   * its own page. Marked, the two states are honest: with script, a menu; without, the plain row of
-   * links wrapped under the bar, which is what this bar has always degraded to.
-   */
-  private val siteMenuCollapseScript: String =
-    "<script>try{var m=document.getElementById(\"cp-site-menu\");" +
-      "if(m&&window.matchMedia){document.documentElement.classList.add(\"cp-menu-js\");" +
-      "if(window.matchMedia(\"(max-width: 640px)\").matches)m.open=false;}}catch(e){}</script>"
 
   /**
    * The header's **Settings** menu: standing per-visitor preferences, as opposed to the controls
@@ -2202,10 +2173,35 @@ object ServeWeb {
   private fun themePickerHtml(hasBaked: Boolean, declared: List<ServeTheme>): String {
     val builtIns =
       if (hasBaked) listOf("light" to "Light", "dark" to "Dark") else listOf("default" to "Default")
-    val chips = themeChipsHtml(builtIns, declared)
+    val chips = themeChipsHtml(builtIns, declared, indent = "          ")
+    // The same phone menu the header's navigation uses, and the same control the VIEWER's Theme
+    // already is: above 640px the disclosure is `display: none` and the chips lay out as the
+    // wrapping row this toolbar has always shown; below it, the chips are a panel that one pill
+    // opens. A catalog declaring a dozen themes is a dozen chips, and a phone has one row to spend
+    // on the whole toolbar.
+    //
+    // The panel is the disclosure's SIBLING, not its child, which is what makes the two shapes
+    // free: a `<details>` hides its own content when closed, so a panel *inside* it would need the
+    // server to emit `open`, a script to close it before first paint on a phone, and another to
+    // re-resolve it whenever the viewport crossed the breakpoint — three moving parts to arrive at
+    // what `[open] + panel` says in one selector, with no script at all and nothing to go wrong
+    // when script never runs.
+    //
+    // The pill's value is seeded with the leading built-in and then mirrored from whichever chip is
+    // pressed (`<cp-catalog-toolbar>`), because the choice in force is remembered in `localStorage`
+    // and changes without a page load — a server-rendered label alone would be wrong on arrival for
+    // anyone who has picked a theme here before.
+    val seed = builtIns.first().second
     return """
     <div class="cp-toolbar">
-      <span class="cp-theme" role="group" aria-label="Preview theme">
+      <details class="cp-catalog-theme">
+        <summary class="cp-drawer-toggle cp-axis-toggle" aria-controls="cp-catalog-theme-bar">
+          <span class="cp-toggle-label">Theme</span>
+          <span class="cp-toggle-value" id="cp-catalog-theme-value">$seed</span>
+          <span class="cp-theme-caret" aria-hidden="true">▾</span>
+        </summary>
+      </details>
+      <span class="cp-theme" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
         $chips
       </span>
     </div>
@@ -6099,10 +6095,25 @@ object ServeWeb {
       if (hasPreviews) bgPickerHtml("Show the transparent checkerboard behind each preview") else ""
     val catalogActions =
       listOf(actionChips, transparentAction).filter { it.isNotBlank() }.joinToString("\n          ")
+    // …behind the same phone menu as the Theme group beside it (see [themePickerHtml] for why the
+    // panel is the disclosure's sibling): a row of chips above 640px, one `⋯` below. These are the
+    // catalog's *destinations* — the comparison views, the parity view, the playground — plus the
+    // Transparent toggle: worth a row on a laptop, not worth one of the four or five a phone screen
+    // holds before the previews start.
     val primaryActions =
       catalogActions
         .takeIf { it.isNotBlank() }
-        ?.let { "<div class=\"cp-catalog-actions\">\n          $it\n        </div>\n" } ?: ""
+        ?.let {
+          "<div class=\"cp-catalog-actions\">\n" +
+            "          <details class=\"cp-actions-menu\">\n" +
+            "            <summary class=\"cp-drawer-toggle cp-axis-toggle\" " +
+            "title=\"More for this catalog\" aria-label=\"More for this catalog\" " +
+            "aria-controls=\"cp-catalog-actions-panel\">" +
+            "<span aria-hidden=\"true\">⋯</span></summary>\n" +
+            "          </details>\n" +
+            "          <div class=\"cp-actions-panel\" id=\"cp-catalog-actions-panel\">\n" +
+            "          $it\n          </div>\n        </div>\n"
+        } ?: ""
     val downloadAction =
       "\n<div class=\"cp-catalog-download\">" +
         actionChip("$basePath/bundle.zip$q", "download all (.zip)") +
@@ -6133,6 +6144,10 @@ object ServeWeb {
         $titleRow
         ${degradeBanner(degradations)}<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
         $primaryActions$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction$prov$about
+        <!-- Collapses this page's chrome onto one toolbar row on a phone: the actions and the tree
+             sidebar's filter field move into the sticky toolbar, and back out again above 640px.
+             Renders nothing; `serve.css` hides the tag. -->
+        <cp-catalog-toolbar></cp-catalog-toolbar>
         """
           .trimIndent(),
     )

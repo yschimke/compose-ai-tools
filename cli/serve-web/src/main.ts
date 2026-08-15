@@ -11,4 +11,5 @@
 
 import "./components/BackendBadge.js";
 import "./components/BgToggle.js";
+import "./components/CatalogToolbar.js";
 import "./components/GroupMemory.js";
