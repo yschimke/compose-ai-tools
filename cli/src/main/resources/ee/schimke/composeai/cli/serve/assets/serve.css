@@ -204,7 +204,7 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    `space-between` their absence slid the nav between centred and hard-right from page to page.
    A `1fr auto 1fr` grid pins the brand left and the nav right whatever the middle holds. */
 .cp-site-header { min-height: 56px; margin-bottom: 14px; padding: 4px 0 8px;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
   align-items: center; gap: 18px; }
 /* The lead slot: the brand, then this page's breadcrumb / back link. Navigation belongs in the
    navigation bar — as the body's first line it spent a whole row (plus its margin) restating
@@ -213,9 +213,6 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    shoving the centred status badge off its column. */
 .cp-site-lead { justify-self: start; min-width: 0; display: flex; align-items: center;
   gap: 12px; }
-/* min-width:0 so a long badge ("connected · 2 instances, 1 live") shrinks rather than pushing the
-   nav off the right edge. */
-.cp-site-status { justify-self: center; display: flex; align-items: center; min-width: 0; }
 .cp-site-nav { justify-self: end; }
 /* In the header the trail is a quiet continuation of the brand, separated by a hairline rather
    than by another chip: the brand IS the first crumb, so a keyline reads as the first `/`. */
@@ -524,6 +521,18 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
     overflow-y: auto; overscroll-behavior: contain; }
 }
 .cp-catalog-menu { margin: 0 0 22px; }
+/* Room for a FOCUS RING to be drawn — after the margin shorthand above, which would otherwise
+   reset the inline margins this needs.
+   Every focusable thing in this column is ringed 5px outside its own box (`outline: 3px` +
+   `outline-offset: 2px`), and the column scrolls at this width — which clips on BOTH axes, not
+   just the one named, because a scroll container's other axis computes to `auto` rather than
+   staying `visible`. The filter field is the first row AND full-width, so it lost the top and both
+   sides of its ring: three of its four edges, on the one control a keyboard visitor lands in
+   first. The padding is the ring's reach; the negative inline margin gives the column back the
+   width it just spent, so the ring gains somewhere to land and nothing moves. */
+@media (min-width: 960px) {
+  .cp-catalog-menu { padding: 6px; margin-inline: -6px; }
+}
 .cp-catalog-menu .cp-searchbar { display: block; margin: 0 0 18px; }
 .cp-catalog-menu .cp-search { width: 100%; min-width: 0; padding-inline: 14px; }
 .cp-catalog-menu .cp-tree { margin: 0; }
@@ -1977,11 +1986,10 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      is dropped — the wordmark goes because the mark beside it is the same link and the page title
      names the catalog; `Catalogs` / `Status` / `GitHub` / the page's own action / Settings all move
      into the menu, which is where a phone expects to find them. The row scrolls nothing and wraps
-     nothing: the middle slot is the only elastic one and it ellipsises. */
+     nothing: the lead is the only elastic slot and it ellipsises. */
   .cp-site-header { min-height: 48px; margin-bottom: 12px; padding: 2px 0 6px;
-    grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: 0; }
+    grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 0; }
   .cp-site-lead { min-width: 0; flex-wrap: nowrap; gap: 8px; overflow: hidden; }
-  .cp-site-status { justify-self: end; }
   .cp-site-mark { width: 26px; height: 26px; }
   /* The mark alone is the home link. Two words of product name is the single widest thing in the
      bar and the least useful of them on a phone — you know what site you are on. */
@@ -2206,6 +2214,13 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant);
 }
+/* The badge rides INSIDE the header's Status link, so it is a count on a label rather than a
+   free-floating pill: `Status ●5`. The nav link already spaces its children (`gap: 6px`), and the
+   pill keeps its own colours so the running/idle answer survives the link's hover state. Tightened
+   from the standalone pill it used to be — beside a word it no longer has to reserve a minimum
+   width to stop the header jittering as the count changes digits, because the link's own text is
+   what holds the slot. */
+.cp-site-nav .cp-daemon-status { min-width: 0; padding: 2px 7px; }
 .cp-daemon-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .cp-daemon-status[data-cp-daemon-running="1"] {
   background: light-dark(#d7f0dd, #0d3a1c); color: light-dark(#10521f, #86dc9d);

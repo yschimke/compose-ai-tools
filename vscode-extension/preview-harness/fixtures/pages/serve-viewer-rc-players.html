@@ -23,9 +23,6 @@
     </a>
     <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/remote-m3/?token=demo-token-fixture">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
   </div>
-  <div class="cp-site-status">
-    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
-  </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
     <details class="cp-site-menu" id="cp-site-menu">
       <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
@@ -33,7 +30,8 @@
     </details>
     <div class="cp-site-menu-panel" id="cp-site-menu-panel">
       <a href="/?token=demo-token-fixture">Catalogs</a>
-      <a href="/status?token=demo-token-fixture">Status</a>
+      <a class="cp-site-status-link" id="cp-status-link" href="/status?token=demo-token-fixture">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
       <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
       <details class="cp-settings">
         <summary class="cp-settings-btn" title="Settings" aria-label="Settings">

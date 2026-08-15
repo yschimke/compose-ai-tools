@@ -775,6 +775,29 @@ const FIXTURE_STATES = [
         apply: async () => {},
     },
     {
+        // The filter field FOCUSED, which is the only way its ring is on screen to be diffed.
+        //
+        // The ring is drawn 5px outside the field (`outline: 3px` + `outline-offset: 2px`) and the
+        // sidebar is a scroll container above 960px, so three of the field's four edges used to be
+        // clipped by it — the top, because the field is the column's first row, and both sides,
+        // because it is full-width and a scroll container clips the axis it was not given as well.
+        // Nothing else in the suite focuses anything in this column, so the clipping survived every
+        // capture: a ring that is not on screen cannot be missing from a baseline.
+        //
+        // The ring is a plain `:focus` rule, so focusing the field is enough to draw it — no
+        // pointer needed, which is why this parks the mouse: the shot is about the ring, and a
+        // cursor resting on some card behind it would be a second change in the same frame.
+        fixture: "serve-landing-sections",
+        suffix: "filter-focus",
+        parkPointer: true,
+        apply: async (page) => {
+            await page.locator("#cp-search").focus();
+            await page.waitForFunction(
+                () => document.activeElement?.id === "cp-search",
+            );
+        },
+    },
+    {
         // Switching branches. The committed HTML can only ever hold ONE arrangement — the first
         // section selected and open, the rest collapsed — so the thing the tree is for (open
         // another branch, its sub-groups appear, the grid under it changes) is invisible to a

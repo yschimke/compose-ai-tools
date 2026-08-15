@@ -649,9 +649,6 @@ object ServeWeb {
             <span class="cp-site-wordmark">compose-preview</span>
           </a>$name$crumb
         </div>
-        <div class="cp-site-status">
-          <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
-        </div>
         <nav class="cp-site-nav" aria-label="Primary navigation">
           <details class="cp-site-menu" id="cp-site-menu">
             <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
@@ -659,7 +656,8 @@ object ServeWeb {
           </details>
           <div class="cp-site-menu-panel" id="cp-site-menu-panel">
             <a href="/$navSuffix">Catalogs</a>
-            <a href="/status$navSuffix">Status</a>
+            <a class="cp-site-status-link" id="cp-status-link" href="/status$navSuffix">Status<span
+              class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
             <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
             ${settingsMenuHtml().prependIndent("            ").trimStart()}
           </div>
@@ -3422,9 +3420,11 @@ object ServeWeb {
       // now a genuine question with a visible answer — a theme switch is instant against a warm
       // daemon and pays a cold start against none. Same URL family as the presence ping, and the
       // endpoint reads through `peekHost`, so polling it never wakes what it is reporting on.
-      // The badge has a reserved slot in the site header (see ServeWeb.siteHeader) — it is
-      // server-rendered, hidden, and centred, so filling it never moves the brand or the nav. The
-      // create-and-append fallback is only for a surface that predates the slot.
+      // The badge lives INSIDE the header's Status link (see ServeWeb.siteHeader) — the count and
+      // that link answer the same question, so they are one control: the number is the summary and
+      // the link is where the detail is. It is server-rendered and hidden, so filling it never
+      // moves the brand or the nav. The create-and-append fallback is only for a surface that
+      // predates the slot.
       var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
       var daemonBadge = null;
       function daemonBadgeEl() {
@@ -3434,8 +3434,8 @@ object ServeWeb {
           daemonBadge = document.createElement("span");
           daemonBadge.id = "cp-daemon-status";
           daemonBadge.className = "cp-daemon-status";
-          daemonBadge.setAttribute("role", "status");
-          var host = document.querySelector(".cp-site-status") || document.querySelector("header");
+          daemonBadge.setAttribute("aria-hidden", "true");
+          var host = document.getElementById("cp-status-link") || document.querySelector("header");
           (host || document.body).appendChild(daemonBadge);
         }
         return daemonBadge;
@@ -3460,9 +3460,14 @@ object ServeWeb {
             state.liveSeatsTotal + " seats used";
         el.innerHTML = '<span class="cp-daemon-dot" aria-hidden="true"></span>' + count;
         el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
-        el.setAttribute("aria-label", "Render server: " + catalogDetail +
-          ". Overall server: " + overallDetail + ".");
-        el.title = "This catalog: " + catalogDetail + "\nOverall server: " + overallDetail;
+        // The badge itself is decoration on a link, so it says nothing to a screen reader: an
+        // `aria-label` here would be appended to the LINK's accessible name, renaming "Status" to
+        // a sentence about instance counts — and renaming it again on every poll. The name stays
+        // "Status"; the detail rides on the link's own title (and behind it, the page it opens),
+        // which is the same place a sighted visitor reads it from.
+        var host = el.closest("a") || el;
+        host.title = "Render servers — this catalog: " + catalogDetail +
+          "\nOverall server: " + overallDetail;
       }
       function pollDaemons() {
         if (!daemonUrl || document.visibilityState !== "visible") return;
