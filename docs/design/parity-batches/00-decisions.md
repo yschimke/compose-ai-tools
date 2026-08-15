@@ -63,9 +63,14 @@ Any resampler that is not `drawImage` produces different pixels, so the publishe
 **once**, deliberately. Invariant I10 is what stops them moving a second time. The decision is not
 *whether* but *how it is announced*:
 
-**Do:** bump the score schema version, regenerate committed baselines **in the same change**, and
-note it in the release notes. Never in a change that also alters acceptance semantics — a moved
-number and a changed verdict in one diff cannot be told apart.
+**There is no version to bump yet — that is part of the decision.** `scoreImages` returns
+`{percent, geometry}` and nothing else, and a repo-wide search finds no versioned parity-score
+carrier and no committed score-baseline format. So a downstream reader currently has no way to tell
+an old-kernel number from a rebaselined one.
+
+**Do:** identify the carrier or introduce one *first*; then bump it, regenerate committed baselines
+**in the same change**, and note it in the release notes. Never in a change that also alters
+acceptance semantics — a moved number and a changed verdict in one diff cannot be told apart.
 
 ## D4 — the frame-vs-controls race in `refreshReportLink()`
 

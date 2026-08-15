@@ -21,6 +21,23 @@ a new one. `ServeTagIndexStore.kt` is a second, closer worked example, including
 Three issues, one batch, because a producer with no reader and a reader with no surface are both
 untestable end to end — and the whole value is in the last hop.
 
+## 2.0 — settle the wire shape first
+
+**`compose-preview-issues/v1` does not yet exist as a field-level schema.** §3 says "shape as in the
+epic" and the repo carries no manifest, no row example, and no fixture. A JavaScript producer and a
+Kotlin reader cannot be built independently against a schema token, and the locator block from batch
+01 is not an index schema — it is what gets *parsed into* one. So the first commit of this batch
+defines the rows: issue state, labels, title, the locator scope fields, and in particular **whether
+`overrides` stays canonical text or becomes an object** (it is text in the issue body; it does not
+have to stay text in the index, but the choice has to be made once and written down).
+
+The doc already prescribes the arrangement that keeps the two languages honest, and it is the same
+one `parity-activity.mjs` uses today: a **pure** producer half `scripts/design-artifacts/parity-issues.mjs`
+(no I/O, no network, unit-testable without `npm ci`) driven by an I/O half `emit-parity-issues.mjs`,
+with the output committed as `scripts/design-artifacts/fixtures/parity-issues.json` **and loaded by
+the Kotlin reader's own test**. That shared fixture is the only thing preventing silent drift — build
+it in this batch, not after.
+
 ---
 
 ## 2a — producer (#3804)

@@ -102,6 +102,14 @@ Apply acceptances in `format-compare.js`, reporting `raw` / `accepted` / `unacce
 carry a per-acceptance `statuses` map with a required fixed-candidate `resolved` case, so an engine
 that defers resolution cannot satisfy its own contract.
 
+**Per-comparison evaluation is not the whole job — the browser needs a catalog-wide walk too.**
+An acceptance naming a removed or renamed preview, reference, component or variant is never scoped
+into *any* focused comparison, so an engine that only evaluates inside `format-compare.js` leaves it
+permanently absent from the browser result and the dashboard while `design-parity` reports
+`orphaned-target` for the same record. That is the "invisible forever" failure the `orphaned-target`
+rule exists to prevent, reintroduced by the *shape* of the evaluation rather than by the rule. Add
+the host-level walk over the complete acceptance set in this batch.
+
 **The raw number will move once, deliberately.** Any kernel that is not `drawImage` produces different
 pixels. What invariant I10 buys is that the *geometry* stays one resample from source to score plane
 at the candidate box's dimensions, so the number does not move a **second** time. The move is a
@@ -109,6 +117,15 @@ versioned rebaseline — see [D3](00-decisions.md#d3--the-score-rebaseline-is-ve
 
 **Element gates must not be enabled without the tag index**, and the index's bounds are render-pixel
 (D1) — the transform into the canonical plane happens here, in the comparison.
+
+**And "no index" must mean "no suppression", not "geometric suppression".** `ServeTagIndex.kt`'s KDoc
+currently says an acceptance that finds no tag entry "degrades to no element gate, which is the safe
+direction". That is only safe if the acceptance also stops suppressing: an **element-scoped**
+acceptance whose gate cannot run and whose mask still joins the valid union has silently become a
+plain ignore rectangle, and a tagged element that has disappeared or moved goes on being hidden —
+precisely the failure the element gate was added to catch. Define the unavailable-index outcome as
+**every element-scoped acceptance suppresses nothing**, pin it in both engines, and correct that KDoc
+sentence in the same change.
 
 ## 5c — publish (#3809)
 
@@ -123,7 +140,16 @@ acceptances the offline run does.
 - **Path containment is checked at staging**, on a host that fetches third-party catalogs, so a
   traversal here is an escape from the artifact tree rather than a typo. The schema's portable-path
   grammar exists so the fetching host and the offline reader resolve the same file.
-- **Publishing must not require a re-render** — the same property `parity/issues.json` relies on.
+- **Publishing must not require a re-render — and routing acceptances through `catalog-export` does
+  not deliver that.** `design-artifacts.yml` is `bundle pack → catalog-export → publish out/`, so any
+  path that goes through it waits on a full render (8–29 min scoped, 31–38 min full), and adding a
+  path to `scope-systems.sh` only *selects* that render, it does not bypass it. The issue index gets
+  the property because §3 gives it a **separate one-file committer** — the doc says outright that the
+  render workflow is "the wrong granularity for 'someone relabelled an issue'". An acceptance edit is
+  the same granularity as an issue relabel. So this batch needs its own index-style publisher that
+  commits just the acceptance paths onto the delivery branch, sharing the carry-forward behaviour
+  batch 02 works out, or it must drop the no-rerender claim and say acceptances land on the next
+  render. **Pick one explicitly** — the claim as written is currently unsupported.
 - **Check `scripts/design-artifacts/scope-systems.sh` maps the new published path.** A wrong mapping
   silently strands a catalog on stale artifacts. It has a self-test (`test-scope-systems.sh`); change
   it only with that passing. Note also that catalog and export-driver merges regenerate the delivery
@@ -138,6 +164,14 @@ acceptances the offline run does.
   A single aggregate status cannot express a mixed-validity case, so two engines can emit the same
   summary while disagreeing about the details — the per-acceptance `statuses` map is what makes the
   disagreement visible.
+- **…and the fixtures pin the intermediate planes, not only the surviving mask.** Two engines can
+  agree on which mask survived while differing in the tag projection, the resolved selector, the
+  resampled planes or the boundary pixels — and then disagree on the next catalog. §4 requires three
+  runners, not two: the JS suite consumes an already-built index so it never exercises the **Kotlin
+  projector**, which must consume the same payload fixtures and produce the expected index; and the
+  selector stage must be resolved both from the index *and* separately through **design-parity's own
+  production resolver**, since that is where the offline verdict actually comes from. Pinning an
+  artifact without running the code that produces it proves nothing about that code.
 - The mask-edge case is pinned: an accepted difference adjacent to an opposite unaccepted regression
   is reported as both, not cancelled.
 - A `resolved` acceptance's mask demonstrably does **not** suppress its neighbours.

@@ -2,8 +2,10 @@
 
 **Issues:** [#3801](https://github.com/yschimke/compose-ai-tools/issues/3801) (contract),
 [#3802](https://github.com/yschimke/compose-ai-tools/issues/3802) (emit it).
-**Depends on:** nothing. D2/D4 from [batch 00](00-decisions.md) decide *where* the form lives and how
-it stays honest, so settle those first if 00 is being done at all.
+**Depends on:** **[00](00-decisions.md) D2 and D4** — not optional. D2 decides where the form lives;
+**D4 must be settled before this batch ships**, because an unresolved frame race lets the batch emit
+a locator built from control state while the page still displays the previous frame, which is the one
+defect that makes every issue filed afterwards wrong in a way nobody notices. Nothing else blocks it.
 **Blocks:** 02, 03, 04, 05, 06 — every one of them keys off this identity.
 **Ships:** partly. Nothing new appears on a page, but every issue filed after this lands is
 machine-identifiable, and issues filed before it need their bodies hand-edited later. **That is the
@@ -97,6 +99,10 @@ href"** rule.
 - A JS test proves the placeholders are substituted into the input's **value**, and that no `href`
   is written.
 - Token-bearing URLs are absent from every emitted field.
+- **The pending and failed render cases are covered**, not just the settled one: reporting while a
+  requested frame is still in flight, and reporting after that render has failed, must both either
+  be refused or produce a locator describing the frame actually on screen. This is the D4 defect and
+  it needs its own tests, since the happy path passes with or without the fix.
 
 ## Visual evidence
 
