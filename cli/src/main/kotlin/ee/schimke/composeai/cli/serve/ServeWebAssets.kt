@@ -39,6 +39,9 @@ internal object ServeWebAssets {
       // would put Lit's 12 kB on the front door, whose imagery is prebaked precisely so a visit
       // costs the HTML and nothing else.
       "serve-chrome.js" to "text/javascript; charset=utf-8",
+      // Opt-in site-wide power-user navigation. Separate from the Lit bundle because Settings is
+      // on every page while only pages with Lit controls currently load serve-components.js.
+      "keyboard-navigation.js" to "text/javascript; charset=utf-8",
       // The grid's long-press live lane; loaded only by a catalog page whose session can actually
       // stream (see [ServeWeb.catalogLiveScript]).
       "catalog-live.js" to "text/javascript; charset=utf-8",

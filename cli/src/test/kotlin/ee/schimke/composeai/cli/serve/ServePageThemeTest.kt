@@ -120,6 +120,16 @@ class ServePageThemeTest {
         html.contains("""<script src="${ServeWebAssets.href("serve-chrome.js")}"></script>"""),
         "$name never loads the shell bundle",
       )
+      assertTrue(
+        html.contains("data-cp-keyboard-navigation"),
+        "$name offers no power-user navigation setting",
+      )
+      assertTrue(
+        html.contains(
+          """<script src="${ServeWebAssets.href("keyboard-navigation.js")}"></script>"""
+        ),
+        "$name never loads keyboard-navigation.js",
+      )
     }
   }
 
