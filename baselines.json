@@ -940,38 +940,38 @@
     "serve-rc-lanes-diff-baked.dark.png": {
       "fixture": "serve-rc-lanes-diff-baked",
       "theme": "dark",
-      "sha256": "fbbc16c1337c6c2131c61baf81822915a633e1a8c33211bf4f296c2123efd408",
-      "size": 197342
+      "sha256": "a2c6c7cf60d2828289768751161df27913a20f5f57c4adb801f34d70d839584b",
+      "size": 196038
     },
     "serve-rc-lanes-diff-baked.light.png": {
       "fixture": "serve-rc-lanes-diff-baked",
       "theme": "light",
-      "sha256": "fca406c88bc9295c6d634e144392251b952d35f0053a0cbcaafdb854e54d0156",
-      "size": 194964
+      "sha256": "d2db0ea82304149ab822d588523a0ddb4362a458bbb4ef7436b43dac1e12924b",
+      "size": 193225
     },
     "serve-rc-lanes-diff-player.dark.png": {
       "fixture": "serve-rc-lanes-diff-player",
       "theme": "dark",
-      "sha256": "6b8d26dc7850792c94d3aaf4301a44a97556a7c1ed038ae86c7c2d95828df1c9",
-      "size": 187001
+      "sha256": "be33322ffe633c8058d00297206038fe2ce922c68f2b55a8ea802c40b7f1b0dc",
+      "size": 184148
     },
     "serve-rc-lanes-diff-player.light.png": {
       "fixture": "serve-rc-lanes-diff-player",
       "theme": "light",
-      "sha256": "35db295a7faf06ad6d8858162a1470598811cdd940da8ddc6657af2f3832dc15",
-      "size": 184151
+      "sha256": "c8a01bee49c874a96f9a5962490fb2629de946d64227821216f0b051b48028ac",
+      "size": 181343
     },
     "serve-rc-lanes.dark.png": {
       "fixture": "serve-rc-lanes",
       "theme": "dark",
-      "sha256": "70ea02d316f7e9d3ea9822637e11df81ea1bf2e769e6e14631f927c24736e5d6",
-      "size": 121446
+      "sha256": "44c987dddcfd7ebbc24646daaf223fe5c5ec9add06731187e87e1845f979381a",
+      "size": 119213
     },
     "serve-rc-lanes.light.png": {
       "fixture": "serve-rc-lanes",
       "theme": "light",
-      "sha256": "99a4b1858e9fd228135ae654ed35d4fbb33038b1b4080eb19e171543bb7adc69",
-      "size": 118868
+      "sha256": "96e869bd008f5c3db5213fed7eddd99c39ed31def75abb09ecddb65f9a6ca16c",
+      "size": 116540
     },
     "serve-reference-compare-annotated.dark.png": {
       "fixture": "serve-reference-compare-annotated",
