@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "cf1de4d15015c6424f9c15de88de19e5ecb3afff",
+    "generatedFrom": "dc40fbd5e38018c765eac81fe4088f9438d3aa6f",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -3242,6 +3242,36 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.InteractionPreviewsKt.ExpandableMenuInteractionPreview_Interaction — Expandable Menu": {
+            "path": "renders/samples:cmp/ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.png",
+            "versions": [
+                {
+                    "blob": "f32c2e1af2706d0cf18c3bc4842e181429db6ca2",
+                    "commit": "dc40fbd5e38018c765eac81fe4088f9438d3aa6f",
+                    "date": "2026-08-15T14:36:56Z",
+                    "sourceSha": "60b34b27",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.InteractionPreviewsKt.ExpandableMenuInteractionPreview_Interaction — Expandable Menu#1": {
+            "path": "renders/samples:cmp/ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.apng",
+            "versions": [
+                {
+                    "blob": "db4dfab49716c941fc8f84d1d1f5c4654af51735",
+                    "commit": "dc40fbd5e38018c765eac81fe4088f9438d3aa6f",
+                    "date": "2026-08-15T14:36:56Z",
+                    "sourceSha": "60b34b27",
                     "commits": 1
                 }
             ],
