@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "13376f1a8f2f84d8859cfdf957d132162db58c40",
+    "generatedFrom": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2657,13 +2657,13 @@
             "flapCount": 0
         },
         "samples:android/com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardAnimatedPreview_Soft Keyboard — typing": {
-            "path": "renders/samples:android/SoftKeyboardAnimatedPreview_Soft_Keyboard_typing-2c4e4fe6.gif",
+            "path": "renders/samples:android/SoftKeyboardAnimatedPreview_Soft_Keyboard_typing-2c4e4fe6.png",
             "versions": [
                 {
-                    "blob": "970ebc7c239806cd0bb3dfe3a61512f089dabe60",
-                    "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
-                    "date": "2026-08-14T10:40:34Z",
-                    "sourceSha": "5b91ca7c",
+                    "blob": "7578c91de51b22c503547b0646f5373a0f4fbdc1",
+                    "commit": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
+                    "date": "2026-08-15T08:20:40Z",
+                    "sourceSha": "b51439a5",
                     "commits": 1
                 }
             ],
@@ -2675,6 +2675,13 @@
             "path": "renders/samples:android/SoftKeyboardIdlePreview_Soft_Keyboard_idle-980612e7.png",
             "versions": [
                 {
+                    "blob": "7578c91de51b22c503547b0646f5373a0f4fbdc1",
+                    "commit": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
+                    "date": "2026-08-15T08:20:40Z",
+                    "sourceSha": "b51439a5",
+                    "commits": 1
+                },
+                {
                     "blob": "3bb52fc5caacb9f023977d75560477e40f21fb60",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -2682,7 +2689,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -3865,6 +3872,51 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.PrivatePreviewsKt.PrivateBadgePreview_Private badge": {
+            "path": "renders/samples:cmp/PrivateBadgePreview_Private_badge-1c0a3d6e.png",
+            "versions": [
+                {
+                    "blob": "5c8d360707cb9d71d960b8ae6657c06b507f3370",
+                    "commit": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
+                    "date": "2026-08-15T08:20:40Z",
+                    "sourceSha": "b51439a5",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.PrivatePreviewsKt.PrivateTonePreview_Private tone": {
+            "path": "renders/samples:cmp/PrivateTonePreview_Private_tone-0bb684c0_Indigo.png",
+            "versions": [
+                {
+                    "blob": "8e85b6e7d06efdc9c5b0e857c0a2631d2e242510",
+                    "commit": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
+                    "date": "2026-08-15T08:20:40Z",
+                    "sourceSha": "b51439a5",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.PrivatePreviewsKt.PrivateTonePreview_Private tone#1": {
+            "path": "renders/samples:cmp/PrivateTonePreview_Private_tone-0bb684c0_Moss.png",
+            "versions": [
+                {
+                    "blob": "d70ec6ba56240d1facd810e510252ddf78c2da23",
+                    "commit": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
+                    "date": "2026-08-15T08:20:40Z",
+                    "sourceSha": "b51439a5",
                     "commits": 1
                 }
             ],
