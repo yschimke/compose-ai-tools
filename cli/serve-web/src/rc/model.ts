@@ -8,9 +8,9 @@ export interface RcCell {
     rendered?: boolean;
     /** Staged render URL. Empty when the player produced nothing. */
     render?: string;
-    /** The BUILD-TIME pixel diff against the baked PNG. Empty for the baked lane itself. */
+    /** The BUILD-TIME pixel diff against the AndroidX Java render. Empty for that lane itself. */
     diff?: string;
-    /** Build-time mismatch against the baked PNG; null when unrendered or unscorable. */
+    /** Build-time mismatch against the AndroidX Java render; null when unrendered or unscorable. */
     mismatchPct?: number | null;
     mismatchPx?: number | null;
     /** The player's own reason for producing nothing. */
@@ -26,7 +26,7 @@ export interface RcLane {
 
 export interface RcRow {
     label: string;
-    /** The baked capture is blank, so it is no reference — see `planRow`. */
+    /** The AndroidX Java capture is blank, so it is no reference — see `planRow`. */
     referenceBlank?: boolean;
     lanes: Record<string, RcCell>;
 }
@@ -41,7 +41,12 @@ export interface RcModel {
 /** The reference nobody picked. Not a lane id, so it can never collide with one. */
 export const NO_REFERENCE = "none";
 
-/** The one lane whose diffs were computed offline; every other reference is diffed in-browser. */
+/**
+ * The one lane whose diffs were computed offline; every other reference is diffed in-browser.
+ *
+ * Still `baked` on the wire — the id is what the delivery branch stages its assets under and what
+ * `?ref=` carries, so it survives the lane being renamed to **AndroidX Java** for readers.
+ */
 export const BAKED = "baked";
 
 export function laneIdsOf(model: RcModel): string[] {

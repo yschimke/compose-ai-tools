@@ -43,7 +43,7 @@ class StubObserver {
 const MODEL = {
     threshold: 0.1,
     lanes: [
-        { id: "baked", label: "Baked PNG", short: "baked" },
+        { id: "baked", label: "AndroidX Java", short: "java" },
         { id: "android", label: "Android player", short: "android" },
         { id: "cmp", label: "CMP player", short: "cmp" },
     ],
@@ -192,7 +192,7 @@ describe("<cp-rc-lanes>", () => {
         );
         assert.equal(
             slot?.querySelector(".cp-rc-difflabel")?.textContent,
-            "pixel diff vs baked",
+            "pixel diff vs java",
         );
         // The lane that produced nothing gets no slot opened — an empty diff frame would read as
         // "identical" rather than "absent".
@@ -217,7 +217,7 @@ describe("<cp-rc-lanes>", () => {
         );
         assert.equal(
             document.getElementById("cp-rc-status")?.textContent,
-            "showing the build-time pixel diffs against the baked PNG",
+            "showing the build-time pixel diffs against AndroidX Java",
         );
         assert.equal(
             document
