@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.6.0](https://github.com/yschimke/compose-ai-tools/compare/v1.5.0...v1.6.0) (2026-08-15)
+
+
+### Features
+
+* **catalog:** add interactive shape morph viewer ([#3871](https://github.com/yschimke/compose-ai-tools/issues/3871)) ([b6c6248](https://github.com/yschimke/compose-ai-tools/commit/b6c6248cb5dbe1c51b9938cd316dc2f569044b19))
+* **parity:** publish a tag index with the catalog, and read it back ([#3860](https://github.com/yschimke/compose-ai-tools/issues/3860)) ([c826a24](https://github.com/yschimke/compose-ai-tools/commit/c826a246a1699fdb98bc334857501550a3454678))
+* **previews:** support addressable interaction variants ([#3877](https://github.com/yschimke/compose-ai-tools/issues/3877)) ([ef5d1ba](https://github.com/yschimke/compose-ai-tools/commit/ef5d1baa7ca66f776d53e3e82f4aa25bb1c7e71a))
+* **serve:** add the DESTRUCTURE rule kind ([#3869](https://github.com/yschimke/compose-ai-tools/issues/3869)) ([5a4ca8d](https://github.com/yschimke/compose-ai-tools/commit/5a4ca8d492bc9f366483d7e6412885d99121b95e))
+* **serve:** give the usage cleaner a real parse, behind the isolated loader ([#3861](https://github.com/yschimke/compose-ai-tools/issues/3861)) ([9a874b1](https://github.com/yschimke/compose-ai-tools/commit/9a874b1d91e62ac3543e0dfa06d9689344f71866))
+
+
+### Bug Fixes
+
+* **cli:** warn about unknown command flags ([#3867](https://github.com/yschimke/compose-ai-tools/issues/3867)) ([86d1120](https://github.com/yschimke/compose-ai-tools/commit/86d1120b0e0b47d451c2ad06be4c68ae40332361))
+* **deps:** update gradle minor/patch ([#3859](https://github.com/yschimke/compose-ai-tools/issues/3859)) ([872f190](https://github.com/yschimke/compose-ai-tools/commit/872f1905e8abab236a82b4e1f7bd644826cf479f))
+* **format:** reformat for ktfmt 0.27 ([#3881](https://github.com/yschimke/compose-ai-tools/issues/3881)) ([ec4681d](https://github.com/yschimke/compose-ai-tools/commit/ec4681d31646582a97131dc1c8e73d63a27ae37b))
+* **parity:** wire the tag index to the host, require its declared space, and cover unbridged images ([#3864](https://github.com/yschimke/compose-ai-tools/issues/3864)) ([e672a0b](https://github.com/yschimke/compose-ai-tools/commit/e672a0b4211c7bfde1e3d199a88f951259c87645))
+* **renderer:** open private @Preview methods on every desktop path ([#3880](https://github.com/yschimke/compose-ai-tools/issues/3880)) ([99a04b6](https://github.com/yschimke/compose-ai-tools/commit/99a04b6872e307dbe5e8d156797e26feac665e06))
+* **serve:** focus page gaps on components ([#3876](https://github.com/yschimke/compose-ai-tools/issues/3876)) ([eb2f4db](https://github.com/yschimke/compose-ai-tools/commit/eb2f4db31d6304177c03eef11f107f9c49ee8b35))
+* **serve:** honour addImports on every usage rule kind, not just DESTRUCTURE ([#3874](https://github.com/yschimke/compose-ai-tools/issues/3874)) ([ba7a4e4](https://github.com/yschimke/compose-ai-tools/commit/ba7a4e493aef61accc3b85a9bc7a7a091b56f54b))
+* **serve:** keep receivers the substitution rules do not own ([#3865](https://github.com/yschimke/compose-ai-tools/issues/3865)) ([3121ddb](https://github.com/yschimke/compose-ai-tools/commit/3121ddb8174d091f5a318628bbfe4812c62f306e))
+* stabilize shared element debug previews ([#3868](https://github.com/yschimke/compose-ai-tools/issues/3868)) ([d1761ee](https://github.com/yschimke/compose-ai-tools/commit/d1761eeb82732b17f4a0063bda007565c2b80521))
+* **vscode:** refresh discovery after preview additions ([#3862](https://github.com/yschimke/compose-ai-tools/issues/3862)) ([9798c9e](https://github.com/yschimke/compose-ai-tools/commit/9798c9ebc13b155be3b6d86f490415a3f4b4c962))
+
 ## [1.5.0](https://github.com/yschimke/compose-ai-tools/compare/v1.4.0...v1.5.0) (2026-08-14)
 
 
