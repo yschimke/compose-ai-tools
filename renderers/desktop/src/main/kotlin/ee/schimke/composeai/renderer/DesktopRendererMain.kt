@@ -232,6 +232,16 @@ fun main(args: Array<String>) {
   val minHeightPx = args.getOrNull(29)?.toIntOrNull()?.takeIf { it > 0 }
   val maxWidthPx = args.getOrNull(30)?.toIntOrNull()?.takeIf { it > 0 }
   val maxHeightPx = args.getOrNull(31)?.toIntOrNull()?.takeIf { it > 0 }
+  // The wrapped-axis size bounds, as the motion paths take them. The single-frame path rebuilds
+  // this inside `renderPreview` from the same four values; motion captures are dispatched from
+  // here, so they need it assembled at this level too.
+  val motionSizeBounds =
+    PreviewSizeBounds(
+      minWidthPx = minWidthPx,
+      minHeightPx = minHeightPx,
+      maxWidthPx = maxWidthPx,
+      maxHeightPx = maxHeightPx,
+    )
   // Args 33–38 (indices 32–37) — `@FocusedPreview` per-capture drive (issue #3672). All absent /
   // blank on a preview without the annotation, which is what keeps every existing capture on the
   // untouched [renderPreview] path. Indexed mode carries `focusTabIndex >= 0`; traversal mode
@@ -515,6 +525,9 @@ fun main(args: Array<String>) {
           spec = interactionSpec,
           uiMode = uiMode,
           fontScale = fontScale,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          sizeBounds = motionSizeBounds,
         )
       } else if (hasAnimation) {
         // `@AnimatedPreview` — advance a paused clock across the window and encode a GIF. Always
@@ -538,6 +551,9 @@ fun main(args: Array<String>) {
           format = animFormat,
           uiMode = uiMode,
           fontScale = fontScale,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          sizeBounds = motionSizeBounds,
         )
       } else if (
         (focusIntent != null || hoverIndex != null) &&

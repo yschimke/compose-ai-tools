@@ -1,15 +1,12 @@
 package ee.schimke.composeai.renderer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import java.io.File
 
 /**
@@ -81,6 +78,9 @@ fun renderAnimatedPreview(
   format: MotionFormatKind = MotionFormatKind.GIF,
   uiMode: Int = 0,
   fontScale: Float = 1.0f,
+  wrapWidth: Boolean = false,
+  wrapHeight: Boolean = false,
+  sizeBounds: PreviewSizeBounds = PreviewSizeBounds(),
   classLoader: ClassLoader? = null,
 ) {
   if (showCurves) {
@@ -114,50 +114,70 @@ fun renderAnimatedPreview(
   // [rendersRightToLeft].
   val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
+  val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
+  val bgColor =
+    when {
+      backgroundColor != 0L -> Color(backgroundColor.toInt())
+      showBackground -> Color.White
+      else -> Color.Transparent
+    }
 
-  val collector = MotionFrameCollector(format, outputFile)
+  val result =
+    recordMotionCapture(
+      outputFile = outputFile,
+      format = format,
+      frameIntervalMs = frameInterval,
+      padArgb = bgColor.toArgb(),
+    ) { collector, forcedCrop ->
+      val bounds = MotionBoundsTracker()
+      var crop: IntSize = forcedCrop ?: sceneSize
 
-  runSkikoComposeUiTest(
-    size = Size(widthPx.toFloat(), heightPx.toFloat()),
-    density = sceneDensity,
-  ) {
-    mainClock.autoAdvance = false
+      runSkikoComposeUiTest(
+        size = Size(sceneSize.width.toFloat(), sceneSize.height.toFloat()),
+        density = sceneDensity,
+      ) {
+        mainClock.autoAdvance = false
 
-    setContent {
-      val bgColor =
-        when {
-          backgroundColor != 0L -> Color(backgroundColor.toInt())
-          showBackground -> Color.White
-          else -> Color.Transparent
-        }
-      MotionPreviewProviders(rtl = rtl, sceneDensity = sceneDensity, uiMode = uiMode) {
-        val body: @Composable () -> Unit = {
-          Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+        setContent {
+          MotionCaptureRoot(
+            rtl = rtl,
+            sceneDensity = sceneDensity,
+            uiMode = uiMode,
+            wrapWidth = wrapWidth,
+            wrapHeight = wrapHeight,
+            backgroundColor = bgColor,
+            sizeBounds = sizeBounds,
+            onMeasured = bounds::observe,
+            wrapperClassName = wrapperClassName,
+            classLoader = classLoader,
+          ) {
             InvokeMotionComposable(composableMethod, null, previewArgs)
           }
         }
-        if (wrapperClassName != null) {
-          InvokeMotionWrappedComposable(wrapperClassName, classLoader, body)
-        } else {
-          body()
+
+        // One tick so first composition + layout land before the first capture; the animation phase
+        // at frame 0 is then read at (near) its start value, and the wrap box has reported the
+        // resting size the frames are cropped to.
+        mainClock.advanceTimeByFrame()
+
+        if (forcedCrop == null) {
+          crop = motionCropSize(bounds.size, wrapWidth, wrapHeight, widthPx, heightPx, sceneSize)
+        }
+
+        repeat(frameCount) {
+          collector.capture(captureRootPngBytes(), crop)
+          mainClock.advanceTimeBy(frameInterval.toLong())
         }
       }
+
+      MotionPass(crop = crop, observed = bounds.size)
     }
 
-    // One tick so first composition + layout land before the first capture; the animation phase at
-    // frame 0 is then read at (near) its start value.
-    mainClock.advanceTimeByFrame()
-
-    repeat(frameCount) {
-      collector.capture(captureRootPngBytes())
-      mainClock.advanceTimeBy(frameInterval.toLong())
-    }
-  }
-
-  val frameTotal = collector.frameCount
-  val written = collector.encode(frameIntervalMs = frameInterval)
   System.err.println(
-    "@AnimatedPreview on ${written.name}: encoded $frameTotal frame(s) over ${totalDuration}ms " +
-      "@ ${frameInterval}ms (${format.name.lowercase()})."
+    "@AnimatedPreview on ${result.file.name}: encoded ${result.frameCount} frame(s) over " +
+      "${totalDuration}ms @ ${frameInterval}ms at ${result.crop.width}×${result.crop.height} " +
+      "(${format.name.lowercase()}" +
+      (if (result.reRecorded) ", re-recorded for growth" else "") +
+      ")."
   )
 }
