@@ -3228,7 +3228,7 @@
     "functionName": "IndeterminateCircularProgressRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
-    "sha256": "8f874315e61e501c161a6f44f10a4c729a08b22deea89f67d612d6ce9f24878d",
+    "sha256": "03e076c9f40748a19b5a191eb1546a66250a4777f797a26943db2c60921adf5d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
@@ -4332,7 +4332,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round-238953ff_SCROLL_long.png",
-    "sha256": "65d2caa2784131e8fe4e829e12e67753654f1a2a6cc875f07c0e476e08c7b2de",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
@@ -4564,7 +4564,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.png",
-    "sha256": "1c5de46e757d614cc2c7ebd2b91a548b9e1da99495e69a812f7c61b2de7321e7",
+    "sha256": "9626d1c8328d7e99b7b9d82479ea72dfd0852c708654e19b549cb2b8c24a6566",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#1": {
@@ -4572,7 +4572,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_1.png",
-    "sha256": "9b859accc1043037c77d75e333038227a581730ea8b31d66b5d61d3be6b322ee",
+    "sha256": "14c3c04a97ffddc75f4e2308c072406e22f0df1eb623cd220e35af72a0dc4ff8",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuBusy_Busy": {
