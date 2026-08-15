@@ -533,6 +533,42 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 @media (min-width: 960px) {
   .cp-catalog-menu { padding: 6px; margin-inline: -6px; }
 }
+/* The Components / Pages switch at the head of the sidebar (ServeWeb.paneTabsHtml). Two peers, so
+   an M3 segmented button rather than a nav row: one shape, split in two, with the selected half
+   filled. The strip leads the column and the filter sits under it, which is what makes the filter
+   read as belonging to whichever list is showing. */
+.cp-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 0 0 14px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
+.cp-pane-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 7px 10px;
+  font-size: var(--md-sys-typescale-label-large-size);
+  line-height: var(--md-sys-typescale-label-large-line);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant); border: 0; background: transparent;
+  cursor: pointer; text-align: center;
+  transition: color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
+    background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-pane-tab + .cp-pane-tab { border-left: 1px solid var(--md-sys-color-outline-variant); }
+.cp-pane-tab:hover { color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-pane-tab[aria-selected="true"] { color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container); }
+/* The count rides the tab the way it rides a tree row. The column is 168–216px whatever the
+   viewport, so this is not a viewport question and there is no breakpoint to hang it on: the label
+   holds its size and the count is what shrinks, down to nothing, when the two will not fit. */
+.cp-pane-tab .cp-tree-count { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.cp-pane[hidden] { display: none; }
+.cp-page-list { list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 2px; }
+.cp-page-list li[hidden] { display: none; }
+.cp-pane-empty { margin: 10px 2px; color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-sys-typescale-body-small-size); }
+/* The way out to the pages index, kept after the list rather than as a row inside it: it is not
+   one of the pages, and a filter that empties the list must not take the escape hatch with it. */
+.cp-pane-all { display: inline-block; margin: 12px 2px 0;
+  font-size: var(--md-sys-typescale-label-medium-size);
+  color: var(--md-sys-color-primary); }
 .cp-catalog-menu .cp-searchbar { display: block; margin: 0 0 18px; }
 .cp-catalog-menu .cp-search { width: 100%; min-width: 0; padding-inline: 14px; }
 .cp-catalog-menu .cp-tree { margin: 0; }
