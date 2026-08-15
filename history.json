@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "851a5be74c35a742370b5b9a1992eb766b8f5e85",
+    "generatedFrom": "e98e60ff99981487b81af730ea6ff1e2e7ba36cb",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -5214,6 +5214,21 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark#1": {
+            "path": "renders/samples:design-catalog-m3/SwitchOn_Dark-d0f22b72.apng",
+            "versions": [
+                {
+                    "blob": "20b33d4188d836b4064ecd04eb77e2731f98580f",
+                    "commit": "e98e60ff99981487b81af730ea6ff1e2e7ba36cb",
+                    "date": "2026-08-15T11:09:03Z",
+                    "sourceSha": "97130be5",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark_VARIANT_off": {
             "path": "renders/samples:design-catalog-m3/SwitchOn_Dark_VARIANT_off-70b9de89.png",
             "versions": [
@@ -5237,6 +5252,21 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-m3/com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Light#1": {
+            "path": "renders/samples:design-catalog-m3/SwitchOn_Light-c16813d5.apng",
+            "versions": [
+                {
+                    "blob": "9b235df908d6463624e0c30b72cfe779acb6a47b",
+                    "commit": "e98e60ff99981487b81af730ea6ff1e2e7ba36cb",
+                    "date": "2026-08-15T11:09:03Z",
+                    "sourceSha": "97130be5",
                     "commits": 1
                 }
             ],
