@@ -118,6 +118,17 @@ describe("<cp-backend-badge>", () => {
         assert.equal(badge.textContent?.trim(), "◇ Spec");
     });
 
+    it("names a played recording rather than crediting the still renderer", async () => {
+        const { badge, root } = await mount(
+            'data-mode="motion" data-snapshot-backend="Snapshot" data-live-backend="Live"',
+        );
+        // The badge is a provenance claim, so falling through to the snapshot label would
+        // attribute animated pixels to the renderer that produced the still beside them.
+        assert.equal(badge.textContent?.trim(), "\u25B6 Recording");
+        await setMode(root, "snapshot");
+        assert.equal(badge.textContent?.trim(), "\u25AA Snapshot");
+    });
+
     it("flips the live accent on for the interactive lanes only", async () => {
         const { badge, root } = await mount();
         for (const [mode, live] of [
@@ -126,6 +137,9 @@ describe("<cp-backend-badge>", () => {
             ["wasm", "true"],
             ["svg", "false"],
             ["spec", "false"],
+            // Playing, but not interactive: a recording answers no clicks, so it must not light
+            // the accent that promises a running composition.
+            ["motion", "false"],
         ]) {
             await setMode(root, mode);
             assert.equal(

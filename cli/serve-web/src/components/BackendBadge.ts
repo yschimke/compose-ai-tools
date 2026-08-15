@@ -87,6 +87,12 @@ export class BackendBadge extends LitElement {
             return `▶ ${this.root?.getAttribute("data-live-backend") || "Live"}`;
         }
         if (mode === "svg") return "▪ SVG";
+        // A recording is not a render, and the badge is a provenance claim — so falling through
+        // to the snapshot label would attribute animated pixels to the still renderer. Named
+        // generically rather than from the picked capture: the badge re-renders on a MODE change,
+        // and switching capture inside the lane is not one, so a per-capture name would go stale
+        // the moment the picker was used.
+        if (mode === "motion") return "\u25B6 Recording";
         if (mode === "spec") {
             const lane = document.getElementById("cp-spec-lane");
             return `◇ ${lane?.getAttribute("data-spec-label") || "Spec"}`;

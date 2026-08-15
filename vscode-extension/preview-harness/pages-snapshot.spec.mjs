@@ -62,6 +62,19 @@ const renderExplodedPlaceholder = resolve(pagesDir, "_render-placeholder-explode
 // transparent margin around, non-square on purpose so a slot filled by the CANVAS and a slot filled
 // by the COMPONENT are told apart by eye.
 const designRenderPlaceholder = resolve(pagesDir, "_design-render-placeholder.png");
+// The motion lane's stub, and it has to be a genuinely ANIMATED file rather than another flat
+// placeholder: what the capture below is asserting is that the lane puts a moving image on the
+// stage in place of the still, and a static PNG served as `image/apng` would satisfy every
+// selector in the shot while proving none of it. 14 frames of an M3 switch travelling and
+// settling, at the same 200x420 the still lanes use.
+//
+// It plays ONCE and rests on its last frame, which a real capture does not — those loop. That is
+// a deliberate divergence and the only one: `page.screenshot({animations: "disabled"})` reaches
+// CSS animations, not an image's own, so a looping stub would put the shutter on an arbitrary
+// frame and the baseline would flake by the whole width of the switch's travel. Resting on a
+// fixed final frame keeps the shot deterministic while still proving the thing under test: those
+// pixels are on the stage only because the lane fetched an animated file and played it.
+const motionPlaceholder = resolve(pagesDir, "_motion-placeholder.apng");
 // Fixtures navigated with a query string, because the state they capture lives in the URL rather
 // than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
 // what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
@@ -1067,6 +1080,41 @@ const FIXTURE_STATES = [
             await page.waitForFunction(
                 () => document.querySelectorAll(".cp-inspect-box").length > 0,
             );
+        },
+    },
+    {
+        // The Motion lane open: a recorded interaction on the stage in place of the still.
+        //
+        // The committed HTML cannot hold this, and deliberately so — the capture's `src` is
+        // assigned only on the lane's FIRST ENTRY, because for an APNG assigning `src` IS starting
+        // playback, and a component page must not animate at a reader who did not ask. So the whole
+        // feature would move no baseline without this shot: at rest the page differs from before by
+        // one chip. Captured here to cover both halves — the chip pressed, and the frames actually
+        // on the stage.
+        //
+        // The bytes are stubbed for the same reason the Source panel's are: the harness serves
+        // pages, not a catalog with a `motion/` directory behind it. And it runs against a fixture
+        // of its OWN for the same reason too: states run in order against one page, and this one
+        // leaves the lane open — on `serve-viewer` it would have re-shot that fixture's later
+        // `connecting` baseline with a capture on the stage instead of the render.
+        fixture: "serve-viewer-motion",
+        suffix: "motion-lane",
+        apply: async (page) => {
+            await page.route("**/motion/**", (route) =>
+                route.fulfill({ path: motionPlaceholder, contentType: "image/apng" }),
+            );
+            await page.click("#cp-motion-chip");
+            // The capture has to have DECODED before the shot, not merely been requested — a
+            // screenshot taken between the two catches an empty stage and bakes it into a baseline
+            // that then reads as "the lane shows nothing".
+            await page.waitForFunction(() => {
+                const el = document.getElementById("cp-motion-img");
+                return el && !el.hidden && el.complete && el.naturalWidth > 0;
+            });
+            // …and then PLAYED OUT. The stub runs 14 frames at 40ms and stops on the last one (see
+            // motionPlaceholder), so this waits past its 560ms total with a wide margin rather than
+            // racing it — a margin is cheaper than a baseline that disagrees with itself run to run.
+            await page.waitForTimeout(1500);
         },
     },
     {

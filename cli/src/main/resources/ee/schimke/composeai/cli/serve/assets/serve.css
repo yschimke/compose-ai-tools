@@ -1608,6 +1608,45 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    control that produced it rather than buried under the stage. */
 .cp-spec-score { font-size: 0.72rem; color: var(--cp-fg-muted); white-space: nowrap; }
 .cp-spec-score[hidden] { display: none; }
+/* The motion lane's carrier — the per-capture picker and the caption readout — shown only while a
+   recording is actually on the stage. `[hidden]` needs its own rule here because the `inline-flex`
+   above would otherwise win over the attribute's UA `display: none`. */
+.cp-motion-lane { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cp-motion-lane[hidden] { display: none; }
+/* Which recording, when a preview published more than one. The same segmented group the spec
+   comparison views use, for the same reason: one mutually-exclusive choice about one component
+   reads as one control, not as N loose chips. Hidden — not omitted — for the single-capture case,
+   because that button is still where the lane reads its source from. */
+.cp-motion-views { display: inline-flex; align-items: stretch;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
+.cp-motion-views[hidden] { display: none; }
+.cp-motion-view { font: inherit; min-height: 32px; padding: 5px 12px; border: 0;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-motion-view:first-child { border-left: 0; }
+.cp-motion-view:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-motion-view[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
+/* What the recording is showing ("Pressed \2192 checked"). A capture without its caption tells the
+   reader only that *something* moved, so the annotation's own words ride beside the frames. */
+.cp-motion-caption { font-size: 0.72rem; color: var(--cp-fg-muted); }
+/* The inspection layers describe the SNAPSHOT — every box is placed from that image's natural size
+   and offset (see inspect.js `place()`), and nothing re-places them when a lane takes the snapshot
+   out of flow. Left alone they would keep their last geometry and hang over the recording,
+   reporting a focus map and resolved type for a frame that is no longer on screen. Withdrawn by
+   mode rather than unticked by script, so returning to the render restores exactly what the
+   visitor had ticked instead of silently clearing their choice. */
+.cp-viewer[data-mode="motion"] .cp-inspect-layer,
+.cp-viewer[data-mode="motion"] .cp-inspect-legend { display: none; }
+/* A capture is a still's worth of subject in many frames, so it obeys exactly the geometry the
+   snapshot does — `.cp-stage img` already caps its width, and viewer.js's zoom lane writes the same
+   `max-height` onto it that the render and the spec raster get. */
+.cp-motion-chip[aria-pressed="true"]::before { content: "\25B6"; margin-right: 6px;
+  font-size: 0.7em; line-height: 1; }
 .cp-mode-hint { font-size: 0.72rem; color: var(--cp-fg-muted); }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector

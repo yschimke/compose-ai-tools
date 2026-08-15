@@ -862,7 +862,28 @@ class ServeWebFixtureTest {
       ServeWeb.viewerPage(
         previews
           .first { it.id.endsWith("ProfileScreenPreview") }
-          .copy(sourceFile = "src/main/kotlin/com/example/ProfileScreen.kt", section = "Screens"),
+          .copy(
+            sourceFile = "src/main/kotlin/com/example/ProfileScreen.kt",
+            section = "Screens",
+            // Published motion captures, so the golden carries the Motion chip and the harness
+            // diffs it on every future change to that row — the same reason every other affordance
+            // on the provenance/renderer rows is exercised from a fixture rather than screenshotted
+            // by hand. Two of them, so the per-capture picker's markup is covered too; it stays
+            // `hidden` at rest, which is exactly the state the page is captured in.
+            motion =
+              listOf(
+                ServeMotion(
+                  id = "screens__profile__interaction",
+                  kind = "interaction",
+                  caption = "Tap the avatar",
+                ),
+                ServeMotion(
+                  id = "screens__profile__anim",
+                  kind = "animation",
+                  caption = "Header collapse",
+                ),
+              ),
+          ),
         token,
         trust = "unverified",
         // Every page ends with the minimal footer, so the goldens carry the fixed server version
@@ -1242,6 +1263,37 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         canApplyOverrides = true,
         usageHref = "/usage/com.example.ProfileCardPreview",
+      )
+    // A viewer whose preview published motion captures, on a fixture of its OWN rather than as a
+    // state of the main one. The harness's extra states run in order against the same page, and
+    // this one leaves a lane OPEN — the still taken out of flow, a capture on the stage — so run
+    // ahead of `serve-viewer`'s own `connecting` state it would have re-captured that baseline
+    // showing the recording instead of the render. The Source panel is isolated for exactly this
+    // reason, and this is the same shape of state.
+    //
+    // Two captures, because the per-capture picker only appears when there is a choice to make, and
+    // an interacted shot is the only place its markup is ever visible.
+    val viewerMotion =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "com.example.SwitchPreview",
+          "Switch",
+          motion =
+            listOf(
+              ServeMotion(
+                id = "switch-on__ideal__default__light",
+                kind = "interaction",
+                caption = "Toggle on",
+              ),
+              ServeMotion(
+                id = "switch-on__ideal__default__light__anim",
+                kind = "animation",
+                caption = "Thumb settle",
+              ),
+            ),
+        ),
+        token,
+        sessionId = "compose-m3",
       )
     // A daemon-backed viewer for a preview detected to support one-handed gesture hints
     // (`@GestureHintPreview`) on an Android-backed session (`gesturesRenderable = true`): the
@@ -2401,6 +2453,7 @@ class ServeWebFixtureTest {
         "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-viewer-source.html" to viewerSource,
+        "serve-viewer-motion.html" to viewerMotion,
         "serve-landing-path.html" to landingPath,
         "serve-landing-site.html" to landingSite,
         "serve-viewer-path.html" to viewerPath,
@@ -3865,6 +3918,136 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `a published capture is offered as a chip and never plays until it is asked for`() {
+    val plain = previews.first { it.id.endsWith("CardPreview") }
+    val withMotion =
+      plain.copy(
+        motion =
+          listOf(
+            ServeMotion(id = "card__filled__interaction", kind = "interaction", caption = "Press"),
+            ServeMotion(
+              id = "card__filled__anim",
+              kind = "animation",
+              caption = "Elevation settle",
+              extension = ".gif",
+            ),
+          )
+      )
+    // Path-mounted, which is how a published catalog is actually served — so the assertions below
+    // cover the session scoping of the route as well as its shape.
+    val view =
+      ServeWeb.viewerPage(withMotion, token, sessionId = "compose-m3", basePath = "/compose-m3")
+
+    // The whole point of the axis: a still is what most readers came for, so motion is a control
+    // beside it rather than the frame on the stage.
+    assertTrue(view.contains("id=\"cp-motion-chip\""), "a preview with captures offers the chip")
+    assertTrue(
+      Regex("id=\"cp-motion-chip\"[^>]*aria-pressed=\"false\"").containsMatchIn(view),
+      "the chip opens un-pressed — the page loads on the still",
+    )
+    assertTrue(
+      Regex("<img id=\"cp-motion-img\"[^>]*hidden").containsMatchIn(view) &&
+        !Regex("<img id=\"cp-motion-img\"[^>]*src=").containsMatchIn(view),
+      "the capture is neither shown nor SRC-ed at page load — assigning src is what starts playback",
+    )
+
+    // Each capture keeps its own extension end to end. An APNG served as a GIF renders one frame
+    // and stops, so a picker that assumed one format would silently turn a recording into a still.
+    assertTrue(
+      view.contains("data-motion-src=\"/compose-m3/motion/card__filled__interaction.apng"),
+      "the interaction capture is addressed as an APNG",
+    )
+    assertTrue(
+      view.contains("data-motion-src=\"/compose-m3/motion/card__filled__anim.gif"),
+      "the GIF capture keeps its own type rather than inheriting the first one's",
+    )
+    // The annotation's caption is what names the recording — without it a capture tells the reader
+    // only that *something* moved.
+    assertTrue(view.contains(">Press</button>"), "the declared caption labels its capture")
+    assertTrue(view.contains(">Elevation settle</button>"), "…and so does the second one")
+
+    // A lane like every other: its own hidden mode radio, which is what buys `?mode=motion`,
+    // restore-on-load and Back/Forward without a second mechanism.
+    assertTrue(
+      view.contains("name=\"cp-mode\" value=\"motion\" id=\"cp-motion-toggle\""),
+      "motion joins the mode radio group rather than inventing its own state",
+    )
+
+    // …and a preview with nothing published is presented exactly as it was before.
+    val without =
+      ServeWeb.viewerPage(plain, token, sessionId = "compose-m3", basePath = "/compose-m3")
+    assertFalse(without.contains("cp-motion-chip"), "no captures ⇒ no chip")
+    assertFalse(without.contains("cp-motion-img"), "no captures ⇒ no stage image")
+    assertFalse(without.contains("value=\"motion\""), "no captures ⇒ no mode radio")
+
+    // Leaving the lane must DROP the src, not merely hide the image: a hidden capture with its src
+    // still assigned keeps looping for the rest of the visit — invisible, and still decoding.
+    assertTrue(
+      assetText("viewer.js").contains("motionImg.removeAttribute(\"src\");"),
+      "closing the lane stops the animation instead of hiding a still-playing one",
+    )
+    // Every other lane closes it, which is what stops a capture playing on behind the lane the
+    // visitor actually moved to.
+    assertTrue(
+      assetText("viewer.js").contains("if (m !== \"motion\") closeMotion();"),
+      "every transition out of motion closes the lane",
+    )
+    // Two caption-less captures of the SAME kind — permitted by the manifest, and what the
+    // annotation defaults produce. Both buttons used to read "Interaction", leaving no way by eye
+    // or by screen reader to tell which recording either one selects.
+    val sameKind =
+      ServeWeb.viewerPage(
+        plain.copy(
+          motion =
+            listOf(
+              ServeMotion(id = "card__a", kind = "interaction"),
+              ServeMotion(id = "card__b", kind = "interaction"),
+            )
+        ),
+        token,
+        sessionId = "compose-m3",
+      )
+    assertTrue(
+      sameKind.contains(">Interaction 1</button>") && sameKind.contains(">Interaction 2</button>"),
+      "a repeated fallback label is numbered so the two buttons can be told apart",
+    )
+    // …and a lone capture is NOT numbered: "Interaction 1" on a preview with one recording is a
+    // count of something nobody was choosing between.
+    assertTrue(
+      view.contains(">Press</button>") && !view.contains(">Press 1</button>"),
+      "a label that stands alone keeps its plain form",
+    )
+
+    // A pinned page is a permalink, and the rule it holds to is that a pinned request is never
+    // answered with CURRENT bytes. `/motion/` reads the branch tip the session is holding and has
+    // no revision to resolve against, so the axis is withdrawn there rather than playing today's
+    // recording beside a render from another commit. Withdrawn whole — chip, stage image and mode
+    // radio — so there is no half-present control to click.
+    val pinnedView =
+      ServeWeb.viewerPage(
+        withMotion,
+        token,
+        sessionId = "compose-m3",
+        basePath = "/compose-m3",
+        revisions = ServeWeb.CatalogRevisions(pinned = "df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80"),
+      )
+    assertFalse(pinnedView.contains("cp-motion-chip"), "a pinned page offers no capture")
+    assertFalse(pinnedView.contains("cp-motion-img"), "…and stages none")
+    assertFalse(
+      pinnedView.contains("value=\"motion\""),
+      "…and carries no mode radio a URL could still name",
+    )
+
+    // The caption readout stands IN FOR the picker on a single-capture preview rather than
+    // repeating it: with two captures the pressed button already carries the same words, and
+    // printing them again beside it is two controls stating one fact.
+    assertTrue(
+      assetText("viewer.js").contains("(motionButtons.length > 1 || !button)"),
+      "the caption names the recording only when no visible button already does",
+    )
+  }
+
+  @Test
   fun `viewer mounts the Wasm tier only when a wasm app backs the session`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     val withWasm = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
@@ -4057,8 +4240,18 @@ class ServeWebFixtureTest {
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
     assertTrue(
       assetText("viewer.js").contains("var onWasm = wasmActive();") &&
-        assetText("viewer.js").contains("!onWasm && !onRc && !onSpec &&"),
+        assetText("viewer.js").contains("!onWasm && !onRc && !onFixedFrame &&"),
       "server-only controls are gated off while the Wasm lane is active",
+    )
+    // `onFixedFrame` is ONE predicate covering both lanes that put a frame on the stage the server
+    // did not just render — the imported spec raster and a published capture. Asserted here because
+    // it was briefly half-propagated: `canServerRender` used it while the theme select and the
+    // Remote Compose knobs still gated on a spec-only flag, so overrides stayed live over a
+    // recording while the code read as though the lane were gated.
+    assertTrue(
+      assetText("viewer.js").contains("var onFixedFrame = specActive() || motionActive();") &&
+        !assetText("viewer.js").contains("var onSpec = specActive();"),
+      "one fixed-frame predicate gates the override families, not a spec-only flag beside it",
     )
     assertTrue(
       assetText("viewer.js").contains("hasDeclaredThemes && !onWasm"),
