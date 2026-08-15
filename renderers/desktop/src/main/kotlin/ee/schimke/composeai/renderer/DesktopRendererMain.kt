@@ -1100,12 +1100,15 @@ internal fun renderPreview(
   fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
+  // `openForInvoke` is what lets a `private fun` preview render here — see that function for why
+  // the resolution succeeds but the invoke would not (issue #3873).
   val composableMethod =
     if (previewArgs.isEmpty()) {
-      clazz.getDeclaredComposableMethod(functionName)
-    } else {
-      findComposableMethodWithArgs(clazz, functionName, previewArgs)
-    }
+        clazz.getDeclaredComposableMethod(functionName)
+      } else {
+        findComposableMethodWithArgs(clazz, functionName, previewArgs)
+      }
+      .openForInvoke()
 
   // Arm the named-override capture for this render: drop any knobs a prior preview declared so this
   // preview's `previewOverride*` lookups accumulate a clean set (drained into the sidecar below).
@@ -1520,7 +1523,9 @@ internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
   val cls = ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass(wrapperFqn)
   val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
   // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
-  // Wrap(Function2, Composer, int) at the bytecode level.
-  val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java)
+  // Wrap(Function2, Composer, int) at the bytecode level. Opened for the same reason the preview
+  // itself is: a wrapper provider declared `private`/`internal` in the consumer's module resolves
+  // but won't invoke.
+  val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java).openForInvoke()
   return method to instance
 }

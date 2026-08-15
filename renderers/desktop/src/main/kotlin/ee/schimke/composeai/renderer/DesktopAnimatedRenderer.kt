@@ -105,9 +105,11 @@ fun renderAnimatedPreview(
   val clazz =
     if (classLoader != null) Class.forName(className, true, classLoader)
     else Class.forName(className)
+  // `openForInvoke` keeps `private fun` previews renderable on the GIF path too — issue #3873.
   val composableMethod =
-    if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
-    else findComposableMethodForAnimation(clazz, functionName, previewArgs)
+    (if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
+      else findComposableMethodForAnimation(clazz, functionName, previewArgs))
+      .openForInvoke()
 
   val frameInterval =
     if (frameIntervalMs > 0) frameIntervalMs else DEFAULT_ANIMATION_FRAME_INTERVAL_MS
@@ -252,7 +254,7 @@ private fun InvokeAnimatedWrappedComposable(
         if (classLoader != null) Class.forName(wrapperFqn, true, classLoader)
         else Class.forName(wrapperFqn)
       val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-      val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java)
+      val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java).openForInvoke()
       method to instance
     }
   resolved.first.invoke(currentComposer, resolved.second, body)

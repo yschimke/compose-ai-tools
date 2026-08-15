@@ -207,7 +207,14 @@ private fun resolvePreview(info: PreviewInfo, classLoader: ClassLoader): LoadedP
 
   val method =
     try {
-      ownerClass.getDeclaredComposableMethod(info.functionName)
+      // A Kotlin `private fun` preview resolves here (the lookup scans `declaredMethods`) but
+      // `ComposableMethod.invoke` in [Main]'s render body would throw `IllegalAccessException`
+      // without opening the JVM method — the same fix the desktop renderers and the daemon carry
+      // (issue #3873). `runCatching` so a SecurityManager refusal degrades to "try the invoke
+      // anyway" rather than failing resolution for public previews.
+      ownerClass.getDeclaredComposableMethod(info.functionName).also { resolved ->
+        runCatching { resolved.asMethod().isAccessible = true }
+      }
     } catch (e: NoSuchMethodException) {
       return LoadedPreview(
         info = info,
