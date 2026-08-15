@@ -1,17 +1,23 @@
-# Emitting `design-map.json`
+# @yschimke/compose-design-map
 
 `design-map.json` is [design-parity](https://github.com/yschimke/design-parity)'s correspondence
-file: it says which design node a code component is meant to look like. This repo now **writes**
-one, from the catalog annotations it already defines.
+file: it says which design node a code component is meant to look like. This package **writes**
+one, from the catalog annotations [compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
+defines.
 
 ```
 ./gradlew :<module>:composePreviewDiscover
-node scripts/design-artifacts/emit-design-map.mjs \
+npx --yes @yschimke/compose-design-map \
   --previews <module>/build/compose-previews/previews.json
 ```
 
-Both outputs are generated — regenerate rather than edit. `--check` regenerates in memory and exits
-non-zero if a committed copy has drifted, which is the CI posture.
+Dependency-free and Node-only, so `npx` is the whole install. Both outputs are generated —
+regenerate rather than edit. `--check` regenerates in memory and exits non-zero if a committed copy
+has drifted, which is the CI posture.
+
+Pin the version in CI. Both files are committed and checked, so the projection's version is an
+input to a checked-in artifact: float it, and a release here turns a downstream repo red for a
+change nobody there made.
 
 ## Why the producer lives here
 
@@ -19,7 +25,7 @@ Every field the projection reads is defined in this repository:
 
 | Field on `previews.json` | Declared by |
 | --- | --- |
-| `catalog.reference`, `referenceSet`, `noReference`, `referenceContentsOnly` | [`@CatalogComponent`](../../../api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/CatalogComponent.kt) |
+| `catalog.reference`, `referenceSet`, `noReference`, `referenceContentsOnly` | [`@CatalogComponent`](https://github.com/yschimke/compose-ai-tools/blob/main/api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/CatalogComponent.kt) |
 | `catalog.props`, `catalog.state` | `@CatalogVariant` |
 | `overrides.seeds`, `overrides.props` | `@OverrideVariant` / `@PreviewAxis` |
 
@@ -28,7 +34,7 @@ opposite sides of a repo boundary is how a manifest reader goes quietly stale �
 belongs on the annotation rather than in a JSON map for the same reason: a map keyed on preview
 names drifts the moment a preview is renamed, and fails silently when it does.
 
-The consuming half already lived here too — [`design-references.mjs`](../design-references.mjs)
+The consuming half already lived here too — [`design-references.mjs`](https://github.com/yschimke/compose-ai-tools/blob/main/scripts/design-artifacts/design-references.mjs)
 reads a `design-map.json` to build a published catalog's `references/index.json`. Until now nothing
 in the ecosystem wrote one except a hand-maintained script in a downstream catalog repo.
 
@@ -41,7 +47,7 @@ this repo can answer:
 ```
   previews.json
       │
-      │  emit-design-map.mjs           ← THIS REPO. Knows what the annotations mean.
+      │  compose-design-map            ← THIS PACKAGE. Knows what the annotations mean.
       │
       ├──▶ design-map.json             base references, one per component. Valid on its own.
       │

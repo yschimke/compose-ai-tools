@@ -1,9 +1,10 @@
+#!/usr/bin/env node
 /**
  * Write a repo's `design-map.json` from its discovery manifest — the I/O around `design-map.mjs`.
  *
- *     node emit-design-map.mjs [--previews <path>] [--out design-map.json]
- *                              [--variants design-map-variants.json] [--prefix catalog]
- *                              [--check] [--strict]
+ *     npx @yschimke/compose-design-map [--previews <path>] [--out design-map.json]
+ *                                      [--variants design-map-variants.json] [--prefix catalog]
+ *                                      [--check] [--strict]
  *
  * Run `./gradlew :<module>:composePreviewDiscover` first so the manifest exists.
  *
@@ -101,7 +102,7 @@ function reconcile(file, text, wanted) {
     if (current !== expected) {
       drifted = true;
       const what = !wanted && exists ? "is stale and should be removed" : "is out of date";
-      console.error(`::error::${file} ${what} — regenerate with \`node emit-design-map.mjs\`.`);
+      console.error(`::error::${file} ${what} — regenerate with \`compose-design-map\`.`);
     }
     return;
   }
