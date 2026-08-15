@@ -567,6 +567,14 @@ onto `previews.json` as `catalog.reference` / `catalog.referenceSet` and out to 
 exported inventory, and both have a same-named spec field that overrides the annotation.
 `referenceSet` is optional — omit it and everything behaves exactly as before.
 
+These handles are what
+[`emit-design-map.mjs`](../../scripts/design-artifacts/emit-design-map.mjs) projects into a
+`design-map.json` — so the correspondence file design-parity reads is *derived from the
+annotations* rather than hand-maintained beside them. Variant renders come out as unresolved
+declarations in a sidecar, because translating a knob (`size=l`) to a kit node (`Size=Large`)
+needs that kit's published vocabulary, which lives on the design-parity side. See
+[`scripts/design-artifacts/docs/design-map.md`](../../scripts/design-artifacts/docs/design-map.md).
+
 ### Breakpoints and multipreviews: `select`, not a split `@Preview`
 
 A multipreview annotation (`@WearPreviewDevices`, a local `@CatalogWearBreakpoints`)
