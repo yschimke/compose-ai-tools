@@ -235,10 +235,14 @@ order, with deleted previews appended in their former order. The item records:
   their old/new published match score.
 
 Feed work is demand-activated. The first request returns the last cached document (or an empty,
-valid RSS document on a cold cache) and queues a background shallow-Git history pass. Each later
-request renews an interest lease. After `--catalog-feed-idle-timeout` seconds with no request, the
+valid RSS document on a cold cache) and queues a background partial-clone history pass that omits
+PNG blobs. Each later request renews an interest lease without starting another fetch; the polling
+cadence owns subsequent refreshes. After `--catalog-feed-idle-timeout` seconds with no request, the
 worker stops polling that feed but retains its XML and Git objects; a later request reactivates it
-and catches up. The default is seven days, `0` disables the lane, and
+and catches up. Generated URLs retain the server-controlled catalog session and access token when
+required. Address-specific state is capped, with expired addresses evicted first, and the XML cache
+has a schema version so a server upgrade cannot serve an obsolete document indefinitely. The
+default timeout is seven days, `0` disables the lane, and
 `--catalog-feed-cache <dir>` overrides the durable cache location (otherwise it lives beside
 `--catalogs-file` on a deployed box).
 

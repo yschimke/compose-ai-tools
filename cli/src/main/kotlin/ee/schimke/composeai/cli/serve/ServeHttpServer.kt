@@ -1076,9 +1076,19 @@ class ServeHttpServer(
           return
         }
     val system = selectedSessionId(sessionInPath)
-    val basePath = webSessionAndBase(sessionInPath).second
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    // Feed readers cannot replay an Authorization-style header for URLs embedded in RSS. Preserve
+    // only the routing/authentication query values the server itself controls; never let arbitrary
+    // request parameters become durable feed state.
+    val linkQuery = buildList {
+      if (basePath.isEmpty() && siteSystem() == null && webSessionId != null) {
+        add("session=${WebEscaping.urlEncodeSegment(webSessionId)}")
+      }
+      if (!isPublic) add("token=${WebEscaping.urlEncodeSegment(token)}")
+    }
+      .joinToString("&")
     val result =
-      withContext(Dispatchers.IO) { feed.request(system, externalOrigin() + basePath) }
+      withContext(Dispatchers.IO) { feed.request(system, externalOrigin() + basePath, linkQuery) }
         ?: run {
           call.respondText("not found", status = HttpStatusCode.NotFound)
           return

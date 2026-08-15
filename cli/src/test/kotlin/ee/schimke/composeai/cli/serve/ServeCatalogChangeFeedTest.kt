@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -122,6 +123,7 @@ class ServeCatalogChangeFeedTest {
         "demo",
         "https://preview.example/demo",
         CatalogFeedHistory("Demo app", listOf(newRevision, oldRevision), listOf(batch)),
+        "token=s3cret",
       )
     assertTrue(xml.contains("Demo app catalog changes"))
     assertTrue(xml.contains("at=${oldRevision.commit}"))
@@ -130,6 +132,8 @@ class ServeCatalogChangeFeedTest {
     assertTrue(xml.contains("+12.50 pp"))
     assertTrue(xml.contains("Before design reference"))
     assertTrue(xml.contains("After design reference"))
+    assertTrue(xml.contains("feed.xml?token=s3cret"))
+    assertTrue(xml.contains("token=s3cret"))
     assertTrue(xml.indexOf("Before") < xml.indexOf("After"))
   }
 
@@ -146,7 +150,7 @@ class ServeCatalogChangeFeedTest {
         pollIntervalMillis = 10_000,
         now = { clock },
         source =
-          CatalogFeedSource {
+          CatalogFeedSource { _, _ ->
             reads.incrementAndGet()
             history
           },
@@ -172,6 +176,194 @@ class ServeCatalogChangeFeedTest {
       assertTrue(service.isActive("demo", "https://preview.example/demo"))
     } finally {
       service.close()
+    }
+  }
+
+  @Test
+  fun `active requests renew the lease without triggering another fetch`() {
+    var clock = 1_000L
+    val reads = AtomicInteger()
+    val history = CatalogFeedHistory("Demo", listOf(newRevision, oldRevision), emptyList())
+    val service =
+      ServeCatalogChangeFeed(
+        entries = { listOf(config()) },
+        cacheRoot = tempDir(),
+        idleTimeoutMillis = 100,
+        pollIntervalMillis = 10_000,
+        now = { clock },
+        source = CatalogFeedSource { _, _ -> reads.incrementAndGet().let { history } },
+        onLog = {},
+        startScheduler = false,
+      )
+    try {
+      service.request("demo", "https://preview.example/demo")
+      await { reads.get() == 1 }
+      clock += 50
+      repeat(20) { service.request("demo", "https://preview.example/demo") }
+      Thread.sleep(30)
+      assertEquals(1, reads.get())
+
+      service.tick()
+      await { reads.get() == 2 }
+    } finally {
+      service.close()
+    }
+  }
+
+  @Test
+  fun `feed addresses are bounded and expired addresses are evicted`() {
+    var clock = 1_000L
+    val history = CatalogFeedHistory("Demo", listOf(newRevision, oldRevision), emptyList())
+    val service =
+      ServeCatalogChangeFeed(
+        entries = { listOf(config()) },
+        cacheRoot = tempDir(),
+        idleTimeoutMillis = 100,
+        pollIntervalMillis = 10_000,
+        now = { clock },
+        source = CatalogFeedSource { _, _ -> history },
+        onLog = {},
+        startScheduler = false,
+      )
+    try {
+      repeat(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES) {
+        service.request("demo", "https://$it.example/demo")
+      }
+      assertEquals(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES, service.stateCount())
+      service.request("demo", "https://overflow.example/demo")
+      assertEquals(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES, service.stateCount())
+
+      clock += 101
+      service.request("demo", "https://replacement.example/demo")
+      assertEquals(ServeCatalogChangeFeed.MAX_FEED_ADDRESSES, service.stateCount())
+      assertTrue(service.isActive("demo", "https://replacement.example/demo"))
+    } finally {
+      service.close()
+    }
+  }
+
+  @Test
+  fun `pixel and metadata changes are reported together`() {
+    val before =
+      CatalogSnapshot.parse(
+        """{"components":[{"componentId":"Button","section":"Old","images":[{"path":"images/button.png"}]}]}""",
+        null,
+        mapOf("images/button.png" to "1".repeat(40)),
+      )
+    val after =
+      CatalogSnapshot.parse(
+        """{"components":[{"componentId":"Button","section":"New","images":[{"path":"images/button.png"}]}]}""",
+        null,
+        mapOf("images/button.png" to "2".repeat(40)),
+      )
+
+    val change = CatalogFeedDiff.between(oldRevision, before, newRevision, after).previews.single()
+    assertEquals(CatalogPreviewChangeKind.VISUAL_AND_METADATA, change.kind)
+  }
+
+  @Test
+  fun `reference identity changes count as spec changes`() {
+    fun snapshot(label: String, previewId: String) =
+      CatalogSnapshot.parse(
+        """{"components":[]}""",
+        """{"references":[{"id":"spec","label":"$label","previewId":"$previewId","raster":{"sha256":"same"},"match":{"percent":80.0}}]}""",
+        emptyMap(),
+      )
+
+    val change =
+      CatalogFeedDiff.between(
+          oldRevision,
+          snapshot("Old", "old-preview"),
+          newRevision,
+          snapshot("New", "new-preview"),
+        )
+        .references
+        .single()
+    assertTrue(change.specChanged)
+  }
+
+  @Test
+  fun `partial fetch returns before materialising unchanged snapshots`() {
+    val root = tempDir()
+    val repo = File(root, "demo").apply { mkdirs() }
+    File(repo, "HEAD").writeText("ref: refs/heads/main\n")
+    val commands = mutableListOf<List<String>>()
+    val head = "c".repeat(40)
+    val source =
+      GitCatalogFeedSource(root) { _, args ->
+        commands += args
+        when (args.first()) {
+          "rev-parse" -> CatalogFeedGitResult(0, "$head\n", "")
+          else -> CatalogFeedGitResult(0, "", "")
+        }
+      }
+
+    assertEquals(null, source.read(config(), head))
+    assertTrue(commands.any { "--filter=blob:none" in it })
+    assertFalse(
+      commands.any { it.first() == "log" || it.first() == "show" || it.first() == "ls-tree" }
+    )
+  }
+
+  @Test
+  fun `interrupting git terminates the child and restores interrupt status`() {
+    val dir = tempDir()
+    val result = AtomicReference<CatalogFeedGitResult>()
+    val interruptRestored = AtomicReference(false)
+    val worker = Thread {
+      result.set(runCatalogFeedGit(dir, listOf("hash-object", "--stdin")))
+      interruptRestored.set(Thread.currentThread().isInterrupted)
+    }
+    worker.start()
+    Thread.sleep(100)
+    worker.interrupt()
+    worker.join(5_000)
+
+    assertFalse(worker.isAlive)
+    assertEquals(130, result.get().exitCode)
+    assertTrue(interruptRestored.get())
+  }
+
+  @Test
+  fun `stale cache schema does not reuse its saved head`() {
+    val root = tempDir()
+    val history = CatalogFeedHistory("Demo", listOf(newRevision, oldRevision), emptyList())
+    val first =
+      ServeCatalogChangeFeed(
+        entries = { listOf(config()) },
+        cacheRoot = root,
+        idleTimeoutMillis = 100,
+        pollIntervalMillis = 10_000,
+        source = CatalogFeedSource { _, _ -> history },
+        onLog = {},
+        startScheduler = false,
+      )
+    first.request("demo", "https://preview.example/demo")
+    val version = awaitFile(root, "version")
+    first.close()
+    version.writeText("old\n")
+
+    val observedKnownHead = AtomicReference("unset")
+    val second =
+      ServeCatalogChangeFeed(
+        entries = { listOf(config()) },
+        cacheRoot = root,
+        idleTimeoutMillis = 100,
+        pollIntervalMillis = 10_000,
+        source =
+          CatalogFeedSource { _, knownHead ->
+            observedKnownHead.set(knownHead ?: "<null>")
+            history
+          },
+        onLog = {},
+        startScheduler = false,
+      )
+    try {
+      second.request("demo", "https://preview.example/demo")
+      await { observedKnownHead.get() != "unset" }
+      assertEquals("<null>", observedKnownHead.get())
+    } finally {
+      second.close()
     }
   }
 
@@ -205,6 +397,19 @@ class ServeCatalogChangeFeedTest {
     }
     error("condition did not become true")
   }
+
+  private fun awaitFile(root: File, name: String): File {
+    repeat(100) {
+      root
+        .walkTopDown()
+        .firstOrNull { it.isFile && it.name == name }
+        ?.let {
+          return it
+        }
+      Thread.sleep(10)
+    }
+    error("$name did not appear")
+  }
 }
 
 class ServeCatalogChangeFeedRoutingTest {
@@ -226,7 +431,7 @@ class ServeCatalogChangeFeedRoutingTest {
       idleTimeoutMillis = 60_000,
       pollIntervalMillis = 60_000,
       source =
-        CatalogFeedSource {
+        CatalogFeedSource { _, _ ->
           val old = CatalogFeedRevision("a".repeat(40), "2026-08-14T10:00:00Z", "old", null)
           val new = CatalogFeedRevision("b".repeat(40), "2026-08-15T10:00:00Z", "new", null)
           CatalogFeedHistory(
@@ -249,10 +454,10 @@ class ServeCatalogChangeFeedRoutingTest {
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
-        token = "unused",
+        token = "s3cret",
         sessions = registry,
         defaultSessionId = "demo",
-        isPublic = true,
+        isPublic = false,
         catalogFeed = feed,
       )
       .also { it.start() }
@@ -270,7 +475,7 @@ class ServeCatalogChangeFeedRoutingTest {
   fun `catalog feed route returns rss and unknown catalog is absent`() {
     var body = ""
     for (attempt in 0 until 100) {
-      val response = get("/demo/feed.xml")
+      val response = get("/demo/feed.xml?token=s3cret")
       assertEquals(200, response.first)
       assertTrue(response.second.startsWith("application/rss+xml"))
       body = response.third
@@ -278,8 +483,18 @@ class ServeCatalogChangeFeedRoutingTest {
       Thread.sleep(10)
     }
     assertTrue(body.contains("<item>"), body)
+    assertTrue(body.contains("token=s3cret"), body)
     assertTrue(body.contains("https://127.0.0.1:").not(), "forwarded scheme is not invented")
-    assertEquals(404, get("/unknown/feed.xml").first)
+    assertEquals(404, get("/unknown/feed.xml?token=s3cret").first)
+
+    var queryBody = ""
+    for (attempt in 0 until 100) {
+      queryBody = get("/feed.xml?session=demo&token=s3cret").third
+      if (queryBody.contains("<item>")) break
+      Thread.sleep(10)
+    }
+    assertTrue(queryBody.contains("session=demo"), queryBody)
+    assertTrue(queryBody.contains("token=s3cret"), queryBody)
   }
 
   private fun get(path: String): Triple<Int, String, String> {

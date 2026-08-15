@@ -47,7 +47,7 @@ internal constructor(
 
   data class Result(val xml: String, val building: Boolean)
 
-  private data class Key(val system: String, val baseUrl: String)
+  private data class Key(val system: String, val baseUrl: String, val linkQuery: String)
 
   private class State {
     @Volatile var activeUntil: Long = 0
@@ -81,25 +81,60 @@ internal constructor(
   }
 
   /** Renew interest in [system]'s feed and return the newest completed document immediately. */
-  fun request(system: String, baseUrl: String): Result? {
+  fun request(system: String, baseUrl: String, linkQuery: String = ""): Result? {
     val config = entries().firstOrNull { it.system == system } ?: return null
     val cleanBase = baseUrl.trimEnd('/')
-    val key = Key(system, cleanBase)
+    val cleanQuery = linkQuery.removePrefix("?")
+    val key = Key(system, cleanBase, cleanQuery)
+    val at = now()
     val state =
-      states.computeIfAbsent(key) {
-        State().apply {
-          loadCached(key)?.let { (cachedHead, cachedXml) ->
-            head = cachedHead
-            xml = cachedXml
+      synchronized(states) {
+        if (!states.containsKey(key) && !makeRoomFor(key, at)) {
+          null
+        } else {
+          states.computeIfAbsent(key) {
+            State().apply {
+              loadCached(key)?.let { (cachedHead, cachedXml) ->
+                head = cachedHead
+                xml = cachedXml
+              }
+            }
           }
         }
       }
-    state.activeUntil = now() + idleTimeoutMillis
-    enqueue(key, config, state)
+        ?: run {
+          onLog("serve: catalog feed state limit reached; ignoring new address for $system")
+          return Result(
+            CatalogFeedXml.empty(config.system, cleanBase, cleanQuery),
+            building = false,
+          )
+        }
+    val wasActive = state.activeUntil > at
+    state.activeUntil = at + idleTimeoutMillis
+    // Requests are a lease-renewal signal, not a polling clock. Only a cold activation queues a
+    // remote check; while active, the scheduler owns the refresh cadence.
+    if (!wasActive) enqueue(key, config, state)
     return Result(
-      xml = state.xml ?: CatalogFeedXml.empty(config.system, cleanBase),
+      xml = state.xml ?: CatalogFeedXml.empty(config.system, cleanBase, cleanQuery),
       building = state.building.get(),
     )
+  }
+
+  /**
+   * Bound request-derived origins and their durable XML documents. Expired entries normally stay
+   * warm, but become least-recently-used eviction candidates once the small address cap is full.
+   */
+  private fun makeRoomFor(key: Key, at: Long): Boolean {
+    if (states.size < MAX_FEED_ADDRESSES) return true
+    val expired =
+      states.entries
+        .filter { it.value.activeUntil <= at && !it.value.building.get() }
+        .sortedBy { it.value.activeUntil }
+    for ((oldKey, oldState) in expired) {
+      if (states.remove(oldKey, oldState)) cacheDir(oldKey).deleteRecursively()
+      if (states.size < MAX_FEED_ADDRESSES) return true
+    }
+    return states.containsKey(key)
   }
 
   /** One activity pass. Package-visible so lease expiry is deterministic in tests. */
@@ -113,19 +148,25 @@ internal constructor(
     }
   }
 
-  internal fun isActive(system: String, baseUrl: String): Boolean =
-    states[Key(system, baseUrl.trimEnd('/'))]?.activeUntil?.let { it > now() } == true
+  internal fun isActive(system: String, baseUrl: String, linkQuery: String = ""): Boolean =
+    states[Key(system, baseUrl.trimEnd('/'), linkQuery.removePrefix("?"))]?.activeUntil?.let {
+      it > now()
+    } == true
+
+  internal fun stateCount(): Int = states.size
 
   private fun enqueue(key: Key, config: CatalogLoadTracker.Config, state: State) {
     if (!state.building.compareAndSet(false, true)) return
     exec.execute {
       try {
         val history =
-          synchronized(sourceLocks.computeIfAbsent(config.system) { Any() }) { source.read(config) }
+          synchronized(sourceLocks.computeIfAbsent(config.system) { Any() }) {
+            source.read(config, state.head)
+          } ?: return@execute
         if (history.revisions.isEmpty()) return@execute
         val newHead = history.revisions.first().commit
         if (newHead == state.head && state.xml != null) return@execute
-        val xml = CatalogFeedXml.render(config.system, key.baseUrl, history)
+        val xml = CatalogFeedXml.render(config.system, key.baseUrl, history, key.linkQuery)
         persist(key, newHead, xml)
         state.xml = xml
         state.head = newHead
@@ -139,20 +180,33 @@ internal constructor(
   }
 
   private fun cacheDir(key: Key): File =
-    File(File(cacheRoot, safeName(key.system)), "feeds/${digest(key.baseUrl).take(16)}")
+    File(
+      File(cacheRoot, safeName(key.system)),
+      "feeds/${digest(key.baseUrl + "\n" + key.linkQuery).take(16)}",
+    )
 
   private fun loadCached(key: Key): Pair<String, String>? {
     val dir = cacheDir(key)
+    val version = File(dir, "version").takeIf(File::isFile)?.readText()?.trim()
     val head = File(dir, "head").takeIf(File::isFile)?.readText()?.trim().orEmpty()
     val xml = File(dir, "feed.xml").takeIf(File::isFile)?.readText().orEmpty()
-    return if (head.matches(COMMIT) && xml.isNotBlank()) head to xml else null
+    return if (version == CACHE_VERSION && head.matches(COMMIT) && xml.isNotBlank()) {
+      head to xml
+    } else {
+      null
+    }
   }
 
   private fun persist(key: Key, head: String, xml: String) {
     val dir = cacheDir(key)
     if (!dir.mkdirs() && !dir.isDirectory) return
+    val version = File(dir, "version")
+    // Invalidate the old pair first. If the process stops between either content write, the next
+    // process rebuilds instead of pairing a new document with an old head (or vice versa).
+    if (version.exists() && !version.delete()) return
     atomicWrite(File(dir, "feed.xml"), xml)
     atomicWrite(File(dir, "head"), "$head\n")
+    atomicWrite(version, "$CACHE_VERSION\n")
   }
 
   private fun atomicWrite(target: File, text: String) {
@@ -175,6 +229,8 @@ internal constructor(
 
   companion object {
     private val COMMIT = Regex("[0-9a-f]{40}")
+    private const val CACHE_VERSION = "2"
+    internal const val MAX_FEED_ADDRESSES = 64
 
     internal fun safeName(value: String): String =
       value.replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-').ifBlank { "catalog" }
@@ -205,6 +261,7 @@ internal enum class CatalogPreviewChangeKind {
   ADDED,
   DELETED,
   CHANGED,
+  VISUAL_AND_METADATA,
   METADATA,
 }
 
@@ -238,7 +295,8 @@ internal data class CatalogFeedBatch(
 
 /** Source seam: real serving uses Git; tests can provide an already-built history. */
 internal fun interface CatalogFeedSource {
-  fun read(config: CatalogLoadTracker.Config): CatalogFeedHistory
+  /** Return null when [knownHead] is still current, before materialising historical snapshots. */
+  fun read(config: CatalogLoadTracker.Config, knownHead: String?): CatalogFeedHistory?
 }
 
 /** Shallow bare-Git implementation of [CatalogFeedSource]. */
@@ -247,7 +305,7 @@ internal class GitCatalogFeedSource(
   private val git: (File, List<String>) -> CatalogFeedGitResult = ::runCatalogFeedGit,
 ) : CatalogFeedSource {
 
-  override fun read(config: CatalogLoadTracker.Config): CatalogFeedHistory {
+  override fun read(config: CatalogLoadTracker.Config, knownHead: String?): CatalogFeedHistory? {
     require(REPO.matches(config.repo)) { "invalid catalog repo" }
     require(BRANCH.matches(config.branch) && ".." !in config.branch.split('/')) {
       "invalid catalog branch"
@@ -259,6 +317,18 @@ internal class GitCatalogFeedSource(
     }
     val remote = "https://github.com/${config.repo}.git"
     val ref = "refs/heads/catalog-feed"
+    val setRemote = git(dir, listOf("remote", "set-url", "origin", remote))
+    if (!setRemote.ok) {
+      check(git(dir, listOf("remote", "add", "origin", remote)).ok) {
+        "could not configure catalog feed remote"
+      }
+    }
+    check(git(dir, listOf("config", "remote.origin.promisor", "true")).ok) {
+      "could not configure partial catalog fetch"
+    }
+    check(git(dir, listOf("config", "remote.origin.partialclonefilter", "blob:none")).ok) {
+      "could not configure partial catalog fetch"
+    }
     val fetch =
       git(
         dir,
@@ -267,11 +337,15 @@ internal class GitCatalogFeedSource(
           "--quiet",
           "--force",
           "--depth=$HISTORY_DEPTH",
-          remote,
+          "--filter=blob:none",
+          "origin",
           "+refs/heads/${config.branch}:$ref",
         ),
       )
     check(fetch.ok) { fetch.stderr.ifBlank { "could not fetch catalog history" } }
+    val fetchedHead = git(dir, listOf("rev-parse", "--verify", ref))
+    check(fetchedHead.ok) { "could not resolve fetched catalog head" }
+    if (knownHead != null && fetchedHead.stdout.trim() == knownHead) return null
     val log =
       git(
         dir,
@@ -353,27 +427,44 @@ internal data class CatalogFeedGitResult(
     get() = exitCode == 0
 }
 
-private fun runCatalogFeedGit(dir: File, args: List<String>): CatalogFeedGitResult {
+internal fun runCatalogFeedGit(dir: File, args: List<String>): CatalogFeedGitResult {
   val process = ProcessBuilder(listOf("git") + args).directory(dir).start()
   val stdout = StringBuilder()
   val stderr = StringBuilder()
   val outThread = Thread {
     process.inputStream.bufferedReader().use { stdout.append(it.readText()) }
   }
+    .apply { isDaemon = true }
   val errThread = Thread {
     process.errorStream.bufferedReader().use { stderr.append(it.readText()) }
   }
+    .apply { isDaemon = true }
   outThread.start()
   errThread.start()
-  if (!process.waitFor(60, TimeUnit.SECONDS)) {
-    process.destroyForcibly()
-    outThread.join(1_000)
-    errThread.join(1_000)
+  val completed =
+    try {
+      process.waitFor(60, TimeUnit.SECONDS)
+    } catch (_: InterruptedException) {
+      terminateCatalogFeedGit(process, outThread, errThread)
+      Thread.currentThread().interrupt()
+      return CatalogFeedGitResult(130, stdout.toString(), "git interrupted")
+    }
+  if (!completed) {
+    terminateCatalogFeedGit(process, outThread, errThread)
     return CatalogFeedGitResult(124, stdout.toString(), "git timed out")
   }
   outThread.join()
   errThread.join()
   return CatalogFeedGitResult(process.exitValue(), stdout.toString(), stderr.toString())
+}
+
+private fun terminateCatalogFeedGit(process: Process, outThread: Thread, errThread: Thread) {
+  process.destroyForcibly()
+  runCatching { process.inputStream.close() }
+  runCatching { process.errorStream.close() }
+  runCatching { process.outputStream.close() }
+  runCatching { outThread.join(1_000) }
+  runCatching { errThread.join(1_000) }
 }
 
 internal data class CatalogSnapshot(
@@ -519,6 +610,18 @@ internal object CatalogFeedDiff {
                 // unpredictably.
                 order = after.previews.size + old.order,
               )
+            old != null &&
+              new != null &&
+              old.blob != new.blob &&
+              (old.metadata != new.metadata || old.label != new.label) ->
+              CatalogPreviewChange(
+                CatalogPreviewChangeKind.VISUAL_AND_METADATA,
+                id,
+                new.label,
+                old.blob,
+                new.blob,
+                new.order,
+              )
             old != null && new != null && old.blob != new.blob ->
               CatalogPreviewChange(
                 CatalogPreviewChangeKind.CHANGED,
@@ -564,7 +667,11 @@ internal object CatalogFeedDiff {
             label = new?.label ?: old!!.label,
             previewId = new?.previewId ?: old!!.previewId,
             specChanged =
-              old?.specFingerprint != new?.specFingerprint || old == null || new == null,
+              old?.specFingerprint != new?.specFingerprint ||
+                old?.label != new?.label ||
+                old?.previewId != new?.previewId ||
+                old == null ||
+                new == null,
             beforeMatch = old?.match,
             afterMatch = new?.match,
             order = new?.order ?: old!!.order,
@@ -580,19 +687,26 @@ internal object CatalogFeedDiff {
 
 /** Pure RSS 2.0 projection of [CatalogFeedHistory]. */
 internal object CatalogFeedXml {
-  fun empty(system: String, baseUrl: String): String =
+  fun empty(system: String, baseUrl: String, linkQuery: String = ""): String =
     document(
       title = "$system catalog changes",
       baseUrl = baseUrl,
+      linkQuery = linkQuery,
       batches = emptyList(),
       generated = Instant.now(),
       repo = null,
     )
 
-  fun render(system: String, baseUrl: String, history: CatalogFeedHistory): String =
+  fun render(
+    system: String,
+    baseUrl: String,
+    history: CatalogFeedHistory,
+    linkQuery: String = "",
+  ): String =
     document(
       title = "${history.title?.takeIf { it.isNotBlank() } ?: system} catalog changes",
       baseUrl = baseUrl,
+      linkQuery = linkQuery,
       batches = history.batches,
       generated = history.revisions.firstOrNull()?.date?.let(::instantOrNull) ?: Instant.now(),
       repo = history.repo,
@@ -601,6 +715,7 @@ internal object CatalogFeedXml {
   private fun document(
     title: String,
     baseUrl: String,
+    linkQuery: String,
     batches: List<CatalogFeedBatch>,
     generated: Instant,
     repo: String?,
@@ -608,31 +723,39 @@ internal object CatalogFeedXml {
     append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
     append("<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\"><channel>\n")
     append("<title>${xml(title)}</title>\n")
-    append("<link>${xml(baseUrl)}</link>\n")
+    append("<link>${xml(feedUrl(baseUrl, query = linkQuery))}</link>\n")
     append("<description>${xml("Published preview and design-spec changes")}</description>\n")
     append("<atom:link href=\"")
-      .append(xml("$baseUrl/feed.xml"))
+      .append(xml(feedUrl(baseUrl, "/feed.xml", linkQuery)))
       .append("\" rel=\"self\" type=\"application/rss+xml\"/>\n")
     append("<lastBuildDate>${rfc822(generated)}</lastBuildDate>\n")
-    for (batch in batches) append(item(baseUrl, repo, batch))
+    for (batch in batches) append(item(baseUrl, linkQuery, repo, batch))
     append("</channel></rss>\n")
   }
 
-  private fun item(baseUrl: String, repo: String?, batch: CatalogFeedBatch): String {
+  private fun item(
+    baseUrl: String,
+    linkQuery: String,
+    repo: String?,
+    batch: CatalogFeedBatch,
+  ): String {
     val p = batch.previews.groupingBy { it.kind }.eachCount()
     val summary = buildList {
       p[CatalogPreviewChangeKind.ADDED]?.let { add("$it added") }
       p[CatalogPreviewChangeKind.DELETED]?.let { add("$it deleted") }
       p[CatalogPreviewChangeKind.CHANGED]?.let { add("$it visually changed") }
+      p[CatalogPreviewChangeKind.VISUAL_AND_METADATA]?.let {
+        add("$it visually and metadata changed")
+      }
       p[CatalogPreviewChangeKind.METADATA]?.let { add("$it metadata changed") }
       if (batch.references.isNotEmpty()) add("${batch.references.size} design reference changes")
       if (isEmpty()) add("catalog metadata changed")
     }
       .joinToString(", ")
     val commitUrl = ServeCatalogRevision.treeUrl(repo, batch.after.commit)
-    val fallbackLink = "$baseUrl?at=${batch.after.commit}"
+    val fallbackLink = feedUrl(baseUrl, query = withAt(batch.after.commit, linkQuery))
     val link = commitUrl ?: fallbackLink
-    val html = description(baseUrl, batch)
+    val html = description(baseUrl, linkQuery, batch)
     return buildString {
       append("<item>\n")
       append("<title>${xml(summary)}</title>\n")
@@ -644,7 +767,11 @@ internal object CatalogFeedXml {
     }
   }
 
-  private fun description(baseUrl: String, batch: CatalogFeedBatch): String = buildString {
+  private fun description(
+    baseUrl: String,
+    linkQuery: String,
+    batch: CatalogFeedBatch,
+  ): String = buildString {
     append("<p>Catalog publication <code>${batch.after.commit.take(8)}</code>")
     batch.after.sourceSha?.let { append(" from source <code>${html(it)}</code>") }
     append(".</p>")
@@ -652,16 +779,36 @@ internal object CatalogFeedXml {
       append("<h3>Previews</h3><ul>")
       for (change in batch.previews) {
         val oldUrl =
-          "$baseUrl/render/${WebEscaping.urlEncodeSegment(change.id)}.png?at=${batch.before.commit}"
+          feedUrl(
+            baseUrl,
+            "/render/${WebEscaping.urlEncodeSegment(change.id)}.png",
+            withAt(batch.before.commit, linkQuery),
+          )
         val newUrl =
-          "$baseUrl/render/${WebEscaping.urlEncodeSegment(change.id)}.png?at=${batch.after.commit}"
-        append("<li><strong>${html(change.label)}</strong>: ${change.kind.name.lowercase()}")
+          feedUrl(
+            baseUrl,
+            "/render/${WebEscaping.urlEncodeSegment(change.id)}.png",
+            withAt(batch.after.commit, linkQuery),
+          )
+        val kindLabel =
+          when (change.kind) {
+            CatalogPreviewChangeKind.ADDED -> "added"
+            CatalogPreviewChangeKind.DELETED -> "deleted"
+            CatalogPreviewChangeKind.CHANGED -> "visually changed"
+            CatalogPreviewChangeKind.VISUAL_AND_METADATA -> "visually and metadata changed"
+            CatalogPreviewChangeKind.METADATA -> "metadata changed"
+          }
+        append("<li><strong>${html(change.label)}</strong>: $kindLabel")
         when (change.kind) {
           CatalogPreviewChangeKind.ADDED ->
             append("<br><img alt=\"After\" src=\"${html(newUrl)}\">")
           CatalogPreviewChangeKind.DELETED ->
             append("<br><img alt=\"Before\" src=\"${html(oldUrl)}\">")
           CatalogPreviewChangeKind.CHANGED ->
+            append(
+              "<br><img alt=\"Before\" src=\"${html(oldUrl)}\"> <img alt=\"After\" src=\"${html(newUrl)}\">"
+            )
+          CatalogPreviewChangeKind.VISUAL_AND_METADATA ->
             append(
               "<br><img alt=\"Before\" src=\"${html(oldUrl)}\"> <img alt=\"After\" src=\"${html(newUrl)}\">"
             )
@@ -688,11 +835,21 @@ internal object CatalogFeedXml {
         if (change.specChanged) {
           val encodedId = WebEscaping.urlEncodeSegment(change.id)
           if (change.beforePresent) {
-            val oldUrl = "$baseUrl/reference/$encodedId.png?at=${batch.before.commit}"
+            val oldUrl =
+              feedUrl(
+                baseUrl,
+                "/reference/$encodedId.png",
+                withAt(batch.before.commit, linkQuery),
+              )
             append("<br><img alt=\"Before design reference\" src=\"${html(oldUrl)}\">")
           }
           if (change.afterPresent) {
-            val newUrl = "$baseUrl/reference/$encodedId.png?at=${batch.after.commit}"
+            val newUrl =
+              feedUrl(
+                baseUrl,
+                "/reference/$encodedId.png",
+                withAt(batch.after.commit, linkQuery),
+              )
             append(" <img alt=\"After design reference\" src=\"${html(newUrl)}\">")
           }
         }
@@ -704,6 +861,12 @@ internal object CatalogFeedXml {
 
   private fun score(value: Double?): String =
     value?.let { "%.2f%%".format(java.util.Locale.ROOT, it) } ?: "n/a"
+
+  private fun withAt(commit: String, linkQuery: String): String =
+    "at=$commit" + linkQuery.takeIf { it.isNotBlank() }?.let { "&$it" }.orEmpty()
+
+  private fun feedUrl(baseUrl: String, path: String = "", query: String = ""): String =
+    baseUrl + path + query.takeIf { it.isNotBlank() }?.let { "?$it" }.orEmpty()
 
   private fun instantOrNull(value: String): Instant? = runCatching {
     Instant.parse(value)
