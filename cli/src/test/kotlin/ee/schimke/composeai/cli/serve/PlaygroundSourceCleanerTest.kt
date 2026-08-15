@@ -572,6 +572,116 @@ class PlaygroundSourceCleanerTest {
   }
 
   /**
+   * `addImports` is not a DESTRUCTURE field.
+   *
+   * m3-catalog's state helpers return a `MutableState` now, so their rules are ordinary SUBSTITUTE
+   * — and the substitution emitted `var checked by remember { mutableStateOf(true) }` against a
+   * snippet with no `remember` import, because only DESTRUCTURE read the plural field.
+   * Perfect-looking Kotlin that does not compile, which the corpus gate caught and no unit test
+   * would have.
+   */
+  @Test
+  fun `a substituted call contributes every import its rule declares`() {
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "toggleable" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.SUBSTITUTE,
+                params = listOf("initial"),
+                plain = "remember { mutableStateOf(\$0) }",
+                addImports =
+                  listOf(
+                    "androidx.compose.runtime.getValue",
+                    "androidx.compose.runtime.mutableStateOf",
+                    "androidx.compose.runtime.remember",
+                    "androidx.compose.runtime.setValue",
+                  ),
+              )
+          )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Switch
+      import androidx.compose.runtime.Composable
+      import androidx.compose.runtime.getValue
+      import androidx.compose.runtime.setValue
+      import ee.schimke.m3catalog.toggleable
+
+      @Composable
+      fun SwitchSticker() {
+        var checked by toggleable(true)
+        Switch(checked = checked, onCheckedChange = { checked = it })
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), rules)
+      )
+    assertTrue(
+      result.text.contains("var checked by remember { mutableStateOf(true) }"),
+      result.text,
+    )
+    for (import in listOf("getValue", "setValue", "remember", "mutableStateOf")) {
+      assertTrue(result.text.contains("import androidx.compose.runtime.$import"), result.text)
+    }
+    assertFalse(result.text.contains("toggleable"), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  /**
+   * The other kind that emits a replacement, and the one nobody had exercised: INLINE's member
+   * templates are arbitrary Kotlin, so a rule can perfectly well inline a symbol that needs an
+   * import. `applyInline` was not even handed the import set — the same omission as the plural
+   * field, one layer up.
+   */
+  @Test
+  fun `an inlined member contributes the imports its rule declares`() {
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "counted" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.INLINE,
+                members = mapOf("label" to "\$0", "onClick" to "{ Log.d(\"tap\") }"),
+                addImport = "android.util.Log",
+              )
+          )
+      )
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Button
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.counted
+
+      @Composable
+      fun ButtonSticker() {
+        val c = counted("Filled")
+        Button(onClick = c.onClick) { Text(c.label) }
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun ButtonSticker"), rules)
+      )
+    assertTrue(
+      result.text.contains("""Button(onClick = { Log.d("tap") }) { Text("Filled") }"""),
+      result.text,
+    )
+    assertTrue(result.text.contains("import android.util.Log"), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  /**
    * The `$known-gaps` entry m3-catalog's `compose-usage.json` carried: `toggleable` and friends
    * return `Pair<T, (T) -> Unit>` destructured into a value and a setter, and the plain reading is
    * real state rather than a value. Roughly 18 stickers were affected.

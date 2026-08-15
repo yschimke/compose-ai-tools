@@ -86,9 +86,13 @@ data class UsageRules(
     /** An import the replacement needs, e.g. `androidx.compose.material3.MaterialTheme`. */
     @SerialName("addImport") val addImport: String? = null,
     /**
-     * Imports the replacement needs, when one is not enough — [Kind.DESTRUCTURE]'s `var x by
-     * remember { mutableStateOf(…) }` needs four, including the `getValue`/`setValue` the `by`
+     * Imports the replacement needs, when one is not enough — a state helper substituted to `var x
+     * by remember { mutableStateOf(…) }` needs four, including the `getValue`/`setValue` the `by`
      * delegation reads and which nothing in the snippet mentions by name.
+     *
+     * Applies alongside [addImport] to every kind that emits a replacement — RENAME, SUBSTITUTE,
+     * DESTRUCTURE, INLINE; see [imports]. DROP and UNWRAP write no new code, so an import declared
+     * on one of those has nothing to serve.
      */
     @SerialName("addImports") val addImports: List<String> = emptyList(),
     /** [Kind.SUBSTITUTE] only: what the call reads as, with `$0`, `$1`… for its arguments. */
@@ -118,7 +122,20 @@ data class UsageRules(
      * means to a reader: the label you passed, and a click handler.
      */
     @SerialName("members") val members: Map<String, String> = emptyMap(),
-  )
+  ) {
+    /**
+     * Every import this rule's replacement needs — [addImport] and [addImports] together.
+     *
+     * Two fields rather than one is a convenience for the rules author: most replacements need
+     * exactly one import and `"addImport": "…"` reads better than a one-element list. Every rewrite
+     * reads *this*, so a rule that spells its imports either way is honoured the same. Reading only
+     * `addImport` is how the state helpers first emitted `remember { mutableStateOf(true) }` with
+     * no `remember` import: a snippet that looks right and does not compile, which is exactly the
+     * failure the compile gate exists to catch.
+     */
+    val imports: List<String>
+      get() = if (addImport == null) addImports else addImports + addImport
+  }
 
   enum class Kind {
     /**
