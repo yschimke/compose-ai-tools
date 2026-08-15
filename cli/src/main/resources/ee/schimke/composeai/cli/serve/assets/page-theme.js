@@ -87,22 +87,6 @@
     // than waiting for a reload.
     window.cpPageTheme = { follow: refresh, setting: setting };
 
-    // ── The header's navigation, in one of two shapes ───────────────────────────────────────────
-    // The links are one copy in the markup, inside a `<details>` the server emits OPEN. Above
-    // 640px that is not a menu at all — the summary is `display: none` and the panel lays out as
-    // the bar's row of actions; on a phone the bar has no width for a row, so it collapses behind
-    // its `⋮`. The collapse itself is an inline script directly after the header (see
-    // `ServeWeb.siteMenuCollapseScript`), which is what keeps it off the first paint; this only
-    // keeps the two shapes in step afterwards, so a rotated phone doesn't end up with the row back
-    // across the bar, and a widened window doesn't leave its navigation behind a button that has
-    // no reason to exist at that width.
-    var siteMenu = document.getElementById("cp-site-menu");
-    var phoneQuery = window.matchMedia && window.matchMedia("(max-width: 640px)");
-    if (siteMenu && phoneQuery && phoneQuery.addEventListener)
-        phoneQuery.addEventListener("change", function (event) {
-            siteMenu.open = !event.matches;
-        });
-
     var inputs = document.querySelectorAll("[data-cp-page-theme]");
     if (!inputs.length) return;
     var current = setting();
