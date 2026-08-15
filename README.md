@@ -172,6 +172,34 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-design-page-unlinked-only/dark](renders/serve-design-page-unlinked-only.dark.png) |
 | `light` | ![serve-design-page-unlinked-only/light](renders/serve-design-page-unlinked-only.light.png) |
 
+## serve-design-page-zoom-nested
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-zoom-nested/dark](renders/serve-design-page-zoom-nested.dark.png) |
+| `light` | ![serve-design-page-zoom-nested/light](renders/serve-design-page-zoom-nested.light.png) |
+
+## serve-design-page-zoom-reset
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-zoom-reset/dark](renders/serve-design-page-zoom-reset.dark.png) |
+| `light` | ![serve-design-page-zoom-reset/light](renders/serve-design-page-zoom-reset.light.png) |
+
+## serve-design-page-zoom-section
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-zoom-section/dark](renders/serve-design-page-zoom-section.dark.png) |
+| `light` | ![serve-design-page-zoom-section/light](renders/serve-design-page-zoom-section.light.png) |
+
+## serve-design-page-zoom-wheel
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-zoom-wheel/dark](renders/serve-design-page-zoom-wheel.dark.png) |
+| `light` | ![serve-design-page-zoom-wheel/light](renders/serve-design-page-zoom-wheel.light.png) |
+
 ## serve-doc-lottie
 
 | Theme | Capture |
@@ -270,6 +298,27 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-declared-themes-daemon-idle/dark](renders/serve-landing-declared-themes-daemon-idle.dark.png) |
 | `light` | ![serve-landing-declared-themes-daemon-idle/light](renders/serve-landing-declared-themes-daemon-idle.light.png) |
 
+## serve-landing-declared-themes-mobile
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-mobile/dark](renders/serve-landing-declared-themes-mobile.dark.png) |
+| `light` | ![serve-landing-declared-themes-mobile/light](renders/serve-landing-declared-themes-mobile.light.png) |
+
+## serve-landing-declared-themes-mobile-menu
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-mobile-menu/dark](renders/serve-landing-declared-themes-mobile-menu.dark.png) |
+| `light` | ![serve-landing-declared-themes-mobile-menu/light](renders/serve-landing-declared-themes-mobile-menu.light.png) |
+
+## serve-landing-declared-themes-mobile-theme
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-mobile-theme/dark](renders/serve-landing-declared-themes-mobile-theme.dark.png) |
+| `light` | ![serve-landing-declared-themes-mobile-theme/light](renders/serve-landing-declared-themes-mobile-theme.light.png) |
+
 ## serve-landing-declared-themes-theme-error
 
 | Theme | Capture |
@@ -354,12 +403,26 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-sections/dark](renders/serve-landing-sections.dark.png) |
 | `light` | ![serve-landing-sections/light](renders/serve-landing-sections.light.png) |
 
+## serve-landing-sections-filter-focus
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-sections-filter-focus/dark](renders/serve-landing-sections-filter-focus.dark.png) |
+| `light` | ![serve-landing-sections-filter-focus/light](renders/serve-landing-sections-filter-focus.light.png) |
+
 ## serve-landing-sections-filtered
 
 | Theme | Capture |
 | --- | --- |
 | `dark` | ![serve-landing-sections-filtered/dark](renders/serve-landing-sections-filtered.dark.png) |
 | `light` | ![serve-landing-sections-filtered/light](renders/serve-landing-sections-filtered.light.png) |
+
+## serve-landing-sections-mobile
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-sections-mobile/dark](renders/serve-landing-sections-mobile.dark.png) |
+| `light` | ![serve-landing-sections-mobile/light](renders/serve-landing-sections-mobile.light.png) |
 
 ## serve-landing-sections-section-open
 
@@ -620,6 +683,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-history-local/dark](renders/serve-viewer-history-local.dark.png) |
 | `light` | ![serve-viewer-history-local/light](renders/serve-viewer-history-local.light.png) |
 
+## serve-viewer-history-menu-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-history-menu-open/dark](renders/serve-viewer-history-menu-open.dark.png) |
+| `light` | ![serve-viewer-history-menu-open/light](renders/serve-viewer-history-menu-open.light.png) |
+
 ## serve-viewer-inspect
 
 | Theme | Capture |
@@ -766,6 +836,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-variants/dark](renders/serve-viewer-variants.dark.png) |
 | `light` | ![serve-viewer-variants/light](renders/serve-viewer-variants.light.png) |
+
+## serve-viewer-variants-mobile
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-variants-mobile/dark](renders/serve-viewer-variants-mobile.dark.png) |
+| `light` | ![serve-viewer-variants-mobile/light](renders/serve-viewer-variants-mobile.light.png) |
 
 ## serve-viewer-wasm
 
