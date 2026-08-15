@@ -841,6 +841,46 @@ object ServeWeb {
       "$GITHUB_ICON report an issue</button></form>"
   }
 
+  /** Render catalog-published GitHub issues. Every href has already been rebuilt by the store. */
+  private fun parityIssueRowsHtml(issues: List<ParityIssue>): String {
+    if (issues.isEmpty()) return ""
+    val rows =
+      issues.joinToString("\n") { issue ->
+        val state = if (issue.state == "closed") " closed" else ""
+        val classification =
+          listOfNotNull(issue.area?.let { "area:$it" }, issue.parity?.let { "parity:$it" })
+            .joinToString(" · ")
+        val meta = if (classification.isEmpty()) issue.state else "${issue.state} · $classification"
+        "<li class=\"cp-parity-issue$state\"><a href=\"${WebEscaping.htmlEscape(issue.url)}\" " +
+          "rel=\"noopener\">#${issue.number} ${WebEscaping.htmlEscape(issue.title)}</a>" +
+          "<span>${WebEscaping.htmlEscape(meta)}</span></li>"
+      }
+    return "<aside class=\"cp-parity-issues\"><strong>Issues</strong><ul>$rows</ul></aside>"
+  }
+
+  /** Compact, non-link form safe to place inside a card whose whole body is already an anchor. */
+  private fun parityIssueBadgeHtml(issues: List<ParityIssue>): String {
+    if (issues.isEmpty()) return ""
+    val open = issues.count { it.state == "open" }
+    val closed = issues.size - open
+    val label =
+      buildList {
+          if (open > 0) add("$open open")
+          if (closed > 0) add("$closed closed")
+        }
+        .joinToString(" · ")
+    val title = issues.joinToString("; ") { "#${it.number} ${it.title}" }
+    return "<span class=\"cp-issue-badge\" title=\"${WebEscaping.htmlEscape(title)}\">${WebEscaping.htmlEscape(label)} issue${if (issues.size == 1) "" else "s"}</span>"
+  }
+
+  private fun issuesForPreview(
+    issues: List<ParityIssue>,
+    preview: ServePreview,
+  ): List<ParityIssue> = issues.filter { issue ->
+    preview.id in issue.previewIds ||
+      (preview.componentId != null && issue.component == preview.componentId)
+  }
+
   /**
    * Provenance of a served design-system catalog: the trusted GitHub [repo]/[branch] it was fetched
    * from, when it was [generatedAt] (ISO-8601), and the [toolVersion]
@@ -5557,6 +5597,8 @@ object ServeWeb {
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    /** Validated catalog-published issues, matched onto each component card. */
+    parityIssues: List<ParityIssue> = emptyList(),
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -5675,6 +5717,12 @@ object ServeWeb {
       val lightLabel = gridDisplayName(l)
       val darkLabel = gridDisplayName(d)
       val defaultLabel = gridDisplayName(def)
+      val issueBadge =
+        parityIssueBadgeHtml(
+          listOfNotNull(card.light, card.dark, card.neutral)
+            .flatMap { issuesForPreview(parityIssues, it) }
+            .distinctBy { it.repository to it.number }
+        )
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
@@ -5689,7 +5737,7 @@ object ServeWeb {
           </div>
           <div class="cp-meta">
             <div class="cp-label" title="${WebEscaping.htmlEscape(def.id)}">${WebEscaping.htmlEscape(defaultLabel)}</div>
-            <div class="cp-id">${WebEscaping.htmlEscape(def.id)}</div>
+            <div class="cp-id">${WebEscaping.htmlEscape(def.id)}</div>$issueBadge
             ${viewCountHtml(cardViews(card))}
           </div>
         </a>
@@ -5701,6 +5749,7 @@ object ServeWeb {
       val label = WebEscaping.htmlEscape(gridDisplayName(p))
       val src = renderSrc(p)
       val idText = WebEscaping.htmlEscape(p.id)
+      val issueBadge = parityIssueBadgeHtml(issuesForPreview(parityIssues, p))
       p.renderFailure?.let { failure ->
         val errorName = failure.errorClass.substringAfterLast('.').ifBlank { "RenderError" }
         val message = failure.message.takeIf { it.isNotBlank() } ?: "The preview did not render."
@@ -5749,7 +5798,7 @@ object ServeWeb {
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
-              <div class="cp-id">$idText</div>
+              <div class="cp-id">$idText</div>$issueBadge
               ${viewCountHtml(engagement[p.id]?.views ?: 0L)}
             </div>
           </a>
@@ -6514,6 +6563,7 @@ $rows
     overrides: Map<String, String> = emptyMap(),
     /** Prefilled parity report for this exact preview/reference comparison. */
     reportIssue: ReportIssue? = null,
+    parityIssues: List<ParityIssue> = emptyList(),
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -6593,6 +6643,7 @@ $rows
       withPin("$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}?$query", pin)
     }
     val revisionsBlock = revisionsHtml(revisions) { pin -> pageHref(pin, reference.id) }
+    val issueRows = parityIssueRowsHtml(parityIssues)
     val referencePicker =
       if (referenceChoices.size <= 1) ""
       else {
@@ -6628,7 +6679,7 @@ $rows
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
           $revisionsBlock
-          $referencePicker
+          $referencePicker$issueRows
           <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
           <div class="cp-reference-grid">
             <section><h2>Reference</h2><div class="cp-compare-shot" data-cp-annotated="reference"><img src="$raster" alt="Design reference"></div></section>
@@ -7015,6 +7066,7 @@ $rows
     displayTitle: String? = null,
     /** Whether a preview carries a design reference — decides "compare" vs "open" on a link. */
     hasReferenceFor: (String) -> Boolean = { false },
+    parityIssues: List<ParityIssue> = emptyList(),
     /**
      * The design tool this catalog is specified by ("Figma", …) — names the whole-catalog compare
      * link. Null keeps the neutral "design references" wording. See [designToolLabel].
@@ -7276,8 +7328,32 @@ $rows
           .trimIndent()
       }
 
+    val githubIssueBand =
+      if (parityIssues.isEmpty()) ""
+      else {
+        val open = parityIssues.filter { it.state == "open" }
+        val closed = parityIssues.filter { it.state == "closed" }
+        val groups = open.groupBy { it.component ?: "Unscoped" }
+        val summary =
+          groups.entries.joinToString("\n") { (component, rows) ->
+            "<section class=\"cp-parity-issue-group\"><h3>${esc(component)} (${rows.size})</h3>${parityIssueRowsHtml(rows)}</section>"
+          }
+        val openBand =
+          "<h2 class=\"cp-status-sec\">Components with open issues (${open.size})</h2>" +
+            if (open.isEmpty()) "<p class=\"cp-muted\">No open issues.</p>" else summary
+        val closedBand =
+          if (closed.isEmpty()) ""
+          else
+            "<h2 class=\"cp-status-sec\">Closed issues (${closed.size})</h2>${parityIssueRowsHtml(closed)}"
+        openBand + closedBand
+      }
     val issueBand =
-      if (driftBand.isEmpty() && coverage.unmapped.isEmpty() && dashboard.gaps.isEmpty()) {
+      if (
+        parityIssues.isEmpty() &&
+          driftBand.isEmpty() &&
+          coverage.unmapped.isEmpty() &&
+          dashboard.gaps.isEmpty()
+      ) {
         """
         <h2 class="cp-status-sec">Issues</h2>
         <p class="cp-muted">No mapping gaps or one-sided changes were detected.</p>
@@ -7286,6 +7362,7 @@ $rows
       } else {
         """
         <h2 class="cp-status-sec">Issues</h2>
+        $githubIssueBand
         $driftBand
         $unmappedBand
         """
@@ -7775,6 +7852,7 @@ $rows
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    parityIssues: List<ParityIssue> = emptyList(),
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
@@ -7813,6 +7891,7 @@ $rows
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val displayName = previewDisplayName(preview)
+    val issueRows = parityIssueRowsHtml(parityIssues)
     val label = WebEscaping.htmlEscape(displayName)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
@@ -8837,7 +8916,7 @@ $rows
         <code class="cp-preview-id" title="$idText">$idText</code>
         ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
       </div>
-      $revisionsBlock${degradeBanner(degradations)}
+      $revisionsBlock${degradeBanner(degradations)}$issueRows
       $axesBlock
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls

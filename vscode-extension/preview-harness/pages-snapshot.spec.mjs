@@ -176,6 +176,8 @@ const STYLED_FIXTURES = new Set([
     // switches the format pane, so it needs both the stylesheet and the scripts routed in.
     "serve-rc-lanes",
     "serve-reference-compare",
+    "serve-viewer",
+    "serve-parity",
     "serve-viewer-catalog-knobs",
     "serve-landing-catalog-palette",
     "serve-viewer-catalog-palette",

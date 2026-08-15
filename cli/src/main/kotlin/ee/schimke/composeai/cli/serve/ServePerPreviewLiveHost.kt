@@ -108,6 +108,10 @@ class ServePerPreviewLiveHost(
   override fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> =
     baked.tagIndexForPreview(previewId)
 
+  override fun parityActivity(): ParityActivity? = baked.parityActivity()
+
+  override fun parityIssues(): ParityIssues? = baked.parityIssues()
+
   // The catalog's published player comparison rides the baked staging dir, so it stays reachable
   // when a live daemon fronts this session.
   override fun rcCompare(): RcCompareManifest? = baked.rcCompare()
