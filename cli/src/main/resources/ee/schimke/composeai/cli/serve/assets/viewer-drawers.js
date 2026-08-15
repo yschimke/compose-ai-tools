@@ -73,8 +73,47 @@
       writeFold(btnId, open);
     });
   }
-  // Start with the overrides drawer collapsed on a phone so the preview leads; the sticky toggle
-  // row keeps it (and the component list) one tap away as a bottom sheet. A stored preference is
+  // ── Bar, title, preview ──────────────────────────────────────────────────────────────────────
+  // On a phone that is the whole page order, so the two control rows that sat between the title
+  // and the stage — the disclosure pills, and the row naming the lane on the stage — move BELOW
+  // it. Everything above the render is now the one line that says which component this is.
+  //
+  // Moved in the DOM rather than with `order`, and moved back above 640px, so reading order,
+  // painting order and tab order stay the same order at every width — a CSS re-order would leave a
+  // keyboard walking to controls that are a screenful further down the page than they look.
+  // Re-ordered against each other too: the lane row describes what is ON the stage, so it stays
+  // next to it, and the disclosures — the most-tapped controls, each opening a bottom sheet — go
+  // last, nearest the thumb.
+  var primaryRow = document.querySelector(".cp-preview-primary");
+  var headToggles = document.querySelector(".cp-head-toggles");
+  // Where each one came from, captured before anything moves. `nextSibling` rather than an index:
+  // the anchors are stable nodes that never move themselves, so restoring is exact even though the
+  // two rows leave from different parents (the primary row from <main>, the pills from the sticky
+  // title row).
+  var rowHomes = [primaryRow, headToggles].filter(Boolean).map(function (el) {
+    return { el: el, parent: el.parentNode, next: el.nextSibling };
+  });
+  function reflowRows() {
+    if (!viewer.parentNode) return;
+    if (isMobile()) {
+      var after = viewer;
+      [primaryRow, headToggles].forEach(function (el) {
+        if (!el) return;
+        viewer.parentNode.insertBefore(el, after.nextSibling);
+        after = el;
+      });
+    } else {
+      rowHomes.forEach(function (home) {
+        home.parent.insertBefore(home.el, home.next);
+      });
+    }
+  }
+  reflowRows();
+  var phoneQuery = window.matchMedia && window.matchMedia("(max-width: 640px)");
+  if (phoneQuery && phoneQuery.addEventListener)
+    phoneQuery.addEventListener("change", reflowRows);
+  // Start with the overrides drawer collapsed on a phone so the preview leads; the toggle row
+  // keeps it (and the component list) one tap away as a bottom sheet. A stored preference is
   // honoured only OFF the phone — restoring it there would put a sheet back over the preview, and
   // "the preview leads" is the rule this breakpoint exists to state.
   if (isMobile()) setOpen("cp-controls-open", false);

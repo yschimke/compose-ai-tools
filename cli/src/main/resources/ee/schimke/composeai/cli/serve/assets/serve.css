@@ -258,6 +258,12 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   font-size: var(--md-sys-typescale-label-large-size);
   line-height: var(--md-sys-typescale-label-large-line);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500; }
+/* The nav's contents live inside a `<details class="cp-site-menu">` that the server emits OPEN, so
+   at this size it is not a menu at all: the summary is removed and the panel lays out as the row
+   of actions it has always been. It becomes a real disclosure only on the phone bar below, where
+   the row has no width to spare — one copy of each link, two shapes. */
+.cp-site-menu, .cp-site-menu-panel { display: flex; align-items: center; gap: 4px; }
+.cp-site-menu-btn { display: none; }
 .cp-site-nav a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
   border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-on-surface-variant);
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
@@ -1934,25 +1940,68 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
 @media (max-width: 640px) {
   body { padding: 14px; }
-  /* Three slots don't fit on one line here, so the bar becomes a single left-aligned column —
-     brand, then the status badge, then the nav — in DOM order. A ~320px screen can't hold the
-     brand plus Catalogs/Status side by side (let alone with "Signed in as …" on the OAuth home
-     page), so keeping them on one row would overflow the viewport; the nav wraps internally too,
-     for the longest sign-in labels. */
-  .cp-site-header { margin-bottom: 18px; grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
-  .cp-site-lead, .cp-site-status { justify-self: start; }
-  .cp-site-lead { flex-wrap: wrap; gap: 6px 10px; }
-  /* Wrapped onto its own line the crumb no longer continues the brand horizontally, so the
-     keyline that stood in for the first `/` would read as a stray rule. */
-  .cp-site-lead .cp-breadcrumb { padding-left: 0; border-left: 0; }
-  /* Wrapped onto its own line, the name loses the keyline that only reads inline. */
-  .cp-site-catalog { padding-left: 0; border-left: 0; }
-  .cp-site-nav { justify-self: start; flex-wrap: wrap; }
-  .cp-site-mark { width: 22px; height: 22px; }
-  .cp-site-nav { gap: 12px; }
-  .cp-site-nav > a[href^="https://github.com/"] { display: none; }
-  /* The gear alone on a narrow bar; the panel still opens at full width under it. */
-  .cp-settings-btn-label { display: none; }
+  /* ── ONE bar ────────────────────────────────────────────────────────────────────────────────
+     A phone gets: the bar, the title, the thing the page is for. The bar used to be three stacked
+     rows — brand, status badge, nav — which is ~120px of every screen spent saying where you are
+     before the page starts, and on the viewer a fourth went to the breadcrumb.
+
+     So it becomes an app bar: mark, where-you-are, and one `⋮` that holds the navigation. Nothing
+     is dropped — the wordmark goes because the mark beside it is the same link and the page title
+     names the catalog; `Catalogs` / `Status` / `GitHub` / the page's own action / Settings all move
+     into the menu, which is where a phone expects to find them. The row scrolls nothing and wraps
+     nothing: the middle slot is the only elastic one and it ellipsises. */
+  .cp-site-header { min-height: 48px; margin-bottom: 12px; padding: 2px 0 6px;
+    grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: 0; }
+  .cp-site-lead { min-width: 0; flex-wrap: nowrap; gap: 8px; overflow: hidden; }
+  .cp-site-status { justify-self: end; }
+  .cp-site-mark { width: 26px; height: 26px; }
+  /* The mark alone is the home link. Two words of product name is the single widest thing in the
+     bar and the least useful of them on a phone — you know what site you are on. */
+  .cp-site-wordmark { display: none; }
+  /* The bar names the catalog AND a sub-page's breadcrumb opens with the same name. Inline on a
+     laptop they read as one line; in a 200px slot they are the same word twice with no room for
+     the half that navigates, so the plain copy goes and the crumb stays. */
+  .cp-site-lead:has(.cp-breadcrumb) .cp-site-catalog { display: none; }
+  /* Likewise the landing's "← All design systems": the menu's `Catalogs` is that link. */
+  .cp-site-lead .cp-back { display: none; }
+  .cp-site-lead .cp-breadcrumb, .cp-site-catalog { padding-left: 0; border-left: 0;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cp-site-lead .cp-breadcrumb > a { min-width: 0; }
+  /* …and here the disclosure becomes a real one: a 40px target holding the row that no longer
+     fits, on an M3 menu surface anchored under it. `position: relative` on the nav rather than on
+     the details, so the panel hangs off the bar's trailing edge instead of the button's.
+
+     All of it hangs off `.cp-menu-js`, which the collapse script after the header sets. A page
+     that never ran that script is still showing the server's `open`, and a floating panel nobody
+     closed would be dropped over the top of it; unmarked, the links keep the wrapped row this bar
+     has always degraded to. */
+  .cp-site-nav { justify-self: end; position: relative; }
+  html:not(.cp-menu-js) .cp-site-menu-panel { flex-wrap: wrap; }
+  .cp-menu-js .cp-site-menu { display: block; }
+  .cp-menu-js .cp-site-menu-btn { display: inline-flex; align-items: center;
+    justify-content: center; width: 40px; height: 40px;
+    border-radius: var(--md-sys-shape-corner-full);
+    color: var(--md-sys-color-on-surface-variant); font-size: 1.25rem; line-height: 1;
+    cursor: pointer; list-style: none; user-select: none; }
+  .cp-menu-js .cp-site-menu-btn::-webkit-details-marker { display: none; }
+  .cp-menu-js .cp-site-menu[open] > .cp-site-menu-btn { color: var(--md-sys-color-primary);
+    background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
+  .cp-menu-js .cp-site-menu-panel { position: absolute; right: 0; top: calc(100% + 4px);
+    z-index: 60; flex-direction: column; align-items: stretch; gap: 2px; min-width: 11em;
+    max-width: min(280px, calc(100vw - 28px)); padding: 8px;
+    border-radius: var(--md-sys-shape-corner-medium);
+    background: var(--md-sys-color-surface-container-high);
+    box-shadow: var(--md-sys-elevation-level2); }
+  /* GitHub is in the menu now, where a row of its own costs nothing, so it stops being the link a
+     narrow bar drops. */
+  .cp-menu-js .cp-site-menu-panel > a,
+  .cp-menu-js .cp-site-menu-panel .cp-settings-btn { padding: 10px 12px;
+    border-radius: var(--md-sys-shape-corner-small); }
+  /* The settings menu nests inside it: its own panel opens in flow under its row rather than
+     floating out of the menu it is already in. */
+  .cp-menu-js .cp-site-menu-panel .cp-settings-panel { position: static; width: auto;
+    max-width: none; padding: 0; box-shadow: none; background: transparent; }
+  .cp-settings-btn-label { display: inline; }
   .cp-disclosure > summary { align-items: flex-start; }
   .cp-disclosure-hint { display: none; }
   .cp-section-title { margin-bottom: 10px; }
@@ -1992,35 +2041,31 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   .cp-sub { margin-bottom: 10px; }
   .cp-catalog-actions { margin-bottom: 10px; }
   .cp-catalog-menu { margin-bottom: 14px; }
-  /* Sticky disclosure row so ⚙ Overrides / ☰ Components — and now the State and Theme folds —
-     stay one tap away without scrolling past a tall preview. The row that sticks is the title row,
-     because that is where all four toggles live; the opaque preview id goes, since it is the one
-     thing on that row a phone was already ellipsising into a stub and it is in the URL, the export
-     links and the title attribute regardless. */
+  /* The title row, and by now it is only the title: `viewer-drawers.js` has moved the disclosure
+     pills below the stage, and the opaque preview id goes because it is the one thing here a phone
+     was already ellipsising into a stub (it is in the URL, the export links and the title
+     attribute regardless). Still sticky — a preview can be several screens tall, and which
+     component you are looking at is the fact worth pinning. */
   .cp-preview-head { position: sticky; top: 0; z-index: 21; margin: 0 0 8px; padding: 6px 0;
     background: var(--cp-bg); row-gap: 6px; }
   .cp-preview-head .cp-preview-id { display: none; }
   /* The name is NOT clamped to one line here, though it would buy a row back: the trust verdict is
      a `<span>` inside the `<h1>`, so an ellipsis on the headline eats the badge — and "is this
      render trustworthy" is not a fact to drop for 24px of a sticky row. */
-  /* …and the pills on it fit on ONE line rather than two. Every control the viewer has that is
-     not the render itself now lives here (Components, the Theme menu, Overrides), and at desktop
-     padding the three come to ~396px against a phone's ~384px of content width — twelve pixels
-     short, paid for with a whole 42px row. Tightening the pills' padding and the gap between them
-     is what buys that row back for the render; the labels are untouched, so nothing is abbreviated
-     to get there. */
+  /* The two rows below the stage. `.cp-viewer +` targets them only where the reflow has actually
+     put them, so a no-JS phone — which keeps them above, in source order — is unaffected. */
+  .cp-viewer + .cp-preview-primary { margin: 14px 0 0; }
+  .cp-preview-primary + .cp-head-toggles { margin: 10px 0 0; }
+  /* Three pills on ONE line rather than two: every control the viewer has that is not the render
+     lives here, and at desktop padding they come to ~396px against a phone's ~384px of content
+     width — twelve pixels short, paid for with a whole 42px row. The labels are untouched, so
+     nothing is abbreviated to get there. */
   .cp-head-toggles { margin-left: 0; gap: 6px; }
   .cp-head-toggles .cp-drawer-toggle { padding: 8px 12px; }
   .cp-head-toggles .cp-drawer-toggle.cp-axis-toggle { padding: 6px 10px; }
-  /* The bar's controls alone fill a phone's width, so it wraps again here. The theme group keeps
-     its own single scrolling row — that is its own axis, not the bar's. */
-  .cp-viewer-bar { margin: 0 0 10px; flex-wrap: wrap; }
-  .cp-theme-bar { flex-basis: 100%; }
   /* The renderer row — the lane toggle, the format chips a catalog offers (Snapshot · Figma ·
-     Source, SVG, 3D), Transparent, Fit width, and the hint that names the current lane — is the
-     last block above the stage, and on a phone it wrapped to three lines. One scrolling row, same
-     rule as the two chip groups on the landing: the render is what the page is for, so the row
-     before it should cost one line, not three. */
+     Source, SVG, 3D), Transparent, Fit width, and the hint that names the current lane — wrapped
+     to three lines. One scrolling row, same rule as the two chip groups on the landing. */
   .cp-preview-primary { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
     scrollbar-width: thin; padding-bottom: 4px; scroll-padding-inline: 8px; }
   .cp-preview-primary > * { flex: none; }
