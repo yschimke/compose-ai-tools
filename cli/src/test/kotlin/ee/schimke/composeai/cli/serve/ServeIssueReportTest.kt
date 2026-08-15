@@ -14,10 +14,16 @@ class ServeIssueReportTest {
       previewId = "Article__dark",
       previewLabel = "Article",
       system = "jetnews",
+      componentId = "Article/Card",
+      referenceId = "article-card-figma",
+      variant = "dark",
+      overrides = linkedMapOf("uiMode" to "dark"),
       sourceUrl = "https://github.com/yschimke/compose-samples/blob/previews/app/Article.kt",
       catalog = "yschimke/compose-samples@design-artifacts/jetnews",
       toolVersion = "0.19.37",
       viewerUrl = "https://preview.coo.ee/jetnews/p/Article__dark",
+      comparisonUrl =
+        "https://preview.coo.ee/jetnews/compare/Article__dark?reference=article-card-figma",
       renderUrl = "https://preview.coo.ee/jetnews/render/Article__dark.png?uiMode=dark",
       publicRender = true,
     )
@@ -83,6 +89,34 @@ class ServeIssueReportTest {
     // The screenshot is asked for as a paste, because that lands the pixels on GitHub's own CDN
     // rather than leaving the evidence pointed at a URL that re-renders later.
     assertTrue(body.contains("Copy PNG"), "the body tells the reporter how to attach the render")
+    assertTrue(body.contains("```compose-parity-locator/v1"), body)
+  }
+
+  @Test
+  fun `locator block round trips arbitrary override text`() {
+    val overrides =
+      linkedMapOf("knob.label" to "Send;knob.color=red\n日本語", "knob.quote" to "a=\"b\"")
+    val context = full.copy(overrides = overrides)
+    assertEquals(
+      ServeIssueReport.locator(context),
+      ServeIssueReport.locatorFromBody(ServeIssueReport.body(context)),
+    )
+  }
+
+  @Test
+  fun `canonical override JSON is stable across insertion order and uses code point order`() {
+    val first = linkedMapOf("z" to "last", "😀" to "astral", "a" to "first")
+    val second = linkedMapOf("a" to "first", "z" to "last", "😀" to "astral")
+    val expected = "{\"a\":\"first\",\"z\":\"last\",\"😀\":\"astral\"}"
+    assertEquals(expected, ServeIssueReport.canonicalOverrides(first))
+    assertEquals(expected, ServeIssueReport.canonicalOverrides(second))
+  }
+
+  @Test
+  fun `comparison template exposes placeholders for browser-computed values`() {
+    val template = ServeIssueReport.body(full, renderPlaceholder = true)
+    assertTrue(template.contains("{{render}}"), template)
+    assertTrue(template.contains("{{rawScores}}"), template)
   }
 
   @Test
@@ -203,5 +237,14 @@ class ServeIssueReportTest {
     assertEquals("https://host/p/x", ServeIssueReport.withoutToken("https://host/p/x"))
     assertNull(ServeIssueReport.withoutToken(null))
     assertNull(ServeIssueReport.withoutToken("  "))
+    val tokenBearing =
+      full.copy(
+        sourceUrl = "https://github.com/o/r/blob/main/A.kt?token=source",
+        viewerUrl = "https://host/p/x?token=viewer",
+        comparisonUrl = "https://host/compare/x?token=comparison",
+        renderUrl = "https://host/render/x.png?token=render",
+      )
+    val body = ServeIssueReport.body(tokenBearing)
+    assertFalse(body.contains("token="), body)
   }
 }
