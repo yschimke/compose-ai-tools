@@ -467,6 +467,50 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `catalog stages the published parity issue index`() {
+    val root = tempRoot()
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val issues =
+      """
+      {"schema":"compose-preview-issues/v1","generatedAt":"2026-08-15T09:12:00Z",
+       "issues":[{"repository":"yschimke/m3-catalog","number":40,"title":"Padding differs",
+         "url":"https://github.com/yschimke/m3-catalog/issues/40","state":"open",
+         "area":"component","parity":"known-difference","system":"compose-m3",
+         "component":"Button/Filled","previewIds":["button"],"referenceIds":["button-figma"]}]}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/parity/issues.json") -> issues.encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertTrue(requested.any { it.endsWith("/parity/issues.json") }, "the index is fetched")
+    val loaded = registered.getValue("compose-m3").parityIssues()
+    assertNotNull(loaded, "the index reached the host through the staging tree")
+    assertEquals(40, loaded.issues.single().number)
+    assertEquals("button-figma", loaded.issues.single().referenceIds.single())
+  }
+
+  @Test
   fun `a catalog publishing no parity feed serves without one`() {
     val root = tempRoot()
     val catalog =

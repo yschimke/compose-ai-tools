@@ -1,0 +1,78 @@
+name: Publish parity issue index
+
+on:
+  workflow_call:
+    inputs:
+      system:
+        description: Catalog slug; publishes to design-artifacts/<system>.
+        required: true
+        type: string
+      repositories:
+        description: JSON array of owner/name repositories whose issues carry locator blocks.
+        required: true
+        type: string
+      driver-ref:
+        description: compose-ai-tools ref providing the producer and push helper.
+        default: main
+        type: string
+    secrets:
+      ISSUES_TOKEN:
+        description: Optional token with Issues read access to every configured repository.
+        required: false
+  workflow_dispatch:
+    inputs:
+      system:
+        required: true
+        type: string
+      repositories:
+        description: JSON array of owner/name repositories.
+        required: true
+        type: string
+      driver-ref:
+        default: main
+        type: string
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: ${{ github.repository }}-${{ inputs.system }}-parity-issues
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out issue-index driver
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-ai-tools
+          ref: ${{ inputs.driver-ref }}
+          path: compose-ai-tools
+
+      - name: Generate parity/issues.json
+        env:
+          GH_TOKEN: ${{ secrets.ISSUES_TOKEN || github.token }}
+          REPOSITORIES: ${{ inputs.repositories }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          args=()
+          while IFS= read -r repo; do
+            args+=(--repo "$repo")
+          done < <(jq -er '.[]' <<<"$REPOSITORIES")
+          node compose-ai-tools/scripts/design-artifacts/emit-parity-issues.mjs \
+            --out out "${args[@]}"
+
+      - name: Publish the one-path delta
+        env:
+          TARGET_BRANCH: design-artifacts/${{ inputs.system }}
+          REPO: ${{ github.repository }}
+          GITHUB_TOKEN_INLINE: ${{ github.token }}
+          MSG: "chore(parity): refresh ${{ inputs.system }} issue index"
+          DELTA_ON_TIP_PATHS: parity/issues.json
+        run: |
+          set -euo pipefail
+          cd out
+          bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"
