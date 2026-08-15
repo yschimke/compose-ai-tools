@@ -61,6 +61,63 @@ function stubFetch(options: { hold?: boolean; fail?: boolean } = {}): Fetches {
     return state;
 }
 
+/**
+ * A `ResizeObserver` whose callbacks the test can fire, plus a settable geometry on the frame.
+ *
+ * happy-dom reports every layout box as zero, so placement is unobservable without both: the sizes
+ * to place against, and a way to say "the stage reflowed" without a real layout engine.
+ */
+interface Stage {
+    reflow(next: Partial<Geometry>): void;
+}
+interface Geometry {
+    naturalWidth: number;
+    clientWidth: number;
+    clientHeight: number;
+    offsetLeft: number;
+    offsetTop: number;
+}
+
+let priorResizeObserver: unknown;
+
+function stubLayout(initial: Partial<Geometry> = {}): Stage {
+    const geometry: Geometry = {
+        naturalWidth: 400,
+        clientWidth: 400,
+        clientHeight: 800,
+        offsetLeft: 0,
+        offsetTop: 0,
+        ...initial,
+    };
+    const fire: Array<() => void> = [];
+    priorResizeObserver = (globalThis as Record<string, unknown>)
+        .ResizeObserver;
+    (globalThis as Record<string, unknown>).ResizeObserver = class {
+        constructor(callback: () => void) {
+            fire.push(callback);
+        }
+        observe(): void {}
+        disconnect(): void {}
+    };
+    const apply = () => {
+        const img = document.getElementById("cp-img");
+        if (!img) return;
+        for (const [key, value] of Object.entries(geometry)) {
+            Object.defineProperty(img, key, {
+                configurable: true,
+                get: () => value,
+            });
+        }
+    };
+    return {
+        reflow(next) {
+            Object.assign(geometry, next);
+            apply();
+            for (const callback of fire) callback();
+        },
+    };
+}
+
 async function mount(search = ""): Promise<void> {
     window.history.replaceState(null, "", `/m3/p/plain.Button${search}`);
     document.body.innerHTML = `
@@ -108,6 +165,14 @@ describe("<cp-inspect-layers>", () => {
     afterEach(() => {
         resetDom();
         window.history.replaceState(null, "", "/");
+        // The stub is global; leaving it in place would hand a later file's element an observer
+        // wired to a document that no longer exists.
+        if (priorResizeObserver === undefined)
+            delete (globalThis as Record<string, unknown>).ResizeObserver;
+        else
+            (globalThis as Record<string, unknown>).ResizeObserver =
+                priorResizeObserver;
+        priorResizeObserver = undefined;
     });
 
     it("draws nothing until a layer is ticked", async () => {
@@ -247,6 +312,31 @@ describe("<cp-inspect-layers>", () => {
         await tick("a11y");
         assert.equal(boxes().length, 0);
         assert.equal(legend().hidden, true);
+    });
+
+    it("re-places the boxes when the stage reflows under them", async () => {
+        // The regression this exists for. `place()` used to run once at draw time and once on the
+        // frame's `load` — an event that never fires when the frame decoded before the tag
+        // upgraded. Whatever the stage measured mid-settle was then permanent: the legend appearing
+        // beside it, or a web font landing, left every box at a stale scale and origin. It still
+        // LOOKS deliberate — boxes neatly drawn, just describing the wrong pixels — which is how it
+        // shipped misplaced under nothing but a change of script order.
+        stubFetch();
+        const stage = stubLayout();
+        await mount();
+        stage.reflow({});
+        await tick("a11y");
+        assert.equal(boxes()[0].style.width, "100px", "1:1 before the reflow");
+
+        // The legend narrows the stage: same frame, smaller box, and centred at a new origin.
+        stage.reflow({ clientWidth: 200, clientHeight: 400, offsetLeft: 30 });
+        assert.equal(boxes()[0].style.width, "50px");
+        assert.equal(boxes()[1].style.top, "30px");
+        assert.equal(
+            document.getElementById("cp-inspect-layer")!.style.left,
+            "30px",
+            "the layer follows the frame, not the stage's own origin",
+        );
     });
 
     it("stays silent on a viewer with no inspect group", async () => {

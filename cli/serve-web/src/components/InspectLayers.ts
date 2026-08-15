@@ -65,6 +65,7 @@ export class InspectLayers extends LitElement {
     private generation = 0;
     private cleanups: Array<() => void> = [];
     private observer: MutationObserver | null = null;
+    private resizes: ResizeObserver | null = null;
 
     protected createRenderRoot(): HTMLElement {
         return this;
@@ -80,6 +81,8 @@ export class InspectLayers extends LitElement {
         this.cleanups = [];
         this.observer?.disconnect();
         this.observer = null;
+        this.resizes?.disconnect();
+        this.resizes = null;
         this.installed = false;
         this.generation++;
         super.disconnectedCallback();
@@ -111,6 +114,24 @@ export class InspectLayers extends LitElement {
         }
         this.on(window, "resize", () => this.place());
         this.on(this.img, "load", () => this.place());
+        // `load` alone is a race this element must not depend on winning. It fires only if the
+        // frame was still in flight when the tag upgraded — and when it has already decoded, the
+        // sole `place()` is the one at the end of `draw()`, whose measurements are whatever the
+        // stage happened to be mid-settle. The legend appearing beside the stage narrows it; so
+        // does a web font landing. Boxes measured against that transient width are permanently
+        // off, at a scale and origin that still LOOK deliberate — which is exactly how this
+        // shipped misplaced under a script-order change with no test noticing.
+        //
+        // Observing the image instead makes placement a consequence of its geometry rather than of
+        // arriving at the right moment: every reflow that moves or resizes the frame re-places, the
+        // first layout included. The stage is observed too, because a stage that grows around an
+        // already-capped frame changes `offsetLeft` without changing the image's own box.
+        if (typeof ResizeObserver === "function") {
+            this.resizes = new ResizeObserver(() => this.place());
+            this.resizes.observe(this.img);
+            if (this.img.parentElement)
+                this.resizes.observe(this.img.parentElement);
+        }
         // New pixels ⇒ new geometry and new facts. `viewer.js` stamps `data-cp-src` once the
         // replacement frame has DECODED, so that attribute is the one honest "the render changed"
         // signal available from here — cheaper and more accurate than re-deriving the override
