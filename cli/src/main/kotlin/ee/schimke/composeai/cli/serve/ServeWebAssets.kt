@@ -44,9 +44,6 @@ internal object ServeWebAssets {
       "keyboard-navigation.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
-      // The design page's node measuring and render-swap controls; loaded only by a
-      // `/{system}/pages/{id}` view, which exists only for a catalog that published one.
-      "design-page.js" to "text/javascript; charset=utf-8",
     )
 
   private val cache = java.util.concurrent.ConcurrentHashMap<String, Asset>()
