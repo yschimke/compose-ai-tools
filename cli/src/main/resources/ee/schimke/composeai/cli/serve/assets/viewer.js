@@ -48,6 +48,12 @@
     // applyZoom("fit") runs at page load, before the lane's own declarations.
     var specZoomImg = document.getElementById("cp-spec-img");
     if (specZoomImg) specZoomImg.style.maxHeight = maxHeight;
+    // The motion lane paints into its own <img> too, so the cap has to reach it for the same
+    // reason: a tall capture would otherwise ignore Fit screen and push the card past the fold —
+    // and unlike a still, it would do so while animating. Looked up rather than closed over,
+    // exactly as the spec image is: applyZoom("fit") runs before the lane's own declarations.
+    var motionZoomImg = document.getElementById("cp-motion-img");
+    if (motionZoomImg) motionZoomImg.style.maxHeight = maxHeight;
     root.setAttribute("data-zoom", mode);
     if (zoomToggle) zoomToggle.setAttribute("aria-pressed", mode === "width" ? "true" : "false");
     window.requestAnimationFrame(function () {
@@ -1302,6 +1308,99 @@
     img.style.removeProperty("display");
     img.hidden = false;
   }
+  // ---- The Motion lane -------------------------------------------------------------------------
+  // The recorded interaction for this preview, on the stage in place of the still.
+  //
+  // Two things set this lane apart from every other one here, and both point the same way: nothing
+  // until asked. The capture is tens to hundreds of frames against one PNG, and an APNG/GIF starts
+  // playing the moment it decodes — so assigning `src` IS starting playback. The src is therefore
+  // written on the lane's FIRST ENTRY and never at page load, which is what makes "selectable, not
+  // default" true of the bytes and not merely of the pixels.
+  var motionImg = document.getElementById("cp-motion-img");
+  var motionChip = document.getElementById("cp-motion-chip");
+  var motionToggle = document.getElementById("cp-motion-toggle");
+  var motionLane = document.getElementById("cp-motion-lane");
+  var motionCaption = document.getElementById("cp-motion-caption");
+  var motionButtons = motionLane
+    ? Array.prototype.slice.call(motionLane.querySelectorAll(".cp-motion-view"))
+    : [];
+  var motionErrorBound = false;
+  // The buttons are the lane's source of truth, so a preview with ONE capture still renders one
+  // (its group merely hidden) and this has a single code path rather than a special case.
+  function motionPicked() {
+    for (var i = 0; i < motionButtons.length; i++) {
+      if (motionButtons[i].getAttribute("aria-pressed") === "true") return motionButtons[i];
+    }
+    return motionButtons[0] || null;
+  }
+  // The same origin check the spec raster and the Wasm frame get, for the same reason: the URL
+  // arrives on a server-set data- attribute, so it is resolved against our own origin and refused
+  // unless it stays on it — which is also what defuses the DOM-text-as-HTML rule for the write.
+  function motionSrcOf(button) {
+    var raw = button ? (button.getAttribute("data-motion-src") || "") : "";
+    if (!raw) return "";
+    var u;
+    try { u = new URL(raw, location.origin); } catch (e) { return ""; }
+    if (u.origin !== location.origin) return "";
+    return u.href;
+  }
+  function motionAvailable() { return !!(motionImg && motionSrcOf(motionPicked())); }
+  // The radio, not `data-mode` — exactly as specActive() and sourceActive() do, and for the same
+  // reason: on a URL restore the radio is checked before the transition paints, so reading the
+  // stage attribute here would report the lane inactive while the page was entering it.
+  function motionActive() { return !!(motionToggle && motionToggle.checked); }
+  function playMotion() {
+    var button = motionPicked();
+    var src = motionSrcOf(button);
+    if (!src) return;
+    // The caption names the recording — but ONLY when nothing else already does. With two or more
+    // captures the picker is visible and its pressed button carries the same words, and printing
+    // them again beside it is two controls stating one fact ("Tap the avatar [Tap the avatar]").
+    // So the readout is what stands in for the picker on the single-capture case, not a label
+    // duplicating it.
+    if (motionCaption) {
+      motionCaption.textContent =
+        (motionButtons.length > 1 || !button)
+          ? ""
+          : (button.getAttribute("data-motion-label") || "");
+    }
+    // A property write of an origin-checked URL, like every other image lane here. Guarded so
+    // re-entering the lane on the capture already loaded does not re-request it; closeMotion()
+    // drops the attribute on the way out, so the guard never sees a stale match.
+    if (motionImg.getAttribute("src") !== src) motionImg.src = src;
+  }
+  function openMotion() {
+    if (!motionAvailable()) return;
+    root.setAttribute("data-mode", "motion");
+    // Out of flow rather than merely hidden, like the spec and Source lanes: the stage sizes to the
+    // capture instead of reserving the still's box underneath it.
+    img.style.display = "none";
+    canvas.hidden = true;
+    motionImg.hidden = false;
+    if (motionLane) motionLane.hidden = false;
+    if (!motionErrorBound) {
+      motionErrorBound = true;
+      motionImg.addEventListener("error", function () {
+        showModeError("The recorded interaction could not be loaded.");
+      });
+    }
+    if (status) status.textContent = "";
+    playMotion();
+  }
+  function closeMotion() {
+    if (!motionImg) return;
+    // `data-mode`, not motionActive(): by the time a transition calls this, the radio for the lane
+    // being ENTERED is already checked, so the flag would say we are not on Motion and the stage
+    // would keep its attribute. The same split the spec and Source lanes make.
+    if (root.getAttribute("data-mode") === "motion") root.setAttribute("data-mode", "snapshot");
+    motionImg.hidden = true;
+    if (motionLane) motionLane.hidden = true;
+    // Dropping the src STOPS the animation and releases its frames. Left assigned, a hidden capture
+    // would keep looping for the rest of the visit — invisible, and still decoding.
+    motionImg.removeAttribute("src");
+    img.style.removeProperty("display");
+    img.hidden = false;
+  }
   // ---- The Source lane -------------------------------------------------------------------------
   // The usage code behind this card, on the stage in place of the render.
   //
@@ -1823,6 +1922,9 @@
     // Closed by EVERY other transition, exactly as the spec lane is: leaving Source always puts the
     // render back on the stage, whichever control the visitor left by.
     if (m !== "source") closeSource();
+    // Closed by EVERY other transition, exactly as those two are — and here that is also what stops
+    // the capture playing on behind a lane the visitor has already moved to.
+    if (m !== "motion") closeMotion();
     if (m === "live") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
@@ -1869,6 +1971,19 @@
       closeRc();
       closeRcWasm();
       openSource();
+    } else if (m === "motion") {
+      // Playing the capture is not a render either: cancel any in-flight snapshot, drop every
+      // interactive lane, and put the recording on the stage. Going through the branch rather than
+      // returning early keeps the transition in the one path that reconciles the picker, the chips
+      // and the URL, so `?mode=motion` is bookmarkable and Back returns to the lane behind it.
+      cancelSnapshotLoading();
+      snapshotExt = ".png";
+      dropVectorModes();
+      closeStream();
+      closeWasm();
+      closeRc();
+      closeRcWasm();
+      openMotion();
     } else if (m === "spec") {
       // Looking at the spec is not a render: cancel any in-flight snapshot, drop every interactive
       // lane, and paint the imported reference instead. Nothing is re-requested on the way in.
@@ -1902,7 +2017,7 @@
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
     if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm" && m !== "spec"
-        && m !== "source")
+        && m !== "source" && m !== "motion")
       refreshSnapshot();
     // The interactive lanes drive their own render and never reach refreshLinks, so the URL would
     // still describe the snapshot the visitor just left — the chosen lane unbookmarkable until
@@ -1933,7 +2048,7 @@
       // `data-mode` straight to "svg" hid the panel (its CSS is mode-scoped) without restoring the
       // image — a blank stage under a still-checked Source radio.
       if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive()
-          || sourceActive())) {
+          || sourceActive() || motionActive())) {
         setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
       } else {
         snapshotExt = turnOn ? ".svg" : ".png";
@@ -2179,6 +2294,7 @@
       m === "rc-wasm" ? "cp-rc-wasm-toggle" :
       m === "spec" ? "cp-spec-toggle" :
       m === "source" ? "cp-source-toggle" :
+      m === "motion" ? "cp-motion-toggle" :
       m === "rc" ? "cp-rc-toggle" : "cp-mode-png");
     var r = radioId ? document.getElementById(radioId) : null;
     if (r) r.checked = true;
@@ -2281,6 +2397,16 @@
         ? "Showing the usage source \u2014 click to return to the render"
         : sourceChip.getAttribute("data-source-chip-tip") || sourceChip.title;
     }
+    // The Motion chip reports its lane the same way, and from the same place, so every route out
+    // of it (the Live chip, a combo pick, the spec or Source chip, Back/Forward) un-presses it too.
+    if (motionChip) {
+      var onMotionLane = motionActive();
+      motionChip.setAttribute("aria-pressed", onMotionLane ? "true" : "false");
+      motionChip.disabled = !motionAvailable() && !onMotionLane;
+      motionChip.title = onMotionLane
+        ? "Playing the recorded interaction \u2014 click to return to the render"
+        : motionChip.getAttribute("data-motion-chip-tip") || motionChip.title;
+    }
     // …and the tooltip, from the same state. The chip's meaning inverts as the visitor moves
     // through the lanes — on the static snapshot a click enters Live, on an interactive lane it
     // exits back to the snapshot — so a fixed `title` would end up describing the opposite of what
@@ -2295,6 +2421,7 @@
     }
     if (modeHint) {
       modeHint.textContent = sourceActive() ? "usage source — not a render"
+        : motionActive() ? "recorded interaction — not a live render"
         : specActive() ? "imported design spec — not a render"
         : interactive ? "interactive — click / scroll the preview"
         // "no live lane" is only true when there is genuinely nothing to switch to. When the lane
@@ -2342,6 +2469,28 @@
       else if (sourceAvailable()) setMode("source");
     });
   }
+  // The Motion chip: in and straight back out, like the spec and Source chips, and leaving returns
+  // to the static snapshot for the same reason — the recording is watched against the *still*, and
+  // that is the lane it was entered from.
+  if (motionChip) {
+    motionChip.addEventListener("click", function () {
+      if (motionActive()) setMode("png");
+      else if (motionAvailable()) setMode("motion");
+    });
+  }
+  // The per-capture picker, shown only when a preview published more than one. Switching while the
+  // lane is up swaps the capture in place rather than leaving and re-entering: the visitor is
+  // changing WHICH recording they are watching, not which lane they are in, so it is not a mode
+  // transition and does not belong in the history stack.
+  motionButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      motionButtons.forEach(function (other) {
+        other.setAttribute("aria-pressed", other === button ? "true" : "false");
+      });
+      if (motionActive()) playMotion();
+      else setMode("motion");
+    });
+  });
   // ---- The renderer combo box ------------------------------------------------------------------
   // One `<select>` holding every lane this preview can be drawn by: the Remote Compose players
   // (`rc:js` paints client-side via setMode("rc"), `rc:cmp-wasm` in its own frame, and

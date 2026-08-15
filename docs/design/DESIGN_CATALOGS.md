@@ -119,6 +119,15 @@ frame and silently drop the point. Each entry carries the `kind`
 (`interaction` / `animation`), the caption its annotation declared, and the `theme` of
 the sticker it accompanies.
 
+The preview server offers them on the component page as a **Motion** chip beside the
+still, never as the default frame. That is a deliberate reading of what a capture is
+for: most readers open a component page to look at the component, and an APNG begins
+playing the moment its `src` is assigned — so the bytes are requested on the lane's
+first entry rather than at page load, and leaving the lane drops the `src` again
+instead of hiding a capture that would keep looping. A preview publishing more than
+one gets a picker; `?mode=motion` names the lane, so a capture is linkable and
+Back/Forward step through it like any other lane.
+
 For editable Figma layers the per-sticker `figma/<slug>.svg` is the
 `compose/figma-svg` export (see the `FigmaLayeredSvg` KDoc in
 `:data-layoutinspector-core` for the emitted layer shape); the design-parity

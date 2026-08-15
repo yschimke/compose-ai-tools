@@ -8446,6 +8446,99 @@ $rows
           "data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">Source</button>"
       }
+    // ---- The Motion lane -------------------------------------------------------------------
+    //
+    // The recorded interaction behind this card, on the stage in place of the still.
+    //
+    // A screenshot can only ever show a component at rest. Whether its own interaction plumbing
+    // actually drives the transition — and what shape that transition has — is exactly what the
+    // still cannot answer, so a preview that declared `@InteractionPreview` / `@AnimatedPreview`
+    // publishes an animated capture beside its baked PNG (see the `motion/` directory on the
+    // delivery branch).
+    //
+    // Offered as a CHIP, never as the default frame, for two reasons that point the same way. Most
+    // readers open a component page to look at the component, and a page that starts animating at
+    // them is answering a question they did not ask — the same judgement the design-spec and Source
+    // chips already encode. And a capture is heavy: tens to hundreds of frames against one still,
+    // so autoplaying it would put that on every visitor to every card that has one. The bytes are
+    // requested on FIRST ENTRY and never at page load, exactly like the spec raster.
+    //
+    // Not an `<option>` inside the renderer combo, for the same reason the spec chip is not: that
+    // combo is headed "Switch renderer" and this is not a renderer — it is the same render, moving.
+    val motionCaptures = preview.motion
+    // What to call one capture. The annotation's own caption when it declared one — that names the
+    // property the reader is being shown, which is the whole point of the recording — falling back
+    // to its kind, and only then to a position. A bare "Capture 2" is a poor label, but it is
+    // honest, and it only appears when the annotation said nothing to be honest about.
+    fun motionLabel(capture: ServeMotion, index: Int): String =
+      capture.caption?.takeIf { it.isNotBlank() }
+        ?: when (capture.kind) {
+          "interaction" -> "Interaction"
+          "animation" -> "Animation"
+          else -> "Capture ${index + 1}"
+        }
+    // Session-scoped like every other asset link on this page. Deliberately NOT pin-carrying: the
+    // route reads the bytes straight off the delivery branch the session is holding, so a `pin`
+    // param would name a publish the handler has no way to honour — a link that quietly lies about
+    // which publish it is showing is worse than one that does not offer the choice.
+    fun motionSrc(capture: ServeMotion): String =
+      "$basePath/motion/${WebEscaping.urlEncodeSegment(capture.id)}${capture.extension}$q"
+    // The picker, and the src holder. Rendered even for a single capture — the button IS where the
+    // lane reads its source from, so there is one code path rather than two — but the group is
+    // `hidden` until there is genuinely a choice to make, because a "pick one of one" control is
+    // just noise on the bar.
+    val motionSelector =
+      if (motionCaptures.isEmpty()) ""
+      else {
+        val buttons =
+          motionCaptures
+            .mapIndexed { index, capture ->
+              val label = motionLabel(capture, index)
+              "<button type=\"button\" class=\"cp-motion-view\" " +
+                "data-motion-src=\"${WebEscaping.htmlEscape(motionSrc(capture))}\" " +
+                "data-motion-label=\"${WebEscaping.htmlEscape(label)}\" " +
+                "aria-pressed=\"${index == 0}\">${WebEscaping.htmlEscape(label)}</button>"
+            }
+            .joinToString("")
+        val groupHidden = if (motionCaptures.size < 2) " hidden" else ""
+        "<span class=\"cp-motion-lane\" id=\"cp-motion-lane\" hidden>" +
+          "<span class=\"cp-motion-views\" id=\"cp-motion-views\" role=\"group\" " +
+          "aria-label=\"Recorded interaction\"$groupHidden>$buttons</span>" +
+          "<span class=\"cp-motion-caption\" id=\"cp-motion-caption\" role=\"status\" " +
+          "aria-live=\"polite\"></span></span>"
+      }
+    // The chip itself, beside Source and for the same reason it is there. It answers a fourth
+    // question on that row: beside "which engine drew this?" (the combo), "what was it specified
+    // as?" (the spec chip) and "what do I type to get this?" (Source) — *what does it do?*
+    val motionChipHtml =
+      if (motionCaptures.isEmpty()) ""
+      else {
+        val tip =
+          if (motionCaptures.size == 1)
+            "Play this preview's recorded interaction \u2014 ${motionLabel(motionCaptures[0], 0)}"
+          else "Play this preview's recorded interactions (${motionCaptures.size})"
+        "<button type=\"button\" id=\"cp-motion-chip\" class=\"cp-spec-chip cp-motion-chip\" " +
+          "aria-pressed=\"false\" aria-controls=\"cp-motion-img\" " +
+          "data-motion-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "title=\"${WebEscaping.htmlEscape(tip)}\">Motion</button>"
+      }
+    // The stage image the Motion lane paints into: a sibling of the snapshot `<img>`, left `hidden`
+    // and src-less until the lane is entered — the same treatment [specImg] gets, and here it is
+    // what keeps an unopened capture from being fetched *and* from playing.
+    val motionImg =
+      if (motionCaptures.isEmpty()) ""
+      else
+        "<img id=\"cp-motion-img\" class=\"cp-motion-img\" hidden alt=\"" +
+          "${WebEscaping.htmlEscape("$displayName \u2014 recorded interaction")}\">"
+    // The lane's hidden mode radio. Motion is not a renderer either, but joining the same radio
+    // group buys it every mechanism the other lanes get for free: `?mode=motion` in the URL,
+    // restore on load, and Back/Forward through the lane. Without it `currentMode()` would keep
+    // reporting the snapshot while a capture was on the stage.
+    val motionModeInput =
+      if (motionCaptures.isEmpty()) ""
+      else
+        "<input type=\"radio\" name=\"cp-mode\" value=\"motion\" id=\"cp-motion-toggle\" " +
+          "tabindex=\"-1\">"
     val defaultLane = if (enabledRcPlayers.isEmpty()) "png" else "rc:$defaultRcBackend"
     // Rendered only when there is genuinely something to switch *to*: a single-lane preview keeps
     // the chip on its own rather than growing a combo box with one entry in it.
@@ -9056,8 +9149,10 @@ $rows
           laneSelectHtml,
           specChipHtml,
           sourceChipHtml,
+          motionChipHtml,
           comparePlayersLink,
           specSelector,
+          motionSelector,
           svgFmtToggle,
           explodeToggle,
           svgMatch,
@@ -9109,6 +9204,7 @@ $rows
           rcModeInput,
           rcWasmModeInput,
           specModeInput,
+          motionModeInput,
           sourceModeInput,
         )
         .filter { it.isNotBlank() }
@@ -9170,7 +9266,7 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
