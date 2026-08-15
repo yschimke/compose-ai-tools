@@ -12,7 +12,7 @@ class ServeWebAssetsTest {
     for (name in
       listOf(
         "serve.css",
-        "url-state.js",
+        "serve-chrome.js",
         "viewer.js",
         "format-compare.js",
         "catalog-live.js",
@@ -39,7 +39,7 @@ class ServeWebAssetsTest {
       html,
     )
     assertTrue(
-      html.contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
+      html.contains("""<script src="${ServeWebAssets.href("serve-chrome.js")}"></script>"""),
       html,
     )
     // The provenance badge is a Lit element in `serve-components.js` now, so what the page owes it
@@ -62,7 +62,7 @@ class ServeWebAssetsTest {
   fun `extracted javascript assets pass syntax check when node is available`() {
     for (name in
       listOf(
-        "url-state.js",
+        "serve-chrome.js",
         "viewer.js",
         "format-compare.js",
         "catalog-live.js",

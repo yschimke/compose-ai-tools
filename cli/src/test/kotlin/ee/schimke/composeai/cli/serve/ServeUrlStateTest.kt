@@ -24,14 +24,22 @@ class ServeUrlStateTest {
       ServePreview("button__ideal__default__dark", "Button", section = "Components"),
     )
 
+  private val CHROME_TAG = """<script src="${ServeWebAssets.href("serve-chrome.js")}"></script>"""
+
   private fun landing() =
     ServeWeb.landingPage("meshcore-mobile", sectioned, token = "t", basePath = "/meshcore-mobile")
 
   @Test
   fun `catalog landing loads the shared url-state helper`() {
+    // `window.cpUrlState` ships in the page-shell bundle now, which `ServeWeb.document` emits for
+    // every page ahead of the surface's own scripts — so what the landing owes it is that bundle,
+    // in front of the filter script that reads the global. The helper's own behaviour is covered
+    // in `cli/serve-web/test/chrome.test.ts`.
+    val html = landing()
+    assertTrue(html.contains(CHROME_TAG), "the landing page must load the shell bundle")
     assertTrue(
-      landing().contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
-      "the landing page must load url-state.js before its filter script",
+      html.indexOf(CHROME_TAG) < html.indexOf("cpUrlState"),
+      "…and it must be emitted before the filter script that reads the global",
     )
   }
 
@@ -112,18 +120,18 @@ class ServeUrlStateTest {
 
   @Test
   fun `a catalog with no previews emits no url wiring`() {
+    // The shell bundle is unconditional — it also carries the Page theme setting, which every page
+    // has — so what "no wiring" means here is that nothing on the page writes state: no filter
+    // script, and no reader of the global.
     val empty = ServeWeb.landingPage("empty", emptyList(), token = "t")
-    assertFalse(empty.contains("url-state.js"), "nothing to select ⇒ no state to carry")
+    assertFalse(empty.contains("cpUrlState"), "nothing to select ⇒ no state to carry")
   }
 
   @Test
   fun `viewer loads the helper and lets the url outrank the remembered theme`() {
     val preview = ServePreview("plain.Button", "button")
     val html = ServeWeb.viewerPage(preview, token = "t", siblings = listOf(preview))
-    assertTrue(
-      html.contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
-      html,
-    )
+    assertTrue(html.contains(CHROME_TAG), html)
     assertTrue(html.contains("""var provider = params.get("themeProvider");"""), html)
     assertTrue(html.contains("""var uiMode = params.get("uiMode");"""), html)
     assertTrue(
@@ -195,7 +203,7 @@ class ServeUrlStateTest {
     )
     assertFalse(
       script.contains("history.replaceState"),
-      "URL writes go through url-state.js, which preserves token/session and never navigates",
+      "URL writes go through window.cpUrlState, which preserves token/session and never navigates",
     )
   }
 }
