@@ -1683,7 +1683,8 @@ class ServeWebFixtureTest {
           <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
             <rect width="1200" height="800" fill="#F7F2FA"/>
             <g data-node-id="1:0"><rect x="40" y="90" width="1140" height="690" fill="none"/></g>
-            <g data-node-id="1:9"><rect x="40" y="20" width="1120" height="50" rx="16" fill="#EADDFF"/></g>
+            <g data-node-id="1:9"><rect x="40" y="20" width="560" height="50" rx="16" fill="#EADDFF"/></g>
+            <g data-node-id="1:10"><rect x="620" y="20" width="560" height="50" rx="16" fill="#EADDFF"/></g>
             <g data-node-id="1:20">
               <rect x="40" y="90" width="560" height="690" rx="20" fill="#FFFFFF"/>
               <g data-node-id="1:30">
@@ -1724,8 +1725,20 @@ class ServeWebFixtureTest {
     // component on it. The mix is the point: two `manifest` links whose previews this catalog
     // publishes, one `convention` (low-confidence name match), one `manifest` link to a preview
     // that ISN'T published (outline, no render), one node the manifest names that the export does
-    // not carry, and three `unlinked`: the component-set grid and sheet header (both structure),
-    // plus a specific shape no code implements, which is the finding the surface exists to surface.
+    // not carry, and four `unlinked`: the component-set grid and BOTH spellings of the sheet header
+    // (all structure), plus a specific shape no code implements, which is the finding the surface
+    // exists to surface.
+    //
+    // Both spellings, because the kit uses both and only one of them used to be recognised. The
+    // Shape page this fixture is drawn from names its header `.Header`, which the leading-dot rule
+    // caught; every other page in the kit names it plain `Header`, which nothing caught — so the
+    // header sat on 27 sheets outlined in red and clickable, and in the denominator. `Header` is
+    // here so that regression has a golden of its own: neither header may appear in the markup.
+    //
+    // Each header gets a real box in the export above, one per column, so the capture is honest
+    // about WHERE the mark used to land. A node with no box in the SVG has nowhere to draw and a
+    // screenshot of the regression would show nothing — which is the one way this fixture could
+    // pass while the bug it exists for was visible on the real sheet.
     val designPageFixture =
       DesignPage(
         id = "shape",
@@ -1743,6 +1756,7 @@ class ServeWebFixtureTest {
               type = "COMPONENT_SET",
             ),
             pageNode("1:9", ".Header", link = PageNodeLink.UNLINKED, depth = 2),
+            pageNode("1:10", "Header", link = PageNodeLink.UNLINKED, depth = 2, type = "INSTANCE"),
             pageNode(
               "1:1",
               "Shape=Circle",

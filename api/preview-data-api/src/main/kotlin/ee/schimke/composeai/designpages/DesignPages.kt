@@ -163,9 +163,57 @@ public data class PageNode(
   public val isContainer: Boolean
     get() = container || type.equals("COMPONENT_SET", ignoreCase = true)
 
-  /** A concrete, public component that the page should count and highlight. */
+  /**
+   * A **placement** of a component rather than a definition of one — Figma's `INSTANCE`.
+   *
+   * A specimen sheet is a grid of definitions with placements scattered around it: the page's own
+   * `Header`, the `Toolbar` and `FAB` an example composition is assembled from, the `Side Sheet`
+   * drawn beside the variant grid that defines it. None of those is a thing a catalog can implement
+   * — you implement the component, and an instance only points at one — so an unlinked placement is
+   * never a gap.
+   *
+   * Dropping one is not a blind spot, because a placement is not where a kit *states* a component.
+   * A specimen sheet states its components as `COMPONENT` / `COMPONENT_SET`, and those are counted
+   * on their own; the instances scattered around them are the page header, the parts of an example
+   * composition, and the illustration beside a variant grid. The kit's Sheets page shows the last
+   * of those plainly: four `Side Sheet` instances sit beside the `Side Sheet` `COMPONENT_SET` whose
+   * four variants are already counted, so counting both reported one missing component twice. Its
+   * Toolbars page shows the middle one: the `Toolbar`+`FAB` pairs are a demo of a toolbar with a
+   * button beside it, and the toolbars themselves are stated — and implemented — further up.
+   *
+   * This deliberately does NOT try to prove the definition exists before dropping the placement.
+   * The definition is often on another sheet (`Scrim` is drawn on Sheets and defined on Utilities),
+   * so a same-page lookup would be wrong; and matching a placement to its definition by layer name
+   * is the class of guess this whole change exists to remove — the leading-dot rule it replaces
+   * failed exactly because a name is not a fact. Figma's own answer is an `INSTANCE`'s
+   * `componentId`, which the manifest does not carry yet; recording it is what would turn this from
+   * a sound default into a decision per node.
+   *
+   * Until then the exposure is bounded and one-directional: a component the kit shows ONLY as an
+   * instance stops being counted, rather than being counted as done. The numerator cannot move —
+   * across the whole Material 3 kit this changes the total on 27 sheets and the implemented count
+   * on none of them.
+   *
+   * A **linked** instance is the exception and stays a component. Naming an instance's node id in
+   * `design-map.json` is a deliberate claim that this placement is the thing we draw, and the
+   * Snackbar sheet does exactly that for six of its ten snackbars. So only [isComponent] reads
+   * this, and only together with [isUnlinked]: the node's type never overrides an authored mapping.
+   */
+  public val isPlacement: Boolean
+    get() = type.equals("INSTANCE", ignoreCase = true)
+
+  /**
+   * A concrete, public component that the page should count and highlight.
+   *
+   * Three kinds of node are not one, and on a real specimen sheet they are most of it: the sheet's
+   * private furniture ([isPrivate]), the variant sets ([isContainer]), and the placements no
+   * mapping claims ([isPlacement]). Everything the page draws a mark for — the outline, the hit
+   * area, the audit row, the coverage tally — starts here, so a node excluded here is not merely
+   * uncounted: it stops being something the reader can point at, which is the right outcome for all
+   * three.
+   */
   public val isComponent: Boolean
-    get() = !isPrivate && !isContainer
+    get() = !isPrivate && !isContainer && !(isPlacement && isUnlinked)
 
   /** Whether this node can be drawn by us, i.e. it names a preview we could ask for. */
   public val isRenderable: Boolean
@@ -238,20 +286,23 @@ public data class DesignPage(
    * The nodes a reader means by *what we haven't implemented yet*: unlinked, and actually a
    * component someone could implement.
    *
-   * Two kinds of unlinked node are not gaps, and on a real specimen sheet they are most of them:
+   * Three kinds of unlinked node are not gaps, and on a real specimen sheet they are most of them:
    *
    * 1. **Private components** ([PageNode.isPrivate]) — the sheet's own furniture, never published.
    * 2. **Containers** ([PageNode.container]) — a `COMPONENT_SET`'s variants are the components; the
    *    set is the box they came in. Its variants are listed here in their own right, so counting
    *    the set as well reports one missing component for a family that is fully implemented.
+   * 3. **Placements** ([PageNode.isPlacement]) — an `INSTANCE` is a use of a component, not a
+   *    definition of one, and the definition is listed here in its own right too. See there; the
+   *    kit's page headers are the case that named it.
    *
-   * Both are read off the node, never inferred. An earlier cut worked container-ness out from the
-   * walk's depth ordering — a node immediately followed by a deeper one — so a manifest published
-   * before the producer stated it would still read correctly. That inference is unsound in the
-   * direction that matters: a manifest lists components only, so an unlisted frame between two of
-   * them lets a shallower node be followed by a deeper one that is not inside it, and a genuinely
-   * missing component would then be swallowed as "structure". A stale manifest over-counting a
-   * container is visible and harmless; a gap that quietly disappears is neither.
+   * All three are read off the node, never inferred. An earlier cut worked container-ness out from
+   * the walk's depth ordering — a node immediately followed by a deeper one — so a manifest
+   * published before the producer stated it would still read correctly. That inference is unsound
+   * in the direction that matters: a manifest lists components only, so an unlisted frame between
+   * two of them lets a shallower node be followed by a deeper one that is not inside it, and a
+   * genuinely missing component would then be swallowed as "structure". A stale manifest
+   * over-counting a container is visible and harmless; a gap that quietly disappears is neither.
    */
   public val coverageGaps: List<PageNode>
     get() = nodes.filter { it.isComponent && it.isUnlinked }
