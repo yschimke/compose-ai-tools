@@ -9,4 +9,6 @@
 // its import here, so each step is a diffable change to the committed bundle with
 // the page fixtures as the regression net. See README.md.
 
+import "./components/BackendBadge.js";
 import "./components/BgToggle.js";
+import "./components/GroupMemory.js";

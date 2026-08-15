@@ -85,7 +85,7 @@
 
       <div class="cp-viewer" data-preview-id="com.example.ProfileCardPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
 
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile card"><canvas id="cp-canvas" hidden></canvas><div class="cp-inspect-layer" id="cp-inspect-layer"></div><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Profile card"><canvas id="cp-canvas" hidden></canvas><div class="cp-inspect-layer" id="cp-inspect-layer"></div><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-inspect-legend" id="cp-inspect-legend" role="region" aria-label="Inspection legend" hidden></div>
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
@@ -219,9 +219,11 @@
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <!-- Remembers which control drawers this visitor left open (`cp-grp.<id>` per
+           `details.cp-group[data-cp-group]`). Renders nothing; `serve.css` hides the tag. -->
+      <cp-group-memory></cp-group-memory>
       <script src="/assets/serve/fixture/url-state.js"></script>
       <script src="/assets/serve/fixture/serve-components.js"></script>
-      <script src="/assets/serve/fixture/viewer-groups.js"></script>
       <script src="/assets/serve/fixture/viewer-drawers.js"></script>
       <script src="/assets/serve/fixture/viewer-history.js"></script>
       <script>(function () {
@@ -287,7 +289,6 @@
   syncBg();
 })();</script>
       <script src="/assets/serve/fixture/viewer.js"></script>
-      <script src="/assets/serve/fixture/backend-badge.js"></script>
       <script src="/assets/serve/fixture/inspect.js"></script>
         </main>
         <footer class="cp-site-footer">

@@ -8882,7 +8882,7 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
@@ -8941,14 +8941,15 @@ $rows
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <!-- Remembers which control drawers this visitor left open (`cp-grp.<id>` per
+           `details.cp-group[data-cp-group]`). Renders nothing; `serve.css` hides the tag. -->
+      <cp-group-memory></cp-group-memory>
       ${scriptTag("url-state.js")}
       ${scriptTag("serve-components.js")}
-      ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
-      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}$compareScriptTags${scriptTag("viewer.js")}
-      ${scriptTag("backend-badge.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
+      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}$compareScriptTags${scriptTag("viewer.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """
         .trimIndent()
         .lineSequence()

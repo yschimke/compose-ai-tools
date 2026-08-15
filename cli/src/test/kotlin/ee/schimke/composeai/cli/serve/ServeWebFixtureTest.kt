@@ -3727,12 +3727,18 @@ class ServeWebFixtureTest {
     // live + snapshot labels come from server metadata (a live daemon can be Android, not just
     // JVM),
     // defaulting to generic Live / Snapshot.
-    assertTrue(viewer.contains("id=\"cp-backend\""), "viewer stage carries the backend badge")
-    // The badge now prefixes a lane icon (▶ live / ▪ static) — the visible signal the Static⇄Live
-    // toggle flipped — but still hard-codes the CMP-WASM tier label for the in-browser app.
+    // The badge is `<cp-backend-badge>` (`cli/serve-web/src/components/BackendBadge.ts`), so what
+    // the page owes it is the tag carrying the live region and the lane labels. Which icon and
+    // label each mode produces — ▶ live / ▪ static, and the hard-coded CMP-WASM tier — is asserted
+    // against the real element in `cli/serve-web/test/backendBadge.test.ts`, which a substring
+    // match on a minified bundle could not do.
     assertTrue(
-      assetText("backend-badge.js").contains("\"▶ CMP-WASM\""),
-      "badge hard-codes the wasm tier label with the live icon",
+      viewer.contains("<cp-backend-badge ") && viewer.contains("id=\"cp-backend\""),
+      "viewer stage carries the backend badge",
+    )
+    assertTrue(
+      viewer.contains("role=\"status\"") && viewer.contains("aria-live=\"polite\""),
+      "the badge is a server-rendered live region, so lane changes are announced",
     )
     assertTrue(
       viewer.contains("data-live-backend=\"Live\"") &&
@@ -4282,10 +4288,8 @@ class ServeWebFixtureTest {
         assetText("viewer.js").contains("? \".svg\" : \".png\""),
       "the snapshot lane flips its render extension between PNG and SVG",
     )
-    assertTrue(
-      assetText("backend-badge.js").contains("if (mode === \"svg\") return \"▪ SVG\";"),
-      "the backend badge names the SVG lane",
-    )
+    // That the badge then names the lane "▪ SVG" is asserted against the element itself, in
+    // `cli/serve-web/test/backendBadge.test.ts` ("names the SVG lane as static").
     // The SVG export also surfaces as a copyable/downloadable URL row plus the "Full page (scroll)"
     // toggle.
     assertTrue(
