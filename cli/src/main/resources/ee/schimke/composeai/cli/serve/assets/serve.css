@@ -839,7 +839,11 @@ cp-bg-toggle { display: contents; }
    already rendered — remembered fold state, the phone's toolbar reflow, the viewer's drawers — and
    none of them has anything to draw. An autonomous custom element defaults to `display: inline`,
    so without this each would sit in its page's flow as an empty inline box. */
-cp-group-memory, cp-catalog-toolbar, cp-viewer-drawers { display: none; }
+cp-group-memory, cp-catalog-toolbar, cp-viewer-drawers, cp-parity-lanes { display: none; }
+/* `<cp-parity-scores>` DOES render — the whole "Visual differences" band — so it drops out
+   of layout rather than out of sight, leaving the `<section>` it renders as the flow's own
+   child exactly as the server-emitted one was. */
+cp-parity-scores { display: contents; }
 /* …and the same filter chip for the theme chips and for the two standalone toggles that used to
    be segmented pairs — Transparent (<cp-bg-toggle>) and the viewer's Fit width (.cp-zoom-toggle).
    One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's

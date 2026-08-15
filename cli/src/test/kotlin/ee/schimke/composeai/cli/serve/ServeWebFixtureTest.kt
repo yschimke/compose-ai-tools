@@ -2542,14 +2542,17 @@ class ServeWebFixtureTest {
     assertFalse(
       parity
         .substringAfter("Out-of-sync activity")
-        .substringBefore("Visual differences")
+        // The band that follows is `<cp-parity-scores>`, which renders its own "Visual
+        // differences" heading client-side — so the tag, not the heading, is what bounds the drift
+        // band in the served markup.
+        .substringBefore("<cp-parity-scores>")
         .contains("Button"),
       "a component that moved on both sides is not drift",
     )
     assertTrue(
       parity.contains("All comparisons (3)") &&
         parity.contains("data-parity-comparison") &&
-        parity.contains("Visual differences"),
+        parity.contains("<cp-parity-scores></cp-parity-scores>"),
       "the secondary inventory includes measured visual parity: $parity",
     )
     // Coverage is derived live from the previews + references, never from the published feed: 3

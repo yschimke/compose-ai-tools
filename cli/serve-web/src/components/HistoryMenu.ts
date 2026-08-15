@@ -18,6 +18,7 @@
 
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { whenParsed } from "../dom/whenParsed.js";
 import { historySourceOf } from "../viewer/historyUrls.js";
 import {
     historyMenuOf,
@@ -38,26 +39,11 @@ export class HistoryMenu extends LitElement {
         return this;
     }
 
+    // Everything the menu reads lives on `.cp-viewer`, which sits BELOW the toggle row that
+    // declares this tag — so connect time is too early to look for it. See `dom/whenParsed.ts`.
     connectedCallback(): void {
         super.connectedCallback();
-        void this.whenParsed().then(() => this.load());
-    }
-
-    /**
-     * Everything the menu reads lives on `.cp-viewer`, which sits BELOW the toggle row that
-     * declares this tag — so connect time is too early to look for it. The served page gets away
-     * with it only because its script tag is near the end of `<body>`, which is a correct-by-
-     * accident that any reordering would break, and it is not true at all of a document assembled
-     * in one `innerHTML` write. Waiting for the parse costs a microtask and removes the ordering
-     * assumption entirely.
-     */
-    private whenParsed(): Promise<void> {
-        if (document.readyState !== "loading") return Promise.resolve();
-        return new Promise((resolve) =>
-            document.addEventListener("DOMContentLoaded", () => resolve(), {
-                once: true,
-            }),
-        );
+        void whenParsed().then(() => this.load());
     }
 
     private async load(): Promise<void> {

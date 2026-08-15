@@ -7655,6 +7655,9 @@ $rows
         $items
         </ul>
         <p class="cp-muted" id="cp-parity-feed-empty" hidden>No activity in this lane.</p>
+        <!-- Wires the lane buttons above to the feed. Renders nothing, and the feed is fully
+             readable without it; `serve.css` hides the tag. -->
+        <cp-parity-lanes></cp-parity-lanes>
         """
           .trimIndent()
       }
@@ -7770,24 +7773,15 @@ $rows
           .trimIndent()
       }
 
+    // The whole "Visual differences" band belongs to `<cp-parity-scores>`, which scores every
+    // published render/reference pair and renders the result. The server used to emit the section
+    // and its empty table here, which cost two things: the element had to build the rows by
+    // hand-escaping into `innerHTML`, and a page with JavaScript off was left promising "Checking N
+    // mapped comparison(s)…" forever. Declaring the tag says where the band goes and nothing about
+    // what is in it, so a page that cannot run the scan shows nothing rather than a lie.
     val visualIssues =
       if (dashboard.comparisons.none { it.referenceId != null }) ""
-      else {
-        val count = dashboard.comparisons.count { it.referenceId != null }
-        """
-        <section class="cp-parity-visual-issues" id="cp-parity-visual-issues">
-          <h3 class="cp-parity-sub">Visual differences</h3>
-          <p class="cp-muted" id="cp-parity-score-status">Checking $count mapped comparison(s)…</p>
-          <div class="cp-status-scroll" id="cp-parity-score-results" hidden>
-            <table class="cp-table">
-              <thead><tr><th>Component</th><th>Structural match</th><th>Review</th></tr></thead>
-              <tbody id="cp-parity-score-issues"></tbody>
-            </table>
-          </div>
-        </section>
-        """
-          .trimIndent()
-      }
+      else "<cp-parity-scores></cp-parity-scores>"
 
     val comparisonBand =
       if (dashboard.comparisons.isEmpty()) ""
@@ -7858,11 +7852,14 @@ $rows
           "compare every mapped component against $against</a></div>"
       }
 
+    // `format-compare.js` still holds the scorer itself — `<cp-parity-scores>` calls into
+    // `window.ComposePreviewCompare` — so it loads for a catalog with published references, and
+    // must be defined before the components bundle upgrades the tag.
     val parityScripts = buildString {
       if (dashboard.comparisons.any { it.referenceId != null })
         append(scriptTag("format-compare.js"))
       if (dashboard.feed.isNotEmpty() || dashboard.comparisons.any { it.referenceId != null })
-        append(scriptTag("parity.js"))
+        append(scriptTag("serve-components.js"))
     }
 
     // Provenance for the page itself: this is snapshotted data, and saying so is the difference

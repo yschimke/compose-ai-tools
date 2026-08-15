@@ -176,10 +176,30 @@ built the menu at runtime and then went looking for somewhere to put it, and the
 server already knows where the control belongs, so it declares the tag in the
 toggle row and the placement question stops existing.
 
-Next, cheapest seam first: `parity.js` (124 lines, the design-parity page only),
-`spec-compare.js` (290). The big ones — `format-compare.js` (1,686) and
-`viewer.js` (2,906) — want breaking into pure modules the way the drawers were,
-not porting whole.
+The parity page took the split furthest: `parity/laneFilter.ts` and
+`parity/findings.ts` hold everything the page decides — which entries a lane
+shows, what counts as a visual finding, how a score cell reads, what order the
+issues table is in, what the summary sentence says — and `<cp-parity-lanes>` and
+`<cp-parity-scores>` are left with event wiring and a template. That last one is
+also the first element to take over a band the server used to emit, which is
+what let two problems go away rather than move: the issues table was built by
+hand-escaping into `innerHTML`, with an `esc()` that neutralised `<`, `>` and `&`
+but not `"` while its output was interpolated straight into `href="…"`; and a
+page with JavaScript off was left promising `Checking 40 mapped comparison(s)…`
+forever. A binding cannot be broken out of, and an element that renders nothing
+until it has something to say leaves no false promise behind.
+
+`dom/whenParsed.ts` came out of that page and `<cp-history-menu>` hitting the
+same wall. A light-DOM element is upgraded when the parser reaches its tag, so
+anything it reads from a sibling further down the page does not exist yet. The
+served pages only got away with it because their script tags happen to sit near
+the end of `<body>`. Every component that reads outside its own subtree now waits
+for the parse.
+
+Next, cheapest seam first: `spec-compare.js` (373), `rc-lanes.js` (337),
+`catalog-live.js` (400), `inspect.js` (424), `design-page.js` (789). The big ones
+— `format-compare.js` (1,706) and `viewer.js` (3,127) — want breaking into pure
+modules the way the drawers were, not porting whole.
 
 ## Two bundles, and which one a thing belongs in
 
