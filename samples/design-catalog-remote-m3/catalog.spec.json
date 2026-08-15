@@ -21,7 +21,7 @@
       "name": "Buttons",
       "components": [
         { "componentId": "Button/Filled", "preview": "FilledRemoteButton", "parallel": "Button/Filled", "caption": "Remote Material 3 filled button — the primary action." },
-        { "componentId": "Button/Tonal", "preview": "TonalRemoteButton", "parallel": "Button/FilledTonal", "caption": "Tonal button using the theme's secondary-container emphasis." },
+        { "componentId": "Button/Tonal", "preview": "TonalRemoteButton", "parallel": "Button/Tonal", "caption": "Tonal button using the theme's secondary-container emphasis." },
         { "componentId": "Button/Outlined", "preview": "OutlinedRemoteButton", "parallel": "Button/Outlined", "caption": "Remote Material 3 outlined-emphasis button (RemoteButton with an explicit border + border colour)." },
         { "componentId": "Button/Disabled", "preview": "DisabledRemoteButton", "parallel": "Button/Filled", "caption": "Filled button with the library's disabled container and content colours." },
         { "componentId": "Button/IconLabel", "preview": "IconLabelRemoteButton", "parallel": "Button/Filled", "caption": "Opinionated RemoteButton overload with its recommended icon and label slots." },
@@ -68,10 +68,10 @@
       "components": [
         { "componentId": "Progress/Circular", "preview": "CircularProgressRemote", "parallel": "Progress/Circular", "caption": "Determinate circular progress indicator at a fixed 66%." },
         { "componentId": "Progress/Circular-Disabled", "preview": "DisabledCircularProgressRemote", "parallel": "Progress/Circular", "caption": "Determinate progress using the component's disabled indicator and track brushes." },
-        { "componentId": "Progress/Circular-Indeterminate", "preview": "IndeterminateCircularProgressRemote", "parallel": "Progress/Circular-Indeterminate", "caption": "Indeterminate circular progress; a companion motion preview captures its continuous remote-clock animation." },
-        { "componentId": "PageIndicator/Horizontal", "preview": "HorizontalPageIndicatorRemote", "parallel": "PageIndicator/Horizontal", "caption": "Five-page horizontal indicator curved along the bottom edge." },
-        { "componentId": "PageIndicator/Vertical", "preview": "VerticalPageIndicatorRemote", "parallel": "PageIndicator/Vertical", "caption": "Eight-page vertical indicator exercising the scrolling-dot window." },
-        { "componentId": "PageIndicator/Interactive", "preview": "InteractivePageIndicatorRemote", "parallel": "PageIndicator/Horizontal", "caption": "Interactive page indicator: tapping Next animates the worm between adjacent pages inside the RemoteDocument." }
+        { "componentId": "Progress/Circular-Indeterminate", "preview": "IndeterminateCircularProgressRemote", "motionPreview": "IndeterminateCircularProgressMotionRemote", "parallel": "Progress/Circular/Indeterminate", "caption": "Indeterminate circular progress; its motion capture records the continuous remote-clock animation." },
+        { "componentId": "PageIndicator/Horizontal", "preview": "HorizontalPageIndicatorRemote", "parallel": "Template/PageIndicator/largeRound", "caption": "Five-page horizontal indicator curved along the bottom edge." },
+        { "componentId": "PageIndicator/Vertical", "preview": "VerticalPageIndicatorRemote", "caption": "Eight-page vertical indicator exercising the scrolling-dot window." },
+        { "componentId": "PageIndicator/Interactive", "preview": "InteractivePageIndicatorRemote", "parallel": "Template/PageIndicator/largeRound", "caption": "Interactive page indicator: tapping Next animates the worm between adjacent pages inside the RemoteDocument." }
       ]
     },
     {

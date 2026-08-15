@@ -393,8 +393,8 @@ export function discoverComponentIds(sources) {
   return [...ids].sort();
 }
 
-/** Every `preview` a spec references, top-level and inside `variants`, each with
- *  a human-readable JSON-ish path for diagnostics. */
+/** Every static, motion, and variant preview a spec references, each with a human-readable
+ *  JSON-ish path for diagnostics. */
 export function specPreviewRefs(spec) {
   const refs = [];
   const groups = Array.isArray(spec?.groups) ? spec.groups : [];
@@ -404,6 +404,9 @@ export function specPreviewRefs(spec) {
       const base = `groups[${gi}].components[${ci}]`;
       if (typeof comp?.preview === "string") {
         refs.push({ preview: comp.preview, path: `${base} (${comp.componentId ?? "?"})` });
+      }
+      if (typeof comp?.motionPreview === "string") {
+        refs.push({ preview: comp.motionPreview, path: `${base}.motionPreview` });
       }
       const variants = Array.isArray(comp?.variants) ? comp.variants : [];
       variants.forEach((v, vi) => {
@@ -572,6 +575,7 @@ export function validateSpec(spec, opts = {}) {
   // The subset of the above whose referring entry did NOT declare `"capture": "none"`. A PNG-less
   // preview is only an error for those: a `"none"` entry is *declaring* the absence.
   const staticRefPaths = new Map(); // preview name -> [paths]
+  const motionRefPaths = new Map(); // motion preview name -> [paths]
 
   spec.groups.forEach((group, gi) => {
     const gp = `groups[${gi}]`;
@@ -604,6 +608,13 @@ export function validateSpec(spec, opts = {}) {
         pushMulti(previewToPaths, comp.preview, cp);
         recordSelect(previewToSelects, comp.preview, comp);
         if (!exportsNoSticker(comp)) pushMulti(staticRefPaths, comp.preview, cp);
+      }
+      if (comp?.motionPreview !== undefined) {
+        if (typeof comp.motionPreview !== "string" || comp.motionPreview.length === 0) {
+          errors.push(`${cp}.motionPreview must be a non-empty @Preview function name`);
+        } else {
+          pushMulti(motionRefPaths, comp.motionPreview, cp);
+        }
       }
       errors.push(...priorityErrors(comp, cp));
       const variants = comp?.variants;
@@ -704,7 +715,16 @@ export function validateSpec(spec, opts = {}) {
         );
       }
     }
-    const referenced = new Set(previewToPaths.keys());
+    for (const [preview, paths] of motionRefPaths) {
+      if (!known.has(preview)) {
+        const hint = closest(preview, [...known]);
+        const suffix = hint ? ` — did you mean "${hint}"?` : "";
+        errors.push(
+          `motion preview "${preview}" (${paths[0]}) matches no @Preview function in the scanned module${suffix}`,
+        );
+      }
+    }
+    const referenced = new Set([...previewToPaths.keys(), ...motionRefPaths.keys()]);
     // PNG-less previews can't be catalogued at all, so their absence isn't a
     // coverage gap worth reporting.
     const orphans = [...known].filter((p) => !referenced.has(p) && !pngLess.has(p));

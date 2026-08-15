@@ -131,6 +131,11 @@
           "minLength": 1,
           "description": "EXACT @Preview function name that renders this component. Must match a discovered @Preview (or multipreview) function in `module`."
         },
+        "motionPreview": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional exact @Preview function name that supplies this component's animated or interaction capture when motion must live on a separate function from the static `preview`."
+        },
         "select": { "$ref": "#/definitions/select" },
         "caption": {
           "type": "string",

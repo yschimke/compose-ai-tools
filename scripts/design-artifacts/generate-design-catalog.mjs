@@ -45,7 +45,7 @@ import {
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants, variantLabel } from "./catalog-variants.mjs";
-import { foldMotion, motionArtifactsFor } from "./catalog-motion.mjs";
+import { foldMotion, motionArtifactsFor, motionPreviewFor } from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
 import {
   DEFERRED,
@@ -643,10 +643,14 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       };
       // The component's animated captures, alongside (never inside) its stills — see
       // catalog-motion.mjs for why `images[]` is the wrong home for a 114-frame recording. Read off
-      // the component's own `@Preview` function only: a state variant's motion capture is
+      // the component's own `@Preview` function by default, or its explicit `motionPreview` when
+      // the static sticker and GIF need separate functions. A state variant's motion capture is
       // suppressed at discovery, so there is none to collect, and folding the variants' would
       // publish duplicates of one script anyway.
-      const motion = foldMotion(baked, motionArtifactsFor(opts.motionBundle, component.preview));
+      const motion = foldMotion(
+        baked,
+        motionArtifactsFor(opts.motionBundle, motionPreviewFor(component)),
+      );
       if (motion.length > 0) source.motion = motion;
       // A group may declare a top-level `section` (the tab the preview server
       // buckets it under: Themes / Components / Screens / Animations / …). It sits

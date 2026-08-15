@@ -198,7 +198,9 @@ export function previewNamesByPriority(spec) {
   // the driver is still going to bake — the failure that would leave a "required" entry with no PNG
   // and trip the completeness gate.
   for (const { component } of components(spec)) {
-    note(component?.preview, entryPriority(component));
+    const priority = entryPriority(component);
+    note(component?.preview, priority);
+    note(component?.motionPreview, priority);
     for (const variant of component?.variants ?? []) {
       note(variant?.preview, variantPriority(component, variant));
     }

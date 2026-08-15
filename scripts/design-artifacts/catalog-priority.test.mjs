@@ -115,7 +115,7 @@ test("a deferred component's variants stay out of the render filter", () => {
 test("previewNamesByPriority only defers a function nothing required points at", () => {
   const { required, deferred } = previewNamesByPriority(
     spec([
-      { componentId: "A", preview: "Alpha" },
+      { componentId: "A", preview: "Alpha", motionPreview: "AlphaMotion" },
       { componentId: "B", preview: "Beta", priority: "deferred" },
       // Shared function: one entry defers it, another needs it — so it must still render.
       { componentId: "C", preview: "Alpha", priority: "deferred" },
@@ -129,7 +129,7 @@ test("previewNamesByPriority only defers a function nothing required points at",
       },
     ]),
   );
-  assert.deepEqual(required, ["Alpha", "Delta", "DeltaPressed"]);
+  assert.deepEqual(required, ["Alpha", "AlphaMotion", "Delta", "DeltaPressed"]);
   // "Alpha" is required by componentId A even though C defers it, so it must still render.
   assert.deepEqual(deferred, ["Beta", "DeltaDisabled"]);
 });

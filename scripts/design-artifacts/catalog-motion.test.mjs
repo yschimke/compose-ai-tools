@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { foldMotion, motionArtifactsFor, motionDeclarationOf } from "./catalog-motion.mjs";
+import {
+  foldMotion,
+  motionArtifactsFor,
+  motionDeclarationOf,
+  motionPreviewFor,
+} from "./catalog-motion.mjs";
 
 const interactionCapture = (renderOutput, caption) => ({
   renderOutput,
@@ -11,6 +16,14 @@ const interactionCapture = (renderOutput, caption) => ({
 const animationCapture = (renderOutput, caption) => ({
   renderOutput,
   animation: { durationMs: 0, frameIntervalMs: 16, caption },
+});
+
+test("motionPreviewFor uses an explicit motion function and otherwise falls back to the still", () => {
+  assert.equal(motionPreviewFor({ preview: "Spinner" }), "Spinner");
+  assert.equal(
+    motionPreviewFor({ preview: "Spinner", motionPreview: "SpinnerMotion" }),
+    "SpinnerMotion",
+  );
 });
 
 test("motionDeclarationOf names the kind and keeps the caption", () => {

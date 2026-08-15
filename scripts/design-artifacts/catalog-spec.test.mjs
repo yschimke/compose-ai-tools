@@ -103,19 +103,24 @@ test("discoverPreviews handles keyword modifiers and multi-line annotation args"
   assert.deepEqual(discoverPreviews([src]).previews, ["WideOne"]);
 });
 
-test("specPreviewRefs collects component and variant previews", () => {
+test("specPreviewRefs collects component, motion, and variant previews", () => {
   const spec = {
     groups: [
       {
         name: "Buttons",
         components: [
-          { componentId: "Button/Filled", preview: "Filled", variants: [{ state: "pressed", preview: "FilledPressed" }] },
+          {
+            componentId: "Button/Filled",
+            preview: "Filled",
+            motionPreview: "FilledMotion",
+            variants: [{ state: "pressed", preview: "FilledPressed" }],
+          },
         ],
       },
     ],
   };
   const refs = specPreviewRefs(spec).map((r) => r.preview);
-  assert.deepEqual(refs, ["Filled", "FilledPressed"]);
+  assert.deepEqual(refs, ["Filled", "FilledMotion", "FilledPressed"]);
 });
 
 test("editDistance and closest suggest near typos only", () => {
@@ -452,6 +457,53 @@ test("validateSpec rejects a component pointing at a PNG-less preview", () => {
   assert.equal(errors.length, 1);
   assert.ok(errors[0].includes('preview "ToggleAnimatedPreview"'));
   assert.ok(errors[0].includes("renders no static PNG"));
+});
+
+test("validateSpec accepts a separate PNG-less motion preview", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "Motion",
+        components: [
+          {
+            componentId: "Motion/Spinner",
+            preview: "Spinner",
+            motionPreview: "SpinnerMotion",
+          },
+        ],
+      },
+    ],
+  };
+  const { errors, warnings } = validateSpec(spec, {
+    knownPreviews: ["Spinner", "SpinnerMotion"],
+    pngLessPreviews: ["SpinnerMotion"],
+  });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(warnings, []);
+});
+
+test("validateSpec rejects an unknown separate motion preview", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "Motion",
+        components: [
+          {
+            componentId: "Motion/Spinner",
+            preview: "Spinner",
+            motionPreview: "MissingMotion",
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, { knownPreviews: ["Spinner", "SpinnerMotion"] });
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].includes('motion preview "MissingMotion"'));
 });
 
 test("validateSpec rejects a PNG-less preview referenced from a variant", () => {
