@@ -9,7 +9,7 @@
     ".": "./design-map.mjs"
   },
   "bin": {
-    "compose-design-map": "./emit-design-map.mjs"
+    "compose-design-map": "emit-design-map.mjs"
   },
   "files": [
     "design-map.mjs",
