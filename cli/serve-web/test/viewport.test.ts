@@ -14,6 +14,7 @@ import {
     fitFactor,
     frameRect,
     pickLevel,
+    rescale,
     rest,
     revealDelta,
     zoomAbout,
@@ -60,6 +61,38 @@ describe("zoomAbout", () => {
 
     it("cannot zoom out past 1:1", () => {
         assert.deepEqual(zoomAbout(rest(), STAGE, 600, 400, 0.2), rest());
+    });
+});
+
+describe("rescale", () => {
+    it("keeps the reader looking at the same part of the sheet", () => {
+        // A 2x view centred on the middle of the sheet, in a stage that then halves in
+        // width. Clamping alone would leave x where it was and slide the centre of the
+        // view from 50% to 75% across the drawing.
+        const wide = box(0, 0, 1200, 800);
+        const narrow = box(0, 0, 600, 800);
+        const centred = { scale: 2, x: -600, y: -400 };
+        const after = rescale(centred, wide, narrow);
+        const before = -centred.x / (wide.width * centred.scale);
+        assert.equal(-after.x / (narrow.width * after.scale), before);
+    });
+
+    it("still holds the sheet inside the new box", () => {
+        const after = rescale(
+            { scale: 2, x: -2000, y: 0 },
+            box(0, 0, 1200, 800),
+            box(0, 0, 600, 800),
+        );
+        assert.ok(
+            after.x >= -600,
+            "cannot be panned past the right edge of the smaller stage",
+        );
+    });
+
+    it("leaves a view alone when a box has no size yet", () => {
+        const view = { scale: 2, x: -10, y: -20 };
+        assert.deepEqual(rescale(view, box(0, 0, 0, 0), STAGE), view);
+        assert.deepEqual(rescale(view, STAGE, box(0, 0, 0, 0)), view);
     });
 });
 

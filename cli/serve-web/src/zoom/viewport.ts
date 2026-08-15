@@ -64,6 +64,29 @@ export function clamp(view: View, box: Box): View {
 }
 
 /**
+ * Carry a pan across a change in the stage's size, keeping the reader looking at the same part of
+ * the sheet.
+ *
+ * The canvas fills the stage, so a pan offset means "this many of THIS stage's pixels" — clamping it
+ * against the new bounds and leaving it otherwise alone silently moves the centre of the view. Halve
+ * the width of a centred 2x view and the middle of the screen slides from 50% to 75% across the
+ * sheet, which is how opening a side panel loses the reader's place. Scaling the offsets by the same
+ * ratio the box changed by keeps the fraction — and therefore the content point — where it was.
+ */
+export function rescale(view: View, from: Box, to: Box): View {
+    if (!(from.width > 0 && from.height > 0)) return view;
+    if (!(to.width > 0 && to.height > 0)) return view;
+    return clamp(
+        {
+            scale: view.scale,
+            x: view.x * (to.width / from.width),
+            y: view.y * (to.height / from.height),
+        },
+        to,
+    );
+}
+
+/**
  * Zoom about a point, keeping whatever is under it under it — the wheel gesture,
  * and what makes the corner buttons zoom the middle of the view rather than the
  * top-left corner.

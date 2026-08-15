@@ -2491,9 +2491,16 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    sharp all the way in and the overlays stay welded to the shapes they mark.
 
    Everything the reader sees ON TOP of the sheet is counter-scaled by `--cp-page-zoom` so it keeps
-   its size in screen pixels: an outline drawn 2 px at 1x would be a 24 px slab at 12x, and a score
-   badge would be a billboard. The instrumentation should not grow just because the drawing did. */
-.cp-page-node { border-width: calc(2px / var(--cp-page-zoom, 1)); }
+   its size in screen pixels: a mark drawn 2 px at 1x would be a 24 px slab at 12x, and a score badge
+   would be a billboard. The instrumentation should not grow just because the drawing did.
+
+   The OUTLINE and its offset, not `border-width` — a node's mark is an inset outline precisely so
+   the box it paints on stays the measured node box for the render inside it (see `.cp-page-node`
+   above), and its `border` is 0. Counter-scaling the border is a no-op that looks like it works. */
+.cp-page-node {
+  outline-width: calc(2px / var(--cp-page-zoom, 1));
+  outline-offset: calc(-2px / var(--cp-page-zoom, 1));
+}
 .cp-page-node:hover,
 .cp-page-node:focus-visible,
 .cp-page-node.cp-page-active {

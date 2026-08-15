@@ -38,6 +38,7 @@ import {
     clamp,
     frameRect,
     pickLevel,
+    rescale,
     rest,
     revealDelta,
     zoomAbout,
@@ -81,6 +82,9 @@ export class PageZoom extends LitElement {
 
     private observer: ResizeObserver | null = null;
 
+    /** The stage's size at the last commit, so a resize can carry the pan across it. */
+    private stageSize: Box | null = null;
+
     // Bound once so `removeEventListener` in `disconnectedCallback` matches.
     private readonly onDblClick = (event: MouseEvent) => this.drill(event);
     private readonly onWheel = (event: WheelEvent) => this.wheel(event);
@@ -107,8 +111,16 @@ export class PageZoom extends LitElement {
         this.reveal(event.target as Element | null);
     };
     private readonly onKeyDown = (event: KeyboardEvent) => this.escape(event);
-    private readonly onResize = () =>
-        this.apply(clamp(this.view, this.stageBox()));
+    private readonly onResize = () => {
+        const box = this.stageBox();
+        const was = this.stageSize;
+        // `rescale` keeps the reader's place across the change; `apply` clamps it into
+        // the new bounds and records the size the next resize will measure against.
+        this.apply(
+            was ? rescale(this.view, was, box) : clamp(this.view, box),
+            false,
+        );
+    };
 
     protected createRenderRoot(): HTMLElement {
         // Light DOM: `serve.css` styles this bar, and it is one pill of chrome with
@@ -142,16 +154,26 @@ export class PageZoom extends LitElement {
         window.addEventListener("pointermove", this.onPointerMove);
         window.addEventListener("pointerup", this.onPointerUp);
         window.addEventListener("pointercancel", this.onPointerUp);
-        // On the DOCUMENT: a reader who zoomed with the mouse has focus on nothing
-        // in particular (the stage is not focusable), so a listener on this page's
-        // own subtree would never see the key.
-        document.addEventListener("keydown", this.onKeyDown);
+        // On the DOCUMENT, and in the CAPTURE phase. Document, because a reader who
+        // zoomed with the mouse has focus on nothing in particular (the stage is not
+        // focusable) and a listener on this page's own subtree would never see the
+        // key. Capture, because `design-page.js` listens on `#cp-design-page` and a
+        // bubbling document listener would run AFTER it — by which point the
+        // selection it clears is already gone, and one press would unwind both the
+        // selection and the zoom. Capture runs before it and still sees the mark.
+        document.addEventListener("keydown", this.onKeyDown, true);
+        // A resize moves the pan limits with the stage — a sheet panned to its right
+        // edge in a wide window is panned past it in a narrow one — and it moves the
+        // reader's place, which `rescale` is what preserves. Both signals are wired:
+        // the observer catches a stage that changes size on its own (a side panel, a
+        // container query), `resize` covers a browser without `ResizeObserver`. Firing
+        // twice is harmless: the second call sees no change from the size the first
+        // one recorded.
         if (typeof ResizeObserver === "function") {
-            // A resize moves the pan limits with the stage: a sheet panned to its
-            // right edge in a wide window is panned past it in a narrow one.
             this.observer = new ResizeObserver(this.onResize);
             this.observer.observe(this.stage);
         }
+        window.addEventListener("resize", this.onResize);
         this.apply(this.view);
     }
 
@@ -165,7 +187,8 @@ export class PageZoom extends LitElement {
         window.removeEventListener("pointermove", this.onPointerMove);
         window.removeEventListener("pointerup", this.onPointerUp);
         window.removeEventListener("pointercancel", this.onPointerUp);
-        document.removeEventListener("keydown", this.onKeyDown);
+        window.removeEventListener("resize", this.onResize);
+        document.removeEventListener("keydown", this.onKeyDown, true);
         this.observer?.disconnect();
         this.observer = null;
         super.disconnectedCallback();
@@ -217,7 +240,20 @@ export class PageZoom extends LitElement {
 
     /** Commit a view: transform the canvas, publish the scale, show or hide this bar. */
     private apply(next: View, eased = true): void {
-        this.view = clamp(next, this.stageBox());
+        const box = this.stageBox();
+        this.view = clamp(next, box);
+        this.stageSize = {
+            left: 0,
+            top: 0,
+            width: box.width,
+            height: box.height,
+        };
+        // Back at 1:1 by ANY route — the minus button, a wheel out, a drill that
+        // bottomed out — and the walk down the tree is over with it. Leaving the stack
+        // populated presents a reset view whose next double-click resumes from a depth
+        // the reader can no longer see: it either skips straight to a nested level or
+        // reads as a dead end and backs out without zooming.
+        if (!zoomed(this.view)) this.drilled = [];
         const { scale, x, y } = this.view;
         if (this.canvas) {
             // A continuous gesture drives the transform directly; a discrete one (a
@@ -251,7 +287,8 @@ export class PageZoom extends LitElement {
     }
 
     private reset(): void {
-        this.drilled = [];
+        // The stack is cleared by `apply` itself, which is what makes every other route
+        // back to 1:1 behave like this one.
         this.apply(rest());
     }
 
@@ -516,11 +553,19 @@ export class PageZoom extends LitElement {
             this.stageBox(),
         );
         if (!delta) return;
-        this.apply({
-            ...this.view,
-            x: this.view.x + delta.x,
-            y: this.view.y + delta.y,
-        });
+        // NOT eased, unlike every other discrete move. `design-page.js` handles the
+        // same focus event and parks its tooltip at the node's measured box; with a
+        // 170 ms transition in flight that box is wherever the animation currently is,
+        // so the tip lands short and the sheet then slides out from under it. Jumping
+        // puts the node where the tip is about to be told it is.
+        this.apply(
+            {
+                ...this.view,
+                x: this.view.x + delta.x,
+                y: this.view.y + delta.y,
+            },
+            false,
+        );
     }
 }
 

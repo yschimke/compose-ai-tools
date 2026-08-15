@@ -23,6 +23,7 @@ const SHEET = { width: 1200, height: 800 };
  * the shape a real Figma export has, and the committed page fixture with it.
  */
 const PAGE = `
+  <div id="cp-design-page">
   <div class="cp-page-stage">
     <div class="cp-page-canvas" data-cp-page-canvas>
       <svg data-box="0,0,1200,800">
@@ -36,6 +37,7 @@ const PAGE = `
       <a class="cp-page-node" data-cp-node="shape-a1" href="/p/shape"></a>
     </div>
     <cp-page-zoom hidden></cp-page-zoom>
+  </div>
   </div>`;
 
 function el<T extends Element>(selector: string): T {
@@ -67,8 +69,14 @@ function at(ux: number, uy: number): { x: number; y: number } {
  */
 function stubLayout(): void {
     const stage = el<HTMLElement>(".cp-page-stage");
+    // Read through to STAGE on every call, so a test can narrow the stage mid-run the
+    // way an opening side panel does.
     stage.getBoundingClientRect = () =>
-        ({ ...STAGE, right: 1200, bottom: 800 }) as DOMRect;
+        ({
+            ...STAGE,
+            right: STAGE.left + STAGE.width,
+            bottom: STAGE.top + STAGE.height,
+        }) as DOMRect;
     const canvas = el<HTMLElement>(".cp-page-canvas");
     if (!canvas) return;
     const mapped = (node: Element): DOMRect => {
@@ -339,6 +347,114 @@ describe("<cp-page-zoom>", () => {
             view(),
             framed,
             "no listener should survive the element",
+        );
+    });
+
+    it("keeps the zoom when Escape is the press that clears a selection", async () => {
+        await mount();
+        // `design-page.js` listens on `#cp-design-page` and clears its selection there.
+        // Reproduced exactly, because the ORDER is the whole point: a bubbling document
+        // listener runs after this one, sees the mark already gone, and throws away a
+        // reading position three double-clicks deep in answer to a press meant for a
+        // tooltip.
+        const spot = el(".cp-page-node");
+        el("#cp-design-page").addEventListener("keydown", (event) => {
+            if ((event as KeyboardEvent).key === "Escape") {
+                spot.classList.remove("cp-page-selected");
+            }
+        });
+        dblclick(at(65, 430));
+        await flush();
+        const framed = percent();
+        spot.classList.add("cp-page-selected");
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await flush();
+        assert.equal(percent(), framed, "the first press is the selection's");
+        assert.equal(spot.classList.contains("cp-page-selected"), false);
+        // …and the next one is the zoom's.
+        spot.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await flush();
+        assert.equal(percent(), 100);
+    });
+
+    it("forgets how deep the reader walked once the view is back at 1:1", async () => {
+        await mount();
+        dblclick(at(65, 430));
+        await flush();
+        const framed = percent();
+        dblclick(at(110, 200));
+        await flush();
+        assert.ok(percent() > framed);
+        // Back to 1:1 by the button rather than by Reset. The drill stack has to go with
+        // the zoom, or the next double-click resumes from a depth nothing on screen shows.
+        const out = document.querySelectorAll<HTMLButtonElement>(
+            "cp-page-zoom .cp-page-zoom-step",
+        )[0];
+        for (let i = 0; i < 12 && percent() > 100; i++) {
+            out.click();
+            await flush();
+        }
+        assert.equal(percent(), 100);
+        dblclick(at(65, 430));
+        await flush();
+        assert.equal(
+            percent(),
+            framed,
+            "the walk starts again from the outermost level",
+        );
+    });
+
+    it("keeps the reader's place when the stage changes size", async () => {
+        await mount();
+        dblclick(at(65, 430));
+        await flush();
+        const before = view();
+        const fraction = -before.x / (STAGE.width * before.scale);
+        // A side panel opens: the stage narrows under a zoomed sheet.
+        STAGE.width = 600;
+        window.dispatchEvent(new Event("resize"));
+        await flush();
+        const after = view();
+        assert.ok(
+            Math.abs(-after.x / (STAGE.width * after.scale) - fraction) < 0.001,
+            "the same part of the sheet is still under the middle of the view",
+        );
+        STAGE.width = 1200;
+    });
+
+    it("jumps rather than eases when focus reveals an off-screen node", async () => {
+        await mount();
+        dblclick(at(65, 430));
+        await flush();
+        // The overlay's node sits below the framed view; `design-page.js` parks its
+        // tooltip from the box this reveal leaves behind, so an eased pan would put the
+        // two in different places.
+        const spot = el<HTMLElement>(".cp-page-node");
+        spot.getBoundingClientRect = () =>
+            ({
+                left: 100,
+                top: 1400,
+                width: 80,
+                height: 80,
+                right: 180,
+                bottom: 1480,
+            }) as DOMRect;
+        const moved = view();
+        spot.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+        await flush();
+        assert.notEqual(
+            view().y,
+            moved.y,
+            "the sheet panned to bring the node in",
+        );
+        assert.equal(
+            el(".cp-page-canvas").classList.contains("cp-page-canvas-live"),
+            true,
+            "…with the transition off, so the node is where it will be measured",
         );
     });
 

@@ -629,21 +629,30 @@ const FIXTURE_STATES = [
                 return level && parseInt(level.textContent, 10) > 300;
             });
             // Zoomed four-odd times over, the instrumentation must NOT have grown with the drawing:
-            // an outline is counter-scaled by `--cp-page-zoom` so it stays a hairline over the shape
-            // instead of becoming a slab that hides it.
+            // a node's mark is counter-scaled by `--cp-page-zoom` so it stays a hairline over the
+            // shape instead of becoming a slab that hides it.
+            //
+            // The OUTLINE, which is what a node is actually marked with — its `border` is 0, so an
+            // earlier version of this assertion read the border width, got 0, and passed however
+            // wrong the stylesheet was. Reading the property that paints is the difference between a
+            // test and a decoration.
             const marks = await page.evaluate(() => {
                 const stage = document.querySelector(".cp-page-stage");
                 const spot = document.querySelector('.cp-page-node[data-cp-node="1:1"]');
+                const style = getComputedStyle(spot);
                 return {
                     zoom: parseFloat(getComputedStyle(stage).getPropertyValue("--cp-page-zoom")),
-                    border: parseFloat(getComputedStyle(spot).borderTopWidth),
+                    outline: parseFloat(style.outlineWidth),
+                    offset: parseFloat(style.outlineOffset),
                 };
             });
             expect(marks.zoom).toBeGreaterThan(3);
-            // `2px ÷ zoom`, which a browser then floors at one device pixel — so one is the floor and
-            // not a miss. Without the counter-scale the computed width stays the specified 2px while
-            // the transform paints it four times that, which is what this number rules out.
-            expect(marks.border).toBeLessThanOrEqual(1);
+            // `2px ÷ zoom`, and its inset offset with it — which a browser then floors at one device
+            // pixel, so one is the floor and not a miss. Without the counter-scale both stay at the
+            // specified 2px while the transform paints them four times that, so this still fails the
+            // moment the rule stops applying.
+            expect(marks.outline).toBeLessThanOrEqual(1);
+            expect(Math.abs(marks.offset)).toBeLessThanOrEqual(1);
         },
     },
     {
