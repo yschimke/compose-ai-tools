@@ -53,44 +53,48 @@
 </header>
         <main class="cp-main">
               <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></h1>
+        <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ untrusted</span></h1>
         <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <div class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><details class="cp-theme-menu">
+  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+    <span class="cp-toggle-label">Theme</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
+    <span class="cp-theme-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+  </span></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
       </div>
       <aside class="cp-parity-issues"><strong>Issues</strong><ul><li class="cp-parity-issue"><a href="https://github.com/yschimke/m3-catalog/issues/40" rel="noopener">#40 Glyph colour is darker than the design token</a><span>open · area:component · parity:known-difference</span></li>
 <li class="cp-parity-issue closed"><a href="https://github.com/yschimke/m3-catalog/issues/41" rel="noopener">#41 Verify the disabled state after the token update</a><span>closed · area:preview · parity:verification-needed</span></li></ul></aside>
-
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
+<cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
+<button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
 <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
         </span>
       </div>
-      <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-        </span>
-        <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-      </div>
 
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="default">
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="default">
               <aside class="cp-nav" id="cp-nav" aria-label="Components">
         <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
         <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+
         <ul class="cp-nav-list" id="cp-nav-list">
-        <li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
+        <li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
 <li><a class="cp-nav-item" href="/p/com.example.CardPreview?token=demo-token-fixture" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.CardPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Card</span></a></li>
 <li><a class="cp-nav-item" href="/p/com.example.DialogPreview?token=demo-token-fixture" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.DialogPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Dialog</span></a></li>
 <li><a class="cp-nav-item" href="/p/com.example.ListScreenPreview?token=demo-token-fixture" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">List screen</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
 <li><a class="cp-nav-item" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Settings screen</span></a></li>
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>

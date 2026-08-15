@@ -46,17 +46,17 @@ class ServeViewerDisclosuresTest {
     html.substringAfter("<div class=\"cp-preview-head\">").substringBefore("</div>")
 
   @Test
-  fun `all four disclosures are operated from the title row`() {
+  fun `viewer menus are operated from the title row`() {
     val html =
       viewer(statePreviews(3) + ServePreview("checkbox__ideal__default__light", "Checkbox"))
-    val titleRow = head(html)
-    for (id in listOf("cp-nav-toggle", "cp-axes-toggle", "cp-theme-toggle", "cp-controls-toggle")) {
-      assertTrue(titleRow.contains("id=\"$id\""), "$id belongs on the title row: $titleRow")
+    val primaryStart = html.indexOf("class=\"cp-preview-primary\"")
+    for (id in listOf("cp-nav-toggle", "cp-theme-toggle", "cp-controls-toggle")) {
+      val at = html.indexOf("id=\"$id\"")
+      assertTrue(at in 0 until primaryStart, "$id belongs on the title row")
     }
     // …and nowhere else. The two drawer toggles used to live at either end of the viewer bar, which
     // is what made the page's disclosures feel like four unrelated buttons.
-    val bar = html.substringAfter("<div class=\"cp-viewer-bar\">").substringBefore("</div>")
-    assertFalse(bar.contains("cp-drawer-toggle"), "the viewer bar keeps no disclosure of its own")
+    assertFalse(html.contains("class=\"cp-viewer-bar\""), "the secondary viewer bar is removed")
     for (id in listOf("cp-nav-toggle", "cp-controls-toggle")) {
       assertTrue(html.split("id=\"$id\"").size - 1 == 1, "$id is emitted once, not once per home")
     }
@@ -69,7 +69,6 @@ class ServeViewerDisclosuresTest {
     for ((toggle, target) in
       listOf(
         "cp-nav-toggle" to "cp-nav",
-        "cp-axes-toggle" to "cp-axes",
         "cp-theme-toggle" to "cp-theme-bar",
         "cp-controls-toggle" to "cp-controls",
       )) {
@@ -82,75 +81,14 @@ class ServeViewerDisclosuresTest {
   }
 
   @Test
-  fun `the fold threshold counts the component row, which is itself a render`() {
-    // Four renders — the default in the component row plus three children — is the last shape that
-    // shows inline. Five folds. Counting only the CHILDREN would have moved that line by one the
-    // moment the default was folded up into the component row, so a five-render component would
-    // have started opening where it used to fold, for no reason a reader could see.
-    val four = viewer(statePreviews(4))
-    assertTrue(four.contains("<div class=\"cp-axes\" id=\"cp-axes\">"), "four renders show: $four")
-    val five = viewer(statePreviews(5))
-    assertTrue(
-      five.contains("<div class=\"cp-axes\" id=\"cp-axes\" hidden>"),
-      "…and five fold, the component row counting as the render it is: $five",
-    )
-  }
-
-  @Test
-  fun `a narrow state axis stays inline and a wide one arrives folded`() {
-    val narrow = viewer(statePreviews(3))
-    assertTrue(narrow.contains("<div class=\"cp-axes\" id=\"cp-axes\">"), "three states show")
-    assertTrue(
-      narrow.contains(Regex("id=\"cp-axes-toggle\" aria-expanded=\"true\"")),
-      "…and the toggle says so",
-    )
-    // Past the inline threshold the rows arrive folded — server-side, so there is no expanded flash
-    // before the drawer script runs.
-    val wide = viewer(statePreviews(20))
-    assertTrue(wide.contains("<div class=\"cp-axes\" id=\"cp-axes\" hidden>"), "twenty states fold")
-    assertTrue(
-      wide.contains(Regex("id=\"cp-axes-toggle\" aria-expanded=\"false\"")),
-      "…and the toggle says so",
-    )
-    // Folded, but not silent: the chips are gone, the fact they carried is not.
-    assertTrue(
-      wide.contains(
-        "<span class=\"cp-toggle-label\">State</span><span class=\"cp-toggle-value\">Default</span>"
-      ),
-      "a closed axis names the state being viewed",
-    )
-    val onState = viewer(statePreviews(20), current = statePreviews(20)[7])
-    assertTrue(
-      onState.contains("<span class=\"cp-toggle-value\">State 7</span>"),
-      "…whichever state that is",
-    )
-  }
-
-  @Test
-  fun `one toggle folding two axes names both of them`() {
-    // A component that varies on state AND props: ten chips between them, so both rows fold — and
-    // a toggle that named only the state would drop the variant the reader is actually on.
-    val previews =
-      listOf("default", "xs", "s", "m", "l", "xl", "wide", "narrow").flatMap { state ->
-        listOf(null, "rtl").map { direction ->
-          ServePreview(
-            "button__ideal__${state}__light" + if (direction == null) "" else "__$direction",
-            "Button · $state",
-            state = state,
-            props = direction?.let { jsonProps("direction" to it) },
-          )
-        }
-      }
-    val rtl = previews.first { it.state == "m" && it.props != null }
-    val html = ServeWeb.viewerPage(rtl, token, siblings = previews)
-    assertTrue(html.contains("<div class=\"cp-axes\" id=\"cp-axes\" hidden>"), "both rows fold")
-    assertTrue(
-      html.contains(
-        "<span class=\"cp-toggle-label\">State · Variant</span>" +
-          "<span class=\"cp-toggle-value\">M · RTL</span>"
-      ),
-      "a fold of two axes must carry both values: $html",
-    )
+  fun `variants live inside Components and the current component is first`() {
+    val previews = statePreviews(5) + ServePreview("checkbox__ideal__default__light", "Checkbox")
+    val html = viewer(previews, current = previews[2])
+    val drawer = html.substringAfter("<aside class=\"cp-nav\"").substringBefore("</aside>")
+    assertTrue(drawer.contains("class=\"cp-nav-current\""), drawer)
+    assertTrue(drawer.contains("class=\"cp-tree cp-axes-tree\""), drawer)
+    assertTrue(drawer.indexOf("Button") < drawer.indexOf("Checkbox"), "current component leads")
+    assertFalse(html.contains("id=\"cp-axes-toggle\""), "variants have no standalone toggle")
   }
 
   @Test
@@ -223,7 +161,7 @@ class ServeViewerDisclosuresTest {
   }
 
   @Test
-  fun `the theme bar folds once a catalog declares more themes than the row can show`() {
+  fun `the theme choices always live in a dropdown`() {
     val previews = listOf(ServePreview("button__ideal__default__light", "Button"))
     // Day + Night + two declared: still a readable row.
     val few =
@@ -235,21 +173,13 @@ class ServeViewerDisclosuresTest {
             ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog"),
           ),
       )
-    assertFalse(
-      few.contains("id=\"cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\" hidden"),
-      "a four-chip bar shows",
-    )
+    assertTrue(few.contains("<details class=\"cp-theme-menu\">"), few)
+    assertFalse(few.contains("class=\"cp-viewer-bar\""), few)
     // Six declared themes is the published compose-m3 shape, where the chips ellipsise into stubs
     // and the group scrolls within itself — worse than a toggle that spells the theme out.
     val many = viewer(previews, themes = (1..6).map { ServeTheme("Theme $it", "com.example.T$it") })
-    assertTrue(
-      many.contains("id=\"cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\" hidden"),
-      "an eight-chip bar folds",
-    )
-    assertTrue(
-      many.contains(Regex("id=\"cp-theme-toggle\" aria-expanded=\"false\"")),
-      "…and the toggle says so",
-    )
+    assertTrue(many.contains("<div class=\"cp-theme-menu-panel\">"), many)
+    assertFalse(many.contains("aria-label=\"Preview theme\" hidden"), many)
   }
 
   @Test
@@ -319,7 +249,7 @@ class ServeViewerDisclosuresTest {
         .contains("data-fold-scope=\"compose-m3\""),
       "the viewer names the catalog its folds belong to",
     )
-    for (id in listOf("cp-nav-toggle", "cp-controls-toggle", "cp-axes-toggle", "cp-theme-toggle")) {
+    for (id in listOf("cp-nav-toggle", "cp-controls-toggle")) {
       assertTrue(script.contains("\"$id\""), "$id participates in the remembered folds: $script")
     }
   }

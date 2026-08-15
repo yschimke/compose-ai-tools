@@ -54,9 +54,9 @@ object ServeParityIssuesStore {
     val path = bundleDir.toOkioPath() / ParityIssues.DIRECTORY.toPath() / ParityIssues.FILE
     val raw =
       runCatching {
-          if (!fileSystem.exists(path)) return@runCatching null
-          JSON.decodeFromString<ParityIssues>(fileSystem.read(path) { readUtf8() })
-        }
+        if (!fileSystem.exists(path)) return@runCatching null
+        JSON.decodeFromString<ParityIssues>(fileSystem.read(path) { readUtf8() })
+      }
         .getOrNull() ?: return null
     return sanitize(raw)
   }
@@ -111,12 +111,11 @@ object ServeParityIssuesStore {
     return "https://github.com/$repository/issues/$number"
   }
 
-  private fun isTimestamp(value: String): Boolean =
-    runCatching {
-        Instant.parse(value)
-        true
-      }
-      .getOrDefault(false)
+  private fun isTimestamp(value: String): Boolean = runCatching {
+    Instant.parse(value)
+    true
+  }
+    .getOrDefault(false)
 
   private fun clamp(value: String, max: Int): String =
     if (value.length <= max) value else value.take(max - 1) + "…"

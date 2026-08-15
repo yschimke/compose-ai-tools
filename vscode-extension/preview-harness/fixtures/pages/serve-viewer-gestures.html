@@ -56,30 +56,33 @@
         <h1 class="cp-head cp-preview-title">One-handed</h1>
         <code class="cp-preview-id" title="com.example.OneHandedPreview">com.example.OneHandedPreview</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Night</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <div class="cp-head-toggles"><details class="cp-theme-menu">
+  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+    <span class="cp-toggle-label">Theme</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Night</span>
+    <span class="cp-theme-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+  </span></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
       </div>
-
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
+<cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
+<button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
 <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
         </span>
       </div>
-      <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-        </span>
-        <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-      </div>
 
-      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-always-dark="1" data-preview-id="com.example.OneHandedPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="wear-m3">
+      <div class="cp-viewer" data-bg-theme="dark" data-always-dark="1" data-preview-id="com.example.OneHandedPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="wear-m3">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="One-handed"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 

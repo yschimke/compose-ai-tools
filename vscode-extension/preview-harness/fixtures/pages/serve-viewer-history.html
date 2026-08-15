@@ -56,28 +56,31 @@
         <h1 class="cp-head cp-preview-title">Profile screen</h1>
         <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <div class="cp-head-toggles"><details class="cp-theme-menu">
+  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
+    <span class="cp-toggle-label">Theme</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
+    <span class="cp-theme-caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+  </span></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
       </div>
-
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
+<cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
+<button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
 <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
         </span>
-      </div>
-      <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-        </span>
-        <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
-        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
       </div>
       <script type="application/json" id="cp-history-data">{"formatVersion":"compose-preview-history/v1","generatedFrom":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80",
  "previews":{"com.example.ProfileScreenPreview":{
@@ -86,7 +89,7 @@
      {"blob":"a","commit":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80","date":"2026-05-22T11:08:37+00:00","sourceSha":"57ac24f3","commits":1},
      {"blob":"b","commit":"8b9f6f2bc953756edcb13963e09cd57c54866570","date":"2026-05-07T08:34:51+00:00","sourceSha":"cf69a4a0","commits":3},
      {"blob":"c","commit":"1f10ff93dcb1a0f5e6c7b8a9d0e1f2a3b4c5d6e7","date":"2026-04-19T09:12:00+00:00","sourceSha":"03ecb679","commits":1}]}}}</script>
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="default" data-history-url="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/history.json" data-history-repo="yschimke/compose-ai-tools">
+      <div class="cp-viewer" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="default" data-history-url="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/history.json" data-history-repo="yschimke/compose-ai-tools">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 

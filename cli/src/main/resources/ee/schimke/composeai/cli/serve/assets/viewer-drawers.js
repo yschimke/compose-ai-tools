@@ -127,7 +127,7 @@
       setOpen("cp-nav-open", false);
     });
   syncScrim();
-  // The two in-page folds — the state/variant chip rows and the theme bar. Unlike the drawers
+  // The in-page state/variant fold. Unlike the drawers
   // these hide with the `hidden` attribute rather than a class on .cp-viewer, because they are not
   // columns of the viewer layout: they are rows above it, and the server has already decided
   // whether each starts folded (it knows how many chips there are, so a busy catalog opens folded
@@ -149,8 +149,7 @@
     });
   }
   bindFold("cp-axes-toggle", "cp-axes");
-  bindFold("cp-theme-toggle", "cp-theme-bar");
-  // A folded theme bar must still say which theme is showing, and the theme changes without a page
+  // The Theme menu must still say which theme is showing, and the theme changes without a page
   // load — so the toggle's value half mirrors whichever chip viewer.js has marked pressed rather
   // than the lane the server baked. Observing `aria-pressed` keeps this decoupled from viewer.js's
   // own sync (`syncThemeBar`), which has several callers and no hook of its own.
@@ -170,13 +169,19 @@
         attributes: true,
         attributeFilter: ["aria-pressed"],
       });
+    themeBar.addEventListener("click", function (event) {
+      if (!event.target.closest(".cp-theme-btn")) return;
+      var menu = themeBar.closest(".cp-theme-menu");
+      if (menu) menu.open = false;
+    });
   }
   var search = document.getElementById("cp-nav-search");
   if (search)
     search.addEventListener("input", function () {
       var query = search.value.trim().toLowerCase();
       var items = document.querySelectorAll("#cp-nav-list .cp-nav-item");
-      var shown = 0;
+      // The active component and its variants are pinned above the filtered sibling list.
+      var shown = document.querySelector(".cp-nav-current") ? 1 : 0;
       for (var i = 0; i < items.length; i++) {
         var el = items[i];
         var hay = (el.getAttribute("data-search") || "").toLowerCase();

@@ -53,7 +53,7 @@
   </nav>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1></div>
+                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3</h1></div>
         <p class="cp-sub">5 preview(s)</p>
         <div class="cp-catalog-actions">
           <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
@@ -566,19 +566,23 @@ applyThemeChoice();
         el.hidden = false;
         // "not running" is a normal resting state, not a fault — a catalog nobody has rendered on
         // simply has no process yet. Word it so it doesn't read as an error.
-        var label = state.running
-          ? "Render server: connected"
-          : "Render server: not running";
         var count = state.instances || 0;
-        if (state.running) {
-          label += " \u00b7 " + count + (count === 1 ? " instance" : " instances");
-          if (state.activeStreams > 0) label += ", " + state.activeStreams + " live";
-        }
-        el.textContent = label;
+        var catalogDetail = state.running
+          ? count + (count === 1 ? " instance" : " instances") +
+            ", " + (state.activeStreams || 0) + " live"
+          : "not running (starts on demand)";
+        if (state.poolCapacity > 0)
+          catalogDetail += ", pool " + state.pooled + "/" + state.poolCapacity;
+        var overallDetail = (state.overallRunning || 0) + " catalogs running, " +
+          (state.overallActiveStreams || 0) + " live streams";
+        if (state.liveSeatsTotal > 0)
+          overallDetail += ", " + (state.liveSeatsTotal - state.liveSeatsAvailable) + "/" +
+            state.liveSeatsTotal + " seats used";
+        el.innerHTML = '<span class="cp-daemon-dot" aria-hidden="true"></span>' + count;
         el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
-        el.title = state.pooled
-          ? state.pooled + " of " + state.poolCapacity + " pooled daemons resident"
-          : "";
+        el.setAttribute("aria-label", "Render server: " + catalogDetail +
+          ". Overall server: " + overallDetail + ".");
+        el.title = "This catalog: " + catalogDetail + "\nOverall server: " + overallDetail;
       }
       function pollDaemons() {
         if (!daemonUrl || document.visibilityState !== "visible") return;
