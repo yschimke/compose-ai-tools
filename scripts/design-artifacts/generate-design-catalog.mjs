@@ -650,6 +650,8 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       const motion = foldMotion(
         baked,
         motionArtifactsFor(opts.motionBundle, motionPreviewFor(component)),
+        opts.previewIdsByFunction?.get(component.preview),
+        opts.previewIdsByFunction?.get(motionPreviewFor(component)),
       );
       if (motion.length > 0) source.motion = motion;
       // A group may declare a top-level `section` (the tab the preview server

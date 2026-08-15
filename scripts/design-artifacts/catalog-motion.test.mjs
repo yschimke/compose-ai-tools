@@ -72,8 +72,18 @@ test("artifacts are collected per function, across every preview it fanned out t
   };
 
   assert.deepEqual(motionArtifactsFor(bundle, "SwitchOn"), [
-    { path: "previews/Sw_Light.apng", kind: "interaction", caption: "Toggle" },
-    { path: "previews/Sw_Dark.apng", kind: "interaction", caption: "Toggle" },
+    {
+      path: "previews/Sw_Light.apng",
+      previewId: "Sw_Light",
+      kind: "interaction",
+      caption: "Toggle",
+    },
+    {
+      path: "previews/Sw_Dark.apng",
+      previewId: "Sw_Dark",
+      kind: "interaction",
+      caption: "Toggle",
+    },
   ]);
 });
 
@@ -106,8 +116,18 @@ test("a function carrying both annotations keeps its two captures apart by rende
   };
 
   assert.deepEqual(motionArtifactsFor(bundle, "Spinner"), [
-    { path: "previews/Spinner.apng", kind: "animation", caption: "Spins on its own" },
-    { path: "previews/Spinner_interaction.apng", kind: "interaction", caption: "Tap to restart" },
+    {
+      path: "previews/Spinner.apng",
+      previewId: "Spinner",
+      kind: "animation",
+      caption: "Spins on its own",
+    },
+    {
+      path: "previews/Spinner_interaction.apng",
+      previewId: "Spinner",
+      kind: "interaction",
+      caption: "Tap to restart",
+    },
   ]);
 });
 
@@ -134,6 +154,56 @@ test("an untagged catalog folds motion with no theme rather than inventing one",
   assert.deepEqual(foldMotion(images, artifacts), [
     { path: "previews/Sw.apng", kind: "interaction" },
   ]);
+});
+
+test("foldMotion joins a separately named motion function's fan-out to the still axes", () => {
+  const images = [
+    { path: "previews/Progress_Light.png", theme: "light" },
+    { path: "previews/Progress_Dark.png", theme: "dark" },
+  ];
+  const artifacts = [
+    {
+      path: "previews/ProgressMotion_Light.apng",
+      previewId: "ProgressMotion_Light",
+      kind: "animation",
+    },
+    {
+      path: "previews/ProgressMotion_Dark.apng",
+      previewId: "ProgressMotion_Dark",
+      kind: "animation",
+    },
+  ];
+
+  assert.deepEqual(
+    foldMotion(
+      images,
+      artifacts,
+      ["Progress_Light", "Progress_Dark"],
+      ["ProgressMotion_Light", "ProgressMotion_Dark"],
+    ),
+    [
+      { path: "previews/ProgressMotion_Light.apng", kind: "animation", theme: "light" },
+      { path: "previews/ProgressMotion_Dark.apng", kind: "animation", theme: "dark" },
+    ],
+  );
+});
+
+test("foldMotion does not guess when separate function fan-outs differ", () => {
+  assert.deepEqual(
+    foldMotion(
+      [{ path: "previews/Progress_Dark.png", theme: "dark" }],
+      [
+        {
+          path: "previews/ProgressMotion_Dark.apng",
+          previewId: "ProgressMotion_Dark",
+          kind: "animation",
+        },
+      ],
+      ["Progress_Light", "Progress_Dark"],
+      ["ProgressMotion_Dark"],
+    ),
+    [{ path: "previews/ProgressMotion_Dark.apng", kind: "animation" }],
+  );
 });
 
 test("no artifacts folds to nothing, so a component without motion gains no field", () => {
