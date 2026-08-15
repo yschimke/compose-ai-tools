@@ -1,0 +1,49 @@
+# OPT-IN overlay: serve a DEPLOYMENT's config from version control instead of the volume.
+#
+# The base docker-compose.yml keeps catalogs.json + producers.json on the `preview_config` named
+# volume, seeded on first boot and never overwritten after (#2879 / #2897) so an image roll can't
+# stomp a runtime edit. The cost of that is real and it bit m3.preview.coo.ee: config the box has
+# never seen cannot arrive by `git pull`, and the one automated delivery path —
+# .github/scripts/publish-config-to-box.sh, additive over POST /admin/catalogs — carries catalogs,
+# groups and producers but NOT `sites`. So a top-level site committed to the deployment's
+# catalogs.json reaches the box only if someone hand-edits the volume or sets SERVE_SITES in .env,
+# and a rebuilt box loses it again with nothing to say so.
+#
+# This overlay makes the committed file the source of truth: the box's config is whatever `main`
+# says it is, and deploying config is `git pull && docker compose up -d`.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.deploy-config.yml up -d
+#
+# or, so every later `docker compose` in this directory picks it up without the flags, put this in
+# .env (it is read by compose itself, not passed to a container):
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.deploy-config.yml
+#
+# Read-only is deliberate, and it does NOT break the admin API. ServeCatalogAdmin.persist() fails
+# soft: POST /admin/catalogs still registers and serves the catalog, and only the persistence step
+# reports back `"warning": "not persisted: …"`. In steady state the reconcile doesn't even reach
+# that path — every entry it POSTs is already in the committed file the box booted from, so the
+# admin API answers 409, which the script counts as success. What you give up is a runtime edit
+# outliving a restart, which is the whole point: it would be config drift from `main`.
+#
+# BEFORE ADOPTING THIS ON A BOX THAT HAS BEEN RUNNING, diff the two. The volume file is a superset
+# whenever anyone added a catalog or a trusted producer directly on the host, and this overlay
+# swaps it out wholesale — anything on the box and not in git silently stops being served at the
+# next restart:
+#
+#   curl -sH "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" https://<host>/admin/catalogs
+#   docker compose exec preview cat /config/catalogs.json
+#
+# DEPLOY_CONFIG_DIR names the deployment directory, matching the variable publish-config-to-box.sh
+# already uses for the same choice — so the box and the publish workflow read one answer, not two.
+# It defaults to this repo's own deployment (deploy/preview.coo.ee, relative to this file);
+# an adopter points it at their own directory with the same two filenames.
+services:
+  preview:
+    volumes:
+      # Mounted as individual FILES over the `preview_config` volume, not as a directory over
+      # /config: the volume also carries runtime state the app writes there, and a directory mount
+      # would hide it. Docker orders mounts by path depth, so /config lands first and these nest
+      # inside it.
+      - ${DEPLOY_CONFIG_DIR:-../preview.coo.ee}/catalogs.json:/config/catalogs.json:ro
+      - ${DEPLOY_CONFIG_DIR:-../preview.coo.ee}/producers.json:/config/producers.json:ro

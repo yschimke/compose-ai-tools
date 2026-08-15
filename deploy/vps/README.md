@@ -47,6 +47,35 @@ JDK, and Skiko all ship arm64 builds.
    `preview.example.com`) → the public IP. Let it resolve before setup — Caddy
    needs it to issue a certificate. Check with `dig +short preview.example.com`.
 
+## Serving a catalog on its own hostname
+
+A published catalog can additionally be served on a hostname of its own, where it
+presents as the whole server (`m3.preview.coo.ee` shows what
+`preview.coo.ee/m3-catalog/` shows). It needs a DNS record and **two** settings —
+one for the app, one for the proxy:
+
+```bash
+# DNS: a CNAME to the box's existing hostname is enough (subdomain, so no apex
+# problem, and the IP stays in one place). An A record to the host IP also works.
+#   m3.preview.example.com.  CNAME  preview.example.com.
+
+# .env on the box:
+SERVE_SITES=m3.preview.example.com=m3-catalog   # the app: which catalog this Host means
+SITE_DOMAINS=m3.preview.example.com             # Caddy: match the name AND get a cert for it
+```
+
+`SITE_DOMAINS` lands on the Caddyfile's site-address line beside `{$DOMAIN}`, which
+is what makes Caddy match the hostname **and** provision its Let's Encrypt
+certificate — there is nothing else to configure for TLS. Omit it and the site is
+configured in the app but unreachable at the edge. Keep the two in step, then
+`sudo docker compose up -d` to recreate both services; sites are read at startup.
+
+On this profile `catalogs.json` is bind-mounted from the repo, so the durable form
+is its `"sites"` key and a `git pull` + restart delivers it. See
+[docs/public-preview-server.md](../../docs/public-preview-server.md#top-level-sites-one-catalog-on-a-hostname-of-its-own)
+for what a site changes about the pages, and [`deploy/image/`](../image/README.md)
+for the prebuilt-image profile, where the config lives on a volume instead.
+
 ## Deploy
 
 SSH in, get the repo, and run setup from this directory:
