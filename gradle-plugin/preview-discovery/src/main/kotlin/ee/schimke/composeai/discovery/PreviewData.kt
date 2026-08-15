@@ -203,6 +203,72 @@ data class AnimationCapture(
   val durationMs: Int,
   val frameIntervalMs: Int,
   val showCurves: Boolean = false,
+  /** Container format from `@AnimatedPreview(format = …)`. Defaults to the historical GIF. */
+  val format: MotionFormat = MotionFormat.GIF,
+  /** `@AnimatedPreview(caption = …)` — the Motion-section line. Empty when the author gave none. */
+  val caption: String = "",
+)
+
+/**
+ * Container format for a motion capture — mirrors `ee.schimke.composeai.preview.MotionFormat` from
+ * the `preview-annotations` artifact, duplicated here for the same reason as [FocusDirection]: the
+ * Gradle plugin can't put the annotation artifact (and Compose) on its own compile classpath, so the
+ * value travels into `previews.json` as this enum and the renderer translates at render time.
+ */
+@Serializable
+enum class MotionFormat {
+  APNG,
+  GIF;
+
+  /** The output-file extension this format writes, without the dot. */
+  val extension: String
+    get() = name.lowercase()
+}
+
+/**
+ * The gesture an [InteractionCapture] dispatches — mirrors
+ * `ee.schimke.composeai.preview.InteractionGesture`, duplicated for the same reason as
+ * [MotionFormat].
+ */
+@Serializable
+enum class InteractionGesture {
+  TAP,
+  PRESS_AND_HOLD,
+}
+
+/**
+ * Interaction capture state sourced from `@InteractionPreview`. Carried as its own field on
+ * [Capture] — orthogonal to [Capture.animation] / [Capture.focus] — so the renderer switches on its
+ * presence rather than overloading the animation path.
+ *
+ * The two are close cousins (both drive a paused clock and encode a frame sequence) but they answer
+ * different questions and mixing them would make both harder to read: an animation capture has a
+ * *duration* and nothing else to say, while an interaction capture's duration is a **consequence**
+ * of its script — lead-in, plus one gesture and settle window per target. The renderer derives the
+ * window from the script rather than being told it, so a script and its recording can't disagree
+ * about how long the component was given to respond.
+ */
+@Serializable
+data class InteractionCapture(
+  /** The gesture dispatched at each entry of [targets]. */
+  val gesture: InteractionGesture,
+  /**
+   * Zero-based indices into the preview's clickable nodes in layout order, one gesture per entry,
+   * dispatched in order. Repeats are meaningful — `[0, 0, 0]` taps one control three times.
+   */
+  val targets: List<Int>,
+  /** `@InteractionPreview(caption = …)` — the Motion-section line. */
+  val caption: String = "",
+  /** Pointer-down dwell for [InteractionGesture.PRESS_AND_HOLD], in ms. */
+  val holdMs: Int,
+  /** Settle window after each gesture, in ms — where the animation being documented plays. */
+  val gapMs: Int,
+  /** Resting frames captured before the first gesture, in ms. */
+  val leadInMs: Int,
+  /** Per-frame interval in ms; 16 ≈ 60fps by default. */
+  val frameIntervalMs: Int,
+  /** Container format. Defaults to APNG — see the annotation's KDoc for why. */
+  val format: MotionFormat = MotionFormat.APNG,
 )
 
 /**
@@ -537,6 +603,9 @@ data class TourStepCapture(
  * - [ANIMATION_COST] ≈ 50 — `@AnimatedPreview` window: frame loop + optional curve strip + GIF
  *   encode. Frame counts vary slightly with the auto-detected duration, but the wall-time is
  *   dominated by the GIF encode, so a flat figure approximates well enough for tiering.
+ * - [INTERACTION_COST] ≈ 60 — `@InteractionPreview`: the same frame loop as [ANIMATION_COST] plus
+ *   scripted pointer dispatch and its per-gesture settle windows, at a 60fps default interval that
+ *   yields about twice the frames per second of wall-clock captured.
  * - [ACCESSIBILITY_COST_PER_CAPTURE] = 4 — flat per-capture overhead when ATF runs (not stored on
  *   the manifest because it's a global runtime toggle; tooling adds it in when computing effective
  *   cost).
@@ -552,6 +621,7 @@ const val SCROLL_LONG_COST: Float = 20.0f
 const val SCROLL_GIF_COST: Float = 40.0f
 const val FOCUS_GIF_COST: Float = 40.0f
 const val ANIMATION_COST: Float = 50.0f
+const val INTERACTION_COST: Float = 60.0f
 const val ACCESSIBILITY_COST_PER_CAPTURE: Float = 4.0f
 const val HEAVY_COST_THRESHOLD: Float = 5.0f
 
@@ -675,6 +745,13 @@ data class Capture(
   val scroll: ScrollCapture? = null,
   /** `null` → not an animation capture. Mutually exclusive with [scroll] in practice. */
   val animation: AnimationCapture? = null,
+  /**
+   * `null` → not an interaction capture. Set when the preview carries an `@InteractionPreview`
+   * annotation; the renderer drives the declared gesture script against a paused clock and encodes
+   * the frames. Dimension-flat like [animation] — it owns its own capture rather than crossing with
+   * the scroll / time fan-out.
+   */
+  val interaction: InteractionCapture? = null,
   /** `null` → no focus drive. Set when the preview carries a `@FocusedPreview` annotation. */
   val focus: FocusCapture? = null,
   /** `null` → no pointer-hover drive. */

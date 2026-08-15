@@ -211,7 +211,10 @@ fun main(args: Array<String>) {
     animDurationArg > 0 ||
       (animDurationArg == 0 &&
         scrollDispatchMode == null &&
-        outputFile.extension.equals("gif", ignoreCase = true))
+        // `.apng` joins `.gif` here now that `@AnimatedPreview` can choose its container: the check
+        // is "does this capture's filename claim to be an animation", and both extensions do.
+        (outputFile.extension.equals("gif", ignoreCase = true) ||
+          outputFile.extension.equals("apng", ignoreCase = true)))
   val animDurationMs = animDurationArg.coerceAtLeast(0)
   val animFrameIntervalMs = args.getOrNull(25)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
   val animShowCurves = args.getOrNull(26)?.toBoolean() ?: false
@@ -256,6 +259,42 @@ fun main(args: Array<String>) {
   val focusPressed = args.getOrNull(36)?.toBoolean() ?: false
   val focusOverlay = args.getOrNull(37)?.toBoolean() ?: false
   val hoverIndex = args.getOrNull(38)?.toIntOrNull()?.takeIf { it >= 0 }
+  // Args 40–46 (indices 39–45) — `@InteractionPreview` script (issue: pointer-driven motion
+  // capture). An empty gesture name means "no interaction intent", which is what every preview
+  // without the annotation sends, so those captures stay byte-identical on the untouched paths.
+  //
+  // The window this capture spans is NOT among these arguments: it is derived from the script
+  // below, so a plugin and a renderer at different versions cannot disagree about how long the
+  // component was given to respond and cut a recording off mid-gesture.
+  val interactionGesture =
+    args
+      .getOrNull(39)
+      ?.takeIf { it.isNotBlank() }
+      ?.let { name ->
+        InteractionGestureKind.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+      }
+  val interactionTargets =
+    args
+      .getOrNull(40)
+      ?.split('|')
+      .orEmpty()
+      .mapNotNull { it.trim().toIntOrNull() }
+      .filter { it >= 0 }
+  val interactionSpec: InteractionSpec? =
+    if (interactionGesture == null || interactionTargets.isEmpty()) null
+    else
+      InteractionSpec(
+        gesture = interactionGesture,
+        targets = interactionTargets,
+        holdMs = args.getOrNull(41)?.toIntOrNull()?.takeIf { it > 0 } ?: 600,
+        gapMs = args.getOrNull(42)?.toIntOrNull()?.takeIf { it > 0 } ?: 700,
+        leadInMs = args.getOrNull(43)?.toIntOrNull()?.coerceAtLeast(0) ?: 250,
+        frameIntervalMs = args.getOrNull(44)?.toIntOrNull()?.takeIf { it > 0 } ?: 16,
+        format = motionFormatArg(args.getOrNull(45), default = MotionFormatKind.APNG),
+      )
+  // 47th (index 46) — `@AnimatedPreview(format = …)`. Absent / unrecognised keeps the historical
+  // GIF, so an older plugin driving a newer renderer publishes exactly the bytes it always did.
+  val animFormat = motionFormatArg(args.getOrNull(46), default = MotionFormatKind.GIF)
   val focusIntent: DesktopFocusIntent? =
     when {
       focusDirections.isNotEmpty() ->
@@ -455,7 +494,29 @@ fun main(args: Array<String>) {
       // VS Code would surface yesterday's exception as if it were current.
       val sidecar = errorSidecarFor(targetFile)
       if (sidecar.exists()) sidecar.delete()
-      if (hasAnimation) {
+      if (interactionSpec != null) {
+        // `@InteractionPreview` — dispatch the declared gesture script against the live composition
+        // on a paused clock and encode the frames. Checked ahead of the animation branch because a
+        // function carrying both annotations has two distinct outputs and discovery already gave
+        // this one its own `_interaction` filename; the capture that named itself an interaction is
+        // the one that has to drive input.
+        renderInteractionPreview(
+          className = className,
+          functionName = functionName,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          density = density,
+          showBackground = showBackground,
+          backgroundColor = backgroundColor,
+          outputFile = targetFile,
+          wrapperClassName = wrapperClassName,
+          previewArgs = previewArgs,
+          localeTag = localeTag,
+          spec = interactionSpec,
+          uiMode = uiMode,
+          fontScale = fontScale,
+        )
+      } else if (hasAnimation) {
         // `@AnimatedPreview` — advance a paused clock across the window and encode a GIF. Always
         // produces output (an animation has no "no scrollable" decline path), so no fallback to the
         // single-frame render is needed. durationMs == 0 asks the renderer to auto-detect.
@@ -474,6 +535,8 @@ fun main(args: Array<String>) {
           durationMs = animDurationMs,
           frameIntervalMs = animFrameIntervalMs,
           showCurves = animShowCurves,
+          format = animFormat,
+          uiMode = uiMode,
           fontScale = fontScale,
         )
       } else if (
