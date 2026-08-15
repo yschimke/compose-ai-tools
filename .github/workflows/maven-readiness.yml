@@ -34,6 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # upload the readiness marker to the published release
+      # Post the "artifacts on Maven Central" milestone on the merged release PR. release-please.yml's
+      # `verify-maven-readiness` job grants the same scope — a called workflow can only narrow.
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +47,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Resolve the released plugin from public Maven Central
+        id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -72,6 +76,12 @@ jobs:
                 > "$smoke/gradle.log" 2>&1; then
               ready=1
               echo "plugin ${V} resolved from public Maven Central on attempt ${attempt}."
+              # Consumed by the milestone comment below.
+              {
+                echo "version=${V}"
+                echo "attempts=${attempt}"
+                echo "plugin_coordinate=ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${V}"
+              } >> "$GITHUB_OUTPUT"
               break
             fi
             echo "plugin ${V} not fully resolvable from public Maven Central (attempt ${attempt}/40)."
@@ -86,3 +96,38 @@ jobs:
             "$V" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
           gh release upload "$TAG" "$marker" --clobber
           echo "uploaded $(basename "$marker")."
+
+      # The second of the two release milestones posted on the merged release PR (the first is the
+      # server rollout, from preview-host-image.yml). This is the moment the release becomes
+      # consumable by a downstream build, and it is the one the releaser waits for without being
+      # told anything: Central's CDN propagation is deliberately excluded from finalization, so the
+      # GitHub Release goes public 10–40 minutes before this job concludes.
+      #
+      # Deliberately AFTER the marker upload and outside the resolution loop, so it reports a fact
+      # rather than a prediction, and adds no wait of its own. `continue-on-error` because a
+      # courtesy comment must never fail a job whose real output (the readiness marker the
+      # bootstrap installer gates on) is already attached.
+      - name: Comment the Maven milestone on the release PR (best-effort)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MILESTONE_KEY: maven-published
+          MILESTONE_TAG: ${{ inputs.tag }}
+          V: ${{ steps.resolve.outputs.version }}
+          ATTEMPTS: ${{ steps.resolve.outputs.attempts }}
+          COORDINATE: ${{ steps.resolve.outputs.plugin_coordinate }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          # printf per line, not an indented heredoc — see the same note in preview-host-image.yml.
+          md="$RUNNER_TEMP/maven-milestone.md"
+          {
+            printf '### 📦 Artifacts on Maven Central — `%s` is resolvable\n\n' "${V}"
+            printf 'A clean Gradle project resolved the plugin classpath from `mavenCentral()` on attempt %s, so downstream builds can consume this release.\n\n' "${ATTEMPTS}"
+            printf -- '- **Verified coordinate** — `%s`\n' "${COORDINATE}"
+            printf -- '- **Browse** — [central.sonatype.com](https://central.sonatype.com/search?namespace=ee.schimke.composeai)\n'
+            printf -- '- **Readiness marker** — `compose-preview-maven-ready-%s.json` on [the release](%s), which is what lets `compose-preview update` offer this version\n' "${V}" "${RELEASE_URL}"
+            printf '\n<sub>Maven readiness · [workflow run](%s)</sub>\n' "${RUN_URL}"
+          } > "$md"
+          MILESTONE_BODY="$(cat "$md")" .github/scripts/comment-release-milestone.sh

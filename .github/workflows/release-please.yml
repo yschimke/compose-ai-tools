@@ -193,7 +193,8 @@ jobs:
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
     permissions:
-      contents: write   # upload the readiness marker to the published release
+      contents: write        # upload the readiness marker to the published release
+      pull-requests: write   # post the "artifacts on Maven Central" milestone on the release PR
 
   # Publish the prebuilt preview-host image as soon as the release tag exists.
   # It builds the CLI tarball, Android daemon, and local Maven tree directly from
@@ -216,6 +217,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      pull-requests: write   # post the "server deployed" milestone on the release PR
 
   # Regenerate the design-artifacts/<system> delivery branches for the just-released
   # runtime. The published sticker bundles pin the RELEASED preview-runtime coordinates
