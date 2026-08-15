@@ -268,8 +268,8 @@ const STYLED_FIXTURES = new Set([
     // could not even be entered (the lane needs `viewer.js`).
     "serve-viewer-path",
     // The inspection layers (accessibility / typography / theme attributes). The whole surface is
-    // painted at runtime by `inspect.js` — boxes over the stage, a legend beside it — so captured
-    // bare there is nothing to see at all. Its `layers` state below is what actually draws them.
+    // painted at runtime by `<cp-inspect-layers>` — boxes over the stage, a legend beside it — so
+    // captured bare there is nothing to see at all. Its `layers` state below is what draws them.
     "serve-viewer-inspect",
     // The exploded 3D view. Everything it claims is produced at runtime: `viewer.js` reads
     // `?exploded=1`, presses the 3D chip, switches the stage to the vector lane and fetches the
@@ -311,7 +311,6 @@ const SERVE_ASSETS = [
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
-    ["inspect.js", "text/javascript"],
     ["design-page.js", "text/javascript"],
 ];
 
@@ -1088,7 +1087,7 @@ const FIXTURE_STATES = [
         // Every inspection layer on at once: the accessibility focus map, the resolved typography,
         // and the resolved theme attributes, drawn as numbered boxes over the stage with the legend
         // beside it. This is the state the feature exists for and the committed HTML cannot hold it
-        // — the boxes only exist once `inspect.js` has fetched the (stubbed) data products — so
+        // — the boxes only exist once `<cp-inspect-layers>` has fetched the (stubbed) products — so
         // without this shot a change to the overlay or legend would move no baseline at all.
         fixture: "serve-viewer-inspect",
         suffix: "layers",

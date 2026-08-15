@@ -14,6 +14,7 @@ import "./components/BgToggle.js";
 import "./components/CatalogToolbar.js";
 import "./components/GroupMemory.js";
 import "./components/HistoryMenu.js";
+import "./components/InspectLayers.js";
 import "./components/PageZoom.js";
 import "./components/ParityLanes.js";
 import "./components/ParityScores.js";

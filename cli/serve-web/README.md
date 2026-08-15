@@ -225,10 +225,20 @@ was two `Window` augmentations of one property, which TypeScript rejects outrigh
 One declaration, one typed handle. It is NOT a port of `format-compare.js` —
 that file still owns the metric.
 
-Next, cheapest seam first: `catalog-live.js` (400), `inspect.js` (424),
-`design-page.js` (789). The big ones — `format-compare.js` (1,706) and
-`viewer.js` (3,127) — want breaking into pure modules the way the drawers were,
-not porting whole.
+`<cp-inspect-layers>` is the port where the extracted rules were least visible
+and most load-bearing. A rectangle drawn over a component looks equally right
+whether it is the correct node, a duplicate of its parent, or a finding that was
+silently dropped — so `inspect/entries.ts` is where the accessibility pass now
+lives, with each case named after the wrong picture it prevents. Three are worth
+knowing: `merged` is ABSENT on the wire when true (read as `!merged`, every
+unmerged inner Text stacks a second box on its ancestor's pixels); a finding
+whose bounds match no node is still a real problem and is surfaced rather than
+dropped; and a too-small touch target is a warning even when nothing else flagged
+the node, because `info` there reads as a pass.
+
+Next, cheapest seam first: `catalog-live.js` (400), `design-page.js` (789). The
+big ones — `format-compare.js` (1,706) and `viewer.js` (3,127) — want breaking
+into pure modules the way the drawers were, not porting whole.
 
 ## Two bundles, and which one a thing belongs in
 
