@@ -9,6 +9,11 @@ name: Release PR
 #
 # One button: merging the release PR triggers the full publish. No manual
 # tag push, no dispatch step. See docs/RELEASING.md.
+#
+# This run ends when the release does. The long-running delivery-branch renders
+# hang off its completion instead: `post-release-design-artifacts.yml` watches this
+# workflow with `workflow_run` and regenerates design-artifacts/<system> in a run of
+# its own.
 
 on:
   push:
@@ -227,34 +232,14 @@ jobs:
       packages: write
       pull-requests: write   # post the "server deployed" milestone on the release PR
 
-  # Regenerate the design-artifacts/<system> delivery branches for the just-released
-  # runtime. The published sticker bundles pin the RELEASED preview-runtime coordinates
-  # (`composeaiReleasedRuntimeVersion` in gradle.properties, which the merged release PR
-  # just bumped to this version), so they go stale the instant a release cuts — this
-  # rebuilds them from the new version instead of waiting for the Monday cron or a manual
-  # dispatch. Same workflow_call chaining as `release` / `preview-host-image`: a
-  # GITHUB_TOKEN dispatch wouldn't start design-artifacts' run.
-  #
-  # Gated exactly like `reconcile-release-pr`: only after `finalize-release` succeeded, so
-  # the release is published. Maven Central propagation is not part of finalization;
-  # design-artifacts' own "Wait for released preview-runtimes on Maven Central" step owns
-  # that consumer-specific readiness check. Root train only: the design catalogs track the
-  # root CLI/runtime version, not the `clients` train.
-  regenerate-design-artifacts:
-    needs: [release-please, finalize-release]
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
-    uses: ./.github/workflows/design-artifacts.yml
-    with:
-      # Every bundle pins the released runtime, so a release republishes all of them
-      # — not just the catalogs whose sources happened to change. Passed explicitly
-      # rather than leaning on the input's default: a called workflow inherits THIS
-      # workflow's `push` event, so without the flag design-artifacts' change-scoping
-      # would diff the release merge (CHANGELOG / gradle.properties), match no
-      # catalog, and skip every system.
-      force-all: true
-    secrets: inherit
-    permissions:
-      contents: write   # force-push the design-artifacts/<system> delivery branches
+  # The design-artifacts/<system> delivery branches are regenerated for the newly
+  # released runtime by `post-release-design-artifacts.yml`, which picks this run up
+  # on `workflow_run` once it completes. It used to be a job here, but an all-systems
+  # regeneration takes 31–38 minutes and it ran at the very tail of the release:
+  # everything was already published and the Release un-drafted, while this run stayed
+  # "in progress" throughout — and an in-progress run cannot be re-run, so a tolerated
+  # failure earlier in the release (`publish-design-map`, `publish-vscode-extension`)
+  # had no retry path until the renders finished.
 
   # Create or reconcile the "next release" PR after a release fully publishes.
   #
