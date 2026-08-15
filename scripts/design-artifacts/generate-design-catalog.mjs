@@ -46,6 +46,7 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants, variantLabel } from "./catalog-variants.mjs";
 import { foldMotion, motionArtifactsFor } from "./catalog-motion.mjs";
+import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -1433,6 +1434,43 @@ if (values["publish-live-bundle"]) {
     }
   }
   stampPreviewDensities(manifest, spec, [bundle, extraBundle]);
+
+  // Publish the motion axis' bytes onto the branch, under `motion/`, and repoint each declaration
+  // at where they landed.
+  //
+  // `catalog-motion.mjs` records the artifact's home INSIDE the render bundle, because at join time
+  // that is the only name it has. The bundle is not published — this branch is — so a catalog left
+  // as-is declares captures whose bytes exist nowhere a reader can reach, and every consumer
+  // downstream resolves `motion[].path` to a 404. Copying them here makes that field mean exactly
+  // what `images[].path` already means: a file on the branch, relative to catalog.json.
+  //
+  // It sits in this block rather than beside the figma-svg emit below because it needs the
+  // `previewId` that `bridgeLivePreviewIds` stamped a few lines up (the join to the sibling sticker
+  // whose name each artifact inherits — see catalog-motion-publish.mjs), and because the rewritten
+  // paths have to reach the `writeFile` that closes this block. Reading the bytes from the PRIMARY
+  // bundle only mirrors `motionBundle` in the join above: a motion capture is published from the
+  // bundle that rendered it, and the `--extra-renders` supplement carries none.
+  {
+    const { published, unresolved, missing } = await publishMotionArtifacts(
+      manifest,
+      bundle.entries,
+      outPath,
+    );
+    if (published > 0 || missing.length > 0) {
+      console.log(
+        `[${spec.system}] motion: published ${published} capture(s) under motion/` +
+          (unresolved > 0
+            ? `, ${unresolved} named from the artifact rather than a sibling sticker (no previewId ` +
+              `to join on — the bytes are published, only the filename is unvariant)`
+            : "") +
+          (missing.length > 0
+            ? `, dropped ${missing.length} declaration(s) whose bytes the bundle did not carry ` +
+              `(${missing.join(", ")})`
+            : ""),
+      );
+    }
+  }
+
   await writeFile(
     catalogJsonPath,
     `${JSON.stringify(manifest, null, 2)}\n`,

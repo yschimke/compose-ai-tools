@@ -107,6 +107,18 @@ layered `compose/figma-svg` export produced per preview; the catalog pipeline
 carries it in the bundle (`previews/<id>.figma.svg`) and copies it onto the
 branch, exactly as it does the schematic `wireframes/`.
 
+Components carrying an `@InteractionPreview` or `@AnimatedPreview` also ship the
+animated capture itself, under **`motion/`**. It is named from the sticker it sits
+beside — `images/switch-on/ideal__default__dark.png` publishes its capture as
+`motion/switch-on/ideal__default__dark.apng` — so the two cannot drift apart, and a
+function carrying both kinds keeps them separate with an `__interaction` segment.
+`catalog.json` declares them on `components[].motion[]`, a sibling axis to `images[]`
+rather than more entries inside it: everything in `images[]` is a still and every
+consumer assumes it, so a 114-frame recording pasted in there would publish its first
+frame and silently drop the point. Each entry carries the `kind`
+(`interaction` / `animation`), the caption its annotation declared, and the `theme` of
+the sticker it accompanies.
+
 For editable Figma layers the per-sticker `figma/<slug>.svg` is the
 `compose/figma-svg` export (see the `FigmaLayeredSvg` KDoc in
 `:data-layoutinspector-core` for the emitted layer shape); the design-parity
