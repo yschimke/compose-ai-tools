@@ -1470,6 +1470,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SoftKeyboardAnimatedPreview_Soft_Keyboard_typing-2c4e4fe6.a11y.png",
+      "cleanBasename": "SoftKeyboardAnimatedPreview_Soft_Keyboard_typing-2c4e4fe6.png",
+      "findings": [],
+      "functionName": "SoftKeyboardAnimatedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardAnimatedPreview_Soft Keyboard \u2014 typing",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardAnimatedPreview.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle-980612e7.a11y.png",
       "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle-980612e7.png",
       "findings": [],
@@ -1971,6 +1982,28 @@
       "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": "pixel_8"
+    },
+    {
+      "annotatedBasename": "PrivateBadgePreview_Private_badge-1c0a3d6e.a11y.png",
+      "cleanBasename": "PrivateBadgePreview_Private_badge-1c0a3d6e.png",
+      "findings": [],
+      "functionName": "PrivateBadgePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PrivatePreviewsKt.PrivateBadgePreview_Private badge",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PrivatePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.samplecmp.PrivatePreviewsKt.PrivateTonePreview_Private tone.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "PrivateTonePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PrivatePreviewsKt.PrivateTonePreview_Private tone",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PrivatePreviews.kt",
+      "variant": ""
     },
     {
       "annotatedBasename": "RedBoxPreview_Red_Box-6be26208.a11y.png",

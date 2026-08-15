@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 310 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 313 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -611,6 +611,12 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "Aurora ridge" is identical to that of 4 other item(s). |
 
+### `SoftKeyboardAnimatedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/SoftKeyboardAnimatedPreview_Soft_Keyboard_typing-2c4e4fe6.a11y.png" width="400" />
+
+_No findings._
+
 ### `SoftKeyboardIdlePreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/SoftKeyboardIdlePreview_Soft_Keyboard_idle-980612e7.a11y.png" width="400" />
@@ -966,6 +972,18 @@ _No findings._
 ### `Pixel8SystemUiPreview` · `pixel_8`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/Pixel8SystemUiPreview_Pixel_8-67f4e782.a11y.png" width="400" />
+
+_No findings._
+
+### `PrivateBadgePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/PrivateBadgePreview_Private_badge-1c0a3d6e.a11y.png" width="400" />
+
+_No findings._
+
+### `PrivateTonePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/com.example.samplecmp.PrivatePreviewsKt.PrivateTonePreview_Private tone.a11y.png" width="400" />
 
 _No findings._
 
