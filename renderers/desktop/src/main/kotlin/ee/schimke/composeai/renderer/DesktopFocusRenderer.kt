@@ -169,9 +169,11 @@ fun renderFocusPreview(
   // loaded with a bare `Class.forName` skips the `PreviewWrapperSubstitutionProvider` swap (the
   // Remote Compose wrapper is the live case). A focused capture has to be the ordinary capture
   // plus a state — that has to hold for what gets composed, not just for how it is framed.
+  // `openForInvoke` keeps `private fun` previews renderable on the focus path too — issue #3873.
   val composableMethod =
-    if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
-    else findComposableMethodWithArgs(clazz, functionName, previewArgs)
+    (if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
+      else findComposableMethodWithArgs(clazz, functionName, previewArgs))
+      .openForInvoke()
 
   // Arm the named-override capture exactly as [renderPreview] does, so a focused capture ships the
   // same `renders/<stem>.overrides.json` sidecar an ordinary one would.
