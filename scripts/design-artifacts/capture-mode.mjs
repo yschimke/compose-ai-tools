@@ -67,17 +67,33 @@ export function exportsNoSticker(entry) {
  * exempts the same entries from the missing-render check, so the two agree about what the
  * declaration buys.
  *
+ * **A function is named only when EVERY entry referencing it declares `none`.** Entries are not
+ * one-to-one with renders: `select` picks a single value out of a multipreview's fan-out, so two
+ * entries can share one `preview` and mean different ids — one breakpoint declared sticker-less
+ * while another is required. Returning the function name in that case would exempt the required
+ * render too, and this list is consumed by a caller that only knows function names, so the
+ * over-exemption would silently blind the shard check to a real loss. Resolving `select` against the
+ * fan-out is the precise answer and belongs with the machinery that already does it; until then the
+ * conservative rule is the right one, because the two ways of being wrong are not symmetric.
+ * Under-exempting costs a false alarm carrying a message that names the alternative; over-exempting
+ * costs exactly the silence this whole check exists to end.
+ *
  * @param {{groups?: Array<object>}} spec a parsed catalog spec.
  * @returns {string[]} sorted, de-duplicated `@Preview` function names.
  */
 export function noStickerPreviewNames(spec) {
-  const names = new Set();
+  const declared = new Map();
   for (const group of Array.isArray(spec?.groups) ? spec.groups : []) {
     for (const comp of Array.isArray(group?.components) ? group.components : []) {
       for (const entry of [comp, ...(Array.isArray(comp?.variants) ? comp.variants : [])]) {
-        if (typeof entry?.preview === "string" && exportsNoSticker(entry)) names.add(entry.preview);
+        if (typeof entry?.preview !== "string") continue;
+        const allNoneSoFar = declared.get(entry.preview) ?? true;
+        declared.set(entry.preview, allNoneSoFar && exportsNoSticker(entry));
       }
     }
   }
-  return [...names].sort();
+  return [...declared.entries()]
+    .filter(([, allNone]) => allNone)
+    .map(([preview]) => preview)
+    .sort();
 }

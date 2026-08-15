@@ -25,11 +25,7 @@ import { parseArgs } from "node:util";
 
 import { readPreviewBundle, rawPreviewIdForEntry } from "@design-parity/candidate";
 
-import {
-  bundleCapturedSemantics,
-  capturedPreviewIds,
-  daemonPreviewIdsByFunction,
-} from "./bundle-previews.mjs";
+import { bundleCapturedSemantics, capturedPreviewIds } from "./bundle-previews.mjs";
 import { noStickerPreviewNames } from "./capture-mode.mjs";
 import { verifyShardRenders } from "./shard-preview-ids.mjs";
 
@@ -62,10 +58,14 @@ const semanticsRan = bundleCapturedSemantics(bundle);
 let exemptIds = [];
 if (values.spec) {
   if (existsSync(values.spec)) {
-    const idsByFunction = daemonPreviewIdsByFunction(bundle);
-    exemptIds = noStickerPreviewNames(JSON.parse(readFileSync(values.spec, "utf8"))).flatMap(
-      (fn) => idsByFunction.get(fn) ?? [],
-    );
+    const noSticker = new Set(noStickerPreviewNames(JSON.parse(readFileSync(values.spec, "utf8"))));
+    // Through `rawPreviewIdForEntry`, exactly as `capturedPreviewIds` does. Bundle entries are keyed
+    // by a filename-safe id while shard plans carry the canonical discovery id, so an id needing
+    // sanitising (a space, say) would otherwise be exempted under a name no plan mentions — the
+    // exemption would silently do nothing for precisely the ids most likely to need it.
+    exemptIds = bundle.previews
+      .filter((preview) => noSticker.has(preview.functionName ?? preview.id))
+      .map((preview) => rawPreviewIdForEntry(bundle, preview));
     if (exemptIds.length > 0) {
       console.error(
         `verify-shard-renders: ${exemptIds.length} preview(s) declared \`"capture": "none"\` are ` +

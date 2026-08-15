@@ -59,3 +59,44 @@ test("noStickerPreviewNames is empty for an annotation-first spec with no groups
   assert.deepEqual(noStickerPreviewNames(undefined), []);
   assert.deepEqual(noStickerPreviewNames({ groups: [{ components: [{ preview: "A" }] }] }), []);
 });
+
+test("noStickerPreviewNames refuses a function whose entries disagree", () => {
+  // `select` picks one value of a multipreview's fan-out, so two entries can share one `preview`
+  // and mean different renders. Exempting the function would blind the shard check to a real loss
+  // of the required breakpoint, so a mixed declaration exempts nothing.
+  const spec = {
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Cards/Large",
+            preview: "CardPreview",
+            select: { size: "largeRound" },
+            capture: "none",
+          },
+          { componentId: "Cards/Small", preview: "CardPreview", select: { size: "smallRound" } },
+          { componentId: "Views/Hosted", preview: "HostedViewPreview", capture: "none" },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(noStickerPreviewNames(spec), ["HostedViewPreview"]);
+});
+
+test("noStickerPreviewNames keeps a function every entry declares sticker-less", () => {
+  const spec = {
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Views/Hosted",
+            preview: "HostedViewPreview",
+            capture: "none",
+            variants: [{ preview: "HostedViewPreview", capture: "none" }],
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(noStickerPreviewNames(spec), ["HostedViewPreview"]);
+});
