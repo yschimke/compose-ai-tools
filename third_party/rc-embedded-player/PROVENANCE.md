@@ -25,8 +25,8 @@ inside it. Vendoring is the only way to depend on it.
 ## What is vendored
 
 The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 upstream files,
-44 here — two local splits, `state/RcPlayerBitmapState.kt` and `RcPlayerShaders.kt`, each noted
-under "Local modifications" below). Upstream's
+45 here — two local splits, `state/RcPlayerBitmapState.kt` and `RcPlayerShaders.kt`, plus the local
+`AndroidColorThemeResolver.kt`, each noted under "Local modifications" below). Upstream's
 `demos/`, `integration/previews/`, and the `androidx.wear.compose.remote.material3.previews` sample
 previews that live in the same source set are **not** vendored — they are demo/test scaffolding for
 the integration-test app, and they drag in Wear Material3 and `remote-creation-compose` capture.
@@ -79,6 +79,17 @@ the upstream tracking issue it was reported under.
   from an explicit `COLOR` operation. `RcPlayerPaintTest` pins the player default and
   `ComposePathColorFilterRobolectricReproTest` independently demonstrates the SrcIn behaviour using
   only standard Compose drawing.
+
+- **Indexed Android `ColorTheme` values resolved at cold start**
+  (`AndroidColorThemeResolver.kt`, `RcPlayer.kt`). Upstream's embedded player applies each
+  `ColorTheme` operation but never performs the View player's preceding `ThemeSupport.mapColors`
+  pass, so both light and dark branches retain their authored fallbacks. The embedded player now
+  maps the writer's `Rc.AndroidColors` indexes to framework `android.R.color` resources before its
+  first operation replay, retains the fallback for unknown groups or unavailable resources, and
+  exposes an explicit `theme` parameter that also reapplies colors when it changes. The paired
+  Robolectric conformance test authors one document through the public writer API and checks the
+  dark path against the AndroidX View player; light is deliberately excluded because alpha17's View
+  player has a separate cold-start light-theme bug.
 
 ### Resolved: the two action-dispatch deltas (restored at alpha17)
 

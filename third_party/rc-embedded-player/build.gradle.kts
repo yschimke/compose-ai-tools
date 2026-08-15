@@ -162,6 +162,10 @@ dependencies {
   // `remote-player-view`-backed `RemoteDocumentPlayer` in an identical harness, so a divergence can
   // be attributed to the embedded player rather than to software-canvas rasterization.
   testImplementation(libs.compose.remote.player.view)
+  // ColorTheme conformance fixtures are authored through the same public writer API applications
+  // use. Keeping this explicit makes the test's creation-side contract visible even though the
+  // player dependencies currently bring it in transitively.
+  testImplementation(libs.compose.remote.creation)
   // `RcFigmaSvgExportTest` — runs the production `compose/figma-svg` export over each player's
   // captured tree, so it needs the producers themselves (`ComposeSemanticsDataProducer`,
   // `LayoutInspectorDataProducer`, `ComposeFigmaSvgDataProducer`). The connector `api`-exposes
