@@ -383,6 +383,68 @@ class PlaygroundSourceCleanerTest {
   }
 
   /**
+   * One rule this build cannot read must not cost a catalog every *other* rule in its file.
+   *
+   * A rules file is read at whatever ref the catalog was published from, so its vocabulary can be
+   * older than the server's. `ignoreUnknownKeys` covers an unknown key; an unknown enum *value*
+   * throws, and [UsageRules.parse] turns any throw into "no rules at all". Retiring the
+   * `DESTRUCTURE` kind (#3884) therefore meant a catalog pinned to a ref that still declared one
+   * silently lost `Sticker` and `catalogButtonSize` too and fell back to GENERIC — the scaffolding
+   * leak this whole file exists to prevent, arriving through the compatibility door.
+   */
+  @Test
+  fun `a rule kind this build does not know costs only that rule`() {
+    val rules =
+      assertNotNull(
+        UsageRules.parse(
+          """
+          {
+            "scaffolds": {
+              "Sticker": { "kind": "RENAME", "renameTo": "MaterialTheme" },
+              "catalogButtonSize": { "kind": "DROP" },
+              "toggleable": { "kind": "DESTRUCTURE", "plain": "x", "setter": "y" }
+            }
+          }
+          """
+            .trimIndent()
+        )
+      )
+    // The rules either side of the retired one survived, which is the whole point.
+    assertEquals(UsageRules.Kind.RENAME, rules.scaffolds["Sticker"]?.kind)
+    assertEquals("MaterialTheme", rules.scaffolds["Sticker"]?.renameTo)
+    assertEquals(UsageRules.Kind.DROP, rules.scaffolds["catalogButtonSize"]?.kind)
+    assertEquals(UsageRules.Kind.UNKNOWN, rules.scaffolds["toggleable"]?.kind)
+  }
+
+  /** An unknown kind fires no pass, so the helper survives the clean and is reported as residue. */
+  @Test
+  fun `a helper whose kind is unknown is left alone and reported`() {
+    val rules =
+      assertNotNull(UsageRules.parse("""{"scaffolds":{"toggleable":{"kind":"DESTRUCTURE"}}}"""))
+    val source =
+      """
+      package ee.schimke.m3catalog.sections
+
+      import androidx.compose.material3.Switch
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.toggleable
+
+      @Composable
+      fun SwitchSticker() {
+        var checked by toggleable(true)
+        Switch(checked = checked, onCheckedChange = { checked = it })
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun SwitchSticker"), rules)
+      )
+    assertTrue(result.text.contains("toggleable(true)"), result.text)
+    assertTrue(result.residue.contains("toggleable"), "${result.residue}")
+  }
+
+  /**
    * The preview-override knobs are this repo's API, not a catalog's, so a catalog that declares its
    * own scaffolding must still get them — before this, declaring `compose-usage.json` *replaced*
    * the generic rules, so the catalogs that had done the work were the only ones leaking

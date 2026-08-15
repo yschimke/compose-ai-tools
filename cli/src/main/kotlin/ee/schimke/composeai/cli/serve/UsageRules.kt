@@ -80,7 +80,12 @@ data class UsageRules(
   /** What to do with one scaffolding helper. */
   @Serializable
   data class Scaffold(
-    @SerialName("kind") val kind: Kind,
+    /**
+     * What to do with the helper. Defaults to [Kind.UNKNOWN] — not because a rule may omit it, but
+     * because `coerceInputValues` needs a default to coerce an unrecognised kind *to*; see
+     * [Kind.UNKNOWN].
+     */
+    @SerialName("kind") val kind: Kind = Kind.UNKNOWN,
     /** [Kind.RENAME] only: the plain-Compose name to call instead. */
     @SerialName("renameTo") val renameTo: String? = null,
     /** An import the replacement needs, e.g. `androidx.compose.material3.MaterialTheme`. */
@@ -168,6 +173,24 @@ data class UsageRules(
      * on a named argument.
      */
     SUBSTITUTE,
+
+    /**
+     * A kind this build does not know — a rule kind that has since been retired, or one a newer
+     * catalog declares against a newer server. No pass matches it, so the helper is left exactly as
+     * the catalog wrote it and reported as residue.
+     *
+     * Never written in a rules file: it is what [parse] coerces an unrecognised `kind` to, and the
+     * reason a catalog's whole `compose-usage.json` no longer dies on one such entry.
+     *
+     * The failure this exists to prevent is not hypothetical. `ignoreUnknownKeys` covers an unknown
+     * *key*; an unknown enum *value* throws, and [parse] catches that and returns null for the
+     * entire document — so retiring the `DESTRUCTURE` kind (#3884) meant a catalog pinned to a ref
+     * that still declared one lost every other rule in the file too, `Sticker` and
+     * `catalogButtonSize` included, and silently fell back to [GENERIC]. A rules file is read at
+     * whatever ref the catalog was published from, so its vocabulary is always potentially older
+     * than this build's.
+     */
+    UNKNOWN,
   }
 
   companion object {
@@ -261,6 +284,10 @@ data class UsageRules(
     private val json = Json {
       ignoreUnknownKeys = true
       isLenient = true
+      // An unrecognised `kind` becomes [Kind.UNKNOWN] — that one rule stops firing, the rest of the
+      // file is honoured. Without it a single retired kind rejects the whole document; see
+      // [Kind.UNKNOWN] for the regression that taught us so.
+      coerceInputValues = true
     }
 
     /**
