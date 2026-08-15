@@ -15,7 +15,6 @@ class ServeWebAssetsTest {
         "serve-chrome.js",
         "viewer.js",
         "format-compare.js",
-        "catalog-live.js",
         "keyboard-navigation.js",
       )) {
       val asset = assertNotNull(ServeWebAssets.load(name), "$name should be loadable")
@@ -66,7 +65,6 @@ class ServeWebAssetsTest {
         "serve-chrome.js",
         "viewer.js",
         "format-compare.js",
-        "catalog-live.js",
         "keyboard-navigation.js",
       )) {
       val resource =

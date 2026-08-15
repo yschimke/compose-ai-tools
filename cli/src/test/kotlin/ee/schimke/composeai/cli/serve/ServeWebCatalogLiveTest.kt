@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -9,10 +8,19 @@ import kotlin.test.assertTrue
  * The grid's **long-press live lane**: holding a catalog card starts a live daemon session inside
  * the card, instead of navigating to the viewer.
  *
- * What is pinned here is the contract between the two halves — the server emits each card's
- * streamable preview ids as an object literal in the grid's document order, and `catalog-live.js`
- * reads that (never the DOM) when it builds a socket URL. Plus the fail-closed half: a session with
- * nothing to stream emits no configuration and no script at all.
+ * What is pinned here is the SERVER's half of the contract — each card's streamable preview ids as
+ * an object literal in the grid's document order, which `<cp-catalog-live>` reads (never the DOM)
+ * when it builds a socket URL. Plus the fail-closed half: a session with nothing to stream emits no
+ * configuration and no element at all.
+ *
+ * The browser's half moved to `cli/serve-web` with the port and is tested there, as behaviour
+ * rather than as source text: `liveSession.test.ts` (which preview, which socket URL, what a
+ * refused lane says), `livePointerMap.test.ts` (a press mapped against the frame's contained rect,
+ * and a press in the letterbox margin refused rather than clamped), `sameOrigin.test.ts` (the
+ * sign-in href checked before it is navigated to) and `catalogLiveElement.test.ts` (the gesture,
+ * and the one-session-at-a-time rule). Three tests here used to grep the asset for those very
+ * lines; greps like that cannot survive minification, and each named a rule the replacement now
+ * exercises directly.
  */
 class ServeWebCatalogLiveTest {
 
@@ -43,7 +51,7 @@ class ServeWebCatalogLiveTest {
   fun `a session with no live lane emits no long-press machinery`() {
     val html = page()
     assertFalse(html.contains("cpCatalogLive"), "no configuration")
-    assertFalse(html.contains("catalog-live.js"), "and no script to read it")
+    assertFalse(html.contains("cp-catalog-live"), "and no element to read it")
     assertFalse(html.contains("hold a card for a live session"), "and nothing offering the gesture")
   }
 
@@ -60,8 +68,8 @@ class ServeWebCatalogLiveTest {
       html,
     )
     assertTrue(
-      html.contains("<script src=\"${ServeWebAssets.href("catalog-live.js")}\"></script>"),
-      "the lane's script is loaded",
+      html.contains("<cp-catalog-live></cp-catalog-live>"),
+      "the lane's element is emitted",
     )
     assertTrue(
       html.contains("hold a card for a live session"),
@@ -89,53 +97,5 @@ class ServeWebCatalogLiveTest {
   fun `an unauthenticated visitor is offered the sign-in rather than a socket`() {
     val html = page(canStreamLiveFor = { true }, liveSignInHref = "/auth/github/login")
     assertTrue(html.contains("signInHref:\"/auth/github/login\""), html)
-  }
-
-  @Test
-  fun `the script reads its ids from the emitted config, never from the DOM`() {
-    val js = ServeWebAssets.load("catalog-live.js")!!.bytes.decodeToString()
-    assertTrue(js.contains("window.cpCatalogLive"), "config is the only id source")
-    assertTrue(js.contains("encodeURIComponent(previewId)"), "ids are encoded into the socket URL")
-    // The frame lane, the gesture, and the exits — the pieces a regression would quietly drop.
-    assertTrue(js.contains("\"/ws/\""), "it opens the session's stream lane")
-    assertTrue(js.contains("codec=webp"), "asking for WebP frames like the viewer does")
-    assertTrue(js.contains("cfg.holdMs"), "the hold threshold comes from the server")
-    assertTrue(js.contains("kind: \"click\""), "a tap on a live card reaches the composition")
-    assertEquals(
-      1,
-      Regex("function stopLive").findAll(js).count(),
-      "one teardown path for Escape, an outside press, a close and pagehide",
-    )
-  }
-
-  @Test
-  fun `input is mapped against the frame's contained rect, not the element box`() {
-    // The canvas is `object-fit: contain`, so a frame whose aspect differs from the thumbnail slot
-    // is letterboxed inside it. Scaling against the bounding rect would offset every coordinate by
-    // the margin — a press would reach a different widget than the one under the finger.
-    val js = ServeWebAssets.load("catalog-live.js")!!.bytes.decodeToString()
-    assertTrue(
-      js.contains("Math.min(rect.width / canvas.width, rect.height / canvas.height)"),
-      "the contained scale factor is what maps a pointer to image pixels",
-    )
-    assertTrue(
-      js.contains("(rect.width - paintedW) / 2") && js.contains("(rect.height - paintedH) / 2"),
-      "and the frame's centring offset is subtracted",
-    )
-    assertTrue(
-      js.contains("if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) return null;"),
-      "a press in the letterbox margin is no press, rather than one clamped onto the edge",
-    )
-  }
-
-  @Test
-  fun `the sign-in press follows the login rather than reporting a dead condition`() {
-    // The card is itself an <a>, so a nested sign-in link isn't available (as it is in the viewer)
-    // — the press follows the login instead, and the href is origin-checked before it's navigated
-    // to so a mis-set config can't become a `javascript:` navigation.
-    val js = ServeWebAssets.load("catalog-live.js")!!.bytes.decodeToString()
-    assertTrue(js.contains("var href = sameOriginHref(cfg.signInHref);"), js)
-    assertTrue(js.contains("if (href) location.href = href;"), js)
-    assertTrue(js.contains("u.origin === location.origin ? u.href : \"\""), "same-origin only")
   }
 }

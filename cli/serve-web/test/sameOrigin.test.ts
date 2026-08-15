@@ -4,7 +4,7 @@
 // still DOM text, so these are the inputs that must never reach `drawImage`.
 
 import assert from "node:assert/strict";
-import { sameOrigin } from "../src/spec/sameOrigin.js";
+import { sameOrigin, sameOriginNavigation } from "../src/dom/sameOrigin.js";
 
 const ORIGIN = "https://preview.example";
 
@@ -56,5 +56,27 @@ describe("sameOrigin", () => {
         for (const nothing of ["", null, undefined]) {
             assert.equal(sameOrigin(nothing, ORIGIN), "");
         }
+    });
+});
+
+describe("sameOriginNavigation", () => {
+    it("takes the same ours-or-nothing answer for an ordinary URL", () => {
+        assert.equal(
+            sameOriginNavigation("/auth/github", ORIGIN),
+            `${ORIGIN}/auth/github`,
+        );
+        assert.equal(sameOriginNavigation("https://evil.example/", ORIGIN), "");
+        assert.equal(sameOriginNavigation("javascript:alert(1)", ORIGIN), "");
+    });
+
+    it("refuses a blob the raster guard admits", () => {
+        // The reason this is a second function rather than a shared one. A blob this page minted is
+        // safe to DRAW; navigating to one hands the visitor a document assembled client-side at our
+        // own origin, which is a different question — and never one a sign-in link needs to ask.
+        // Reusing `sameOrigin` outright would have widened a navigation sink to admit it silently,
+        // as a side effect of removing a duplicate.
+        const blob = `blob:${ORIGIN}/6f3c1a2e-9d7b-4f10-8a55-2b6e0c9d1f34`;
+        assert.equal(sameOrigin(blob, ORIGIN), blob);
+        assert.equal(sameOriginNavigation(blob, ORIGIN), "");
     });
 });
