@@ -714,25 +714,44 @@ class RenderEngine(
             // A preview may install more than one Compose owner (Wear empty-state scaffolds and
             // popup/dialog-like content do this). `onRoot()` asserts that exactly one node matches
             // `isRoot`, so using it independently for capture and every data product drops the
-            // whole render as soon as a second owner appears. Resolve one owner once: prefer the
-            // owner attached to the activity's rendered window, then prefer the richest tree. Use
-            // that same interaction for pixels and its unmerged root for every structured export.
-            val resolvedCaptureRoot = resolveRenderedCaptureRoot(rule)
-            val resolvedSemanticsRoot =
-              resolvedCaptureRoot.semanticsRoot
-                ?: error("No semantics root was produced for '${spec.outputBaseName}'")
+            // whole render as soon as a second owner appears. Prefer the owner attached to the
+            // activity's rendered window, then the richest tree. Re-resolve it for each settling
+            // sample, and resolve its semantics once more after capture so the pixels and every
+            // structured export describe the accepted frame.
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
             )
             trace.section("render:captureRoboImage") {
-              resolvedCaptureRoot.interaction.captureRoboImage(
-                file = outputFile,
-                roborazziOptions = roborazziOptions,
-              )
+              val visuallySettled =
+                ee.schimke.composeai.renderer.captureVisuallySettledFrame(
+                  file = outputFile,
+                  role = "daemon preview still",
+                  advanceFrame = {
+                    rule.mainClock.advanceTimeByFrame()
+                    rule.waitForIdle()
+                  },
+                ) { candidate ->
+                  resolveRenderedCaptureRoot(rule)
+                    .interaction
+                    .captureRoboImage(
+                      file = candidate,
+                      roborazziOptions = roborazziOptions,
+                    )
+                }
+              if (!visuallySettled) {
+                System.err.println(
+                  "compose-ai-daemon: [render] frame did not become visually quiescent after " +
+                    "${ee.schimke.composeai.renderer.VISUAL_SETTLE_MAX_SAMPLES} samples; " +
+                    "using the latest frame."
+                )
+              }
             }
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
             )
+            val resolvedSemanticsRoot =
+              resolveRenderedCaptureRoot(rule).semanticsRoot
+                ?: error("No semantics root was produced for '${spec.outputBaseName}'")
 
             // AS-parity wrap crop: the sandbox window is generous (400×800 dp) so wrap-content
             // measures naturally, but that leaves the composable in the top-left of a large PNG.

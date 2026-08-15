@@ -1821,9 +1821,37 @@ abstract class RobolectricRenderTestBase(
                   )
                 }
               }
-              resolveCaptureRoot()
-                .interaction
-                .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+              // Ordinary stills get an adaptive visual-quiescence check. The common case costs
+              // one extra frame/capture and returns as soon as the first two decoded images match;
+              // only a changing preview spends the five-sample budget. Explicit time-sampled
+              // captures stay single-shot: advancing their clock would change the frame the
+              // annotation asked for. Animated/GIF paths were handled above and never reach here.
+              if (job.advanceTimeMillis == null) {
+                val visuallySettled =
+                  captureVisuallySettledFrame(
+                    file = outputFile,
+                    role = "preview still",
+                    advanceFrame = {
+                      rule.mainClock.advanceTimeByFrame()
+                      rule.waitForIdle()
+                      currentTime += VISUAL_SETTLE_FRAME_MS
+                    },
+                  ) { candidate ->
+                    resolveCaptureRoot()
+                      .interaction
+                      .captureRoboImage(file = candidate, roborazziOptions = roborazziOptions)
+                  }
+                if (!visuallySettled) {
+                  System.err.println(
+                    "Preview '${preview.id}': still frame did not become visually quiescent " +
+                      "after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
+                  )
+                }
+              } else {
+                resolveCaptureRoot()
+                  .interaction
+                  .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+              }
             }
 
             // A `Dialog` / `ModalBottomSheet` preview composes into a window of its own, and the
@@ -2372,11 +2400,27 @@ private fun handleLongCaptureInternal(
         maxScrollPx = scroll.maxScrollPx,
       ) { scrolledPx ->
         val sliceFile = File(slicesDir, "slice_${slices.size}.png")
-        stableDialogCrop.captureFrame(
-          rule = rule,
-          file = sliceFile,
-          roborazziOptions = sliceRoborazziOptions,
-        )
+        val visuallySettled =
+          captureVisuallySettledFrame(
+            file = sliceFile,
+            role = "scroll LONG slice",
+            advanceFrame = {
+              rule.mainClock.advanceTimeByFrame()
+              rule.waitForIdle()
+            },
+          ) { candidate ->
+            stableDialogCrop.captureFrame(
+              rule = rule,
+              file = candidate,
+              roborazziOptions = sliceRoborazziOptions,
+            )
+          }
+        if (!visuallySettled) {
+          System.err.println(
+            "@ScrollingPreview(LONG) on '$previewId': slice ${slices.size} did not become " +
+              "visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
+          )
+        }
         slices += SliceCapture(scrolledPx, sliceFile)
       }
     if (result is ScrollDriveResult.NoScrollable) {
@@ -2408,11 +2452,27 @@ private fun handleLongCaptureInternal(
     // bar, FAB — whatever animates in at scroll-end) is always
     // present. Generic over layout: not Wear-specific.
     val finalFrameFile = File(slicesDir, "final_frame.png")
-    stableDialogCrop.captureFrame(
-      rule = rule,
-      file = finalFrameFile,
-      roborazziOptions = sliceRoborazziOptions,
-    )
+    val visuallySettled =
+      captureVisuallySettledFrame(
+        file = finalFrameFile,
+        role = "scroll LONG final",
+        advanceFrame = {
+          rule.mainClock.advanceTimeByFrame()
+          rule.waitForIdle()
+        },
+      ) { candidate ->
+        stableDialogCrop.captureFrame(
+          rule = rule,
+          file = candidate,
+          roborazziOptions = sliceRoborazziOptions,
+        )
+      }
+    if (!visuallySettled) {
+      System.err.println(
+        "@ScrollingPreview(LONG) on '$previewId': final frame did not become visually " +
+          "quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
+      )
+    }
 
     stitchSlicesWithFinalFrame(
       slices = slices,
@@ -2452,6 +2512,60 @@ private fun settlePostScrollAnimations(rule: AndroidComposeTestRule<*, *>) {
  * / chained animations.
  */
 private const val POST_SCROLL_SETTLE_MS = 1000L
+
+/**
+ * Adaptive sample budget used to prove that a still capture is visually quiescent.
+ *
+ * The first two matching frames are enough for the stable fast path. After any mismatch, three
+ * consecutive identical decoded frames are required. Five total samples let a one- or two-frame
+ * race settle while keeping intentional infinite animations bounded.
+ */
+public const val VISUAL_SETTLE_MAX_SAMPLES = 5
+internal const val VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES = 3
+internal const val VISUAL_SETTLE_FRAME_MS = 16L
+
+/**
+ * Captures [file] twice and returns immediately if both decoded frames have identical pixels. After
+ * a mismatch, continues until [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive frames match
+ * or the bounded [VISUAL_SETTLE_MAX_SAMPLES] budget is exhausted.
+ *
+ * Consecutive equality is deliberate: a majority vote could select one phase of a looping animation
+ * (A/B/A/B/A) and call it stable. If the budget expires, the latest valid frame remains at [file]
+ * and the caller can continue with a diagnostic rather than failing an otherwise useful render.
+ */
+public fun captureVisuallySettledFrame(
+  file: File,
+  role: String,
+  advanceFrame: () -> Unit,
+  capture: (File) -> Unit,
+): Boolean {
+  var previousWidth = -1
+  var previousHeight = -1
+  var previousPixels: IntArray? = null
+  var identicalSamples = 0
+  var sawMismatch = false
+
+  repeat(VISUAL_SETTLE_MAX_SAMPLES) { sample ->
+    if (sample > 0) advanceFrame()
+    val image = captureDecodableFrame(file, role = role, capture = capture)
+    val pixels = IntArray(image.width * image.height)
+    image.getRGB(0, 0, image.width, image.height, pixels, 0, image.width)
+
+    val sameAsPrevious =
+      image.width == previousWidth &&
+        image.height == previousHeight &&
+        previousPixels?.contentEquals(pixels) == true
+    if (sample > 0 && !sameAsPrevious) sawMismatch = true
+    identicalSamples = if (sameAsPrevious) identicalSamples + 1 else 1
+    val required = if (sawMismatch) VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES else 2
+    if (identicalSamples >= required) return true
+
+    previousWidth = image.width
+    previousHeight = image.height
+    previousPixels = pixels
+  }
+  return false
+}
 
 /**
  * Handles `@ScrollingPreview(modes = [GIF])` captures with a "realistic user" scroll shape: 1 s
@@ -2704,13 +2818,16 @@ internal const val FRAME_CAPTURE_ATTEMPTS = 3
  * a genuinely undecodable frame keeps the render red with the same diagnostic as before — the retry
  * only absorbs a glitch that clears on a fresh encode.
  */
-internal fun captureDecodableFrame(file: File, role: String, capture: (File) -> Unit) {
+internal fun captureDecodableFrame(
+  file: File,
+  role: String,
+  capture: (File) -> Unit,
+): BufferedImage {
   var lastFailure: IllegalStateException? = null
   repeat(FRAME_CAPTURE_ATTEMPTS) { attempt ->
     capture(file)
     try {
-      FramePngReader.decode(file, role = role)
-      return
+      return FramePngReader.decode(file, role = role)
     } catch (e: IllegalStateException) {
       lastFailure = e
       System.err.println(
