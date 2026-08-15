@@ -57,8 +57,6 @@ internal object ServeWebAssets {
       // The published Remote Compose player wall; loaded only by a compare page whose catalog
       // carries an `rc-compare` manifest.
       "rc-lanes.js" to "text/javascript; charset=utf-8",
-      // The design-parity page's lane filter; loaded only by that page.
-      "parity.js" to "text/javascript; charset=utf-8",
       // The design page's node measuring and render-swap controls; loaded only by a
       // `/{system}/pages/{id}` view, which exists only for a catalog that published one.
       "design-page.js" to "text/javascript; charset=utf-8",

@@ -837,6 +837,31 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The parity page's visual-difference band with something IN it. The committed fixture's
+        // one mapped pair scores clean, so the default shot above holds the "everything matches"
+        // sentence and nothing else — the issues table, the worst-first order, the drift suffix and
+        // the red score cell would be diffed by nothing, which is how a table that renders garbage
+        // ships unnoticed.
+        //
+        // The scorer is stubbed rather than fed a deliberately-mismatched fixture pair: what is
+        // under test here is `<cp-parity-scores>`'s rendering of a finding, and the metric itself
+        // already has its own spec (`format-compare-scorer.spec.mjs`). Replacing the element
+        // re-runs its scan the way a reload would, so nothing here reaches inside it.
+        fixture: "serve-parity",
+        suffix: "visual-findings",
+        apply: async (page) => {
+            await page.evaluate(() => {
+                window.ComposePreviewCompare = {
+                    scoreImageUrls: async () => ({ percent: 61.4, geometry: 5.2 }),
+                };
+                document
+                    .querySelector("cp-parity-scores")
+                    .replaceWith(document.createElement("cp-parity-scores"));
+            });
+            await page.waitForSelector("#cp-parity-score-issues tr");
+        },
+    },
+    {
         // The PAGES pane. The design file's pages used to be a branch at the foot of the component
         // tree, below every family, component and variant — so on a real catalog they sat past a
         // hundred-odd rows of the inventory you were not looking for. They are a peer list now,
@@ -1907,6 +1932,24 @@ for (const fixture of listPageFixtures()) {
                                 cell.textContent !== "comparing…",
                         ),
                     )
+                    .catch(() => {});
+            }
+            // The parity page's visual-difference band is asynchronous the same way — fetch,
+            // decode and score every mapped render/reference pair — and the settled result is the
+            // entire point of it. Without this wait the shot is the "Checking N mapped
+            // comparison(s)…" line, which looks identical whether the scan works, scores
+            // everything wrong, or has been deleted: no coverage at all for the summary sentence,
+            // the issues table, or the per-row score cells.
+            if (fixture === "serve-parity") {
+                await page
+                    .waitForFunction(() => {
+                        const status = document.getElementById(
+                            "cp-parity-score-status",
+                        );
+                        // Both in-flight lines start "Check"; every settled one starts with a
+                        // count or "All".
+                        return status && !/^Check/.test(status.textContent.trim());
+                    })
                     .catch(() => {});
             }
             if (fixture === "serve-reference-compare") {

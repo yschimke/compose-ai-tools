@@ -164,6 +164,9 @@
 </li>
         </ul>
         <p class="cp-muted" id="cp-parity-feed-empty" hidden>No activity in this lane.</p>
+        <!-- Wires the lane buttons above to the feed. Renders nothing, and the feed is fully
+             readable without it; `serve.css` hides the tag. -->
+        <cp-parity-lanes></cp-parity-lanes>
                 <h2 class="cp-status-sec">Issues</h2>
         <h2 class="cp-status-sec">Components with open issues (1)</h2><section class="cp-parity-issue-group"><h3>IconButton/Tonal (1)</h3><aside class="cp-parity-issues"><strong>Issues</strong><ul><li class="cp-parity-issue"><a href="https://github.com/yschimke/m3-catalog/issues/40" rel="noopener">#40 Glyph colour is darker than the design token</a><span>open · area:component · parity:known-difference</span></li></ul></aside></section><h2 class="cp-status-sec">Closed issues (1)</h2><aside class="cp-parity-issues"><strong>Issues</strong><ul><li class="cp-parity-issue closed"><a href="https://github.com/yschimke/m3-catalog/issues/41" rel="noopener">#41 Verify the disabled state after the token update</a><span>closed · area:preview · parity:verification-needed</span></li></ul></aside>
                 <h3 class="cp-parity-sub">Out-of-sync activity</h3>
@@ -198,16 +201,7 @@
                 </tbody>
               </table>
             </div>
-        <section class="cp-parity-visual-issues" id="cp-parity-visual-issues">
-  <h3 class="cp-parity-sub">Visual differences</h3>
-  <p class="cp-muted" id="cp-parity-score-status">Checking 1 mapped comparison(s)…</p>
-  <div class="cp-status-scroll" id="cp-parity-score-results" hidden>
-    <table class="cp-table">
-      <thead><tr><th>Component</th><th>Structural match</th><th>Review</th></tr></thead>
-      <tbody id="cp-parity-score-issues"></tbody>
-    </table>
-  </div>
-</section>
+        <cp-parity-scores></cp-parity-scores>
                 <details class="cp-parity-comparisons cp-disclosure">
           <summary>
             <span class="cp-parity-comparisons-title">All comparisons (3)</span>
@@ -224,7 +218,7 @@
             </table>
           </div>
         </details>
-        <script src="/assets/serve/fixture/format-compare.js"></script><script src="/assets/serve/fixture/parity.js"></script>
+        <script src="/assets/serve/fixture/format-compare.js"></script><script src="/assets/serve/fixture/serve-components.js"></script>
         </main>
         <footer class="cp-site-footer">
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
