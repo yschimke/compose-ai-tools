@@ -8152,6 +8152,14 @@ $rows
     val enabledRcPlayers = if (pinned == null) enabledRcPlayers else emptyList()
     @Suppress("NAME_SHADOWING") val hasA11yOverlay = hasA11yOverlay && pinned == null
     @Suppress("NAME_SHADOWING") val hasDesignAnnotations = hasDesignAnnotations && pinned == null
+    // A published capture is a file on the branch exactly as the baked render and the design
+    // reference are, so by the pinned-page rule it ought to STAY and take the pin. It cannot yet:
+    // `/motion/<id><ext>` reads the branch tip the session is holding, with no revision to resolve
+    // against. The stronger half of that rule — "a pinned request is never answered with current
+    // bytes" — decides it, so the lane comes off a pinned page entirely rather than playing today's
+    // recording beside a render from another commit. See docs/public-preview-server.md; when the
+    // route learns to resolve a capture at a revision this becomes `withPin` like the reference.
+    val motionCaptures = if (pinned == null) preview.motion else emptyList()
     @Suppress("NAME_SHADOWING")
     val executableBundleHref = executableBundleHref?.takeIf { pinned == null }
     val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
@@ -8465,7 +8473,6 @@ $rows
     //
     // Not an `<option>` inside the renderer combo, for the same reason the spec chip is not: that
     // combo is headed "Switch renderer" and this is not a renderer — it is the same render, moving.
-    val motionCaptures = preview.motion
     // What to call one capture. The annotation's own caption when it declared one — that names the
     // property the reader is being shown, which is the whole point of the recording — falling back
     // to its kind, and only then to a position. A bare "Capture 2" is a poor label, but it is
@@ -8495,6 +8502,7 @@ $rows
             .mapIndexed { index, capture ->
               val label = motionLabel(capture, index)
               "<button type=\"button\" class=\"cp-motion-view\" " +
+                "data-motion-id=\"${WebEscaping.htmlEscape(capture.id)}\" " +
                 "data-motion-src=\"${WebEscaping.htmlEscape(motionSrc(capture))}\" " +
                 "data-motion-label=\"${WebEscaping.htmlEscape(label)}\" " +
                 "aria-pressed=\"${index == 0}\">${WebEscaping.htmlEscape(label)}</button>"

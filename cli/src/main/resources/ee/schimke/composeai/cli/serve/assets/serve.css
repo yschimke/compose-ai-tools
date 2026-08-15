@@ -1623,6 +1623,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* What the recording is showing ("Pressed \2192 checked"). A capture without its caption tells the
    reader only that *something* moved, so the annotation's own words ride beside the frames. */
 .cp-motion-caption { font-size: 0.72rem; color: var(--cp-fg-muted); }
+/* The inspection layers describe the SNAPSHOT — every box is placed from that image's natural size
+   and offset (see inspect.js `place()`), and nothing re-places them when a lane takes the snapshot
+   out of flow. Left alone they would keep their last geometry and hang over the recording,
+   reporting a focus map and resolved type for a frame that is no longer on screen. Withdrawn by
+   mode rather than unticked by script, so returning to the render restores exactly what the
+   visitor had ticked instead of silently clearing their choice. */
+.cp-viewer[data-mode="motion"] .cp-inspect-layer,
+.cp-viewer[data-mode="motion"] .cp-inspect-legend { display: none; }
 /* A capture is a still's worth of subject in many frames, so it obeys exactly the geometry the
    snapshot does — `.cp-stage img` already caps its width, and viewer.js's zoom lane writes the same
    `max-height` onto it that the render and the spec raster get. */

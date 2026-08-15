@@ -3953,6 +3953,26 @@ class ServeWebFixtureTest {
       assetText("viewer.js").contains("if (m !== \"motion\") closeMotion();"),
       "every transition out of motion closes the lane",
     )
+    // A pinned page is a permalink, and the rule it holds to is that a pinned request is never
+    // answered with CURRENT bytes. `/motion/` reads the branch tip the session is holding and has
+    // no revision to resolve against, so the axis is withdrawn there rather than playing today's
+    // recording beside a render from another commit. Withdrawn whole — chip, stage image and mode
+    // radio — so there is no half-present control to click.
+    val pinnedView =
+      ServeWeb.viewerPage(
+        withMotion,
+        token,
+        sessionId = "compose-m3",
+        basePath = "/compose-m3",
+        revisions = ServeWeb.CatalogRevisions(pinned = "df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80"),
+      )
+    assertFalse(pinnedView.contains("cp-motion-chip"), "a pinned page offers no capture")
+    assertFalse(pinnedView.contains("cp-motion-img"), "…and stages none")
+    assertFalse(
+      pinnedView.contains("value=\"motion\""),
+      "…and carries no mode radio a URL could still name",
+    )
+
     // The caption readout stands IN FOR the picker on a single-capture preview rather than
     // repeating it: with two captures the pressed button already carries the same words, and
     // printing them again beside it is two controls stating one fact.

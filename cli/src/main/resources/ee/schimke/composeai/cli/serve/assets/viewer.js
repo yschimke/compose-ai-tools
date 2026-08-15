@@ -1345,6 +1345,28 @@
     return u.href;
   }
   function motionAvailable() { return !!(motionImg && motionSrcOf(motionPicked())); }
+  /** The picked capture's published id — what `?motion=` carries. */
+  function motionPickedId() {
+    var button = motionPicked();
+    return button ? (button.getAttribute("data-motion-id") || "") : "";
+  }
+  /**
+   * Press the button for a named capture, if this preview published one. Used by URL hydration:
+   * a shared `?mode=motion&motion=<id>` link has to open on the recording that was shared, and an
+   * id this preview does not carry is ignored rather than blanking the lane.
+   */
+  function pickMotion(id) {
+    if (!id) return false;
+    var wanted = null;
+    motionButtons.forEach(function (b) {
+      if (b.getAttribute("data-motion-id") === id) wanted = b;
+    });
+    if (!wanted) return false;
+    motionButtons.forEach(function (b) {
+      b.setAttribute("aria-pressed", b === wanted ? "true" : "false");
+    });
+    return true;
+  }
   // The radio, not `data-mode` — exactly as specActive() and sourceActive() do, and for the same
   // reason: on a URL restore the radio is checked before the transition paints, so reading the
   // stage attribute here would report the lane inactive while the page was entering it.
@@ -1353,6 +1375,12 @@
     var button = motionPicked();
     var src = motionSrcOf(button);
     if (!src) return;
+    // One capture failing must not condemn the rest. The error overlay is shared across lanes and
+    // is raised by this lane's own `error` handler, so without this a picker click away from a
+    // missing artifact would load the replacement successfully and leave the previous failure's
+    // message sitting over it. Cleared on the way IN, so the message survives until something is
+    // actually done about it.
+    clearModeError();
     // The caption names the recording — but ONLY when nothing else already does. With two or more
     // captures the picker is visible and its pressed button carries the same words, and printing
     // them again beside it is two controls stating one fact ("Tap the avatar [Tap the avatar]").
@@ -2202,8 +2230,15 @@
     // The spec lane shows a fixed imported raster: no override re-points it, so every control that
     // would re-render is as dead here as it is in the Wasm / RC canvas lanes.
     var onSpec = specActive();
+    // A capture is a finished recording: no override re-points it either, so the same controls are
+    // as dead here as on the spec lane. Folded in beside it rather than given a branch of its own,
+    // because the question these gates actually ask is "is the stage showing a fixed frame this
+    // server did not just render?" — and both lanes answer yes. Left enabled, changing theme or
+    // font scale would re-render the HIDDEN snapshot underneath, or flip a static catalog into
+    // Wasm, while the recording on screen went on saying something else.
+    var onFixedFrame = onSpec || motionActive();
     var canServerRender =
-      !onWasm && !onRc && !onSpec &&
+      !onWasm && !onRc && !onFixedFrame &&
       (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
     serverOnlyControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
@@ -2215,7 +2250,7 @@
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
       if (el) el.disabled = (id === "uiMode" && alwaysDark) ||
-        !(canServerRender || (wasmSrc && !onRc && !onSpec) || (id === "uiMode" && onRcWasm));
+        !(canServerRender || (wasmSrc && !onRc && !onFixedFrame) || (id === "uiMode" && onRcWasm));
       // Locale is the one member of this trio a replayed document cannot express: `stringResource`
       // resolved to a literal at capture, and `RemoteContext` carries no locale among its system
       // variables, so there is nothing for the host to supply. Dead in every lane that replays the
@@ -2487,8 +2522,13 @@
       motionButtons.forEach(function (other) {
         other.setAttribute("aria-pressed", other === button ? "true" : "false");
       });
-      if (motionActive()) playMotion();
-      else setMode("motion");
+      if (motionActive()) {
+        playMotion();
+        // Replaces rather than pushes: switching recording inside the lane is not a lane change,
+        // so it belongs in the address without burying the page the visitor arrived from under a
+        // Back entry per click. `urlPush` is left false, which is exactly what replace means here.
+        syncUrl();
+      } else setMode("motion");
     });
   });
   // ---- The renderer combo box ------------------------------------------------------------------
@@ -2773,7 +2813,7 @@
   var URL_STATE_PARAMS = [
     "device", "localeTag", "orientation", "fontScale",
     "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
-    "scroll", "mode", "sizeMode", "rcPlayer", "specView",
+    "scroll", "mode", "sizeMode", "rcPlayer", "specView", "motion",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
     "exploded", "explodeTilt", "explodeSpin", "explodeGap", "explodeDepth",
   ];
@@ -2817,6 +2857,14 @@
     // the lane is actually up: `?specView=` on a page showing a render describes nothing.
     var specView = window.cpSpecCompare ? window.cpSpecCompare.view() : "";
     if (mode === "spec" && specView && specView !== "spec") values.specView = specView;
+    // Which recording is playing, on the same terms: only while the lane is up (`?motion=` beside a
+    // render describes nothing), and only past the first, which is what the lane opens on anyway.
+    // Without it a multi-capture preview's shared link always restored the FIRST capture, so the
+    // page someone sent was not the page they were looking at.
+    if (mode === "motion" && motionButtons.length > 1) {
+      var pickedMotion = motionPickedId();
+      if (pickedMotion && motionPicked() !== motionButtons[0]) values.motion = pickedMotion;
+    }
     window.cpUrlState.sync(values, ownsUrlParam, !push);
   }
   // What the controls hold when the URL names nothing — captured after the server markup and the
@@ -2995,6 +3043,15 @@
     // `?mode=spec` lands at the very bottom of this file), so a shared
     // `?mode=spec&specView=slider` link opens on the wipe rather than flashing the plain spec.
     if (window.cpSpecCompare) window.cpSpecCompare.hydrate(q.get("specView") || "");
+    // Same ordering, same reason: the bookmarked `?mode=motion` is applied at the very bottom of
+    // this file, so pressing the named capture's button first is what makes openMotion() request
+    // the shared recording instead of loading the first one and swapping a moment later. A URL
+    // that names no capture falls back to the first, which is where the lane opens.
+    if (motionButtons.length && !pickMotion(q.get("motion") || "")) {
+      motionButtons.forEach(function (b, i) {
+        b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+      });
+    }
     syncLaneSelect();
   }
   hydrateFromUrl(false);
