@@ -20,6 +20,7 @@ package androidx.compose.remote.player.compose.embedded
 
 import androidx.collection.ObjectIntMap
 import androidx.collection.emptyObjectIntMap
+import androidx.compose.remote.core.operations.Theme
 import androidx.compose.remote.player.compose.ExperimentalRemotePlayerApi
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.remote.player.core.state.StateUpdater
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 public fun ExperimentalRemoteDocumentPlayer(
   document: RemoteDocument,
   modifier: Modifier = Modifier,
+  theme: Int = Theme.UNSPECIFIED,
   namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
   imageLoader: RcImageLoader? = null,
   isShaderValid: (shaderSource: String) -> Boolean = { true },
@@ -44,6 +46,7 @@ public fun ExperimentalRemoteDocumentPlayer(
   RcPlayer(
     document = document.document,
     modifier = modifier,
+    theme = theme,
     namedColorOverrides = namedColorOverrides,
     imageLoader = imageLoader,
     isShaderValid = isShaderValid,

@@ -48,6 +48,7 @@ import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.NamedVariable
 import androidx.compose.remote.core.operations.ParticlesCompare
 import androidx.compose.remote.core.operations.ParticlesLoop
+import androidx.compose.remote.core.operations.Theme
 import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.WakeIn
 import androidx.compose.remote.core.operations.layout.Component
@@ -74,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.semantics.contentDescription
@@ -97,6 +99,10 @@ import java.io.ByteArrayInputStream
  * the embedded equivalent of the View player's `setColor(name, value)` — pass [namedColorOverrides]
  * (variable name -> ARGB int); each entry is applied via `setNamedColorOverride` after the
  * document's defaults.
+ *
+ * [theme] selects the `ColorTheme` light/dark branch. Indexed colors in the Android group are
+ * resolved from framework resources before the first operation replay; unknown groups or missing
+ * resources retain their authored fallback.
  */
 @OptIn(ExperimentalRemotePlayerApi::class)
 @SuppressLint("RestrictedApiAndroidX")
@@ -105,6 +111,7 @@ import java.io.ByteArrayInputStream
 public fun RcPlayer(
   document: CoreDocument,
   modifier: Modifier = Modifier,
+  theme: Int = Theme.UNSPECIFIED,
   namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
   imageLoader: RcImageLoader? = null,
   isShaderValid: (shaderSource: String) -> Boolean = { true },
@@ -123,6 +130,7 @@ public fun RcPlayer(
   }
 
   val density = LocalDensity.current
+  val context = LocalContext.current
   val remoteContext = remember {
     // Consider a Compose Clock
     AndroidRemoteContext(clock).also {
@@ -144,6 +152,8 @@ public fun RcPlayer(
       it.loadFloat(RemoteContext.ID_DENSITY, density.density)
       it.density = density.density
       document.initializeContext(it)
+      resolveAndroidThemeColors(context, document)
+      it.paintTheme = theme
 
       // Register each bitmap's metadata (declared width/height for ImageAttribute, and
       // discoverability for the lazy decode) WITHOUT decoding the pixels. The costly decode
@@ -228,6 +238,11 @@ public fun RcPlayer(
       document.rootLayoutComponent?.getData(dataOps, true)
       document.applyOperationsReflection(it, dataOps)
     }
+  }
+
+  LaunchedEffect(remoteContext, theme) {
+    document.themedColors.orEmpty().forEach { it.setTheme(remoteContext, theme) }
+    remoteContext.paintTheme = theme
   }
 
   // Time and animations are driven on demand. A static document — no declared animations and no
@@ -453,6 +468,7 @@ public fun RcPlayer(
 public fun RcPlayer(
   capturedDocument: CapturedDocument,
   modifier: Modifier = Modifier,
+  theme: Int = Theme.UNSPECIFIED,
   namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
   imageLoader: RcImageLoader? = null,
   isShaderValid: (shaderSource: String) -> Boolean = { true },
@@ -477,6 +493,7 @@ public fun RcPlayer(
   RcPlayer(
     document = coreDoc,
     modifier = modifier,
+    theme = theme,
     namedColorOverrides = namedColorOverrides,
     imageLoader = imageLoader,
     isShaderValid = isShaderValid,
