@@ -124,12 +124,24 @@ class ServeWebFixtureTest {
 
   private val fixtureFigmaSpec = ServeFigmaSpec.of(fixtureDesignReference)
 
-  private fun fixtureReportIssue(previewId: String, label: String, sourceFile: String) =
+  private fun fixtureReportIssue(
+    previewId: String,
+    label: String,
+    sourceFile: String,
+    componentId: String? = null,
+    referenceId: String? = null,
+    variant: String = "",
+    overrides: Map<String, String> = emptyMap(),
+  ) =
     ServeIssueReport.Context(
         repo = "yschimke/compose-ai-tools",
         previewId = previewId,
         previewLabel = label,
         system = "compose-m3",
+        componentId = componentId,
+        referenceId = referenceId,
+        variant = variant,
+        overrides = overrides,
         sourceUrl =
           ServeUrls.githubBlobUrl(
             "yschimke/compose-ai-tools",
@@ -139,8 +151,17 @@ class ServeWebFixtureTest {
           ),
         catalog = "yschimke/compose-ai-tools@design-artifacts/compose-m3",
         toolVersion = provenance.toolVersion,
-        viewerUrl = "https://preview.coo.ee/compose-m3/p/$previewId",
-        renderUrl = "https://preview.coo.ee/compose-m3/render/$previewId.png",
+        viewerUrl =
+          if (referenceId == null) "https://preview.coo.ee/compose-m3/p/$previewId" else null,
+        comparisonUrl =
+          referenceId?.let { "https://preview.coo.ee/compose-m3/compare/$previewId?reference=$it" },
+        renderUrl =
+          "https://preview.coo.ee/compose-m3/render/$previewId.png" +
+            overrides.entries
+              .sortedBy { it.key }
+              .joinToString("&", prefix = if (overrides.isEmpty()) "" else "?") { (key, value) ->
+                "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
+              },
         // The goldens stand in for preview.coo.ee, whose render lane is token-free — so they
         // capture the embedded-image form of the body.
         publicRender = true,
@@ -1433,6 +1454,17 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         version = version,
+        overrides = mapOf("fontScale" to "1.5", "knob.label" to "Send;now=x"),
+        reportIssue =
+          fixtureReportIssue(
+            previewId = themedPreviews.first().id,
+            label = themedPreviews.first().label,
+            sourceFile = themedPreviews.first().sourceFile.orEmpty(),
+            componentId = ServeIssueReport.componentIdFor(themedPreviews.first()),
+            referenceId = comparisonReferences.first().id,
+            variant = ServeIssueReport.variantFor(themedPreviews.first()),
+            overrides = mapOf("fontScale" to "1.5", "knob.label" to "Send;now=x"),
+          ),
         // Both panels annotated, so the fixture covers the case the layers exist for: reading the
         // reference's spec against the actual's. The layout boxes agree here and the type styles
         // don't, which is what the page is meant to make obvious.
@@ -2585,6 +2617,19 @@ class ServeWebFixtureTest {
         referenceComparison.contains("aria-label=\"Design references\"") &&
         referenceComparison.contains(">Review revision</a>"),
       "the focused comparison presents the handoff triptych and provenance",
+    )
+    assertTrue(
+      referenceComparison.contains("compose-parity-locator/v1") &&
+        referenceComparison.contains(
+          "overrides: {&quot;fontScale&quot;:&quot;1.5&quot;,&quot;knob.label&quot;:&quot;Send;now=x&quot;}"
+        ) &&
+        referenceComparison.contains("{{rawScores}}"),
+      "the focused comparison pins the locator, canonical overrides and score placeholder",
+    )
+    assertTrue(
+      assetText("format-compare.js").contains("body.value = template") &&
+        assetText("format-compare.js").contains(".replace(\"{{rawScores}}\", rawScores)"),
+      "the browser scorer substitutes the report input value after comparison",
     )
     val referencedState =
       ServePreview(

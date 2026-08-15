@@ -617,6 +617,25 @@
     var actualUrl = referenceRoot.getAttribute("data-actual");
     var diffCanvas = referenceRoot.querySelector(".cp-reference-diff");
     var resultText = referenceRoot.querySelector(".cp-reference-result");
+    function refreshComparisonReport(result) {
+      var body = document.getElementById("cp-report-body");
+      if (!body) return;
+      var template = body.getAttribute("data-report-template");
+      if (!template) return;
+      var render = new URL(actualUrl, location.href);
+      render.searchParams.delete("token");
+      var changedPercent = result.pixels ? result.changed * 100 / result.pixels : 0;
+      var rawScores = result.score.toFixed(1) + "% structural match; " +
+        changedPercent.toFixed(2) + "% pixels changed";
+      if (result.geometry >= GEOMETRY_REPORT_THRESHOLD) {
+        rawScores += "; " + result.geometry.toFixed(1) + "% proportion difference";
+      }
+      // The report remains a GET form. Page-derived values are written only to its hidden input,
+      // never to an href/navigation sink.
+      body.value = template
+        .replace("{{render}}", render.toString())
+        .replace("{{rawScores}}", rawScores);
+    }
     compareImageUrls(referenceUrl, actualUrl, diffCanvas).then(function (result) {
       var changedPercent = result.pixels ? result.changed * 100 / result.pixels : 0;
       // The geometry figure is only worth the visitor's attention once the two content boxes are
@@ -626,6 +645,7 @@
         : "";
       resultText.textContent = result.score.toFixed(1) + "% structural match · " +
         changedPercent.toFixed(2) + "% pixels changed" + geometry;
+      refreshComparisonReport(result);
     }, function () {
       resultText.textContent = "Comparison unavailable";
     });

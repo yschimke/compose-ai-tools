@@ -1,5 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
+import java.util.Locale
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 /**
  * Builds the prefilled GitHub **new-issue** link the viewer offers beside its "source" link, so
  * someone looking at a preview that renders wrongly can file it against the repo that owns the code
@@ -30,6 +38,11 @@ internal object ServeIssueReport {
    */
   const val RENDER_PLACEHOLDER: String = "{{render}}"
 
+  /** Filled by the focused comparison once its browser-side scorer has completed. */
+  const val RAW_SCORES_PLACEHOLDER: String = "{{rawScores}}"
+
+  const val LOCATOR_FENCE: String = "compose-parity-locator/v1"
+
   /** Repo bugs fall back to when a session names no source of its own — the renderer is ours. */
   const val FALLBACK_REPO: String = "yschimke/compose-ai-tools"
 
@@ -47,6 +60,14 @@ internal object ServeIssueReport {
     val previewLabel: String? = null,
     /** The served design system (`wear-m3`), when this session is a catalog. */
     val system: String? = null,
+    /** Stable catalog component identity. */
+    val componentId: String? = null,
+    /** Design reference compared with this exact preview. */
+    val referenceId: String? = null,
+    /** Preview-id axes only; live controls belong exclusively to [overrides]. */
+    val variant: String = "",
+    /** The complete, normalised query map consumed by the render lane. */
+    val overrides: Map<String, String> = emptyMap(),
     /** GitHub blob URL of the preview's source file (from [ServeUrls.githubBlobUrl]). */
     val sourceUrl: String? = null,
     /**
@@ -57,6 +78,8 @@ internal object ServeIssueReport {
     val toolVersion: String? = null,
     /** Absolute viewer URL for this preview. Token-bearing URLs are stripped by [withoutToken]. */
     val viewerUrl: String? = null,
+    /** Absolute focused comparison URL for this preview/reference pair. */
+    val comparisonUrl: String? = null,
     /** Absolute `/render/<id>.png` URL at the overrides in force when the page was served. */
     val renderUrl: String? = null,
     /**
@@ -69,6 +92,25 @@ internal object ServeIssueReport {
      * Defaults to false so a caller that doesn't know keeps the link form.
      */
     val publicRender: Boolean = false,
+    /** Browser-computed parity measurements; absent until the focused comparison finishes. */
+    val rawScores: RawScores? = null,
+  )
+
+  data class RawScores(
+    val structuralMatch: Double,
+    val pixelsChanged: Double,
+    val proportionDifference: Double? = null,
+  )
+
+  data class Locator(
+    val repository: String,
+    val system: String,
+    val componentId: String,
+    val previewId: String,
+    val referenceId: String,
+    val variant: String,
+    val overrides: Map<String, String>,
+    val revision: String? = null,
   )
 
   /**
@@ -101,14 +143,19 @@ internal object ServeIssueReport {
     val rows = buildList {
       ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Design system | `$it` |") }
       add("| Preview | `${ctx.previewId}` |")
-      ctx.sourceUrl?.takeIf { it.isNotBlank() }?.let { add("| Source | $it |") }
+      withoutToken(ctx.sourceUrl)?.takeIf { it.isNotBlank() }?.let { add("| Source | $it |") }
       ctx.catalog?.takeIf { it.isNotBlank() }?.let { add("| Catalog | `$it` |") }
       ctx.toolVersion
         ?.takeIf { it.isNotBlank() }
         ?.let { add("| Rendered by | compose-ai-tools $it |") }
+      val scores =
+        if (renderPlaceholder && !ctx.referenceId.isNullOrBlank()) RAW_SCORES_PLACEHOLDER
+        else ctx.rawScores?.let(::formatRawScores)
+      scores?.let { add("| Raw comparison | `$it` |") }
     }
     val render =
-      if (renderPlaceholder) RENDER_PLACEHOLDER else ctx.renderUrl?.takeIf { it.isNotBlank() }
+      if (renderPlaceholder) RENDER_PLACEHOLDER
+      else withoutToken(ctx.renderUrl)?.takeIf { it.isNotBlank() }
     // Whether the render can be *embedded* is decided by the real URL even when the body is the
     // JS template, so both forms of the body have the same shape and the placeholder swap can't
     // turn a working image into a broken one. Two independent conditions have to hold: GitHub's
@@ -116,7 +163,12 @@ internal object ServeIssueReport {
     // body strips.
     val embed = render != null && ctx.publicRender && isEmbeddable(ctx.renderUrl)
     val links = buildList {
-      ctx.viewerUrl?.takeIf { it.isNotBlank() }?.let { add("[Open this preview]($it)") }
+      withoutToken(ctx.viewerUrl)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { add("[Open this preview]($it)") }
+      withoutToken(ctx.comparisonUrl)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { add("[Open comparison]($it)") }
       // Only worth its own line when the image isn't already showing it.
       if (!embed) render?.let { add("[PNG at these settings]($it)") }
     }
@@ -144,7 +196,120 @@ internal object ServeIssueReport {
       append(rows.joinToString("\n"))
       if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
       append("\n")
+      locator(ctx)?.let { append("\n").append(locatorBlock(it)) }
     }
+  }
+
+  private fun formatRawScores(scores: RawScores): String = buildString {
+    append(
+      "%.1f%% structural match; %.2f%% pixels changed"
+        .format(Locale.ROOT, scores.structuralMatch, scores.pixelsChanged)
+    )
+    scores.proportionDifference?.let {
+      append("; %.1f%% proportion difference".format(Locale.ROOT, it))
+    }
+  }
+
+  fun locator(ctx: Context): Locator? {
+    val system = ctx.system?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val component = ctx.componentId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val reference = ctx.referenceId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return Locator(
+      repository = ctx.repo,
+      system = system,
+      componentId = component,
+      previewId = ctx.previewId,
+      referenceId = reference,
+      variant = ctx.variant,
+      overrides = ctx.overrides,
+      revision = ctx.catalog?.trim()?.takeIf { it.isNotEmpty() },
+    )
+  }
+
+  /** Catalog-authored component id, with the parity dashboard's stable route-id fallback. */
+  fun componentIdFor(preview: ServePreview): String =
+    preview.componentId?.takeIf { it.isNotBlank() }
+      ?: run {
+        val ideal = preview.id.indexOf("__ideal")
+        if (ideal > 0) preview.id.substring(0, ideal)
+        else {
+          val parts = preview.id.split("__")
+          val theme = parts.indices.lastOrNull { it >= 1 && parts[it] in setOf("light", "dark") }
+          if (theme == null) preview.id
+          else parts.filterIndexed { index, _ -> index != theme }.joinToString("__")
+        }
+      }
+
+  /** Axis segments already encoded by the served preview id, never live overrides. */
+  fun variantFor(preview: ServePreview): String =
+    preview.id.substringAfter("__", missingDelimiterValue = "").replace("__", "/")
+
+  fun locatorBlock(locator: Locator): String = buildString {
+    append("```$LOCATOR_FENCE\n")
+    append("repository: ${locator.repository}\n")
+    append("system: ${locator.system}\n")
+    append("component: ${locator.componentId}\n")
+    append("preview: ${locator.previewId}\n")
+    append("reference: ${locator.referenceId}\n")
+    append("variant: ${locator.variant}\n")
+    append("overrides: ${canonicalOverrides(locator.overrides)}\n")
+    locator.revision?.let { append("revision: $it\n") }
+    append("```\n")
+  }
+
+  fun locatorFromBody(body: String): Locator? {
+    val fenced = body.substringAfter("```$LOCATOR_FENCE\n", missingDelimiterValue = "")
+    if (fenced.isEmpty()) return null
+    val content = fenced.substringBefore("\n```", missingDelimiterValue = "")
+    if (content.isEmpty()) return null
+    val fields =
+      content
+        .lineSequence()
+        .mapNotNull { line ->
+          val separator = line.indexOf(':')
+          if (separator <= 0) null
+          else line.substring(0, separator) to line.substring(separator + 1).trimStart()
+        }
+        .toMap()
+    val overrides =
+      runCatching { parseOverrides(fields["overrides"] ?: return null) }.getOrNull() ?: return null
+    return Locator(
+      repository = fields["repository"]?.takeIf { it.isNotBlank() } ?: return null,
+      system = fields["system"]?.takeIf { it.isNotBlank() } ?: return null,
+      componentId = fields["component"]?.takeIf { it.isNotBlank() } ?: return null,
+      previewId = fields["preview"]?.takeIf { it.isNotBlank() } ?: return null,
+      referenceId = fields["reference"]?.takeIf { it.isNotBlank() } ?: return null,
+      variant = fields["variant"] ?: return null,
+      overrides = overrides,
+      revision = fields["revision"]?.takeIf { it.isNotBlank() },
+    )
+  }
+
+  fun canonicalOverrides(overrides: Map<String, String>): String {
+    val sorted = overrides.entries.sortedWith { a, b -> compareCodePoints(a.key, b.key) }
+    return Json.encodeToString(
+      JsonObject.serializer(),
+      JsonObject(sorted.associate { it.key to JsonPrimitive(it.value) }),
+    )
+  }
+
+  private fun parseOverrides(value: String): Map<String, String> =
+    Json.parseToJsonElement(value).jsonObject.mapValues { (_, element) ->
+      element.jsonPrimitive.takeIf { it.isString }?.contentOrNull
+        ?: error("override values must be strings")
+    }
+
+  private fun compareCodePoints(a: String, b: String): Int {
+    var ai = 0
+    var bi = 0
+    while (ai < a.length && bi < b.length) {
+      val ac = a.codePointAt(ai)
+      val bc = b.codePointAt(bi)
+      if (ac != bc) return ac.compareTo(bc)
+      ai += Character.charCount(ac)
+      bi += Character.charCount(bc)
+    }
+    return (a.length - ai).compareTo(b.length - bi)
   }
 
   /** Markdown-safe alt text: the preview's label or id, with `]` and `[` stripped. */

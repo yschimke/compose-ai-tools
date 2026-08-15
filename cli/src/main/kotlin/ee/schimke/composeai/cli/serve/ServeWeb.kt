@@ -6510,12 +6510,26 @@ $rows
      * (the default) leaves every existing caller's URLs byte-identical.
      */
     sessionInOrigin: Boolean = false,
+    /** Normalised render-lane query values that reproduce the compared candidate. */
+    overrides: Map<String, String> = emptyMap(),
+    /** Prefilled parity report for this exact preview/reference comparison. */
+    reportIssue: ReportIssue? = null,
   ): String {
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
     // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
     val linkSessionId = if (sessionInOrigin) null else sessionId
-    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    val overrideQuery =
+      overrides.entries
+        .sortedBy { it.key }
+        .joinToString("&") { (key, value) ->
+          "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
+        }
+    val linkQuery =
+      listOf(linkQuery(token, linkSessionId, basePath, isPublic), overrideQuery)
+        .filter { it.isNotEmpty() }
+        .joinToString("&")
+    val q = querySuffix(linkQuery)
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -6572,7 +6586,7 @@ $rows
     val pageHref: (String?, String) -> String = { pin, referenceId ->
       val query =
         listOfNotNull(
-            linkQuery(token, linkSessionId, basePath, isPublic).takeIf { it.isNotEmpty() },
+            linkQuery.takeIf { it.isNotEmpty() },
             "reference=${WebEscaping.urlEncodeSegment(referenceId)}",
           )
           .joinToString("&")
@@ -6596,6 +6610,7 @@ $rows
         """
           .trimIndent()
       }
+    val report = reportIssueHtml(reportIssue)
     return document(
       title = "${reference.label} — design comparison",
       unfurlTitle = "$heading design comparison",
@@ -6621,7 +6636,7 @@ $rows
             <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual"><img src="$actual" alt="Actual Compose preview"></div></section>
           </div>
           $annotationControls
-          <p class="cp-reference-result" role="status">comparing…</p>
+          <p class="cp-reference-result" role="status">comparing…</p>$report
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>
