@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 313 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 314 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -804,6 +804,12 @@ _No findings._
 ### `CmpPseudoDefault`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/CmpPseudoDefault_default-f4d924f2.a11y.png" width="400" />
+
+_No findings._
+
+### `ExpandableMenuInteractionPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.a11y.png" width="400" />
 
 _No findings._
 

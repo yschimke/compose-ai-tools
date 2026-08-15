@@ -1676,6 +1676,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.a11y.png",
+      "cleanBasename": "ExpandableMenuInteractionPreview_Interaction_Expandable_Menu-5a286a51.png",
+      "findings": [],
+      "functionName": "ExpandableMenuInteractionPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.InteractionPreviewsKt.ExpandableMenuInteractionPreview_Interaction \u2014 Expandable Menu",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/InteractionPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "FontScale100Preview_Font_scale_1_0x-966325ac.a11y.png",
       "cleanBasename": "FontScale100Preview_Font_scale_1_0x-966325ac.png",
       "findings": [],
