@@ -13,53 +13,71 @@
 # adds no waiting of its own: the deploy convergence poll and the Maven readiness poll already
 # existed for their own reasons, and this only reports what they concluded.
 #
-# Targeting. The PR is resolved from the release commit rather than passed in, because the
-# reusable workflows that call this only receive a tag. `commits/<sha>/pulls` gives the PRs
-# containing the commit; we keep only one that looks like a release-please PR — head branch
-# `release-please--*` AND authored by `github-actions[bot]`, the same pair ci.yml uses to detect
-# release PRs. That pair is what makes a stray `workflow_dispatch` on main a no-op instead of a
-# comment on whatever unrelated PR happened to be main's head: the branch name alone is
-# contributor-controlled, so it isn't trusted on its own. No match → exit 0, silently skipped.
+# Targeting. The reusable workflows that call this only receive a tag, so the PR is resolved
+# from THE TAG's commit — deliberately not from GITHUB_SHA. Those workflows are also the manual
+# repair paths (`workflow_dispatch` with an older tag), and there GITHUB_SHA is the ref the run
+# was launched from, typically `main`, whose head is a release merge commit for as long as the
+# release is the most recent thing on the branch. Resolving from GITHUB_SHA would then find the
+# NEWER release PR and post the older tag's milestone on it. Anchoring on the tag makes the
+# lookup say what it means: which PR produced THIS release.
+#
+# Then `commits/<sha>/pulls` gives the PRs containing that commit, and a match must clear three
+# checks: head branch `release-please--*`, author `github-actions[bot]` (the same pair ci.yml
+# uses to detect release PRs — the branch name alone is contributor-controlled, so it isn't
+# trusted on its own), and a title naming this release's version, which is the belt-and-braces
+# against any remaining way to reach a PR belonging to a different release. No match, or no such
+# tag → exit 0, silently skipped.
 #
 # Idempotent. Each milestone carries an invisible `<!-- release-milestone:<key>:<tag> -->`
 # marker; a re-run finds its own previous comment and PATCHes it instead of stacking a second
 # one. That matters because both callers are re-runnable repair paths (a failed Maven readiness
-# job is re-run by hand often enough to have its own section in docs/RELEASING.md).
+# job is re-run by hand often enough to have its own section in docs/RELEASING.md). The marker
+# is predictable and release PRs are public, so the search is restricted to comments authored by
+# `github-actions[bot]`: otherwise anyone could post the marker ahead of the release and have
+# their comment either overwritten in place or — if GitHub refuses the cross-author edit —
+# swallow the milestone entirely, since the failure is deliberately tolerated by the caller.
 #
 # Usage:
 #   MILESTONE_KEY=server-deployed MILESTONE_TAG=v1.7.0 MILESTONE_BODY='### …' \
-#     GH_TOKEN=… GITHUB_REPOSITORY=owner/repo RELEASE_SHA=<merge sha> \
-#     comment-release-milestone.sh
+#     GH_TOKEN=… GITHUB_REPOSITORY=owner/repo comment-release-milestone.sh
 #
-# MILESTONE_PR short-circuits the resolution above (used by the self-test, and available as an
-# escape hatch when commenting on a PR the commit lookup can't reach).
+# RELEASE_SHA overrides the tag→commit lookup, and MILESTONE_PR short-circuits PR resolution
+# entirely (both used by the self-test, and available as escape hatches).
 set -uo pipefail
 
 : "${MILESTONE_KEY:?MILESTONE_KEY required}"
 : "${MILESTONE_TAG:?MILESTONE_TAG required}"
 : "${MILESTONE_BODY:?MILESTONE_BODY required}"
 REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY required}"
-SHA="${RELEASE_SHA:-${GITHUB_SHA:-}}"
 
 MARKER="<!-- release-milestone:${MILESTONE_KEY}:${MILESTONE_TAG} -->"
+# `v1.7.0` → `1.7.0`, and `clients-v1.2.3` → `1.2.3`, so a component-prefixed tag from another
+# release train still yields the version its PR title carries.
+VERSION="${MILESTONE_TAG##*v}"
 
 pr="${MILESTONE_PR:-}"
 if [[ -z "${pr}" ]]; then
+  # `commits/<ref>` (unlike `commits/<sha>/pulls`) resolves a tag name and dereferences an
+  # annotated tag, so this works whether the tag was written by the API or by `git tag -a`.
+  SHA="${RELEASE_SHA:-$(gh api "repos/${REPO}/commits/${MILESTONE_TAG}" --jq '.sha' 2>/dev/null || true)}"
   if [[ -z "${SHA}" ]]; then
-    echo "no RELEASE_SHA/GITHUB_SHA to resolve a release PR from — skipping ${MILESTONE_KEY}."
+    echo "no commit for tag ${MILESTONE_TAG} — skipping the ${MILESTONE_KEY} milestone comment."
     exit 0
   fi
   # `// empty` rather than `// null`: an unmatched lookup must produce an empty string, so the
   # caller-side check below is a plain emptiness test and never the literal "null".
-  pr="$(gh api "repos/${REPO}/commits/${SHA}/pulls" --jq '
-    [ .[]
-      | select((.head.ref // "") | startswith("release-please--"))
-      | select(.user.login == "github-actions[bot]")
-    ][0].number // empty' 2>/dev/null || true)"
+  if pulls="$(gh api "repos/${REPO}/commits/${SHA}/pulls" 2>/dev/null)"; then
+    pr="$(printf '%s' "${pulls}" | jq -r --arg v "${VERSION}" '
+      [ .[]
+        | select((.head.ref // "") | startswith("release-please--"))
+        | select(.user.login == "github-actions[bot]")
+        | select((.title // "") | contains($v))
+      ][0].number // empty')"
+  fi
 fi
 
 if [[ -z "${pr}" ]]; then
-  echo "commit ${SHA} has no release-please PR — skipping the ${MILESTONE_KEY} milestone comment."
+  echo "tag ${MILESTONE_TAG} has no release PR for ${VERSION} — skipping the ${MILESTONE_KEY} milestone comment."
   exit 0
 fi
 
@@ -72,7 +90,10 @@ ${MILESTONE_BODY}"
 existing=""
 if comments="$(gh api --paginate "repos/${REPO}/issues/${pr}/comments" 2>/dev/null)"; then
   existing="$(printf '%s' "${comments}" | jq -s -r --arg m "${MARKER}" '
-    [ .[][] | select((.body // "") | contains($m)) ][0].id // empty')"
+    [ .[][]
+      | select(.user.login == "github-actions[bot]")
+      | select((.body // "") | contains($m))
+    ][0].id // empty')"
 fi
 
 payload="$(jq -n --arg body "${body}" '{body: $body}')"
