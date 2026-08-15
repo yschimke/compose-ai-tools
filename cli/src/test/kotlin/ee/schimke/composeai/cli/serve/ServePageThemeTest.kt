@@ -67,7 +67,8 @@ class ServePageThemeTest {
 
   @Test
   fun `the resolved scheme is pinned before first paint, not after the page loads`() {
-    // Deferring this to page-theme.js would paint the page in the wrong mode and correct it a frame
+    // Deferring this to the shell bundle would paint the page in the wrong mode and correct it a
+    // frame
     // later — a full-screen flash on a dark-to-light swap. It has to be inline, in the head, and
     // ahead of the body.
     val html = landing()
@@ -113,9 +114,11 @@ class ServePageThemeTest {
           html.contains("value=\"match\" data-cp-page-theme"),
         "$name offers no Page theme choice",
       )
+      // The setting ships in the page-shell bundle now (`cli/serve-web/src/chrome/pageTheme.ts`),
+      // which every page emits; its behaviour is covered in `cli/serve-web/test/chrome.test.ts`.
       assertTrue(
-        html.contains("""<script src="${ServeWebAssets.href("page-theme.js")}"></script>"""),
-        "$name never loads page-theme.js",
+        html.contains("""<script src="${ServeWebAssets.href("serve-chrome.js")}"></script>"""),
+        "$name never loads the shell bundle",
       )
     }
   }

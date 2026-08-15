@@ -128,7 +128,8 @@ against a moving fixture baseline:
 
 Ported so far: `bg-toggle.js` → `<cp-bg-toggle>`, `backend-badge.js` →
 `<cp-backend-badge>`, `viewer-groups.js` → `<cp-group-memory>`, `rc-fonts.js` →
-`window.cpRcFonts`, `viewer-drawers.js` → `<cp-viewer-drawers>`.
+`window.cpRcFonts`, `viewer-drawers.js` → `<cp-viewer-drawers>`,
+`url-state.js` + `page-theme.js` → `serve-chrome.js`.
 
 **Port the file whose bugs you keep paying for, not the smallest one left.**
 `viewer-drawers.js` was fifth by the cheapest-seam ordering and first by every
@@ -165,23 +166,49 @@ a 3.4:1 specimen sheet frames at 1.0x and looks like a dead gesture — are unit
 tests rather than screenshots. Reach for the same split whenever a component's
 real content is a calculation.
 
-Next: `page-theme.js` (103 lines), then `url-state.js` — that one is the shared
-global every legacy script reads at IIFE time, so it wants its own change once
-more than one thing here needs it.
+Next, cheapest seam first: `parity.js` (124 lines, the design-parity page only),
+`spec-compare.js` (290), `viewer-history.js` (243). The big ones —
+`format-compare.js` (1,686) and `viewer.js` (2,906) — want breaking into pure
+modules the way the drawers were, not porting whole.
 
-**Both of those are blocked on where the bundle is loaded from, and that is the
-decision to make before either.** `ServeWeb` emits `serve-components.js` from a
-handful of surfaces rather than from the page shell, so it does not reach every
-page; `page-theme.js` does, because the shell (`document()`) emits it for
-everything. So porting a piece of shared chrome means the bundle has to come
-from the shell too, and the shell's script slot is the last line of `<body>`,
-after the surface's own scripts. That is fine for a component (it upgrades
-whenever the definition lands) and wrong for a global that a legacy script calls
-as it starts — which is exactly why `rc-fonts.js` became a per-surface swap
-rather than a shell change. Moving the bundle to the top of `<body>` fixes the
-ordering and makes every page carry it; it also puts a render-blocking bundle on
-the front door, which the prebaked landing imagery exists to avoid. Weigh that
-before porting `page-theme.js`, don't discover it halfway through.
+## Two bundles, and which one a thing belongs in
+
+`serve-components.js` carries the Lit elements and is emitted by the surfaces
+whose markup contains their tags. `serve-chrome.js` carries what *every* page
+needs — `window.cpUrlState` and the Page theme setting — and the shell
+(`ServeWeb.document`) emits it unconditionally, as the first thing in `<body>`.
+
+The split exists because those two answer different questions, and the numbers
+are lopsided enough that one bundle could not serve both:
+
+| | raw | gzip |
+| --- | --- | --- |
+| `serve-components.js` | 36 kB | 12 kB |
+| `serve-chrome.js` | 2 kB | 1 kB |
+
+Almost all of the component bundle is Lit. Putting that on the front door would
+undo the reason its imagery is prebaked — a visit should cost the HTML and
+nothing else. Neither chrome module is a custom element, so that bundle carries
+no Lit at all and is *smaller* than the two files it replaced (`url-state.js` +
+`page-theme.js` were 3.6 kB gzipped between them). Every page got cheaper.
+
+It also settles load order in one place. `window.cpUrlState` has to exist before
+the component bundle — `backgroundChoice.ts` reads it as `<cp-bg-toggle>`
+upgrades — and before `format-compare.js`, `rc-lanes.js` and `spec-compare.js`,
+which read it at their own IIFE time. One shell tag ahead of everything replaces
+four per-surface `url-state.js` tags that each had to be kept in the right
+place.
+
+**So: a custom element goes in `main.ts`. A global, or anything the page shell
+needs on every surface, goes in `chrome.ts` — and stays free of Lit, or the
+front door pays for it.** If a chrome module ever does need an element, that is
+the moment to ask whether it is really chrome.
+
+One consequence worth knowing before you write one: a chrome module is evaluated
+*before* the document is parsed. Publish the API at evaluation and defer any DOM
+wiring to `DOMContentLoaded`, as `pageTheme.ts` does. It used to get a parsed
+document for free by sitting last in `<body>`; that was never stated, and it is
+the only thing that had to change to move it.
 
 ## New behaviour lands here too, not just ports
 

@@ -671,13 +671,14 @@ object ServeWeb {
    * The header's **Settings** menu: standing per-visitor preferences, as opposed to the controls
    * that describe what is on screen (the Theme chips, Transparent, the override drawers). One
    * setting lives here today — **Page theme**, whether the chrome follows the selected preview
-   * theme or the visitor's operating system (see `page-theme.js`) — and it is a setting rather than
-   * another toolbar control precisely because it is answered once and then applies to every catalog
-   * and every page.
+   * theme or the visitor's operating system (see `cli/serve-web/src/chrome/pageTheme.ts`) — and it
+   * is a setting rather than another toolbar control precisely because it is answered once and then
+   * applies to every catalog and every page.
    *
    * A plain `<details>`, so it opens and the radios record a choice with **no JavaScript at all**;
-   * `page-theme.js` only reflects the stored value into them and repaints when one changes. It sits
-   * in the nav so it is in the same place on every page, and last so it never displaces the links.
+   * The shell bundle only reflects the stored value into them and repaints when one changes. It
+   * sits in the nav so it is in the same place on every page, and last so it never displaces the
+   * links.
    */
   private fun settingsMenuHtml(): String =
     """
@@ -2881,7 +2882,7 @@ object ServeWeb {
           if (theme === appliedTheme) return;
           appliedTheme = theme;
           // Turn the page over with the previews: with the Page theme setting on, the chrome
-          // follows an explicit Light/Dark pick (page-theme.js decides; a declared theme leaves it
+          // follows an explicit Light/Dark pick (the Page theme setting decides; a declared theme leaves it
           // alone). Guarded because that file is deferred to the end of the body.
           if (window.cpPageTheme) window.cpPageTheme.follow(theme);$applyDeclaredThemeIndented
           var k = theme === "dark" ? "d" : "l";
@@ -3183,7 +3184,7 @@ object ServeWeb {
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
       var total = cards.length;
-      // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+      // Address-bar state (`window.cpUrlState`). Every selection below is reflected into the URL so the
       // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
       // reachable with Back — without ever reloading: the grid re-points its own images.
       var urlState = window.cpUrlState || null;
@@ -6281,7 +6282,7 @@ object ServeWeb {
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n${scriptTag("url-state.js")}\n${scriptTag("serve-components.js")}\n<script>${catalogFilterScript(
+        "\n${scriptTag("serve-components.js")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
@@ -6688,7 +6689,6 @@ object ServeWeb {
           <div id="cp-compare-formats">$empty</div>
           ${rcLanes.orEmpty()}
         </div>
-        ${scriptTag("url-state.js")}
         ${if (hasRc) scriptTag("serve-components.js") else ""}
         ${if (rcLanes != null) scriptTag("rc-lanes.js") else ""}
         ${scriptTag("format-compare.js")}
@@ -7024,7 +7024,6 @@ $rows
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>
-        ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
@@ -9449,7 +9448,6 @@ $rows
       <!-- Remembers which control drawers this visitor left open (`cp-grp.<id>` per
            `details.cp-group[data-cp-group]`). Renders nothing; `serve.css` hides the tag. -->
       <cp-group-memory></cp-group-memory>
-      ${scriptTag("url-state.js")}
       ${scriptTag("serve-components.js")}
       <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
            filter. Renders nothing; `serve.css` hides the tag. -->
@@ -9598,9 +9596,9 @@ $rows
     /**
      * The catalog-scoped `localStorage` key this page's theme choice is remembered under (as
      * produced by [themeStorageKey]) — published to the client on `<html data-cp-theme-key>` and
-     * read back by the pre-paint script and `page-theme.js`, which need the remembered choice to
-     * resolve the page's colour scheme. Empty for a page with no theme control at all (the front
-     * door, `/status`, a shared document): those never pin a scheme.
+     * read back by the pre-paint script and the Page theme setting, which need the remembered
+     * choice to resolve the page's colour scheme. Empty for a page with no theme control at all
+     * (the front door, `/status`, a shared document): those never pin a scheme.
      */
     themeStorageKey: String = "",
     /** The catalog this page belongs to, named in the header bar. See [siteHeader]. */
@@ -9681,6 +9679,14 @@ $rows
       themeStorageKey
         .takeIf { it.isNotBlank() }
         ?.let { " data-cp-theme-key=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    // `serve-chrome.js` is emitted as the first thing in <body>, ahead of every surface's own
+    // scripts, because they read the globals it installs: the component bundle's Transparent
+    // toggle wires Back through the URL-state global as it upgrades, and three of the legacy
+    // enhancement scripts read it at their own IIFE time. It is unconditional because it also
+    // carries the Page theme setting, which every page has — and it can afford to be, at ~1 kB
+    // gzipped with no Lit in it. Deliberately NOT commented in the emitted HTML: a note naming
+    // those script files would ship to every visitor, and `html.contains("spec-compare.js")` is
+    // exactly how several tests ask whether a lane is loaded.
     return """
     <!doctype html>
     <html lang="en"$themeKeyAttr>
@@ -9696,11 +9702,11 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         ${pageThemeScript(themeStorageKey, declaredThemes)}
       </head>
       <body>
+        ${scriptTag("serve-chrome.js")}
         ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName)}
         <main class="cp-main">
         $body
         </main>$footerBlock
-        ${scriptTag("page-theme.js")}
       </body>
     </html>
     """
@@ -9709,10 +9715,10 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
 
   /**
    * Pin the page's colour scheme to the selected preview theme **before first paint**, when the
-   * Page theme setting is on (its default — see `page-theme.js` for why it is a setting).
+   * Page theme setting is on (its default — see `chrome/pageTheme.ts` for why it is a setting).
    *
    * Inline and in the `<head>` for the same reason the Transparent restore above is: resolving this
-   * from the deferred `page-theme.js` would paint the page in the wrong mode first and correct it a
+   * from the deferred shell bundle would paint the page in the wrong mode first and correct it a
    * frame later, which on a dark-to-light swap is a full-screen flash. It is deliberately the whole
    * resolution rather than a call into that file — the file has not loaded yet.
    *
