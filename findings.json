@@ -4283,16 +4283,16 @@
       "cleanBasename": "GestureGalleryPreview_Devices_Large_Round-67656b37.png",
       "findings": [
         {
-          "boundsInScreen": "61,164,393,249",
+          "boundsInScreen": "74,169,380,247",
           "level": "ERROR",
-          "message": "This item's height is 43dp. Consider making the height of this touch target 48dp or larger.",
+          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
           "type": "TouchTargetSizeCheck",
           "viewDescription": "android.view.View"
         },
         {
-          "boundsInScreen": "61,256,393,341",
+          "boundsInScreen": "74,253,380,331",
           "level": "ERROR",
-          "message": "This item's height is 43dp. Consider making the height of this touch target 48dp or larger.",
+          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
           "type": "TouchTargetSizeCheck",
           "viewDescription": "android.view.View"
         }
