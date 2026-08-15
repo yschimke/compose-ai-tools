@@ -73,6 +73,8 @@ fi
 # (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>
 # (e.g. meshcore-mobile@yschimke/meshcore-mobile).
 [[ -n "${SERVE_CATALOGS_UNLISTED:-}" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
+[[ -n "${SERVE_CATALOG_FEED_IDLE:-}" ]] &&
+  args+=(--catalog-feed-idle-timeout "${SERVE_CATALOG_FEED_IDLE}")
 # Top-level sites (<host>=<system>[,…]): one of the catalogs above, additionally served on a
 # hostname of its own where it looks like the only thing here. A routing view over the same
 # sessions — no extra catalog, no extra render.

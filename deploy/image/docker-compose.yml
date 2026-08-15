@@ -174,6 +174,8 @@ services:
       # regenerated branch reaches this running server without a restart (Watchtower only rolls the
       # image). Empty ⇒ the CLI default (600s); set 0 to disable and serve the boot snapshot only.
       SERVE_CATALOG_REFRESH: "${SERVE_CATALOG_REFRESH:-}"
+      # RSS feed history work sleeps after this many seconds without a feed request. Empty ⇒ 7 days.
+      SERVE_CATALOG_FEED_IDLE: "${SERVE_CATALOG_FEED_IDLE:-}"
       # Bundle-upload lane (POST a locally-built bundle and browse it here). Off unless asked for.
       SERVE_ACCEPT_BUNDLES: "${SERVE_ACCEPT_BUNDLES:-}"
       SERVE_ACCEPT_BUNDLES_FROM: "${SERVE_ACCEPT_BUNDLES_FROM:-}"

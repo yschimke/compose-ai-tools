@@ -74,6 +74,7 @@ import kotlinx.serialization.json.Json
  * Endpoints (all token-gated except `/healthz`, `/readyz`, `/version`, and the `/wasm/` static
  * assets):
  * - `GET /` landing page, `GET /p/{id}` viewer page,
+ * - `GET /{system}/feed.xml` demand-activated catalog change feed,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
  * - `GET /hero/{system}/{hash}.png` a prebaked, immutable front-door thumbnail ([ServeHeroImages]),
  * - `GET /social/{hash}.png` the drawn link-unfurl card a page advertises ([ServeSocialCard]), and
@@ -154,6 +155,8 @@ class ServeHttpServer(
   private val catalogLoads: CatalogLoadTracker? = null,
   /** Immediate catalog branch check exposed by `POST /{system}/refresh`. */
   private val catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
+  /** Demand-activated, expiring background RSS generator for published catalog history. */
+  private val catalogFeed: ServeCatalogChangeFeed? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -976,6 +979,11 @@ class ServeHttpServer(
         post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
         post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
 
+        if (catalogFeed != null) {
+          get("/feed.xml") { handleCatalogFeed(sessionInPath = false) }
+          get("/{system}/feed.xml") { handleCatalogFeed(sessionInPath = true) }
+        }
+
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
         get("/api/daemons") { handleDaemonStatus(sessionInPath = false) }
@@ -1053,6 +1061,35 @@ class ServeHttpServer(
     // previews out through `/api/previews?session=wear-m3` while `/wear-m3/` 404s — the isolation
     // undone by the older spelling of the same request.
     else siteSystem() ?: call.request.queryParameters["session"] ?: defaultSessionId
+
+  /**
+   * A catalog's RSS document. The request itself is the subscription signal: [catalogFeed] renews
+   * its interest lease and queues background catch-up, while this handler immediately returns the
+   * last completed document (or a valid empty document on the first cold request).
+   */
+  private suspend fun RoutingContext.handleCatalogFeed(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val feed =
+      catalogFeed
+        ?: run {
+          call.respondText("not found", status = HttpStatusCode.NotFound)
+          return
+        }
+    val system = selectedSessionId(sessionInPath)
+    val basePath = webSessionAndBase(sessionInPath).second
+    val result =
+      withContext(Dispatchers.IO) { feed.request(system, externalOrigin() + basePath) }
+        ?: run {
+          call.respondText("not found", status = HttpStatusCode.NotFound)
+          return
+        }
+    if (result.building) call.response.headers.append(HttpHeaders.RetryAfter, "30")
+    markGeneration("catalog-feed", "no-cache")
+    call.respondText(
+      result.xml,
+      ContentType.parse("application/rss+xml; charset=utf-8"),
+    )
+  }
 
   /**
    * The catalog this request's **host** publishes as a top-level site, or null on the main host

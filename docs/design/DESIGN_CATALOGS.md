@@ -221,6 +221,32 @@ occupy ~84 MB of packed objects in total. If a branch ever does need resetting,
 a manual force-push still works — nothing in the pipeline depends on the history
 being contiguous.
 
+### Catalog change feed
+
+`serve` exposes that publication history as RSS at `/<system>/feed.xml` (and `/feed.xml` on a
+top-level catalog site). The outer order is delivery-branch commit ancestry, newest first. One feed
+item is one publication batch; changes inside it retain the current catalog's authored component
+order, with deleted previews appended in their former order. The item records:
+
+- added and deleted preview images;
+- changed preview blobs with immutable before/after images pinned to the two delivery commits;
+- catalog placement/axis metadata changes; and
+- added, removed, or changed design references with immutable before/after reference images and
+  their old/new published match score.
+
+Feed work is demand-activated. The first request returns the last cached document (or an empty,
+valid RSS document on a cold cache) and queues a background shallow-Git history pass. Each later
+request renews an interest lease. After `--catalog-feed-idle-timeout` seconds with no request, the
+worker stops polling that feed but retains its XML and Git objects; a later request reactivates it
+and catches up. The default is seven days, `0` disables the lane, and
+`--catalog-feed-cache <dir>` overrides the durable cache location (otherwise it lives beside
+`--catalogs-file` on a deployed box).
+
+The score delta is deliberately described as the **published match before/after**, not as causal
+attribution: when the Compose render and Figma raster changed in the same publication, two scores
+cannot say which change caused which part of the movement. A future four-way scorer can add that
+attribution without changing the feed's commit ordering or preview identities.
+
 ## Publishing from another repo (reusable workflow)
 
 A consumer repo that owns a `catalog.spec.json` + a renderable `@Preview` module

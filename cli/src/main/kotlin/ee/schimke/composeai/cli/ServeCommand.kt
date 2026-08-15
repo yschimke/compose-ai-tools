@@ -35,6 +35,7 @@ import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
 import ee.schimke.composeai.cli.serve.ServeCatalogAdmin
+import ee.schimke.composeai.cli.serve.ServeCatalogChangeFeed
 import ee.schimke.composeai.cli.serve.ServeCatalogLiveHost
 import ee.schimke.composeai.cli.serve.ServeCatalogRefresher
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
@@ -220,6 +221,16 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private val catalogRefreshSeconds: Long =
     args.flagValue("--catalog-refresh-interval")?.toLongOrNull() ?: DEFAULT_CATALOG_REFRESH_SECONDS
+
+  /**
+   * How long an RSS reader keeps a catalog's background change-feed worker interested. Every
+   * `feed.xml` request renews the lease; after this many quiet seconds the worker stops fetching
+   * the delivery branch while retaining its last XML + shallow Git cache. `0` disables the feed
+   * lane.
+   */
+  private val catalogFeedIdleSeconds: Long =
+    args.flagValue("--catalog-feed-idle-timeout")?.toLongOrNull()
+      ?: DEFAULT_CATALOG_FEED_IDLE_SECONDS
 
   /**
    * Shared mode: a directory of pre-rendered portable bundles (or a single bundle) to host
@@ -555,6 +566,32 @@ class ServeCommand(args: List<String>) : Command(args) {
       .flagValue("--catalogs-file")
       ?.takeIf { it.isNotBlank() }
       ?.let { ServeCatalogsConfigFile(it.toPath()) }
+
+  /** Durable feed cache; defaults beside catalogs.json on deployed boxes, temp for local serve. */
+  private val catalogFeedCacheDir: File by lazy {
+    val preferred =
+      args.flagValue("--catalog-feed-cache")?.takeIf { it.isNotBlank() }?.let(::File)
+        ?: catalogsFile
+          ?.displayPath
+          ?.let(::File)
+          ?.absoluteFile
+          ?.parentFile
+          ?.resolve("catalog-feeds")
+    if (
+      preferred != null && (preferred.isDirectory || preferred.mkdirs()) && preferred.canWrite()
+    ) {
+      preferred
+    } else {
+      java.nio.file.Files.createTempDirectory("serve-catalog-feeds").toFile().also {
+        it.deleteOnExit()
+        if (preferred != null) {
+          System.err.println(
+            "serve: catalog feed cache ${preferred.absolutePath} is not writable; using ${it.absolutePath}"
+          )
+        }
+      }
+    }
+  }
 
   /**
    * Shared secret for the runtime admin routes (`--admin-token`; env `SERVE_ADMIN_TOKEN`) — both
@@ -2081,6 +2118,21 @@ class ServeCommand(args: List<String>) : Command(args) {
     val githubAuth = buildGithubAuth()
     val playgroundLane =
       openPlaygroundService(docStore, registry, repoAccessGated = githubAuth != null)
+    val catalogFeed =
+      if (catalogLoads != null && catalogFeedIdleSeconds > 0) {
+        ServeCatalogChangeFeed(
+          entries = { catalogLoads.snapshot().map { it.config } },
+          cacheRoot = catalogFeedCacheDir,
+          idleTimeoutMillis = catalogFeedIdleSeconds * 1000,
+          // Feed polling is demand-gated, but while active it follows the same operational cadence
+          // as catalog refresh. If ordinary refresh is disabled, retain the normal ten-minute feed
+          // cadence: a subscribed feed is itself an explicit request to watch this branch.
+          pollIntervalMillis =
+            (catalogRefreshSeconds.takeIf { it > 0 } ?: DEFAULT_CATALOG_REFRESH_SECONDS) * 1000,
+        )
+      } else {
+        null
+      }
     val server =
       ServeHttpServer(
         host = host,
@@ -2099,6 +2151,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         sites = sites,
         catalogLoads = catalogLoads,
         catalogRefresh = catalogRefresh,
+        catalogFeed = catalogFeed,
         maxLiveSeats = liveSeats,
         liveSeatLimiter = liveSeatLimiter,
         daemonLog = daemonLog,
@@ -2174,6 +2227,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           System.err.println("\nserve: shutting down…")
           runCatching { advertiser?.close() }
           runCatching { server.stop() }
+          runCatching { catalogFeed?.close() }
           runCatching { registry.close() }
           closeables.forEach { c -> runCatching { c?.close() } }
           done.countDown()
@@ -3375,6 +3429,14 @@ class ServeCommand(args: List<String>) : Command(args) {
                           place when it moved — so a regenerated branch is picked up with no restart
                           (default ${DEFAULT_CATALOG_REFRESH_SECONDS}s; 0 disables, serving the boot snapshot only). Uses
                           `git ls-remote` (no API rate limit), and skips a branch it can't resolve.
+        --catalog-feed-idle-timeout <seconds>
+                          Publish /<catalog>/feed.xml. A request renews that feed's background
+                          history-computation lease; after this many seconds without another request
+                          it stops fetching while keeping the last generated feed and shallow Git
+                          cache (default ${DEFAULT_CATALOG_FEED_IDLE_SECONDS}s; 0 disables).
+        --catalog-feed-cache <dir>
+                          Durable shallow-Git + generated-XML cache for catalog feeds. Defaults to a
+                          catalog-feeds directory beside --catalogs-file, or a temp dir in local mode.
         --wasm-dir <system>=<dir>[,<system>=<dir>…]
                           In-browser CMP tier: map a design system to its assembled Kotlin/Wasm
                           catalog app (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist →
@@ -3402,6 +3464,7 @@ class ServeCommand(args: List<String>) : Command(args) {
      * — cheap enough to poll every watched catalog at this cadence indefinitely.
      */
     const val DEFAULT_CATALOG_REFRESH_SECONDS = 600L
+    const val DEFAULT_CATALOG_FEED_IDLE_SECONDS = 7L * 24 * 60 * 60
 
     /**
      * Compiles per minute per caller. Sized for a person using the editor, not for a script: a

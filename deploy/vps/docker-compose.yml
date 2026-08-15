@@ -38,6 +38,7 @@ services:
       # Optional additions to that file (<system>@<owner>/<repo>, comma-separated).
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
+      SERVE_CATALOG_FEED_IDLE: "${SERVE_CATALOG_FEED_IDLE:-}"
       # Top-level sites (<host>=<system>[,…]): serve one of the catalogs above on a hostname
       # of its own, where it presents as the whole server. Caddy in front must route the name
       # here; catalogs.json's "sites" is the durable form of the same setting.
