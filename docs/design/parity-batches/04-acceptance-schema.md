@@ -1,8 +1,10 @@
 # Batch 04 — the committed known-difference schema
 
 **Issue:** [#3807](https://github.com/yschimke/compose-ai-tools/issues/3807).
-**Depends on:** [00](00-decisions.md) D1 (the `plane` discriminant is meaningless until the plane
-question is settled).
+**Depends on:** [00](00-decisions.md) **D1 and D5**. D1 because the `plane` discriminant is
+meaningless until the plane question is settled; **D5 because the fixtures encode its six answers** —
+resampler, mask-edge participation, denominator, contribution sign, rounding, match metric — and a
+fixture set frozen ahead of them either encodes a guess or cannot be produced at all.
 **Blocks:** [05](05-acceptance-engines.md) entirely — both engines and the publish path.
 **Ships:** no user-visible change. The deliverable is a contract plus **conformance fixtures**, and
 the fixtures are the deliverable, not a follow-up: they are the only thing keeping three runners (the

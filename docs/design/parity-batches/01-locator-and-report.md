@@ -44,6 +44,12 @@ Rules that are not negotiable, each because it has a silent failure mode:
   values are free text, so a label of `a;knob.color=red` reads back as two overrides.
 - **Fenced block, not an HTML comment.** A comment is invisible in the rendered issue, so a reporter
   editing the body cannot see they have broken the index.
+- **Reserve `element` and `bounds` as optional `v1` fields now**, even though nothing writes them
+  until [batch 03](03-element-selection.md). This batch freezes the writer, the parser and the shared
+  fixture, and batch 02's index schema is built on top; adding two keys to the same `v1` afterwards
+  means a strict parser rejects the report while a permissive one silently discards the selection.
+  Reserving them costs a line each here and a fixture; retrofitting them costs a version bump across
+  three consumers.
 
 ### 2. Emit it
 

@@ -11,27 +11,33 @@ batch** — these files say what to do, not why, and the why is load-bearing thr
 ## Order
 
 ```
-00 decisions ──┬──────────────────────────────► (unblocks 02, 04, 05)
-               │
-01 locator ────┴──► 02 issue index ──────────────────────────────┐
-      │                                                          │
-      └──────────► 03 element selection ──┐                      │
-                                          ├─► 05 engines ──► 06 resolution + docs
-                        04 schema ────────┘
+00 decisions ─┬─ D2,D4 ─► 01 locator ──► 02 issue index ─────────────────┐
+              │              │                                          │
+              ├─ D1 ─────────┴────────► 03 element selection ──┐         │
+              │                                                ├─► 05 ──► 06
+              ├─ D1,D5 ──────────────► 04 schema ──────────────┘  engines  resolution
+              │                                                            + docs
+              └─ D3 ────────────────────────────────────────► 05 engines
 ```
+
+**Every arrow out of 00 is a hard prerequisite, not a suggestion.** Each of D1–D5 blocks a batch
+because deciding it late means rewriting work rather than adding to it — a locator built before D2/D4
+records the wrong frame, and a fixture set frozen before D5 encodes a guess both engines then conform
+to.
 
 | Batch | Covers | Depends on | Ships something a person can see |
 | --- | --- | --- | --- |
-| [00](00-decisions.md) — decisions and corrections | — | nothing | no (unblocks 02/04/05) |
-| [01](01-locator-and-report.md) — locator + issue body | [#3801](https://github.com/yschimke/compose-ai-tools/issues/3801), [#3802](https://github.com/yschimke/compose-ai-tools/issues/3802) | nothing | partly — issues gain a parseable identity |
+| [00](00-decisions.md) — decisions and corrections | — | nothing | no (unblocks 01/02/03/04/05) |
+| [01](01-locator-and-report.md) — locator + issue body | [#3801](https://github.com/yschimke/compose-ai-tools/issues/3801), [#3802](https://github.com/yschimke/compose-ai-tools/issues/3802) | **00 D2, D4** | partly — issues gain a parseable identity |
 | [02](02-issue-index.md) — issue index end to end | [#3804](https://github.com/yschimke/compose-ai-tools/issues/3804), [#3805](https://github.com/yschimke/compose-ai-tools/issues/3805), [#3806](https://github.com/yschimke/compose-ai-tools/issues/3806) | 01 | **yes** — open issues on the pages |
-| [03](03-element-selection.md) — element selection | [#3803](https://github.com/yschimke/compose-ai-tools/issues/3803) | 01 | **yes** — click an element to report it |
-| [04](04-acceptance-schema.md) — acceptance schema | [#3807](https://github.com/yschimke/compose-ai-tools/issues/3807) | 00 | no (contract + fixtures) |
-| [05](05-acceptance-engines.md) — both engines + publish | [#3808](https://github.com/yschimke/compose-ai-tools/issues/3808), [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809), [#3810](https://github.com/yschimke/compose-ai-tools/issues/3810) | 03, 04 | **yes** — accepted vs unaccepted scores |
+| [03](03-element-selection.md) — element selection | [#3803](https://github.com/yschimke/compose-ai-tools/issues/3803) | 01, **00 D1** | **yes** — click an element to report it |
+| [04](04-acceptance-schema.md) — acceptance schema | [#3807](https://github.com/yschimke/compose-ai-tools/issues/3807) | **00 D1, D5** | no (contract + fixtures) |
+| [05](05-acceptance-engines.md) — both engines + publish | [#3808](https://github.com/yschimke/compose-ai-tools/issues/3808), [#3809](https://github.com/yschimke/compose-ai-tools/issues/3809), [#3810](https://github.com/yschimke/compose-ai-tools/issues/3810) | 03, 04, **00 D3** | **yes** — accepted vs unaccepted scores |
 | [06](06-resolution-and-docs.md) — resolution, closure, docs | [#3811](https://github.com/yschimke/compose-ai-tools/issues/3811), [#3812](https://github.com/yschimke/compose-ai-tools/issues/3812) | 02, 05 | **yes** — the loop closes |
 
-**01 and 02 can run ahead of everything else.** They deliver the epic's first four acceptance
-criteria and depend on none of the acceptance machinery. If only one batch gets done, do 01 — every
+**01 and 02 can run ahead of everything else** once 00's D2 and D4 are answered — two decisions, not
+a batch of work. They deliver the epic's first four acceptance criteria and depend on none of the
+acceptance machinery. If only one batch gets done, do 01 — every
 issue filed after it lands is machine-identifiable, and issues filed before it need their bodies
 hand-edited later.
 

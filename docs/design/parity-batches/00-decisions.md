@@ -84,6 +84,33 @@ substituted from control state can describe a variant the reporter never saw.
 loaded**. Deriving from the successfully displayed frame is the better end state; it is also the one
 that can be got subtly wrong and pass review. Take the crude version first and note the follow-up.
 
+## D5 — the pixel semantics, decided before the fixtures are frozen
+
+**Blocks:** 04 (the fixtures encode these answers), and therefore 05.
+
+§4 deliberately specifies no pixel algorithm — earlier revisions carried a numbered pipeline and
+every version of it had a real defect. What it gives instead is ten invariants plus an explicit list
+of six open questions:
+
+1. the portable pixel path — which resampler, since `drawImage`'s filter is not reproducible
+   off-browser;
+2. whether mask pixels participate in `edgeMask`;
+3. the masked pass's denominator;
+4. what "accepted contribution" means, given it can legitimately go **negative**;
+5. sub-pixel rounding;
+6. the match metric shared by the candidate gate and the resolution test, and whether it is aggregate
+   or per-pixel.
+
+**These cannot be left to batch 05, and an earlier draft of this plan did exactly that.** Batch 04
+must ship a *passing* conformance runner whose fixtures pin intermediate planes and expected verdicts
+— and every one of those expected bytes is a function of the six answers above. A fixture set frozen
+before they are settled either encodes a guess or cannot be produced at all, and batch 05 then
+"conforms" to whichever guess got written down.
+
+**Do:** answer all six here, record each in the design doc as it is made, and only then let 04 freeze
+fixtures. A decision made in code and not written down is how the previous three pipelines went
+wrong.
+
 ---
 
 ## Loose ends (not blocking; file or fix opportunistically)
