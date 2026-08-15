@@ -21,11 +21,10 @@ plugins {
 // annotation KDoc and `SubspaceSceneRecorder`.
 
 composePreview {
-  // Pin Robolectric to SDK 35. `androidx.xr.compose:compose`'s AAR metadata
-  // declares `minCompileSdk = 36`, so the module compiles against 36, but
-  // Robolectric 4.16.1 needs JDK 21+ for an SDK 36 sandbox and the repo's
-  // toolchain stays on JDK 17. The 2D fallback path the previews exercise is
-  // pure Compose drawing (no API-36 platform symbol at render time), so SDK 35
+  // Pin Robolectric to SDK 35. Compose 1.12's AAR metadata requires this module to compile against
+  // 37, but a Robolectric SDK 36+ sandbox needs JDK 21 and the repo's toolchain stays on JDK 17.
+  // The 2D fallback path the previews exercise is
+  // pure Compose drawing (no API-36/37 platform symbol at render time), so SDK 35
   // captures it cleanly — the same escape hatch `:samples:remotecompose` and
   // `:samples:android-alpha` use to render compileSdk-37 modules under JDK 17.
   // Drop this override when the toolchain moves to JDK 21.
@@ -40,11 +39,8 @@ composePreview {
 android {
   namespace = "com.example.samplexrspatial"
 
-  // `androidx.xr.compose:compose` raises `minCompileSdk = 36` in its AAR
-  // metadata, so the module must compile against 36. That is the repo default
-  // from `composeai.android-conventions` (platform-36 is installed); unlike
-  // `:samples:xr-glimmer` no platform-37 bump is needed.
-  compileSdk = 36
+  // Compose 1.12 supersedes androidx.xr.compose's older minCompileSdk 36 requirement.
+  compileSdk = 37
 
   buildFeatures { compose = true }
 

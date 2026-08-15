@@ -36,6 +36,8 @@ composePreview {
 
 android {
   namespace = "com.example.daemonbench"
+  // Compose 1.12 (BOM 2026.08.00) publishes minCompileSdk 37 metadata.
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.example.daemonbench"

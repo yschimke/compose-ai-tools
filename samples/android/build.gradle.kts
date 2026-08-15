@@ -7,8 +7,8 @@ plugins {
 }
 
 composePreview {
-  // Pin Robolectric to SDK 35 even though `composeai.android-conventions` sets
-  // `compileSdk = 36`. The plugin's default is auto-detection (`compileSdk` →
+  // Pin Robolectric to SDK 35 even though this module sets `compileSdk = 37` for Compose 1.12.
+  // The plugin's default is auto-detection (`compileSdk` →
   // `sdk=N` in `robolectric.properties`, see issue #1248), but the project's
   // toolchain is JDK 17 and Robolectric SDK 36 requires JDK 21+
   // (`DefaultSdkProvider.verifySupportedSdk`). The override demonstrates the
@@ -34,6 +34,8 @@ composePreview {
 
 android {
   namespace = "com.example.sampleandroid"
+  // Compose 1.12 (BOM 2026.08.00) publishes minCompileSdk 37 metadata.
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.example.sampleandroid"
