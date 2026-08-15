@@ -7,7 +7,7 @@
 // is what stops that: CI runs `npm run verify`, which rebuilds and then asserts
 // the working tree is clean for the output paths.
 //
-// BOTH outputs are checked. `serve-chrome.js` is the smaller and the easier to
+// All outputs are checked. `serve-chrome.js` is the smaller and the easier to
 // forget, and it is the one every page loads.
 //
 // Run after `npm run build`, from anywhere — paths resolve off this file.
@@ -24,7 +24,11 @@ const assets = resolve(
     "..",
     "src/main/resources/ee/schimke/composeai/cli/serve/assets",
 );
-const tracked = ["serve-components.js", "serve-chrome.js"].map((name) =>
+const tracked = [
+    "serve-components.js",
+    "serve-chrome.js",
+    "keyboard-navigation.js",
+].map((name) =>
     relative(repoRoot, resolve(assets, name)),
 );
 
@@ -37,7 +41,7 @@ const status = execFileSync(
 if (status) {
     const untracked = status.split("\n").some((l) => l.trim().startsWith("??"));
     console.error(
-        `\n${tracked.join(" and ")} is not in sync with cli/serve-web/src.\n\n` +
+        `\n${tracked.join(", ")} are not in sync with cli/serve-web/src.\n\n` +
             (untracked
                 ? "A bundle a fresh build produced is not committed at all — `git add` it.\n"
                 : "A committed bundle differs from what a fresh build produces. This run has\n" +
@@ -47,4 +51,4 @@ if (status) {
     process.exit(1);
 }
 
-console.log(`${tracked.join(", ")} up to date.`);
+console.log(`${tracked.join(", ")} are up to date.`);

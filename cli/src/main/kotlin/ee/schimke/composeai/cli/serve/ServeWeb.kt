@@ -669,16 +669,15 @@ object ServeWeb {
 
   /**
    * The header's **Settings** menu: standing per-visitor preferences, as opposed to the controls
-   * that describe what is on screen (the Theme chips, Transparent, the override drawers). One
-   * setting lives here today — **Page theme**, whether the chrome follows the selected preview
-   * theme or the visitor's operating system (see `cli/serve-web/src/chrome/pageTheme.ts`) — and it
-   * is a setting rather than another toolbar control precisely because it is answered once and then
-   * applies to every catalog and every page.
+   * that describe what is on screen (the Theme chips, Transparent, the override drawers). Two
+   * settings live here: **Page theme**, whether the chrome follows the selected preview theme or
+   * the visitor's operating system (see `cli/serve-web/src/chrome/pageTheme.ts`), and opt-in
+   * **Power-user navigation** (see `keyboard-navigation.js`). They are settings rather than toolbar
+   * controls because each is answered once and then applies to every catalog and page.
    *
    * A plain `<details>`, so it opens and the radios record a choice with **no JavaScript at all**;
-   * The shell bundle only reflects the stored value into them and repaints when one changes. It
-   * sits in the nav so it is in the same place on every page, and last so it never displaces the
-   * links.
+   * the scripts only reflect stored values and enhance the menu. It sits in the nav so it is in the
+   * same place on every page, and last so it never displaces the links.
    */
   private fun settingsMenuHtml(): String =
     """
@@ -699,6 +698,18 @@ object ServeWeb {
           </label>
           <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
             match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+        <fieldset class="cp-settings-group cp-settings-keyboard">
+          <legend class="cp-settings-legend">Keyboard</legend>
+          <label class="cp-settings-option">
+            <input type="checkbox" data-cp-keyboard-navigation>
+            <span>Power-user navigation</span>
+          </label>
+          <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+            shortcuts and an on-screen command palette.</p>
+          <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+            View keyboard tour
+          </button>
         </fieldset>
       </div>
     </details>
@@ -9738,6 +9749,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         <main class="cp-main">
         $body
         </main>$footerBlock
+        ${scriptTag("keyboard-navigation.js")}
       </body>
     </html>
     """

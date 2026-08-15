@@ -40,7 +40,7 @@ const assets = (name) =>
         name,
     );
 
-// TWO bundles, for one reason: they are loaded from different places and cost
+// THREE bundles, for one reason: they are loaded from different places and cost
 // different amounts.
 //
 // `serve-components.js` carries the Lit elements and is emitted by the surfaces
@@ -57,9 +57,13 @@ const assets = (name) =>
 // to be evaluated BEFORE the components bundle and before the legacy scripts,
 // because they read `window.cpUrlState` — while the components bundle stays
 // where each surface already puts it.
+//
+// `keyboard-navigation.js` is also emitted by every page, but stays separate so
+// its opt-in power-user UI can initialize after the complete page DOM exists.
 const BUNDLES = [
     { entry: "src/main.ts", out: "serve-components.js" },
     { entry: "src/chrome.ts", out: "serve-chrome.js" },
+    { entry: "src/keyboardNavigation.ts", out: "keyboard-navigation.js" },
 ];
 
 const optionsFor = ({ entry, out }) => ({
