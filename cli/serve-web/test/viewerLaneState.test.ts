@@ -13,6 +13,8 @@ import {
     laneChip,
     laneLabelText,
     liveTransportAvailable,
+    restoreStaticPlayer,
+    serverPlayerParam,
     type LaneFlags,
 } from "../src/viewer/laneState.js";
 
@@ -22,6 +24,52 @@ describe("backendRequiresRenderParam", () => {
         assert.equal(backendRequiresRenderParam("cmp-jvm"), true);
         assert.equal(backendRequiresRenderParam("java"), false);
         assert.equal(backendRequiresRenderParam("js"), false);
+    });
+});
+
+describe("server-side player persistence", () => {
+    it("keeps the explicit player in full live override replacements", () => {
+        assert.equal(serverPlayerParam("cmp-android", true), "cmp-android");
+        assert.equal(serverPlayerParam("cmp-jvm", true), "cmp-jvm");
+        assert.equal(serverPlayerParam("java", true), "java");
+        assert.equal(serverPlayerParam("cmp-android", false), null);
+        assert.equal(serverPlayerParam("js", true), null);
+    });
+
+    it("restores a non-Java default after leaving a browser player", () => {
+        assert.deepEqual(
+            restoreStaticPlayer({
+                defaultBackend: "cmp-android",
+                pickedBackend: "cmp-android",
+                picked: false,
+            }),
+            {
+                defaultBackend: "cmp-android",
+                pickedBackend: "cmp-android",
+                picked: true,
+            },
+        );
+        assert.deepEqual(
+            restoreStaticPlayer({
+                defaultBackend: "java",
+                pickedBackend: "java",
+                picked: false,
+            }),
+            {
+                defaultBackend: "java",
+                pickedBackend: "java",
+                picked: false,
+            },
+        );
+    });
+
+    it("does not replace an explicit server-side visitor pick", () => {
+        const pick = {
+            defaultBackend: "cmp-android",
+            pickedBackend: "cmp-jvm",
+            picked: true,
+        };
+        assert.strictEqual(restoreStaticPlayer(pick), pick);
     });
 });
 
