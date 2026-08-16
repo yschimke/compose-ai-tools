@@ -193,9 +193,7 @@ class ServeWebThemeSpecimenTest {
     )
     // The markup alone is not enough: viewer.js reassigns `themeChoice.disabled` from the lane
     // flags on every state change, so it has to consult the same signal or it re-enables it.
-    val script =
-      ServeWebAssets.load("viewer.js")?.bytes?.decodeToString()
-        ?: error("viewer.js not on classpath")
+    val script = viewerSource()
     assertTrue(
       script.contains("data-fixed-theme"),
       "viewer.js must gate on the flag, or its recompute undoes the server's disabled attribute",

@@ -168,7 +168,7 @@ class ServePageThemeTest {
     // anywhere shows its baked default under `data-theme-active="0"`, and passing `.value` there
     // pins the page to a mode nobody picked. #3544 fixed that in `viewer.js` and left this
     // assertion on the old spelling, so it has been failing on `main` since.
-    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    val viewerJs = viewerSource()
     assertTrue(
       viewerJs
         .substringAfter("function hydrateFromUrl")

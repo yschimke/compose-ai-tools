@@ -1364,9 +1364,13 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # The committed bundle is in the filter too, so a hand-edit of the generated file is
-          # caught even when no source changed — that edit is exactly the drift this guards.
-          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve-components\.js$'; then
+          # EVERY committed bundle is in the filter, not just the source, so a hand-edit of a
+          # generated file is caught even when no source changed — that edit is exactly the drift
+          # this guards. The list must stay in step with `tracked` in
+          # cli/serve-web/scripts/check-committed-bundle.mjs: a bundle named there but missing here
+          # is checked on every PR except the one kind that needs it most, and the failure is
+          # silent — the job reports green having skipped its own npm steps.
+          if printf '%s\n' "$changed" | grep -qE '^cli/serve-web/|^cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/(serve-components|serve-chrome|keyboard-navigation|format-compare|viewer)\.js$'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

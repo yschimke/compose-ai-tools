@@ -29,6 +29,7 @@ const tracked = [
     "serve-chrome.js",
     "keyboard-navigation.js",
     "format-compare.js",
+    "viewer.js",
 ].map((name) =>
     relative(repoRoot, resolve(assets, name)),
 );

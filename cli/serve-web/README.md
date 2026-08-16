@@ -304,8 +304,30 @@ across the whole comparison), `scorer/deltaMap.ts` and `scorer/svgTranslate.ts`.
 Only `scorer/frames.ts` needs a browser, and it does nothing but decode,
 downscale, sample and hand off.
 
-`viewer.js` (3,127) is next, and reads `window.ComposePreviewCompare` exactly the
-way the design page did — so it wants the same read-it-late treatment.
+`viewer.js` (3,151) was last, and went the way `format-compare.js` went in step
+4: same path, same script tag, generated from `src/viewer.ts` rather than
+hand-written. It is **not** a Lit element and deliberately so — the viewer
+renders no markup of its own. Every control on the page is server-rendered by
+`ServeWeb.viewerPage`, so a `render()` returning nothing would be ceremony, and
+moving the markup into a template would be a rewrite of the server page rather
+than a port of this file. What the move buys is the type check over 3,000 lines
+of lane machinery and the retirement of the last legacy seam: the five DOM-free
+slices that had been extracted ahead of it (`viewer/fit.ts`, `keyInput.ts`,
+`laneState.ts`, `ownedParams.ts`, `renderQuery.ts`, `themeChoice.ts`) reached it
+through a `window.cpViewerQuery` global that existed *only* because the caller
+lived in another build. It imports them now, and the global is gone.
+
+It reads `window.ComposePreviewCompare` and `window.cpSpecCompare` exactly the way
+the design page did, and keeps the same read-it-late treatment: both handles are
+looked up at call time, never cached at load, because no script order guarantees
+which bundle evaluated first.
+
+The one thing to know before editing it: the served asset is **minified**, so the
+Kotlin assertions that pin how the viewer is written read
+`cli/serve-web/src/viewer.ts` through `viewerSource()` in the test source, not
+`ServeWebAssets.load("viewer.js")`. Pointing them at the bundle would not merely
+fail — a *negative* assertion ("the viewer must no longer spell it the old way")
+is vacuously true against minified text, so it would retire itself silently.
 
 One thing worth knowing about `grade`: the 90/75 bands are NOT the spec lane's
 99.5/97, and unifying them would make one of the two surfaces lie. A wall
@@ -328,6 +350,7 @@ lopsided enough that one bundle could not serve all three:
 | | raw | gzip |
 | --- | --- | --- |
 | `serve-components.js` | 116 kB | 35 kB |
+| `viewer.js` | 45 kB | 13 kB |
 | `format-compare.js` | 5 kB | 2 kB |
 | `serve-chrome.js` | 2 kB | 1 kB |
 
@@ -396,7 +419,16 @@ porting it:
   at call time, so the port keeps the global and moves only the implementation.
   Changing the seam as well would mean editing three untyped callers in the same
   change, which is the opposite of one reviewable step — the seam goes when
-  those callers do.
+  those callers do. `window.cpViewerQuery` was the same shape and is the worked
+  example: its only caller was `viewer.js`, so the seam went the moment that
+  caller moved into this package, and the rules it published are plain imports
+  now. `cpRcFonts` stays because the inline doc-player script has not moved.
+- **A page-sized script that renders no markup of its own** (`viewer.js`, and
+  `format-compare.js` before it): not an element either, and not a candidate to
+  become one. It keeps its path, its script tag and its position in the load
+  order, and only its *source* moves — into `src/`, type-checked, importing the
+  DOM-free rules directly. Reach for this when the server already renders every
+  control and the script is behaviour over that markup at page scale.
 
 Whichever shape it is, the same rule holds for the elements the server emits:
 they are declared in the page's HTML, so a fixture regeneration and a pixel

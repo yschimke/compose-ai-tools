@@ -1200,7 +1200,7 @@ class ServeHttpRoutingTest {
     assertTrue(html.contains("id=\"cp-rc-wasm\""), "cmp-wasm iframe present")
     assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
     // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
-    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    val viewerJs = viewerSource()
     assertTrue(viewerJs.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
     assertTrue(viewerJs.contains("RcdPlayer"), "the lane creates the Rc player")
     assertTrue(viewerJs.contains("setNamedFloatOverride"), "rc knob edits apply client-side")

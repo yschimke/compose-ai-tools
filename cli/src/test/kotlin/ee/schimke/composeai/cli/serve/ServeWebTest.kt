@@ -722,7 +722,7 @@ class ServeWebTest {
     )
     val knob = Regex("<input[^>]*data-rc-name=\"label\"[^>]*>").find(html)?.value ?: ""
     assertFalse(knob.contains(" disabled"), "CMP/Wasm can apply named values: '$knob'")
-    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    val viewerJs = viewerSource()
     assertTrue(viewerJs.contains("namedValues="), "named values are passed to the isolated host")
     assertTrue(viewerJs.contains("e.origin !== location.origin"), "messages are origin checked")
     assertTrue(
