@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -713,6 +714,40 @@ class ServeRenderHostTest {
       assertFalse(h.hasA11yOverlay)
       assertTrue(h.renderA11y(previewId, PreviewOverrides()) is A11yOutcome.NotFound)
     }
+  }
+
+  @Test
+  fun `renderA11y reports a daemon that cannot be opened instead of throwing`() {
+    // Forcing the enable moved the daemon OPEN into this lane, and that open is deliberately
+    // outside the enable's own `runCatching` so a transient failure leaves the lazy uninitialized
+    // and the next caller retries. It must not escape as an exception: the route only translates
+    // outcome values, so a throw would skip its 500-with-reason and its log line entirely.
+    val logged = CopyOnWriteArrayList<String>()
+    val opens = AtomicInteger(0)
+    // Not `use {}`: a host whose open failed has no subprocess to reap, and `close()` reaches for
+    // the session again to find that out — which would re-throw the stubbed failure from the
+    // cleanup and mask the outcome this test is about.
+    val h =
+      ServeRenderHost(
+        openSession = {
+          opens.incrementAndGet()
+          throw IllegalStateException("daemon handshake timed out")
+        },
+        previews = listOf(ServePreview(previewId, "Red")),
+        onLog = { logged += it },
+      )
+    val out = h.renderA11y(previewId, PreviewOverrides())
+    assertTrue(out is A11yOutcome.Failed, "expected Failed, got $out")
+    assertTrue(
+      out.reason.contains("daemon handshake timed out"),
+      "the failure must carry the open's reason, got '${out.reason}'",
+    )
+    assertTrue(logged.any { it.contains("daemon handshake timed out") }, "logged: $logged")
+
+    // Nothing was cached, so a later request still tries — the whole point of leaving the lazy
+    // uninitialized.
+    h.renderA11y(previewId, PreviewOverrides())
+    assertEquals(2, opens.get(), "a failed open must not be remembered as the answer")
   }
 
   @Test
