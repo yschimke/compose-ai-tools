@@ -1156,26 +1156,26 @@
     "serve-viewer-exploded-controls.dark.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "dark",
-      "sha256": "9385018d35e18141cc3540da0807770f33cce88e13e4c28795099d809698d4ad",
-      "size": 101869
+      "sha256": "5c08ebbdb9df7b8ac3a918d9a49bd7d6b19a19ae135d39b849bfa9e7b14cde6b",
+      "size": 107011
     },
     "serve-viewer-exploded-controls.light.png": {
       "fixture": "serve-viewer-exploded-controls",
       "theme": "light",
-      "sha256": "cee9715011e53b0844deb0251c5631c1cead714889cd9110847bcd311f7809bd",
-      "size": 100771
+      "sha256": "dbef494c5e1b255517739134c5c7f28a6b75fb7a459a1c3d13720313d2f1ba9c",
+      "size": 105945
     },
     "serve-viewer-exploded.dark.png": {
       "fixture": "serve-viewer-exploded",
       "theme": "dark",
-      "sha256": "ef0b1afd0c182280edba4d29d14f392bb3381481ee439ed1e3c3bc1ab93f937e",
-      "size": 77874
+      "sha256": "0385f2489d77eaa841b9ae2d28808635561bb382626909437fc9cca09b7f3a7e",
+      "size": 80835
     },
     "serve-viewer-exploded.light.png": {
       "fixture": "serve-viewer-exploded",
       "theme": "light",
-      "sha256": "b482cb718c64fc3d19d751a6a3fb7bbf9945b4f2aa7c7382edfabc17e35f611c",
-      "size": 77109
+      "sha256": "a11cf8631e624a8a10982bb1dfdab075fc58e1a42e0213da421382a86489ea6c",
+      "size": 80193
     },
     "serve-viewer-focus.dark.png": {
       "fixture": "serve-viewer-focus",
