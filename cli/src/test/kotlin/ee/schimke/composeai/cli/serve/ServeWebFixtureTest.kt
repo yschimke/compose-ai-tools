@@ -1908,7 +1908,9 @@ class ServeWebFixtureTest {
     // relative to the current page and navigates nowhere near the preview — would have passed.
     assertEquals(
       "com.example.ProfileCardPreview",
-      Regex("""/p/([^/?#]+)""").find(manifestHref!!)?.groupValues?.get(1),
+      // The capture must be the FINAL segment. Unanchored, `/p/<id>/other` still yields `<id>` —
+      // and the server registers only the exact `/p/{name}` routes, so that URL navigates nowhere.
+      Regex("""/p/([^/?#]+)(?:[?#]|$)""").find(manifestHref!!)?.groupValues?.get(1),
       "…and its destination is THAT preview, on the preview route",
     )
     // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
