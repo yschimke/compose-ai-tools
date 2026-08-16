@@ -284,6 +284,10 @@ class PlatformNeutralSourcesTest {
         "StoreBackedRemoteContext.kt",
         "RcImageSource.kt",
         "GraphContext.kt",
+        // The draw-nothing `PaintContext` the evaluator hands to value-producing paint operations.
+        // Neutral by construction: it subclasses the `remote-core` abstract class and no-ops every
+        // member, so there is no canvas of any kind in its signature.
+        "GraphPaintContext.kt",
         "RcPlayerCompositionLocals.kt",
         "RcPlayerEasing.kt",
         // Custom (host-extension) components: schemas, the property reader, the plugin registry and
