@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.11.0](https://github.com/yschimke/compose-ai-tools/compare/v1.10.1...v1.11.0) (2026-08-16)
+
+
+### Features
+
+* **design-artifacts:** support live bundles across all modules ([#4080](https://github.com/yschimke/compose-ai-tools/issues/4080)) ([6200880](https://github.com/yschimke/compose-ai-tools/commit/62008800ae1c15be95b9a8f891e7261f431d2fdf))
+* **serve:** remember Catalog / Dev in a cookie, not in every URL ([#4087](https://github.com/yschimke/compose-ai-tools/issues/4087)) ([3ecf53b](https://github.com/yschimke/compose-ai-tools/commit/3ecf53b2416a155a95bad407f009ac33bdcce68a))
+
+
+### Bug Fixes
+
+* **catalog:** pair a motion capture with its own theme ([#4082](https://github.com/yschimke/compose-ai-tools/issues/4082)) ([2f12fd6](https://github.com/yschimke/compose-ai-tools/commit/2f12fd64f9d3abf7d6d646445c911386cc56d14d))
+* **ci:** pin live module bundle driver ([#4085](https://github.com/yschimke/compose-ai-tools/issues/4085)) ([09176c6](https://github.com/yschimke/compose-ai-tools/commit/09176c695185ffd9fd222825d555c68c7ce471e9))
+* **ci:** refresh design artifact driver pin ([#4084](https://github.com/yschimke/compose-ai-tools/issues/4084)) ([7101f91](https://github.com/yschimke/compose-ai-tools/commit/7101f914448cad3b0439d20018b168e55492815f))
+* **design-map:** project an @OverrideVariant cell that sits on a @CatalogVariant ([#4081](https://github.com/yschimke/compose-ai-tools/issues/4081)) ([b960825](https://github.com/yschimke/compose-ai-tools/commit/b9608259a51d835a90ff58ed77d0ea9f1c5ced82))
+
 ## [1.10.1](https://github.com/yschimke/compose-ai-tools/compare/v1.10.0...v1.10.1) (2026-08-16)
 
 
