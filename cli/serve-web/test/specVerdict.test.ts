@@ -8,6 +8,7 @@ import {
     changedPercentOf,
     chipText,
     matchBand,
+    offBaselineReadout,
     readout,
 } from "../src/spec/verdict.js";
 import {
@@ -51,6 +52,20 @@ describe("readout", () => {
             readout(96, 12, GEOMETRY_REPORT_THRESHOLD),
             "96.0% match · 12.00% pixels differ · 2.0% proportion difference",
         );
+    });
+
+    it("refuses a match score when there is no spec for the frame", () => {
+        // A reference is imported once, at the catalog's default, and never re-exported per theme.
+        // Off that baseline the changed-pixel count is still literally true about the two frames,
+        // but a percentage across them grades the override — on a Light Medium Contrast render of
+        // a pixel-correct shape the lane read "90.5% match · 89.34% pixels differ".
+        const line = offBaselineReadout(89.34);
+        assert.equal(
+            line,
+            "89.34% pixels differ · the imported spec is baseline-only, " +
+                "so this is not a match score — clear the overrides to compare",
+        );
+        assert.ok(!line.includes("match ·"), "no verdict to misread");
     });
 
     it("stays quiet about drift below the threshold", () => {
