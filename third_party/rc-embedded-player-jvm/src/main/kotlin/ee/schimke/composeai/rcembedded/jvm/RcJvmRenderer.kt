@@ -33,6 +33,7 @@ import androidx.compose.remote.core.operations.ColorConstant
 import androidx.compose.remote.core.operations.ColorTheme
 import androidx.compose.remote.core.operations.FloatConstant
 import androidx.compose.remote.core.operations.NamedVariable
+import androidx.compose.remote.core.operations.Theme
 import androidx.compose.remote.core.operations.layout.Container
 import androidx.compose.remote.core.operations.layout.LayoutComponent
 import androidx.compose.remote.player.compose.embedded.GraphContext
@@ -49,6 +50,8 @@ import androidx.compose.remote.player.compose.embedded.buildComputedOpIndex
 import androidx.compose.remote.player.compose.embedded.getOperationsReflection
 import androidx.compose.remote.player.compose.embedded.recollectCollectionsReflection
 import androidx.compose.remote.player.compose.embedded.registerVariablesReflection
+import androidx.compose.remote.player.compose.embedded.resolveThemeMode
+import androidx.compose.remote.player.compose.embedded.resolveThemedColors
 import androidx.compose.remote.player.compose.embedded.updateTimeReflection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -107,12 +110,14 @@ public fun renderRemoteDocumentToPng(
   heightPx: Int,
   density: Float = 2f,
   seeds: Map<String, RcSeed> = emptyMap(),
+  theme: Int = Theme.LIGHT,
+  systemColorLookup: (name: String) -> Int? = { null },
 ): ByteArray =
   Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:renderToPng") {
     val scene =
       ImageComposeScene(width = widthPx, height = heightPx, density = Density(density)) {
         val document = remember(bytes) { parseDocument(bytes) }
-        RcPlayerJvm(document, Modifier.fillMaxSize(), seeds)
+        RcPlayerJvm(document, Modifier.fillMaxSize(), seeds, theme, systemColorLookup)
       }
     try {
       // The composition, measure, layout and draw of the whole document all happen inside this
@@ -197,6 +202,8 @@ internal fun RcPlayerJvm(
   document: CoreDocument,
   modifier: Modifier = Modifier,
   seeds: Map<String, RcSeed> = emptyMap(),
+  theme: Int = Theme.LIGHT,
+  systemColorLookup: (name: String) -> Int? = { null },
 ) {
   val clock: RemoteClock =
     remember(document) { document.clock.takeUnless { it is SystemClock } ?: RemoteClock.SYSTEM }
@@ -207,7 +214,15 @@ internal fun RcPlayerJvm(
   val density = LocalDensity.current
   val remoteContext =
     remember(document) {
-      initDrawContext(document, clock, density.density, density.fontScale, seeds)
+      initDrawContext(
+        document,
+        clock,
+        density.density,
+        density.fontScale,
+        seeds,
+        theme,
+        systemColorLookup,
+      )
     }
 
   // Static capture: no frame loop. The time state is still provided so time-reading resolvers have
@@ -254,6 +269,8 @@ private fun initDrawContext(
   density: Float,
   fontScale: Float,
   seeds: Map<String, RcSeed>,
+  theme: Int,
+  systemColorLookup: (name: String) -> Int?,
 ): JvmRemoteContext =
   Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:initContext") {
     JvmRemoteContext(clock = clock).also { context ->
@@ -295,6 +312,22 @@ private fun initDrawContext(
           document.getOperationsReflection()
         }
       document.applyOperationsReflection(context, globalOps)
+
+      // Themed colours, before the `ColorTheme` ops in `constantOps` are applied — `ColorTheme`
+      // reads the fields resolution overwrites, so resolving afterwards is resolving too late.
+      //
+      // The mode is resolved rather than passed through: `SYSTEM`/`UNSPECIFIED` are questions, and
+      // `ColorTheme` treats anything that is not `LIGHT` as dark, so leaving one unanswered renders
+      // the document dark by accident. Headless, "the host's setting" is not a real question — this
+      // renderer has no desktop session whose theme it should follow, and a render that changed
+      // colour with the build machine's OS theme would not be reproducible — so `renderRemote
+      // DocumentToPng` defaults `theme` to `LIGHT` and a caller wanting dark asks for it.
+      //
+      // `systemColorLookup` defaults to resolving nothing, which is the honest answer here: there
+      // is no system palette off Android, so every themed colour keeps the fallback its document
+      // captured for exactly that case.
+      resolveThemedColors(document, systemColorLookup)
+      context.paintTheme = resolveThemeMode(theme, systemInDarkTheme = false)
 
       // Then every constant anywhere in the tree, so authored color/float defaults are in the
       // store before the data pass.

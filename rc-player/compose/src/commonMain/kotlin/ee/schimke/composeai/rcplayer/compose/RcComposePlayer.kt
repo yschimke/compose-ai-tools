@@ -276,25 +276,53 @@ import org.jetbrains.skia.ImageInfo
 public fun RcComposePlayer(
   bytes: ByteArray,
   modifier: Modifier = Modifier,
-  theme: Int = RcTheme.UNSPECIFIED,
+  theme: Int = RcTheme.SYSTEM,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  systemColorLookup: (name: String) -> Int? = { null },
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
-  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies)
+  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies, systemColorLookup)
 }
 
 @Composable
 public fun RcComposePlayer(
   document: RcDocument,
   modifier: Modifier = Modifier,
-  theme: Int = RcTheme.UNSPECIFIED,
+  theme: Int = RcTheme.SYSTEM,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  systemColorLookup: (name: String) -> Int? = { null },
+) {
+  // Resolve once, at the only place that can: `SYSTEM` and `UNSPECIFIED` are questions for the
+  // host, and everything below this point — section gating, and every `ColorTheme` selection —
+  // needs a concrete answer. See [rcResolveSystemTheme] for why leaving them unresolved is not a
+  // neutral default.
+  RcComposePlayerResolved(
+    document,
+    modifier,
+    rcResolveSystemTheme(theme),
+    namedValues,
+    onEvent,
+    fontFamilies,
+    systemColorLookup,
+  )
+}
+
+@Composable
+private fun RcComposePlayerResolved(
+  document: RcDocument,
+  modifier: Modifier,
+  theme: Int,
+  namedValues: Map<String, RcNamedValue>,
+  onEvent: (RcPlayerEvent) -> Unit,
+  fontFamilies: Map<String, RcFontFaces>,
+  systemColorLookup: (name: String) -> Int?,
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
+  val latestSystemColorLookup by rememberUpdatedState(systemColorLookup)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
   var invalidationVersion by remember { mutableIntStateOf(0) }
   var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
@@ -319,6 +347,12 @@ public fun RcComposePlayer(
             RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
           }
         },
+        // Read through `latestSystemColorLookup`, never captured directly: a host's lookup is
+        // usually a capturing lambda, so a parent recomposition hands us a fresh instance. Keying
+        // the state on it would rebuild `RcPlayerState` — discarding variables an action changed,
+        // touch-expression state and running animation timelines — because a colour callback that
+        // resolves the same palette happened to be reallocated.
+        systemColorLookup = { name -> latestSystemColorLookup(name) },
       )
     }
   val needsContinuousFrames =

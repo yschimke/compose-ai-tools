@@ -81,6 +81,13 @@ internal object RcJvmServerRenderer {
     spec: RcJvmRenderSpec,
     seeds: Map<String, RemoteNamedValue> = emptyMap(),
     format: Format = Format.PNG,
+    /**
+     * Which branch a `ColorTheme` operation selects. Defaults to light rather than to the machine's
+     * desktop setting: this renderer is headless, so "the host's theme" is not a real question, and
+     * a render that changed colour with the build machine's OS would not be reproducible. Documents
+     * with no `ColorTheme` are unaffected either way.
+     */
+    theme: RenderTheme = RenderTheme.LIGHT,
   ): RenderResult {
     val cp = classpath()
     if (cp.isEmpty()) return RenderResult.Unavailable(unavailableReason())
@@ -99,7 +106,14 @@ internal object RcJvmServerRenderer {
     // cold would double the cost of every document that cannot be drawn.
     pool(cp)?.let { pool ->
       val pooled =
-        pool.render(docBytes, spec, seedLines(seeds).joinToString("\n"), format, secondsLeft())
+        pool.render(
+          docBytes,
+          spec,
+          seedLines(seeds).joinToString("\n"),
+          format,
+          theme,
+          secondsLeft(),
+        )
       when (pooled) {
         is RcJvmWorkerPool.PoolResult.Ok -> return RenderResult.Ok(pooled.bytes)
         is RcJvmWorkerPool.PoolResult.Failed -> return RenderResult.Failed(pooled.reason)
@@ -118,7 +132,7 @@ internal object RcJvmServerRenderer {
       }
     }
 
-    return renderOneShot(cp, docBytes, spec, seeds, format, secondsLeft())
+    return renderOneShot(cp, docBytes, spec, seeds, format, theme, secondsLeft())
   }
 
   /**
@@ -133,6 +147,7 @@ internal object RcJvmServerRenderer {
     spec: RcJvmRenderSpec,
     seeds: Map<String, RemoteNamedValue>,
     format: Format,
+    theme: RenderTheme,
     timeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
   ): RenderResult {
     val input = File.createTempFile("rcjvm-in-", ".rc")
@@ -160,6 +175,8 @@ internal object RcJvmServerRenderer {
         add(spec.density.toString())
         add("--format")
         add(format.wire)
+        add("--theme")
+        add(theme.wire)
         if (seedsFile != null) {
           add("--seeds")
           add(seedsFile.absolutePath)
@@ -339,6 +356,20 @@ internal object RcJvmServerRenderer {
   enum class Format(val wire: String) {
     PNG("png"),
     SVG("svg"),
+  }
+
+  /**
+   * The `ColorTheme` branch a cmp-jvm render selects.
+   *
+   * Deliberately this module's own type rather than `remote-core`'s `Theme` int: the CLI drives the
+   * player as a subprocess and carries no compile dependency on it, which is what lets the worker's
+   * classpath be staged independently. [wire] and [frame] are the two forms that cross the boundary
+   * — a `--theme` argument on the one-shot path, and an int in the pooled worker's request frame,
+   * whose values `RcJvmRenderWorkerMain` mirrors.
+   */
+  enum class RenderTheme(val wire: String, val frame: Int) {
+    LIGHT("light", 0),
+    DARK("dark", 1),
   }
 }
 

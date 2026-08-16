@@ -113,6 +113,20 @@ tasks.withType<Test>().configureEach {
   }
   // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.
   maxHeapSize = "2g"
+
+  // `AndroidColorTableDriftTest` compares this module's `ColorTheme` index table against the CMP
+  // player's copy, which lives in another project and is therefore not otherwise an input to these
+  // tests. Without this the task stays UP-TO-DATE when only the sibling changes, and the guard
+  // silently stops guarding — which is the exact failure mode it exists to catch.
+  inputs
+    .file(
+      layout.settingsDirectory.file(
+        "rc-player/protocol/src/commonMain/kotlin/ee/schimke/composeai/rcplayer/protocol/" +
+          "RcAndroidSystemColors.kt"
+      )
+    )
+    .withPropertyName("cmpAndroidColorTable")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 dependencies {

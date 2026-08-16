@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcAndroidSystemColors
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBooleanConstant
 import ee.schimke.composeai.rcplayer.protocol.RcClickArea
@@ -84,6 +85,13 @@ public class RcPlayerState(
   private val onInvalidated: () -> Unit = {},
   private val effectSink: (RcPlayerEffect) -> Unit = {},
   private val timeSource: RcTimeSource = RcTimeSource.System,
+  /**
+   * Host resolution for a `ColorTheme`'s recorded resource indices — see [applyColorTheme]. The
+   * default resolves nothing, which is correct for a host with no system palette to offer (a
+   * desktop JVM, a browser): every themed colour then renders as its captured fallback, exactly as
+   * it did before this parameter existed.
+   */
+  private val systemColorLookup: (name: String) -> Int? = { null },
 ) {
   private val floats = mutableMapOf<Int, Float>()
   private val componentValues =
@@ -523,13 +531,48 @@ public class RcPlayerState(
     setColor(operation.outId, result)
   }
 
+  /**
+   * Resolve one themed colour for [requestedTheme] and load it under the operation's output id.
+   *
+   * A `ColorTheme` carries, per mode, a **resource index** naming an `android.R.color` and a
+   * literal **fallback**. The fallback is what a host without that palette draws; the index is what
+   * a host with one is meant to read. [systemColorLookup] is that host — it maps a resource name to
+   * an ARGB value and returns `null` when the platform has no such resource, which is the ordinary
+   * case off Android and below API 34 rather than an error. When it returns `null` the captured
+   * fallback stands, so a document is never made worse by resolution being unavailable.
+   *
+   * [requestedTheme] must already be a concrete mode. `RcTheme.SYSTEM` and `RcTheme.UNSPECIFIED`
+   * mean "ask the host", and this is not the layer that can ask — resolve them before calling (the
+   * Compose player does it with `isSystemInDarkTheme`). Passing one through unresolved would select
+   * dark, because anything that is not `LIGHT` is dark here; that is the branch, not a default.
+   */
   public fun applyColorTheme(operation: RcColorTheme, requestedTheme: Int) {
-    setColor(
-      operation.outId,
-      if (requestedTheme == RcTheme.LIGHT) operation.lightModeFallback
-      else operation.darkModeFallback,
-    )
+    val light = requestedTheme == RcTheme.LIGHT
+    val index = if (light) operation.lightModeIndex else operation.darkModeIndex
+    val fallback = if (light) operation.lightModeFallback else operation.darkModeFallback
+    // The group must resolve, by name, to the one whose table this is. An index means nothing
+    // without knowing whose table it indexes, so a document that names another vendor's group — or
+    // names none at all, which is how `colorGroupId = 0` reads — keeps its fallbacks rather than
+    // being recoloured out of Android's. `GenerateBaselineFixture` writes exactly such an
+    // operation, and the embedded player requires the name too, so anything looser would also make
+    // the two players disagree on the same bytes.
+    val resolved =
+      if (colorGroupName(operation.colorGroupId) != RcAndroidSystemColors.GROUP) {
+        null
+      } else {
+        RcAndroidSystemColors.nameAt(index)?.let(systemColorLookup)
+      }
+    setColor(operation.outId, resolved ?: fallback)
   }
+
+  /**
+   * The colour group a themed colour names, or `null` when the document did not record one.
+   *
+   * The group reaches the wire as a text id rather than a string, so it is resolved the same way
+   * any other document text is.
+   */
+  private fun colorGroupName(colorGroupId: Int): String? =
+    texts[colorGroupId] ?: baseTexts[colorGroupId]
 
   public fun floatList(id: Int): RcFloatList? = floatLists[id]
 

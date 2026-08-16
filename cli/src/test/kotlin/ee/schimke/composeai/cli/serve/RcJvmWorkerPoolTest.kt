@@ -42,10 +42,10 @@ class RcJvmWorkerPoolTest {
       val second = pool.render(DOC, SPEC, "", RcJvmServerRenderer.Format.PNG)
 
       // The spec, format and document length all survived the wire.
-      assertEquals("640x480@2.0:png::${DOC.size}#1", first.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#1", first.text())
       // `#2` is the point of the pool: the second document was drawn by the same process, so it
       // paid no JVM boot. A fresh worker would report `#1` again.
-      assertEquals("640x480@2.0:png::${DOC.size}#2", second.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#2", second.text())
     }
   }
 
@@ -53,7 +53,36 @@ class RcJvmWorkerPoolTest {
   fun seedsAndFormatReachTheWorker() {
     pool().use { pool ->
       val result = pool.render(DOC, SPEC, "float bmFtZQ== 1.5", RcJvmServerRenderer.Format.SVG)
-      assertEquals("640x480@2.0:svg:float bmFtZQ== 1.5:${DOC.size}#1", result.text())
+      assertEquals("640x480@2.0:svg:light:float bmFtZQ== 1.5:${DOC.size}#1", result.text())
+    }
+  }
+
+  @Test
+  fun theRequestedThemeReachesTheWorker() {
+    // The `ColorTheme` branch is a per-request property, not a property of the worker: one warm
+    // process serves light and dark requests in turn. A theme pinned at spawn — or dropped from the
+    // frame, which is what happened before it was carried — renders every document in one mode
+    // while the caller believes it asked for the other.
+    pool().use { pool ->
+      val dark =
+        pool.render(
+          DOC,
+          SPEC,
+          "",
+          RcJvmServerRenderer.Format.PNG,
+          RcJvmServerRenderer.RenderTheme.DARK,
+        )
+      val light =
+        pool.render(
+          DOC,
+          SPEC,
+          "",
+          RcJvmServerRenderer.Format.PNG,
+          RcJvmServerRenderer.RenderTheme.LIGHT,
+        )
+
+      assertEquals("640x480@2.0:png:dark::${DOC.size}#1", dark.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#2", light.text())
     }
   }
 
@@ -111,8 +140,8 @@ class RcJvmWorkerPoolTest {
       val second = pool.render(DOC, SPEC, "", RcJvmServerRenderer.Format.PNG)
       // Both report `#1`: the budget of one retired the first worker, so the second render was
       // served by a fresh process. This is what bounds a native leak.
-      assertEquals("640x480@2.0:png::${DOC.size}#1", first.text())
-      assertEquals("640x480@2.0:png::${DOC.size}#1", second.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#1", first.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#1", second.text())
     }
   }
 
@@ -123,8 +152,8 @@ class RcJvmWorkerPoolTest {
       val first = pool.render(DOC, SPEC, "", RcJvmServerRenderer.Format.PNG)
       now += 5_000
       val second = pool.render(DOC, SPEC, "", RcJvmServerRenderer.Format.PNG)
-      assertEquals("640x480@2.0:png::${DOC.size}#1", first.text())
-      assertEquals("640x480@2.0:png::${DOC.size}#1", second.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#1", first.text())
+      assertEquals("640x480@2.0:png:light::${DOC.size}#1", second.text())
     }
   }
 

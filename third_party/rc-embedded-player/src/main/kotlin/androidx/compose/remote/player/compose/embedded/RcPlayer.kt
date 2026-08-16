@@ -32,6 +32,7 @@ import androidx.collection.ObjectIntMap
 import androidx.collection.emptyIntObjectMap
 import androidx.collection.emptyObjectIntMap
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.Limits
 import androidx.compose.remote.core.Operation
@@ -103,6 +104,11 @@ import java.io.ByteArrayInputStream
  * [theme] selects the `ColorTheme` light/dark branch. Indexed colors in the Android group are
  * resolved from framework resources before the first operation replay; unknown groups or missing
  * resources retain their authored fallback.
+ *
+ * [Theme.SYSTEM] — the default — and [Theme.UNSPECIFIED] are not modes, they are questions, and
+ * both are answered here from `isSystemInDarkTheme()`. They cannot be passed through: `ColorTheme`
+ * selects light only for `Theme.LIGHT` and dark for everything else, so an unanswered question
+ * renders the whole document dark without anything having chosen that.
  */
 @OptIn(ExperimentalRemotePlayerApi::class)
 @SuppressLint("RestrictedApiAndroidX")
@@ -111,7 +117,7 @@ import java.io.ByteArrayInputStream
 public fun RcPlayer(
   document: CoreDocument,
   modifier: Modifier = Modifier,
-  theme: Int = Theme.UNSPECIFIED,
+  theme: Int = Theme.SYSTEM,
   namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
   imageLoader: RcImageLoader? = null,
   isShaderValid: (shaderSource: String) -> Boolean = { true },
@@ -128,6 +134,11 @@ public fun RcPlayer(
       document.clock
     }
   }
+
+  // `SYSTEM` / `UNSPECIFIED` become a concrete mode here, once, before anything branches on them.
+  val systemInDarkTheme = isSystemInDarkTheme()
+  val resolvedTheme =
+    remember(theme, systemInDarkTheme) { resolveThemeMode(theme, systemInDarkTheme) }
 
   val density = LocalDensity.current
   val context = LocalContext.current
@@ -153,7 +164,7 @@ public fun RcPlayer(
       it.density = density.density
       document.initializeContext(it)
       resolveAndroidThemeColors(context, document)
-      it.paintTheme = theme
+      it.paintTheme = resolvedTheme
 
       // Register each bitmap's metadata (declared width/height for ImageAttribute, and
       // discoverability for the lazy decode) WITHOUT decoding the pixels. The costly decode
@@ -240,9 +251,9 @@ public fun RcPlayer(
     }
   }
 
-  LaunchedEffect(remoteContext, theme) {
-    document.themedColors.orEmpty().forEach { it.setTheme(remoteContext, theme) }
-    remoteContext.paintTheme = theme
+  LaunchedEffect(remoteContext, resolvedTheme) {
+    document.themedColors.orEmpty().forEach { it.setTheme(remoteContext, resolvedTheme) }
+    remoteContext.paintTheme = resolvedTheme
   }
 
   // Time and animations are driven on demand. A static document — no declared animations and no
@@ -468,7 +479,7 @@ public fun RcPlayer(
 public fun RcPlayer(
   capturedDocument: CapturedDocument,
   modifier: Modifier = Modifier,
-  theme: Int = Theme.UNSPECIFIED,
+  theme: Int = Theme.SYSTEM,
   namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
   imageLoader: RcImageLoader? = null,
   isShaderValid: (shaderSource: String) -> Boolean = { true },

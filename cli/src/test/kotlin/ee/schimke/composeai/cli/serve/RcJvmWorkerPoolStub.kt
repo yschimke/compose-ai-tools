@@ -41,10 +41,10 @@ import kotlin.system.exitProcess
  *   `System.out` to stderr for exactly this reason; the stub proves the pool would notice if it
  *   ever stopped.
  *
- * The artifact for `ok` is `"<width>x<height>@<density>:<format>:<seeds>:<docLen>#<n>"`, where `n`
- * counts the requests **this process** has served. That lets a test assert the whole request
- * survived the wire, and — via `n` — distinguish a reused warm worker from a freshly spawned one,
- * which is the entire property the pool exists to provide.
+ * The artifact for `ok` is `"<width>x<height>@<density>:<format>:<theme>:<seeds>:<docLen>#<n>"`,
+ * where `n` counts the requests **this process** has served. That lets a test assert the whole
+ * request survived the wire, and — via `n` — distinguish a reused warm worker from a freshly
+ * spawned one, which is the entire property the pool exists to provide.
  */
 object RcJvmWorkerPoolStub {
 
@@ -81,6 +81,7 @@ object RcJvmWorkerPoolStub {
       val height = input.readInt()
       val density = Float.fromBits(input.readInt())
       val format = input.readInt()
+      val theme = input.readInt()
       val seeds = String(input.readPayload(), Charsets.UTF_8)
       val doc = input.readPayload()
 
@@ -97,7 +98,9 @@ object RcJvmWorkerPoolStub {
 
       served++
       val formatName = if (format == RcJvmWorkerPool.WIRE_FORMAT_SVG) "svg" else "png"
-      val payload = "${width}x$height@$density:$formatName:$seeds:${doc.size}#$served".toByteArray()
+      val themeName = if (theme == RcJvmWorkerPool.WIRE_THEME_DARK) "dark" else "light"
+      val payload =
+        "${width}x$height@$density:$formatName:$themeName:$seeds:${doc.size}#$served".toByteArray()
       val status =
         if (mode == "failed") RcJvmWorkerPool.STATUS_FAILED else RcJvmWorkerPool.STATUS_OK
 

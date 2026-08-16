@@ -5306,13 +5306,24 @@ class ServeHttpServer(
           )
           .params
       )
+    // `?uiMode=dark` selects the document's dark `ColorTheme` branch. This lane replays stored
+    // `.rc`
+    // bytes rather than waking the daemon, so the mode is a *player* setting here — it is the only
+    // thing `uiMode` can mean for an already-captured document, and without it a dark request would
+    // silently render the light branch.
+    val theme =
+      if (call.request.queryParameters["uiMode"]?.lowercase() == "dark") {
+        RcJvmServerRenderer.RenderTheme.DARK
+      } else {
+        RcJvmServerRenderer.RenderTheme.LIGHT
+      }
     val result =
       withContext(Dispatchers.IO) {
         if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
           null
         } else {
           try {
-            RcJvmServerRenderer.render(doc, spec, seeds, format)
+            RcJvmServerRenderer.render(doc, spec, seeds, format, theme)
           } finally {
             renderSemaphore.release()
           }
