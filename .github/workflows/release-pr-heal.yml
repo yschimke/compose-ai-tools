@@ -55,6 +55,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # need full history to merge main into the release branch
+          persist-credentials: false
 
       - name: Heal conflicting release-please PRs
         env:
@@ -65,6 +66,11 @@ jobs:
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Checkout deliberately does not persist its token. Configure gh's
+          # credential helper explicitly so the guarded release-branch pushes
+          # below authenticate with this job's contents-write GITHUB_TOKEN.
+          gh auth setup-git
 
           # Only heal genuine release-please PRs. The branch name is NOT enough:
           # it's contributor-controlled, so a human or fork PR from a branch named

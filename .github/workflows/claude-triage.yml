@@ -32,6 +32,8 @@ jobs:
         with:
           # Full history so recent commits can be matched against issues.
           fetch-depth: 0
+
+          persist-credentials: false
       # Pre-create the follow-up label deterministically: the GitHub MCP
       # server bundled with the pinned action (v0.17.1) ships no label
       # tools, and allowlisting label_write would also let a prompt-injected

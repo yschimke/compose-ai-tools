@@ -209,7 +209,9 @@ describe("buildResourceVariantHoverMarkdown", () => {
         });
         // Brackets / parens / `<` / `>` / `!` all escaped — no raw HTML
         // tag, no link constructor, no image constructor survive.
-        assert.doesNotMatch(md, /<script>/);
+        // Keep the assertion case-insensitive: an upper-case HTML tag must be
+        // rejected just like the lower-case payload used by this fixture.
+        assert.doesNotMatch(md, /<script>/i);
         assert.doesNotMatch(md, /\]\(command:/);
         assert.doesNotMatch(md, /!\[pwn/);
         // The literal escaped form is what reaches the renderer.

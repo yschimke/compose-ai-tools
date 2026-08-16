@@ -689,8 +689,9 @@ runs:
     # external use). Tag bumped per release by release-please.
     - name: Install CLI from source
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source')
-      # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v1.8.0 # x-release-please-version
+      # The released action intentionally composes the matching released helper.
+      # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v1.8.0 # zizmor: ignore[unpinned-uses]
 
     # `cli-version: 'none'` is the third install state — install is skipped
     # entirely. Compose / resources pipelines must then run with
@@ -699,8 +700,9 @@ runs:
     - name: Install CLI from release
       id: install-release
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
-      # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install@v1.8.0 # x-release-please-version
+      # The released action intentionally composes the matching released helper.
+      # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install@v1.8.0 # zizmor: ignore[unpinned-uses]
       with:
         version: ${{ steps.clivers.outputs.version }}
         catalog-path: ${{ inputs.catalog-path }}

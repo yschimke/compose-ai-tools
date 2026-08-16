@@ -41,8 +41,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  # Every job delegates publishing/commenting to the shared apply action; job
+  # outputs cannot be used to narrow these permissions dynamically by event.
+  contents: write # zizmor: ignore[excessive-permissions]
+  pull-requests: write # zizmor: ignore[excessive-permissions]
 
 concurrency:
   # Per-PR group so concurrent PRs don't cancel each other; push + dispatch

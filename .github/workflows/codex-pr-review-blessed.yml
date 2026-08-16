@@ -59,7 +59,11 @@ jobs:
           repository: ${{ steps.pr-head.outputs.repository }}
           ref: ${{ steps.pr-head.outputs.ref }}
           persist-credentials: false
+      # This job checks out a PR head and executes its Gradle build. It may read
+      # existing Gradle caches, but must never publish attacker-controlled entries.
       - uses: ./.github/actions/setup
+        with:
+          cache-read-only: 'true'
       - name: Render Android sample previews
         run: ./gradlew :samples:android:composePreviewRenderAll
       - name: Render CMP sample previews

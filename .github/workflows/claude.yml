@@ -55,6 +55,7 @@ jobs:
           # Full history so Claude can diff against main and reason about
           # base-vs-head when rendering before/after evidence.
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup
       # Read-only BuildFetch remote cache so agent sessions pull cached task
       # outputs instead of building cold (a cold build repeatedly blew the

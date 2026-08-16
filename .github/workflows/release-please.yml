@@ -124,9 +124,15 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
-    # Inherit secrets so the called workflow can reach MAVEN_CENTRAL_* and
-    # SIGNING_*. `secrets: inherit` passes every secret the caller can see.
-    secrets: inherit
+    # Pass only the credentials this publishing workflow declares.
+    secrets:
+      MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     permissions:
       contents: write   # needed by the called workflow's `release` job
       # A called workflow cannot elevate what its caller granted: a job in
@@ -226,7 +232,12 @@ jobs:
       cli_version: ${{ needs.release-please.outputs.tag_name }}
       build_from_source: true
       non_blocking: true
-    secrets: inherit
+    secrets:
+      DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
+      SERVE_ADMIN_TOKEN: ${{ secrets.SERVE_ADMIN_TOKEN }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     permissions:
       contents: read
       packages: write

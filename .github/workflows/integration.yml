@@ -131,7 +131,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # PR code may consume the trusted Gradle cache but must not update it.
+      # Push, schedule, and manual runs execute trusted revisions, so keep their
+      # cache writable; the external-repository matrix configures its own cache.
       - uses: ./.github/actions/setup
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       # This is the one job in this workflow that builds *this* repo's Gradle
       # tasks (the matrix jobs build external consumers, which never see our

@@ -98,7 +98,7 @@ on:
       # Same CodeQL "privileged checkout" note as `ref` above — the default is a
       # literal and no caller in this repo overrides it.
       driver-ref:
-        description: 'compose-ai-tools ref checked out for the export driver (scripts/design-artifacts).'
+        description: 'Deprecated compatibility input. The privileged export driver is commit-pinned by this workflow and caller-supplied refs are ignored.'
         required: false
         type: string
         default: 'main'
@@ -314,6 +314,37 @@ on:
 
 permissions: {}
 
+# Workflow-call inputs are attacker-controllable strings. Shell steps consume
+# them through environment variables so expression expansion cannot alter shell
+# syntax; quoting in the scripts below then treats every value as data.
+env:
+  INPUT_CATALOG_KEY: ${{ inputs.catalog-key }}
+  INPUT_CATALOG_PATH: ${{ inputs.catalog-path }}
+  INPUT_MODULE: ${{ inputs.module }}
+  INPUT_MODULES: ${{ inputs.modules }}
+  INPUT_EXTRA_MODULE: ${{ inputs.extra-module }}
+  INPUT_RENDER_SHARDS: ${{ inputs.render-shards }}
+  INPUT_DESKTOP_RENDER: ${{ inputs.desktop-render }}
+  INPUT_EMBED_DEPS: ${{ inputs.embed-deps }}
+  INPUT_RENDER_TIMEOUT: ${{ inputs.render-timeout }}
+  INPUT_SPEC: ${{ inputs.spec }}
+  INPUT_LIVE_RERENDER_SOURCE: ${{ inputs.live-rerender-source }}
+  INPUT_ALLOW_INCOMPLETE: ${{ inputs.allow-incomplete }}
+  INPUT_PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+  INPUT_EXTRA_SPLIT_MODE: ${{ inputs.extra-split-mode }}
+  INPUT_SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
+  INPUT_SPLIT_MODE: ${{ inputs.split-mode }}
+  INPUT_RC_CMP_WASM_LANE: ${{ inputs.rc-cmp-wasm-lane }}
+  INPUT_RC_CMP_WASM_COLD_MS: ${{ inputs.rc-cmp-wasm-max-cold-first-frame-ms }}
+  INPUT_RC_CMP_WASM_WARM_MS: ${{ inputs.rc-cmp-wasm-max-warm-first-frame-ms }}
+  INPUT_RC_EMBEDDED_LANE: ${{ inputs.rc-embedded-lane }}
+  INPUT_RC_EMBEDDED_JVM_LANE: ${{ inputs.rc-embedded-jvm-lane }}
+  INPUT_SYSTEM: ${{ inputs.system }}
+  INPUT_COMMIT_USER_NAME: ${{ inputs.commit-user-name }}
+  INPUT_COMMIT_USER_EMAIL: ${{ inputs.commit-user-email }}
+  SOURCE_REPOSITORY: ${{ github.repository }}
+  SOURCE_REF_NAME: ${{ github.ref_name }}
+
 jobs:
   # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
   # Two jobs that do not exist at all in the default single-shard pipeline. `shard-matrix` only
@@ -372,7 +403,9 @@ jobs:
 
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
-        uses: yschimke/compose-ai-tools/.github/actions/install@main
+        # Security boundary: this privileged reusable workflow must not execute
+        # a movable action ref. Dependabot/manual upgrades should update this SHA.
+        uses: yschimke/compose-ai-tools/.github/actions/install@91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -397,11 +430,11 @@ jobs:
           version="$(compose-preview --version | head -1)"
           help="$(compose-preview bundle help 2>&1 || true)"
           if ! grep -q 'bundle merge' <<<"$help"; then
-            echo "::error title=CLI too old for render-shards::${version} has no 'compose-preview bundle merge', which the sharded render needs to reassemble the shard bundles. Raise cli-version (or, with cli-version: catalog, the ${{ inputs.catalog-key }} pin in ${{ inputs.catalog-path }}) to a release that carries it, or set render-shards: 1."
+            echo "::error title=CLI too old for render-shards::${version} has no 'compose-preview bundle merge', which the sharded render needs to reassemble the shard bundles. Raise cli-version (or, with cli-version: catalog, the $INPUT_CATALOG_KEY pin in $INPUT_CATALOG_PATH) to a release that carries it, or set render-shards: 1."
             exit 1
           fi
           if ! grep -q '=<id>' <<<"$help"; then
-            echo "::error title=CLI too old for render-shards::${version} has no '=<id>' anchored --exclude-preview-id matching, so each shard's exclusion list would also drop the variants of every id it excludes — the shards would publish a fraction of the catalog without failing. Raise cli-version (or, with cli-version: catalog, the ${{ inputs.catalog-key }} pin in ${{ inputs.catalog-path }}) to a release that carries it, or set render-shards: 1."
+            echo "::error title=CLI too old for render-shards::${version} has no '=<id>' anchored --exclude-preview-id matching, so each shard's exclusion list would also drop the variants of every id it excludes — the shards would publish a fraction of the catalog without failing. Raise cli-version (or, with cli-version: catalog, the $INPUT_CATALOG_KEY pin in $INPUT_CATALOG_PATH) to a release that carries it, or set render-shards: 1."
             exit 1
           fi
           echo "✓ $version supports 'bundle merge' and anchored '=<id>' exclusions."
@@ -443,7 +476,8 @@ jobs:
 
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
-        uses: yschimke/compose-ai-tools/.github/actions/install@main
+        # Same trust boundary as the non-sharded install above.
+        uses: yschimke/compose-ai-tools/.github/actions/install@91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -454,7 +488,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-ai-tools
-          ref: ${{ inputs.driver-ref }}
+          # Do not honor a caller-controlled ref here: refs/pull/* in this repo
+          # can contain fork code, and this privileged workflow executes the driver.
+          ref: 91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
           path: compose-ai-tools
           persist-credentials: false
 
@@ -544,7 +580,7 @@ jobs:
         working-directory: ${{ inputs.working-directory || '.' }}
         run: |
           set -euo pipefail
-          compose-preview list --json --module "${{ inputs.module }}" \
+          compose-preview list --json --module "$INPUT_MODULE" \
             > "$GITHUB_WORKSPACE/discovered-previews.json"
 
       - name: Derive per-mode render exclusions
@@ -566,6 +602,8 @@ jobs:
       # shrinks the work the shards divide instead of competing with the partition for slots.
       - name: Plan this shard
         id: shard-plan
+        env:
+          MATRIX_SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           exclude_file=()
@@ -583,8 +621,8 @@ jobs:
           fi
           previews=$(node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
-            --shards "${{ inputs.render-shards }}" \
-            --index "${{ matrix.shard }}" \
+            --shards "$INPUT_RENDER_SHARDS" \
+            --index "$MATRIX_SHARD" \
             "${exclude_file[@]}" "${filter_file[@]}" \
             --out "$GITHUB_WORKSPACE/shard-exclude.txt" \
             --plan-out "$GITHUB_WORKSPACE/shard-plan.json")
@@ -601,16 +639,16 @@ jobs:
           EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
         run: |
           set -euo pipefail
-          run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
-          embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
+          run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
           exclude=()
           if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
             exclude=(--exclude-preview-id "$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")")
           fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
-          run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
+          run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
-            --timeout ${{ inputs.render-timeout }}
+            --timeout $INPUT_RENDER_TIMEOUT
 
       - name: Save downloadable-font cache
         if: always()
@@ -674,7 +712,8 @@ jobs:
       # cli-version=catalog so the CLI and the applied plugin stay in lockstep.
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
-        uses: yschimke/compose-ai-tools/.github/actions/install@main
+        # Same immutable trust boundary as the other install steps above.
+        uses: yschimke/compose-ai-tools/.github/actions/install@91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -687,7 +726,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-ai-tools
-          ref: ${{ inputs.driver-ref }}
+          # Never execute a caller-selected refs/pull/* revision in this
+          # privileged workflow. Update this alongside the other driver pin.
+          ref: 91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
           path: compose-ai-tools
           persist-credentials: false
 
@@ -714,7 +755,7 @@ jobs:
       - name: Validate module selector
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.modules }}" ] && [ "${{ inputs.modules }}" != "all" ]; then
+          if [ -n "$INPUT_MODULES" ] && [ "$INPUT_MODULES" != "all" ]; then
             echo "::error title=modules input::modules supports only 'all'; use module for one Gradle path."
             exit 1
           fi
@@ -841,8 +882,8 @@ jobs:
         run: |
           set -euo pipefail
           module_args=()
-          if [ -n "${{ inputs.module }}" ] && [ "${{ inputs.modules }}" != "all" ]; then
-            module_args=(--module "${{ inputs.module }}")
+          if [ -n "$INPUT_MODULE" ] && [ "$INPUT_MODULES" != "all" ]; then
+            module_args=(--module "$INPUT_MODULE")
           fi
           compose-preview list --json "${module_args[@]}" > "$GITHUB_WORKSPACE/discovered-previews.json"
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
@@ -950,15 +991,15 @@ jobs:
           EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
         run: |
           set -euo pipefail
-          run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           run_without_filter() {
-            if [ "${{ inputs.desktop-render }}" = "true" ]; then
+            if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then
               env -u 'ORG_GRADLE_PROJECT_composePreview.filter' xvfb-run -a -s "-screen 0 2000x1400x24" "$@"
             else
               env -u 'ORG_GRADLE_PROJECT_composePreview.filter' "$@"
             fi
           }
-          embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
+          embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           if [ -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
@@ -972,18 +1013,18 @@ jobs:
               # function names there can fail on no match or silently thin unrelated previews.
               if [ "$index" -eq 0 ]; then
                 run compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${embed[@]}" "${exclude[@]}" -o "$output" --timeout ${{ inputs.render-timeout }}
+                  "${embed[@]}" "${exclude[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               else
                 run_without_filter compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
-                  "${embed[@]}" -o "$output" --timeout ${{ inputs.render-timeout }}
+                  "${embed[@]}" -o "$output" --timeout "$INPUT_RENDER_TIMEOUT"
               fi
               index=$((index + 1))
             done < "$GITHUB_WORKSPACE/preview-modules.txt"
             cp "$GITHUB_WORKSPACE/module-bundles/0000.png" "$GITHUB_WORKSPACE/bundle.png"
           else
-            run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
+            run compose-preview bundle pack --module "$INPUT_MODULE" --with-semantics --progress \
               "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
-              --timeout ${{ inputs.render-timeout }}
+              --timeout "$INPUT_RENDER_TIMEOUT"
           fi
 
       - name: Download shard renders
@@ -1012,7 +1053,7 @@ jobs:
           mapfile -t bundles < <(find "$GITHUB_WORKSPACE/shards" -name bundle.png | sort -V)
           mapfile -t plans < <(find "$GITHUB_WORKSPACE/shards" -name shard-plan.json | sort -V)
           if [ "${#bundles[@]}" -eq 0 ]; then
-            echo "::error title=No shard renders::render-shards is ${{ inputs.render-shards }} but no shard uploaded a bundle."
+            echo "::error title=No shard renders::render-shards is $INPUT_RENDER_SHARDS but no shard uploaded a bundle."
             exit 1
           fi
           # Cross-check the partitions BEFORE trusting them. Each shard derived its own from its own
@@ -1044,7 +1085,7 @@ jobs:
           verifier_usage=$(node "$verifier" 2>&1 || true)
           spec_arg=()
           if grep -q -- '--spec' <<<"$verifier_usage"; then
-            spec_arg=(--spec "${{ inputs.spec }}")
+            spec_arg=(--spec "$INPUT_SPEC")
           else
             echo "::notice title=Driver predates --spec::the pinned driver-ref's verify-shard-renders.mjs has no --spec; no-sticker previews will not be exempted."
           fi
@@ -1055,11 +1096,11 @@ jobs:
         working-directory: ${{ inputs.working-directory || '.' }}
         run: |
           set -euo pipefail
-          run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
-          embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
-          run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics --progress \
+          run() { if [ "$INPUT_DESKTOP_RENDER" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          embed=(); if [ "$INPUT_EMBED_DEPS" = "true" ]; then embed=(--embed-deps); fi
+          run compose-preview bundle pack --module "$INPUT_EXTRA_MODULE" --with-semantics --progress \
             "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
-            --timeout ${{ inputs.render-timeout }}
+            --timeout $INPUT_RENDER_TIMEOUT
 
       # Save the font cache even when a render step FAILED. A cold-cache run that downloaded
       # some faces before a later one failed to resolve must persist what it got, so the
@@ -1088,7 +1129,7 @@ jobs:
         run: |
           set -euo pipefail
           extra=()
-          if [ -n "${{ inputs.extra-module }}" ]; then extra=(--extra-renders "$GITHUB_WORKSPACE/extra-bundle.png"); fi
+          if [ -n "$INPUT_EXTRA_MODULE" ]; then extra=(--extra-renders "$GITHUB_WORKSPACE/extra-bundle.png"); fi
           additional=()
           fallback=()
           if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
@@ -1098,29 +1139,29 @@ jobs:
             done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
           fi
           source_args=()
-          if [ "${{ inputs.live-rerender-source }}" = "true" ] && [ ! -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
+          if [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ] && [ ! -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
             source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
-            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "${{ inputs.module }}")
-          elif [ "${{ inputs.live-rerender-source }}" = "true" ]; then
+            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "$INPUT_MODULE")
+          elif [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ]; then
             echo "::notice title=All-module catalog::live-rerender-source is omitted because one source.module cannot represent multiple Gradle modules; baked previews are still published."
           fi
           incomplete=()
-          if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
+          if [ "$INPUT_ALLOW_INCOMPLETE" = "true" ]; then incomplete=(--allow-incomplete); fi
           live=()
-          if [ "${{ inputs.publish-live-bundle }}" = "true" ]; then live=(--publish-live-bundle); fi
-          if [ "${{ inputs.extra-split-mode }}" = "full" ]; then
+          if [ "$INPUT_PUBLISH_LIVE_BUNDLE" = "true" ]; then live=(--publish-live-bundle); fi
+          if [ "$INPUT_EXTRA_SPLIT_MODE" = "full" ]; then
             # The driver checks --extra-renders / --publish-live-bundle itself; the split flag is
             # only knowable here. Without it the extra module's stickers would carry previewIds
             # pointing at per-preview bundles nobody wrote, so every one of them would 404 its
             # live render — worse than the baked-only lane this replaces.
-            if [ "${{ inputs.split-per-preview }}" != "true" ]; then
+            if [ "$INPUT_SPLIT_PER_PREVIEW" != "true" ]; then
               echo "::error title=extra-split-mode::'full' requires split-per-preview: true — the extra module's live lane IS the per-preview split."
               exit 1
             fi
             live+=(--extra-live-bundle)
           fi
           node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
-            --spec "${{ inputs.spec }}" \
+            --spec "$INPUT_SPEC" \
             --renders "$GITHUB_WORKSPACE/bundle.png" \
             "${extra[@]}" \
             "${additional[@]}" \
@@ -1159,10 +1200,10 @@ jobs:
           JAVA_OPTS: -XX:MaxRAMPercentage=75
         run: |
           set -euo pipefail
-          if [ "${{ inputs.split-mode }}" = "view-only" ]; then
+          if [ "$INPUT_SPLIT_MODE" = "view-only" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" --view-only \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
-          elif [ "${{ inputs.split-mode }}" = "full-shared-classpath" ]; then
+          elif [ "$INPUT_SPLIT_MODE" = "full-shared-classpath" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" \
               --shared-classpath-out "$GITHUB_WORKSPACE/out/bundle/res" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
@@ -1177,8 +1218,8 @@ jobs:
                 -o "$GITHUB_WORKSPACE/out/bundle/previews/modules/$module_index"
             done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
           fi
-          if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
-            if [ "${{ inputs.extra-split-mode }}" = "full" ]; then
+          if [ -n "$INPUT_EXTRA_MODULE" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
+            if [ "$INPUT_EXTRA_SPLIT_MODE" = "full" ]; then
               compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" \
                 -o "$GITHUB_WORKSPACE/out/bundle/previews"
             else
@@ -1205,7 +1246,7 @@ jobs:
         run: |
           set -euo pipefail
           incomplete=()
-          if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
+          if [ "$INPUT_ALLOW_INCOMPLETE" = "true" ]; then incomplete=(--allow-incomplete); fi
           node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
             --spec "$FOLD_SPEC" \
             --renders "$GITHUB_WORKSPACE/fold-in/$FOLD_BUNDLE" \
@@ -1264,7 +1305,7 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
-            --spec "${{ inputs.spec }}" \
+            --spec "$INPUT_SPEC" \
             --figma-contents-only "$FIGMA_CONTENTS_ONLY"
 
       # The design-parity dashboard's feed (`parity/activity.json`) — recent
@@ -1301,8 +1342,8 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/emit-parity-activity.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
-            --source-repo "${{ github.repository }}" \
-            --ref "${{ github.ref_name }}"
+            --source-repo "$SOURCE_REPOSITORY" \
+            --ref "$SOURCE_REF_NAME"
 
       # Design pages: whole specimen sheets of the design file, cached as SVG, with the node id of
       # every component on them linked back to the catalog component that implements it. Feeds the
@@ -1323,7 +1364,7 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/emit-design-pages.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
-            --spec "${{ inputs.spec }}"
+            --spec "$INPUT_SPEC"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored
@@ -1364,7 +1405,7 @@ jobs:
           PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
 
-          if [ "${{ inputs.rc-cmp-wasm-lane }}" = "true" ]; then
+          if [ "$INPUT_RC_CMP_WASM_LANE" = "true" ]; then
             mkdir -p "$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors"
             wasm_build_log="$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors/distribution-build.log"
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
@@ -1372,8 +1413,8 @@ jobs:
               EMBEDDED_ARGS+=(
                 --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist"
                 --require-cmp-wasm
-                --cmp-wasm-max-cold-first-frame-ms "${{ inputs.rc-cmp-wasm-max-cold-first-frame-ms }}"
-                --cmp-wasm-max-warm-first-frame-ms "${{ inputs.rc-cmp-wasm-max-warm-first-frame-ms }}"
+                --cmp-wasm-max-cold-first-frame-ms "$INPUT_RC_CMP_WASM_COLD_MS"
+                --cmp-wasm-max-warm-first-frame-ms "$INPUT_RC_CMP_WASM_WARM_MS"
               )
               if [ -n "$RC_CMP_WASM_ALLOWLIST" ]; then
                 EMBEDDED_ARGS+=(--cmp-wasm-allowlist "$GITHUB_WORKSPACE/$RC_CMP_WASM_ALLOWLIST")
@@ -1400,7 +1441,7 @@ jobs:
           # Deliberately tolerant: the render this job exists to publish must not be lost because a
           # harness died or the runner lacks a toolchain. Either lane logs loudly and falls through
           # to a page without its column — the lanes are enrichment, not the product.
-          if [ "${{ inputs.rc-embedded-lane }}" = "true" ] || [ "${{ inputs.rc-embedded-jvm-lane }}" = "true" ]; then
+          if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ] || [ "$INPUT_RC_EMBEDDED_JVM_LANE" = "true" ]; then
             RC_IN="$RUNNER_TEMP/rc-embedded-in"
             rm -rf "$RC_IN"
             node rc-compare.mjs \
@@ -1411,7 +1452,7 @@ jobs:
           fi
 
           # Robolectric (Android) embedded lane.
-          if [ "${{ inputs.rc-embedded-lane }}" = "true" ]; then
+          if [ "$INPUT_RC_EMBEDDED_LANE" = "true" ]; then
             RC_OUT="$RUNNER_TEMP/rc-embedded-out"
             rm -rf "$RC_OUT"
             # `--rerun` because the harness's real output is the PNGs it writes to `RC_OUT`, and
@@ -1440,7 +1481,7 @@ jobs:
           # apt round-trip to every caller, including the ones whose bundles carry no ir/*.rc and
           # exit this step at its first check. Guarded on xvfb-run, so a desktop-render caller --
           # which already installed the same stack -- doesn't pay for it twice.
-          if [ "${{ inputs.rc-embedded-jvm-lane }}" = "true" ]; then
+          if [ "$INPUT_RC_EMBEDDED_JVM_LANE" = "true" ]; then
             # Fail-soft, and it has to be spelled this way. The step runs under `set -e` and is only
             # `continue-on-error` in the cmp-wasm configuration, so a bare `apt-get` here would take
             # the whole step down — skipping the publish — on a runner where the install can't work:
@@ -1471,8 +1512,8 @@ jobs:
             --bundle "$GITHUB_WORKSPACE/bundle.png" \
             --player "$PLAYER" \
             --out "$GITHUB_WORKSPACE/out" \
-            --system "${{ inputs.system }}" \
-            --title "${{ inputs.system }}" \
+            --system "$INPUT_SYSTEM" \
+            --title "$INPUT_SYSTEM" \
             ${EMBEDDED_ARGS[@]+"${EMBEDDED_ARGS[@]}"}
 
       - name: Upload CMP/Wasm parity evidence
@@ -1538,8 +1579,8 @@ jobs:
           SKIP_IF_UNCHANGED=1 \
           CARRY_FORWARD_PATHS='parity/issues.json' \
           REVISION_PREVIEW_INDEX=1 \
-          GIT_AUTHOR_NAME='${{ inputs.commit-user-name }}' \
-          GIT_AUTHOR_EMAIL='${{ inputs.commit-user-email }}' \
-          GIT_COMMITTER_NAME='${{ inputs.commit-user-name }}' \
-          GIT_COMMITTER_EMAIL='${{ inputs.commit-user-email }}' \
+          GIT_AUTHOR_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_AUTHOR_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
+          GIT_COMMITTER_NAME="$INPUT_COMMIT_USER_NAME" \
+          GIT_COMMITTER_EMAIL="$INPUT_COMMIT_USER_EMAIL" \
             bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"
