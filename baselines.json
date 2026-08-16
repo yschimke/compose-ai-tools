@@ -1396,7 +1396,7 @@
     "functionName": "SharedElementFilmstripPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
-    "sha256": "99c302dc5e780379b27938cbf037b068daf732782cfb828a0d4d79ec2c04cdd3",
+    "sha256": "3a621e30b4e99df85ee9590de7f9fe9659e0a26d84cf146c52b83ea96e6f147c",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
@@ -3934,5 +3934,93 @@
     "renderBasename": "StackPreview_Stack-8cf5ab32.png",
     "sha256": "711f1dd66a89a05a89fa93c7fffc3fb62543893c61c79f942150cec0ab572cb5",
     "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt"
+  },
+  "samples:remotecompose/activity__MainActivity": {
+    "captureLabel": "",
+    "functionName": "MainActivity",
+    "module": "samples:remotecompose",
+    "renderBasename": "activity__MainActivity.png",
+    "sha256": "a1417a6830df1e0548dd9d47c7ea9c8adf7b463a1ee5dcc4def14d0f6422f25e",
+    "sourceFile": null
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
+    "sha256": "0eb2e5114e58245efb0352101ed27a12758e15b13549c80bc3cc9ca79ecdcc2e",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteAnimatedCircularProgressIndicatorStandardPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png",
+    "sha256": "0eb2e5114e58245efb0352101ed27a12758e15b13549c80bc3cc9ca79ecdcc2e",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonEnabledPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteButtonEnabledPreview-23dedf54.png",
+    "sha256": "c85ebde1a1469d24283861fa9478fa903597766c7e4ae9f2aa46d3b26c73af08",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonWithBorderPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteButtonWithBorderPreview-298b3408.png",
+    "sha256": "6389a4cfc5b3643c12aa3b714d4ef93a3db4d656bc25bd96296539e7a851c4b5",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonWithNamedLabelPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteButtonWithNamedLabelPreview-f3014b8f.png",
+    "sha256": "f47c2c373000ba69faafe66e0c28d166dc206768cf618faaad41dcb2647e6b20",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonWithShapePreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteButtonWithShapePreview-3935d3f3.png",
+    "sha256": "5e60f8a1f84b2815f4c352a60294384158046b8c1df9583b95f5e8f379ff586a",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview-53123345.gif",
+    "sha256": "fd0891797da6895623c69f86b38127aaf90ab154da59de1ae2e1dcc316f5fa70",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteIndeterminateCircularProgressIndicatorStandardPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif",
+    "sha256": "4d03e72cc787baa37a45cdd2a67e9d4cfbedb40703e59b0b4aa789a95652c912",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteShaderGradientPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteShaderGradientPreview-6739688f.png",
+    "sha256": "fc0ba94173d63faadf5a83c702072ddaee1bdf1a4c893ae3a69c40161363ed0c",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.WearWidgetPreviewsKt.RemoteWidgetSquirclePreview_Remote Widget Squircle": {
+    "captureLabel": "",
+    "functionName": "RemoteWidgetSquirclePreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png",
+    "sha256": "a89de7f4f104ec39ef91707ba4eaa6c61bdb6d944b34f911d727376d527e05cc",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/WearWidgetPreviews.kt"
   }
 }

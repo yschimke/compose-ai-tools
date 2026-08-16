@@ -559,3 +559,19 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RowPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:desktop-daemon-bench/RowPreview_Row-c8bd7b16.png" width="150" /> |
 | `StackPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:desktop-daemon-bench/StackPreview_Stack-8cf5ab32.png" width="150" /> |
 
+## samples:remotecompose
+
+| Preview | Image |
+|---------|-------|
+| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/activity__MainActivity.png" width="150" /> |
+| `RemoteAnimatedCircularProgressIndicatorEmbeddedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png" width="150" /> |
+| `RemoteAnimatedCircularProgressIndicatorStandardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png" width="150" /> |
+| `RemoteButtonEnabledPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonEnabledPreview-23dedf54.png" width="150" /> |
+| `RemoteButtonWithBorderPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithBorderPreview-298b3408.png" width="150" /> |
+| `RemoteButtonWithNamedLabelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview-f3014b8f.png" width="150" /> |
+| `RemoteButtonWithShapePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithShapePreview-3935d3f3.png" width="150" /> |
+| `RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview-53123345.gif" width="150" /> |
+| `RemoteIndeterminateCircularProgressIndicatorStandardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif" width="150" /> |
+| `RemoteShaderGradientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteShaderGradientPreview-6739688f.png" width="150" /> |
+| `RemoteWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png" width="150" /> |
+
