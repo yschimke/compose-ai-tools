@@ -316,6 +316,74 @@ sources:
 When a new `--vscode-*` token starts appearing in `media/preview.css`,
 add a value for it in `vscode-theme.css` (both dark and light blocks).
 
+## What belongs in a capture, and what belongs in a component test
+
+A capture answers **"does this look right"**. A component test
+(`cli/serve-web/test/*.test.ts`, mocha + happy-dom) answers **"does this do the
+right thing"**. Those are different questions, and a state that drives an
+interaction and then asserts on text, counts, attributes or URLs is a component
+test wearing a screenshot's clothes — it pays a browser's cost and a baseline's
+maintenance for an answer that does not involve pixels.
+
+Measured on this suite:
+
+| | count |
+| --- | --- |
+| `FIXTURE_STATES` entries | 59 |
+| …carrying any `expect()` | 9 |
+| …pure captures | 50 |
+| `cli/serve-web` tests | 743 in 51 files (19 element, 32 pure) |
+
+The 50 pure captures are the harness doing its job. The 9 hybrids are worth
+reading, because most of what they assert has a cheaper home:
+
+- **URL construction** (`href` contains `mode=spec`, `specView=diff`; a tag
+  starting `a|`) — string building, no pixels.
+- **Zoom arithmetic** (`zoom === 1`, an identity transform, alignment within
+  2px) — `cli/serve-web/src/zoom/viewport.ts` already has its own tests; the
+  capture re-asserts them through a browser.
+- **Typography grouping** (`.cp-typography-group` count, `.cp-typography-count`
+  text, an override reading `wght 700`) — now covered directly by
+  `annotateTypography.test.ts` and `referenceCompareElement.test.ts`.
+
+Two of them genuinely need a browser and should stay: `toBeVisible()`, which is
+a CSS question happy-dom cannot answer, and the design page's alignment check,
+which measures real laid-out geometry rather than the arithmetic behind it.
+
+### The limit that matters most
+
+**A capture can only cover an input the fixture actually contains**, and each new
+fixture costs a baseline. That is not a theoretical concern:
+
+- Every fixture SVG sits at `translate(0, 0)`, so a scorer bug that dropped
+  fractional offsets entirely — mis-registering the SVG lane by hundreds of
+  pixels, worth ~20 points of score — was invisible to every capture in this
+  suite. Fixed in #3979 with a case in `format-compare-scorer.spec.mjs`.
+- Every fixture `fontFamily` is single-suffix, so a typography bug that showed
+  two families and compared them as one was equally invisible. Fixed in #3981,
+  covered by unit tests.
+
+Both shipped, both were found by reading code rather than by ~500 captures. A
+decision whose inputs are expensive to vary is under-covered by construction, so
+coverage of *decisions* belongs where inputs are free.
+
+### Cost, for calibration
+
+743 unit tests run in about 2 seconds. One fixture's 10 captures take 8–13.
+There are 58 page fixtures.
+
+### Rule of thumb
+
+1. Extract the decision into a DOM-free module and test it there.
+2. If it needs the DOM but not pixels, test the element in happy-dom.
+3. Keep the capture for what is left: the picture.
+
+The same brittleness exists one layer down. Six Kotlin assertions that grepped
+`viewer.js` / `format-compare.js` for the *spelling* of an expression broke
+during the TypeScript migration without any behaviour changing; each was
+retargeted at the seam, with the rule itself driven by a real test. A test that
+pins source text is a screenshot of code.
+
 ## Capture determinism
 
 Two runs of the same tree must produce byte-identical PNGs. Two things enforce
