@@ -331,10 +331,10 @@ describe("<cp-page-zoom>", () => {
         // The published scale goes back to 1 as well. The stylesheet counter-scales every node's
         // mark by it, so a reset that restored the view and left the variable behind would draw
         // hairlines at the old zoom over a sheet at 1:1 — a residue no view assertion can see.
-        assert.equal(
-            parseFloat(stage.style.getPropertyValue("--cp-page-zoom")) || 1,
-            1,
-        );
+        // Compared as the published STRING, with no `|| 1` fallback: a reset that published `0`,
+        // an empty value or `NaN` would parse-or-default its way past a numeric check while the
+        // counter-scaling stayed broken.
+        assert.equal(stage.style.getPropertyValue("--cp-page-zoom"), "1");
     });
 
     it("resets from a WHEEL zoom too, not only from a framed section", async () => {

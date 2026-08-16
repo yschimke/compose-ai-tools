@@ -1891,10 +1891,21 @@ class ServeWebFixtureTest {
     // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
     // tag is the same; only the target differs, so a reader never meets a node that looks
     // navigable and is not.
+    //
+    // Matched on THAT node (`1:6`, the fixture's unlinked shape) rather than on "some anchor
+    // exists and no span does": the renderable nodes satisfy a bare existence check on their own,
+    // so this one could regress to a div and go unnoticed.
+    val unlinkedNode =
+      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:6"[^>]*>""").find(designPageHtml)
+    assertTrue(unlinkedNode != null, "the unlinked node 1:6 is emitted at all")
+    assertEquals(
+      "a",
+      unlinkedNode!!.groupValues[1],
+      "an unlinked node stays an anchor rather than becoming inert",
+    )
     assertTrue(
-      designPageHtml.contains("""<a class="cp-page-node" """) &&
-        !designPageHtml.contains("""<span class="cp-page-node" """),
-      "an unlinked node still links out to the design file rather than becoming inert",
+      unlinkedNode.value.contains("href=\"https://www.figma.com/"),
+      "…and its destination is the design file, the only link it has",
     )
 
     val designPageIndex =
