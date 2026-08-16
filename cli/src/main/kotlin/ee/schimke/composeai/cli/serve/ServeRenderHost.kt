@@ -616,6 +616,27 @@ internal constructor(
       previews.firstOrNull { it.id == previewId }?.dataProductKinds?.contains(SCROLL_LONG_KIND) ==
         true
 
+  /**
+   * Run the one-shot `extensions/enable` ([extensionEnableResult]) before any data-product fetch.
+   *
+   * The daemon registers its export and inspection products **inactive**, so a `data/fetch` that
+   * reaches a session nobody enabled fails `-32020 kind not advertised` — the enable is a
+   * precondition of every fetch lane, not a detail of the capability flags. Until this existed the
+   * only thing that ran it was a lane that happened to read a capability on the way past
+   * ([renderSvg] reads [hasSvgExport], [renderAnnotations] reads [THEME_EXTENSION_ID]);
+   * [renderA11y] and [renderScrollPng] read none, so on a host whose capabilities nobody ever asked
+   * for they fetched against an un-enabled session and 500'd.
+   *
+   * That host is not hypothetical: [ServeCatalogLiveHost] answers `hasA11yOverlayFor` from the
+   * SHARED daemon while routing `renderA11y` to the **per-preview** one, so the viewer offered the
+   * Accessibility layer on a catalog page whose fetch could only fail — until some unrelated
+   * request (an SVG export, a scroll capture) happened to enable that daemon's extensions, at which
+   * point the same URL started working. Hence the intermittency.
+   */
+  private fun ensureExtensionsEnabled() {
+    extensionEnableResult
+  }
+
   // The one-handed gesture override is honoured only by the Android (Robolectric) backend — the
   // desktop backend ignores `overrides.gestures`. Read the daemon's advertised capabilities so the
   // viewer offers the "Show gesture hints" control only when it would actually re-render.
@@ -1107,6 +1128,8 @@ internal constructor(
   override fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return RenderOutcome.NotFound
+    // The scroll registry is registered inactive too, and this lane reads no capability of its own.
+    ensureExtensionsEnabled()
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     scrollPngCache.get(key)?.let {
@@ -1173,6 +1196,8 @@ internal constructor(
   override fun renderSlots(previewId: String, overrides: PreviewOverrides): SlotsOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return SlotsOutcome.NotFound
+    // `compose/semantics` is registered inactive like the rest; this lane reads no capability.
+    ensureExtensionsEnabled()
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     slotsCache.get(key)?.let {
@@ -1375,6 +1400,11 @@ internal constructor(
   override fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return A11yOutcome.NotFound
+    // Reading [hasA11yOverlay] is what enables the daemon's inactive a11y extension (see
+    // [ensureExtensionsEnabled]). A backend that reports it `unknown` can't produce the hierarchy,
+    // so answer NotFound (a clean 404) rather than fetching into a `-32020` 500 — the same shape
+    // [renderSvg] gives a backend without figma-svg.
+    if (!hasA11yOverlay) return A11yOutcome.NotFound
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     a11yCache.get(key)?.let {

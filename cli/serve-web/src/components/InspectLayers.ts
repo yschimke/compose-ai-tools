@@ -273,7 +273,17 @@ export class InspectLayers extends LitElement {
             })
             // A host that cannot produce this product is not an error worth shouting about; the
             // layer simply draws nothing.
-            .catch(() => null);
+            //
+            // But it must not be remembered as this frame's answer. The cache exists so re-ticking
+            // a layer doesn't re-run a render of the SAME pixels — a failure ran no render worth
+            // reusing, and caching it made one transient 500 blank the layer for as long as the
+            // frame stayed on screen: every re-tick replayed the stored null, so the overlay looked
+            // permanently broken on a server that had already recovered.
+            .catch(() => {
+                if (this.cache.get(source) === pending)
+                    this.cache.delete(source);
+                return null;
+            });
         this.cache.set(source, pending);
         return pending;
     }
