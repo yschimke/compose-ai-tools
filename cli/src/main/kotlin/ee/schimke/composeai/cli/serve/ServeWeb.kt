@@ -4226,6 +4226,61 @@ object ServeWeb {
   }
 
   /**
+   * The honest landing page for a preview URL pinned to a publish that did not contain that
+   * preview.
+   *
+   * This remains a 404 — showing the current render under a historical URL would make the pin a lie
+   * — but unlike the generic [notFoundPage] it keeps the catalog's revision navigator. A preview
+   * can be added between publishes, so the catalog-wide revision menu can legitimately lead to a
+   * commit where its id is absent. Dropping the menu at that point strands the visitor on the first
+   * unavailable publish they try; keeping it lets them choose another historical publish or return
+   * to current without pretending this one had pixels it never published.
+   */
+  fun unavailablePreviewRevisionPage(
+    previewId: String,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    revisions: CatalogRevisions,
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
+    sessionInOrigin: Boolean = false,
+  ): String {
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val idSeg = WebEscaping.urlEncodeSegment(previewId)
+    val query = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    val hrefFor: (String?) -> String = { pin -> withPin("$basePath/p/$idSeg$query", pin) }
+    val revisionMenu = revisionsHtml(revisions, includeBanner = false, hrefFor = hrefFor)
+    val pin = revisions.pinned?.let(ServeCatalogRevision::short).orEmpty()
+    val message =
+      if (pin.isBlank()) "That preview does not exist in this catalog."
+      else "This preview was not published in catalog revision $pin."
+    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    return document(
+      title = "Preview unavailable — compose-preview",
+      unfurlDescription = message,
+      unfurl = unfurl,
+      version = version,
+      navSuffix = suffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
+      body =
+        """
+        <h1 class="cp-head">Preview unavailable</h1>
+        <p class="cp-sub">${WebEscaping.htmlEscape(message)} Choose another revision or return to the current catalog.</p>
+        $revisionMenu
+        <a class="cp-back" href="${WebEscaping.htmlEscape(hrefFor(null))}">← View current preview</a>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
    * `GET /playground` — the **Stage-1 editor** for the Kotlin playground
    * (`docs/design/PLAYGROUND.md` §2). A code box + a mode selector + a Run button that POSTs to
    * `/api/{v}/compiler/run` and shows the compiler diagnostics, the first-frame render, and the

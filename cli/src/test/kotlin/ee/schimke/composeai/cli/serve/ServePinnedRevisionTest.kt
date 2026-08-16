@@ -54,6 +54,13 @@ class ServePinnedRevisionTest {
     """
       .trimIndent()
 
+  private val previewIndexJson =
+    """
+    {"schema":"compose-preview-revision-index/v1","current":["$previewId"],"revisions":[
+      {"commit":"$oldCommit","previews":["$previewId"]}]}
+    """
+      .trimIndent()
+
   private val feed =
     """
     <feed>
@@ -88,6 +95,8 @@ class ServePinnedRevisionTest {
       ServeCatalogRevision.commitsFeedUrl(repo, branch) -> feed.encodeToByteArray()
       "${tip}catalog.json",
       "${byBranch}catalog.json" -> catalogJson.encodeToByteArray()
+      "${tip}preview-index.json",
+      "${byBranch}preview-index.json" -> previewIndexJson.encodeToByteArray()
       "${tip}references/index.json",
       "${byBranch}references/index.json" -> referencesJson.encodeToByteArray()
       "${tip}references/button.png",
@@ -215,6 +224,26 @@ class ServePinnedRevisionTest {
     // the same bytes under a sha.
     assertFalse(page.contains("at=$newCommit"), page)
     assertTrue(page.contains("b34eff53"), page)
+  }
+
+  @Test
+  fun `a generated preview index removes revisions that did not publish this preview`() {
+    val tip = "https://raw.githubusercontent.com/$repo/$newCommit/"
+    val withoutPreview =
+      """
+      {"schema":"compose-preview-revision-index/v1","current":["$previewId"],"revisions":[
+        {"commit":"$oldCommit","previews":["some-other-preview"]}]}
+      """
+        .trimIndent()
+        .encodeToByteArray()
+    val port = startWith { url ->
+      if (url == "${tip}preview-index.json") withoutPreview else fetch(url)
+    }
+
+    val page = text("http://127.0.0.1:$port/$system/p/$previewId")
+
+    assertTrue(page.contains("cp-revisions"), page)
+    assertFalse(page.contains("at=$oldCommit"), page)
   }
 
   @Test
@@ -502,7 +531,17 @@ class ServePinnedRevisionTest {
       if (url == "${old}catalog.json") olderCatalog.encodeToByteArray() else fetch(url)
     }
 
-    assertEquals(404, get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit").first)
+    val unavailable = get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit")
+    assertEquals(404, unavailable.first)
+    val unavailablePage = unavailable.second.decodeToString()
+    // A catalog publish can predate one preview. That is still an honest 404, but it must not
+    // strand the visitor: the same revision control remains available to choose another publish,
+    // and current is a clean URL rather than today's pixels served under the historical pin.
+    assertTrue(unavailablePage.contains("Preview unavailable"), unavailablePage)
+    assertTrue(unavailablePage.contains("was not published in catalog revision"), unavailablePage)
+    assertTrue(unavailablePage.contains("class=\"cp-revisions\""), unavailablePage)
+    assertTrue(unavailablePage.contains("/p/$previewId"), unavailablePage)
+    assertTrue(unavailablePage.contains("at=$oldCommit"), unavailablePage)
     assertEquals(
       404,
       get("http://127.0.0.1:$port/$system/render/$previewId.png?at=$oldCommit").first,

@@ -317,6 +317,14 @@ class ServeCatalogStore(
         return Result.Failed(system, "could not parse catalog.json: $detail")
       }
 
+    // One compact file answers preview availability for the whole revision menu. Older branches
+    // have no index and deliberately fail open; the pinned catalog remains authoritative on click.
+    val revisionPreviewIds = runCatching {
+      ServeRevisionPreviewIndex.parse(fetchCatalogAsset(base + ServeRevisionPreviewIndex.FILE_NAME))
+        ?.previewsByCommit()
+    }
+      .getOrNull()
+
     // Stage the fetch so a re-load (ServeCatalogRefresher) can't turn a healthy catalog into 404s:
     // fetch the images into a sibling `.staging` dir and only swap it over the live `dir` once we
     // know we have a usable catalog (count > 0). A partial/failed fetch (e.g. images temporarily
@@ -741,6 +749,7 @@ class ServeCatalogStore(
           bakedBranchPaths = bakedPathById.toMap(),
           referenceBranchPaths = referenceBranchPaths,
           revisions = revisions,
+          revisionPreviewIds = revisionPreviewIds,
           // Same seam as `fetchBakedPng`: the host names a commit and a published path, the store
           // builds the URL and applies the fetch policy. Null repo ⇒ no pinned lane at all.
           fetchPinnedAsset = { commit, path ->
