@@ -37,6 +37,7 @@ class PlaygroundCompileServiceTest {
     editLeasesEnabled: Boolean = false,
     editLeaseTtlMillis: Long = PlaygroundCompileService.DEFAULT_EDIT_LEASE_TTL_MILLIS,
     nowMillis: () -> Long = { 1_000L },
+    scheduleEditLeaseExpiry: (Long, () -> Unit) -> Unit = { _, _ -> },
   ) =
     PlaygroundCompileService(
       catalogClasspath = { mode, _ -> classpathFor(mode) },
@@ -51,6 +52,7 @@ class PlaygroundCompileServiceTest {
       editLeasesEnabled = editLeasesEnabled,
       editLeaseTtlMillis = editLeaseTtlMillis,
       nowMillis = nowMillis,
+      scheduleEditLeaseExpiry = scheduleEditLeaseExpiry,
     )
 
   private fun request(
@@ -587,6 +589,76 @@ class PlaygroundCompileServiceTest {
     assertTrue(svc.acquireEditLease("bob").acquired, "release makes the single slot available")
     now = 8_000L
     assertFalse(svc.editLeaseHealth().active, "status observes idle expiry without taking the lock")
+  }
+
+  @Test
+  fun `an abandoned editing lease deletes its workspace at the idle deadline`() {
+    var now = 1_000L
+    val scheduled = mutableListOf<Pair<Long, () -> Unit>>()
+    val svc =
+      service(
+        editLeasesEnabled = true,
+        editLeaseTtlMillis = 5_000L,
+        nowMillis = { now },
+        scheduleEditLeaseExpiry = { delay, task -> scheduled += delay to task },
+      )
+
+    val lease = svc.acquireEditLease("alice")
+    assertTrue(lease.acquired)
+    assertTrue(fs.metadataOrNull("/work/run1".toPath())?.isDirectory == true)
+    assertEquals(5_000L, scheduled.single().first)
+
+    now = 6_000L
+    scheduled.single().second.invoke()
+
+    assertFalse(svc.editLeaseHealth().active)
+    assertNull(fs.metadataOrNull("/work/run1".toPath()), "expiry reclaims the IC workspace")
+  }
+
+  @Test
+  fun `leased compile refreshes the idle deadline after work finishes`() {
+    var now = 1_000L
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ) = emptyList<PlaygroundDiagnostic>()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult {
+          now = 8_000L // The compile outlives the deadline established when it started.
+          fs.createDirectories(outputDir)
+          fs.write(outputDir / "Snippet.class") { writeUtf8("compiled") }
+          return PlaygroundCompileService.IncrementalCompileResult(emptyList(), true)
+        }
+      }
+    val svc =
+      service(
+        compilerOverride = compiler,
+        editLeasesEnabled = true,
+        editLeaseTtlMillis = 5_000L,
+        nowMillis = { now },
+      )
+    val lease = svc.acquireEditLease("alice").lease!!
+
+    svc.run(
+      request().copy(editLease = lease, revision = 1),
+      isSecurityChecked = true,
+      authenticatedOwner = "alice",
+    )
+
+    val health = svc.editLeaseHealth()
+    assertTrue(health.active)
+    assertEquals(13_000L, health.expiresAtEpochMs)
   }
 
   @Test

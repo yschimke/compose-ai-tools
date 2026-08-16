@@ -78,6 +78,9 @@ class ServeWebPlaygroundCatalogTest {
     assertTrue(html.contains("Acquire editing lease"))
     assertTrue(html.contains("/api/1/compiler/edit-lease"))
     assertTrue(html.contains("editLease: editLease"))
+    assertTrue(html.contains("window.addEventListener(\"pagehide\""))
+    assertTrue(html.contains("navigator.sendBeacon(url"))
+    assertTrue(html.contains("if (!event.persisted) releaseEditLeaseOnDiscard()"))
   }
 
   @Test
