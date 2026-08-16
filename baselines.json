@@ -1456,14 +1456,14 @@
     "serve-viewer-source-source-panel.dark.png": {
       "fixture": "serve-viewer-source-source-panel",
       "theme": "dark",
-      "sha256": "b9d9a042874cdccf849d902ab41a4b44da02073fcdd4ebd58eaccf5bb8cf86e5",
-      "size": 78540
+      "sha256": "492494242016faeba1d060d9835e4e436085a93028cdf3809764d7f582bcd387",
+      "size": 83175
     },
     "serve-viewer-source-source-panel.light.png": {
       "fixture": "serve-viewer-source-source-panel",
       "theme": "light",
-      "sha256": "a7e176d6e4328d7690e5f6f3f3391ed7aad97e174cc1bef935b96310847cbe1e",
-      "size": 76742
+      "sha256": "83faf47e9787c863abf563213889a43158408354858bcd41857bd50dc1fd348f",
+      "size": 81495
     },
     "serve-viewer-source.dark.png": {
       "fixture": "serve-viewer-source",
