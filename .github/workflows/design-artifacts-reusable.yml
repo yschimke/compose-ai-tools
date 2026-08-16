@@ -405,7 +405,7 @@ jobs:
         if: ${{ inputs.cli-source == 'released' }}
         # Security boundary: this privileged reusable workflow must not execute
         # a movable action ref. Dependabot/manual upgrades should update this SHA.
-        uses: yschimke/compose-ai-tools/.github/actions/install@91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
+        uses: yschimke/compose-ai-tools/.github/actions/install@81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -477,7 +477,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
+        uses: yschimke/compose-ai-tools/.github/actions/install@81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -490,7 +490,7 @@ jobs:
           repository: yschimke/compose-ai-tools
           # Do not honor a caller-controlled ref here: refs/pull/* in this repo
           # can contain fork code, and this privileged workflow executes the driver.
-          ref: 91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
+          ref: 81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
           path: compose-ai-tools
           persist-credentials: false
 
@@ -713,7 +713,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
+        uses: yschimke/compose-ai-tools/.github/actions/install@81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -728,7 +728,7 @@ jobs:
           repository: yschimke/compose-ai-tools
           # Never execute a caller-selected refs/pull/* revision in this
           # privileged workflow. Update this alongside the other driver pin.
-          ref: 91538eb7280f506ba096b2c62615c51a820b6ce9 # main at 2026-08-16
+          ref: 81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
           path: compose-ai-tools
           persist-credentials: false
 
