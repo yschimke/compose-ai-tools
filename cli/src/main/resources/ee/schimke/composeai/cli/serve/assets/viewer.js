@@ -25,18 +25,16 @@
   // stage rather than a sliver, and re-measured on resize.
   function fitCap() {
     if (!stage) return "72vh";
-    // The stage's own padding is inside the box the image has to fit in, and a little slack keeps
-    // the card's bottom edge on screen rather than flush against it.
     var top = stage.getBoundingClientRect().top + (window.scrollY || 0);
-    return Math.max(320, Math.round(window.innerHeight - top - 64)) + "px";
+    return urlRules().fitCap(top, window.innerHeight);
   }
   // The cap last written to the stage, so a re-measure that lands on the same answer can do
   // nothing. That is what keeps the observer below off a feedback loop: applying a cap resizes
   // the image, which resizes the container being observed, which re-measures — and stops there,
   // because the second measurement matches the first.
   var appliedFitCap = null;
-  function applyZoom(mode) {
-    if (mode !== "width") mode = "fit";
+  function applyZoom(rawMode) {
+    var mode = urlRules().zoomMode(rawMode);
     var maxHeight = mode === "fit" ? fitCap() : "";
     appliedFitCap = mode === "fit" ? maxHeight : null;
     img.style.maxHeight = maxHeight;
@@ -70,8 +68,8 @@
   // Re-measure when the answer fitCap() gave could have changed. "Fit width" is an explicit choice
   // to ignore the viewport's height, so it is left alone.
   function refit() {
-    if (root.getAttribute("data-zoom") === "width") return;
-    if (fitCap() === appliedFitCap) return;
+    var mode = urlRules().zoomMode(root.getAttribute("data-zoom"));
+    if (!urlRules().needsRefit(mode, fitCap(), appliedFitCap)) return;
     applyZoom("fit");
   }
   window.addEventListener("resize", refit);
@@ -171,16 +169,19 @@
   var ws = null;
   var themeChoice = document.getElementById("cp-theme");
   function activeThemeChoice() {
-    return themeChoice && !themeChoice.disabled &&
-      themeChoice.getAttribute("data-theme-active") === "1" ? themeChoice.value : "";
+    return urlRules().activeThemeChoice(
+      themeChoice && {
+        value: themeChoice.value,
+        disabled: themeChoice.disabled,
+        active: themeChoice.getAttribute("data-theme-active") === "1",
+      }
+    );
   }
   function chosenUiMode() {
-    var value = activeThemeChoice();
-    return value === "light" || value === "dark" ? value : "";
+    return urlRules().chosenUiMode(activeThemeChoice());
   }
   function chosenThemeProvider() {
-    var value = activeThemeChoice();
-    return value.indexOf("theme:") === 0 ? value.substring(6) : "";
+    return urlRules().chosenThemeProvider(activeThemeChoice());
   }
   // The Theme bar: the visible face of #cp-theme, which is in the DOM but visually removed. The
   // chips carry the select's own option values, so driving one from the other is a straight
@@ -200,13 +201,14 @@
   function syncThemeBar() {
     if (!themeChoice) return;
     themeBarBtns.forEach(function (b) {
-      var value = b.getAttribute("data-theme-choice");
-      var option = themeOptionFor(value);
-      b.disabled = themeChoice.disabled || !option || option.disabled;
-      // Pressed tracks what the select DISPLAYS, not activeThemeChoice(): before the first pick
-      // the select still shows the preview's baked theme (data-theme-active="0"), and a bar with
-      // nothing pressed would read as "no theme" over pixels that plainly have one.
-      b.setAttribute("aria-pressed", themeChoice.value === value ? "true" : "false");
+      var option = themeOptionFor(b.getAttribute("data-theme-choice"));
+      var state = urlRules().themeBarButton(
+        b.getAttribute("data-theme-choice"),
+        { value: themeChoice.value, disabled: themeChoice.disabled },
+        option && { disabled: option.disabled }
+      );
+      b.disabled = state.disabled;
+      b.setAttribute("aria-pressed", state.pressed ? "true" : "false");
     });
   }
   themeBarBtns.forEach(function (b) {
@@ -253,18 +255,19 @@
   // the copyable /render URL stays px-consistent). data-render-density carries the factor.
   var renderDensity = parseFloat(root.getAttribute("data-render-density")) || 2;
   // dp (string from the input) → a positive integer px value, or null when blank/non-positive.
-  // The rules below live in `cli/serve-web/src/viewer/renderQuery.ts` and ship in
-  // `serve-components.js` as `window.cpViewerQuery`.
+  // The rules below live in `cli/serve-web/src/viewer/` and ship in `serve-components.js` as
+  // `window.cpViewerQuery`.
   //
-  // Read at CALL time, never cached at IIFE time: nothing orders the two script tags, and a handle
-  // cached at load would be null on a page that emits them the other way round — silently, with the
-  // URL rules simply not applying.
+  // Looked up per call rather than closed over. Most callers run long after load, where a cached
+  // handle would be the usual stale-global hazard — but `applyZoom("fit")` runs at IIFE time, so
+  // the handle has to EXIST by then too. It does: `ServeWeb.kt` emits `serve-components.js` and
+  // `viewer.js` from one site, in that order, both classic blocking scripts. Reading through a
+  // function keeps that the only thing this depends on.
   //
-  // Deliberately UNGUARDED, unlike `window.cpRcFonts` below. Every page that emits `viewer.js`
-  // emits `serve-components.js` immediately before it (one site, `ServeWeb.kt`, unconditional), so
-  // an absent handle means the bundle failed to load — and then the viewer cannot render anything
-  // correctly anyway. A fallback here would have to restate the rules, which is the duplication
-  // this move exists to remove; a thrown error is the honest signal.
+  // Deliberately UNGUARDED, unlike `window.cpRcFonts` below. Given that ordering, an absent handle
+  // means the bundle failed to load — and then the viewer cannot render correctly anyway. A
+  // fallback would have to restate the rules, which is the duplication this move exists to remove;
+  // a thrown error is the honest signal.
   function urlRules() {
     return window.cpViewerQuery;
   }

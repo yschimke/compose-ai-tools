@@ -148,9 +148,14 @@ class ServeViewerThemeBarTest {
       "a chip click must go through the select's own change, so every existing lane still applies",
     )
     // The bar mirrors what syncServerControls has just decided; it must not re-derive it, or the
-    // two would disagree about which themes this lane can render.
+    // two would disagree about which themes this lane can render. That rule moved to
+    // `cli/serve-web/src/viewer/themeChoice.ts`, where `viewerThemeChoice.test.ts` drives each way
+    // a
+    // chip can be disabled — the select itself, a missing option, a server-disabled option. What is
+    // held here is that the served asset still asks for it rather than re-deriving it locally.
     assertTrue(
-      script.contains("b.disabled = themeChoice.disabled || !option || option.disabled;"),
+      script.contains("urlRules().themeBarButton(") &&
+        script.contains("b.disabled = state.disabled;"),
       script,
     )
     assertTrue(script.contains("syncThemeBar();"), script)

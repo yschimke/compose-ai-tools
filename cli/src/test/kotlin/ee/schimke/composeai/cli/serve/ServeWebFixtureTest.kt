@@ -3912,10 +3912,15 @@ class ServeWebFixtureTest {
         viewerThemes.contains("el.setAttribute(\"data-theme-active\", \"1\")"),
       "a declared catalog theme becomes the active viewer override even on a baked theme id",
     )
+    // The exclusivity rule itself moved to `cli/serve-web/src/viewer/themeChoice.ts`, where
+    // `viewerThemeChoice.test.ts` drives it over every value instead of grepping for one spelling
+    // of it. What is still worth holding HERE is the seam: `viewer.js` must ask the shared rules
+    // rather than grow a second copy, because a second copy is how the select's values and their
+    // consumption drift apart while both look right.
     assertTrue(
-      assetText("viewer.js").contains("return value.indexOf(\"theme:\") === 0") &&
-        assetText("viewer.js").contains("value === \"light\" || value === \"dark\""),
-      "the unified Theme value maps exclusively to themeProvider or uiMode",
+      assetText("viewer.js").contains("urlRules().chosenUiMode(") &&
+        assetText("viewer.js").contains("urlRules().chosenThemeProvider("),
+      "the unified Theme value is mapped by the shared rules, not restated in the viewer",
     )
 
     // The backend-provenance badge names the active tier. The Wasm tier is always CMP-WASM; the
@@ -4470,10 +4475,16 @@ class ServeWebFixtureTest {
         view.contains(">Fit width</button>"),
       "the viewer offers width fit as an unpressed toggle over the default screen fit",
     )
+    // The cap's arithmetic — the 320px floor, the slack under the stage, the rounding that keeps a
+    // re-measure from churning — moved to `cli/serve-web/src/viewer/fit.ts`, where
+    // `viewerFit.test.ts`
+    // drives each rule instead of grepping for one spelling of the expression. What this still
+    // holds
+    // is what the SERVED asset must do: measure the stage's real position rather than guess, hand
+    // that to the shared rule, and apply a cap before the first render.
     assertTrue(
-      assetText("viewer.js").contains("var maxHeight = mode === \"fit\" ? fitCap() : \"\";") &&
-        assetText("viewer.js")
-          .contains("return Math.max(320, Math.round(window.innerHeight - top - 64)) + \"px\";") &&
+      assetText("viewer.js").contains("stage.getBoundingClientRect().top") &&
+        assetText("viewer.js").contains("urlRules().fitCap(top, window.innerHeight)") &&
         assetText("viewer.js").contains("applyZoom(\"fit\");"),
       "screen fit bounds tall previews to the space the viewport actually has left below the " +
         "chrome, measured before the initial render rather than guessed at 72vh",
