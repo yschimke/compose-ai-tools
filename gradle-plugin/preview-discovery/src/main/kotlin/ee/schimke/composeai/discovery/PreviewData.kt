@@ -400,6 +400,18 @@ enum class AmbientCaptureState {
 }
 
 /**
+ * Tool-owned environment selected by `@GlimmerEnvironmentPreview`. The renderer captures normal
+ * opaque RGB-on-black Glimmer UI first, then delegates ADD compositing to the environment connector.
+ */
+@Serializable
+enum class GlimmerEnvironmentCapture {
+  Light,
+  Dark,
+  Busy,
+  VeniceCanalCats,
+}
+
+/**
  * Per-preview Wear OS one-handed-gesture **hint** override discovered from a `@GestureHintPreview`
  * annotation. Non-null when present; the renderer wraps the composition with
  * `:data-gestures-connector`'s `GestureOverrideExtension` so `GestureHint` force-shows the
@@ -767,6 +779,11 @@ data class Capture(
    * `AmbientOverrideExtension` when present.
    */
   val ambient: AmbientCapture? = null,
+  /**
+   * `null` → keep the raw additive Glimmer capture. Non-null → preserve that capture beside
+   * the output and ADD-composite the selected environment as a post-render step.
+   */
+  val glimmerEnvironment: GlimmerEnvironmentCapture? = null,
   /**
    * `null` → no Wear OS one-handed-gesture hint override. Set when the preview carries a
    * `@GestureHintPreview` annotation. Renderer wraps the composition with

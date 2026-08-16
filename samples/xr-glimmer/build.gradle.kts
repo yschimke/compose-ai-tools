@@ -82,4 +82,7 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+  // Contrast calibration reads the connector-owned environment resources; application code has no
+  // dependency on the connector and therefore cannot accidentally ship preview scenery.
+  testImplementation(project(":data-glimmer-environment-connector"))
 }

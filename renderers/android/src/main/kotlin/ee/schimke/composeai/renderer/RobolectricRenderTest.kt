@@ -60,6 +60,8 @@ import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeConte
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
+import ee.schimke.composeai.glimmer.GlimmerEnvironment as ConnectorGlimmerEnvironment
+import ee.schimke.composeai.glimmer.GlimmerEnvironmentCompositor
 import ee.schimke.composeai.scroll.FLING_DECAY
 import ee.schimke.composeai.scroll.FLING_MAX_DISTANCE_VIEWPORTS
 import ee.schimke.composeai.scroll.FLING_MIN_STEP_DP
@@ -1761,6 +1763,7 @@ abstract class RobolectricRenderTestBase(
                     previewId = preview.id,
                     isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
+                    glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                   )
                   .also { handled ->
                     if (handled) {
@@ -1943,6 +1946,21 @@ abstract class RobolectricRenderTestBase(
             // preserved alongside as `<basename>.raw.png`.
             if (focus?.overlay == true) {
               FocusOverlay.apply(capturedView, outputFile, focus.toFocusOverride())
+            }
+
+            // Glimmer is captured as ordinary opaque RGB on black. Only after the complete raw
+            // frame exists does the connector preserve it and ADD-composite the selected world.
+            // Focus GIFs perform this per frame in handleFocusGifCapture so their real traversal
+            // and timing remain untouched.
+            if (
+              job is CaptureRenderJob &&
+                job.capture.glimmerEnvironment != null &&
+                outputFile.extension.equals("png", ignoreCase = true)
+            ) {
+              GlimmerEnvironmentCompositor.applyToPng(
+                outputFile,
+                job.capture.glimmerEnvironment.toConnectorEnvironment(),
+              )
             }
 
             // ATF / hierarchy production lives in `daemon/android`'s `RenderEngine` —
@@ -3138,6 +3156,7 @@ private fun handleFocusGifCapture(
   previewId: String,
   isRound: Boolean,
   outputFile: File,
+  glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
 ): Boolean {
   if (focusGif.steps.isEmpty()) return false
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_focus_frames")
@@ -3181,17 +3200,27 @@ private fun handleFocusGifCapture(
       frameFiles += frameFile
     }
 
-    val frames = frameFiles.map { FramePngReader.decode(it, role = "focus GIF") }
+    val rawFrames = frameFiles.map { FramePngReader.decode(it, role = "focus GIF") }
     // Hold the first and last frames a touch longer so the viewer reads the starting
     // and ending focus state before the loop restarts — mirrors @AnimatedPreview.
     val frameDelays =
-      IntArray(frames.size) { i ->
+      IntArray(rawFrames.size) { i ->
         when (i) {
           0 -> HOLD_START_ANIM_MS
-          frames.lastIndex -> HOLD_END_ANIM_MS
+          rawFrames.lastIndex -> HOLD_END_ANIM_MS
           else -> focusGif.frameDelayMs
         }
       }
+    val frames =
+      glimmerEnvironment?.let { environment ->
+        val rawOutput = outputFile.resolveSibling("${outputFile.nameWithoutExtension}.raw.gif")
+        ScrollGifEncoder.encode(
+          frames = rawFrames,
+          outputFile = rawOutput,
+          frameDelaysMs = frameDelays,
+        ) ?: return false
+        rawFrames.map { GlimmerEnvironmentCompositor.composite(it, environment) }
+      } ?: rawFrames
     val written =
       ScrollGifEncoder.encode(frames = frames, outputFile = outputFile, frameDelaysMs = frameDelays)
         ?: return false
@@ -3206,6 +3235,9 @@ private fun handleFocusGifCapture(
     rule.runOnUiThread { FocusController.set(null) }
   }
 }
+
+private fun GlimmerEnvironmentCapture.toConnectorEnvironment(): ConnectorGlimmerEnvironment =
+  ConnectorGlimmerEnvironment.valueOf(name)
 
 /**
  * Hard cap on auto-detected animation duration. `InfiniteTransition` and a few hand-rolled
