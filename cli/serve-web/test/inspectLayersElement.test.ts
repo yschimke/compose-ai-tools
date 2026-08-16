@@ -124,6 +124,9 @@ async function mount(search = ""): Promise<void> {
       <cp-inspect-layers></cp-inspect-layers>
       <div class="cp-viewer" data-preview-id="plain.Button">
         <img id="cp-img" data-cp-src="/m3/render/plain.Button.png?at=abc">
+        <img id="cp-spec-img">
+        <div id="cp-spec-compare" data-reference="/m3/reference/Button.png"></div>
+        <script type="application/json" id="cp-spec-annotations">${JSON.stringify({ reference: ANNOTATIONS.annotations })}</script>
         <div class="cp-inspect-layer" id="cp-inspect-layer"></div>
         <div class="cp-inspect-legend" id="cp-inspect-legend" hidden></div>
         <label><input class="cp-inspect" data-cp-inspect="a11y" type="checkbox"> A11y</label>
@@ -204,6 +207,19 @@ describe("<cp-inspect-layers>", () => {
             "/m3/render/plain.Button.annotations?at=abc",
         ]);
         assert.deepEqual(sections(), ["Typography (1)", "Theme (1)"]);
+    });
+
+    it("moves typography onto the Figma raster and uses its own annotations", async () => {
+        const stub = stubFetch();
+        await mount();
+        viewer().setAttribute("data-mode", "spec");
+        viewer().setAttribute("data-spec-view", "spec");
+        await flush();
+        await tick("typography");
+        assert.deepEqual(stub.urls, [], "the inert Figma lane needs no render");
+        assert.deepEqual(sections(), ["Typography (1)"]);
+        assert.equal(boxes().length, 1);
+        assert.equal(rows()[0].querySelector("strong")?.textContent, "Title");
     });
 
     it("orders the legend by the declared layers, not by what was ticked first", async () => {

@@ -1494,6 +1494,27 @@ const FIXTURE_STATES = [
             await page.mouse.move(0, 0);
         },
     },
+    {
+        // Typography follows the surface being inspected. Here the Figma raster is on the stage,
+        // so its own captured styles are boxed over that raster and summarised beside it.
+        fixture: "serve-viewer-path",
+        suffix: "spec-typography",
+        apply: async (page) => {
+            await page.click('[data-cp-spec-view="spec"]');
+            await page.evaluate(() => {
+                const toggle = document.getElementById("cp-inspect-typography");
+                toggle.checked = true;
+                toggle.dispatchEvent(new Event("change", { bubbles: true }));
+            });
+            await page.waitForFunction(
+                () =>
+                    document.querySelectorAll(
+                        "#cp-inspect-layer .cp-inspect-box",
+                    ).length > 0,
+            );
+            await page.mouse.move(0, 0);
+        },
+    },
     // The three comparison views the spec lane offers once it is up. Each is drawn entirely at
     // runtime — pre-normalised canvases painted by `<cp-spec-compare>` — so the committed HTML holds
     // four empty `<canvas>` elements and none of what these views actually look like. Capturing
@@ -1519,6 +1540,8 @@ const FIXTURE_STATES = [
                     );
                 })
                 .catch(() => {});
+            if (view === "diff" || view === "triptych")
+                await page.waitForTimeout(500);
             // Off the view segment it just clicked — see `spec-lane` above.
             await page.mouse.move(0, 0);
         },

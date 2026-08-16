@@ -1448,7 +1448,12 @@ cp-history-menu { display: contents; }
   flex-wrap: wrap; width: 100%; }
 .cp-spec-compare[hidden] { display: none; }
 .cp-spec-panel { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  min-width: 0; flex: 0 1 auto; }
+  min-width: 0; flex: 0 1 auto; position: relative; }
+.cp-spec-annotation-layer { position: absolute; pointer-events: none; z-index: 2; }
+.cp-spec-type-box { border-width: 2px; background: rgba(37, 99, 235, 0.18); }
+.cp-spec-type-diff { align-items: flex-start; }
+.cp-spec-type-field { display: block; font-size: 0.68rem; line-height: 1.35;
+  font-variant-numeric: tabular-nums; }
 /* `max-height` as well as `max-width`, both against auto dimensions, so an app-screen render
    (tall, and often 1000+ px of raster) is bounded by the viewport rather than pushing the stage
    past it — the aspect ratio rides along because the canvas is a replaced element. */

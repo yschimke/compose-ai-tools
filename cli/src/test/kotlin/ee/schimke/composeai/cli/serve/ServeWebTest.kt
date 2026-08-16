@@ -900,6 +900,16 @@ class ServeWebTest {
             raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
             source = DesignReferenceSource(provider = "figma"),
           ),
+        referenceAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 20, y = 30, width = 120, height = 24),
+              label = "titleLarge 22sp/28sp",
+              role = "Title",
+              detail = mapOf("token" to "titleLarge", "fontFamily" to "Roboto Flex"),
+            )
+          ),
       )
     assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane carrier is rendered")
     // The lane is a top-level chip named after the design tool it imported from — NOT an option
@@ -1055,6 +1065,16 @@ class ServeWebTest {
             raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
             source = DesignReferenceSource(provider = "figma"),
           ),
+        referenceAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 20, y = 30, width = 120, height = 24),
+              label = "titleLarge 22sp/28sp",
+              role = "Title",
+              detail = mapOf("token" to "titleLarge", "fontFamily" to "Roboto Flex"),
+            )
+          ),
       )
     // Four ways to look at the same pair, all four on the stage rather than behind a navigation to
     // /compare — which is the point: the render worth comparing is the one the viewer's overrides,
@@ -1089,6 +1109,10 @@ class ServeWebTest {
     }
     assertTrue(html.contains("id=\"cp-spec-wipe-range\""), "the wipe carries a range control")
     assertTrue(html.contains("id=\"cp-spec-score\""), "the match readout is rendered")
+    assertTrue(
+      html.contains("id=\"cp-spec-annotations\"") && html.contains("Roboto Flex"),
+      "the Figma raster carries its own typography for the overlay",
+    )
     // Load order is load-bearing: `viewer.js` calls `window.cpSpecCompare` on the way into the
     // lane, and `<cp-spec-compare>` draws every surface from format-compare.js's primitives. The
     // element wires itself up as its tag upgrades, so the components bundle has to be requested
