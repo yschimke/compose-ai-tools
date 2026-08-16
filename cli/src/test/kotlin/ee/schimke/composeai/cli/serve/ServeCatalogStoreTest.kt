@@ -868,6 +868,39 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `repository-wide catalog retains each preview source module`() {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"all-modules",
+       "source":{"repo":"yschimke/compose-ai-tools","ref":"main","module":""},
+       "components":[{"componentId":"TV","sourceFile":"src/main/kotlin/Main.kt",
+         "sourceModule":":tv","images":[{"path":"images/tv.png"}]}]}
+      """
+        .trimIndent()
+    val cleared = mutableListOf<String>()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        },
+        clearTrustedBundles = { cleared += it },
+      )
+
+    assertTrue(store.load("all-modules") is ServeCatalogStore.Result.Ok)
+    val preview = registered.getValue("all-modules").previews.single()
+    assertEquals("src/main/kotlin/Main.kt", preview.sourceFile)
+    assertEquals(":tv", preview.sourceModule)
+    assertEquals(listOf("all-modules"), cleared)
+  }
+
+  @Test
   fun `catalog image declarations reach the baked browse surface`() {
     // A supplement-only preview's daemon is opened lazily, so these catalog fields are the only
     // declaration source available when /api/previews and the initial viewer are built.
@@ -1105,6 +1138,66 @@ class ServeCatalogStoreTest {
     assertEquals(mapOf("button-filled__ideal__default__dark" to "FilledButton_Dark"), captured)
     // The live builder claimed the session, so nothing was registered as a plain static host.
     assertTrue(registered["compose-m3"] == null)
+  }
+
+  @Test
+  fun `liveBundles partition aliases and per-preview paths by module`() {
+    val prefix = "module_3a7476__"
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"all-modules",
+       "liveBundle":{"path":"bundle/","file":"0000.png"},
+       "liveBundles":[
+         {"module":":mobile","path":"bundle/","file":"0000.png","previewIdPrefix":""},
+         {"module":":tv","path":"bundle/modules/module_3a7476/","file":"module_3a7476.png","previewIdPrefix":"$prefix"}],
+       "components":[
+         {"componentId":"Mobile","images":[{"path":"images/mobile.png","previewId":"activity__MainActivity"}]},
+         {"componentId":"TV","images":[{"path":"images/tv.png","previewId":"${prefix}activity__MainActivity"}]}]}
+      """
+        .trimIndent()
+    val requested = java.util.concurrent.CopyOnWriteArrayList<String>()
+    val fetch: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> json.toByteArray()
+        url.endsWith("bundle/0000.png") ||
+          url.endsWith("bundle/modules/module_3a7476/module_3a7476.png") -> byteArrayOf(1, 2, 3)
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    var captured: List<ServeCatalogStore.TrustedModuleBundle>? = null
+    var recorded: List<ServeCatalogStore.VerifiedModuleBundle>? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trust },
+        fetch = fetch,
+        buildTrustedBundles = { _, bundles, _ ->
+          captured = bundles
+          true
+        },
+        recordTrustedBundles = { _, bundles -> recorded = bundles },
+      )
+
+    assertTrue(store.load("all-modules") is ServeCatalogStore.Result.Ok)
+    val modules = assertNotNull(captured)
+    assertEquals(listOf(":mobile", ":tv"), modules.map { it.module })
+    assertEquals(listOf(":mobile", ":tv"), assertNotNull(recorded).map { it.module })
+    assertEquals(mapOf("mobile" to "activity__MainActivity"), modules[0].alias)
+    assertEquals(mapOf("tv" to "${prefix}activity__MainActivity"), modules[1].alias)
+    modules[1].perPreviewBundle.fetch("${prefix}activity__MainActivity")
+    assertTrue(
+      requested.any {
+        it.endsWith("bundle/modules/module_3a7476/previews/${prefix}activity__MainActivity.png")
+      }
+    )
+    assertTrue(registered["all-modules"] == null)
   }
 
   @Test

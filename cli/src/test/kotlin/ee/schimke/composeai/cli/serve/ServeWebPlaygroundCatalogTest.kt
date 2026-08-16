@@ -101,6 +101,27 @@ class ServeWebPlaygroundCatalogTest {
   }
 
   @Test
+  fun `a seeded repository-wide preview selects its owning module bundle`() {
+    val tvTarget =
+      PlaygroundCatalogInfo(
+        id = "all@:tv",
+        label = "all · :tv (android)",
+        backend = "android",
+        modes = listOf(PlaygroundMode.ANDROID),
+        system = "all",
+        module = ":tv",
+      )
+    val mobileTarget =
+      tvTarget.copy(id = "all", label = "all · :mobile (android)", module = ":mobile")
+    val seed = previewSeed.copy(catalog = "all", sourceModule = ":tv")
+
+    val html = page(listOf(mobileTarget, tvTarget), seed = seed)
+
+    assertTrue(html.contains("""<option value="all@:tv" selected>"""))
+    assertFalse(html.contains("""<option value="all" selected>"""))
+  }
+
+  @Test
   fun `a seeded page says where the code came from, and what that does not promise`() {
     val html = page(listOf(m3), seed = previewSeed)
     assertTrue(html.contains("""id="pg-seed""""))

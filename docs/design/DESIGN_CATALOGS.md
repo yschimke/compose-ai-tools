@@ -302,6 +302,9 @@ To publish every Gradle module that applies `ee.schimke.composeai.preview`, omit
       system: your-system
       spec: catalog.spec.json
       modules: all
+      publish-live-bundle: true
+      split-per-preview: true
+      split-mode: full
 ```
 
 The workflow discovers the same repository-wide module set as `compose-preview list`, then packs
@@ -313,10 +316,25 @@ entry, including GIF/APNG artifacts. If two modules use the same preview functio
 spec-preferred/primary module keeps the unqualified name and later modules receive a stable
 `<module>::<function>` join key.
 
-Repository-wide mode publishes baked artifacts because executable bundles retain distinct module
-classpaths. Consequently it currently requires `render-shards: 1`, does not combine with
-`extra-module` or `publish-live-bundle`, and permits per-preview splitting only with
-`split-mode: view-only`. Supplying `module` keeps the existing single-module/live-bundle behavior.
+Executable bundles retain distinct module classpaths, so repository-wide publication never merges
+them. With `publish-live-bundle: true`, `catalog.json` carries a `liveBundles[]` descriptor for each
+module (and the primary legacy `liveBundle` for older servers). Additional modules receive a stable,
+collision-safe preview-id prefix before their executable bundle is split. A trusted serve host
+fetches and rehydrates every module atomically, then routes each catalog preview to its owning
+module daemon; equal ids such as `activity__MainActivity` therefore remain distinct and live.
+Module artifacts use a Gradle-path-derived key (for example `:tv` → `module_3a7476`) rather than a
+discovery-list index, so adding or reordering an unrelated module does not move existing bundle or
+per-preview URLs.
+
+`split-per-preview: true` may use `full` or `full-shared-classpath` for this mode. Each additional
+module's split remains self-contained—the primary module's external-resource pool is not a shared
+classpath. Static repository-wide publication still supports `split-mode: view-only` without live
+bundles. Repository-wide mode continues to require `render-shards: 1` and does not combine with
+`extra-module`, since both are separate fan-out mechanisms.
+
+The playground exposes each module bundle as an independent compile target. A handoff from a
+preview carries its `sourceModule` and preselects that module's classpath; the primary target keeps
+the historical plain system id, while additional targets are module-qualified.
 
 For the two bespoke needs a catalog like MeshCore has, the reusable workflow
 exposes generic hooks rather than forcing a copy: `stage-font-globs` stages

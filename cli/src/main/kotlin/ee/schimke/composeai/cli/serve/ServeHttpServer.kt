@@ -356,7 +356,7 @@ class ServeHttpServer(
     return PlaygroundSeedResolver.Location(
       repo = source.repo,
       ref = source.ref,
-      module = source.module,
+      module = preview.sourceModule ?: source.module,
       sourceFile = sourceFile,
       // Absent on a catalog published before discovery recorded it, which is exactly the case the
       // resolver falls back to whole-file seeding for.
@@ -1194,7 +1194,7 @@ class ServeHttpServer(
   ): List<PlaygroundCatalogInfo> {
     val choices = service.catalogChoices()
     val site = siteSystem() ?: return choices
-    return choices.filter { it.id.isEmpty() && sitePinIsOwn(service) || it.id == site }
+    return choices.filter { it.id.isEmpty() && sitePinIsOwn(service) || it.system == site }
   }
 
   /**
@@ -2660,7 +2660,12 @@ class ServeHttpServer(
       val bundleHost = catalogBundleHost(renderHost)
       val sourceHref =
         bundleHost?.catalogSource?.let { source ->
-          ServeUrls.githubBlobUrl(source.repo, source.ref, source.module, preview.sourceFile)
+          ServeUrls.githubBlobUrl(
+            source.repo,
+            source.ref,
+            preview.sourceModule ?: source.module,
+            preview.sourceFile,
+          )
         }
       val reportContext =
         ServeIssueReport.Context(
@@ -3966,7 +3971,7 @@ class ServeHttpServer(
           PlaygroundSeedResolver.Location(
             repo = source.repo,
             ref = source.ref,
-            module = source.module,
+            module = preview.sourceModule ?: source.module,
             sourceFile = file,
             bodyLine = preview.bodyLine,
           )
@@ -5069,7 +5074,12 @@ class ServeHttpServer(
       // sourceFile. Null when the session has no catalog source or the preview recorded no path.
       val sourceHref =
         bundleHost?.catalogSource?.let { src ->
-          ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
+          ServeUrls.githubBlobUrl(
+            src.repo,
+            src.ref,
+            preview.sourceModule ?: src.module,
+            preview.sourceFile,
+          )
         }
       val liveAuthPrompt =
         githubAuth

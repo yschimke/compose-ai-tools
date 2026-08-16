@@ -133,6 +133,10 @@ data class PlaygroundCatalogInfo(
    * True once this catalog's classpath is resolved — the first run against it pays for the unpack.
    */
   val resolved: Boolean = false,
+  /** Served catalog system, distinct from a module-qualified [id]. */
+  val system: String = id,
+  /** Owning Gradle module when this entry is one target in a repository-wide catalog. */
+  val module: String = "",
 )
 
 /** `GET /api/{version}/compiler/catalogs`: what the editor's catalog selector may offer. */

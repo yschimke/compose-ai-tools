@@ -19,9 +19,9 @@
  *  - only components whose spec function resolves to a `sourceFile` are touched;
  *  - a component that already carries a `sourceFile` is left as-is (never clobbered).
  *
- * The `sourceFile` is module-relative (`src/main/kotlin/…/Foo.kt`); the server prefixes it
- * with the catalog's source `module` when building the GitHub blob URL, so this stays the
- * bare path the discovery manifest recorded.
+ * The `sourceFile` is module-relative (`src/main/kotlin/…/Foo.kt`). `sourceModule` rides beside it
+ * for repository-wide catalogs, whose components can come from different Gradle projects; the
+ * server falls back to the catalog-wide source module for older single-module exports.
  *
  * `bodyLine` — a line inside the preview function's body — rides along on the same join,
  * for the same reason and to the same place. It is what lets the playground handoff open
@@ -29,12 +29,12 @@
  * its group. Stamped only alongside a `sourceFile` (a line number with no file is
  * meaningless), and the server treats its absence as "seed the whole file".
  *
- * @param {{components?: Array<{componentId: string, sourceFile?: string, bodyLine?: number}>}} manifest
+ * @param {{components?: Array<{componentId: string, sourceFile?: string, sourceModule?: string, bodyLine?: number}>}} manifest
  *   The parsed `catalog.json`, mutated in place.
  * @param {{groups?: Array<{components?: Array<{componentId: string, preview?: string}>}>}} spec
  *   The catalog spec the manifest was built from.
- * @param {Map<string, {sourceFile?: string, bodyLine?: number}>} sourceByFn
- *   Function-name → `{ sourceFile, bodyLine }` lookup (the generator's `sourceByFunction(bundle)`).
+ * @param {Map<string, {sourceFile?: string, bodyLine?: number, module?: string}>} sourceByFn
+ *   Function-name → source lookup (the generator's `sourceByFunction(bundle)`).
  * @returns {number} how many components had a `sourceFile` newly stamped.
  */
 export function applySourceFiles(manifest, spec, sourceByFn) {
@@ -51,11 +51,26 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
 
   let stamped = 0;
   for (const component of manifest?.components ?? []) {
-    if (component.sourceFile !== undefined) continue; // never clobber an existing path
     const fn = previewByComponentId.get(component.componentId);
     const source = fn ? sourceByFn.get(fn) : undefined;
+    if (component.sourceFile !== undefined) {
+      // A newer exporter may already preserve sourceFile. Add the matching module identity without
+      // replacing the path; never pair a module with a different pre-existing file.
+      if (
+        component.sourceModule === undefined &&
+        source?.sourceFile === component.sourceFile &&
+        typeof source.module === "string" &&
+        source.module.length > 0
+      ) {
+        component.sourceModule = source.module;
+      }
+      continue;
+    }
     if (source?.sourceFile) {
       component.sourceFile = source.sourceFile;
+      if (typeof source.module === "string" && source.module.length > 0) {
+        component.sourceModule = source.module;
+      }
       // Only with a path, and only when discovery actually recorded one — an older bundle
       // carries no `bodyLine`, and a component with a line but no file cannot be opened.
       if (typeof source.bodyLine === "number" && source.bodyLine > 0) {

@@ -55,6 +55,19 @@ test("never clobbers a sourceFile already on the component", () => {
   assert.equal(m.components[0].sourceFile, "already/There.kt");
 });
 
+test("adds a matching module to a sourceFile already preserved by the exporter", () => {
+  const spec = {
+    groups: [{ name: "TV", components: [{ componentId: "tv/Main", preview: "MainPreview" }] }],
+  };
+  const m = manifest([comp("tv/Main", { sourceFile: "src/main/kotlin/Main.kt" })]);
+  const sources = new Map([
+    ["MainPreview", { sourceFile: "src/main/kotlin/Main.kt", module: ":tv" }],
+  ]);
+
+  assert.equal(applySourceFiles(m, spec, sources), 0);
+  assert.equal(m.components[0].sourceModule, ":tv");
+});
+
 test("leaves manifest components absent from the spec untouched", () => {
   const spec = {
     groups: [{ name: "Buttons", components: [{ componentId: "Buttons/Filled", preview: "FilledButtonPreview" }] }],
@@ -102,6 +115,21 @@ test("stamps bodyLine alongside sourceFile so the playground can open one declar
 
   assert.equal(m.components[0].sourceFile, "src/main/kotlin/Buttons.kt");
   assert.equal(m.components[0].bodyLine, 81);
+});
+
+test("stamps the owning Gradle module alongside a repository-wide source path", () => {
+  const spec = {
+    groups: [{ name: "TV", components: [{ componentId: "tv/Main", preview: "MainPreview" }] }],
+  };
+  const m = manifest([comp("tv/Main")]);
+  const sources = new Map([
+    ["MainPreview", { sourceFile: "src/main/kotlin/Main.kt", bodyLine: 9, module: ":tv" }],
+  ]);
+
+  applySourceFiles(m, spec, sources);
+
+  assert.equal(m.components[0].sourceModule, ":tv");
+  assert.equal(m.components[0].sourceFile, "src/main/kotlin/Main.kt");
 });
 
 test("omits bodyLine when discovery recorded none, rather than writing a bogus zero", () => {
