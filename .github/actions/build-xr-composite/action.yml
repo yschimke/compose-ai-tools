@@ -49,21 +49,29 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p filament-sdk
-        tgz="filament-${{ inputs.filament-version }}-${{ inputs.platform }}.tgz"
-        url="https://github.com/google/filament/releases/download/${{ inputs.filament-version }}/${tgz}"
+        tgz="filament-${INPUTS_FILAMENT_VERSION}-${INPUTS_PLATFORM}.tgz"
+        url="https://github.com/google/filament/releases/download/${INPUTS_FILAMENT_VERSION}/${tgz}"
         echo "Downloading ${url}"
         curl -fL --retry 4 --retry-delay 2 -o "${tgz}" "${url}"
         tar xzf "${tgz}" -C filament-sdk
         rm -f "${tgz}"
+
+      env:
+        INPUTS_FILAMENT_VERSION: ${{ inputs.filament-version }}
+
+        INPUTS_PLATFORM: ${{ inputs.platform }}
 
     # Locate the SDK root (the dir holding include/filament/Engine.h) and export
     # it. Runs on both cache-hit and fresh-download, and copes with the tarball's
     # top-level layout differing per platform. On Windows we hand CMake (a native
     # binary) a Windows-style path (C:/...) rather than the Git-bash MSYS path
     # (/d/a/...), which it cannot resolve.
+    # zizmor: ignore[github-env]
+    # `sdk` is derived from a local `find` result beneath filament-sdk and is
+    # rejected unless the expected Engine.h exists; it is not external input.
     - name: Resolve Filament SDK root
       shell: bash
-      run: |
+      run: | # zizmor: ignore[github-env]
         set -euo pipefail
         engine="$(find "$PWD/filament-sdk" -path '*/include/filament/Engine.h' -print -quit)"
         if [ -z "$engine" ]; then

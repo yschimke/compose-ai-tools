@@ -27,6 +27,9 @@ name: PR Run Reaper
 # on re-read. See its tests for why each of those exists.
 
 on:
+  # zizmor: ignore[dangerous-triggers]
+  # Safe exception: the job checks out github.workflow_sha, never the PR head,
+  # and passes event fields only through environment variables to audited code.
   pull_request_target:
     types: [closed]
 

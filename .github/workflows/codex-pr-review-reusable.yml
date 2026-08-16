@@ -111,6 +111,7 @@ jobs:
         with:
           repository: ${{ inputs.pr_head_repository != '' && inputs.pr_head_repository || github.repository }}
           ref: ${{ inputs.pr_head_ref != '' && inputs.pr_head_ref || github.sha }}
+          persist-credentials: false
 
       - name: Setup Java 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -149,26 +150,28 @@ jobs:
         id: base-ref
         run: |
           set -euo pipefail
-          if [[ -n "${{ inputs.base_ref }}" ]]; then
-            base_ref="${{ inputs.base_ref }}"
-          elif [[ -n "${{ github.base_ref }}" ]]; then
-            base_ref="${{ github.base_ref }}"
+          if [[ -n "${INPUTS_BASE_REF}" ]]; then
+            base_ref="${INPUTS_BASE_REF}"
+          elif [[ -n "${GITHUB_BASE_REF}" ]]; then
+            base_ref="${GITHUB_BASE_REF}"
           else
             base_ref="main"
           fi
           echo "value=$base_ref" >> "$GITHUB_OUTPUT"
+        env:
+          INPUTS_BASE_REF: ${{ inputs.base_ref }}
 
       - name: Capture PR code diff
         id: code-diff
         run: |
           set -euo pipefail
           mkdir -p review-input
-          base_ref="${{ steps.base-ref.outputs.value }}"
+          base_ref="${STEPS_BASE_REF_OUTPUTS_VALUE}"
           base_remote="origin"
 
-          if [[ -n "${{ inputs.pr_head_repository }}" && "${{ inputs.pr_head_repository }}" != "${{ github.repository }}" ]]; then
+          if [[ -n "${INPUTS_PR_HEAD_REPOSITORY}" && "${INPUTS_PR_HEAD_REPOSITORY}" != "$CURRENT_REPOSITORY" ]]; then
             base_remote="upstream-base"
-            git remote add "$base_remote" "https://github.com/${{ github.repository }}.git"
+            git remote add "$base_remote" "https://github.com/${CURRENT_REPOSITORY}.git"
           fi
 
           git fetch --no-tags --prune --depth=1 "$base_remote" "$base_ref"
@@ -178,6 +181,10 @@ jobs:
             echo "code_diff_path=review-input/code.diff"
             echo "changed_files_path=review-input/changed-files.txt"
           } >> "$GITHUB_OUTPUT"
+        env:
+          STEPS_BASE_REF_OUTPUTS_VALUE: ${{ steps.base-ref.outputs.value }}
+          INPUTS_PR_HEAD_REPOSITORY: ${{ inputs.pr_head_repository }}
+          CURRENT_REPOSITORY: ${{ github.repository }}
 
       - name: Download required preview artifacts (images + metadata)
         if: ${{ inputs.preview_status == 'success' }}
@@ -206,8 +213,8 @@ jobs:
         run: |
           set -euo pipefail
           reason=""
-          if [[ "${{ inputs.preview_status }}" != "success" ]]; then
-            reason="preview workflow status was '${{ inputs.preview_status }}'"
+          if [[ "${INPUTS_PREVIEW_STATUS}" != "success" ]]; then
+            reason="preview workflow status was '${INPUTS_PREVIEW_STATUS}'"
           elif [[ ! -d review-input/previews ]]; then
             reason="preview artifacts were not downloaded"
           elif ! find review-input/previews -type f | grep -q .; then
@@ -221,6 +228,8 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
             echo "reason=" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          INPUTS_PREVIEW_STATUS: ${{ inputs.preview_status }}
 
       - name: Select review agent from available keys
         id: select-agent
@@ -229,9 +238,9 @@ jobs:
           count=0
           agent=""
           reason=""
-          if [[ -n "${{ secrets.codex_api_key }}" ]]; then agent="codex"; count=$((count+1)); fi
-          if [[ -n "${{ secrets.claude_api_key }}" ]]; then agent="claude"; count=$((count+1)); fi
-          if [[ -n "${{ secrets.gemini_api_key }}" ]]; then agent="gemini"; count=$((count+1)); fi
+          if [[ -n "$CODEX_API_KEY" ]]; then agent="codex"; count=$((count+1)); fi
+          if [[ -n "$CLAUDE_API_KEY" ]]; then agent="claude"; count=$((count+1)); fi
+          if [[ -n "$GEMINI_API_KEY" ]]; then agent="gemini"; count=$((count+1)); fi
 
           if [[ "$count" -eq 0 ]]; then
             reason="no AI API key configured"
@@ -248,6 +257,10 @@ jobs:
             echo "reason=" >> "$GITHUB_OUTPUT"
             echo "agent=$agent" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          CODEX_API_KEY: ${{ secrets.codex_api_key }}
+          CLAUDE_API_KEY: ${{ secrets.claude_api_key }}
+          GEMINI_API_KEY: ${{ secrets.gemini_api_key }}
 
       - name: Run selected AI review (code + preview)
         id: ai-review
@@ -256,38 +269,45 @@ jobs:
           CODEX_API_KEY: ${{ secrets.codex_api_key }}
           ANTHROPIC_API_KEY: ${{ secrets.claude_api_key }}
           GEMINI_API_KEY: ${{ secrets.gemini_api_key }}
+          STEPS_SELECT_AGENT_OUTPUTS_AGENT: ${{ steps.select-agent.outputs.agent }}
+          INPUTS_CODEX_REVIEW_COMMAND: ${{ inputs.codex_review_command }}
+          STEPS_CODE_DIFF_OUTPUTS_CODE_DIFF_PATH: ${{ steps.code-diff.outputs.code_diff_path }}
+          STEPS_CODE_DIFF_OUTPUTS_CHANGED_FILES_PATH: ${{ steps.code-diff.outputs.changed_files_path }}
+          INPUTS_CODE_DIFF_PATHS: ${{ inputs.code_diff_paths }}
+          INPUTS_CLAUDE_REVIEW_COMMAND: ${{ inputs.claude_review_command }}
+          INPUTS_GEMINI_REVIEW_COMMAND: ${{ inputs.gemini_review_command }}
         run: |
           set -euo pipefail
           mkdir -p review-output
-          agent="${{ steps.select-agent.outputs.agent }}"
+          agent="${STEPS_SELECT_AGENT_OUTPUTS_AGENT}"
           case "$agent" in
             codex)
-              if [[ -n "${{ inputs.codex_review_command }}" ]]; then
-                eval "${{ inputs.codex_review_command }}"
+              if [[ -n "${INPUTS_CODEX_REVIEW_COMMAND}" ]]; then
+                eval "${INPUTS_CODEX_REVIEW_COMMAND}"
               else
                 codex review \
                   --skill compose-preview-review \
-                  --code-diff "${{ steps.code-diff.outputs.code_diff_path }}" \
-                  --changed-files "${{ steps.code-diff.outputs.changed_files_path }}" \
+                  --code-diff "${STEPS_CODE_DIFF_OUTPUTS_CODE_DIFF_PATH}" \
+                  --changed-files "${STEPS_CODE_DIFF_OUTPUTS_CHANGED_FILES_PATH}" \
                   --preview-dir review-input/previews \
-                  --focus-paths "${{ inputs.code_diff_paths }}" \
+                  --focus-paths "${INPUTS_CODE_DIFF_PATHS}" \
                   --output-json review-output/codex-review.json \
                   --output-markdown review-output/codex-review.md
               fi
               ;;
             claude)
-              if [[ -z "${{ inputs.claude_review_command }}" ]]; then
+              if [[ -z "${INPUTS_CLAUDE_REVIEW_COMMAND}" ]]; then
                 echo "::error::claude_api_key is set but no claude_review_command was provided."
                 exit 1
               fi
-              eval "${{ inputs.claude_review_command }}"
+              eval "${INPUTS_CLAUDE_REVIEW_COMMAND}"
               ;;
             gemini)
-              if [[ -z "${{ inputs.gemini_review_command }}" ]]; then
+              if [[ -z "${INPUTS_GEMINI_REVIEW_COMMAND}" ]]; then
                 echo "::error::gemini_api_key is set but no gemini_review_command was provided."
                 exit 1
               fi
-              eval "${{ inputs.gemini_review_command }}"
+              eval "${INPUTS_GEMINI_REVIEW_COMMAND}"
               ;;
           esac
 
@@ -296,39 +316,33 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p review-output
-          cat > review-output/codex-review.md <<EOF
-          ## AI PR Review — Blocked
-
-          AI review did not run because required review context was unavailable.
-
-          **Reason:** ${{ steps.context.outputs.reason || steps.select-agent.outputs.reason }}
-
-          ### Missing context / blocked checks
-          - Code review context: available
-          - Preview review context: unavailable
-          - Visual diff checks: blocked
-          EOF
-          cat > review-output/codex-review.json <<EOF
-          {"status":"blocked","blocking_findings":0,"reason":"${{ steps.context.outputs.reason }}"}
-          EOF
+          printf '## AI PR Review — Blocked\n\nAI review did not run because required review context was unavailable.\n\n**Reason:** %s\n\n### Missing context / blocked checks\n- Code review context: available\n- Preview review context: unavailable\n- Visual diff checks: blocked\n' \
+            "$BLOCK_REASON" > review-output/codex-review.md
+          python3 -c 'import json,os; json.dump({"status":"blocked","blocking_findings":0,"reason":os.environ["BLOCK_REASON"]}, open("review-output/codex-review.json", "w"))'
+        env:
+          BLOCK_REASON: ${{ steps.context.outputs.reason || steps.select-agent.outputs.reason }}
 
       - name: Optionally update PR branch with review artifacts
         if: ${{ inputs.update_pr_branch }}
         env:
           GITHUB_TOKEN: ${{ secrets.gh_token }}
+          GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME: ${{ github.event.pull_request.head.repo.full_name }}
+          GITHUB_EVENT_PULL_REQUEST_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            echo "::warning::Skipping PR branch update because event is ${{ github.event_name }} (not pull_request)."
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "::warning::Skipping PR branch update because event is $EVENT_NAME (not pull_request)."
             exit 0
           fi
 
-          if [[ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
+          if [[ "${GITHUB_EVENT_PULL_REQUEST_HEAD_REPO_FULL_NAME}" != "$CURRENT_REPOSITORY" ]]; then
             echo "::warning::Skipping PR branch update for fork PR (no safe push permission)."
             exit 0
           fi
 
-          branch="${{ github.event.pull_request.head.ref }}"
+          branch="${GITHUB_EVENT_PULL_REQUEST_HEAD_REF}"
           if [[ -z "$branch" ]]; then
             echo "::warning::Skipping PR branch update because PR head ref is unavailable."
             exit 0
@@ -347,7 +361,7 @@ jobs:
           fi
 
           git commit -m "chore: update AI review artifacts"
-          if ! git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:${branch}"; then
+          if ! git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${CURRENT_REPOSITORY}.git" "HEAD:${branch}"; then
             echo "::warning::Unable to push AI review artifacts to PR branch (insufficient permissions or branch protection)."
           fi
 

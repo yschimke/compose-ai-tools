@@ -55,8 +55,11 @@ jobs:
           set -euo pipefail
           mkdir -p staged
           tar -C dist -czf \
-            "staged/xr-composite-${{ matrix.asset }}-${{ inputs.smoke_version }}.tar.gz" .
+            "staged/xr-composite-${MATRIX_ASSET}-${INPUTS_SMOKE_VERSION}.tar.gz" .
           ls -l staged
+        env:
+          INPUTS_SMOKE_VERSION: ${{ inputs.smoke_version }}
+          MATRIX_ASSET: ${{ matrix.asset }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: smoke-${{ matrix.asset }}
@@ -86,10 +89,13 @@ jobs:
           gh release delete "$TAG" --cleanup-tag --yes || true
           gh release create "$TAG" \
             --prerelease \
-            --title "xr-composite release smoke ${{ inputs.smoke_version }}" \
+            --title "xr-composite release smoke ${INPUTS_SMOKE_VERSION}" \
             --notes "Throwaway pre-release for the xr-composite release-path smoke. Auto-deleted by the workflow; safe to delete if it lingers." \
             assets/*.tar.gz
           echo "Published $TAG with:"; ls -l assets
+
+        env:
+          INPUTS_SMOKE_VERSION: ${{ inputs.smoke_version }}
 
   # Download from the REAL Release URL the CLI derives, then run the binary + bake a fixture scene.
   verify:
@@ -110,12 +116,13 @@ jobs:
         shell: bash
         env:
           VER: ${{ inputs.smoke_version }}
+          REPOSITORY: ${{ github.repository }}
           LIBGL_ALWAYS_SOFTWARE: '1'
           GALLIUM_DRIVER: llvmpipe
         run: |
           set -euo pipefail
           asset="xr-composite-linux-x86_64-${VER}.tar.gz"
-          url="https://github.com/${{ github.repository }}/releases/download/v${VER}/${asset}"
+          url="https://github.com/${REPOSITORY}/releases/download/v${VER}/${asset}"
           echo "Fetching the exact path XrCompositeProvision.assetUrl derives: $url"
           curl -fL --retry 4 --retry-delay 2 -o "$asset" "$url"
           mkdir -p got && tar -xzf "$asset" -C got
@@ -146,4 +153,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Delete the smoke pre-release + tag
-        run: gh release delete "v${{ inputs.smoke_version }}" --cleanup-tag --yes || true
+        run: gh release delete "v${INPUTS_SMOKE_VERSION}" --cleanup-tag --yes || true
+
+        env:
+          INPUTS_SMOKE_VERSION: ${{ inputs.smoke_version }}

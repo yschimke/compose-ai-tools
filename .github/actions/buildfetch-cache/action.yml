@@ -23,12 +23,15 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # zizmor: ignore[github-env]
+    # Values are either fixed literals or masked repository secrets. Neither
+    # can contain an attacker-controlled newline from workflow input.
     - name: Configure BuildFetch remote cache
       shell: bash
       env:
         RW_TOKEN: ${{ inputs.rw-token }}
         RO_TOKEN: ${{ inputs.ro-token }}
-      run: |
+      run: | # zizmor: ignore[github-env]
         # ON_CI=true (remote writes + local-cache bypass in settings.gradle.kts) only when a
         # write token is actually present, so a read-only run never tries to push. GitHub masks
         # both secrets in logs; nothing here echoes the token value.

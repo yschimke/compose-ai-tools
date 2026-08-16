@@ -22,6 +22,14 @@ on:
         description: 'Tag name to release (e.g. v0.3.5).'
         required: true
         type: string
+    secrets:
+      MAVEN_CENTRAL_USERNAME: {required: true}
+      MAVEN_CENTRAL_PASSWORD: {required: true}
+      SIGNING_KEY: {required: true}
+      SIGNING_KEY_ID: {required: true}
+      SIGNING_KEY_PASSWORD: {required: true}
+      VSCE_PAT: {required: false}
+      OVSX_PAT: {required: false}
   workflow_dispatch:
     inputs:
       tag:
@@ -170,6 +178,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
+          package-manager-cache: false
       - name: Install dependencies
         working-directory: vscode-extension
         run: npm ci
@@ -277,6 +286,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
+          package-manager-cache: false
       - name: Publish to VS Code Marketplace
         env:
           # vsce reads VSCE_PAT from env — keeps the token out of argv/logs.
@@ -354,6 +364,7 @@ jobs:
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
       - name: Upgrade npm (OIDC trusted publishing needs >= 11.5.1)
         run: npm install -g npm@latest
       # The package tests are the only gate in front of an irreversible publish — npm refuses to

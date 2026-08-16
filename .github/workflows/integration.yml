@@ -131,7 +131,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Matrix repositories and refs are third-party code. They may consume the
+      # Gradle cache but cannot be allowed to update a cache used by trusted jobs.
       - uses: ./.github/actions/setup
+        with:
+          cache-read-only: 'true'
 
       # This is the one job in this workflow that builds *this* repo's Gradle
       # tasks (the matrix jobs build external consumers, which never see our

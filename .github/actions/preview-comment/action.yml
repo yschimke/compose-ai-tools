@@ -46,8 +46,9 @@ runs:
       run: |
         echo "::warning::preview-comment is deprecated; call ./.github/actions/apply with mode=comment + only=compose,resources instead. See apply/action.yml for the input mapping."
 
-    # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-    - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.8.0 # x-release-please-version
+    # This public action intentionally follows its own release tag; release-please updates it atomically.
+    # x-release-please-version
+    - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.8.0 # zizmor: ignore[unpinned-uses]
       with:
         mode: comment
         only: 'compose,resources'

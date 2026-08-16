@@ -50,6 +50,7 @@ jobs:
           repository: yschimke/compose-ai-tools
           ref: ${{ inputs.driver-ref }}
           path: compose-ai-tools
+          persist-credentials: false
 
       - name: Generate parity/issues.json
         env:
