@@ -1511,6 +1511,72 @@ class ServeHttpRoutingTest {
   }
 
   /**
+   * The Catalog / Dev switch is a mode the visitor is in, carried by a cookie the browser sends
+   * with every request — so no URL has to mention it. `?chrome=` stays as a permalink that pins one
+   * request's presentation without changing what the visitor is in afterwards.
+   */
+  @Test
+  fun `the interface mode comes from a cookie, and ?chrome= outranks it`() {
+    val localRegistry = ServeSessionRegistry(open = { null })
+    localRegistry.register("shared:ui", host = burstHost, pinned = true)
+    val localServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = localRegistry,
+          defaultSessionId = "shared:ui",
+          isPublic = true,
+          componentBrowser = true,
+          catalogSessions = listOf("shared:ui"),
+        )
+        .also { it.start() }
+
+    fun get(path: String, cookie: String? = null): Pair<String, List<String>> {
+      val request =
+        Request.Builder()
+          .url("http://127.0.0.1:${localServer.port}$path")
+          .apply { cookie?.let { header("Cookie", it) } }
+          .build()
+      return client.newCall(request).execute().use {
+        it.body?.string().orEmpty() to it.headers("Vary")
+      }
+    }
+
+    try {
+      // No cookie: the command's own default (`browse` → Catalog) still decides.
+      val (plain, plainVary) = get("/")
+      assertTrue(plain.contains("class=\"cp-component-browser\""), plain)
+      // The body was chosen by a header the request may or may not carry, so a shared cache must
+      // not key these bytes on the URL alone.
+      assertTrue(plainVary.any { it.contains("Cookie", ignoreCase = true) }, "$plainVary")
+
+      val (dev, _) = get("/", cookie = "${ServeWeb.INTERFACE_MODE_COOKIE}=dev")
+      assertFalse(dev.contains("class=\"cp-component-browser\""), dev)
+      assertTrue(dev.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""), dev)
+
+      // Other cookies on the same host are none of this switch's business.
+      val (unrelated, _) =
+        get("/", cookie = "cp_gh_auth=x; ${ServeWeb.INTERFACE_MODE_COOKIE}=nonsense")
+      assertTrue(unrelated.contains("class=\"cp-component-browser\""), unrelated)
+
+      // A permalink pins the presentation for that one request…
+      val (pinned, pinnedVary) =
+        get("/?chrome=catalog", cookie = "${ServeWeb.INTERFACE_MODE_COOKIE}=dev")
+      assertTrue(pinned.contains("class=\"cp-component-browser\""), pinned)
+      // …and answers without reading the cookie at all, so it keeps the wider cache key.
+      assertFalse(pinnedVary.any { it.contains("Cookie", ignoreCase = true) }, "$pinnedVary")
+
+      // Following it does not re-mode the visitor: the next plain URL is Dev again.
+      val (after, _) = get("/", cookie = "${ServeWeb.INTERFACE_MODE_COOKIE}=dev")
+      assertFalse(after.contains("class=\"cp-component-browser\""), after)
+    } finally {
+      localServer.stop()
+      localRegistry.close()
+    }
+  }
+
+  /**
    * Every route answers HEAD, because that is the probe a link unfurler sends before it commits to
    * downloading a page or its `og:image`. Before [io.ktor.server.plugins.autohead.AutoHeadResponse]
    * was installed these were 405 where a constant segment matched (`/`, `/status`) and 404 where

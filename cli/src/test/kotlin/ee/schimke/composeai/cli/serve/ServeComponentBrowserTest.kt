@@ -36,8 +36,13 @@ class ServeComponentBrowserTest {
     assertFalse(html.contains("Catalog / Dev mode"))
     assertTrue(html.contains(">Dev</button>"))
     assertTrue(html.contains("data-cp-interface-mode=\"catalog\" aria-pressed=\"true\""))
-    assertTrue(html.contains("localStorage.getItem(\"cp-interface-mode\")"))
-    assertTrue(html.indexOf("</main>") < html.indexOf("document.querySelectorAll('a[href]')"))
+    // The choice is remembered in the cookie the server reads, not in the URL: nothing appends
+    // `?chrome=` to the page's own links any more.
+    assertTrue(html.contains("var key=\"cp_chrome\""))
+    assertFalse(html.contains("document.querySelectorAll('a[href]')"))
+    assertTrue(
+      html.indexOf("</main>") < html.indexOf("querySelectorAll(\"[data-cp-interface-mode]\")")
+    )
     assertTrue(html.contains("androidx/androidx"))
     assertTrue(html.contains("class=\"cp-component-browser\""))
     assertFalse(html.contains("84 preview(s)"))
@@ -207,7 +212,10 @@ class ServeComponentBrowserTest {
 
     assertTrue(html.contains("aria-label=\"Interface mode\""))
     assertTrue(html.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""))
-    assertTrue(html.contains("q.set(\"chrome\",s)"))
+    // Clicking a mode writes the cookie and drops any `?chrome=` permalink the URL pinned, so the
+    // switch wins over the link that was followed to get here.
+    assertTrue(html.contains("document.cookie=key+\"=\"+mode"))
+    assertTrue(html.contains("u.searchParams.delete(\"chrome\")"))
     assertFalse(html.contains("class=\"cp-component-browser\""))
   }
 

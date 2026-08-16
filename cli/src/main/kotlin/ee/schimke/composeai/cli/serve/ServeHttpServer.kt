@@ -1280,15 +1280,51 @@ class ServeHttpServer(
 
   /**
    * The global presentation selected in the sticky header. The command chooses the initial mode
-   * (`browse` → Catalog, `serve` → Dev); an explicit URL choice wins so the browser can persist it
-   * and carry it between every page on this server.
+   * (`browse` → Catalog, `serve` → Dev); the visitor's own choice, remembered in the
+   * [ServeWeb.INTERFACE_MODE_COOKIE] cookie, wins over that; an explicit `?chrome=` on the URL wins
+   * over both.
+   *
+   * The cookie is what makes this a *mode the visitor is in* rather than a property of each URL. It
+   * rides along with every request to this host, so no link has to carry the choice — which is what
+   * the previous scheme did, rewriting every same-origin `href` on the page to append `?chrome=`
+   * and bouncing a bare URL through a `location.replace` to restore the value from `localStorage`.
+   * That put a parameter nobody chose into every URL a visitor copied, shared, or bookmarked.
+   *
+   * `?chrome=` survives as a **permalink**: a link may pin the presentation it was written for, for
+   * that request only. It deliberately does not write the cookie — following someone else's link
+   * should not silently change which mode you are in afterwards.
    */
-  private fun RoutingContext.componentBrowserMode(): Boolean =
-    when (call.request.queryParameters["chrome"]?.lowercase()) {
+  private fun RoutingContext.componentBrowserMode(): Boolean {
+    interfaceMode(call.request.queryParameters[CHROME_PARAM])?.let {
+      return it
+    }
+    // Only on this branch: the body now depends on the Cookie header, and without `Vary` a shared
+    // cache would key one visitor's Catalog-mode HTML by URL alone and hand it to a Dev-mode
+    // visitor. A pinned `?chrome=` never reads the cookie, so it keeps the wider cache key.
+    varyOnCookie()
+    return interfaceMode(call.request.cookies[ServeWeb.INTERFACE_MODE_COOKIE]) ?: componentBrowser
+  }
+
+  /** The two wire values of the Catalog / Dev switch; null for absent, empty, or anything else. */
+  private fun interfaceMode(value: String?): Boolean? =
+    when (value?.lowercase()) {
       "catalog" -> true
       "dev" -> false
-      else -> componentBrowser
+      else -> null
     }
+
+  /**
+   * Declare that this response was chosen by a request cookie. Appended at most once: several
+   * things on one response can depend on cookies ([markGeneration]'s cacheable HTML, the interface
+   * mode above), and repeating the header buys nothing.
+   */
+  private fun RoutingContext.varyOnCookie() {
+    val already =
+      call.response.headers.values(HttpHeaders.Vary).any {
+        it.splitToSequence(',').any { part -> part.trim().equals(HttpHeaders.Cookie, true) }
+      }
+    if (!already) call.response.headers.append(HttpHeaders.Vary, HttpHeaders.Cookie)
+  }
 
   /** Absolute externally visible URL for the current page (including its query). */
   private fun RoutingContext.externalPageUrl(): String = externalOrigin() + call.request.origin.uri
@@ -1917,7 +1953,7 @@ class ServeHttpServer(
     // shared cache to store the response, and without `Vary: Cookie` the cache would key one
     // anonymous rendering by URL alone and hand it to a signed-in visitor.
     if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL || cacheControl == ANON_PAGE_CACHE_CONTROL) {
-      call.response.headers.append(HttpHeaders.Vary, HttpHeaders.Cookie)
+      varyOnCookie()
     }
   }
 
@@ -6637,6 +6673,14 @@ class ServeHttpServer(
     const val FALLBACK_PARAM: String = "fallback"
 
     const val FALLBACK_BAKED: String = "baked"
+
+    /**
+     * `?chrome=catalog|dev` — a permalink that pins the Catalog / Dev presentation for one request,
+     * outranking the visitor's remembered mode ([ServeWeb.INTERFACE_MODE_COOKIE]). See
+     * `componentBrowserMode`.
+     */
+    const val CHROME_PARAM: String = "chrome"
+
     private const val DEFAULT_PORT_RANGE = 32
 
     /** Short edge/browser caching for HTML assembled entirely from published catalog metadata. */
