@@ -16,6 +16,7 @@
 
 package ee.schimke.composeai.rcembedded.jvm
 
+import androidx.compose.remote.core.operations.Theme
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -49,6 +50,10 @@ fun main(args: Array<String>) {
   val height = opts[ARG_HEIGHT]?.toIntOrNull()
   val density = opts[ARG_DENSITY]?.toFloatOrNull() ?: DEFAULT_DENSITY
   val format = opts[ARG_FORMAT]?.lowercase() ?: FORMAT_PNG
+  // `light` unless asked otherwise: a headless render has no desktop session whose theme it should
+  // follow, and one that changed colour with the build machine's OS setting would not be
+  // reproducible. `ColorTheme` is the only thing this selects — an unthemed document is unaffected.
+  val theme = if (opts[ARG_THEME]?.lowercase() == THEME_DARK) Theme.DARK else Theme.LIGHT
 
   if (input == null || output == null || width == null || height == null) {
     System.err.println(
@@ -87,8 +92,8 @@ fun main(args: Array<String>) {
   val artifact =
     try {
       when (format) {
-        FORMAT_SVG -> renderRemoteDocumentToSvg(bytes, width, height, density, seeds)
-        else -> renderRemoteDocumentToPng(bytes, width, height, density, seeds)
+        FORMAT_SVG -> renderRemoteDocumentToSvg(bytes, width, height, density, seeds, theme)
+        else -> renderRemoteDocumentToPng(bytes, width, height, density, seeds, theme)
       }
     } catch (t: Throwable) {
       // Any render failure — a malformed document, a missing native, an unsupported op — is
@@ -114,6 +119,8 @@ private const val ARG_HEIGHT = "--height"
 private const val ARG_DENSITY = "--density"
 private const val ARG_SEEDS = "--seeds"
 private const val ARG_FORMAT = "--format"
+private const val ARG_THEME = "--theme"
+private const val THEME_DARK = "dark"
 private const val FORMAT_PNG = "png"
 private const val FORMAT_SVG = "svg"
 private const val DEFAULT_DENSITY = 2f

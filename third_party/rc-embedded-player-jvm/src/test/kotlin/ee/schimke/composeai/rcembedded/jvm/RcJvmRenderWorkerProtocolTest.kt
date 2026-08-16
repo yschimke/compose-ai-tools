@@ -134,6 +134,7 @@ class RcJvmRenderWorkerProtocolTest {
     toWorker.writeInt(HEIGHT)
     toWorker.writeInt(DENSITY.toRawBits())
     toWorker.writeInt(WIRE_FORMAT_PNG)
+    toWorker.writeInt(WIRE_THEME_LIGHT)
     toWorker.writeInt(seeds.size)
     toWorker.write(seeds)
     toWorker.writeInt(doc.size)

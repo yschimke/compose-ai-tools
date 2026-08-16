@@ -19,6 +19,7 @@ package ee.schimke.composeai.rcembedded.jvm
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.remote.core.operations.Theme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
@@ -58,6 +59,8 @@ public fun renderRemoteDocumentToSvg(
   heightPx: Int,
   density: Float = 2f,
   seeds: Map<String, RcSeed> = emptyMap(),
+  theme: Int = Theme.LIGHT,
+  systemColorLookup: (name: String) -> Int? = { null },
 ): ByteArray {
   val rootDir = Files.createTempDirectory("rcjvm-svg-").toFile()
   val previewId = "rc-jvm"
@@ -75,7 +78,7 @@ public fun renderRemoteDocumentToSvg(
           )
         ) {
           val document = remember(bytes) { parseDocument(bytes) }
-          RcPlayerJvm(document, Modifier.fillMaxSize(), seeds)
+          RcPlayerJvm(document, Modifier.fillMaxSize(), seeds, theme, systemColorLookup)
         }
       }
     }

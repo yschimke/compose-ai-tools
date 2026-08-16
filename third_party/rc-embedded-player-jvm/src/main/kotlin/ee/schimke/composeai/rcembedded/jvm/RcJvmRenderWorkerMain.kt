@@ -16,6 +16,7 @@
 
 package ee.schimke.composeai.rcembedded.jvm
 
+import androidx.compose.remote.core.operations.Theme
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -55,7 +56,8 @@ import kotlin.system.exitProcess
  * pool -> worker, per request:
  *   int32 MAGIC_REQUEST, int32 requestId, int32 width, int32 height,
  *   int32 densityBits (Float.floatToIntBits), int32 format (0=png, 1=svg),
- *   int32 seedsLen, <seedsLen bytes UTF-8>, int32 docLen, <docLen bytes>
+ *   int32 theme (0=light, 1=dark), int32 seedsLen, <seedsLen bytes UTF-8>,
+ *   int32 docLen, <docLen bytes>
  * worker -> pool, per response:
  *   int32 MAGIC_RESPONSE, int32 requestId, int32 status (0=ok, 1=failed),
  *   int32 payloadLen, <payloadLen bytes>   // artifact bytes on ok, UTF-8 reason on failure
@@ -99,6 +101,11 @@ fun rcJvmRenderWorkerMain() {
     val height = input.readInt()
     val density = Float.fromBits(input.readInt())
     val format = input.readInt()
+    // Appended after `format` when the jvm player learned to select a `ColorTheme` mode. Both ends
+    // of this pipe are staged from the same build, so the frame is versioned by the build rather
+    // than negotiated — but the field is last so a frame read by an older worker would simply stop
+    // before it, which is the failure this ordering is chosen for.
+    val theme = if (input.readInt() == WIRE_THEME_DARK) Theme.DARK else Theme.LIGHT
     val seedsText = String(input.readPayload(), Charsets.UTF_8)
     val doc = input.readPayload()
 
@@ -108,8 +115,8 @@ fun rcJvmRenderWorkerMain() {
         val seeds = parseSeedText(seedsText)
         val artifact =
           when (format) {
-            WIRE_FORMAT_SVG -> renderRemoteDocumentToSvg(doc, width, height, density, seeds)
-            else -> renderRemoteDocumentToPng(doc, width, height, density, seeds)
+            WIRE_FORMAT_SVG -> renderRemoteDocumentToSvg(doc, width, height, density, seeds, theme)
+            else -> renderRemoteDocumentToPng(doc, width, height, density, seeds, theme)
           }
         Response(STATUS_OK, artifact)
       } catch (e: Exception) {
@@ -164,9 +171,16 @@ private fun DataInputStream.readPayload(): ByteArray {
 internal const val MAGIC_HELLO = 0x52435731
 internal const val MAGIC_REQUEST = 0x52435131
 internal const val MAGIC_RESPONSE = 0x52435231
-internal const val PROTOCOL_VERSION = 1
+// 2 adds the per-request `theme` field. The version is what makes a stale `lib-rcjvm/` sidecar fall
+// back to the one-shot path rather than mis-reading a frame it does not know the shape of, so it
+// has
+// to move whenever the frame does — a worker still speaking 1 would read `theme` as `seedsLen` and
+// desynchronise for good.
+internal const val PROTOCOL_VERSION = 2
 internal const val STATUS_OK = 0
 internal const val STATUS_FAILED = 1
+internal const val WIRE_THEME_LIGHT = 0
+internal const val WIRE_THEME_DARK = 1
 internal const val WIRE_FORMAT_PNG = 0
 internal const val WIRE_FORMAT_SVG = 1
 

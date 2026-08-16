@@ -83,6 +83,27 @@ class RcColorThemeResolutionTest {
   }
 
   @Test
+  fun aDocumentThatNamesNoGroupIsLeftToItsFallbacks() {
+    // `colorGroupId = 0` is a document naming no table at all, not a document naming Android's.
+    // `GenerateBaselineFixture` writes exactly such an operation (group 0, index 0), so treating an
+    // absent group as Android would repaint it `background_dark` here while the embedded player —
+    // which requires the name — kept the fallback. Same bytes, two players, different colour.
+    val colorTheme =
+      RcColorTheme(
+        outId = 7,
+        colorGroupId = 0,
+        lightModeIndex = lightIndex,
+        darkModeIndex = darkIndex,
+        lightModeFallback = lightFallback,
+        darkModeFallback = darkFallback,
+      )
+    val state = state(colorTheme, lookup = lookup)
+    state.applyColorTheme(colorTheme, RcTheme.LIGHT)
+
+    assertEquals(lightFallback, state.color(colorTheme.outId))
+  }
+
+  @Test
   fun anUnresolvedThemeIsNotSilentlyDark() {
     // `SYSTEM` / `UNSPECIFIED` are questions for the host, and this layer cannot answer one, so the
     // Compose player resolves them before they arrive (`rcResolveSystemTheme`). This test states

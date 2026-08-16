@@ -550,13 +550,14 @@ public class RcPlayerState(
     val light = requestedTheme == RcTheme.LIGHT
     val index = if (light) operation.lightModeIndex else operation.darkModeIndex
     val fallback = if (light) operation.lightModeFallback else operation.darkModeFallback
+    // The group must resolve, by name, to the one whose table this is. An index means nothing
+    // without knowing whose table it indexes, so a document that names another vendor's group — or
+    // names none at all, which is how `colorGroupId = 0` reads — keeps its fallbacks rather than
+    // being recoloured out of Android's. `GenerateBaselineFixture` writes exactly such an
+    // operation, and the embedded player requires the name too, so anything looser would also make
+    // the two players disagree on the same bytes.
     val resolved =
-      if (
-        operation.colorGroupId != 0 &&
-          colorGroupName(operation.colorGroupId) != RcAndroidSystemColors.GROUP
-      ) {
-        // A group this player has no table for. An index means nothing without knowing whose table
-        // it indexes, so resolving it against the Android one would invent a colour.
+      if (colorGroupName(operation.colorGroupId) != RcAndroidSystemColors.GROUP) {
         null
       } else {
         RcAndroidSystemColors.nameAt(index)?.let(systemColorLookup)

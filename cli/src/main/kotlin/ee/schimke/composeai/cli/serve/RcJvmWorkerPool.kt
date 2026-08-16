@@ -120,6 +120,12 @@ internal class RcJvmWorkerPool(
     seedsText: String,
     format: RcJvmServerRenderer.Format,
     /**
+     * The `ColorTheme` branch to select — see `RcJvmServerRenderer.render`. Light by default,
+     * matching that entry point: a headless render has no host theme to follow, and one that varied
+     * with the machine's desktop setting would not be reproducible.
+     */
+    theme: RcJvmServerRenderer.RenderTheme = RcJvmServerRenderer.RenderTheme.LIGHT,
+    /**
      * Budget for this render, so the caller can bound pool-attempt + fallback together rather than
      * letting each lane spend the full timeout in turn. Defaults to the pool's own timeout.
      */
@@ -148,6 +154,7 @@ internal class RcJvmWorkerPool(
           spec,
           seedsText,
           format,
+          theme,
           requestIds.incrementAndGet(),
           timeoutSeconds,
         )
@@ -352,6 +359,7 @@ internal class RcJvmWorkerPool(
       spec: RcJvmRenderSpec,
       seedsText: String,
       format: RcJvmServerRenderer.Format,
+      theme: RcJvmServerRenderer.RenderTheme,
       requestId: Int = 0,
       renderTimeoutSeconds: Long,
     ): PoolResult {
@@ -367,6 +375,9 @@ internal class RcJvmWorkerPool(
         toWorker.writeInt(
           if (format == RcJvmServerRenderer.Format.SVG) WIRE_FORMAT_SVG else WIRE_FORMAT_PNG
         )
+        // After `format`, matching `RcJvmRenderWorkerMain`. Both ends ship from the same build, so
+        // the frame is versioned by the build rather than negotiated.
+        toWorker.writeInt(theme.frame)
         toWorker.writeInt(seeds.size)
         toWorker.write(seeds)
         toWorker.writeInt(docBytes.size)
@@ -462,9 +473,12 @@ internal class RcJvmWorkerPool(
     const val MAGIC_HELLO = 0x52435731
     const val MAGIC_REQUEST = 0x52435131
     const val MAGIC_RESPONSE = 0x52435231
-    const val PROTOCOL_VERSION = 1
+    // 2 adds the per-request `theme` field; see `RcJvmRenderWorkerMain`'s frame layout.
+    const val PROTOCOL_VERSION = 2
     const val STATUS_OK = 0
     const val STATUS_FAILED = 1
+    const val WIRE_THEME_LIGHT = 0
+    const val WIRE_THEME_DARK = 1
     const val WIRE_FORMAT_PNG = 0
     const val WIRE_FORMAT_SVG = 1
 

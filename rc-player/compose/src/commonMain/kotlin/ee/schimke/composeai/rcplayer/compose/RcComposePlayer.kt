@@ -322,12 +322,13 @@ private fun RcComposePlayerResolved(
   systemColorLookup: (name: String) -> Int?,
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
+  val latestSystemColorLookup by rememberUpdatedState(systemColorLookup)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
   var invalidationVersion by remember { mutableIntStateOf(0) }
   var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
   var nextFrameRequestVersion by remember(document) { mutableIntStateOf(0) }
   val state =
-    remember(document, namedValues, systemColorLookup) {
+    remember(document, namedValues) {
       RcPlayerState(
         document,
         namedValues,
@@ -346,7 +347,12 @@ private fun RcComposePlayerResolved(
             RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
           }
         },
-        systemColorLookup = systemColorLookup,
+        // Read through `latestSystemColorLookup`, never captured directly: a host's lookup is
+        // usually a capturing lambda, so a parent recomposition hands us a fresh instance. Keying
+        // the state on it would rebuild `RcPlayerState` — discarding variables an action changed,
+        // touch-expression state and running animation timelines — because a colour callback that
+        // resolves the same palette happened to be reallocated.
+        systemColorLookup = { name -> latestSystemColorLookup(name) },
       )
     }
   val needsContinuousFrames =
