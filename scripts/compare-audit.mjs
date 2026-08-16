@@ -3,8 +3,8 @@
 //
 // Drives the real comparison page in Chromium and scrapes the score every row settles on, so the
 // numbers come from the shipped scorer rather than a reimplementation of it. That matters: the
-// scorer is the thing under test, and a second copy of the SSIM maths would be free to be wrong in
-// the same direction as the first.
+// scorer is the thing under test, and a second copy of the edge-tolerant metric would be free to be
+// wrong in the same direction as the first.
 //
 // Two phases, because an audit that re-downloads the artifacts on every run is neither reproducible
 // nor kind to a shared preview server:

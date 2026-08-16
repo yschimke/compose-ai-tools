@@ -8,11 +8,11 @@
 // off the lane there is nothing live to describe, and leaving a knob-bent number there would
 // misreport every later visit as if it were the publish.
 
-/**
- * Below this the two content boxes are the same shape to within rasteriser noise, and reporting a
- * proportion difference would be reporting the rasteriser. Matches `format-compare.js`.
- */
-export const GEOMETRY_REPORT_THRESHOLD = 2;
+// Shared rather than restated: the parity page decides a pair is worth opening on the same number
+// this lane then judges it by, and the two disagreeing reads as a broken page.
+import { GEOMETRY_REPORT_THRESHOLD } from "../compare/thresholds.js";
+
+export { GEOMETRY_REPORT_THRESHOLD };
 
 /** How close counts as which. Mirrors `ServeWeb.specMatchBand` and the export driver's `matchBand`. */
 export type MatchBand = "match" | "close" | "off";

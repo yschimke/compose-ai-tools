@@ -15,6 +15,8 @@ import {
     unavailableCell,
     type Finding,
 } from "../src/parity/findings.js";
+import { GEOMETRY_REPORT_THRESHOLD as SHARED } from "../src/compare/thresholds.js";
+import { readout } from "../src/spec/verdict.js";
 
 const finding = (over: Partial<Finding> = {}): Finding => ({
     name: "Button",
@@ -184,6 +186,30 @@ describe("summaryOf", () => {
             ]),
             "1 of 40 mapped comparisons could not be scored. " +
                 "2 of the rest have a structural or proportion difference.",
+        );
+    });
+});
+
+describe("the geometry threshold the parity page and the spec lane share", () => {
+    it("makes the two pages agree about the SAME pair", () => {
+        // Not a value comparison — two `= 2` literals would pass that. This drives the two surfaces
+        // that a reader crosses between: the parity page decides a pair is worth opening, and the
+        // spec lane it opens into decides whether to say anything about the proportions. Drift
+        // either copy and one of these flips, which reads to a visitor as the page being broken
+        // rather than as a threshold having moved.
+        const drifted = { percent: 100, geometry: SHARED };
+        const clean = { percent: 100, geometry: SHARED - 0.01 };
+
+        assert.equal(isFinding(drifted.percent, drifted.geometry), true);
+        assert.equal(
+            readout(99.9, 0.5, drifted.geometry).includes("proportion"),
+            true,
+        );
+
+        assert.equal(isFinding(clean.percent, clean.geometry), false);
+        assert.equal(
+            readout(99.9, 0.5, clean.geometry).includes("proportion"),
+            false,
         );
     });
 });
