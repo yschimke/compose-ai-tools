@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import android.os.SystemClock
 import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import androidx.compose.runtime.Composable
@@ -74,18 +75,20 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
       val active by FocusController.activeFocus
       val lastIndex = remember { mutableIntStateOf(-1) }
       val entered = remember { mutableStateOf(false) }
-      val pressHeld = remember { mutableStateOf(false) }
+      val pressHeld = remember { mutableStateOf(PressChannel.None) }
       LaunchedEffect(active) {
         val cap = active ?: return@LaunchedEffect
-        // Release any indirect-pointer Press from the prior capture *before* walking focus to the
-        // new target. Indirect-pointer events route to the focused composable, so a Release
-        // dispatched after the focus walk would land on the new target and leave the previous
+        // Release any held Press from the prior capture *before* walking focus to the new target.
+        // Both fallback channels route to the focused composable, so a Release dispatched after
+        // the focus walk would land on the new target and leave the previous
         // target's `PressInteraction.Press` active — surfacing as two simultaneously-pressed items
         // in a multi-index capture (`@FocusedPreview(indices = [0, 1], pressed = true)`).
-        if (pressHeld.value) {
-          view.dispatchIndirectRelease()
-          pressHeld.value = false
+        when (pressHeld.value) {
+          PressChannel.IndirectPointer -> view.dispatchIndirectRelease()
+          PressChannel.Key -> view.dispatchKeyRelease()
+          PressChannel.None -> Unit
         }
+        pressHeld.value = PressChannel.None
         val direction = cap.direction
         val tabIndex = cap.tabIndex
         if (direction != null) {
@@ -121,14 +124,15 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
         // `@FocusedPreview(pressed = true)` — after the focus walk lands, dispatch an
         // indirect-pointer Press onto the focused composable so its `PressInteraction.Press` fires
         // before the renderer captures pixels. Glimmer's `Modifier.onIndirectPointerGesture`
-        // observes this event on the focused-target path and emits the pressed-state interaction;
-        // Material's `Modifier.clickable` does the same through its indirect-pointer fallback. See
-        // [dispatchIndirectPress] for the platform rationale. The matching Release is held off
+        // observes this event on the focused-target path and emits the pressed-state interaction.
+        // If no indirect-pointer modifier consumes it, fall back to a focused DPAD_CENTER key-down:
+        // Wear M3 Button is built from `combinedClickable`, which has no indirect-pointer handler,
+        // but does own the normal focused-key press path. See [dispatchPress] for the rationale.
+        // The matching Release is held off
         // until the NEXT capture's LaunchedEffect runs (above) — held-press across the capture
         // window is exactly the "finger held on touchpad" shape we want pixels to show.
         if (cap.pressed) {
-          view.dispatchIndirectPress()
-          pressHeld.value = true
+          pressHeld.value = view.dispatchPress()
         }
       }
       content()
@@ -159,22 +163,19 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
 }
 
 /**
- * Dispatches a single indirect-pointer Press event onto the focused composable through Compose UI's
- * `AndroidComposeView.sendIndirectPointerEvent` — the same dispatch path real XR Glasses touchpads
- * route through. The composable's `IndirectPointerInputModifierNode`s (Glimmer's
- * `onIndirectPointerGesture`, Material `clickable`'s indirect-pointer fallback) observe the event
- * on the focused-target path and emit `PressInteraction.Press` to their `InteractionSource` — the
- * focused element's pressed visual then renders before the renderer's per-capture clock advance
- * elapses.
+ * Dispatches a held Press through the focused component's real input path. It first sends an
+ * indirect-pointer event through Compose UI's `AndroidComposeView.sendIndirectPointerEvent` — the
+ * same channel real XR Glasses touchpads use. When that event is unhandled, it falls back to a
+ * focused DPAD_CENTER key-down, which covers Wear components built from `combinedClickable`.
  *
  * The matching Release isn't sent here — it's deferred to the next capture's `LaunchedEffect` pass
  * (via the `pressHeld` flag) so the composable stays in its pressed state for *this* capture window
  * (the "finger held on the touchpad" shape) and deliberately doesn't fire the `onClick` lambda (a
- * tap = Press+Release). The next capture, if any, dispatches [dispatchIndirectRelease] before
- * walking focus, clearing the prior target's `PressInteraction.Press` while focus is still on it —
- * without that step, a multi-index pressed walk (`@FocusedPreview(indices = [0, 1], pressed =
- * true)`) would leave item 0 still visually pressed in the index-1 capture. After the final capture
- * the JVM is recycled, so no terminal Release is needed.
+ * tap = Press+Release). The next capture, if any, releases the selected channel before walking
+ * focus, clearing the prior target's `PressInteraction.Press` while focus is still on it — without
+ * that step, a multi-index pressed walk (`@FocusedPreview(indices = [0, 1], pressed = true)`) would
+ * leave item 0 still visually pressed in the index-1 capture. After the final capture the JVM is
+ * recycled, so no terminal Release is needed.
  *
  * Reflection rather than a direct call: `AndroidComposeView` is `internal` at the Kotlin source
  * level (compiles to `public final class` at the JVM level — `internal` is module-scoped in the
@@ -194,16 +195,18 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
  * the consumer may still read.
  */
 @OptIn(ExperimentalIndirectPointerApi::class)
-private fun View.dispatchIndirectPress() {
-  sendIndirectPointer(MotionEvent.ACTION_DOWN)
+private fun View.dispatchPress(): PressChannel {
+  if (sendIndirectPointer(MotionEvent.ACTION_DOWN)) return PressChannel.IndirectPointer
+  dispatchKeyPress()
+  return PressChannel.Key
 }
 
 /**
- * Matching Release for [dispatchIndirectPress] — clears the held `PressInteraction.Press` on the
- * focused composable so a subsequent capture (next focus walk) doesn't leave the prior target
- * visually pressed. Must dispatch *before* `FocusManager.moveFocus(...)` walks focus to the next
- * target: indirect-pointer events route to whatever's currently focused, so a Release after the
- * walk would land on the new target and leave the previous target's interaction source dangling.
+ * Matching indirect-pointer release for [dispatchPress] — clears the held Press on the focused
+ * composable so a subsequent capture (next focus walk) doesn't leave the prior target visually
+ * pressed. Must dispatch *before* `FocusManager.moveFocus(...)` walks focus to the next target:
+ * indirect-pointer events route to whatever's currently focused, so a Release after the walk would
+ * land on the new target and leave the previous target's interaction source dangling.
  */
 @OptIn(ExperimentalIndirectPointerApi::class)
 private fun View.dispatchIndirectRelease() {
@@ -211,8 +214,8 @@ private fun View.dispatchIndirectRelease() {
 }
 
 @OptIn(ExperimentalIndirectPointerApi::class)
-private fun View.sendIndirectPointer(action: Int) {
-  if (javaClass.name != "androidx.compose.ui.platform.AndroidComposeView") return
+private fun View.sendIndirectPointer(action: Int): Boolean {
+  if (javaClass.name != "androidx.compose.ui.platform.AndroidComposeView") return false
   val now = SystemClock.uptimeMillis()
   val motionEvent =
     MotionEvent.obtain(
@@ -231,5 +234,27 @@ private fun View.sendIndirectPointer(action: Int) {
       previousMotionEvent = null,
     )
   val send = javaClass.getMethod("sendIndirectPointerEvent", IndirectPointerEvent::class.java)
-  send.invoke(this, event)
+  return send.invoke(this, event) as Boolean
+}
+
+/**
+ * Focus-targeted fallback for components with no indirect-pointer modifier. Wear Material 3's
+ * `Button` is implemented with `combinedClickable`; unlike plain `clickable` and Glimmer's
+ * `onIndirectPointerGesture`, that modifier does not consume an [IndirectPointerEvent]. A
+ * DPAD_CENTER key event is Wear's ordinary focused activation channel, and `combinedClickable`
+ * turns its down/up pair into the same held `PressInteraction.Press` / release lifecycle as a
+ * physical button press.
+ */
+private fun View.dispatchKeyPress() {
+  dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
+}
+
+private fun View.dispatchKeyRelease() {
+  dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER))
+}
+
+private enum class PressChannel {
+  None,
+  IndirectPointer,
+  Key,
 }

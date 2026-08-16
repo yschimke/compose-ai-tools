@@ -1,8 +1,6 @@
 package com.example.designcatalogwearm3
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,11 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -74,8 +69,8 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 // instead of a duplicated `ButtonDisabled` wrapper — the render emits a `_VARIANT_disabled` capture
 // that folds under this sticker. `pressed` / `focused` stay separate functions below: they are
 // driven by `@FocusedPreview`, a per-function capture annotation rather than a `previewOverride*`
-// knob — `focused` through real focus traversal, `pressed` still through a held interaction source
-// (see the stopgap note on `ButtonPressed`).
+// knob — `focused` through real focus traversal, and `pressed` through the focused component's
+// real input path.
 // The button family carries no state of its own, so each click is made
 // visible by [wearCounted] tallying into the label; the baked capture is unchanged. The `disabled`
 // variant is the deliberate exception — it stays inert, because that's the state it documents, and
@@ -659,45 +654,18 @@ fun TextMaxLinesTruncated() = WearSticker {
 // ids are the join into `catalog.spec.json` — do not rename either.
 // ---------------------------------------------------------------------------
 
-// STOPGAP — `pressed` is NOT yet driven by real input on this sheet, unlike `focused` below.
-//
-// `@FocusedPreview(indices = [0], pressed = true)` was tried and measured: the resulting capture
-// is pixel-identical to the focus-only one on the button container (both `#D4C8EC`), differing
-// only in the label glyphs. The indirect-pointer Press does not reach Wear M3's `Button`
-// interaction source, so the capture documents *focus*, not press — and a sticker published under
-// `state = "pressed"` that shows the focused visual is precisely the mislabelled-artifact problem
-// issue #3676 exists to stamp out. Better an honest forged state layer than a confidently wrong
-// label.
-//
-// So this one keeps the held `MutableInteractionSource`, on the same terms as the CMP/desktop
-// sheet: a stopgap, marked as such, to be deleted the moment indirect-pointer press dispatch is
-// shown to land on Wear M3 components (issue #3672).
 @CatalogVariant(
   of = "Button/Filled",
   state = "pressed",
-  caption = "Held PressInteraction → pressed state layer.",
+  caption = "Real focused key press → pressed state layer.",
 )
 @CatalogWearModes
+@FocusedPreview(indices = [0], pressed = true)
 @Composable
 fun ButtonPressed() = WearSticker {
   val (label, onClick) =
     wearCounted(previewOverrideString("label", stringResource(R.string.label_pressed)))
-  Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
-}
-
-/**
- * Seeds a held [PressInteraction.Press] so the resting capture shows the pressed state layer.
- *
- * Deliberately kept, and deliberately the *only* forged interaction left on this sheet — see the
- * stopgap note on [ButtonPressed]. [ButtonFocused] no longer needs a sibling `focusedSource()`
- * because real focus traversal works here; this one survives only until an indirect-pointer press
- * is shown to reach Wear M3's `Button` (issue #3672).
- */
-@Composable
-private fun pressedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
-  return source
+  Button(onClick = onClick) { Text(label) }
 }
 
 @CatalogVariant(

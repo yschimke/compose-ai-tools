@@ -131,10 +131,11 @@ annotation class FocusedPreview(
    * `AndroidComposeView.sendIndirectPointerEvent`. Glimmer's `Modifier.onIndirectPointerGesture` is
    * the only consumer that routes those events into per-modifier `onClick` / `onSwipeForward` /
    * `onSwipeBackward` lambdas, and it always targets the currently-focused composable — so this
-   * flag pairs naturally with `indices` (focus the n-th focusable, then press it). For plain
-   * touch-screen surfaces (`Modifier.clickable` on a phone-style preview) the same Press still
-   * dispatches via the focus-targeted indirect-pointer path: `Modifier.clickable` registers a
-   * fallback indirect-pointer handler, so the visual still arrives.
+   * flag pairs naturally with `indices` (focus the n-th focusable, then press it). If the focused
+   * component has no indirect-pointer handler (including Wear Material 3 components built from
+   * `Modifier.combinedClickable`), the renderer falls back to a focused `DPAD_CENTER` key-down. Its
+   * key-up is held until the next capture, preserving the pressed interaction lifecycle without
+   * firing `onClick` in the captured frame.
    *
    * Only meaningful for indexed-mode captures (`indices`) — traversal-mode (`traverse`) doesn't
    * carry a "settle and press" point. Off by default; opt in per-preview when you want the

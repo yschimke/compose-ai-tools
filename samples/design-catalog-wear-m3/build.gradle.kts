@@ -24,6 +24,10 @@ composePreview {
   // Pin Robolectric to SDK 35; see `:samples:wear` for the JDK 17 toolchain
   // rationale (Robolectric SDK 36 requires JDK 21+).
   sdkVersion.set(35)
+
+  // `WearFocusedPressPixelTest` reads the real renderer outputs and verifies that pressed changes
+  // the Button container rather than merely changing its label glyphs (issue #3694).
+  renderBeforeUnitTests.set(true)
 }
 
 // The locales this catalog localises — its own `values-<locale>` string-resource dirs plus the `en`
