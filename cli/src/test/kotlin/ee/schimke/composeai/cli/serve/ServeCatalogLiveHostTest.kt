@@ -43,6 +43,7 @@ class ServeCatalogLiveHostTest {
     private val forcedRenderOutcome: RenderOutcome? = null,
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
+    override val hasA11yOverlay: Boolean = false,
     /**
      * Ids this host lists but has no pixels for (a catalog's deferred previews) — `render` reports
      * `NotFound` for them, exactly as the real baked host does.
@@ -55,6 +56,7 @@ class ServeCatalogLiveHostTest {
     var lastRenderOverrides: PreviewOverrides? = null
     var lastSvgId: String? = null
     var lastStreamId: String? = null
+    var lastA11yId: String? = null
     var renderCalls = 0
     var closed = false
 
@@ -80,6 +82,19 @@ class ServeCatalogLiveHostTest {
       lastRenderOverrides = overrides
       if (svgNotFound) return SvgOutcome.NotFound
       return SvgOutcome.Ok("$tag-svg:$previewId".encodeToByteArray())
+    }
+
+    override fun renderA11y(
+      previewId: String,
+      overrides: PreviewOverrides,
+    ): A11yOutcome {
+      lastA11yId = previewId
+      lastRenderOverrides = overrides
+      if (!hasA11yOverlay) return A11yOutcome.NotFound
+      return A11yOutcome.Ok(
+        """{"previewId":"$previewId","nodes":[],"findings":[],"touchTargets":[]}"""
+          .encodeToByteArray()
+      )
     }
 
     override fun subscribeStream(
@@ -339,6 +354,49 @@ class ServeCatalogLiveHostTest {
     val out = composite.renderSvg(catalogId, knobOverride()) as SvgOutcome.Ok
     assertEquals("live-svg:$daemonId", out.svg.decodeToString())
     assertEquals(daemonId, live.lastSvgId)
+  }
+
+  @Test
+  fun `accessibility inspection maps the catalog id and preserves live overrides`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasA11yOverlay = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    val overrides = knobOverride().copy(uiMode = UiMode.DARK, fontScale = 1.3f)
+
+    assertTrue(composite.hasA11yOverlay)
+    val out = composite.renderA11y(catalogId, overrides) as A11yOutcome.Ok
+    assertEquals(daemonId, live.lastA11yId)
+    assertEquals(overrides, live.lastRenderOverrides)
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$daemonId\""))
+    // CMP represents unavailable Android-only ATF products as empty arrays. Do not add an
+    // unsupported-platform note to the component-page legend.
+    assertFalse(out.json.decodeToString().contains("unsupported", ignoreCase = true))
+  }
+
+  @Test
+  fun `accessibility inspection stays unavailable for a catalog preview without a daemon twin`() {
+    val baked =
+      RecordingHost(previews = listOf(ServePreview(androidOnlyId, androidOnlyId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasA11yOverlay = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertEquals(
+      A11yOutcome.NotFound,
+      composite.renderA11y(androidOnlyId, PreviewOverrides()),
+    )
+    assertNull(live.lastA11yId)
   }
 
   @Test
