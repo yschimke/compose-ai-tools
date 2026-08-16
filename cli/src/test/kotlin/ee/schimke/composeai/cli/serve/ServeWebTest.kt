@@ -960,6 +960,24 @@ class ServeWebTest {
     )
     // The bare provider name is kept so the client can rebuild the label around a live score.
     assertTrue(html.contains("data-spec-chip-name=\"Figma\""), html)
+    // And what the chip says once the render has left the snapshot the verdict was measured
+    // against. The spec is imported once, never re-exported per theme, so picking a theme moves
+    // one side of the comparison and not the other — and the published number then describes a
+    // frame that is off the stage, generously: a pair that publishes at 99.6% scores 88.9% under
+    // Light High Contrast, which reads as the spec lane being broken rather than the chip stale.
+    assertTrue(
+      html.contains("data-spec-chip-stale-tip=\"The published match is measured against this"),
+      "the chip carries the off-baseline tooltip: $html",
+    )
+  }
+
+  @Test
+  fun `a preview with no published match has no stale tooltip to swap in`() {
+    // Nothing to suppress: the chip already shows the plain provider label, and an off-baseline
+    // tooltip there would announce a verdict that was never taken.
+    val html = chipHtmlFor(null)
+    assertTrue(html.contains(">Figma</button>"), html)
+    assertFalse(html.contains("data-spec-chip-stale-tip"), html)
   }
 
   @Test
@@ -1304,6 +1322,103 @@ class ServeWebTest {
       ServeWeb.representativePreviewId(
         listOf(ServePreview("failed", "Failed", renderFailure = failure))
       ),
+    )
+  }
+
+  /**
+   * A design reference for [previewId], so the comparison page keeps that variant as its own row.
+   */
+  private fun referenceFor(previewId: String) =
+    DesignReference(
+      id = previewId,
+      previewId = previewId,
+      label = previewId,
+      raster = DesignReferenceRaster("references/$previewId.png", 320, 160),
+      source = DesignReferenceSource(provider = "figma"),
+    )
+
+  @Test
+  fun `a component with a reference per state gets a row per state, each named and each selectable`() {
+    // A design reference names one exact state/props mapping, so every referenced variant is kept
+    // out of the landing grid's fold and gets a comparison row of its own. m3-catalog publishes
+    // fourteen for `button-elevated` — and every one of them printed the bare component name, in no
+    // stated order, so a page whose pairings are in fact correct reads as if the references were
+    // mapped to the wrong renders.
+    val previews =
+      listOf("default", "hovered", "pressed").map { state ->
+        ServePreview(
+          id = "button-elevated__ideal__$state",
+          label = "Button · Elevated · $state",
+          state = state,
+        )
+      }
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        previews,
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+      )
+    val labels = Regex("data-label=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+    assertEquals(
+      listOf("button-elevated", "button-elevated — Hovered", "button-elevated — Pressed"),
+      labels,
+      "each row names its variant; the plain default stays the bare component name: $html",
+    )
+    assertTrue(
+      html.contains("<span class=\"cp-compare-variant\">Hovered</span>"),
+      "the variant renders as its own line under the component name: $html",
+    )
+    // And each row answers for its own variant only. `previewIdsByCard` is keyed state- and
+    // props-invariantly, so every row used to carry every sibling's id — filtering the page by one
+    // variant's id matched all fourteen rows at once, which is no filter at all.
+    val ids =
+      Regex("data-preview-ids=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+    assertEquals(
+      listOf(
+        "button-elevated__ideal__default",
+        "button-elevated__ideal__hovered",
+        "button-elevated__ideal__pressed",
+      ),
+      ids,
+      "a variant that has a row of its own selects that row, not its siblings': $html",
+    )
+  }
+
+  @Test
+  fun `a folded-out variant still aliases onto exactly one row`() {
+    // The alias exists for ids with NO row of their own — a variant folded out of the comparison
+    // page has to select SOMETHING rather than land on an empty page. It goes to the first row of
+    // its comparison card, not to every row of the component.
+    val previews =
+      listOf(
+        ServePreview("button-elevated__ideal__default", "Default", state = "default"),
+        ServePreview("button-elevated__ideal__pressed", "Pressed", state = "pressed"),
+        ServePreview(
+          "button-elevated__ideal__default__direction-rtl",
+          "RTL",
+          state = "default",
+          props = jsonProps("direction" to "rtl"),
+        ),
+      )
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        previews,
+        token = "t",
+        // Only the two states are referenced, so the RTL render is folded out and has no row.
+        referencesFor = { id -> if (id.endsWith("rtl")) emptyList() else listOf(referenceFor(id)) },
+      )
+    val ids =
+      Regex("data-preview-ids=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+    assertEquals(2, ids.size, "two referenced states, two rows: $html")
+    assertTrue(
+      ids[0].contains("button-elevated__ideal__default__direction-rtl"),
+      "the folded variant aliases onto the first row of its card: $html",
+    )
+    assertFalse(
+      ids[1].contains("direction-rtl"),
+      "and onto that row only: $html",
     )
   }
 }

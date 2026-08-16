@@ -53,6 +53,8 @@ interface SpecCompareApi {
     hydrate(next: string | null): void;
     open(url: string): void;
     close(): void;
+    /** Whether the stage is showing the render the published score was measured against. */
+    baseline(atBaseline: boolean): void;
 }
 
 declare global {
@@ -70,6 +72,21 @@ export class SpecCompare extends LitElement {
     private chip: HTMLElement | null = null;
     /** The published verdict's band, so leaving the lane restores the chip exactly as served. */
     private bakedBand = "";
+    /**
+     * Whether the stage is showing the render the PUBLISHED score was measured against.
+     *
+     * The baked verdict describes the catalog's own snapshot — default theme, declared knobs, no
+     * detected features. Pick a theme and the render moves; the reference does not, because a
+     * design spec is imported once and is not re-exported per theme. So off the baseline the
+     * published number is describing a frame nobody is looking at, and it is describing it
+     * flatteringly: on `switch-on__ideal__icon-off` the chip reads 99.6% while the lane, scoring
+     * what is actually on the stage under Light High Contrast, reads 88.9%. Entering the lane then
+     * looks like a regression when all that happened is that the honest number arrived.
+     *
+     * Off the baseline the chip therefore falls back to the plain provider label — the same thing
+     * every catalog without a baked score shows — until the lane produces a live measurement.
+     */
+    private atBaseline = true;
     private referenceUrl = "";
     private actualUrl = "";
 
@@ -89,6 +106,10 @@ export class SpecCompare extends LitElement {
      * two numbers for one comparison.
      */
     private framesMatch: number | null = null;
+    /** Whether the chip currently shows a live measurement rather than a resting label. */
+    private liveOnChip = false;
+    /** The readout that goes with the live number, so the chip's tooltip states the same one. */
+    private scoreTip: string | null = null;
     /** Bumped to abandon a comparison in flight. */
     private generation = 0;
     private cleanups: Array<() => void> = [];
@@ -144,6 +165,14 @@ export class SpecCompare extends LitElement {
             this.setChipVerdict(null);
             this.apply();
         },
+        baseline: (atBaseline) => {
+            if (atBaseline === this.atBaseline) return;
+            this.atBaseline = atBaseline;
+            // Only the chip's RESTING state moves. A live measurement outranks this either way —
+            // it was taken from the frames on the stage, which is the very thing being asked
+            // about — and a knob edit that invalidates it re-enters `compute()` anyway.
+            if (!this.liveOnChip) this.setChipVerdict(null);
+        },
     };
 
     private install(): boolean {
@@ -158,6 +187,14 @@ export class SpecCompare extends LitElement {
         this.chip = document.getElementById("cp-spec-chip");
         this.bakedBand = this.chip?.getAttribute("data-spec-match") ?? "";
         this.referenceUrl = this.compare.getAttribute("data-reference") ?? "";
+
+        // Read rather than wait to be told. `viewer.js` publishes the baseline on the stage as it
+        // refreshes the links, but the two scripts do not have a guaranteed order — and a deep
+        // link that already names a theme (`?themeProvider=…`) is served with the baked verdict
+        // on the chip, so a first paint that trusted the served label would show the wrong number
+        // for however long the other script took to arrive.
+        this.atBaseline = this.root.getAttribute("data-spec-baseline") !== "0";
+        if (!this.atBaseline) this.setChipVerdict(null);
 
         this.on(this.views, "click", (event) => {
             const button = (event.target as Element | null)?.closest?.(
@@ -254,15 +291,32 @@ export class SpecCompare extends LitElement {
         const name =
             chip.getAttribute("data-spec-chip-name") || chip.textContent || "";
         if (percent === null) {
-            chip.textContent =
-                chip.getAttribute("data-spec-chip-label") || name;
-            if (this.bakedBand)
+            this.liveOnChip = false;
+            // Off the baseline there is no published number that describes what is on the stage,
+            // so the chip says only which tool the spec came from and the tooltip says why. The
+            // band goes with it: a colour is a verdict too, and a green chip over a render the
+            // verdict was never taken against is the same lie in less text.
+            const baked = this.atBaseline;
+            chip.textContent = baked
+                ? chip.getAttribute("data-spec-chip-label") || name
+                : name;
+            const tip = baked
+                ? chip.getAttribute("data-spec-chip-tip")
+                : chip.getAttribute("data-spec-chip-stale-tip") ||
+                  chip.getAttribute("data-spec-chip-tip");
+            if (tip) chip.title = tip;
+            if (baked && this.bakedBand)
                 chip.setAttribute("data-spec-match", this.bakedBand);
             else chip.removeAttribute("data-spec-match");
             return;
         }
+        this.liveOnChip = true;
         chip.textContent = chipText(name, percent);
         chip.setAttribute("data-spec-match", matchBand(percent));
+        // The tooltip moves with the number. Left alone it went on quoting the publish-time
+        // verdict — "99.6% match … 23.09% pixels differ" — beside a chip reading 88.9%, which is
+        // the same two-numbers-for-one-comparison the live chip exists to prevent.
+        chip.title = this.scoreTip ?? chip.title;
     }
 
     /** Paint every comparison surface from one normalisation of the current pair. */
@@ -309,13 +363,13 @@ export class SpecCompare extends LitElement {
                 next.images[1],
             );
             if (generation !== this.generation) return;
-            this.setScore(
-                readout(
-                    result.percent,
-                    changedPercentOf(changed, next.width, next.height),
-                    result.geometry,
-                ),
+            const text = readout(
+                result.percent,
+                changedPercentOf(changed, next.width, next.height),
+                result.geometry,
             );
+            this.setScore(text);
+            this.scoreTip = text;
             this.framesMatch = result.percent;
             this.setChipVerdict(result.percent);
         } catch {
@@ -323,6 +377,7 @@ export class SpecCompare extends LitElement {
             this.frames = null;
             this.framesKey = "";
             this.framesMatch = null;
+            this.scoreTip = null;
             this.setScore(UNAVAILABLE);
         }
     }
