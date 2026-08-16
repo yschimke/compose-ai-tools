@@ -151,7 +151,9 @@ fun renderInteractionPreview(
             onRoot().performTouchInput { if (event.down) down(centre) else up() }
             nextEvent++
           }
-          collector.capture(captureRootPngBytes(), crop)
+          val frame = captureMotionSurfacePngBytes()
+          observeMotionRootBounds(bounds)
+          collector.capture(frame, crop)
           mainClock.advanceTimeBy(frameInterval.toLong())
           elapsed += frameInterval
         }

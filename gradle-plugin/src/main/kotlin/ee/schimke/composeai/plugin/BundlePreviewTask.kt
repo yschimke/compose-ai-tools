@@ -530,6 +530,21 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewPng(preview)?.let { previewPngs[bundleIds.getValue(preview.id)] = it }
     }
 
+    // Motion captures are first-class baked artifacts too. Keep their renderer-owned leaf names:
+    // the bundled previews manifest points at `renders/<leaf>`, and catalog export deliberately
+    // joins that declaration to `previews/<leaf>` so animation/interaction siblings cannot be
+    // confused. Previously bundle pack carried only PNG stills, making every correctly rendered
+    // APNG/GIF disappear before publishing (issue #3922).
+    val motionFiles = LinkedHashMap<String, ByteArray>()
+    for (preview in selected) {
+      for ((path, bytes) in resolvePreviewMotion(preview)) {
+        val previous = motionFiles.put(path, bytes)
+        check(previous == null || previous.contentEquals(bytes)) {
+          "composePreviewBundle: two motion captures resolve to '$path' with different bytes"
+        }
+      }
+    }
+
     // (v8) Per-preview override sidecars: the editable knobs a preview declared via
     // `previewOverride*`,
     // captured during the render as `renders/<stem>.overrides.json`. Packed verbatim under
@@ -604,6 +619,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
         previewPngs = previewPngs,
+        motionFiles = motionFiles,
         irFiles = irZipFiles,
         dataExtensionFiles = dataExtensionZipFiles,
         overrideFiles = overrideFiles,
@@ -625,6 +641,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       "composePreviewBundle — wrote ${outFile.name} (${outFile.length()} bytes)\n" +
         "  resolution:           ${classpath.resolution}\n" +
         "  previews baked:       ${previewPngs.size} / ${selected.size} (cover=$coverId)\n" +
+        "  motion captures:      ${motionFiles.size}\n" +
         "  IR-backed previews:   ${irEntries.size} (replayed from ir/, classes dropped)\n" +
         "  data extensions:      ${dataExtensionEntries.size} (carried under extensions/)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
@@ -718,6 +735,23 @@ abstract class BundlePreviewTask : DefaultTask() {
       }
       ?.minByOrNull { it.name }
       ?.readBytes()
+  }
+
+  /** Motion capture bytes for [preview], keyed by their in-bundle `previews/<leaf>` path. */
+  private fun resolvePreviewMotion(preview: PreviewInfo): Map<String, ByteArray> {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return emptyMap()
+    val previewsRoot = rendersRoot.parentFile ?: rendersRoot
+    val files = LinkedHashMap<String, ByteArray>()
+    for (capture in preview.captures) {
+      if (capture.interaction == null && capture.animation == null) continue
+      val rel = capture.renderOutput.takeIf { it.isNotEmpty() } ?: continue
+      val extension = rel.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+      if (extension != "apng" && extension != "gif") continue
+      val source = File(previewsRoot, rel)
+      if (!source.isFile || source.length() <= 0) continue
+      files["$BUNDLE_PREVIEWS_DIR/${source.name}"] = source.readBytes()
+    }
+    return files
   }
 
   /**
@@ -1431,6 +1465,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     inlinedProjectJars: Map<String, File>,
     report: String,
     previewPngs: Map<String, ByteArray>,
+    motionFiles: Map<String, ByteArray>,
     irFiles: Map<String, ByteArray>,
     dataExtensionFiles: Map<String, ByteArray>,
     overrideFiles: Map<String, ByteArray>,
@@ -1442,6 +1477,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
+      // Renderer-named APNG/GIF siblings consumed by catalog motion publishing and bundle readers.
+      motionFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // (v8) Per-preview override sidecars under `previews/<id>.overrides.json`.
       overrideFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       // Per-sheet catalog-token sidecars under `previews/<id>.catalog.json` (issue #2167).

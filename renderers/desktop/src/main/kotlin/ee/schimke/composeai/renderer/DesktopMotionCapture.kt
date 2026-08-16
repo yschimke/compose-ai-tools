@@ -11,8 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SkikoComposeUiTest
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import ee.schimke.composeai.scroll.ScrollGifEncoder
@@ -20,6 +19,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.ceil
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 
@@ -216,14 +216,34 @@ internal fun MotionPreviewProviders(
 }
 
 /**
- * Captures the rendered root as encoded PNG bytes.
+ * Captures the complete Skiko scene, including popup/dialog owners that are not descendants of the
+ * preview's main semantics root.
  *
- * Every frame of one capture comes back with the same width, height and colour type because the
- * scene is fixed-size — which is exactly the invariant [ApngEncoder] requires of its inputs.
+ * Compose Desktop paints those owners into the same scene surface even though `onRoot()` selects
+ * only the main owner. Capturing the surface is therefore the lossless source for motion frames;
+ * [MotionFrameCollector] still trims it to the measured capture bounds, so ordinary inline previews
+ * keep the same dimensions and byte cost they had before popup support.
  */
 @OptIn(ExperimentalTestApi::class)
-internal fun SkikoComposeUiTest.captureRootPngBytes(): ByteArray {
-  val bitmap = onRoot().captureToImage()
+internal fun SkikoComposeUiTest.captureMotionSurfacePngBytes(): ByteArray =
+  captureToImage().toPngBytes()
+
+/**
+ * Folds every active semantics owner's window bounds into [tracker]. Popups are separate roots, so
+ * the main content's `onMeasured` callback cannot see them. Observing roots after each rendered
+ * frame lets [recordMotionCapture] re-record at the union's required size when a gesture opens a
+ * menu, tooltip, dialog, or sheet beyond the resting sticker bounds.
+ */
+@OptIn(ExperimentalTestApi::class)
+internal fun SkikoComposeUiTest.observeMotionRootBounds(tracker: MotionBoundsTracker) {
+  for (node in onAllNodes(isRoot()).fetchSemanticsNodes()) {
+    val bounds = node.boundsInWindow
+    tracker.observe(ceil(bounds.right).toInt(), ceil(bounds.bottom).toInt())
+  }
+}
+
+private fun androidx.compose.ui.graphics.ImageBitmap.toPngBytes(): ByteArray {
+  val bitmap = this
   val skiaImage = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
   try {
     val pngData =

@@ -165,7 +165,9 @@ fun renderAnimatedPreview(
         }
 
         repeat(frameCount) {
-          collector.capture(captureRootPngBytes(), crop)
+          val frame = captureMotionSurfacePngBytes()
+          observeMotionRootBounds(bounds)
+          collector.capture(frame, crop)
           mainClock.advanceTimeBy(frameInterval.toLong())
         }
       }

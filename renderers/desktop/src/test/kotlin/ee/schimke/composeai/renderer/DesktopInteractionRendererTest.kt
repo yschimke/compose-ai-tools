@@ -190,6 +190,46 @@ class DesktopInteractionRendererTest {
   }
 
   @Test
+  fun `a popup owner is captured and expands wrapped motion bounds`() {
+    val output =
+      render(
+        "OpenPopupOnTap",
+        spec(targets = listOf(0)),
+        "popup-owner",
+        widthPx = 90,
+        heightPx = 30,
+        wrapWidth = true,
+        wrapHeight = true,
+      )
+
+    val frames = ApngFrames.read(output)
+    assertEquals("the popup owner expands capture to the 90px scene", 90, frames.last().width)
+    assertTrue(
+      "the separate popup owner is present in the encoded frame",
+      frames.last().isWhiteAt(55, 15),
+    )
+  }
+
+  @Test
+  fun `a real Material AlertDialog is captured from its separate owner`() {
+    val output =
+      render(
+        "OpenAlertDialogOnTap",
+        spec(targets = listOf(0)),
+        "alert-dialog-owner",
+        widthPx = 320,
+        heightPx = 240,
+        wrapWidth = true,
+        wrapHeight = true,
+      )
+
+    val last = ApngFrames.read(output).last()
+    assertEquals(320, last.width)
+    assertEquals(240, last.height)
+    assertTrue("the dialog/scrim paints the scene centre", last.alphaAt(160, 120) > 0)
+  }
+
+  @Test
   fun `an unwrapped capture keeps the requested frame`() {
     // The device-framed case still fills its sandbox — cropping is what a *wrapped* axis asks for,
     // and a `@Preview` that declared a device size means it.
