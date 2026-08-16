@@ -251,9 +251,26 @@ that surface, which is how it drifted, so the port added a `live-refused`
 harness state alongside the fix. `sameOrigin` moved to `dom/` and is now shared
 rather than copied, with a separate, stricter guard for navigation.
 
-Next: `design-page.js` (789). The big ones — `format-compare.js` (1,706) and
-`viewer.js` (3,127) — want breaking into pure modules the way the drawers were,
-not porting whole.
+`<cp-design-page>` was the largest port and the one with the most extractable
+arithmetic: `design/ink.ts` fits our render's DRAWN PIXELS onto the design's
+drawn box (plain `contain` fits canvas-to-ink, which shrinks every component by
+its own transparent margin — 4% to 42% on one catalog page, read as "everything
+scales when you flip the lane"); `design/score.ts` holds the badge, where both
+ways of conflating drift with proportion difference have already been shipped
+once; `design/geometry.ts` holds the slot/crop/tip placement, including the
+zoom-invariance that lets a zoom skip re-measuring entirely.
+
+Its one non-obvious hazard is worth remembering for `viewer.js`, which has the
+same shape: `design-page.js` read `window.ComposePreviewCompare` at IIFE time
+from a script tag emitted AFTER `format-compare.js`, but the components bundle
+comes before it. An element caching that handle on upgrade caches `null` and the
+diff lane silently scores nothing. `<cp-design-page>` reads it when the lane is
+entered instead, so no script order can break it.
+
+Left: `format-compare.js` (1,706) and `viewer.js` (3,127). Both want breaking
+into pure modules the way the drawers were, not porting whole — and
+`format-compare.js` has four external consumers that read the file by path or
+basename, so its primitives want a shim rather than a move.
 
 ## Two bundles, and which one a thing belongs in
 

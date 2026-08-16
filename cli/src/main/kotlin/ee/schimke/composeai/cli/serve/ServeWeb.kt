@@ -7179,7 +7179,7 @@ $rows
    * ## Geometry
    *
    * There isn't any, here or in the manifest. The SVG knows where its own nodes are, so
-   * `design-page.js` measures each `[data-node-id]` element and places the outline over it. A
+   * `<cp-design-page>` measures each `[data-node-id]` element and places the outline over it. A
    * recorded rectangle would be a second answer to that question, and a worse one — Figma's export
    * box includes effect bleed, so it and the drawn shape disagree on anything with a shadow.
    *
@@ -7188,7 +7188,7 @@ $rows
    * The sheet is drawn at the size the design file drew it — m3-catalog's Styles page is 6263 px
    * across — and it lands in a content column a sixth of that, so every type specimen and swatch
    * number on it is sub-pixel. The `<cp-page-zoom>` element this page declares — a Lit component in
-   * `cli/serve-web`, not part of the legacy `design-page.js` — therefore makes the stage zoomable:
+   * `cli/serve-web`, alongside `<cp-design-page>` — therefore makes the stage zoomable:
    * double-click drills one addressable level in (Figma's own gesture, and free here because a
    * Figma export is a tree of `<g data-node-id>`, so "one level in" is the next element down the
    * hit-test chain), ⌘/Ctrl + wheel zooms about the pointer, and dragging pans. That is also the
@@ -7280,7 +7280,7 @@ $rows
         val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
         "<$tag class=\"cp-page-node\" " +
           // The anchor a section row in the catalog sidebar lands on. Every node carries one, not
-          // just the sets — a fragment is free, and the id is what lets `design-page.js` find the
+          // just the sets — a fragment is free, and the id is what lets `<cp-design-page>` find the
           // node a URL names without a second lookup table.
           "id=\"${nodeAnchorId(node.nodeId)}\" " +
           "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
@@ -7428,11 +7428,13 @@ $rows
             </details>
           </div>
         </div>
-        <!-- The zoom lives in the Lit bundle (`<cp-page-zoom>`); the sheet's overlays, lanes and
-             per-node scoring are still `design-page.js`, awaiting their own port. -->
+        <!-- The sheet's overlays, lanes and per-node scoring, alongside the zoom
+             (`<cp-page-zoom>`) — both in the Lit bundle. `<cp-design-page>` reads
+             `window.ComposePreviewCompare` when the diff lane is entered rather than when it
+             upgrades, so it does not depend on following the script below. -->
         ${scriptTag("serve-components.js")}
         ${scriptTag("format-compare.js")}
-        ${scriptTag("design-page.js")}
+        <cp-design-page></cp-design-page>
         """
           .trimIndent(),
     )

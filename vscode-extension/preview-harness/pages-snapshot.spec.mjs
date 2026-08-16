@@ -310,7 +310,6 @@ const SERVE_ASSETS = [
     ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
-    ["design-page.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -626,7 +625,7 @@ const FIXTURE_STATES = [
             // The top slot's own padding: inside the slot panel, outside the component's hit area,
             // and — with the card now filling the stage — still somewhere the view actually shows. A
             // double-click ON the component would navigate to its preview instead: the first click of
-            // it follows the overlay's anchor, which is deliberate and documented in `design-page.js`.
+            // it follows the overlay's anchor, which is deliberate and documented in `<cp-design-page>`.
             const at = await sheetPoint(page, 110, 200);
             await page.mouse.dblclick(at.x, at.y);
             // STRICTLY deeper. A drill that resolved to the level already framed would leave the

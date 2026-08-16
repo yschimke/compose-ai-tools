@@ -840,7 +840,8 @@ cp-bg-toggle { display: contents; }
    none of them has anything to draw. An autonomous custom element defaults to `display: inline`,
    so without this each would sit in its page's flow as an empty inline box. */
 cp-group-memory, cp-catalog-toolbar, cp-viewer-drawers, cp-parity-lanes,
-cp-rc-lanes, cp-spec-compare, cp-inspect-layers, cp-catalog-live { display: none; }
+cp-rc-lanes, cp-spec-compare, cp-inspect-layers, cp-catalog-live,
+cp-design-page { display: none; }
 /* `<cp-parity-scores>` DOES render — the whole "Visual differences" band — so it drops out
    of layout rather than out of sight, leaving the `<section>` it renders as the flow's own
    child exactly as the server-emitted one was. */
@@ -2497,7 +2498,7 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    it and — behind a toggle — this catalog's own renders standing in for the design's own drawing.
 
    Unlike the screen backdrop this replaced, the geometry is NOT in percentages: the SVG is the
-   source of truth for where a node is, so `design-page.js` measures each `[data-node-id]` element
+   source of truth for where a node is, so `<cp-design-page>` measures each `[data-node-id]` element
    and writes the four offsets. Everything here is therefore paint and state, not layout — which is
    also why the stage stacks above the list rather than beside it: a specimen sheet is wider than
    it is tall, the opposite of the phone screens the two-column version was shaped for. */
@@ -2652,7 +2653,7 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    component that renders taller than the design drew it is a real finding, and stretching to the
    box would hide exactly that.
 
-   What gets fitted is the render's DRAWN PIXELS, not its canvas. `design-page.js` measures the
+   What gets fitted is the render's DRAWN PIXELS, not its canvas. `<cp-design-page>` measures the
    image's ink box once it loads and writes `left`/`top`/`width`/`height` here, because the two
    sides of this swap are boxes of different kinds: the design node's box is the tight bounds of
    the shape Figma drew, while a render is a fixed canvas with the component sitting inside it and
@@ -2674,7 +2675,7 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   pointer-events: none;
 }
 .cp-page-swap-on .cp-page-render { display: block; }
-/* A render the server could not produce. `design-page.js` restores the design's own drawing in that
+/* A render the server could not produce. `<cp-design-page>` restores the design's own drawing in that
    slot and hides the failed image — but the rule above is a two-class selector and would beat the
    UA stylesheet's `[hidden]`, leaving the browser's broken-image glyph sitting on top of the
    drawing just restored. Specificity has to be answered explicitly. */

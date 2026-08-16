@@ -1734,7 +1734,7 @@ class ServeWebFixtureTest {
     //
     // NESTED, like a real one, and that is load-bearing rather than decoration. A Figma export is a
     // tree — a page holds cards, a card holds slots, a slot holds the component — and
-    // `design-page.js` reads that tree as the levels a double-click drills through (see its zoom
+    // `<cp-page-zoom>` reads that tree as the levels a double-click drills through (see its zoom
     // section). While this fixture was FLAT, every node on it was a sibling of every other, so the
     // whole nested-zoom gesture was unreachable from the harness and a regression in it would have
     // moved no baseline. The two cards and their slots are also painted, for the same reason:
