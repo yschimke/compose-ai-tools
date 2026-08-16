@@ -794,6 +794,13 @@ class ServeCatalogLiveHost(
 
   override val hasScrollExport: Boolean by lazy { live.hasScrollExport }
 
+  /**
+   * Accessibility inspection is another explicit live render, just like scroll capture. The
+   * catalog's baked lane has no semantics tree, but its carried daemon does; forwarding the
+   * capability is what makes the Accessibility control appear on a catalog component page.
+   */
+  override val hasA11yOverlay: Boolean by lazy { live.hasA11yOverlay }
+
   override fun hasScrollExportFor(previewId: String): Boolean =
     previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
 
@@ -1171,6 +1178,16 @@ class ServeCatalogLiveHost(
   override fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
     val daemonId = alias[previewId] ?: return SvgOutcome.NotFound
     return liveHostFor(daemonId).renderScrollSvg(daemonId, overrides)
+  }
+
+  /**
+   * Produce accessibility data from the live daemon rather than the baked snapshot. The exact
+   * viewer overrides are deliberately retained: changing theme, font scale, device, locale or a
+   * named knob must inspect the newly rendered composition, not the catalog's original pixels.
+   */
+  override fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome {
+    val daemonId = alias[previewId] ?: return A11yOutcome.NotFound
+    return liveHostFor(daemonId).renderA11y(daemonId, overrides)
   }
 
   /**
