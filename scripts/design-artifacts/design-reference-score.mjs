@@ -153,9 +153,9 @@ export async function openScorer({ executablePath, log = () => {} } = {}) {
     });
     const page = await browser.newPage();
     // A blank document, not a served page: the scorer needs a canvas and an `Image`, nothing else.
-    // `format-compare.js` assigns `window.ComposePreviewCompare` before any of its page-specific
-    // blocks, and every one of those is guarded on an element this document does not have — so it
-    // loads here as the pure API it also is.
+    // `format-compare.js` is now nothing BUT the API — the page-specific blocks it used to carry
+    // are Lit elements in `serve-components.js` — so it assigns `window.ComposePreviewCompare` and
+    // touches no DOM at all.
     await page.setContent("<!doctype html><meta charset=\"utf-8\"><title>score</title>");
     await page.addScriptTag({ content: fs.readFileSync(COMPARE_ASSET, "utf8") });
     const ready = await page.evaluate(() => typeof window.ComposePreviewCompare?.scoreImages);

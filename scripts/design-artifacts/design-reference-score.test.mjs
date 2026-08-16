@@ -47,11 +47,20 @@ test("the driver reads the viewer's own comparison asset, not a copy of it", () 
   );
   assert.ok(fs.existsSync(asset), `${asset} is where the scorer expects the viewer's asset`);
   const source = fs.readFileSync(asset, "utf8");
-  // The two entry points the in-page evaluation calls. A rename upstream would otherwise surface as
+  // The asset is BUILT now (from `cli/serve-web/src/scorer/`), so this is a grep over minified
+  // output. Property names survive minification because they are the published contract — that is
+  // exactly what is being checked. The build's own type annotation on `window.ComposePreviewCompare`
+  // catches a rename inside the repo; this catches the case that annotation cannot see, which is
+  // this driver reading a built file it does not participate in building.
+  assert.ok(
+    /window\.ComposePreviewCompare\s*=/.test(source),
+    "format-compare.js still publishes the comparison API as a global",
+  );
+  // The entry points the in-page evaluation calls. A rename upstream would otherwise surface as
   // every reference silently publishing without a score.
   for (const api of ["scoreImages", "normaliseImageUrls", "diffCanvases", "loadImage"]) {
     assert.ok(
-      source.includes(`${api}: ${api}`),
+      new RegExp(`\\b${api}\\s*:`).test(source),
       `format-compare.js still exports ${api} on window.ComposePreviewCompare`,
     );
   }
