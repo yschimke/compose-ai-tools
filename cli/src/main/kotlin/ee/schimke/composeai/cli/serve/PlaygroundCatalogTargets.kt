@@ -20,6 +20,18 @@ data class PlaygroundCatalogTarget(
   val modes: List<PlaygroundMode>,
   /** True once this catalog's compile classpath has been resolved and memoized. */
   val resolved: Boolean,
+  /** Request id; equals [system] for a legacy/primary bundle and is module-qualified otherwise. */
+  val id: String = system,
+  /** Owning Gradle module for a repository-wide catalog target. */
+  val module: String = "",
+)
+
+/** One independently compilable bundle currently published by a served catalog. */
+data class PlaygroundCatalogAvailable(
+  val id: String,
+  val system: String,
+  val module: String,
+  val backend: String,
 )
 
 /**
@@ -56,7 +68,7 @@ class PlaygroundCatalogTargets(
    * are fetched in the background *after* the playground lane is wired, so a list captured once
    * would be empty forever on a freshly started host.
    */
-  private val available: () -> List<Pair<String, String>>,
+  private val available: () -> List<PlaygroundCatalogAvailable>,
   /**
    * Which modes this host can actually serve for a bundle backend — the backend's natural modes
    * intersected with the render backends that came up (no Robolectric sidecar ⇒ no Android modes,
@@ -75,18 +87,22 @@ class PlaygroundCatalogTargets(
   /** Everything the selector should offer, sorted by system id so the list is stable per render. */
   fun targets(): List<PlaygroundCatalogTarget> =
     available()
-      .mapNotNull { (system, backend) ->
-        val modes = modesForBackend(backend)
+      .mapNotNull { available ->
+        val modes = modesForBackend(available.backend)
         if (modes.isEmpty()) null
         else
           PlaygroundCatalogTarget(
-            system = system,
-            backend = backend,
+            system = available.system,
+            backend = available.backend,
             modes = modes,
-            resolved = suppliers[system]?.isResolved == true,
+            resolved = suppliers[available.id]?.isResolved == true,
+            id = available.id,
+            module = available.module,
           )
       }
-      .sortedBy { it.system }
+      .sortedWith(
+        compareBy<PlaygroundCatalogTarget>({ it.system }, { it.id != it.system }, { it.module })
+      )
 
   /** How many catalogs currently hold a resolved classpath — for `/status.json`. */
   fun resolvedCount(): Int = suppliers.values.count { it.isResolved }
@@ -98,22 +114,22 @@ class PlaygroundCatalogTargets(
    * the caller as "not available" rather than distinguished on the wire, and logged here with the
    * actual reason.
    */
-  fun classpath(system: String, mode: PlaygroundMode): PlaygroundCompileService.Classpath? {
-    val target = targets().firstOrNull { it.system == system }
+  fun classpath(id: String, mode: PlaygroundMode): PlaygroundCompileService.Classpath? {
+    val target = targets().firstOrNull { it.id == id }
     if (target == null) {
-      onLog("catalog '$system' is not a selectable playground catalog on this host")
+      onLog("catalog target '$id' is not selectable on this host")
       return null
     }
     if (mode !in target.modes) {
       onLog(
-        "catalog '$system' is a ${target.backend} catalog and cannot serve mode ${mode.name} here " +
+        "catalog target '$id' is a ${target.backend} bundle and cannot serve mode ${mode.name} here " +
           "(offers ${target.modes.joinToString { it.name }})"
       )
       return null
     }
     // Fast path: an already-resolved catalog is a map read plus a memo read, so concurrent compiles
     // against the common catalog never touch the lock below.
-    suppliers[system]
+    suppliers[id]
       ?.takeIf { it.isResolved }
       ?.let {
         return it.classpath()
@@ -121,7 +137,7 @@ class PlaygroundCatalogTargets(
     // First resolve of a catalog is serialized: it unpacks a bundle and resolves a full Maven
     // classpath, and serializing is what makes the cap exact rather than a racy over-shoot.
     synchronized(this) {
-      suppliers[system]
+      suppliers[id]
         ?.takeIf { it.isResolved }
         ?.let {
           return it.classpath()
@@ -135,12 +151,12 @@ class PlaygroundCatalogTargets(
       if (resolvedCount() >= limit) {
         onLog(
           "playground catalog budget spent: $limit catalog(s) already hold a resolved classpath " +
-            "and they cannot be evicted while snippet JVMs hold their jars open, so '$system' is " +
+            "and they cannot be evicted while snippet JVMs hold their jars open, so '$id' is " +
             "refused. Raise --playground-catalog-limit, or restart to pick a different set."
         )
         return null
       }
-      val supplier = suppliers[system] ?: newSupplier(system).also { suppliers[system] = it }
+      val supplier = suppliers[id] ?: newSupplier(id).also { suppliers[id] = it }
       return supplier.classpath()
     }
   }

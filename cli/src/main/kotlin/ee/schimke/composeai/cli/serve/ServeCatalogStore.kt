@@ -119,6 +119,24 @@ class ServeCatalogStore(
       false
     },
   /**
+   * Multi-module counterpart of [buildTrustedBundle]. Each entry owns one classpath and alias set.
+   */
+  private val buildTrustedBundles:
+    (
+      system: String,
+      bundles: List<TrustedModuleBundle>,
+      bakedFallback: () -> ServeHost,
+    ) -> Boolean =
+    { _, _, _ ->
+      false
+    },
+  /** Publish verified carried bundles to non-daemon consumers such as the playground compiler. */
+  private val recordTrustedBundles: (system: String, bundles: List<VerifiedModuleBundle>) -> Unit =
+    { _, _ ->
+    },
+  /** Clear compile targets when a successful refresh no longer carries a usable trusted bundle. */
+  private val clearTrustedBundles: (system: String) -> Unit = {},
+  /**
    * Trusted server-side re-render (opt-in, `--allow-render-trusted`). When a catalog is `Trusted`
    * AND declares a `source` (`{repo, ref, module}`), this is invoked to stand up a **daemon-backed,
    * re-renderable** session built from that source — so the viewer's controls re-render live at
@@ -143,6 +161,17 @@ class ServeCatalogStore(
 
   /** A catalog's buildable source — where to check out + build to re-render it live. */
   data class CatalogSource(val repo: String, val ref: String, val module: String)
+
+  data class TrustedModuleBundle(
+    val module: String,
+    val file: File,
+    val externalResourcesDir: File?,
+    val alias: Map<String, String>,
+    val perPreviewBundle: PerPreviewBundleAccess,
+  )
+
+  /** Minimal verified carried-bundle identity for compile consumers that do not run its daemon. */
+  data class VerifiedModuleBundle(val module: String, val file: File)
 
   /**
    * Build the **catalog-id → daemon-preview-id** alias from a catalog's images: each image's
@@ -231,6 +260,7 @@ class ServeCatalogStore(
     val section: String?,
     val group: String?,
     val componentSourceFile: String?,
+    val componentSourceModule: String?,
     val componentBodyLine: Int?,
     /**
      * The owning component's published captures, paired to this image by theme in the load loop.
@@ -365,6 +395,7 @@ class ServeCatalogStore(
         val group = component.group?.takeIf { it.isNotBlank() }
         val componentId = component.componentId?.takeIf { it.isNotBlank() }
         val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
+        val componentSourceModule = component.sourceModule?.takeIf { it.isNotBlank() }
         val componentBodyLine = component.bodyLine?.takeIf { it > 0 }
         component.images.mapNotNull { image ->
           val path = image.path
@@ -387,6 +418,7 @@ class ServeCatalogStore(
             section,
             group,
             componentSourceFile,
+            componentSourceModule,
             componentBodyLine,
             component.motion,
           )
@@ -461,6 +493,7 @@ class ServeCatalogStore(
             planned.componentId != null ||
             hasSectionInfo ||
             planned.componentSourceFile != null ||
+            planned.componentSourceModule != null ||
             image.overrides.isNotEmpty() ||
             image.remoteComposeKnobs.isNotEmpty() ||
             image.supportsFocus ||
@@ -483,6 +516,7 @@ class ServeCatalogStore(
               group = planned.group,
               order = if (hasSectionInfo) count else null,
               sourceFile = planned.componentSourceFile,
+              sourceModule = planned.componentSourceModule,
               bodyLine = planned.componentBodyLine,
             )
         }
@@ -794,7 +828,106 @@ class ServeCatalogStore(
     // explain it (instead of the generic "no live bundle"). Null unless the catalog declared a
     // liveBundle we then couldn't use.
     var liveBundleFallback: ServeDegradation? = null
-    val liveBundle = catalog.liveBundle
+    var trustedBundlesRecorded = false
+    val declaredLiveBundles = catalog.liveBundles
+    val multiLiveBundle = declaredLiveBundles.size > 1
+    if (verdict is BundleVerifier.Verdict.Trusted && multiLiveBundle) {
+      val nonEmptyPrefixes =
+        declaredLiveBundles.map { it.previewIdPrefix }.filter { it.isNotEmpty() }
+      val descriptorsValid =
+        nonEmptyPrefixes.distinct().size == nonEmptyPrefixes.size &&
+          declaredLiveBundles.count { it.previewIdPrefix.isEmpty() } == 1
+      if (!descriptorsValid) {
+        liveBundleFallback =
+          ServeDegradation.liveBundleUnavailable("the module bundle identity map is invalid")
+      } else {
+        val prepared = mutableListOf<TrustedModuleBundle>()
+        for (descriptor in declaredLiveBundles) {
+          val moduleAlias = alias.filterValues { daemonId ->
+            if (descriptor.previewIdPrefix.isNotEmpty()) {
+              daemonId.startsWith(descriptor.previewIdPrefix)
+            } else {
+              nonEmptyPrefixes.none(daemonId::startsWith)
+            }
+          }
+          val bundleFile = fetchLiveBundle(descriptor, base, dir, safe)
+          if (bundleFile == null) {
+            prepared.clear()
+            liveBundleFallback =
+              ServeDegradation.liveBundleUnavailable(
+                "the ${descriptor.module.ifBlank { "primary" }} module bundle could not be fetched"
+              )
+            break
+          }
+          extractCatalogRcDocs(bundleFile, moduleAlias, dir)
+          val resources =
+            when (
+              val res = rehydrateExternalResources(bundleFile, base, descriptor.path, dir, safe)
+            ) {
+              is ResRehydrate.Ready -> res.dir
+              ResRehydrate.Unavailable -> {
+                prepared.clear()
+                liveBundleFallback =
+                  ServeDegradation.liveBundleUnavailable(
+                    "a resource for ${descriptor.module.ifBlank { "the primary module" }} could not be rehydrated"
+                  )
+                break
+              }
+            }
+          val safeStems = uniquePerPreviewStems(moduleAlias.values)
+          prepared +=
+            TrustedModuleBundle(
+              module = descriptor.module,
+              file = bundleFile,
+              externalResourcesDir = resources,
+              alias = moduleAlias,
+              perPreviewBundle =
+                PerPreviewBundleAccess(
+                  available = { daemonId ->
+                    safeStems[daemonId]?.let { stem ->
+                      perPreviewBundleAvailable(stem, descriptor, base, dir)
+                    } ?: false
+                  },
+                  fetch = { daemonId ->
+                    safeStems[daemonId]?.let { stem ->
+                      fetchPerPreviewBundle(stem, descriptor, base, dir, safe, resources)
+                    }
+                  },
+                ),
+            )
+        }
+        val preparedCompletely =
+          prepared.size == declaredLiveBundles.size && prepared.all { it.alias.isNotEmpty() }
+        if (preparedCompletely) {
+          recordTrustedBundles(
+            safe,
+            prepared.map { VerifiedModuleBundle(module = it.module, file = it.file) },
+          )
+          trustedBundlesRecorded = true
+        }
+        if (
+          preparedCompletely &&
+            buildTrustedBundles(
+              safe,
+              prepared,
+              { bakedFallback(emptyList(), deferredIds.toList()) },
+            )
+        ) {
+          return Result.Ok(
+            safe,
+            count + deferredIds.size + failedIds.size,
+            "${BundleVerifier.summary(verdict)} (${prepared.size} live module bundles)",
+            failedIds.size,
+          )
+        }
+        if (liveBundleFallback == null) {
+          liveBundleFallback =
+            ServeDegradation.liveBundleUnavailable("the module bundle daemons could not be started")
+        }
+      }
+    }
+    // A multi-module declaration is atomic: never silently start only its primary legacy bundle.
+    val liveBundle = if (multiLiveBundle) null else catalog.liveBundle
     if (verdict is BundleVerifier.Verdict.Trusted && liveBundle != null) {
       val bundleFile = fetchLiveBundle(liveBundle, base, dir, safe)
       if (bundleFile == null) {
@@ -803,6 +936,11 @@ class ServeCatalogStore(
             "the bundle could not be fetched from the delivery branch"
           )
       } else {
+        recordTrustedBundles(
+          safe,
+          listOf(VerifiedModuleBundle(module = liveBundle.module, file = bundleFile)),
+        )
+        trustedBundlesRecorded = true
         // Materialise the captured Remote Compose documents (`ir/<daemon-id>.rc`) from the fetched
         // bundle, re-keyed to the published catalog ids, so the baked host's in-browser canvas lane
         // can serve them. Done regardless of the rehydrate/daemon outcome below — the client-side
@@ -889,6 +1027,7 @@ class ServeCatalogStore(
     // source is even offered to the builder — an Unverified catalog NEVER reaches it, so a
     // compromised/spoofed catalog can't trigger a build. Like the bundle path, the builder fronts
     // the baked host with the daemon rather than replacing it.
+    if (!trustedBundlesRecorded) clearTrustedBundles(safe)
     val src = catalog.source
     if (
       verdict is BundleVerifier.Verdict.Trusted &&
@@ -934,7 +1073,8 @@ class ServeCatalogStore(
           liveBundleFallback
             ?: when {
               verdict is BundleVerifier.Verdict.Unverified &&
-                (liveBundle != null || (src != null && src.module.isNotBlank())) ->
+                ((liveBundle != null || declaredLiveBundles.isNotEmpty()) ||
+                  (src != null && src.module.isNotBlank())) ->
                 ServeDegradation.unverifiedNoRerender()
               else -> ServeDegradation.catalogBakedOnly()
             },
@@ -1902,6 +2042,10 @@ class ServeCatalogStore(
      */
     val liveBundle: LiveBundle? = null,
     /**
+     * One independently executable bundle per Gradle module; [liveBundle] remains the v1 primary.
+     */
+    val liveBundles: List<LiveBundle> = emptyList(),
+    /**
      * Live-only coverage: the entries and image axes the spec declared `priority: "deferred"` (or
      * thinned out of the palette with `modePriority`), which CI deliberately did NOT rasterise —
      * recorded here rather than in `components[].images` so no consumer of the baked sticker set is
@@ -1968,8 +2112,16 @@ class ServeCatalogStore(
    */
   @Serializable data class CatalogDisplay(val surface: String? = null, val hero: String? = null)
 
-  /** `catalog.json`'s `liveBundle`: the executable bundle at `<path><file>` on this branch. */
-  @Serializable private data class LiveBundle(val path: String = "", val file: String = "")
+  /**
+   * `catalog.json` live bundle descriptor. Prefix partitions collision-safe daemon ids by module.
+   */
+  @Serializable
+  private data class LiveBundle(
+    val path: String = "",
+    val file: String = "",
+    val module: String = "",
+    val previewIdPrefix: String = "",
+  )
 
   /** `catalog.json`'s `source`: the repo/ref/module to build to re-render this catalog live. */
   @Serializable
@@ -1994,6 +2146,12 @@ class ServeCatalogStore(
      * its source on GitHub. Null for an older catalog that predates the export change.
      */
     val sourceFile: String? = null,
+    /**
+     * Gradle project path that owns [sourceFile]. Set for repository-wide catalogs, where sibling
+     * modules cannot share the catalog-level [Source.module]. Null for legacy single-module
+     * catalogs, whose source module remains catalog-wide.
+     */
+    val sourceModule: String? = null,
     /**
      * A 1-based line inside the `@Preview` function's body within [sourceFile], stamped by the same
      * export pass from discovery's `previews.json`. Carried into `previews/variants.json` so the
@@ -2147,6 +2305,8 @@ class ServeCatalogStore(
      * source link. Null for a catalog with no recorded source (older export) or a deferred record.
      */
     val sourceFile: String? = null,
+    /** Per-preview Gradle project path; overrides the catalog-wide source module when present. */
+    val sourceModule: String? = null,
     /**
      * A 1-based line inside the preview function's body within [sourceFile] (from the catalog
      * component's [Component.bodyLine]). Shared by every image of a component, like [sourceFile].

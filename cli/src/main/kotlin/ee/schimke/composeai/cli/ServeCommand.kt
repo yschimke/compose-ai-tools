@@ -13,6 +13,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundAndroidRenderService
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
 import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
 import ee.schimke.composeai.cli.serve.PlaygroundBundleSource
+import ee.schimke.composeai.cli.serve.PlaygroundCatalogAvailable
 import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
 import ee.schimke.composeai.cli.serve.PlaygroundCatalogTargets
 import ee.schimke.composeai.cli.serve.PlaygroundClasspathSupplier
@@ -326,7 +327,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * written by catalog load / refresh threads, read from request threads.
    */
   private val catalogLiveBundles =
-    java.util.concurrent.ConcurrentHashMap<String, CatalogLiveBundle>()
+    java.util.concurrent.ConcurrentHashMap<String, List<CatalogLiveBundle>>()
 
   /**
    * A served catalog's verified liveBundle, as the playground sees it: where the bytes landed and
@@ -335,7 +336,15 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * a catalog can offer *before* anyone pays for a full classpath resolve. Null when the bundle's
    * metadata could not be read at all — such a catalog is simply not offered.
    */
-  private class CatalogLiveBundle(val file: java.io.File, val backend: String?)
+  private data class CatalogLiveBundle(
+    val id: String,
+    val module: String,
+    val file: java.io.File,
+    val backend: String?,
+  )
+
+  private fun catalogTargetId(system: String, module: String, primary: Boolean): String =
+    if (primary) system else "$system@$module"
 
   /**
    * `--playground-bundle <path|system>`: enable the playground lane (`POST /api/{v}/compiler/run`),
@@ -1585,7 +1594,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       else
         PlaygroundCatalogTargets(
           available = {
-            catalogLiveBundles.mapNotNull { (system, live) -> live.backend?.let { system to it } }
+            catalogLiveBundles.flatMap { (system, bundles) ->
+              bundles.mapNotNull { live ->
+                live.backend?.let { PlaygroundCatalogAvailable(live.id, system, live.module, it) }
+              }
+            }
           },
           modesForBackend = { backend ->
             PlaygroundCatalogTargets.naturalModes(backend).filter { mode ->
@@ -1598,12 +1611,15 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
               }
             }
           },
-          newSupplier = { system ->
+          newSupplier = { id ->
+            val system = id.substringBefore('@')
             PlaygroundClasspathSupplier(
               source = PlaygroundBundleSource.ServedCatalog(system),
-              locateServedBundle = { catalogLiveBundles[it]?.file },
-              resolve = { bundleFile -> resolvePlaygroundClasspath(bundleFile, workRoot, system) },
-              onLog = { System.err.println("serve: playground catalog $system: $it") },
+              locateServedBundle = {
+                catalogLiveBundles[system]?.firstOrNull { live -> live.id == id }?.file
+              },
+              resolve = { bundleFile -> resolvePlaygroundClasspath(bundleFile, workRoot, id) },
+              onLog = { System.err.println("serve: playground catalog $id: $it") },
             )
           },
           limit = playgroundCatalogLimit,
@@ -1897,7 +1913,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     }
     return PlaygroundClasspathSupplier(
       source = source,
-      locateServedBundle = { catalogLiveBundles[it]?.file },
+      locateServedBundle = { catalogLiveBundles[it]?.firstOrNull()?.file },
       resolve = { bundleFile -> resolvePlaygroundClasspath(bundleFile, workRoot, mode) },
       onLog = { System.err.println("serve: playground $mode — $it") },
     )
@@ -2876,7 +2892,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     val store =
       ServeCatalogStore(
         root = dir,
-        register = { id, host -> registry.register(id, host = host, pinned = true) },
+        register = { id, host -> publishStaticCatalog(id, host, registry) },
         trust = { trustStore.get() },
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
@@ -2899,23 +2915,6 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           alias,
           bakedFallback,
           perPreviewBundle ->
-          // Record where this catalog's verified liveBundle landed, so `--playground-bundle
-          // <system>` can compile against the very bytes the live lane runs — no second copy on the
-          // config volume, and the playground inherits the catalog's Trusted(Branch) verdict rather
-          // than trusting whatever an operator scp'd there (issue #3212). Only reached for a
-          // catalog that verified Trusted AND declared a liveBundle, which is exactly the set a
-          // playground mode may name.
-          //
-          // The backend rides along because the runtime selector needs it to decide which modes a
-          // catalog offers, and that decision has to be answerable while rendering the selector —
-          // long before anyone pays for a classpath resolve. One metadata read per catalog load,
-          // never on a request thread.
-          catalogLiveBundles[system] =
-            CatalogLiveBundle(
-              file = bundleFile,
-              backend =
-                runCatching { BundleReader.readMetadata(bundleFile).manifest.backend }.getOrNull(),
-            )
           buildTrustedCatalogBundle(
             system,
             bundleFile,
@@ -2927,6 +2926,17 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             openHost,
           )
         },
+        buildTrustedBundles = { system, bundles, bakedFallback ->
+          buildTrustedCatalogBundles(
+            system,
+            bundles,
+            bakedFallback,
+            registry,
+            openHost,
+          )
+        },
+        recordTrustedBundles = { system, bundles -> recordCatalogCompileTargets(system, bundles) },
+        clearTrustedBundles = catalogLiveBundles::remove,
         buildTrustedSource = { system, source, alias, bakedFallback ->
           buildTrustedCatalogSource(
             system,
@@ -2981,6 +2991,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         synchronized(catalogRegistrationLock) {
           registry.unregister(system)
           catalogPerPreviewPools.remove(system)?.let { runCatching { it.close() } }
+          catalogLiveBundles.remove(system)
           registeredCatalogs.remove(system)
           registeredUnlistedCatalogs.remove(system)
           // Stop serving the retired catalog's in-browser app too — but never drop a local
@@ -3130,18 +3141,232 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           catalogThemeCache = CatalogThemeCache(),
           serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
           backgroundWork = backgroundWork,
-        ) ?: return false
+        )
+        ?: run {
+          perPreviewPool.close()
+          return false
+        }
     // Now that the backend is known, the pool's daemons charge this catalog's real weight — an
     // Android/Robolectric per-preview daemon is not the same cost to the box as a desktop one.
     perPreviewSeatWeight = state.liveSeatWeight
-    val host = openHost(state) ?: return false
-    registry.register(system, state, host = host)
-    // Track the new pool and close the one it replaces — but only AFTER the fresh host is
-    // registered (register already closed the old host), so a re-load never closes a pool the
-    // still-live old host is mid-render on. First load for a system has no predecessor.
-    catalogPerPreviewPools.put(system, perPreviewPool)?.let { runCatching { it.close() } }
+    val host =
+      openHost(state)
+        ?: run {
+          perPreviewPool.close()
+          return false
+        }
+    if (!publishCatalogRuntime(system, state, host, perPreviewPool, registry)) {
+      return false
+    }
     System.err.println("serve: catalog $system → LIVE from bundle (no build) (?session=$system)")
     return true
+  }
+
+  /**
+   * Publish a catalog host and the resources its state closures capture as one ownership transfer.
+   * The ownership maps move first, then the registry entry becomes request-visible; on failure both
+   * maps are restored and the unpublished host/resources are closed. The caller's catalog
+   * registration lock makes this atomic with admin unload and branch refresh.
+   */
+  private fun publishCatalogRuntime(
+    system: String,
+    state: ServeSessionState,
+    host: ServeHost,
+    resources: AutoCloseable,
+    registry: ServeSessionRegistry,
+  ): Boolean {
+    var previousResources: AutoCloseable? = null
+    try {
+      synchronized(catalogRegistrationLock) {
+        previousResources = catalogPerPreviewPools.put(system, resources)
+        try {
+          registry.register(system, state, host = host)
+        } catch (failure: Throwable) {
+          previousResources?.let { catalogPerPreviewPools[system] = it }
+            ?: catalogPerPreviewPools.remove(system, resources)
+          throw failure
+        }
+      }
+    } catch (failure: Throwable) {
+      runCatching { host.close() }
+      runCatching { resources.close() }
+      System.err.println("serve: catalog $system publication failed (${failure.message})")
+      return false
+    }
+    previousResources?.let { runCatching { it.close() } }
+    return true
+  }
+
+  /** Record every verified module bundle as an independent lazy playground compile target. */
+  private fun recordCatalogCompileTargets(
+    system: String,
+    bundles: List<ServeCatalogStore.VerifiedModuleBundle>,
+  ) {
+    catalogLiveBundles[system] = bundles.mapIndexed { index, bundle ->
+      val metadata = runCatching { BundleReader.readMetadata(bundle.file).manifest }.getOrNull()
+      CatalogLiveBundle(
+        id = catalogTargetId(system, bundle.module, primary = index == 0),
+        module = bundle.module.ifBlank { metadata?.modulePath.orEmpty() },
+        file = bundle.file,
+        backend = metadata?.backend,
+      )
+    }
+  }
+
+  /** Replace a formerly-live catalog without leaving stale pools or playground targets behind. */
+  private fun publishStaticCatalog(
+    system: String,
+    host: ServeHost,
+    registry: ServeSessionRegistry,
+  ) {
+    var previousResources: AutoCloseable? = null
+    synchronized(catalogRegistrationLock) {
+      previousResources = catalogPerPreviewPools.remove(system)
+      try {
+        registry.register(system, host = host, pinned = true)
+      } catch (failure: Throwable) {
+        previousResources?.let { catalogPerPreviewPools[system] = it }
+        throw failure
+      }
+    }
+    previousResources?.let { runCatching { it.close() } }
+  }
+
+  /** Stand up one independently materialised live runtime per module and route by namespaced id. */
+  private fun buildTrustedCatalogBundles(
+    system: String,
+    bundles: List<ServeCatalogStore.TrustedModuleBundle>,
+    bakedFallback: () -> ServeHost,
+    registry: ServeSessionRegistry,
+    openHost: (ServeSessionState) -> ServeHost?,
+  ): Boolean {
+    if (!allowRenderTrusted || bundles.isEmpty()) return false
+    data class Runtime(
+      val published: ServeCatalogStore.TrustedModuleBundle,
+      val state: ServeSessionState,
+      val pool: ServePerPreviewDaemonPool,
+      var monolithic: ServeHost? = null,
+    )
+
+    val opened = mutableListOf<Runtime>()
+    var publishedSuccessfully = false
+    try {
+      for ((index, published) in bundles.withIndex()) {
+        var seatWeight = 1
+        val pool =
+          ServePerPreviewDaemonPool(
+            liveSeats = liveSeatLimiter,
+            seatWeight = { seatWeight },
+          ) { daemonId ->
+            val file =
+              published.perPreviewBundle.fetch(daemonId) ?: return@ServePerPreviewDaemonPool null
+            val dest =
+              java.nio.file.Files.createTempDirectory("serve-catalog-preview-$system-$index")
+                .toFile()
+                .also { it.deleteOnExit() }
+            val state =
+              ServeBundleDaemon.materialize(
+                file,
+                dest,
+                "$system:${published.module}",
+                extraMavenRepos = extraMavenRepos,
+                extraClasspathDirs = listOfNotNull(published.externalResourcesDir),
+              ) ?: return@ServePerPreviewDaemonPool null
+            openHost(state)
+          }
+        val dest =
+          java.nio.file.Files.createTempDirectory("serve-catalog-module-$system-$index")
+            .toFile()
+            .also { it.deleteOnExit() }
+        val state =
+          ServeBundleDaemon.materialize(
+            published.file,
+            dest,
+            "$system:${published.module}",
+            extraMavenRepos = extraMavenRepos,
+            extraClasspathDirs = listOfNotNull(published.externalResourcesDir),
+          )
+            ?: run {
+              pool.close()
+              return false
+            }
+        seatWeight = state.liveSeatWeight
+        opened += Runtime(published, state, pool)
+      }
+
+      val primary = opened.first()
+      for (runtime in opened.drop(1)) {
+        runtime.monolithic = openHost(runtime.state) ?: return false
+      }
+      val ownerByDaemonId =
+        opened
+          .flatMap { runtime ->
+            runtime.published.alias.values.map { daemonId -> daemonId to runtime }
+          }
+          .toMap()
+      val alias = opened.flatMap { it.published.alias.entries }.associate { it.toPair() }
+      val resolver: (String) -> ServeHost? = { daemonId ->
+        val runtime = ownerByDaemonId[daemonId]
+        when {
+          runtime == null -> null
+          runtime === primary -> runtime.pool.get(daemonId)
+          else -> runtime.pool.get(daemonId) ?: runtime.monolithic
+        }
+      }
+      val state =
+        primary.state.copy(
+          previewAliases = alias,
+          bakedFallback = bakedFallback,
+          perPreviewResolve = resolver,
+          executableBundleAvailable = { daemonId ->
+            ownerByDaemonId[daemonId]?.published?.perPreviewBundle?.available?.invoke(daemonId)
+              ?: false
+          },
+          executableBundleProvider = { daemonId ->
+            ownerByDaemonId[daemonId]
+              ?.published
+              ?.perPreviewBundle
+              ?.fetch(daemonId)
+              ?.takeIf(File::isFile)
+              ?.readBytes()
+          },
+          perPreviewStreamCount = { opened.sumOf { it.pool.activeStreamCount() } },
+          perPreviewRenderStats = {
+            opened.flatMap { runtime ->
+              buildList {
+                addAll(runtime.pool.renderPerfStats())
+                runtime.monolithic?.renderPerfStats()?.let(::add)
+              }
+            }
+          },
+          perPreviewPoolStats = { opened.map { it.pool.snapshot() } },
+          perPreviewReapIdle = { idle -> opened.sumOf { it.pool.reapIdle(idle) } },
+          catalogThemeCache = CatalogThemeCache(),
+          serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
+          backgroundWork = backgroundWork,
+        )
+      val host = openHost(state) ?: return false
+      val resources = AutoCloseable {
+        opened.forEach { runtime ->
+          runCatching { runtime.pool.close() }
+          runCatching { runtime.monolithic?.close() }
+        }
+      }
+      if (!publishCatalogRuntime(system, state, host, resources, registry)) return false
+      System.err.println(
+        "serve: catalog $system → LIVE from ${opened.size} module bundles (no build) (?session=$system)"
+      )
+      publishedSuccessfully = true
+      return true
+    } finally {
+      // Once registered, ownership moves to catalogPerPreviewPools. Otherwise unwind partial opens.
+      if (!publishedSuccessfully) {
+        opened.forEach { runtime ->
+          runCatching { runtime.pool.close() }
+          runCatching { runtime.monolithic?.close() }
+        }
+      }
+    }
   }
 
   /**

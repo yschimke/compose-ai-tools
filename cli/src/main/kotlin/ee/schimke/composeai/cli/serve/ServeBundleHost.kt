@@ -409,6 +409,7 @@ class ServeBundleHost(
           group = meta?.group,
           catalogOrder = meta?.order,
           sourceFile = sourceFilesById[id],
+          sourceModule = meta?.sourceModule,
           bodyLine = bodyLinesById[id],
           uiMode = previewParamsById[id]?.uiMode ?: 0,
         )

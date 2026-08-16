@@ -4518,11 +4518,16 @@ $noteBlock        <div class="cp-site-footer-links">
     val handoffCatalog = seed?.catalog ?: preselectCatalog
     // Two ways this host can offer the named catalog: as the selector's own entry for it, or as the
     // pinned default (which the selector reports under the anonymous id `""`).
-    val wantedIndex = handoffCatalog?.let { id ->
-      catalogs.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+    val wantedIndex = handoffCatalog?.let { system ->
+      catalogs
+        .indexOfFirst {
+          it.system == system &&
+            (seed?.sourceModule.isNullOrBlank() || it.module == seed.sourceModule)
+        }
+        .takeIf { it >= 0 }
         ?: catalogs
           .indexOfFirst { it.id.isEmpty() }
-          .takeIf { it >= 0 && id in pinnedCatalogSystems }
+          .takeIf { it >= 0 && system in pinnedCatalogSystems }
     }
     val selectedIndex = wantedIndex ?: 0
     // A host that pins its bundles and offers no runtime choice renders exactly the bar it always
