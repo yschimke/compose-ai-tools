@@ -2,7 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import java.security.SecureRandom
 import java.util.Base64
-import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import okio.FileSystem
 import okio.Path
@@ -103,13 +103,16 @@ class PlaygroundCompileService(
   private val editLeaseTtlMillis: Long = DEFAULT_EDIT_LEASE_TTL_MILLIS,
   private val nowMillis: () -> Long = System::currentTimeMillis,
   /** Schedules idle-lease reclamation; injectable so expiry behavior is deterministic in tests. */
-  private val scheduleEditLeaseExpiry: (Long, () -> Unit) -> Unit = { delayMillis, task ->
-    EDIT_LEASE_EXPIRY_EXECUTOR.schedule(task, delayMillis, TimeUnit.MILLISECONDS)
+  private val scheduleEditLeaseExpiry: (Long, () -> Unit) -> (() -> Unit) = { delayMillis, task ->
+    val future = EDIT_LEASE_EXPIRY_EXECUTOR.schedule(task, delayMillis, TimeUnit.MILLISECONDS)
+    val cancel: () -> Unit = { future.cancel(false) }
+    cancel
   },
 ) {
 
   private val editLock = Any()
   private var editLease: EditLease? = null
+  private var cancelEditLeaseExpiry: (() -> Unit)? = null
   private var editLeaseAcquisitions = 0L
   private var editCompileAttempts = 0L
   private var editIncrementalCompiles = 0L
@@ -135,6 +138,7 @@ class PlaygroundCompileService(
     var config: Pair<PlaygroundMode, String?>? = null,
     var files: Map<String, String> = emptyMap(),
     var incrementalReady: Boolean = false,
+    val holders: MutableSet<String> = mutableSetOf(),
   )
 
   /**
@@ -312,7 +316,7 @@ class PlaygroundCompileService(
     }
   }
 
-  fun acquireEditLease(owner: String): PlaygroundEditLeaseResponse =
+  fun acquireEditLease(owner: String, client: String = ""): PlaygroundEditLeaseResponse =
     synchronized(editLock) {
       if (!editLeasesEnabled) {
         return@synchronized PlaygroundEditLeaseResponse(
@@ -326,10 +330,27 @@ class PlaygroundCompileService(
           message = "GitHub sign-in is required for live editing.",
         )
       }
+      if (client.length > MAX_EDIT_LEASE_CLIENT_LENGTH) {
+        return@synchronized PlaygroundEditLeaseResponse(
+          false,
+          message = "The live-edit client id is too long.",
+        )
+      }
       purgeExpiredEditLeaseLocked()
       val existing = editLease
       if (existing != null) {
         if (existing.owner == owner) {
+          if (
+            client.isNotBlank() &&
+              client !in existing.holders &&
+              existing.holders.size >= MAX_EDIT_LEASE_HOLDERS
+          ) {
+            return@synchronized PlaygroundEditLeaseResponse(
+              false,
+              message = "The live-edit lease already has too many browser tabs attached.",
+            )
+          }
+          if (client.isNotBlank()) existing.holders += client
           renewEditLeaseLocked(existing)
           refreshEditHealthLocked()
           return@synchronized existing.response("You already hold the live-edit lease.")
@@ -356,6 +377,7 @@ class PlaygroundCompileService(
           owner = owner,
           workDir = workDir,
           expiresAt = nowMillis() + editLeaseTtlMillis,
+          holders = mutableSetOf<String>().apply { if (client.isNotBlank()) add(client) },
         )
       editLease = lease
       editLeaseAcquisitions++
@@ -378,12 +400,20 @@ class PlaygroundCompileService(
     }
   }
 
-  fun releaseEditLease(owner: String, id: String): Boolean =
+  fun releaseEditLease(owner: String, id: String, client: String = ""): Boolean =
     synchronized(editLock) {
       purgeExpiredEditLeaseLocked()
       val lease = editLease ?: return@synchronized false
       if (lease.owner != owner || lease.id != id) return@synchronized false
+      if (client.isNotBlank()) {
+        if (!lease.holders.remove(client)) return@synchronized false
+        if (lease.holders.isNotEmpty()) {
+          refreshEditHealthLocked()
+          return@synchronized true
+        }
+      }
       editLease = null
+      cancelEditLeaseExpiryLocked()
       cleanup(lease.workDir)
       refreshEditHealthLocked()
       true
@@ -394,6 +424,7 @@ class PlaygroundCompileService(
       acquired = true,
       lease = id,
       expiresAtEpochMs = expiresAt,
+      revision = lastRevision,
       message = message,
     )
 
@@ -401,6 +432,7 @@ class PlaygroundCompileService(
     val lease = editLease ?: return
     if (lease.expiresAt > nowMillis()) return
     editLease = null
+    cancelEditLeaseExpiryLocked()
     cleanup(lease.workDir)
     refreshEditHealthLocked()
   }
@@ -411,22 +443,30 @@ class PlaygroundCompileService(
   }
 
   private fun scheduleEditLeaseExpiryLocked(lease: EditLease) {
+    cancelEditLeaseExpiryLocked()
     val leaseId = lease.id
     val deadline = lease.expiresAt
-    scheduleEditLeaseExpiry((deadline - nowMillis()).coerceAtLeast(0L)) {
-      synchronized(editLock) {
-        val current = editLease ?: return@synchronized
-        // A release/reacquire or renewal supersedes this particular deadline's task.
-        if (current.id != leaseId || current.expiresAt != deadline) return@synchronized
-        if (current.expiresAt <= nowMillis()) {
-          purgeExpiredEditLeaseLocked()
-        } else {
-          // Wall-clock adjustment or an early scheduler wakeup: retain the lease and try again at
-          // the remaining deadline rather than leaking its workspace.
-          scheduleEditLeaseExpiryLocked(current)
+    cancelEditLeaseExpiry =
+      scheduleEditLeaseExpiry((deadline - nowMillis()).coerceAtLeast(0L)) {
+        synchronized(editLock) {
+          val current = editLease ?: return@synchronized
+          // A release/reacquire or renewal supersedes this particular deadline's task.
+          if (current.id != leaseId || current.expiresAt != deadline) return@synchronized
+          cancelEditLeaseExpiry = null
+          if (current.expiresAt <= nowMillis()) {
+            purgeExpiredEditLeaseLocked()
+          } else {
+            // Wall-clock adjustment or an early scheduler wakeup: retain the lease and try again at
+            // the remaining deadline rather than leaking its workspace.
+            scheduleEditLeaseExpiryLocked(current)
+          }
         }
       }
-    }
+  }
+
+  private fun cancelEditLeaseExpiryLocked() {
+    cancelEditLeaseExpiry?.invoke()
+    cancelEditLeaseExpiry = null
   }
 
   private fun refreshEditHealthLocked() {
@@ -520,6 +560,20 @@ class PlaygroundCompileService(
           refreshEditHealthLocked()
           throw t
         }
+      // Admission happens before the jailed compiler is launched. A busy response therefore did
+      // not compile or mutate IC state: report it without accepting the staged files/revision, so
+      // the complete dirty set is retried on the next Run.
+      if (compile.diagnostics.isCompileAdmissionFailure()) {
+        editLastCompileMillis = (System.nanoTime() - compileStarted) / 1_000_000
+        renewEditLeaseLocked(lease)
+        refreshEditHealthLocked()
+        return@synchronized PlaygroundRunResponse(
+          diagnostics = compile.diagnostics,
+          errors = PlaygroundErrorsWire.project(compile.diagnostics),
+          editLease = lease.id,
+          revision = lease.lastRevision.takeIf { it > 0 },
+        )
+      }
       // An internal BTA/IC failure has no source position. Reset only this lease and retry the same
       // revision through the proven full path; ordinary source diagnostics stay incremental.
       if (compile.diagnostics.isInfrastructureCompileFailure()) {
@@ -772,6 +826,11 @@ class PlaygroundCompileService(
         single().message.startsWith("the compile sandbox produced no result") ||
         single().message.startsWith("unreadable compile report:"))
 
+  private fun List<PlaygroundDiagnostic>.isCompileAdmissionFailure(): Boolean =
+    size == 1 &&
+      single().file == null &&
+      single().message.startsWith("the playground is busy compiling")
+
   private fun cleanup(workDir: Path) {
     try {
       fileSystem.deleteRecursively(workDir, mustExist = false)
@@ -784,12 +843,19 @@ class PlaygroundCompileService(
 
   companion object {
     const val DEFAULT_EDIT_LEASE_TTL_MILLIS: Long = 15 * 60 * 1000L
+    private const val MAX_EDIT_LEASE_CLIENT_LENGTH = 128
+    private const val MAX_EDIT_LEASE_HOLDERS = 32
 
     private val EDIT_LEASE_RANDOM = SecureRandom()
     private val EDIT_LEASE_EXPIRY_EXECUTOR =
-      Executors.newSingleThreadScheduledExecutor { runnable ->
-        Thread(runnable, "playground-edit-lease-expiry").apply { isDaemon = true }
-      }
+      ScheduledThreadPoolExecutor(1) { runnable ->
+          Thread(runnable, "playground-edit-lease-expiry").apply { isDaemon = true }
+        }
+        .apply {
+          // Renewals cancel the old deadline; remove it immediately rather than retaining a
+          // cancelled task in the delayed queue until the original TTL elapses.
+          removeOnCancelPolicy = true
+        }
 
     private fun newEditLeaseId(): String {
       val bytes = ByteArray(18)

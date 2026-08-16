@@ -37,7 +37,7 @@ class PlaygroundCompileServiceTest {
     editLeasesEnabled: Boolean = false,
     editLeaseTtlMillis: Long = PlaygroundCompileService.DEFAULT_EDIT_LEASE_TTL_MILLIS,
     nowMillis: () -> Long = { 1_000L },
-    scheduleEditLeaseExpiry: (Long, () -> Unit) -> Unit = { _, _ -> },
+    scheduleEditLeaseExpiry: (Long, () -> Unit) -> (() -> Unit) = { _, _ -> {} },
   ) =
     PlaygroundCompileService(
       catalogClasspath = { mode, _ -> classpathFor(mode) },
@@ -592,6 +592,61 @@ class PlaygroundCompileServiceTest {
   }
 
   @Test
+  fun `renewing a lease cancels the superseded expiry task`() {
+    var scheduled = 0
+    var cancelled = 0
+    val svc =
+      service(
+        editLeasesEnabled = true,
+        scheduleEditLeaseExpiry = { _, _ ->
+          scheduled++
+          { cancelled++ }
+        },
+      )
+
+    val lease = svc.acquireEditLease("alice", client = "tab-a").lease!!
+    svc.acquireEditLease("alice", client = "tab-a")
+
+    assertEquals(2, scheduled)
+    assertEquals(1, cancelled, "renewal removes the old delayed task")
+    assertTrue(svc.releaseEditLease("alice", lease, client = "tab-a"))
+    assertEquals(2, cancelled, "release removes the active delayed task")
+  }
+
+  @Test
+  fun `one tab release retains a lease held by another tab`() {
+    val svc = service(editLeasesEnabled = true)
+    val first = svc.acquireEditLease("alice", client = "tab-a")
+    val second = svc.acquireEditLease("alice", client = "tab-b")
+
+    assertEquals(first.lease, second.lease)
+    assertTrue(svc.releaseEditLease("alice", first.lease!!, client = "tab-a"))
+    assertTrue(svc.editLeaseHealth().active)
+    assertTrue(fs.metadataOrNull("/work/run1".toPath())?.isDirectory == true)
+
+    assertTrue(svc.releaseEditLease("alice", first.lease!!, client = "tab-b"))
+    assertFalse(svc.editLeaseHealth().active)
+    assertNull(fs.metadataOrNull("/work/run1".toPath()))
+  }
+
+  @Test
+  fun `reattaching a tab reports the accepted server revision`() {
+    val svc = service(editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice", client = "tab-a").lease!!
+    val response =
+      svc.run(
+        request().copy(editLease = lease, revision = 7),
+        isSecurityChecked = true,
+        authenticatedOwner = "alice",
+      )
+    assertNotNull(response.previewToken)
+
+    val reattached = svc.acquireEditLease("alice", client = "tab-b")
+    assertEquals(lease, reattached.lease)
+    assertEquals(7, reattached.revision)
+  }
+
+  @Test
   fun `an abandoned editing lease deletes its workspace at the idle deadline`() {
     var now = 1_000L
     val scheduled = mutableListOf<Pair<Long, () -> Unit>>()
@@ -600,7 +655,10 @@ class PlaygroundCompileServiceTest {
         editLeasesEnabled = true,
         editLeaseTtlMillis = 5_000L,
         nowMillis = { now },
-        scheduleEditLeaseExpiry = { delay, task -> scheduled += delay to task },
+        scheduleEditLeaseExpiry = { delay, task ->
+          scheduled += delay to task
+          {}
+        },
       )
 
     val lease = svc.acquireEditLease("alice")
@@ -734,6 +792,67 @@ class PlaygroundCompileServiceTest {
     assertEquals(2, health.compileAttempts)
     assertEquals(2, health.incrementalCompiles)
     assertEquals(0, health.fullFallbacks)
+  }
+
+  @Test
+  fun `busy compiler does not accept files or revision and retries the full dirty set`() {
+    data class Call(val modified: List<String>, val firstBuild: Boolean)
+
+    val calls = mutableListOf<Call>()
+    var attempt = 0
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ) = emptyList<PlaygroundDiagnostic>()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult {
+          calls += Call(modified.map { it.name }, firstBuild)
+          attempt++
+          if (attempt == 1) {
+            return PlaygroundCompileService.IncrementalCompileResult(
+              diagnostics =
+                listOf(
+                  PlaygroundDiagnostic(
+                    PlaygroundSeverity.ERROR,
+                    "the playground is busy compiling (all 1 compile slots in use) — try again shortly",
+                  )
+                ),
+              incremental = false,
+            )
+          }
+          fs.createDirectories(outputDir)
+          fs.write(outputDir / "Snippet.class") { writeUtf8("compiled") }
+          return PlaygroundCompileService.IncrementalCompileResult(emptyList(), false)
+        }
+      }
+    val svc = service(compilerOverride = compiler, editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice").lease!!
+    val edit = request(text = "@Preview fun P() = println(1)").copy(editLease = lease)
+
+    val busy = svc.run(edit.copy(revision = 1), true, authenticatedOwner = "alice")
+    assertTrue(busy.diagnostics.single().message.startsWith("the playground is busy"))
+    assertNull(busy.revision)
+    assertNull(svc.editLeaseHealth().lastRevision)
+
+    val retried = svc.run(edit.copy(revision = 2), true, authenticatedOwner = "alice")
+    assertNotNull(retried.previewToken)
+    assertEquals(
+      listOf(Call(listOf("Snippet.kt"), true), Call(listOf("Snippet.kt"), true)),
+      calls,
+      "the rejected attempt does not become the source or IC baseline",
+    )
+    assertEquals(2, svc.editLeaseHealth().lastRevision)
   }
 
   @Test

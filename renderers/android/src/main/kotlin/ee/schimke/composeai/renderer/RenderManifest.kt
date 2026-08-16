@@ -157,6 +157,15 @@ data class AmbientCapture(
   val deviceHasLowBitAmbient: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `GlimmerEnvironmentCapture`. */
+@Serializable
+enum class GlimmerEnvironmentCapture {
+  Light,
+  Dark,
+  Busy,
+  VeniceCanalCats,
+}
+
 /** Renderer-side mirror of the plugin's `GestureHintCapture`. */
 @Serializable data class GestureHintCapture(val showHints: Boolean = true)
 
@@ -310,6 +319,7 @@ data class RenderPreviewCapture(
   val hover: HoverCapture? = null,
   val focusGif: FocusGifCapture? = null,
   val ambient: AmbientCapture? = null,
+  val glimmerEnvironment: GlimmerEnvironmentCapture? = null,
   val gestureHint: GestureHintCapture? = null,
   /**
    * `null` → no runtime-permission override. Set when the preview carries `@PermissionPreview`.

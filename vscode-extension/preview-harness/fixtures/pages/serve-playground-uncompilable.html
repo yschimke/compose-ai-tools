@@ -149,6 +149,29 @@ fun MediaControlButtonsPlaying() {
   var suffix = "?token=demo-token-fixture";
   var editLease = null;
   var editRevision = 0;
+  function releaseEditLeaseOnDiscard() {
+    if (!editLease) return;
+    var body = JSON.stringify({ lease: editLease });
+    var url = "/api/1/compiler/edit-lease/release" + suffix;
+    editLease = null;
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    } else {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body,
+        credentials: "same-origin",
+        keepalive: true
+      }).catch(function () {});
+    }
+  }
+  window.addEventListener("pagehide", function (event) {
+    // A bfcache page is still alive and may be restored; an actually discarded page should
+    // surrender the one host-wide lease immediately. Delivery remains best-effort, with the
+    // server TTL as the hard fallback.
+    if (!event.persisted) releaseEditLeaseOnDiscard();
+  });
   function setEditLease(value, message, expiresAt) {
     editLease = value;
     editRevision = 0;

@@ -2282,15 +2282,20 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * `<stem>.raw.png` lives next to a clean `<stem>.png` registered in the manifest. Produced by
-   * `@FocusedPreview(overlay = true)` — the renderer copies the unmarked capture aside before
-   * applying the focus-rect overlay to the main file. Same preservation shape as
-   * [isA11ySiblingOfExpected] — match by mechanical suffix-strip, not by re-checking the manifest's
-   * overlay flag, so a `.raw.png` whose clean sibling has been removed is still garbage.
+   * `<stem>.raw.<png|gif>` lives next to a clean output registered in the manifest. PNG siblings
+   * are produced by `@FocusedPreview(overlay = true)`; GIF siblings are the additive RGB source
+   * preserved by `@GlimmerEnvironmentPreview` before connector compositing. Same preservation shape
+   * as [isA11ySiblingOfExpected] — match by mechanical suffix-strip, not by re-checking the
+   * manifest's overlay flag, so a `.raw.png` whose clean sibling has been removed is still garbage.
    */
   internal fun isRawSiblingOfExpected(rel: String, expectedRelPaths: Set<String>): Boolean {
-    if (!rel.endsWith(".raw.png")) return false
-    val cleanSibling = rel.removeSuffix(".raw.png") + ".png"
+    val extension =
+      when {
+        rel.endsWith(".raw.png") -> ".png"
+        rel.endsWith(".raw.gif") -> ".gif"
+        else -> return false
+      }
+    val cleanSibling = rel.removeSuffix(".raw$extension") + extension
     return cleanSibling in expectedRelPaths
   }
 

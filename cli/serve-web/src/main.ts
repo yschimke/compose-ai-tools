@@ -25,8 +25,11 @@ import "./components/RcLanes.js";
 import "./components/ReferenceCompare.js";
 import "./components/SpecCompare.js";
 import "./components/ViewerDrawers.js";
-// Not components: globals the legacy IIFEs call. `window.cpRcFonts` makes the page's registered
-// faces paintable before a Remote Compose lane paints; `window.cpViewerQuery` holds the rules that
-// decide what lands in a render URL, the first slice of `viewer.js` to move.
+// Not a component: a global the legacy scripts call. `window.cpRcFonts` makes the page's
+// registered faces paintable before a Remote Compose lane paints, and its callers — the inline
+// doc-player script among them — are still outside this package.
+//
+// `window.cpViewerQuery` used to sit beside it, holding the render-URL rules for `viewer.js` to
+// reach. It is gone: `viewer.js` is generated from `src/viewer.ts` now and imports those rules
+// directly, so the only caller the global ever had no longer needs a window to reach them.
 import "./rcFonts.js";
-import "./viewerQuery.js";

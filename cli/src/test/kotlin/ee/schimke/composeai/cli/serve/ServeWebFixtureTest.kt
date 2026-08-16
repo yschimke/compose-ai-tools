@@ -3801,7 +3801,7 @@ class ServeWebFixtureTest {
       )
     assertFalse(publicViewer.contains("?token="), "public viewer back-link carries no token")
     assertTrue(
-      assetText("viewer.js").contains("if (token) parts.push(\"token=\""),
+      viewerSource().contains("if (token) parts.push(\"token=\""),
       "viewer JS only appends a token when the page URL carried one",
     )
     // The representative pick prefers a default-state light hero over dark / disabled edge cases.
@@ -3988,8 +3988,8 @@ class ServeWebFixtureTest {
     // rather than grow a second copy, because a second copy is how the select's values and their
     // consumption drift apart while both look right.
     assertTrue(
-      assetText("viewer.js").contains("urlRules().chosenUiMode(") &&
-        assetText("viewer.js").contains("urlRules().chosenThemeProvider("),
+      viewerSource().contains("rules.chosenUiMode(") &&
+        viewerSource().contains("rules.chosenThemeProvider("),
       "the unified Theme value is mapped by the shared rules, not restated in the viewer",
     )
 
@@ -4097,13 +4097,13 @@ class ServeWebFixtureTest {
     // Leaving the lane must DROP the src, not merely hide the image: a hidden capture with its src
     // still assigned keeps looping for the rest of the visit — invisible, and still decoding.
     assertTrue(
-      assetText("viewer.js").contains("motionImg.removeAttribute(\"src\");"),
+      viewerSource().contains("motionImg.removeAttribute(\"src\");"),
       "closing the lane stops the animation instead of hiding a still-playing one",
     )
     // Every other lane closes it, which is what stops a capture playing on behind the lane the
     // visitor actually moved to.
     assertTrue(
-      assetText("viewer.js").contains("if (m !== \"motion\") closeMotion();"),
+      viewerSource().contains("if (m !== \"motion\") closeMotion();"),
       "every transition out of motion closes the lane",
     )
     // Two caption-less captures of the SAME kind — permitted by the manifest, and what the
@@ -4156,7 +4156,7 @@ class ServeWebFixtureTest {
     // repeating it: with two captures the pressed button already carries the same words, and
     // printing them again beside it is two controls stating one fact.
     assertTrue(
-      assetText("viewer.js").contains("(motionButtons.length > 1 || !button)"),
+      viewerSourceFlat().contains("motionButtons.length > 1 || !button"),
       "the caption names the recording only when no visible button already does",
     )
   }
@@ -4207,15 +4207,15 @@ class ServeWebFixtureTest {
     // Flash-free switch: the snapshot stays on-stage until the app's first-frame signal, and the
     // iframe is overlaid on the snapshot's exact box (pixel parity with the baked PNG).
     assertTrue(
-      assetText("viewer.js").contains("\"cp-wasm-ready\""),
+      viewerSource().contains("\"cp-wasm-ready\""),
       "viewer listens for the app's first-frame signal",
     )
     assertTrue(
-      assetText("viewer.js").contains("function positionWasmFrame()"),
+      viewerSource().contains("function positionWasmFrame()"),
       "iframe is positioned over the snapshot's rendered box",
     )
     assertTrue(
-      assetText("viewer.js").contains("loading Wasm…"),
+      viewerSource().contains("loading Wasm…"),
       "load state keeps the snapshot with a status",
     )
     // Guard against re-adding a page-side font preload: the real prefetch lives in the app's own
@@ -4319,12 +4319,11 @@ class ServeWebFixtureTest {
     // one — the page asserting in the same breath that the thing is available and that it does not
     // exist. Caught only once the fixture was captured WITH the stylesheet.
     assertTrue(
-      assetText("viewer.js").contains("static snapshot — sign in for live"),
+      viewerSource().contains("static snapshot — sign in for live"),
       "an auth-blocked lane is reported as needing sign-in, not as absent",
     )
     assertTrue(
-      assetText("viewer.js")
-        .contains("var liveSignIn = document.getElementById(\"cp-live-signin\")"),
+      viewerSource().contains("const liveSignIn = may<HTMLAnchorElement>(\"cp-live-signin\")"),
       "the hint keys off the sign-in link, which is the only marker of the auth-blocked state",
     )
   }
@@ -4353,8 +4352,8 @@ class ServeWebFixtureTest {
     // background + the app-theme selector) can't be honoured by the iframe, so syncServerControls
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
     assertTrue(
-      assetText("viewer.js").contains("var onWasm = wasmActive();") &&
-        assetText("viewer.js").contains("!onWasm && !onRc && !onFixedFrame &&"),
+      viewerSource().contains("var onWasm = wasmActive();") &&
+        viewerSourceFlat().contains("!onWasm && !onRc && !onFixedFrame &&"),
       "server-only controls are gated off while the Wasm lane is active",
     )
     // `onFixedFrame` is ONE predicate covering both lanes that put a frame on the stage the server
@@ -4363,12 +4362,12 @@ class ServeWebFixtureTest {
     // Remote Compose knobs still gated on a spec-only flag, so overrides stayed live over a
     // recording while the code read as though the lane were gated.
     assertTrue(
-      assetText("viewer.js").contains("var onFixedFrame = specActive() || motionActive();") &&
-        !assetText("viewer.js").contains("var onSpec = specActive();"),
+      viewerSource().contains("var onFixedFrame = specActive() || motionActive();") &&
+        !viewerSource().contains("var onSpec = specActive();"),
       "one fixed-frame predicate gates the override families, not a spec-only flag beside it",
     )
     assertTrue(
-      assetText("viewer.js").contains("hasDeclaredThemes && !onWasm"),
+      viewerSourceFlat().contains("hasDeclaredThemes && !onWasm"),
       "declared options in the unified Theme selector are disabled on the Wasm lane",
     )
 
@@ -4407,28 +4406,26 @@ class ServeWebFixtureTest {
         canApplyOverrides = true,
       )
     assertTrue(
-      assetText("viewer.js").contains("function fitLiveCanvas()"),
+      viewerSource().contains("function fitLiveCanvas()"),
       "the live canvas has a dedicated aspect-preserving fit function",
     )
     // Contain-fit math: scale by the smaller of the two box/buffer ratios, then centre.
     assertTrue(
-      assetText("viewer.js").contains("Math.min(boxW / liveW, boxH / liveH)"),
+      viewerSource().contains("Math.min(boxW / liveW, boxH / liveH)"),
       "the frame is scaled to contain (the smaller box/buffer ratio), not stretched to fill",
     )
     assertTrue(
-      assetText("viewer.js").contains("(boxW - w) / 2") &&
-        assetText("viewer.js").contains("(boxH - h) / 2"),
+      viewerSource().contains("(boxW - w) / 2") && viewerSource().contains("(boxH - h) / 2"),
       "the fitted frame is centred within the snapshot box",
     )
     // drawFrame caches the buffer dims and re-fits on each frame; a resize re-fits too.
     assertTrue(
-      assetText("viewer.js").contains("liveW = im.naturalWidth;") &&
-        assetText("viewer.js").contains("fitLiveCanvas();"),
+      viewerSource().contains("liveW = im.naturalWidth;") &&
+        viewerSource().contains("fitLiveCanvas();"),
       "each frame caches its dims and re-fits",
     )
     assertTrue(
-      assetText("viewer.js")
-        .contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();"),
+      viewerSource().contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();"),
       "a window resize re-fits the live canvas (not a plain box fill)",
     )
   }
@@ -4443,7 +4440,7 @@ class ServeWebFixtureTest {
     //
     // This is a unit-level guard for the serve-lanes e2e, which silently lost its teeth once the
     // blob swap landed and `src` stopped matching the render URL it was asserting on.
-    val js = assetText("viewer.js")
+    val js = viewerSource()
     assertTrue(
       js.contains("img.setAttribute(\"data-cp-src\", url);"),
       "the fetched URL is recorded",
@@ -4553,16 +4550,15 @@ class ServeWebFixtureTest {
     // is what the SERVED asset must do: measure the stage's real position rather than guess, hand
     // that to the shared rule, and apply a cap before the first render.
     assertTrue(
-      assetText("viewer.js").contains("stage.getBoundingClientRect().top") &&
-        assetText("viewer.js").contains("urlRules().fitCap(top, window.innerHeight)") &&
-        assetText("viewer.js").contains("applyZoom(\"fit\");"),
+      viewerSource().contains("stage.getBoundingClientRect().top") &&
+        viewerSource().contains("rules.fitCap(top, window.innerHeight)") &&
+        viewerSource().contains("applyZoom(\"fit\");"),
       "screen fit bounds tall previews to the space the viewport actually has left below the " +
         "chrome, measured before the initial render rather than guessed at 72vh",
     )
     assertTrue(
-      assetText("viewer.js")
-        .contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();") &&
-        assetText("viewer.js").contains("if (wasmActive()) positionWasmFrame();"),
+      viewerSource().contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();") &&
+        viewerSource().contains("if (wasmActive()) positionWasmFrame();"),
       "changing zoom re-pins active live and Wasm overlays to the snapshot geometry",
     )
   }
@@ -4700,8 +4696,8 @@ class ServeWebFixtureTest {
     // The SVG lane reuses the snapshot <img> but swaps the render extension; the viewer JS carries
     // the snapshotExt seam and stamps the backend badge with SVG.
     assertTrue(
-      assetText("viewer.js").contains("var snapshotExt = \".png\";") &&
-        assetText("viewer.js").contains("? \".svg\" : \".png\""),
+      viewerSource().contains("var snapshotExt = \".png\";") &&
+        viewerSource().contains("? \".svg\" : \".png\""),
       "the snapshot lane flips its render extension between PNG and SVG",
     )
     // That the badge then names the lane "▪ SVG" is asserted against the element itself, in
@@ -5071,7 +5067,7 @@ class ServeWebFixtureTest {
     )
     // The viewer JS recovers the base from the path so /render + /ws hit the same session.
     assertTrue(
-      assetText("viewer.js").contains("location.pathname.replace"),
+      viewerSource().contains("location.pathname.replace"),
       "viewer derives its request base from the path",
     )
   }
@@ -5163,7 +5159,7 @@ class ServeWebFixtureTest {
     // from the same state that drives the dot — a fixed one would say "click for live" on a chip
     // whose click now exits to the snapshot.
     assertTrue(
-      assetText("viewer.js").contains("\"Interactive — click to return to the static snapshot\""),
+      viewerSource().contains("\"Interactive — click to return to the static snapshot\""),
       "the chip's tooltip tracks the lane rather than being written once by the server",
     )
     assertTrue(
@@ -5217,8 +5213,8 @@ class ServeWebFixtureTest {
     assertFalse(wasmView.contains("id=\"cp-orientation\""), "component orientation stays omitted")
     // The Wasm override-patch builder forwards the honoured params (theme/font scale/locale) to the
     // running app (via postMessage / the initial `#…` fragment), not the iframe query.
-    assertTrue(assetText("viewer.js").contains("\"fontScale=\""), "font scale forwarded to Wasm")
-    assertTrue(assetText("viewer.js").contains("\"localeTag=\""), "locale forwarded to Wasm")
+    assertTrue(viewerSource().contains("\"fontScale=\""), "font scale forwarded to Wasm")
+    assertTrue(viewerSource().contains("\"localeTag=\""), "locale forwarded to Wasm")
     // On a static snapshot, a wasm-honoured control change auto-enables the Wasm tier (rather than
     // firing a /render the published catalog can't serve), so the control actually takes effect.
     // The
@@ -5229,7 +5225,7 @@ class ServeWebFixtureTest {
       "static-snapshot flag on the viewer",
     )
     assertTrue(
-      assetText("viewer.js").contains("setMode(\"wasm\");"),
+      viewerSource().contains("setMode(\"wasm\");"),
       "static-snapshot wasm controls auto-enable the in-browser tier",
     )
 
@@ -5277,7 +5273,7 @@ class ServeWebFixtureTest {
       "inspection layers are gated on the data products, not on the live stream",
     )
     assertTrue(
-      assetText("viewer.js")
+      viewerSource()
         .contains("if (anyOverlayChecked() && live && !live.disabled) setMode(\"live\");"),
       "checking an overlay off the live lane enters Live Compose",
     )
@@ -5291,14 +5287,14 @@ class ServeWebFixtureTest {
     // asserts each family's membership by name — including what must NOT be owned, which a grep for
     // one line of the list could never express. What the served asset must still do is ask.
     assertTrue(
-      assetText("viewer.js").contains("urlRules().ownsUrlParam(name)"),
+      viewerSource().contains("rules.ownsUrlParam(name)"),
       "overlays are URL-owned params, decided by the shared list rather than a second copy",
     )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
     // was
     // still connecting (its change event dropped by the readyState guard) still reaches the daemon.
     assertTrue(
-      assetText("viewer.js").contains("sock.onopen = function () {"),
+      viewerSource().contains("sock.onopen = function () {"),
       "the live stream seeds the daemon with the current overrides once the socket opens",
     )
 
@@ -5348,18 +5344,18 @@ class ServeWebFixtureTest {
     // below). Matched without the parameter list: the handler's *existence* is the contract here,
     // and pinning its arity broke this when it grew one.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited(") &&
-        assetText("viewer.js").contains("function knobRoute()"),
+      viewerSource().contains("function onKnobEdited(") &&
+        viewerSource().contains("function knobRoute()"),
       "knob edits have a dedicated, transport-aware handler",
     )
     assertTrue(
-      assetText("viewer.js").contains("setSnapshotLoading(true)") &&
-        assetText("viewer.js").contains("data-reloading") &&
+      viewerSource().contains("setSnapshotLoading(true)") &&
+        viewerSource().contains("data-reloading") &&
         assetText("serve.css").contains("cp-reload-spin"),
       "snapshot overrides fade the current preview and show a spinner while re-rendering",
     )
     assertTrue(
-      assetText("viewer.js")
+      viewerSource()
         .contains(
           "function cancelSnapshotLoading() {\n    snapshotGen++;\n    status.textContent = \"\";"
         ),
@@ -5370,12 +5366,12 @@ class ServeWebFixtureTest {
     // an edited knob to its default. The setOverrides sends use liveOverrides(), which folds them
     // in.
     assertTrue(
-      assetText("viewer.js").contains("function liveOverrides()") &&
-        assetText("viewer.js").contains("o[\"knob.\" + key]"),
+      viewerSource().contains("function liveOverrides()") &&
+        viewerSource().contains("o[\"knob.\" + key]"),
       "the live-stream override map includes the declared knob values",
     )
     assertFalse(
-      assetText("viewer.js").contains("setOverrides\", overrides: overrides()"),
+      viewerSource().contains("setOverrides\", overrides: overrides()"),
       "live-stream setOverrides sends liveOverrides() (knobs included), not the display-only map",
     )
     // A live catalog's carried daemon re-renders an override on demand (canRenderOverrides), so the
@@ -5384,16 +5380,15 @@ class ServeWebFixtureTest {
     // is the fix for "most override modes disabled for CMP": they no longer sit greyed out until a
     // live stream is opened.
     assertTrue(
-      assetText("viewer.js").contains("function syncServerControls()"),
+      viewerSource().contains("function syncServerControls()"),
       "the viewer has a syncServerControls() that keeps the display controls in sync",
     )
     assertTrue(
-      assetText("viewer.js").contains("syncServerControls();"),
+      viewerSource().contains("syncServerControls();"),
       "syncServerControls() is invoked on every mode transition",
     )
     assertTrue(
-      assetText("viewer.js")
-        .contains("!staticSnapshot || canRenderOverrides || !!(live && live.checked)"),
+      viewerSource().contains("!staticSnapshot || canRenderOverrides || !!(live && live.checked)"),
       "display controls are live whenever the server can render an override (on-demand or streaming)",
     )
     // The server-render controls render ENABLED in the baked markup (canRenderOverrides), not
@@ -5455,19 +5450,19 @@ class ServeWebFixtureTest {
     // posts the override patch (with the knob) to the iframe, or auto-enables Wasm from the
     // snapshot.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited(") &&
-        assetText("viewer.js").contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
+      viewerSource().contains("function onKnobEdited(") &&
+        viewerSource().contains("wasmFrame!.contentWindow.postMessage(wasmOverridePatch()"),
       "a knob edit routes to the Wasm iframe when that tier is active",
     )
     // wasmOverridePatch() carries the changed knob into the iframe fragment / postMessage,
     // alongside
     // the display axes — without this the app never sees the edit.
     assertTrue(
-      assetText("viewer.js").contains("function wasmOverridePatch()") &&
-        assetText("viewer.js").contains("parts.push(\"knob.\" + encodeURIComponent(key)"),
+      viewerSource().contains("function wasmOverridePatch()") &&
+        viewerSourceFlat().contains("parts.push( \"knob.\" + encodeURIComponent(key)"),
       "the wasm override patch includes the author-declared knob values",
     )
-    val viewerScript = assetText("viewer.js")
+    val viewerScript = viewerSource()
     assertTrue(
       viewerScript.contains("src += \"&theme=\" + encodeURIComponent(uiMode.value)") &&
         viewerScript.contains("if (rcWasmActive())") &&
@@ -5480,7 +5475,7 @@ class ServeWebFixtureTest {
     // state
     // — rather than the author default until the user edits the control.
     assertTrue(
-      assetText("viewer.js").contains("q.get(\"knob.\" + key)"),
+      viewerSource().contains("q.get(\"knob.\" + key)"),
       "the viewer hydrates declared knob controls from the URL's knob.<key> params",
     )
 
@@ -5512,8 +5507,8 @@ class ServeWebFixtureTest {
       "each URL row has a Copy PNG / Copy SVG button that copies the artefact as text",
     )
     assertTrue(
-      assetText("viewer.js").contains("readAsDataURL") &&
-        assetText("viewer.js").contains("navigator.clipboard.writeText"),
+      viewerSource().contains("readAsDataURL") &&
+        viewerSource().contains("navigator.clipboard.writeText"),
       "the Copy PNG/SVG handler fetches the render and writes it to the clipboard as text",
     )
     // Copy PNG puts REAL image/png bytes on the clipboard where the browser supports it, so one
@@ -5521,22 +5516,22 @@ class ServeWebFixtureTest {
     // fallback, not the primary path. The blob is passed as a promise (Safari builds the
     // ClipboardItem synchronously inside the click).
     assertTrue(
-      assetText("viewer.js").contains("new ClipboardItem({ \"image/png\": pngBlob })"),
+      viewerSource().contains("new ClipboardItem({ \"image/png\": pngBlob })"),
       "Copy PNG writes image/png to the clipboard so it pastes as a picture",
     )
     // The prefilled "report an issue" link follows the on-screen overrides, and never carries the
     // session token into a body destined for a public issue.
     assertTrue(
-      assetText("viewer.js").contains("function refreshReportLink()") &&
-        assetText("viewer.js").contains("{{render}}") &&
-        assetText("viewer.js").contains("stripToken("),
+      viewerSource().contains("function refreshReportLink()") &&
+        viewerSource().contains("{{render}}") &&
+        viewerSource().contains("stripToken("),
       "the report body is re-substituted at the current render, token stripped",
     )
     // …by writing an INPUT VALUE, never an href. The affordance is a GET form whose action is a
     // server-rendered literal, so no page-derived string can reach a navigation sink.
     assertTrue(
-      assetText("viewer.js").contains("body.value = tpl.replace(") &&
-        !assetText("viewer.js").contains("link.href = "),
+      viewerSource().contains("body.value = tpl.replace(") &&
+        !viewerSource().contains("link.href = "),
       "the report prefill goes into a form input, not a navigation sink",
     )
     // The URL is copied by a plainly-named button rather than by clicking a field whose only clue
@@ -5548,8 +5543,8 @@ class ServeWebFixtureTest {
       "each format offers a Copy link button that says what it does",
     )
     assertTrue(
-      assetText("viewer.js").contains("querySelectorAll(\".cp-copyurl\")") &&
-        assetText("viewer.js").contains("data-copyurl-target"),
+      viewerSource().contains("querySelectorAll<HTMLElement>(\".cp-copyurl\")") &&
+        viewerSource().contains("data-copyurl-target"),
       "the Copy link handler copies the field it targets",
     )
     assertTrue(
@@ -5559,8 +5554,8 @@ class ServeWebFixtureTest {
     assertTrue(
       // Matched without the parameter list — the helper's existence is the contract, not its
       // arity, which grew a `skipUrlSync` opt-out for the wasm auto-enable path.
-      assetText("viewer.js").contains("function refreshLinks(") &&
-        assetText("viewer.js").contains("location.origin"),
+      viewerSource().contains("function refreshLinks(") &&
+        viewerSource().contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
     )
     // A plain static bundle can't export SVG, so it shows the PNG row but not the SVG one.
@@ -5622,11 +5617,11 @@ class ServeWebFixtureTest {
       "the theme selector is enabled on a daemon-backed host",
     )
     assertTrue(
-      assetText("viewer.js").contains("if (chosenThemeProvider()) onKnobChanged();"),
+      viewerSource().contains("if (chosenThemeProvider()) onKnobChanged();"),
       "declared choices route through the daemon (knob) path",
     )
     assertTrue(
-      assetText("viewer.js").contains("parts.push(\"themeProvider=\""),
+      viewerSource().contains("parts.push(\"themeProvider=\""),
       "a chosen theme is appended to the /render URL as themeProvider",
     )
 
@@ -5975,16 +5970,6 @@ class ServeWebFixtureTest {
     fun show(line: String?) = line?.trim()?.take(120) ?: "<end of file>"
     return "line ${index + 1}: golden ${show(a.getOrNull(index))} | rendered " +
       show(b.getOrNull(index))
-  }
-
-  /** Walk up from the test working dir (the `:cli` project dir) to the repo root. */
-  private fun repoRoot(): File {
-    var dir: File? = File(System.getProperty("user.dir")).absoluteFile
-    while (dir != null) {
-      if (File(dir, "settings.gradle.kts").isFile) return dir
-      dir = dir.parentFile
-    }
-    error("could not locate repo root (settings.gradle.kts) from ${System.getProperty("user.dir")}")
   }
 
   /**

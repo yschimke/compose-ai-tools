@@ -258,6 +258,8 @@ object PreviewDiscovery {
   // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
   private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
+  private const val GLIMMER_ENVIRONMENT_PREVIEW_FQN =
+    "ee.schimke.composeai.preview.GlimmerEnvironmentPreview"
   // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
   // policy. See `GestureHintPreview.kt`.
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
@@ -1908,6 +1910,7 @@ object PreviewDiscovery {
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
+    val glimmerEnvironmentSpec = extractGlimmerEnvironmentSpec(annotations)
     val gestureHintSpec = extractGestureHintSpec(annotations)
     val permissionSpec =
       extractPermissionSpec(annotations, "${classInfo.name}.${method.name}", warnings)
@@ -2026,6 +2029,7 @@ object PreviewDiscovery {
             focusSpecs,
             focusGifSpec,
             ambientSpec,
+            glimmerEnvironmentSpec,
             gestureHintSpec,
             permissionSpec,
             launcherWidgetSpec,
@@ -2055,6 +2059,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
+          glimmerEnvironmentSpec,
           gestureHintSpec,
           permissionSpec,
           launcherWidgetSpec,
@@ -2084,6 +2089,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
+          glimmerEnvironmentSpec,
           gestureHintSpec,
           permissionSpec,
           launcherWidgetSpec,
@@ -2822,6 +2828,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    glimmerEnvironment: GlimmerEnvironmentCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
@@ -2882,6 +2889,7 @@ object PreviewDiscovery {
     // previews render outside the Compose composition where the local lives, so the override is a
     // no-op there.
     val effectiveAmbient = if (nonComposable) null else ambient
+    val effectiveGlimmerEnvironment = if (nonComposable) null else glimmerEnvironment
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
@@ -2930,6 +2938,7 @@ object PreviewDiscovery {
             // extension by scanning a preview's captures for the first non-null `permissions`, and
             // an `@InteractionPreview` that owns the function outright leaves nothing else to find.
             permissions = effectivePermissions,
+            glimmerEnvironment = effectiveGlimmerEnvironment,
             renderOutput =
               "renders/${previewId}${suffix}.${effectiveInteraction.format.extension}",
             cost = INTERACTION_COST,
@@ -2967,6 +2976,7 @@ object PreviewDiscovery {
           ambient = effectiveAmbient,
           gestureHint = effectiveGestureHint,
           permissions = effectivePermissions,
+          glimmerEnvironment = effectiveGlimmerEnvironment,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
           cost = STATIC_COST,
         )
@@ -2981,6 +2991,7 @@ object PreviewDiscovery {
               ambient = effectiveAmbient,
               gestureHint = effectiveGestureHint,
               permissions = effectivePermissions,
+              glimmerEnvironment = effectiveGlimmerEnvironment,
               launcherWidget = effectiveLauncherWidget,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = FOCUS_GIF_COST,
@@ -2999,6 +3010,7 @@ object PreviewDiscovery {
               // capture on the function would otherwise leave nothing to find, so a
               // `@PermissionPreview` on the same function would silently render the denied branch.
               permissions = effectivePermissions,
+              glimmerEnvironment = effectiveGlimmerEnvironment,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = ANIMATION_COST,
             )
@@ -3023,6 +3035,7 @@ object PreviewDiscovery {
             ambient = effectiveAmbient,
             gestureHint = effectiveGestureHint,
             permissions = effectivePermissions,
+            glimmerEnvironment = effectiveGlimmerEnvironment,
             launcherWidget = effectiveLauncherWidget,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = FOCUS_GIF_COST,
@@ -3046,6 +3059,7 @@ object PreviewDiscovery {
             // outright there is no static sibling carrying `permissions`, and the renderer's
             // first-non-null scan would come up empty.
             permissions = effectivePermissions,
+            glimmerEnvironment = effectiveGlimmerEnvironment,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = ANIMATION_COST,
           )
@@ -3128,6 +3142,7 @@ object PreviewDiscovery {
                 ambient = effectiveAmbient,
                 gestureHint = effectiveGestureHint,
                 permissions = effectivePermissions,
+                glimmerEnvironment = effectiveGlimmerEnvironment,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
@@ -3446,6 +3461,18 @@ object PreviewDiscovery {
       burnInProtectionRequired = burnIn,
       deviceHasLowBitAmbient = lowBit,
     )
+  }
+
+  /** Reads `@GlimmerEnvironmentPreview(environment)` into post-capture metadata. */
+  private fun extractGlimmerEnvironmentSpec(
+    annotations: List<AnnotationInfo>
+  ): GlimmerEnvironmentCapture? {
+    val ann =
+      annotations.firstOrNull { it.name == GLIMMER_ENVIRONMENT_PREVIEW_FQN } ?: return null
+    val environmentName =
+      (ann.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
+        ?: return null
+    return runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
   }
 
   /**
@@ -4082,6 +4109,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    glimmerEnvironment: GlimmerEnvironmentCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
@@ -4102,6 +4130,7 @@ object PreviewDiscovery {
       focuses,
       focusGif,
       ambient,
+      glimmerEnvironment,
       gestureHint,
       permissions,
       launcherWidget,
@@ -4130,6 +4159,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    glimmerEnvironment: GlimmerEnvironmentCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
@@ -4150,6 +4180,7 @@ object PreviewDiscovery {
         focuses,
         focusGif,
         ambient,
+        glimmerEnvironment,
         gestureHint,
         permissions,
         launcherWidget,

@@ -142,14 +142,17 @@ class ServeUrlStateTest {
 
   @Test
   fun `viewer syncs its overrides into the page url and restores them on popstate`() {
-    val script = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
-    assertTrue(script.contains("function ownsUrlParam(name)"), "the viewer must scope what it owns")
+    val script = viewerSource()
+    assertTrue(
+      script.contains("function ownsUrlParam(name: string)"),
+      "the viewer must scope what it owns",
+    )
     assertTrue(
       script.contains("window.cpUrlState.sync(values, ownsUrlParam, !push);"),
       "a control returning to its default has to clear its param, not pin a redundant value",
     )
     assertTrue(
-      script.contains("function hydrateFromUrl(popped)"),
+      script.contains("function hydrateFromUrl(popped: boolean)"),
       "one restore path serves both the first load and Back/Forward",
     )
     assertTrue(script.contains("window.cpUrlState.onPop("), "the viewer must handle Back/Forward")
