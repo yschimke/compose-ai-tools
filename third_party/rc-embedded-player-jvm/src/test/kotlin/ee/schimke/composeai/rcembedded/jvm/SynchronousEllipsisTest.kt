@@ -55,4 +55,28 @@ class SynchronousEllipsisTest {
       synchronousEllipsis("ab😀cdef", TextOverflow.StartEllipsis, 5, monospaceWidth),
     )
   }
+
+  @Test
+  fun `ellipsis never splits a zwj family`() {
+    assertEquals(
+      "…b",
+      synchronousEllipsis("a👨‍👩‍👧‍👦b", TextOverflow.StartEllipsis, 5, monospaceWidth),
+    )
+  }
+
+  @Test
+  fun `ellipsis never splits a regional indicator flag`() {
+    assertEquals(
+      "…cd",
+      synchronousEllipsis("ab🇬🇧cd", TextOverflow.StartEllipsis, 3, monospaceWidth),
+    )
+  }
+
+  @Test
+  fun `ellipsis never splits an emoji modifier sequence`() {
+    assertEquals(
+      "…cd",
+      synchronousEllipsis("ab👍🏽cd", TextOverflow.StartEllipsis, 4, monospaceWidth),
+    )
+  }
 }
