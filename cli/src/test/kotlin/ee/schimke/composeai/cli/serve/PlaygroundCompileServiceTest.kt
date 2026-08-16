@@ -647,6 +647,34 @@ class PlaygroundCompileServiceTest {
   }
 
   @Test
+  fun `last accepted revision survives lease expiry and release`() {
+    var now = 1_000L
+    val svc =
+      service(
+        editLeasesEnabled = true,
+        editLeaseTtlMillis = 5_000L,
+        nowMillis = { now },
+      )
+    val alice = svc.acquireEditLease("alice").lease!!
+    val response =
+      svc.run(
+        request().copy(editLease = alice, revision = 7),
+        isSecurityChecked = true,
+        authenticatedOwner = "alice",
+      )
+    assertNotNull(response.previewToken)
+
+    now = 6_001L
+    val bob = svc.acquireEditLease("bob").lease!! // Purges Alice's expired lease.
+    assertEquals(7, svc.editLeaseHealth().lastRevision)
+
+    assertTrue(svc.releaseEditLease("bob", bob))
+    val completed = svc.editLeaseHealth()
+    assertFalse(completed.active)
+    assertEquals(7, completed.lastRevision)
+  }
+
+  @Test
   fun `an abandoned editing lease deletes its workspace at the idle deadline`() {
     var now = 1_000L
     val scheduled = mutableListOf<Pair<Long, () -> Unit>>()

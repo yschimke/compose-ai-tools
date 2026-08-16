@@ -117,6 +117,7 @@ class PlaygroundCompileService(
   private var editCompileAttempts = 0L
   private var editIncrementalCompiles = 0L
   private var editFullFallbacks = 0L
+  private var editLastRevision: Long? = null
   private var editLastCompileMillis: Long? = null
   @Volatile
   private var editHealthSnapshot =
@@ -476,7 +477,9 @@ class PlaygroundCompileService(
         enabled = editLeasesEnabled,
         active = lease != null,
         expiresAtEpochMs = lease?.expiresAt,
-        lastRevision = lease?.lastRevision?.takeIf { it > 0 },
+        // Process-lifetime soak telemetry, like the neighboring counters: retain the last accepted
+        // revision after its lease releases or expires so operators can inspect a completed trial.
+        lastRevision = editLastRevision,
         acquisitions = editLeaseAcquisitions,
         compileAttempts = editCompileAttempts,
         incrementalCompiles = editIncrementalCompiles,
@@ -595,6 +598,7 @@ class PlaygroundCompileService(
       editLastCompileMillis = (System.nanoTime() - compileStarted) / 1_000_000
       lease.files = desired
       lease.lastRevision = request.revision
+      editLastRevision = request.revision
       refreshEditHealthLocked()
 
       val diagnostics = compile.diagnostics
