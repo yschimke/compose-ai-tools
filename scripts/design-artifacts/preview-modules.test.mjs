@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { previewModuleRecords, previewModules } from "./preview-modules.mjs";
+import {
+  previewModuleRecords,
+  previewModules,
+  previewModuleSources,
+} from "./preview-modules.mjs";
 
 test("preview modules are unique and sorted", () => {
   assert.deepEqual(
@@ -24,8 +28,7 @@ test("preferred spec module matches discovery without a leading colon", () => {
 });
 
 test("module records retain Gradle-resolved nonconventional project directories", () => {
-  assert.deepEqual(
-    previewModuleRecords(
+  const records = previewModuleRecords(
       {
         previews: [
           { module: "ui", projectDirectory: "/workspace/components/ui" },
@@ -34,10 +37,29 @@ test("module records retain Gradle-resolved nonconventional project directories"
         ],
       },
       ":ui",
-    ),
+    );
+  assert.deepEqual(
+    records,
     [
       { module: "ui", projectDirectory: "/workspace/components/ui" },
       { module: "app", projectDirectory: "/workspace/application" },
     ],
+  );
+  assert.deepEqual(previewModuleSources(records, "/workspace"), [
+    "/workspace/components/ui",
+    "/workspace/application",
+  ]);
+});
+
+test("module sources retain a conventional fallback for pre-field CLI output", () => {
+  assert.deepEqual(
+    previewModuleSources(
+      [
+        { module: "feature:ui" },
+        { module: ":app" },
+      ],
+      "/workspace/build-root",
+    ),
+    ["/workspace/build-root/feature/ui", "/workspace/build-root/app"],
   );
 });

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Extract the deterministic module list from `compose-preview list --json`. */
 import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -31,6 +32,15 @@ export function previewModules(response, preferred) {
   return previewModuleRecords(response, preferred).map((record) => record.module);
 }
 
+export function previewModuleSources(records, baseDirectory = process.cwd()) {
+  return records.map((record) =>
+    resolve(
+      baseDirectory,
+      record.projectDirectory ?? record.module.replace(/^:/, "").replaceAll(":", "/"),
+    ),
+  );
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
     options: {
@@ -58,14 +68,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (values["sources-output"]) {
     const missing = records.filter((record) => !record.projectDirectory);
     if (missing.length > 0) {
-      console.error(
-        `preview-modules: discovery omitted projectDirectory for: ${missing.map((r) => r.module).join(", ")}`,
+      console.warn(
+        `preview-modules: discovery omitted projectDirectory for ${missing.map((r) => r.module).join(", ")}; ` +
+          "falling back to the conventional Gradle-path directory until the caller upgrades its CLI",
       );
-      process.exit(1);
     }
     await writeFile(
       values["sources-output"],
-      `${records.map((record) => record.projectDirectory).join("\n")}\n`,
+      `${previewModuleSources(records).join("\n")}\n`,
       "utf8",
     );
   }
