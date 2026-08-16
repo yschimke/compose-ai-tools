@@ -1883,10 +1883,24 @@ class ServeWebFixtureTest {
     // Asserted here rather than in the harness because it is server-rendered markup: the capture
     // that used to hold it had to hover a node, wait for a tooltip and evaluate in a browser to
     // read two attributes off the emitted HTML.
-    assertTrue(
-      Regex("""<a class="cp-page-node" [^>]*href="[^"]*/p/[^"]*"""")
-        .containsMatchIn(designPageHtml),
-      "a node with a renderable preview is emitted as an anchor to it",
+    // Matched on the manifest-linked node itself (`1:1`), not on "some /p/ anchor exists": the
+    // fixture carries several renderable nodes, so an existence check stays green while this
+    // particular overlay regresses to a span or points somewhere else.
+    val manifestNode =
+      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:1"[^>]*>""").find(designPageHtml)
+    assertTrue(manifestNode != null, "the manifest-linked node 1:1 is emitted at all")
+    assertEquals(
+      "a",
+      manifestNode!!.groupValues[1],
+      "a node with a renderable preview is emitted as an anchor",
+    )
+    // The whole final segment, not a prefix: `/p/com.example.ProfileCardPreviewLegacy` contains
+    // the id we mean and navigates somewhere else.
+    val manifestHref = Regex("""href="([^"]*)"""").find(manifestNode.value)!!.groupValues[1]
+    assertEquals(
+      "com.example.ProfileCardPreview",
+      manifestHref.substringBefore('?').substringAfterLast("/p/"),
+      "…and its destination is THAT preview, not one whose id merely starts the same way",
     )
     // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
     // tag is the same; only the target differs, so a reader never meets a node that looks
@@ -1903,9 +1917,14 @@ class ServeWebFixtureTest {
       unlinkedNode!!.groupValues[1],
       "an unlinked node stays an anchor rather than becoming inert",
     )
-    assertTrue(
-      unlinkedNode.value.contains("href=\"https://www.figma.com/"),
-      "…and its destination is the design file, the only link it has",
+    // The WHOLE href, compared as one string. Checking parts independently loses whatever part is
+    // not checked: a host check alone passes for the Figma homepage, and a key-plus-node check
+    // alone passes for a relative URL or a different host carrying the same query.
+    val unlinkedHref = Regex("""href="([^"]*)"""").find(unlinkedNode.value)!!.groupValues[1]
+    assertEquals(
+      "https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-6",
+      unlinkedHref,
+      "…and its destination is THIS node in the catalog's design file",
     )
 
     val designPageIndex =

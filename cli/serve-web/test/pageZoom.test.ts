@@ -46,12 +46,22 @@ function el<T extends Element>(selector: string): T {
 
 function view(): { scale: number; x: number; y: number } {
     const transform = el<HTMLElement>(".cp-page-canvas").style.transform;
+    // An EMPTY transform is the identity — that is how the element expresses 1:1, by clearing the
+    // property rather than writing `translate(0px, 0px) scale(1)`.
+    if (!transform || transform === "none") return { scale: 1, x: 0, y: 0 };
     const match =
         /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(
             transform,
         );
-    if (!match) return { scale: 1, x: 0, y: 0 };
-    return { x: +match[1], y: +match[2], scale: +match[3] };
+    // Anything else present but unreadable is a FAILURE, not an identity. Returning the identity
+    // here — which this used to do — makes every assertion in this file fail open: a reset that
+    // emitted `translateX(...)`, or a scale that came out `NaN`, would satisfy
+    // `deepEqual(view(), { scale: 1, x: 0, y: 0 })` on a canvas that is nowhere near 1:1.
+    if (!match) throw new Error(`unreadable transform: ${transform}`);
+    const parsed = { x: +match[1], y: +match[2], scale: +match[3] };
+    if (!Object.values(parsed).every(Number.isFinite))
+        throw new Error(`non-finite transform: ${transform}`);
+    return parsed;
 }
 
 /** Where a user-unit point currently sits on screen. */
