@@ -28,7 +28,7 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.data.ambient.connector"
-  // wear-compose 1.7.0-alpha's AARs declare `minCompileSdk = 37`; compile against API 37 to link
+  // wear-compose 1.7.0-beta's AARs declare `minCompileSdk = 37`; compile against API 37 to link
   // against `androidx.wear.compose.foundation`. Override the conventions plugin's `compileSdk =
   // 36`.
   compileSdk = 37

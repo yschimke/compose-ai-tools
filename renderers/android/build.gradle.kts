@@ -11,7 +11,7 @@ android {
   namespace = "ee.schimke.composeai.renderer"
   // The `composeai.maven-publishing` convention wires the `singleVariant("release")`
   // publication for us — don't declare it twice.
-  // wear-compose 1.7.0-alpha's AARs declare `minCompileSdk = 37`; compile against API 37 so the
+  // wear-compose 1.7.0-beta's AARs declare `minCompileSdk = 37`; compile against API 37 so the
   // `compileOnly` `wear.compose.foundation` types resolve. Override the conventions `compileSdk =
   // 36`.
   compileSdk = 37

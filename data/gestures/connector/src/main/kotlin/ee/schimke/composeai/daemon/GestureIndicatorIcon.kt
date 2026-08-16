@@ -13,27 +13,26 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.LocalContentColor
-import androidx.wear.compose.material3.onehandedgesture.GestureAction
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureAction
 
 /**
  * Renders wear-compose-material3's shipped gesture-indicator AVD as a static, tinted peak frame.
  *
- * Alpha06's explicit indicator state triggers a finite animation and is reset by the real
- * indicator. Robolectric completes that animation during idle pre-roll, so [GestureHint] uses this
- * replica only for a forced still capture. Normal on-device rendering uses the real state-backed
- * indicator.
+ * The explicit indicator state triggers a finite animation and is reset by the real indicator.
+ * Robolectric completes that animation during idle pre-roll, so [GestureHint] uses this replica
+ * only for a forced still capture. Normal on-device rendering uses the real state-backed indicator.
  */
 @OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
 fun GestureIndicatorIcon(
-  action: GestureAction,
+  action: OneHandedGestureAction,
   modifier: Modifier = Modifier,
   size: Dp = 40.dp,
   tint: Color = LocalContentColor.current,
 ) {
   val resId =
     when (action) {
-      GestureAction.Dismiss ->
+      OneHandedGestureAction.Dismiss ->
         androidx.wear.compose.material3.R.drawable
           .wear_one_handed_gesture_dismiss_indicator_animation
       else ->

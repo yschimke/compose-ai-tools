@@ -2277,7 +2277,7 @@ open class RobolectricHost(
         }
       // [GesturePreviewOverrideExtension] plans a [GestureOverrideExtension] whose composition
       // reaches `androidx.wear.compose.material3.onehandedgesture` (gesture API added in
-      // wear-compose 1.7.0-alpha). Gate registration on that package being loadable so
+      // wear-compose 1.7.0-beta). Gate registration on that package being loadable so
       // plain-Android
       // — or pre-1.7 Wear — consumers never resolve the gesture types. Mirrors the ambient gate.
       val gestureOverrides =

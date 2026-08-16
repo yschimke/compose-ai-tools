@@ -14,22 +14,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.wear.compose.material3.LocalContentColor
-import androidx.wear.compose.material3.onehandedgesture.GestureAction
-import androidx.wear.compose.material3.onehandedgesture.GestureIndicatorSize
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureAction
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicatorSize
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import ee.schimke.composeai.daemon.protocol.GestureKindOverride
 import kotlinx.coroutines.launch
 
 /**
- * Consumer-facing kind of one-handed gesture, mapped to the Wear framework [GestureAction] and the
- * `compose/gestures` wire spelling ([GestureKindOverride]). `SCROLL` and `PAGE` are
- * [GestureAction.Primary] gestures (the primary "double pinch" also drives scroll / paging per the
- * Wear design guide) but stay distinct in the data product so an agent can tell a play button from
- * a scroll surface.
+ * Consumer-facing kind of one-handed gesture, mapped to the Wear framework [OneHandedGestureAction]
+ * and the `compose/gestures` wire spelling ([GestureKindOverride]). `SCROLL` and `PAGE` are
+ * [OneHandedGestureAction.Primary] gestures (the primary "double pinch" also drives scroll / paging
+ * per the Wear design guide) but stay distinct in the data product so an agent can tell a play
+ * button from a scroll surface.
  */
 enum class GestureType(val wire: GestureKindOverride) {
   PRIMARY(GestureKindOverride.PRIMARY),
@@ -37,12 +37,12 @@ enum class GestureType(val wire: GestureKindOverride) {
   SCROLL(GestureKindOverride.SCROLL),
   PAGE(GestureKindOverride.PAGE);
 
-  fun toGestureAction(): GestureAction =
+  fun toGestureAction(): OneHandedGestureAction =
     when (this) {
       PRIMARY,
       SCROLL,
-      PAGE -> GestureAction.Primary
-      DISMISS -> GestureAction.Dismiss
+      PAGE -> OneHandedGestureAction.Primary
+      DISMISS -> OneHandedGestureAction.Dismiss
     }
 }
 
@@ -67,7 +67,8 @@ val LocalGestureRegistry: ProvidableCompositionLocal<GestureStateController> =
  * `renderNow.overrides.gestures.invoke` / an `input.gesture` recording event — neither of which the
  * framework's internal, Pixel-Watch-only registry exposes.
  *
- * @param type gesture kind (drives the framework [GestureAction] and the reported wire kind).
+ * @param type gesture kind (drives the framework [OneHandedGestureAction] and the reported wire
+ *   kind).
  * @param label accessibility / hint label, forwarded to `oneHandedGesture(onGestureLabel = …)` and
  *   used as the handler's identity in the data product.
  * @param gestureConfiguration persistent action/id/priority specification shared with the matching
@@ -128,7 +129,7 @@ fun GestureHint(
   indicatorState: OneHandedGestureClickIndicatorState,
   modifier: Modifier = Modifier,
   forceShow: Boolean = false,
-  gestureIndicatorSize: GestureIndicatorSize = GestureIndicatorSize.Medium,
+  gestureIndicatorSize: OneHandedGestureIndicatorSize = OneHandedGestureIndicatorSize.Medium,
   gestureIndicatorTint: Color = LocalContentColor.current,
   content: @Composable () -> Unit,
 ) {

@@ -1,6 +1,6 @@
 // `:data-gestures-connector` glues `:data-gestures-core` (the wire-shape payload) to the daemon's
 // data-product / preview-override surface for the Wear OS one-handed-gesture framework
-// (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-alpha`). Ships:
+// (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-beta`). Ships:
 //
 //  - `GestureStateController` — process-static registry + state holder for the gesture handlers a
 //    preview reports, plus the enabled / hint / last-invoked state the data product serves.
@@ -28,7 +28,7 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.data.gestures.connector"
-  // The wear-compose 1.7.0-alpha AARs (`compose-material3`, `compose-foundation`,
+  // The wear-compose 1.7.0-beta AARs (`compose-material3`, `compose-foundation`,
   // `compose-material-core`) declare `minCompileSdk = 37`, so this module compiles against API 37
   // to see the gesture types directly. Override the conventions plugin's `compileSdk = 36` default.
   // Same pattern `:data-remotecompose-connector` / `:samples:remotecompose` use for their alpha
@@ -63,11 +63,11 @@ dependencies {
   api(project(":data-render-compose"))
 
   // `androidx.wear.compose.material3.onehandedgesture.*` — the real one-handed-gesture API the
-  // reporting seam wraps (`oneHandedGesture`, `OneHandedGestureClickIndicator`, `GestureAction`,
-  // `LocalOneHandedGestureEnabled`) plus `LocalContentColor`. `compileOnly` because consumers
-  // using the public reporting/indicator helpers are Wear apps that already pull
-  // wear-compose-material3 at runtime; `:daemon:android` can still link the connector without
-  // transitively publishing the alpha Wear stack.
+  // reporting seam wraps (`oneHandedGesture`, `OneHandedGestureClickIndicator`,
+  // `OneHandedGestureAction`, `LocalOneHandedGestureEnabled`) plus `LocalContentColor`.
+  // `compileOnly` because consumers using the public reporting/indicator helpers are Wear apps
+  // that already pull wear-compose-material3 at runtime; `:daemon:android` can still link the
+  // connector without transitively publishing the beta Wear stack.
   compileOnly(libs.wear.compose.material3)
   testImplementation(libs.wear.compose.material3)
 

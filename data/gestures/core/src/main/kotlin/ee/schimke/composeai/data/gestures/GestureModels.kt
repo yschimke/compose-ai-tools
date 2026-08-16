@@ -21,7 +21,7 @@ object Material3GestureProduct {
  * gesture hints for this render ([hintsShown]), and — for interactive sessions — the label of the
  * handler last invoked via an `input.gesture` script event ([lastInvoked]).
  *
- * The gesture framework (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-alpha`) only dispatches
+ * The gesture framework (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-beta`) only dispatches
  * on a Pixel Watch 3+; off-device it silently no-ops. This data product is what makes the otherwise
  * invisible gesture wiring observable under Robolectric / `@Preview`, and lets an agent invoke a
  * handler without the hardware.
