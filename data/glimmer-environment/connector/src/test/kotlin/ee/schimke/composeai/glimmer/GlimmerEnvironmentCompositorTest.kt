@@ -37,4 +37,32 @@ class GlimmerEnvironmentCompositorTest {
       dir.deleteRecursively()
     }
   }
+
+  @Test
+  fun `png application can preserve raw capture without overwriting another processor artifact`() {
+    val dir = createTempDirectory("glimmer-composite-distinct-raw-").toFile()
+    try {
+      val file = File(dir, "capture.png")
+      val focusRaw = File(dir, "capture.raw.png")
+      val glimmerRaw = File(dir, "capture.glimmer.raw.png")
+      val source = BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
+      source.setRGB(0, 0, 0xffffffff.toInt())
+      ImageIO.write(source, "png", file)
+      focusRaw.writeText("pre-focus-overlay")
+
+      val raw =
+        GlimmerEnvironmentCompositor.applyToPng(
+          file,
+          GlimmerEnvironment.Dark,
+          raw = glimmerRaw,
+        )
+
+      assertThat(raw).isEqualTo(glimmerRaw)
+      assertThat(glimmerRaw.exists()).isTrue()
+      assertThat(focusRaw.readText()).isEqualTo("pre-focus-overlay")
+      assertThat(file.readBytes().contentEquals(glimmerRaw.readBytes())).isFalse()
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
 }

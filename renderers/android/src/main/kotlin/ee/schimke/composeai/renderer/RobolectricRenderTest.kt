@@ -1736,6 +1736,7 @@ abstract class RobolectricRenderTestBase(
                     isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
                     curveCapture = animationCurveCapture,
+                    glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                   )
                   .also { handled ->
                     // The clock has been driven well past `currentTime`
@@ -1957,9 +1958,18 @@ abstract class RobolectricRenderTestBase(
                 job.capture.glimmerEnvironment != null &&
                 outputFile.extension.equals("png", ignoreCase = true)
             ) {
+              // FocusOverlay owns `<basename>.raw.png` as its pre-overlay artifact. Preserve the
+              // overlayed, pre-environment Glimmer source separately when both processors apply.
+              val glimmerRaw =
+                if (focus?.overlay == true) {
+                  outputFile.resolveSibling("${outputFile.nameWithoutExtension}.glimmer.raw.png")
+                } else {
+                  outputFile.resolveSibling("${outputFile.nameWithoutExtension}.raw.png")
+                }
               GlimmerEnvironmentCompositor.applyToPng(
                 outputFile,
                 job.capture.glimmerEnvironment.toConnectorEnvironment(),
+                raw = glimmerRaw,
               )
             }
 
@@ -2923,6 +2933,7 @@ private fun handleAnimatedCapture(
   isRound: Boolean,
   outputFile: File,
   curveCapture: SlotTreeCapture?,
+  glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
 ): Boolean {
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_anim_frames")
   framesDir.deleteRecursively()
@@ -3089,9 +3100,9 @@ private fun handleAnimatedCapture(
     // when there are no tracks (e.g. showCurves = false, or the
     // inspector found nothing — which can happen on a static
     // preview accidentally annotated).
-    val composedFrames: List<BufferedImage> =
+    fun composePresentationFrames(screenshots: List<BufferedImage>): List<BufferedImage> =
       if (tracks.isNotEmpty()) {
-        rawFrames.mapIndexed { i, screenshot ->
+        screenshots.mapIndexed { i, screenshot ->
           AnimationCurvePlotter.composeFrameWithCurves(
             screenshot = screenshot,
             tracks = tracks,
@@ -3100,21 +3111,37 @@ private fun handleAnimatedCapture(
           )
         }
       } else {
-        rawFrames
+        screenshots
       }
+
+    val rawComposedFrames = composePresentationFrames(rawFrames)
 
     // Hold the first frame for [HOLD_START_MS] and the last for
     // [HOLD_END_MS] so the GIF reads as "pre-state → animation → settled
     // state" rather than instantly looping back. Single-frame GIFs
     // collapse to one long-hold image.
     val frameDelays =
-      IntArray(composedFrames.size) { i ->
+      IntArray(rawComposedFrames.size) { i ->
         when (i) {
           0 -> HOLD_START_ANIM_MS
-          composedFrames.lastIndex -> HOLD_END_ANIM_MS
+          rawComposedFrames.lastIndex -> HOLD_END_ANIM_MS
           else -> frameIntervalMs
         }
       }
+    val composedFrames =
+      glimmerEnvironment?.let { environment ->
+        val rawOutput = outputFile.resolveSibling("${outputFile.nameWithoutExtension}.raw.gif")
+        ScrollGifEncoder.encode(
+          frames = rawComposedFrames,
+          outputFile = rawOutput,
+          frameDelaysMs = frameDelays,
+        ) ?: return false
+        // Composite only the captured Glimmer surface. Curve panels are renderer-owned UI and
+        // should retain their ordinary colours rather than receiving the simulated environment.
+        composePresentationFrames(
+          rawFrames.map { GlimmerEnvironmentCompositor.composite(it, environment) }
+        )
+      } ?: rawComposedFrames
     val written =
       ScrollGifEncoder.encode(
         frames = composedFrames,
