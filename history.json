@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "c999273303230d7c3a632dc3d42f8f210530e539",
+    "generatedFrom": "c6c53101959ded541ee1c36e33c8220def73dcbe",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2658,6 +2658,15 @@
             "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
             "versions": [
                 {
+                    "blob": "a7efd2e0a57dd26b5b8d619a40b1dba9809d11a6",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "sinceCommit": "7107b9fcde2235aacd70caefcc7c1784f3806266",
+                    "commits": 2,
+                    "occurrences": 2
+                },
+                {
                     "blob": "3231fee0b8be9801b5c26873dae399ac92df3ae4",
                     "commit": "c999273303230d7c3a632dc3d42f8f210530e539",
                     "date": "2026-08-16T20:18:48Z",
@@ -2789,13 +2798,6 @@
                     "commits": 1
                 },
                 {
-                    "blob": "a7efd2e0a57dd26b5b8d619a40b1dba9809d11a6",
-                    "commit": "7107b9fcde2235aacd70caefcc7c1784f3806266",
-                    "date": "2026-08-15T23:26:03Z",
-                    "sourceSha": "6dac5325",
-                    "commits": 1
-                },
-                {
                     "blob": "6484c799aa2032c7269e39b853e51db38bb8bc7e",
                     "commit": "91695d9c6b9ecf112ed6ea8315f14b1bbae63b21",
                     "date": "2026-08-15T22:43:14Z",
@@ -2810,9 +2812,9 @@
                     "commits": 1
                 }
             ],
-            "observations": 33,
+            "observations": 34,
             "unstable": true,
-            "flapCount": 13
+            "flapCount": 14
         },
         "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
             "path": "renders/samples:android/ContainerTransformAnimatedPreview_Container_Transform-7b9dc97b.gif",
@@ -7733,6 +7735,171 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/activity__MainActivity": {
+            "path": "renders/samples:remotecompose/activity__MainActivity.png",
+            "versions": [
+                {
+                    "blob": "060a4c5c001793e21b7caec3e3f78e9323be8354",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
+            "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
+            "versions": [
+                {
+                    "blob": "e1449c245f109114c87e7963ae2e4300ca25a58a",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview": {
+            "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png",
+            "versions": [
+                {
+                    "blob": "e1449c245f109114c87e7963ae2e4300ca25a58a",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview": {
+            "path": "renders/samples:remotecompose/RemoteButtonEnabledPreview-23dedf54.png",
+            "versions": [
+                {
+                    "blob": "571d18b4cc937d7646d874a709dcd2306c2fe15e",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview": {
+            "path": "renders/samples:remotecompose/RemoteButtonWithBorderPreview-298b3408.png",
+            "versions": [
+                {
+                    "blob": "1287adf694adce594e07e449e538ba1de2c84e29",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview": {
+            "path": "renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview-f3014b8f.png",
+            "versions": [
+                {
+                    "blob": "9a95f0d0a3063757fb6b791da40737dbcd5f0970",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
+            "path": "renders/samples:remotecompose/RemoteButtonWithShapePreview-3935d3f3.png",
+            "versions": [
+                {
+                    "blob": "abb86510803bd0c240e6b09f41ebac7867c09063",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview": {
+            "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview-53123345.gif",
+            "versions": [
+                {
+                    "blob": "fb2a72c34639896bf41358586e685fb855fbf28e",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
+            "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif",
+            "versions": [
+                {
+                    "blob": "4bba0764e0ab7e3dfdeaf9e507bc97b1f4985b47",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview": {
+            "path": "renders/samples:remotecompose/RemoteShaderGradientPreview-6739688f.png",
+            "versions": [
+                {
+                    "blob": "32bd03ec01d7baa0b20ecdafc5921ba446f0a1df",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.WearWidgetPreviewsKt.RemoteWidgetSquirclePreview_Remote Widget Squircle": {
+            "path": "renders/samples:remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle-2f39ed33.png",
+            "versions": [
+                {
+                    "blob": "d114a9a0199385cc4d768f02755ed3b75817bcd4",
+                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
+                    "date": "2026-08-16T20:38:06Z",
+                    "sourceSha": "1c47a483",
                     "commits": 1
                 }
             ],
