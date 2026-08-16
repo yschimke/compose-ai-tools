@@ -7,9 +7,12 @@ import { parseArgs } from "node:util";
 export function previewModules(response, preferred) {
   const modules = [...new Set((response?.previews ?? []).map((p) => p?.module).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
-  if (preferred && modules.includes(preferred)) {
-    modules.splice(modules.indexOf(preferred), 1);
-    modules.unshift(preferred);
+  const normalizedPreferred = preferred?.replace(/^:/, "");
+  const preferredIndex = modules.findIndex(
+    (module) => module.replace(/^:/, "") === normalizedPreferred,
+  );
+  if (normalizedPreferred && preferredIndex >= 0) {
+    modules.unshift(...modules.splice(preferredIndex, 1));
   }
   return modules;
 }

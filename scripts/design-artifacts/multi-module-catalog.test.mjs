@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  additionalBundleLiveConflict,
+  claimedComponentIds,
   claimedPreviewFunctions,
+  combinedBundleMap,
   combinedBundleEntries,
   generatedFallbackGroups,
   namespaceModuleRecords,
@@ -72,4 +75,54 @@ test("combined entries keep primary bytes on collisions", () => {
     ]),
     { same: "primary", a: "a", b: "b" },
   );
+});
+
+test("fallback inventory rejects a generated component ID already owned by authored inventory", () => {
+  const records = namespaceModuleRecords(record(":feature", ["Foo"]));
+  assert.throws(
+    () => generatedFallbackGroups(records, new Set(), new Set(["feature/Foo"])),
+    /generated fallback componentId 'feature\/Foo' collides/,
+  );
+});
+
+test("claimed component IDs include authored and annotation-derived inventory", () => {
+  assert.deepEqual(
+    claimedComponentIds([
+      { components: [{ componentId: "one" }, { componentId: "two" }] },
+      { components: [{ componentId: "three" }] },
+    ]),
+    new Set(["one", "two", "three"]),
+  );
+});
+
+test("combined bundle metadata uses later-bundle precedence", () => {
+  const bundles = [
+    { metadata: new Map([["Shared", "primary"]]) },
+    {
+      metadata: new Map([
+        ["Shared", "extra"],
+        ["Only", "additional"],
+      ]),
+    },
+  ];
+  assert.deepEqual(
+    combinedBundleMap(bundles, (bundle) => bundle.metadata),
+    new Map([
+      ["Shared", "extra"],
+      ["Only", "additional"],
+    ]),
+  );
+});
+
+test("additional renders reject primary-only live publication modes", () => {
+  assert.deepEqual(
+    additionalBundleLiveConflict({
+      "additional-renders": ["feature.png"],
+      "publish-live-bundle": true,
+      "source-module": ":app",
+    }),
+    ["--publish-live-bundle", "--source-module"],
+  );
+  assert.equal(additionalBundleLiveConflict({ "additional-renders": ["feature.png"] }), null);
+  assert.equal(additionalBundleLiveConflict({ "publish-live-bundle": true }), null);
 });

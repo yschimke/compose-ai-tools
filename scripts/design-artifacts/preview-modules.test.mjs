@@ -15,3 +15,10 @@ test("preferred spec module is first when present", () => {
     [":catalog", ":feature"],
   );
 });
+
+test("preferred spec module matches discovery without a leading colon", () => {
+  assert.deepEqual(
+    previewModules({ previews: [{ module: "feature" }, { module: "catalog" }] }, ":catalog"),
+    ["catalog", "feature"],
+  );
+});

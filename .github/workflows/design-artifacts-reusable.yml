@@ -711,6 +711,14 @@ jobs:
         working-directory: compose-ai-tools/scripts/design-artifacts
         run: npm ci --no-audit --no-fund --loglevel=warn
 
+      - name: Validate module selector
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.modules }}" ] && [ "${{ inputs.modules }}" != "all" ]; then
+            echo "::error title=modules input::modules supports only 'all'; use module for one Gradle path."
+            exit 1
+          fi
+
       # Repository-wide publication keeps one executable bundle per Gradle module. Discover the
       # module set once, order it deterministically, and prefer spec.module as the primary when the
       # authored catalog names one — that preserves the historical unqualified function-name winner
@@ -727,10 +735,6 @@ jobs:
           SPLIT_MODE: ${{ inputs.split-mode }}
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.modules }}" ] && [ "${{ inputs.modules }}" != "all" ]; then
-            echo "::error title=modules input::modules supports only 'all'; use module for one Gradle path."
-            exit 1
-          fi
           if [ -n "$EXTRA_MODULE" ]; then
             echo "::error title=all modules::extra-module is redundant with repository-wide discovery; omit it."
             exit 1
@@ -1168,8 +1172,9 @@ jobs:
           fi
           if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
             while IFS= read -r additional_bundle; do
+              module_index="$(basename "$additional_bundle" .png)"
               compose-preview bundle split "$additional_bundle" --view-only \
-                -o "$GITHUB_WORKSPACE/out/bundle/previews"
+                -o "$GITHUB_WORKSPACE/out/bundle/previews/modules/$module_index"
             done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
           fi
           if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then

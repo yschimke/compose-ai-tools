@@ -70,9 +70,20 @@ export function targetsByFunction(bundle) {
       out.set(fn, target);
     }
   };
+  const parsedPreviews = bundle?.previews ?? [];
   // Parsed previews first (the common path when the reader preserves `targets`)…
-  ingest(bundle?.previews);
-  // …then the raw manifest, so a reader that dropped the field still yields targets.
-  if (out.size === 0) ingest(parsePreviewsEntry(bundle));
+  ingest(parsedPreviews);
+  // …then the raw manifest, so a reader that dropped the field still yields targets. Reuse the
+  // parsed preview's function identity by id: repository-wide publication namespaces duplicate
+  // functions on the parsed bundle, while the embedded previews.json intentionally stays raw.
+  const parsedFunctionById = new Map(
+    parsedPreviews.map((preview) => [preview.id, preview.functionName ?? preview.id]),
+  );
+  ingest(
+    parsePreviewsEntry(bundle).map((preview) => ({
+      ...preview,
+      functionName: parsedFunctionById.get(preview.id) ?? preview.functionName,
+    })),
+  );
   return out;
 }

@@ -91,6 +91,34 @@ export function claimedPreviewFunctions(groups) {
   );
 }
 
+/** Component identities already owned by authored or annotation-derived inventory. */
+export function claimedComponentIds(groups) {
+  return new Set(
+    (groups ?? []).flatMap((group) =>
+      (group.components ?? []).map((component) => component.componentId).filter(Boolean),
+    ),
+  );
+}
+
+/** Merge per-bundle discovery metadata using the same later-bundle-wins precedence as renders. */
+export function combinedBundleMap(bundles, mapBundle) {
+  const combined = new Map();
+  for (const bundle of bundles ?? []) {
+    for (const [key, value] of mapBundle(bundle)) combined.set(key, value);
+  }
+  return combined;
+}
+
+/** Additional module bundles are baked-only until publication carries a real per-module live lane. */
+export function additionalBundleLiveConflict(values) {
+  if (!(values?.["additional-renders"]?.length > 0)) return null;
+  const conflicts = [
+    values["publish-live-bundle"] && "--publish-live-bundle",
+    values["source-module"] && "--source-module",
+  ].filter(Boolean);
+  return conflicts.length > 0 ? conflicts : null;
+}
+
 function componentId(module, fn) {
   const modulePart = module.replace(/^:/, "").replaceAll(":", "/") || "root";
   return `${modulePart}/${fn}`;
@@ -104,7 +132,11 @@ function componentId(module, fn) {
  * metadata-only and GIF-only previews have no sticker for the catalog exporter to anchor, while a
  * normal `@AnimatedPreview` that also carries a still is included and publishes its motion axis.
  */
-export function generatedFallbackGroups(records, claimed = new Set()) {
+export function generatedFallbackGroups(
+  records,
+  claimed = new Set(),
+  reservedComponentIds = new Set(),
+) {
   const groups = new Map();
   for (const record of records ?? []) {
     const module = record.module ?? bundleModulePath(record.bundle);
@@ -126,11 +158,18 @@ export function generatedFallbackGroups(records, claimed = new Set()) {
         group = { name, section: module, components: [] };
         groups.set(key, group);
       }
+      const generatedId = componentId(module, fn);
+      if (reservedComponentIds.has(generatedId)) {
+        throw new Error(
+          `generated fallback componentId '${generatedId}' collides with authored or generated inventory`,
+        );
+      }
       group.components.push({
-        componentId: componentId(module, fn),
+        componentId: generatedId,
         preview: fn,
         ...(preview?.params?.name ? { caption: preview.params.name } : {}),
       });
+      reservedComponentIds.add(generatedId);
       claimed.add(fn);
     }
   }

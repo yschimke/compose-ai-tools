@@ -141,7 +141,10 @@ import { selectComponentImages, selectOf } from "./catalog-select.mjs";
 import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.mjs";
 import { completenessFailure } from "./completeness-gate.mjs";
 import {
+  additionalBundleLiveConflict,
+  claimedComponentIds,
   claimedPreviewFunctions,
+  combinedBundleMap,
   combinedBundleEntries,
   generatedFallbackGroups,
   namespaceModuleRecords,
@@ -793,6 +796,16 @@ if (!values.spec || !values.renders || !values.out) {
   process.exit(2);
 }
 
+const additionalLiveConflicts = additionalBundleLiveConflict(values);
+if (additionalLiveConflicts) {
+  console.error(
+    `--additional-renders cannot be combined with ${additionalLiveConflicts.join(" or ")} — ` +
+      `repository-wide catalogs publish baked module bundles and have no single executable ` +
+      `live bundle or source module.`,
+  );
+  process.exit(2);
+}
+
 // Fail loudly rather than publish a catalog whose extra-only stickers claim a live lane
 // nothing can serve. Both prerequisites are silent when violated: with no --extra-renders
 // there is no second bundle to alias against, and with no --publish-live-bundle serve
@@ -941,6 +954,7 @@ if (values["generate-fallbacks"]) {
   const fallbackGroups = generatedFallbackGroups(
     moduleRecords,
     claimedPreviewFunctions(spec.groups ?? []),
+    claimedComponentIds(spec.groups ?? []),
   );
   if (fallbackGroups.length > 0) {
     spec.groups = [...(spec.groups ?? []), ...fallbackGroups];
@@ -1800,10 +1814,10 @@ const codeConnect = buildCodeConnectManifest({
   components: catalog.components,
   fnByComponentId,
   componentByComponentId,
-  targetByFn: targetsByFunction(bundle),
+  targetByFn: combinedBundleMap(allBundles, targetsByFunction),
   slug,
   figmaSvgSlugs,
-  sourceByFn: sourceByFunction(bundle),
+  sourceByFn: combinedBundleMap(allBundles, sourceByFunction),
   system: spec.system,
   title: spec.title,
   source: {
