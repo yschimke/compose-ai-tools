@@ -150,6 +150,35 @@ test("compiles the default Android snippet to a first frame + live /pg/ handoff"
   ).toMatch(/^data:image\/png/);
 });
 
+test("shows compile errors beside the offending source line", async ({ page }) => {
+  requirePlayground();
+  await page.goto(`/playground${q}`, { waitUntil: "domcontentloaded" });
+  await page.selectOption("#pg-mode", ANDROID_MODE);
+  await setSource(
+    page,
+    [
+      "import androidx.compose.runtime.Composable",
+      "import androidx.compose.ui.tooling.preview.Preview",
+      "",
+      "@Preview",
+      "@Composable",
+      "fun Broken() {",
+      "    MissingSymbol()",
+      "}",
+    ].join("\n"),
+  );
+
+  expect(await runAndAwaitTerminal(page)).toBe("Compilation failed.");
+  const summary = page.locator("#pg-diagnostics .cp-pg-error");
+  await expect(summary, "compile-error summary").toContainText("MissingSymbol");
+
+  // The summary remains useful to screen readers and to the textarea fallback, but a normal
+  // CodeMirror run also paints the bad line and puts the compiler's message directly beneath it.
+  const inline = page.locator(".cp-pg-inline-error");
+  await expect(inline, "inline compile error").toContainText("MissingSymbol");
+  await expect(page.locator(".cp-pg-line-error"), "highlighted source line").toHaveCount(1);
+});
+
 test("a multi-file snippet compiles as one module and offers every preview it declared", async ({
   page,
 }) => {

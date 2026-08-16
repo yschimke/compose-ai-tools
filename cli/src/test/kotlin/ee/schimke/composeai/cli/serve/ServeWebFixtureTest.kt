@@ -3563,6 +3563,13 @@ class ServeWebFixtureTest {
       playground.contains("d.file") && playground.contains("indexOfFile"),
       "diagnostics name their file and can jump to it",
     )
+    assertTrue(
+      playground.contains("editor.addLineWidget") &&
+        playground.contains("editor.addLineClass") &&
+        playground.contains("editor.markText") &&
+        assetText("playground.css").contains(".cp-pg-inline-error"),
+      "located compiler errors are shown inline beside the source as well as in the summary",
+    )
     // The terminal status stays exactly "Done." — the e2e polls on it, so the preview note lives
     // in its own element rather than being appended to the status text.
     assertTrue(
