@@ -12,22 +12,32 @@ import assert from "node:assert/strict";
 import { flush, resetDom } from "./setup.js";
 import "../src/components/CatalogToolbar.js";
 
+/** The catalog's actions, as the server nests them in the toolbar's toggle group. */
+const ACTIONS = `
+    <div class="cp-catalog-actions">
+      <details class="cp-actions-menu"><summary>⋯</summary></details>
+      <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a><button class="cp-bg-btn">Transparent</button></div>
+    </div>`;
+
 /** A sectioned catalog: the filter lives in the tree's sidebar, not the toolbar. */
 const SECTIONED = `
-  <p class="cp-sub">9 preview(s)</p>
-  <div class="cp-catalog-actions">
-    <details class="cp-actions-menu"><summary>⋯</summary></details>
-    <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a><button class="cp-bg-btn">Transparent</button></div>
+  <div class="cp-catalog-head-row">
+    <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Kit</h1></div>
+    <p class="cp-sub">9 preview(s)</p>
   </div>
   <div class="cp-catalog-tools">
+    <div class="cp-head-toggles">
     <div class="cp-toolbar">
-      <details class="cp-catalog-theme">
+      <details class="cp-theme-menu cp-catalog-theme">
         <summary><span class="cp-toggle-value" id="cp-catalog-theme-value">Light</span></summary>
+        <div class="cp-theme-menu-panel">
+          <span class="cp-theme cp-theme-bar" id="cp-catalog-theme-bar">
+            <button class="cp-theme-btn" data-theme-choice="light" aria-pressed="true">Light</button>
+            <button class="cp-theme-btn" data-theme-choice="dark" aria-pressed="false">Dark</button>
+          </span>
+        </div>
       </details>
-      <span class="cp-theme" id="cp-catalog-theme-bar">
-        <button class="cp-theme-btn" data-theme-choice="light" aria-pressed="true">Light</button>
-        <button class="cp-theme-btn" data-theme-choice="dark" aria-pressed="false">Dark</button>
-      </span>
+    </div>${ACTIONS}
     </div>
   </div>
   <div class="cp-catalog-body">
@@ -39,11 +49,11 @@ const SECTIONED = `
   </div>
   <div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>`;
 
-/** A catalog with one theme: no Theme control, so no `.cp-catalog-tools` at all. */
+/** A catalog with one theme: no Theme control, so the toolbar carries the actions alone. */
 const NO_THEME = `
-  <div class="cp-catalog-actions">
-    <details class="cp-actions-menu"><summary>⋯</summary></details>
-    <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a><button class="cp-bg-btn">Transparent</button></div>
+  <div class="cp-catalog-tools">
+    <div class="cp-head-toggles">${ACTIONS}
+    </div>
   </div>
   <div class="cp-catalog-body">
     <aside class="cp-catalog-menu">
@@ -90,14 +100,10 @@ function row(selector = ".cp-catalog-tools"): string[] {
 describe("<cp-catalog-toolbar>", () => {
     afterEach(() => resetDom());
 
-    it("puts the filter and the actions in the toolbar on a phone", async () => {
+    it("puts the filter in front of the toolbar's menus on a phone", async () => {
         stubBreakpoint(true);
         await mount(SECTIONED);
-        assert.deepEqual(row(), [
-            "cp-toolbar",
-            "cp-searchbar",
-            "cp-catalog-actions",
-        ]);
+        assert.deepEqual(row(), ["cp-searchbar", "cp-head-toggles"]);
     });
 
     it("does not touch the DOM at all above the breakpoint", async () => {
@@ -127,38 +133,33 @@ describe("<cp-catalog-toolbar>", () => {
     it("leaves the served layout alone above the breakpoint", async () => {
         stubBreakpoint(false);
         await mount(SECTIONED);
-        assert.deepEqual(row(), ["cp-toolbar"]);
+        assert.deepEqual(row(), ["cp-head-toggles"]);
         assert.ok(
             document.querySelector(".cp-catalog-menu > .cp-searchbar"),
             "the filter stays in the tree's sidebar",
         );
         assert.ok(
-            document.querySelector(".cp-catalog-body")!.previousElementSibling
-                ?.previousElementSibling?.className === "cp-catalog-actions",
-            "the actions stay above the toolbar",
+            document.querySelector(".cp-catalog-tools .cp-catalog-actions"),
+            "the actions ride in the toolbar at every width",
         );
     });
 
-    it("puts both back exactly where the server had them when the window widens", async () => {
+    it("puts the filter back exactly where the server had it when the window widens", async () => {
         const set = stubBreakpoint(true);
         await mount(SECTIONED);
         set(false);
-        assert.deepEqual(row(), ["cp-toolbar"]);
+        assert.deepEqual(row(), ["cp-head-toggles"]);
         // Position, not merely parent: the filter is the sidebar's FIRST child, above the tree.
         const sidebar = document.querySelector(".cp-catalog-menu")!;
         assert.equal(sidebar.children[0].className, "cp-searchbar");
         assert.equal(sidebar.children[1].className, "cp-tree");
     });
 
-    it("uses the actions row as the bar when the catalog has no Theme control", async () => {
+    it("still fills the toolbar when the catalog has no Theme control", async () => {
         stubBreakpoint(true);
         await mount(NO_THEME);
-        // The filter leads, because there is no Theme pill for it to follow.
-        assert.deepEqual(row(".cp-catalog-actions"), [
-            "cp-searchbar",
-            "cp-actions-menu",
-            "cp-actions-panel",
-        ]);
+        // The `⋯` menu is the toolbar's only pill here, and the filter still leads it.
+        assert.deepEqual(row(), ["cp-searchbar", "cp-head-toggles"]);
     });
 
     it("names the theme in force on the folded pill, and follows it", async () => {
@@ -213,7 +214,7 @@ describe("<cp-catalog-toolbar>", () => {
         menu.open = true;
         (
             document.querySelector(
-                '.cp-theme .cp-theme-btn[data-theme-choice="dark"]',
+                '.cp-theme-menu-panel .cp-theme-btn[data-theme-choice="dark"]',
             ) as HTMLElement
         ).click();
         assert.equal(menu.open, false);
@@ -233,6 +234,35 @@ describe("<cp-catalog-toolbar>", () => {
             ) as HTMLElement
         ).click();
         assert.equal(menu.open, false);
+    });
+
+    it("opens one toolbar menu at a time", async () => {
+        // Two independent `<details>` whose panels are absolutely positioned at the same z-index:
+        // with both open the later actions panel paints over the Theme panel's first rows, and the
+        // theme underneath cannot be clicked. Measured on the real page at 1280px before the fix —
+        // Theme x=1060–1200, actions x=1118–1252, `elementFromPoint` over Theme's first row
+        // answering `cp-bg-btn`.
+        stubBreakpoint(false);
+        await mount(SECTIONED);
+        const theme = document.querySelector(
+            ".cp-catalog-theme",
+        ) as HTMLDetailsElement;
+        const actions = document.querySelector(
+            ".cp-actions-menu",
+        ) as HTMLDetailsElement;
+
+        actions.open = true;
+        actions.dispatchEvent(new Event("toggle"));
+        theme.open = true;
+        theme.dispatchEvent(new Event("toggle"));
+        assert.equal(actions.open, false, "opening Theme puts the ⋯ away");
+        assert.equal(theme.open, true);
+
+        // …and the other way round: neither is the privileged one.
+        actions.open = true;
+        actions.dispatchEvent(new Event("toggle"));
+        assert.equal(theme.open, false, "opening the ⋯ puts Theme away");
+        assert.equal(actions.open, true);
     });
 
     it("does nothing on a page with no toolbar and no actions", async () => {

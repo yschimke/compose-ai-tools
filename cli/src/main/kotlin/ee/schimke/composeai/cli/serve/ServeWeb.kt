@@ -2329,19 +2329,20 @@ $noteBlock        <div class="cp-site-footer-links">
   private fun themePickerHtml(hasBaked: Boolean, declared: List<ServeTheme>): String {
     val builtIns =
       if (hasBaked) listOf("light" to "Light", "dark" to "Dark") else listOf("default" to "Default")
-    val chips = themeChipsHtml(builtIns, declared, indent = "          ")
-    // The same phone menu the header's navigation uses, and the same control the VIEWER's Theme
-    // already is: above 640px the disclosure is `display: none` and the chips lay out as the
-    // wrapping row this toolbar has always shown; below it, the chips are a panel that one pill
-    // opens. A catalog declaring a dozen themes is a dozen chips, and a phone has one row to spend
-    // on the whole toolbar.
+    val chips = themeChipsHtml(builtIns, declared, indent = "            ")
+    // THE VIEWER'S Theme control, not a second one that looks like it. The landing used to lay its
+    // chips out as a wrapping row above 640px and fold them behind a pill only on a phone, so the
+    // same catalog's two pages offered the same choice through two different affordances: a row of
+    // a dozen chips here, one labelled dropdown on the component page. Below the fold that was also
+    // the landing's tallest piece of chrome — a design system declaring a dozen themes spent three
+    // or four rows of the toolbar naming them, on every viewport, whether or not anyone was
+    // switching.
     //
-    // The panel is the disclosure's SIBLING, not its child, which is what makes the two shapes
-    // free: a `<details>` hides its own content when closed, so a panel *inside* it would need the
-    // server to emit `open`, a script to close it before first paint on a phone, and another to
-    // re-resolve it whenever the viewport crossed the breakpoint — three moving parts to arrive at
-    // what `[open] + panel` says in one selector, with no script at all and nothing to go wrong
-    // when script never runs.
+    // So this is `.cp-theme-menu` + `.cp-theme-menu-panel`, the same two classes `viewerPage`
+    // emits, with the same chips from [themeChipsHtml] inside: one pill that names the theme in
+    // force, opening onto a column of full-width rows. All of the panel's styling is already in the
+    // sheet for the viewer, and `<cp-catalog-toolbar>` closes it on a pick exactly as
+    // `<cp-viewer-drawers>` does.
     //
     // The pill's value is seeded with the leading built-in and then mirrored from whichever chip is
     // pressed (`<cp-catalog-toolbar>`), because the choice in force is remembered in `localStorage`
@@ -2350,16 +2351,18 @@ $noteBlock        <div class="cp-site-footer-links">
     val seed = builtIns.first().second
     return """
     <div class="cp-toolbar">
-      <details class="cp-catalog-theme">
+      <details class="cp-theme-menu cp-catalog-theme">
         <summary class="cp-drawer-toggle cp-axis-toggle" aria-controls="cp-catalog-theme-bar">
           <span class="cp-toggle-label">Theme</span>
           <span class="cp-toggle-value" id="cp-catalog-theme-value">$seed</span>
           <span class="cp-theme-caret" aria-hidden="true">▾</span>
         </summary>
+        <div class="cp-theme-menu-panel">
+          <span class="cp-theme cp-theme-bar" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
+            $chips
+          </span>
+        </div>
       </details>
-      <span class="cp-theme" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
-        $chips
-      </span>
     </div>
     """
       .trimIndent()
@@ -6418,11 +6421,10 @@ $noteBlock        <div class="cp-site-footer-links">
       if (hasPreviews) bgPickerHtml("Show the transparent checkerboard behind each preview") else ""
     val catalogActions =
       listOf(actionChips, transparentAction).filter { it.isNotBlank() }.joinToString("\n          ")
-    // …behind the same phone menu as the Theme group beside it (see [themePickerHtml] for why the
-    // panel is the disclosure's sibling): a row of chips above 640px, one `⋯` below. These are the
-    // catalog's *destinations* — the comparison views, the parity view, the playground — plus the
-    // Transparent toggle: worth a row on a laptop, not worth one of the four or five a phone screen
-    // holds before the previews start.
+    // …behind one `⋯` menu beside the Theme pill, at every width. These are the catalog's
+    // *destinations* — the comparison views, the parity view, the playground — plus the Transparent
+    // toggle: things a visitor goes looking for, not things they read on the way past, which is why
+    // they no longer spend a full row of their own above the grid on any viewport.
     val primaryActions =
       catalogActions
         .takeIf { it.isNotBlank() }
@@ -6441,12 +6443,30 @@ $noteBlock        <div class="cp-site-footer-links">
       "\n<div class=\"cp-catalog-download\">" +
         actionChip("$basePath/bundle.zip$q", "download all (.zip)") +
         "</div>\n"
+    // The viewer's identity line, on the landing: name, trust verdict, id and the preview/view
+    // tally on ONE baseline (`.cp-preview-head` does the same three above the render). They all
+    // answer "what am I looking at", and as two stacked blocks with a chip row under them they
+    // answered it across three rows of a fold that is meant to be showing previews.
+    val subLine =
+      "<p class=\"cp-sub\">${previews.size} preview(s)" +
+        (if (systemViews > 0) " · ${formatViews(systemViews)}" else "") +
+        "$liveNote</p>"
     val titleRow =
-      "<div class=\"cp-catalog-title\">" +
+      "<div class=\"cp-catalog-head-row\">" +
+        "<div class=\"cp-catalog-title\">" +
         "<h1 class=\"cp-head cp-catalog-head\">${WebEscaping.htmlEscape(heading)}" +
-        "${compactTrustBadge(trust)}</h1>$catalogId</div>"
+        "${compactTrustBadge(trust)}</h1>$catalogId</div>$subLine</div>"
+    // …and the viewer's control row: the page's controls over what is *shown*, as compact pills at
+    // the trailing edge of one bar (`.cp-head-toggles`, the same class and the same trailing auto
+    // margin the viewer's title row uses), with the filter field taking the width beside them. The
+    // Theme chips and the action chips used to be two rows of their own; behind their pills the
+    // bar is one row on every viewport, and it is the row that sticks.
+    val headToggles =
+      (themeToggle + primaryActions)
+        .takeIf { it.isNotBlank() }
+        ?.let { "<div class=\"cp-head-toggles\">\n$it</div>\n" } ?: ""
     val tools =
-      (themeToggle + searchBox)
+      (searchBox + headToggles)
         .takeIf { it.isNotBlank() }
         ?.let { "<div class=\"cp-catalog-tools\">\n$it</div>\n" } ?: ""
     return document(
@@ -6466,11 +6486,11 @@ $noteBlock        <div class="cp-site-footer-links">
       body =
         """
         $titleRow
-        ${degradeBanner(degradations)}<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
-        $primaryActions$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction
-        <!-- Collapses this page's chrome onto one toolbar row on a phone: the actions and the tree
-             sidebar's filter field move into the sticky toolbar, and back out again above 640px.
-             Renders nothing; `serve.css` hides the tag. -->
+        ${degradeBanner(degradations)}$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction
+        <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
+             into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
+             again above 640px, and the summary tally drops below the grid. Renders nothing;
+             `serve.css` hides the tag. -->
         <cp-catalog-toolbar></cp-catalog-toolbar>
         """
           .trimIndent(),

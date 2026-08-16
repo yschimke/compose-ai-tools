@@ -438,8 +438,17 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-section-count { padding: 4px 10px; border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant); font-weight: 500; }
+/* The landing's identity line, built like the viewer's `.cp-preview-head`: the catalog's name and
+   trust verdict, its id, and the preview/view tally on ONE baseline. They answer the same question
+   ("what am I looking at"), and as a title block with a summary paragraph under it they answered it
+   twice over a row the fold could be spending on previews. `.cp-catalog-title` stays its own box
+   inside the row because the phone rule below hides IT — the bar already names the catalog there —
+   while the tally moves below the grid instead. */
+.cp-catalog-head-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 14px;
+  margin: 0 0 10px; }
+.cp-catalog-head-row .cp-sub { margin: 0; }
 .cp-catalog-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px;
-  margin: 0 0 4px; }
+  margin: 0; }
 .cp-catalog-title .cp-head, .cp-catalog-title .cp-catalog-id { margin: 0; }
 .cp-catalog-id { font-family: var(--md-sys-typescale-mono-font); }
 .cp-catalog-head { font-size: var(--md-sys-typescale-headline-small-size);
@@ -562,20 +571,34 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
 .cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
-/* The catalog's own actions — download, the comparison views, the parity view, the playground.
-   M3 *assist chips*: outlined, 32dp, label-large, one per destination. They used to be a run of
-   0.75rem grey text links inside the summary sentence, which is where they went unnoticed; a chip
-   row states plainly that these are the places you can go from here, and matches the toggle chips
-   in `.cp-catalog-tools` directly beneath. */
-/* The landing's Theme group and its action chips each gain the same pair the header bar has: a
-   `<details>` holding only its button, and the chips beside it. At this size the button is removed
-   and the chips are the rows they have always been — `display: contents` on the actions panel so
-   its chips stay `.cp-catalog-actions`'s own flex items rather than gaining a wrapper's box. Both
-   become menus on the phone bar at the bottom of this sheet. */
-.cp-catalog-theme, .cp-actions-menu { display: none; }
-.cp-actions-panel { display: contents; }
-.cp-catalog-actions { margin: 0 0 18px; display: flex; align-items: center; flex-wrap: wrap;
-  gap: 8px; }
+/* The catalog's own actions — the comparison views, the parity view, the playground, Transparent.
+   M3 *assist chips*: outlined, 32dp, label-large, one per destination — inside a MENU, at every
+   width, the way the Theme chips beside them now are. They spent years as a row of their own above
+   the toolbar, which put two chip rows and a tally between a catalog's heading and its first card;
+   they are destinations a visitor goes looking for, not text read on the way past, so they live
+   behind the `⋯` pill and the fold they were costing goes back to the previews.
+   `position: relative` is load-bearing in both shapes this row takes — nested in the sticky toolbar
+   beside the Theme pill, and standing alone when a catalog publishes no Theme control at all —
+   because it is what the `⋯` panel measures from. */
+.cp-catalog-actions { position: relative; margin: 0; display: flex; align-items: center;
+  flex-wrap: wrap; gap: 8px; }
+.cp-actions-menu > summary { display: inline-flex; list-style: none; }
+.cp-actions-menu > summary::-webkit-details-marker { display: none; }
+.cp-actions-menu[open] > summary { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
+/* The `⋯` is the trailing control on its row, so its panel hangs off the right edge — the same
+   M3 menu surface, offset and elevation `.cp-theme-menu-panel` uses for the Theme pill next to it.
+   A menu is a column of full-width rows, not a wrapping chip row: each destination gets its own
+   line and its own hit target. */
+.cp-actions-panel { display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+  width: max-content; max-width: min(320px, calc(100vw - 28px)); padding: 8px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level2); }
+.cp-actions-menu[open] + .cp-actions-panel { display: flex; flex-direction: column;
+  align-items: stretch; gap: 2px; }
+.cp-actions-panel .cp-action-chip, .cp-actions-panel .cp-bg-btn {
+  width: 100%; min-height: 40px; justify-content: flex-start; text-align: left; }
 .cp-catalog-download { margin: 30px 0 0; }
 .cp-action-chip { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -2272,13 +2295,14 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      design system that publishes a dozen), the filter field, and on a sectioned catalog the whole
      navigation tree. Together they put the first preview 500–700px down a 800px screen.
 
-     They become ONE row: `[Theme ▾] [Filter previews…] [⋯]`. The two chip groups take the same
-     disclosure-plus-sibling-panel the header bar uses, so no script decides whether either is a
-     menu; `<cp-catalog-toolbar>` moves the actions and the filter field — which belongs to the
-     tree's sidebar whenever there is a tree — into the sticky toolbar, in the DOM, so tab order
-     still matches what is on screen. */
+     They become ONE row: `[Filter previews…] [Theme ▾] [⋯]`. The two chip groups are menus at every
+     width now (see `.cp-theme-menu` and `.cp-actions-panel` above), so all that is left here is the
+     filter field — which belongs to the tree's sidebar whenever there is a tree —
+     which `<cp-catalog-toolbar>` moves into the sticky toolbar, in the DOM, so tab order still
+     matches what is on screen. */
   .cp-catalog-tools, .cp-catalog-actions { flex-wrap: nowrap; gap: 8px; }
-  .cp-catalog-tools .cp-toolbar { flex: none; min-width: 0; position: relative; }
+  .cp-catalog-tools .cp-toolbar { flex: none; min-width: 0; }
+  .cp-catalog-tools .cp-head-toggles { flex: none; }
   .cp-catalog-tools .cp-searchbar, .cp-catalog-actions .cp-searchbar {
     flex: 1 1 auto; min-width: 0; }
   /* `min-width: 0` on the FIELD as well as its wrapper, and a zero basis. A flex item's automatic
@@ -2287,47 +2311,38 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      the field kept its 260px basis, overflowed and put a horizontal scrollbar under the whole
      page. The wrapper shrinking does not make its contents shrink. */
   .cp-search { min-height: 40px; padding: 8px 14px; min-width: 0; flex-basis: 0; }
-  /* The actions row is `position: relative` in BOTH shapes it takes: nested in the sticky toolbar
-     when the catalog has a Theme control, and standing on its own when it does not — a catalog
-     with a single theme publishes no Theme control, so there this row IS the toolbar. Scoping this
-     under `.cp-catalog-tools` left that second (and commoner) shape with no positioned ancestor at
-     all, so its `⋯` panel measured from the initial containing block and opened past the bottom of
-     the page rather than under its button. */
-  .cp-catalog-actions { position: relative; }
   .cp-catalog-tools .cp-catalog-actions { flex: none; margin: 0; }
-  /* Each group is a menu here: the summary is the control, and the chips beside it are the panel
-     it opens, on an M3 menu surface under the row. */
-  .cp-catalog-theme, .cp-actions-menu { display: block; }
-  .cp-catalog-theme > summary, .cp-actions-menu > summary { display: inline-flex; list-style: none; }
-  .cp-catalog-theme > summary::-webkit-details-marker,
-  .cp-actions-menu > summary::-webkit-details-marker { display: none; }
-  .cp-catalog-theme + .cp-theme, .cp-actions-panel {
-    display: none; position: absolute; top: calc(100% + 6px); z-index: 50;
-    width: max-content; max-width: min(280px, calc(100vw - 28px)); padding: 8px;
-    border-radius: var(--md-sys-shape-corner-medium);
-    background: var(--md-sys-color-surface-container-high);
-    box-shadow: var(--md-sys-elevation-level2); }
-  /* Each panel hangs off the edge its button is nearest, because `max-width` caps how wide a panel
-     is and says nothing about where it starts: the Theme pill leads the row, so a right-anchored
-     panel grew leftwards out of a ~150px box and the first characters of every theme name fell off
-     the screen (measured at `left: -9px` with this catalog's short labels alone, and a qualified
-     `Group · Name` is far wider). The `⋯` is last, so that one is right-anchored. */
-  .cp-catalog-theme + .cp-theme { left: 0; }
-  .cp-actions-panel { right: 0; }
-  /* A menu is a column of full-width rows, not a wrapping chip row: the panel is the only place
-     these chips appear on a phone, so each gets its own line and its own hit target. */
-  .cp-catalog-theme[open] + .cp-theme, .cp-actions-menu[open] + .cp-actions-panel {
-    display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
-  .cp-catalog-theme + .cp-theme .cp-theme-btn,
-  .cp-actions-panel .cp-action-chip, .cp-actions-panel .cp-bg-btn {
-    width: 100%; min-height: 40px; justify-content: flex-start; text-align: left; }
+  /* Both of the toolbar's panels are capped narrower than the 320/360px they take on a laptop:
+     `max-width` caps how wide a panel is and says nothing about where it starts, so an uncapped one
+     grows past the screen and takes the first characters of every label with it. Scoped to the
+     landing's two — the viewer's own Theme menu opens on a page with different neighbours and keeps
+     its own cap. */
+  .cp-catalog-theme .cp-theme-menu-panel, .cp-actions-panel {
+    max-width: min(280px, calc(100vw - 28px)); }
+  /* …and the cap alone is not enough for the THEME panel, because it is not the last control on the
+     row: the `⋯` and the gap put its anchor ~48px inside the right edge, so a 280px panel
+     right-anchored to the pill starts at -14px on a 320px screen and the first characters of a
+     qualified `Group · Name` fall off the left of the display. (Measured: `left: -14`, panel 278px
+     wide, viewport 320.) The `⋯` panel has no such problem — it IS the last control, so its right
+     edge is the row's.
+     Dropping `position: relative` here hands the panel to the sticky toolbar, which spans the whole
+     row, and `left: 0` then anchors it to the row's left edge instead of the pill's. The cap still
+     keeps the right edge on screen, so the panel sits inside the viewport at both ends whatever a
+     catalog calls its themes. */
+  .cp-catalog-theme { position: static; }
+  .cp-catalog-theme .cp-theme-menu-panel { left: 0; right: auto; }
   /* The heading is the catalog's name and the bar three rows above it is already the catalog's
      name. Hidden rather than removed — `clip` keeps it in the accessibility tree, so the document
      still has its `<h1>` and the page still announces what it is. Only when the bar really is
      carrying that name: a plain module names itself nowhere else. */
   html:has(.cp-site-catalog) .cp-catalog-title { position: absolute; width: 1px; height: 1px;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* The clipped title leaves the flow, and `<cp-catalog-toolbar>` takes the tally below the grid,
+     so the row that holds them both is left with nothing to show and no reason to keep its own
+     bottom margin above the toolbar. */
+  html:has(.cp-site-catalog) .cp-catalog-head-row { margin: 0; }
   .cp-sub { margin-bottom: 10px; }
+  .cp-catalog-head-row .cp-sub { margin-bottom: 10px; }
   .cp-catalog-menu { margin-bottom: 14px; }
   /* ── The navigation tree, as one scrolling strip ─────────────────────────────────────────────
      Above 960px the tree is a sidebar standing beside the grid; below it, it is a full-width

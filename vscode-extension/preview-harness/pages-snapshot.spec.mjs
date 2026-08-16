@@ -407,6 +407,47 @@ async function zoomPercent(page) {
 // sit anywhere in a fixture's state list without shifting the states after it.
 const PHONE_VIEWPORT = { width: 412, height: 800 };
 
+/**
+ * Put the catalog landing's two toolbar menus back to closed.
+ *
+ * Every state for a fixture runs in order against the SAME loaded page (see the runner's loop
+ * below), and a `<details>` a state opened is still open for the state after it. That costs twice:
+ * a later shot captures a panel it never asked for, and a later state that TOGGLES the same
+ * summary — `mobile-theme` clicks `.cp-catalog-theme > summary` — closes what it meant to open and
+ * then waits forever for `[open]`.
+ *
+ * So a state that opens one of these sets the state it wants rather than toggling into it: reset
+ * first, then open the one it is about. Written as an attribute write, not a click, because a
+ * click on an already-closed summary would open it.
+ */
+async function closeLandingMenus(page) {
+    await page.evaluate(() => {
+        for (const menu of document.querySelectorAll(
+            ".cp-catalog-theme, .cp-actions-menu",
+        ))
+            menu.removeAttribute("open");
+    });
+}
+
+/**
+ * Open the landing's Theme menu — the landing's `openThemeBar`, and idempotent for the same reason.
+ *
+ * The landing's theme chips used to be a bar standing open in the toolbar, so a state that wanted
+ * one just clicked it. They are a dropdown now (the viewer's), which makes every such click a click
+ * on a resolvable, invisible, unclickable element — a sixty-second timeout each. Worse, the state
+ * left behind by the state before decides it: `<cp-catalog-toolbar>` closes this menu on a pick, so
+ * back-to-back chip states would find it open, then closed.
+ *
+ * So the chip states ask for it open and do not care what came before, exactly as the viewer's
+ * equivalent does. Through the summary rather than by setting `open`, so it keeps testing the
+ * control a reader actually uses.
+ */
+async function openCatalogThemeBar(page) {
+    const bar = page.locator("#cp-catalog-theme-bar");
+    if ((await bar.count()) && (await bar.isHidden()))
+        await page.click(".cp-catalog-theme > summary");
+}
+
 const FIXTURE_STATES = [
     {
         // A component under the POINTER. The sheet carries no resting marks, so this is the whole
@@ -1225,6 +1266,7 @@ const FIXTURE_STATES = [
             const wantDark = await page.evaluate(
                 () => !window.matchMedia("(prefers-color-scheme: dark)").matches,
             );
+            await openCatalogThemeBar(page);
             await page.click(`[data-theme-choice="${wantDark ? "dark" : "light"}"]`);
             await page.waitForFunction(
                 (cls) => document.documentElement.classList.contains(cls),
@@ -1363,6 +1405,40 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The landing's Theme menu OPEN on a laptop. It is the viewer's `.cp-theme-menu` dropdown
+        // now, not a wrapping row of chips — the same control, on both of a catalog's pages — so
+        // the thing worth diffing is what one click reveals: a column of full-width rows on an M3
+        // menu surface, right-anchored under the pill that names the theme in force. Closed, this
+        // page is a title line and a one-row toolbar, and no shot of it would say whether the
+        // chips this replaced are still reachable.
+        fixture: "serve-landing-declared-themes",
+        suffix: "theme-menu",
+        apply: async (page) => {
+            await closeLandingMenus(page);
+            await page.click(".cp-catalog-theme > summary");
+            await page.waitForSelector(
+                ".cp-catalog-theme[open] .cp-theme-menu-panel",
+            );
+            await page.mouse.move(0, 0);
+        },
+    },
+    {
+        // …and the `⋯` beside it, which took the catalog's destinations — the comparison views,
+        // the parity view, the playground, Transparent — off a chip row of their own and into a
+        // menu at every width. Same reason: closed, they are one pill.
+        fixture: "serve-landing-declared-themes",
+        suffix: "actions-menu",
+        apply: async (page) => {
+            // Also what puts the Theme menu above away again.
+            await closeLandingMenus(page);
+            await page.click(".cp-actions-menu > summary");
+            await page.waitForSelector(
+                ".cp-actions-menu[open] + .cp-actions-panel",
+            );
+            await page.mouse.move(0, 0);
+        },
+    },
+    {
         // The catalog landing ON A PHONE — the shot that says whether opening a catalog leads with
         // its components. Everything between the heading and the first card is chrome, and the two
         // chip GROUPS in that gap (the catalog's actions, and one Theme chip per declared theme)
@@ -1372,7 +1448,11 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-declared-themes",
         suffix: "mobile",
         viewport: PHONE_VIEWPORT,
-        apply: async () => {},
+        // "Untouched page" is a claim about state, not about doing nothing: the two states above
+        // leave a menu open, and this is the shot that has to be the RESTING catalog. It is also
+        // what leaves `.cp-catalog-theme` closed for `mobile-theme` further down, which opens it
+        // by clicking its summary and would otherwise close it instead.
+        apply: closeLandingMenus,
     },
     {
         // …and that bar's `⋮` OPEN. The phone bar is one row because the navigation — Catalogs,
@@ -1405,7 +1485,7 @@ const FIXTURE_STATES = [
             // The state above left the bar's own menu open; they are two menus over one page.
             await page.click("#cp-site-menu > summary");
             await page.click(".cp-catalog-theme > summary");
-            await page.waitForSelector(".cp-catalog-theme[open] + .cp-theme");
+            await page.waitForSelector(".cp-catalog-theme[open] .cp-theme-menu-panel");
             await page.mouse.move(0, 0);
         },
     },
@@ -1417,6 +1497,11 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-declared-themes",
         suffix: "daemon-connected",
         apply: async (page) => {
+            // The state before this one (`mobile-theme`) leaves the Theme menu open, and the
+            // runner restores the viewport between states but not the DOM. This shot is about a
+            // pill in the header, so it takes the page back to resting first — and so do the
+            // daemon/theme states after it, which inherit from here.
+            await closeLandingMenus(page);
             await page.route("**/api/daemons*", (route) =>
                 route.fulfill({
                     status: 200,
@@ -1489,6 +1574,7 @@ const FIXTURE_STATES = [
             await page.evaluate(() => {
                 themeRenderRetries = 0;
             });
+            await openCatalogThemeBar(page);
             await page.getByRole("button", { name: "Brand Light" }).click();
             await page.waitForSelector(".cp-theme-render-error");
         },
@@ -1515,6 +1601,7 @@ const FIXTURE_STATES = [
                 }
                 return new Promise(() => {});
             });
+            await openCatalogThemeBar(page);
             await page.getByRole("button", { name: "Brand Dark" }).click();
             await page.waitForSelector(".cp-reloading");
         },
@@ -1678,6 +1765,7 @@ const FIXTURE_STATES = [
                     body: "NotFoundException: File res/drawable/ic_play.xml",
                 }),
             );
+            await openCatalogThemeBar(page);
             await page.click('[data-theme-choice^="theme:"]');
             await page.waitForSelector(".cp-theme-error");
             // Hold until the workers have settled, so the shot isn't racing a spinner. A terminal
@@ -2202,6 +2290,8 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
     await page.goto(
         "/preview-harness/fixtures/pages/serve-landing-declared-themes.html",
     );
+    // The chips are behind the landing's Theme dropdown, the same as the viewer's.
+    await openCatalogThemeBar(page);
     await page.getByRole("button", { name: "Brand Light" }).click();
 
     await expect.poll(() => completed, { timeout: 10_000 }).toBe(3);

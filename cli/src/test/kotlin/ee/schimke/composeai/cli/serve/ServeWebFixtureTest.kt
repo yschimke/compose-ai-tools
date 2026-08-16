@@ -3817,7 +3817,7 @@ class ServeWebFixtureTest {
     // component collapses into ONE swap card carrying both themes' baked render; a plain component
     // module shows no toggle.
     assertTrue(
-      landingThemed.contains("class=\"cp-theme\""),
+      landingThemed.contains("id=\"cp-catalog-theme-bar\""),
       "themed catalog shows the theme toggle",
     )
     assertTrue(
@@ -3863,7 +3863,7 @@ class ServeWebFixtureTest {
       "syncBg only honors the Theme choice when the control is usable (not a disabled static select)",
     )
     assertFalse(
-      landing.contains("class=\"cp-theme\""),
+      landing.contains("id=\"cp-catalog-theme-bar\""),
       "a module without theme variants shows no toggle",
     )
     // The search box filters the grid and appears for every non-empty module — including the
@@ -5622,7 +5622,7 @@ class ServeWebFixtureTest {
       )
     val pairedHtml = ServeWeb.landingPage("compose-m3", paired, token)
     assertTrue(
-      pairedHtml.contains("class=\"cp-theme\""),
+      pairedHtml.contains("id=\"cp-catalog-theme-bar\""),
       "a theme-paired catalog shows the Light/Dark toggle",
     )
     // Two components × two themes → two swap cards, each carrying both themes' render.
@@ -5652,7 +5652,7 @@ class ServeWebFixtureTest {
       )
     assertFalse(
       ServeWeb.landingPage("meshcore-mobile", appCatalog, token, basePath = "/meshcore-mobile")
-        .contains("class=\"cp-theme\""),
+        .contains("id=\"cp-catalog-theme-bar\""),
       "an app catalog with no light/dark pairs shows no Light/Dark toggle",
     )
 
@@ -5665,7 +5665,7 @@ class ServeWebFixtureTest {
         ServePreview("b__ideal__default__dark", "B"),
       )
     assertFalse(
-      ServeWeb.landingPage("x", darkOnly, token).contains("class=\"cp-theme\""),
+      ServeWeb.landingPage("x", darkOnly, token).contains("id=\"cp-catalog-theme-bar\""),
       "a catalog with only one theme side shows no toggle",
     )
   }
