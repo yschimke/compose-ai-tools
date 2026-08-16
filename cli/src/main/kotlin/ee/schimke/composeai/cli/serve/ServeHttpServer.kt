@@ -5472,11 +5472,10 @@ class ServeHttpServer(
     // thing `uiMode` can mean for an already-captured document, and without it a dark request would
     // silently render the light branch.
     val theme =
-      if (call.request.queryParameters["uiMode"]?.lowercase() == "dark") {
-        RcJvmServerRenderer.RenderTheme.DARK
-      } else {
-        RcJvmServerRenderer.RenderTheme.LIGHT
-      }
+      cmpJvmRenderTheme(
+        call.request.queryParameters["uiMode"],
+        renderHost.previews.firstOrNull { it.id == previewId }?.uiMode ?: 0,
+      )
     val result =
       withContext(Dispatchers.IO) {
         if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
@@ -6101,6 +6100,25 @@ class ServeHttpServer(
   }
 
   companion object {
+    private const val UI_MODE_NIGHT_MASK = 0x30
+    private const val UI_MODE_NIGHT_YES = 0x20
+
+    /** Resolve an explicit cmp-jvm override, falling back to the preview's baked mode. */
+    internal fun cmpJvmRenderTheme(
+      requestedUiMode: String?,
+      bakedUiMode: Int,
+    ): RcJvmServerRenderer.RenderTheme =
+      when (requestedUiMode?.lowercase()) {
+        "dark" -> RcJvmServerRenderer.RenderTheme.DARK
+        "light" -> RcJvmServerRenderer.RenderTheme.LIGHT
+        else ->
+          if (bakedUiMode and UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES) {
+            RcJvmServerRenderer.RenderTheme.DARK
+          } else {
+            RcJvmServerRenderer.RenderTheme.LIGHT
+          }
+      }
+
     /**
      * How many sections one page contributes to the sidebar tree. Above the number of grouping
      * nodes on the kit's densest sheet, and far below anything that would make the Pages pane the
