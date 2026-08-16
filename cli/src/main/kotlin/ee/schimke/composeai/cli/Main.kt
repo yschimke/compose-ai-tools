@@ -24,6 +24,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "profile" to { a -> ProfileCommand(a).run() },
     "doctor" to { a -> DoctorCommand(a).run() },
     "devices" to { a -> DevicesCommand(a).run() },
+    "browse" to { a -> BrowseCommand(a).run() },
     "serve" to { a -> ServeCommand(a).run() },
     "share-preview" to { a -> SharePreviewCommand(a).run() },
     "bundle" to { a -> BundleCommand(a).run() },
@@ -114,6 +115,7 @@ private fun printUsage(full: Boolean = false) {
     Usage: compose-preview [options] <command> [options]
 
     Core commands:
+      browse           Discover @Previews and open the streamlined component browser
       render           Render every @Preview to PNG; --output copies one match to disk
       show             Discover + render previews; print id, path, sha256, changed flag
       list             List discovered previews
@@ -190,6 +192,9 @@ private fun printFullUsage() {
                        `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
+      browse           Discover local @Previews and serve the streamlined component browser.
+                       Implies local discovery and hides renderer, comparison, history and
+                       administration tooling. Use --module when several modules have previews.
       serve            Start a local HTTP server that renders one module's previews on demand and
                        serves them as PNGs with overrides, so you can open or share a network-local
                        link to a specific preview. Read-only; loopback by default, --lan to expose.

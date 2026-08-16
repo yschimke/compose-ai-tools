@@ -48,7 +48,13 @@ project — **no build edits required**:
 
 ```sh
 compose-preview render    # render every @Preview to PNG
+compose-preview browse    # open the streamlined component browser
 ```
+
+`browse` includes every preview-bearing module in one catalog. It automatically builds and uses a
+compatible CMP Wasm browser app (including the common `:shared:ui` → `:webApp` split), while
+JVM/Android-dependent components retain their baked preview and source-code experience. Use
+`--module :app` only when you deliberately want to narrow the catalog.
 
 The CLI injects itself into your build at runtime, so projects that already
 apply `com.android.application` / `com.android.library` /

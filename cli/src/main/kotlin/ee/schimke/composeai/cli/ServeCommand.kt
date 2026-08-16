@@ -74,7 +74,9 @@ import ee.schimke.composeai.cli.serve.openIsolatedSharedDaemonReplica
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
+import java.awt.Desktop
 import java.io.File
+import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -94,7 +96,7 @@ import okio.Path.Companion.toPath
  * The server is multi-client (stateless HTTP fronting one shared, serialised render session) and
  * serves the module's whole preview set, so switching previews is just navigation.
  */
-class ServeCommand(args: List<String>) : Command(args) {
+class ServeCommand(args: List<String>, private val browseProject: Boolean = false) : Command(args) {
 
   /**
    * `serve` is the one command that turns a `@PreviewParameter` fan-out into addressable row ids
@@ -267,6 +269,16 @@ class ServeCommand(args: List<String>) : Command(args) {
    * capped + SSRF-gated. Off by default so a normal `serve` stays token-gated.
    */
   private val public: Boolean = "--public" in args
+
+  /**
+   * Streamlined, Storybook-like presentation. The routes and render products stay the same, but the
+   * HTML pages expose only catalog browsing, visual variants, usage source and the small set of
+   * controls useful while evaluating a component.
+   */
+  private val componentBrowser: Boolean = "--component-browser" in args
+
+  /** Internal convenience used by [BrowseCommand]; full `serve` keeps its print-only behaviour. */
+  private val openBrowser: Boolean = "--open-browser" in args
 
   /**
    * SSRF allowlist for `POST /bundles/{name}?url=` fetches: comma-separated hostnames the server
@@ -910,6 +922,10 @@ class ServeCommand(args: List<String>) : Command(args) {
       System.err.println("serve: no previews matched (--id/--filter excluded them all).")
       exitProcess(3)
     }
+    if (browseProject && exportPath == null) {
+      runProjectBrowser(servable, outcome.manifests)
+      return
+    }
     if (servable.size > 1) {
       System.err.println(
         "serve: ${servable.size} modules discovered; a server hosts one module. " +
@@ -1069,6 +1085,98 @@ class ServeCommand(args: List<String>) : Command(args) {
           }
         }
       },
+    )
+  }
+
+  /**
+   * Browse every preview-bearing module behind one component-browser front door. A failed daemon
+   * only removes that module; the other valid modules remain useful. This intentionally stays out
+   * of the full `serve` path, whose revision/export/catalog options still describe one module.
+   */
+  private fun runProjectBrowser(
+    servable: List<Pair<PreviewModule, List<ServePreview>>>,
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+  ) {
+    val registry = ServeSessionRegistry(open = ::openHost)
+    val opened = mutableListOf<Pair<PreviewModule, List<ServePreview>>>()
+
+    servable.forEach { (module, previews) ->
+      if (!runDaemonStart(module)) {
+        System.err.println(
+          "browse: ${module.gradlePath} could not start its preview daemon — skipping it."
+        )
+        return@forEach
+      }
+      val descriptor = File(module.projectDir, "build/compose-previews/daemon-launch.json")
+      if (!descriptor.isFile) {
+        System.err.println(
+          "browse: ${module.gradlePath} produced no daemon-launch.json — skipping it."
+        )
+        return@forEach
+      }
+      val manifest =
+        manifests.first { (candidate, _) -> candidate.gradlePath == module.gradlePath }.second
+      val declaredThemes = declaredThemesFromPreviews(manifest.previews)
+      val host =
+        try {
+          ServeRenderHost.open(
+            descriptorPath = descriptor,
+            workspaceRoot = module.projectDir,
+            workspaceName = module.projectDir.name,
+            previews = previews,
+            label = module.gradlePath,
+            declaredThemes = declaredThemes,
+            onLog = { System.err.println("[daemon browse ${module.gradlePath}] $it") },
+          )
+        } catch (e: RenderSessionException) {
+          System.err.println(
+            "browse: ${module.gradlePath} failed to open its render session (${e.message}) — skipping it."
+          )
+          return@forEach
+        }
+      registry.register(
+        module.gradlePath,
+        ServeSessionState(
+          descriptor = descriptor,
+          workspaceRoot = module.projectDir,
+          workspaceName = module.projectDir.name,
+          previews = previews,
+          label = module.gradlePath,
+          declaredThemes = declaredThemes,
+        ),
+        host = host,
+      )
+      opened += module to previews
+    }
+
+    if (opened.isEmpty()) {
+      System.err.println("browse: no preview module could start a render session.")
+      exitProcess(2)
+    }
+
+    val wasmCatalogs = mergedWasmCatalogs(null)
+    automaticWasmCatalogs(opened.map { it.first }).forEach { (module, dir) ->
+      // An advanced explicit --wasm-dir remains an escape hatch, and wins when supplied.
+      wasmCatalogs.putIfAbsent(module, dir)
+    }
+    if (wasmCatalogs.isNotEmpty()) {
+      System.err.println("browse: in-browser CMP Wasm for: ${wasmCatalogs.keys.joinToString(", ")}")
+    }
+
+    val first = opened.first()
+    bringUpServer(
+      registry = registry,
+      token = tokenOverride ?: ServeUrls.generateToken(),
+      defaultSessionId = first.first.gradlePath,
+      bundleStore = null,
+      wasmCatalogs = wasmCatalogs,
+      bannerLabel = "${opened.size} component modules",
+      bannerPreviewCount = opened.sumOf { it.second.size },
+      mdnsModuleLabel = null,
+      mdnsPreviewIds = null,
+      closeables = emptyList(),
+      catalogLoads = null,
+      localCatalogSessions = opened.map { it.first.gradlePath },
     )
   }
 
@@ -2055,6 +2163,127 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
+   * Find conventional executable CMP/Wasm browser projects and associate them with the preview
+   * modules they depend on. This covers the usual split (`:shared:ui` plus `:webApp`) while also
+   * supporting a preview module that owns its own Wasm executable. Missing distributions are built
+   * with the standard Kotlin task; failure is deliberately non-fatal because snapshots remain a
+   * complete degraded browser.
+   */
+  private fun automaticWasmCatalogs(modules: List<PreviewModule>): Map<String, File> {
+    val root = findProjectRoot() ?: return emptyMap()
+    val projects = discoverWasmProjects(root)
+    if (projects.isEmpty()) return emptyMap()
+
+    val assignments = modules.mapNotNull { module ->
+      val directMatches = projects.filter { it.supports(module) }
+      // Convention plugins can hide the dependency declaration from this project's build script.
+      // A one-preview-module / one-Wasm-app build is still unambiguous, so keep that common shape
+      // zero-config too.
+      val matches =
+        if (directMatches.isEmpty() && modules.size == 1 && projects.size == 1) projects
+        else directMatches
+      val selected =
+        matches
+          .sortedWith(
+            compareByDescending<AutomaticWasmProject> { it.distribution() != null }
+              .thenBy { it.gradlePath }
+          )
+          .firstOrNull() ?: return@mapNotNull null
+      if (matches.size > 1) {
+        System.err.println(
+          "browse: several Wasm apps depend on ${module.gradlePath}; using ${selected.gradlePath}."
+        )
+      }
+      module.gradlePath to selected
+    }
+
+    assignments
+      .map { it.second }
+      .distinctBy { it.gradlePath }
+      .filter { it.distribution() == null }
+      .forEach { project ->
+        System.err.println("browse: building CMP Wasm app ${project.gradlePath}…")
+        var ok = false
+        withGradle { gradle ->
+          ok =
+            runGradle(
+              gradle,
+              ":${project.gradlePath}:wasmJsBrowserDistribution",
+              arguments = gradleArgsWithForce(),
+            )
+        }
+        if (!ok) {
+          System.err.println(
+            "browse: ${project.gradlePath} has no usable Wasm browser distribution; using snapshots."
+          )
+        }
+      }
+
+    return assignments
+      .mapNotNull { (module, project) -> project.distribution()?.let { module to it } }
+      .toMap()
+  }
+
+  internal data class AutomaticWasmProject(
+    val gradlePath: String,
+    val projectDir: File,
+    val buildScript: String,
+  ) {
+    fun supports(module: PreviewModule): Boolean {
+      if (projectDir.canonicalFile == module.projectDir.canonicalFile) return true
+      val path = module.gradlePath.removePrefix(":")
+      val colonPath = ":$path"
+      val typeSafeAccessor =
+        "projects." +
+          path.split(':').joinToString(".") { segment ->
+            segment.split('-', '_').let { words ->
+              words.first() +
+                words.drop(1).joinToString("") { word -> word.replaceFirstChar { it.uppercase() } }
+            }
+          }
+      return buildScript.contains("project(\"$colonPath\")") ||
+        buildScript.contains("project('$colonPath')") ||
+        buildScript.contains(typeSafeAccessor) ||
+        Regex("project\\s*\\(\\s*path\\s*=\\s*[\\\"']${Regex.escape(colonPath)}[\\\"']")
+          .containsMatchIn(buildScript)
+    }
+
+    fun distribution(): File? =
+      listOf(
+          File(projectDir, "build/dist/wasmJs/productionExecutable"),
+          File(projectDir, "build/wasmDist"),
+          File(projectDir, "build/dist/wasmJs/developmentExecutable"),
+        )
+        .firstOrNull { File(it, "index.html").isFile }
+  }
+
+  internal fun discoverWasmProjects(root: File): List<AutomaticWasmProject> =
+    root
+      .walkTopDown()
+      .onEnter { it == root || (it.name != "build" && it.name != ".gradle" && it.name != ".git") }
+      .filter { it.isFile && (it.name == "build.gradle.kts" || it.name == "build.gradle") }
+      .mapNotNull { script ->
+        val text = runCatching { script.readText() }.getOrNull() ?: return@mapNotNull null
+        val dir = script.parentFile
+        val hasDistribution =
+          listOf(
+              File(dir, "build/dist/wasmJs/productionExecutable/index.html"),
+              File(dir, "build/wasmDist/index.html"),
+              File(dir, "build/dist/wasmJs/developmentExecutable/index.html"),
+            )
+            .any { it.isFile }
+        if (
+          !hasDistribution && (!text.contains("wasmJs") || !text.contains("binaries.executable"))
+        ) {
+          return@mapNotNull null
+        }
+        val relative = dir.relativeTo(root).invariantSeparatorsPath
+        val path = relative.split('/').filter { it.isNotEmpty() }.joinToString(":")
+        if (path.isEmpty()) null else AutomaticWasmProject(path, dir, text)
+      }
+      .toList()
+
+  /**
    * Construct the [ServeHttpServer], start it, advertise over mDNS (when [mdnsPreviewIds] is
    * non-null and the bind is exposed), print the banner, and block until shutdown. Shared by the
    * module-backed [run] and the module-less [runBundleServer]. [closeables] are extra resources
@@ -2073,6 +2302,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     mdnsPreviewIds: List<String>?,
     closeables: List<AutoCloseable?>,
     catalogLoads: CatalogLoadTracker?,
+    /** Local project sessions to list on the component-browser front door. */
+    localCatalogSessions: List<String> = emptyList(),
     /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
     catalogStore: ServeCatalogStore? = null,
     /** Immediate branch-head check used by the Refresh control on catalog landing pages. */
@@ -2083,8 +2314,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     onStarted: () -> Unit = {},
   ) {
     val configuredCatalogs =
-      catalogLoads?.snapshot()?.filter { it.config.listed }?.map { it.config.system }
-        ?: registeredCatalogs.toList()
+      localCatalogSessions +
+        (catalogLoads?.snapshot()?.filter { it.config.listed }?.map { it.config.system }
+          ?: registeredCatalogs.toList())
     val configuredApps =
       catalogLoads?.snapshot()?.filter { !it.config.listed }?.map { it.config.system }
         ?: registeredUnlistedCatalogs.toList()
@@ -2163,6 +2395,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         defaultSessionId = defaultSessionId,
         bundleStore = bundleStore,
         isPublic = public,
+        componentBrowser = componentBrowser,
         wasmCatalogs = wasmCatalogs,
         rcPlayerWasmDir = rcPlayerWasmDir,
         // Preserve the CONFIGURED set, not only startup successes. Failed rows then stay visible on
@@ -2258,9 +2491,29 @@ class ServeCommand(args: List<String>) : Command(args) {
     server.start()
     onStarted()
     printBanner(bannerLabel, server.port, token, bannerPreviewCount)
+    if (openBrowser) openBrowser(server.port, token)
     val watchdog = if (exitWhenIdle) startIdleWatchdog(registry, done) else null
     done.await()
     watchdog?.shutdownNow()
+  }
+
+  private fun openBrowser(port: Int, token: String) {
+    val localHost =
+      if (ServeUrls.isExposed(host) || host == ServeUrls.LOOPBACK) ServeUrls.LOOPBACK else host
+    val url =
+      if (public) "${ServeUrls.origin(localHost, port)}/"
+      else ServeUrls.landingUrl(ServeUrls.origin(localHost, port), token)
+    val opened = runCatching {
+      if (!Desktop.isDesktopSupported()) return@runCatching false
+      val desktop = Desktop.getDesktop()
+      if (!desktop.isSupported(Desktop.Action.BROWSE)) return@runCatching false
+      desktop.browse(URI(url))
+      true
+    }
+      .getOrDefault(false)
+    if (!opened) {
+      System.err.println("browse: could not open a desktop browser; open the Local URL above.")
+    }
   }
 
   /**
@@ -3275,6 +3528,11 @@ class ServeCommand(args: List<String>) : Command(args) {
                           server — browsing published catalogs / uploaded bundles is the point. Safe
                           by construction (no server-side code exec; untrusted re-render refused;
                           uploads capped + SSRF-gated). Off by default.
+        --component-browser
+                          Use the streamlined Storybook-like catalog and component browser. Hides
+                          administration, diagnostics, comparison and renderer tooling while
+                          retaining visual navigation, variants, themes, authored controls,
+                          sample source, locale/font scale and PNG/SVG downloads.
         --github-auth-client-id <id>
         --github-auth-client-secret <secret>
         --github-auth-cookie-secret <secret>

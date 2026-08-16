@@ -1431,6 +1431,43 @@ class ServeHttpRoutingTest {
     assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
   }
 
+  @Test
+  fun `the component-browser home index includes plain local module sessions`() {
+    val localRegistry = ServeSessionRegistry(open = { null })
+    localRegistry.register("shared:ui", host = burstHost, pinned = true)
+    val localServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = localRegistry,
+          defaultSessionId = "shared:ui",
+          isPublic = true,
+          componentBrowser = true,
+          catalogSessions = listOf("shared:ui"),
+        )
+        .also { it.start() }
+    try {
+      val request = Request.Builder().url("http://127.0.0.1:${localServer.port}/").build()
+      val body = client.newCall(request).execute().use { it.body?.string().orEmpty() }
+      assertTrue(body.contains("href=\"/shared%3Aui/\""), body)
+      assertTrue(body.contains("burst"), body)
+      assertTrue(body.contains("class=\"cp-component-browser\""), body)
+
+      val devRequest =
+        Request.Builder().url("http://127.0.0.1:${localServer.port}/?chrome=dev").build()
+      val devBody = client.newCall(devRequest).execute().use { it.body?.string().orEmpty() }
+      assertFalse(devBody.contains("class=\"cp-component-browser\""), devBody)
+      assertTrue(
+        devBody.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""),
+        devBody,
+      )
+    } finally {
+      localServer.stop()
+      localRegistry.close()
+    }
+  }
+
   /**
    * Every route answers HEAD, because that is the probe a link unfurler sends before it commits to
    * downloading a page or its `og:image`. Before [io.ktor.server.plugins.autohead.AutoHeadResponse]

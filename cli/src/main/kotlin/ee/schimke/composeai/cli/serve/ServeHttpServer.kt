@@ -108,6 +108,8 @@ class ServeHttpServer(
    * default, so a normal `serve` stays token-gated (a bad/absent token still 404s).
    */
   private val isPublic: Boolean = false,
+  /** Render the streamlined Storybook-like catalog/component browsing presentation. */
+  private val componentBrowser: Boolean = false,
   /**
    * In-browser CMP tier: system id → the assembled Wasm app directory (the
    * `:samples:cmp-wasm-catalog:wasmCatalogDist` output). When a catalog session's id is a key here,
@@ -1300,6 +1302,18 @@ class ServeHttpServer(
   private fun RoutingContext.requestQuerySuffix(): String =
     call.request.queryString().let { if (it.isEmpty()) "" else "?$it" }
 
+  /**
+   * The global presentation selected in the sticky header. The command chooses the initial mode
+   * (`browse` → Catalog, `serve` → Dev); an explicit URL choice wins so the browser can persist it
+   * and carry it between every page on this server.
+   */
+  private fun RoutingContext.componentBrowserMode(): Boolean =
+    when (call.request.queryParameters["chrome"]?.lowercase()) {
+      "catalog" -> true
+      "dev" -> false
+      else -> componentBrowser
+    }
+
   /** Absolute externally visible URL for the current page (including its query). */
   private fun RoutingContext.externalPageUrl(): String = externalOrigin() + call.request.origin.uri
 
@@ -2045,6 +2059,7 @@ class ServeHttpServer(
           webSessionId,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           isPublic = isPublic,
+          componentBrowser = componentBrowserMode(),
           // A back-to-home button whenever this server publishes a front-door index — listed
           // catalogs OR unlisted app catalogs (mirrors handleLanding's home-index condition), so an
           // app-only server's landings still link home.
@@ -3155,6 +3170,7 @@ class ServeHttpServer(
         systems,
         token,
         isPublic = isPublic,
+        componentBrowser = componentBrowserMode(),
         version = BUNDLE_VERSION,
         unfurl = unfurl,
         githubAuth =
@@ -3676,20 +3692,19 @@ class ServeHttpServer(
   }
 
   /**
-   * Record [host]'s catalog facts under [id], if it is a catalog/bundle host. Cheap field reads —
-   * safe to call from the suspend listener (which runs outside the registry lock) and from the
-   * status path. A non-catalog session (a plain module) is ignored: it has no trust/provenance to
-   * remember, and caching a null would say more than we know.
+   * Record [host]'s browse-card facts under [id]. Bundle hosts contribute their richer publishing
+   * metadata; local module sessions still contribute a title, preview count and representative
+   * render so project-wide component browsing can use the same front door.
    */
   private fun rememberCatalogMeta(id: String, host: ServeHost) {
-    val bundle = catalogBundleHost(host) ?: return
-    val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
-    val heroCrop = heroId?.let { bundle.contentCrop(it) }
+    val bundle = catalogBundleHost(host)
+    val heroId = bundle?.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
+    val heroCrop = heroId?.let { bundle?.contentCrop(it) }
     catalogMetaSeen[id] =
       CatalogMeta(
-        title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
-        subtitle = bundle.subtitle,
-        trust = BundleVerifier.summary(bundle.trust),
+        title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
+        subtitle = bundle?.subtitle,
+        trust = bundle?.let { BundleVerifier.summary(it.trust) },
         previews = host.previews.size,
         previewIds = host.previews.map { it.id },
         failedRenders = host.previews.count { it.renderFailure != null },
@@ -3698,12 +3713,13 @@ class ServeHttpServer(
         heroCrop = heroCrop,
         // Memoised per (host instance, preview): the decode + scale runs once per catalog, and a
         // refresh — which installs a fresh host — re-bakes under a new hash.
-        heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
+        heroImage =
+          bundle?.let { owner -> heroId?.let { heroImages.heroFor(owner, it, heroCrop) } },
         heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
-        darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
-        webThemeCss = bundle.webThemeCss.orEmpty(),
+        darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle?.stageSurface),
+        webThemeCss = bundle?.webThemeCss.orEmpty(),
         degradation = host.degradations.firstOrNull()?.detail,
-        provenance = bundle.provenance,
+        provenance = bundle?.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
         renderCache = host.catalogRenderCacheSnapshot(),
       )
@@ -4767,6 +4783,7 @@ class ServeHttpServer(
           wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,
           isPublic = isPublic,
+          componentBrowser = componentBrowserMode(),
           declaredThemes = applicableThemes(renderHost, preview.id),
           // Android-daemon-only: gates the "Show gesture hints" row so a `@GestureHintPreview`
           // doesn't show a toggle that would do nothing on a desktop-backed session.

@@ -2188,6 +2188,93 @@ class ServeWebFixtureTest {
             ServeWeb.PageLink("type", "Typography"),
           ),
       )
+    // The streamlined Catalog mode, committed as first-class visual fixtures rather than only
+    // structural assertions. These are also the PR evidence images for the feature: the catalog
+    // inventory and a focused component page, rendered from the same production ServeWeb markup
+    // and stylesheet the browser receives.
+    val browserPreviews =
+      listOf(
+        ServePreview(
+          "button-filled-default",
+          "Filled button",
+          componentId = "Button/Filled",
+          state = "default",
+          section = "Components",
+          group = "Buttons",
+        ),
+        ServePreview(
+          "button-filled-pressed",
+          "Filled button pressed",
+          componentId = "Button/Filled",
+          state = "pressed",
+          section = "Components",
+          group = "Buttons",
+          props = jsonProps("label" to "Continue"),
+        ),
+        ServePreview(
+          "button-outlined-default",
+          "Outlined button",
+          componentId = "Button/Outlined",
+          state = "default",
+          section = "Components",
+          group = "Buttons",
+        ),
+        ServePreview(
+          "card-elevated-default",
+          "Elevated card",
+          componentId = "Card/Elevated",
+          section = "Components",
+          group = "Cards",
+        ),
+        ServePreview(
+          "card-filled-default",
+          "Filled card",
+          componentId = "Card/Filled",
+          section = "Components",
+          group = "Cards",
+        ),
+        ServePreview(
+          "navigation-bar-default",
+          "Navigation bar",
+          componentId = "Navigation/Navigation Bar",
+          section = "Components",
+          group = "Navigation",
+        ),
+        ServePreview(
+          "profile-screen-default",
+          "Profile screen",
+          componentId = "Screens/Profile",
+          section = "Screens",
+          group = "Account",
+        ),
+      )
+    val componentBrowserCatalog =
+      ServeWeb.landingPage(
+        "compose-m3",
+        browserPreviews,
+        token,
+        sessionId = "compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        basePath = "/compose-m3",
+        displayTitle = "Compose Material 3",
+        componentBrowser = true,
+      )
+    val componentBrowserViewer =
+      ServeWeb.viewerPage(
+        browserPreviews.first { it.id == "button-filled-pressed" },
+        token,
+        sessionId = "compose-m3",
+        catalogName = "Compose Material 3",
+        catalogTitle = "Compose Material 3",
+        basePath = "/compose-m3",
+        isPublic = true,
+        siblings = browserPreviews,
+        canRenderOverrides = true,
+        usageHref = "/compose-m3/usage/button-filled-pressed",
+        hasSvgExport = true,
+        componentBrowser = true,
+      )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
     // nav COLLAPSES to one entry per component (button-filled once, not ~8 times), mirroring the
@@ -2550,6 +2637,8 @@ class ServeWebFixtureTest {
         "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,
         "serve-landing-grouped.html" to landingGrouped,
+        "serve-component-browser-catalog.html" to componentBrowserCatalog,
+        "serve-component-browser-component.html" to componentBrowserViewer,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
         "serve-notfound.html" to notFound,
         "serve-docs-upload.html" to docUpload,
