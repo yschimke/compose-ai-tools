@@ -12,6 +12,8 @@
 // stop applying.
 
 import { fitCap, needsRefit, zoomMode } from "./viewer/fit.js";
+import { androidKeycode, keyMessage, typedText } from "./viewer/keyInput.js";
+import { ownsUrlParam } from "./viewer/ownedParams.js";
 import {
     activeThemeChoice,
     chosenThemeProvider,
@@ -31,6 +33,10 @@ import {
 } from "./viewer/renderQuery.js";
 
 const api = {
+    ownsUrlParam,
+    androidKeycode,
+    typedText,
+    keyMessage,
     fitCap,
     zoomMode,
     needsRefit,

@@ -5276,9 +5276,13 @@ class ServeWebFixtureTest {
     // export links and the stream's connect query. Collected only in `liveOverrides()` it would
     // reach the daemon and nowhere else — unshareable, unrestorable by Back, and applied a frame
     // late via the onopen replay instead of arriving with `stream/start`.
+    // The list moved to `cli/serve-web/src/viewer/ownedParams.ts`, where
+    // `viewerOwnedParams.test.ts`
+    // asserts each family's membership by name — including what must NOT be owned, which a grep for
+    // one line of the list could never express. What the served asset must still do is ask.
     assertTrue(
-      assetText("viewer.js").contains("\"gestures\", \"touchOverlay\","),
-      "overlays are URL-owned params",
+      assetText("viewer.js").contains("urlRules().ownsUrlParam(name)"),
+      "overlays are URL-owned params, decided by the shared list rather than a second copy",
     )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
     // was

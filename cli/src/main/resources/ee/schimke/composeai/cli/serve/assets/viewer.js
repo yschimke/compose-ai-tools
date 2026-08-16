@@ -945,44 +945,18 @@
   // Keyboard: focus the canvas (tabindex) to type. Maps the common keys to Android keycodes;
   // unmapped keys are dropped (the daemon ignores codes outside its translation table anyway).
   canvas.tabIndex = 0;
-  function androidKeycode(k) {
-    if (k.length === 1) {
-      var c = k.toLowerCase();
-      if (c >= "a" && c <= "z") return String(29 + (c.charCodeAt(0) - 97)); // KEYCODE_A = 29
-      if (c >= "0" && c <= "9") return String(7 + (c.charCodeAt(0) - 48)); // KEYCODE_0 = 7
-      if (k === " ") return "62"; // SPACE
-    }
-    switch (k) {
-      case "Enter": return "66";
-      case "Backspace": return "67";
-      case "Tab": return "61";
-      case "Escape": return "111";
-      case "Delete": return "112";
-      case "ArrowUp": return "19";
-      case "ArrowDown": return "20";
-      case "ArrowLeft": return "21";
-      case "ArrowRight": return "22";
-      default: return null;
-    }
-  }
-  // A printable keystroke is one whose `key` is a single character (so not "Shift", "ArrowLeft",
-  // "Backspace", …) and isn't a control character. That character — not the keycode — is what the
-  // composition inserts: the keycode names a physical key, which is why the caret and Backspace
-  // used to work here while nothing could ever be typed.
-  function typedText(ev) {
-    if (ev.ctrlKey || ev.metaKey) return null;   // a shortcut, not typing
-    var k = ev.key;
-    if (typeof k !== "string" || Array.from(k).length !== 1) return null;
-    return k.charCodeAt(0) < 0x20 || k.charCodeAt(0) === 0x7f ? null : k;
-  }
+  // The keycode/text pair moved to `cli/serve-web/src/viewer/keyInput.ts`. Both halves matter and
+  // conflating them is a shipped bug: a keycode names a PHYSICAL KEY, so sending only that made the
+  // arrows and Backspace work while nothing could ever be typed.
   function keyInput(kind, ev) {
     if (!liveActive()) return;
-    var code = androidKeycode(ev.key);
     // Carried on the release too, not just the press: a backend that suppresses the physical key
     // event for a focused text field (so the character isn't typed twice) needs to suppress both
     // halves, or the composition sees an unpaired key-up.
-    var text = typedText(ev);
-    if (code === null && text === null) return;
+    var message = urlRules().keyMessage(ev);
+    if (!message) return;
+    var code = message.code;
+    var text = message.text;
     ev.preventDefault();
     var msg = { kind: kind };
     if (code !== null) msg.keyCode = code;
@@ -2858,16 +2832,11 @@
   // URL) are never touched, and a control returning to its default *removes* its param rather
   // than pinning a redundant value, so an untouched viewer keeps the clean URL it was opened
   // with.
-  var URL_STATE_PARAMS = [
-    "device", "localeTag", "orientation", "fontScale",
-    "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
-    "scroll", "mode", "sizeMode", "rcPlayer", "specView", "motion",
-    "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
-    "exploded", "explodeTilt", "explodeSpin", "explodeGap", "explodeDepth",
-  ];
+  // Which parameters the viewer manages lives in `cli/serve-web/src/viewer/ownedParams.ts`.
+  // `cpUrlState.sync` DROPS any owned parameter the caller does not supply, so over-claiming
+  // deletes someone else's parameter on the next edit and under-claiming leaves a stale one behind.
   function ownsUrlParam(name) {
-    return URL_STATE_PARAMS.indexOf(name) >= 0 ||
-      name.indexOf("knob.") === 0 || name.indexOf("rc.") === 0;
+    return urlRules().ownsUrlParam(name);
   }
   function currentMode() {
     var checked = document.querySelector("input[name=\"cp-mode\"]:checked");
