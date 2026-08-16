@@ -3797,6 +3797,14 @@ $noteBlock        <div class="cp-site-footer-links">
           el.setAttribute("data-theme-active", "1");
         }
       } catch (e) {}
+      // Publish the design-score baseline before the component bundle upgrades the comparison
+      // control. A chosen theme changes the rendered side of the comparison, so the
+      // server-baked score is already stale on the first paint. viewer.js keeps this attribute in
+      // sync after controls change; this early write makes the element's initial read authoritative.
+      if (root) {
+        var atSpecBaseline = el.getAttribute("data-theme-active") !== "1";
+        root.setAttribute("data-spec-baseline", atSpecBaseline ? "1" : "0");
+      }
       // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
       // uiMode never lands a transparent sticker on a clashing surface. The server seeds
       // data-bg-theme from the baked variant (or the dark-first default); a light/dark Theme choice
@@ -9655,11 +9663,14 @@ $rows
       <!-- Remembers which control drawers this visitor left open (`cp-grp.<id>` per
            `details.cp-group[data-cp-group]`). Renders nothing; `serve.css` hides the tag. -->
       <cp-group-memory></cp-group-memory>
+      <!-- Resolve a deep-linked or remembered theme and publish the design-score baseline before
+           the component bundle upgrades the comparison control. -->
+      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
       ${scriptTag("serve-components.js")}
       <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
-      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
+      ${presenceScriptTag(presenceUrl)}
       $compareScriptTags${scriptTag("viewer.js")}
       """
         .trimIndent()
