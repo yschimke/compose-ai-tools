@@ -1142,7 +1142,11 @@ class ServeWebTest {
       html.contains("data-cp-spec-view=\"spec\" aria-pressed=\"true\""),
       "the plain spec is the default view",
     )
-    assertEquals(1, Regex("aria-pressed=\"true\"").findAll(html).count(), "one view is pressed")
+    assertEquals(
+      1,
+      Regex("data-cp-spec-view=\"[^\"]+\" aria-pressed=\"true\"").findAll(html).count(),
+      "one spec view is pressed",
+    )
     // Hidden until the lane is entered — while a render is on the stage there is no pair to
     // compare, and `<cp-spec-compare>` reveals the group from openSpec().
     assertTrue(

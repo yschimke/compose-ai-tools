@@ -32,7 +32,7 @@
    `prefers-color-scheme`, which is the default and the no-JS behaviour. */
 :root {
   color-scheme: light dark;
-  --cp-site-header-height: 56px;
+  --site-header-height: 56px;
 
   /* --- M3 baseline scheme. The reference palette Material ships when a product has not supplied a
      source colour, so an unthemed preview server looks like Material rather than like an arbitrary
@@ -582,7 +582,7 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
 .cp-toolbar { margin: 0; }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
-.cp-catalog-tools { position: sticky; top: var(--cp-site-header-height); z-index: 18;
+.cp-catalog-tools { position: sticky; top: var(--site-header-height); z-index: 18;
   margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
 /* The catalog's own actions — the comparison views, the parity view, the playground, Transparent.
@@ -661,8 +661,8 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   .cp-catalog-body { display: grid; grid-template-columns: minmax(168px, 216px) minmax(0, 1fr);
     gap: 32px; align-items: start; }
   .cp-catalog-menu { position: sticky;
-    top: calc(var(--cp-site-header-height) + var(--cp-sticky-tools, 0px) + 12px);
-    max-height: calc(100vh - var(--cp-site-header-height) - var(--cp-sticky-tools, 0px) - 28px);
+    top: calc(var(--site-header-height) + var(--cp-sticky-tools, 0px) + 12px);
+    max-height: calc(100vh - var(--site-header-height) - var(--cp-sticky-tools, 0px) - 28px);
     overflow-y: auto; overscroll-behavior: contain; }
 }
 .cp-catalog-menu { margin: 0 0 22px; }
@@ -2169,7 +2169,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-inspect-list { margin: 0; padding: 0; list-style: none; }
 .cp-inspect-entry { display: flex; align-items: flex-start; gap: 6px; padding: 3px 4px;
   border-radius: 6px; cursor: default; }
-.cp-inspect-entry[data-cp-kind="typography"] { --cp-inspect-color: rgba(37, 99, 235, 0.9); }
+.cp-inspect-entry[data-cp-kind="typography"] { padding-right: 0;
+  --cp-inspect-color: rgba(37, 99, 235, 0.9); }
 .cp-inspect-entry[data-cp-kind="theme"] { --cp-inspect-color: rgba(214, 51, 108, 0.9); }
 .cp-inspect-entry[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
 .cp-inspect-entry[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
@@ -2423,7 +2424,7 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      was already ellipsising into a stub (it is in the URL, the export links and the title
      attribute regardless). Still sticky — a preview can be several screens tall, and which
      component you are looking at is the fact worth pinning. */
-  .cp-preview-head { position: sticky; top: var(--cp-site-header-height); z-index: 21;
+  .cp-preview-head { position: sticky; top: var(--site-header-height); z-index: 21;
     margin: 0 0 8px; padding: 6px 0;
     background: var(--cp-bg); row-gap: 6px; }
   .cp-preview-head .cp-preview-id { display: none; }
@@ -3074,7 +3075,7 @@ cp-page-zoom button:focus-visible {
 .cp-component-browser .cp-site-header { grid-template-columns: minmax(0, 1fr) auto; }
 .cp-component-browser .cp-site-lead { min-width: 0; }
 .cp-component-browser .cp-main { max-width: 1680px; }
-.cp-browser-home-tools { position: sticky; top: var(--cp-site-header-height); z-index: 20;
+.cp-browser-home-tools { position: sticky; top: var(--site-header-height); z-index: 20;
   margin: 0 0 24px;
   padding: 8px 0; background: var(--cp-bg); }
 .cp-browser-home-tools .cp-search { display: flex; max-width: 520px; }
@@ -3109,7 +3110,7 @@ cp-page-zoom button:focus-visible {
   .cp-component-browser .cp-nav-close { display: none; }
 }
 @media (max-width: 640px) {
-  .cp-browser-home-tools { top: var(--cp-site-header-height); }
+  .cp-browser-home-tools { top: var(--site-header-height); }
   .cp-browser-breadcrumb { white-space: normal; }
   .cp-browser-siblings { grid-template-columns: 1fr; }
   .cp-browser-sibling-next { grid-column: 1; }

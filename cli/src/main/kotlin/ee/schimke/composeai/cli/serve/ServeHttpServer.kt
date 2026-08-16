@@ -4553,9 +4553,9 @@ class ServeHttpServer(
    * `GET /usage/{name}` and `GET /{system}/usage/{name}`: the plain-Compose usage code behind one
    * preview, as JSON, for the viewer's **Source** panel.
    *
-   * Its own resource rather than a field on the viewer page, because producing it may cost a
-   * GitHub read on a cold catalog cache or a local source read, and most visitors never open the
-   * panel — the panel fetches on first entry, so a page load pays nothing.
+   * Its own resource rather than a field on the viewer page, because producing it may cost a GitHub
+   * read on a cold catalog cache or a local source read, and most visitors never open the panel —
+   * the panel fetches on first entry, so a page load pays nothing.
    *
    * **No session lease.** This is a source read served from the catalog registry/cache or a trusted
    * local module root; leasing would stand a render daemon up to answer a question about source
