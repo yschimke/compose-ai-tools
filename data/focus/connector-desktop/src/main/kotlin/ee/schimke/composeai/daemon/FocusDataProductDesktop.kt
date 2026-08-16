@@ -37,10 +37,10 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *   per capture, so the `LaunchedEffect` re-walks on each transition (issue #3672).
  *
  * The press half of `@FocusedPreview(pressed = true)` is **not** here, unlike the Android
- * connector's key-first `dispatchPress`. Desktop has no indirect-pointer channel; the
- * renderer dispatches an ordinary pointer down onto the focused element through the test host's
- * injection API, which is a capability only the render host has (nothing inside composition can
- * synthesise it). See `renderFocusPreview` for the rationale.
+ * connector's key-first `dispatchPress`. Desktop has no indirect-pointer channel; the renderer
+ * dispatches an ordinary pointer down onto the focused element through the test host's injection
+ * API, which is a capability only the render host has (nothing inside composition can synthesise
+ * it). See `renderFocusPreview` for the rationale.
  *
  * Runs in the [DataExtensionPhase.OuterEnvironment] phase so the input-mode flip happens before the
  * user-environment phase reaches preview content.
