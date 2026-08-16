@@ -51,21 +51,36 @@ describe("translateOf", () => {
         assert.deepEqual(translateOf(nested), { x: 30, y: 12 });
     });
 
-    it("KNOWN BUG: silently drops a fractional offset entirely", () => {
-        // Not a rounding error — a total miss. The pattern is `(-?\d+)`, so `translate(12.5, 40)`
-        // does not match at all and the offset becomes the ORIGIN, including the integer part it
-        // could have read. Figma emits fractional positions routinely, so a component sitting at
-        // x=340.5 on the board is scored against an SVG drawn 340 pixels away from it.
-        //
-        // Pinned as it behaves rather than as it should, so the port stays a refactor. Fixing this
-        // means flipping this test to `{ x: 12.5, y: 40 }`; see the follow-up.
+    it("reads a FRACTIONAL offset, which used to be dropped entirely", () => {
+        // The bug this replaced was not a rounding error but a total miss: the pattern was
+        // `(-?\d+)`, so a fractional translate did not match at all and the offset became the
+        // origin, integer part included. A component at x=340.5 on the board was scored against an
+        // SVG drawn 340 pixels away — which reads as the component being drawn wrongly rather than
+        // as the two frames being in different places.
         assert.deepEqual(translateOf(svg("translate(12.5, 40)")), {
-            x: 0,
-            y: 0,
+            x: 12.5,
+            y: 40,
         });
         assert.deepEqual(translateOf(svg("translate(340.5, -12.25)")), {
+            x: 340.5,
+            y: -12.25,
+        });
+    });
+
+    it("reads a leading-dot fraction, which SVG allows", () => {
+        assert.deepEqual(translateOf(svg("translate(.5, -.25)")), {
+            x: 0.5,
+            y: -0.25,
+        });
+    });
+
+    it("still refuses a value that is not a number", () => {
+        // The pattern establishes the shape before anything is parsed, so a malformed transform
+        // answers the origin rather than NaN — which would propagate into every drawn coordinate.
+        assert.deepEqual(translateOf(svg("translate(12px, 40)")), {
             x: 0,
             y: 0,
         });
+        assert.deepEqual(translateOf(svg("translate(, 40)")), { x: 0, y: 0 });
     });
 });

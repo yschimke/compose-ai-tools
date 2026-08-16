@@ -14,16 +14,21 @@ export interface Translate {
 // Deliberately the FIRST match, not the deepest: the root group's transform is what the exporter
 // writes first, and inner transforms are the component's own geometry, not its placement.
 //
-// NOTE: integers only. A `translate(12.5, 40)` does not match at all, so the offset — including its
-// integer part — silently becomes the origin and the SVG lane scores two frames that are hundreds
-// of pixels apart. Figma emits fractional positions routinely, so this fires in practice. Ported
-// as-is deliberately, so this change stays a refactor; see the follow-up.
-const TRANSLATE = /translate\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/;
+// Fractional offsets are read. They used to be dropped, and not by rounding — the pattern was
+// `(-?\d+)`, so `translate(12.5, 40)` did not match AT ALL and the whole offset became the origin,
+// integer part included. A component sitting at x=340.5 on the board was therefore scored against
+// an SVG drawn 340 pixels away from it, which reads as the component being drawn wrongly rather
+// than as the two frames being in different places — the most misleading answer this surface can
+// give. Figma emits fractional positions routinely, so this fired in practice.
+const TRANSLATE =
+    /translate\(\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*\)/;
 
 /** The root translate, or the origin when there is none. */
 export function translateOf(svgText: string): Translate {
     const match = TRANSLATE.exec(svgText);
+    // `Number`, not `parseFloat`: the pattern has already established the shape, and `parseFloat`
+    // would quietly accept a trailing tail the pattern refused.
     return match
-        ? { x: parseInt(match[1], 10), y: parseInt(match[2], 10) }
+        ? { x: Number(match[1]), y: Number(match[2]) }
         : { x: 0, y: 0 };
 }

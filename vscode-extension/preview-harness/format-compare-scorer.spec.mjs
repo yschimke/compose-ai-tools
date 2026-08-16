@@ -186,3 +186,59 @@ test.describe("format-compare · design reference scorer", () => {
         expect(shiftedEdges.percent).toBeGreaterThan(95);
     });
 });
+
+// The SVG lane's registration, which nothing else in this harness covers: every fixture SVG sits at
+// `translate(0, 0)`, so a bug in reading that offset is invisible to the page snapshots. One did
+// ship — the pattern accepted integers only, so a fractional placement did not match at all and the
+// offset silently became the origin. Figma writes fractional positions routinely.
+test.describe("format-compare · SVG lane registration", () => {
+    /** The same card as a PNG at the origin, and as an SVG placed at (tx, ty) on its board. */
+    async function scorePlacement(page, tx, ty) {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        return page.evaluate(
+            async ([x, y]) => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 200;
+                canvas.height = 120;
+                const ctx = canvas.getContext("2d");
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(0, 0, 200, 120);
+                ctx.fillStyle = "#2c5f4f";
+                ctx.fillRect(20, 20, 160, 80);
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(40, 40, 80, 16);
+                const png = canvas.toDataURL("image/png");
+
+                const svg =
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120">' +
+                    '<rect width="200" height="120" fill="#fff"/>' +
+                    `<g transform="translate(${x}, ${y})">` +
+                    '<rect x="20" y="20" width="160" height="80" fill="#2c5f4f"/>' +
+                    '<rect x="40" y="40" width="80" height="16" fill="#fff"/>' +
+                    "</g></svg>";
+
+                const realFetch = window.fetch;
+                window.fetch = async () => ({ ok: true, text: async () => svg });
+                try {
+                    return await window.ComposePreviewCompare.scoreSvgUrls(png, "/svg");
+                } finally {
+                    window.fetch = realFetch;
+                }
+            },
+            [tx, ty],
+        );
+    }
+
+    test("a fractionally-placed export registers as well as an integer one", async ({
+        page,
+    }) => {
+        // The two must land within a point of each other. Before the fix the fractional case scored
+        // roughly twenty points worse — not because the component differed, but because the whole
+        // drawing was offset by the translate the scorer failed to read. That reads as "this
+        // component is wrong", which is the most misleading answer this surface can give.
+        const integer = await scorePlacement(page, 60, 30);
+        const fractional = await scorePlacement(page, 60.5, 30.25);
+        expect(fractional).toBeGreaterThan(integer - 1);
+    });
+});
