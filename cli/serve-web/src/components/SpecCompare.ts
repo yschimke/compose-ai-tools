@@ -188,22 +188,28 @@ export class SpecCompare extends LitElement {
         this.bakedBand = this.chip?.getAttribute("data-spec-match") ?? "";
         this.referenceUrl = this.compare.getAttribute("data-reference") ?? "";
 
-        // Read rather than wait to be told — for the installs that happen after `viewer.js` has
-        // spoken, not for the first one.
+        // Read rather than wait to be told — but this does NOT cover the first install, and the
+        // ordering is worth stating precisely because it is the unhelpful way round.
         //
-        // The order is in fact fixed, and it is the unhelpful way round: `ServeWeb` emits
-        // `serve-components.js` immediately before `viewer.js`, both classic scripts, so this
-        // element upgrades and installs while the attribute is still absent. A themed deep link
-        // (`?themeProvider=…`) is served with the baked verdict on the chip, so this read falls
-        // back to `true` and the chip keeps that verdict — until `viewer.js` runs `syncSpecBaseline`
-        // moments later and pushes the correction through `baseline()`. Nothing is painted in
-        // between: two consecutive classic scripts give the browser no opportunity, so the wrong
-        // number is never on screen.
+        // `ServeWeb` emits `serve-components.js` ahead of `viewer.js`, so this element upgrades and
+        // installs while `data-spec-baseline` is still absent and the read falls back to `true`. On
+        // a themed deep link (`?themeProvider=…`), which is served with the baked verdict on the
+        // chip, that is the wrong answer, and it stands until `viewer.js` runs `syncSpecBaseline`
+        // and pushes the correction through `baseline()`.
         //
-        // What the read does buy is every install that is NOT that one — the `whenParsed()` retry
+        // That gap is not instantaneous. The two tags are not adjacent — an inline theme script,
+        // the presence script and `format-compare.js` sit between them, and `format-compare.js` is
+        // emitted on precisely the pages that have a spec chip. Classic scripts fix execution
+        // ORDER, they do not stop the browser painting markup it has already parsed while it waits
+        // on a fetch. So on a cold or slow load a themed deep link can show the baked verdict
+        // briefly before the correction lands. Closing that properly means publishing the baseline
+        // ahead of this script, which needs the URL read where the page can do it early rather than
+        // this element guessing.
+        //
+        // What the read does buy is every install that is NOT the first — the `whenParsed()` retry
         // above, and any re-connect — where `viewer.js` has already published and the pushed call
-        // has been and gone. Those would otherwise start from `true` with nobody left to correct
-        // them.
+        // has been and gone. Those would otherwise start from `true` with nothing left to correct
+        // them at all.
         this.atBaseline = this.root.getAttribute("data-spec-baseline") !== "0";
         if (!this.atBaseline) this.setChipVerdict(null);
 
