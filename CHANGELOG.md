@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.1](https://github.com/yschimke/compose-ai-tools/compare/v1.10.0...v1.10.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* Address recent review feedback ([#4075](https://github.com/yschimke/compose-ai-tools/issues/4075)) ([61f7e2f](https://github.com/yschimke/compose-ai-tools/commit/61f7e2fd06ae61874e795aa1143e94ef220bc47a))
+* **catalog:** publish the motion axis the render already produced ([#4074](https://github.com/yschimke/compose-ai-tools/issues/4074)) ([b2660a2](https://github.com/yschimke/compose-ai-tools/commit/b2660a25118b634ddb6a94ccb0e7979d65b157e8))
+* **ci:** refresh design artifact driver pin ([#4079](https://github.com/yschimke/compose-ai-tools/issues/4079)) ([b712683](https://github.com/yschimke/compose-ai-tools/commit/b71268397c95d014873a672ad87c899fa6cf73af))
+* Tighten component browser layout ([#4077](https://github.com/yschimke/compose-ai-tools/issues/4077)) ([407702f](https://github.com/yschimke/compose-ai-tools/commit/407702f26590c31efde4e563d2f43e4c5202041d))
+* **vscode:** await daemon warmup for viewport updates ([#4076](https://github.com/yschimke/compose-ai-tools/issues/4076)) ([0404cca](https://github.com/yschimke/compose-ai-tools/commit/0404cca257ec4e13f427258d8df130d39b305b48))
+
 ## [1.10.0](https://github.com/yschimke/compose-ai-tools/compare/v1.9.0...v1.10.0) (2026-08-16)
 
 
