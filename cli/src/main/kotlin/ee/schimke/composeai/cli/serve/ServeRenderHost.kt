@@ -11,6 +11,8 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.PreviewSlots
 import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
+import ee.schimke.composeai.data.theme.Material3ThemeProduct
+import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -544,14 +546,14 @@ internal constructor(
   // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
   override val canApplyOverrides: Boolean = true
 
-  // The daemon registers its `compose/figma-svg` (+ `-long`) data products **inactive**, so
-  // `renderSvg`'s `session.fetchData(compose/figma-svg…)` would fail `-32020 kind not advertised`
-  // — an override-bearing `.svg` request (any `?knob…`/`fontScale`/… on the SVG lane) 500s while
-  // the baked vector still serves. Enable them once on open so the export is advertised; gate
+  // The daemon registers its export and inspection data products **inactive**, so fetching SVG,
+  // accessibility, semantics, or theme data before enabling their extensions fails with `-32020
+  // kind not advertised`. Enable them together once on open; gate
   // `hasSvgExport` on whether the daemon actually has them (a backend without figma-svg reports
   // them in `unknown`), so a non-figma backend cleanly offers no SVG rather than dead-ending in a
-  // 500. Best-effort: an enable RPC failure disables the export, it doesn't break the host.
-  private val exportEnableResult: ExtensionsEnableResult by lazy {
+  // 500. Best-effort: an enable RPC failure disables these optional surfaces, it doesn't break the
+  // host.
+  private val extensionEnableResult: ExtensionsEnableResult by lazy {
     // Resolve the session OUTSIDE the runCatching. A failure to open the daemon is not the same
     // fact as "this backend advertises no exports", but folding them together cached the latter
     // forever: a transient open failure on the first capability lookup left `hasSvgExport` /
@@ -566,11 +568,13 @@ internal constructor(
           ComposeFigmaSvgProduct.KIND_LONG,
           SCROLL_EXTENSION_ID,
           A11Y_EXTENSION_ID,
+          ComposeSemanticsProduct.KIND,
+          THEME_EXTENSION_ID,
         )
       )
     }
       .getOrElse { e ->
-        onLog("full-page exports unavailable: enable failed: ${e.message}")
+        onLog("export and inspection data unavailable: enable failed: ${e.message}")
         ExtensionsEnableResult(
           unknown =
             listOf(
@@ -578,25 +582,29 @@ internal constructor(
               ComposeFigmaSvgProduct.KIND_LONG,
               SCROLL_EXTENSION_ID,
               A11Y_EXTENSION_ID,
+              ComposeSemanticsProduct.KIND,
+              THEME_EXTENSION_ID,
             )
         )
       }
   }
 
   override val hasSvgExport: Boolean by lazy {
-    ComposeFigmaSvgProduct.KIND !in exportEnableResult.unknown
+    ComposeFigmaSvgProduct.KIND !in extensionEnableResult.unknown
   }
 
   override val hasScrollExport: Boolean by lazy {
-    SCROLL_EXTENSION_ID !in exportEnableResult.unknown &&
-      exportEnableResult.dataProducts.any { it.kind == SCROLL_LONG_KIND }
+    SCROLL_EXTENSION_ID !in extensionEnableResult.unknown &&
+      extensionEnableResult.dataProducts.any { it.kind == SCROLL_LONG_KIND }
   }
 
   // The a11y extension is registered inactive like the exports above, so it rides the same
   // `extensions/enable` call. A backend that doesn't carry it reports it in `unknown`, which is
   // what makes the viewer omit the Accessibility overlay control rather than offer one whose fetch
   // would 500 on `kind not advertised`.
-  override val hasA11yOverlay: Boolean by lazy { A11Y_EXTENSION_ID !in exportEnableResult.unknown }
+  override val hasA11yOverlay: Boolean by lazy {
+    A11Y_EXTENSION_ID !in extensionEnableResult.unknown
+  }
 
   override fun hasScrollExportFor(previewId: String): Boolean =
     hasScrollExport &&
@@ -1244,6 +1252,11 @@ internal constructor(
       }
 
       cache.remove(key)
+      val captureTheme = THEME_EXTENSION_ID !in extensionEnableResult.unknown
+      if (captureTheme) {
+        runCatching { session.subscribeData(previewId, Material3ThemeProduct.KIND) }
+          .onFailure { onLog("compose/theme subscription failed: ${it.message}") }
+      }
       when (val pngOutcome = render(previewId, overrides)) {
         RenderOutcome.NotFound -> return@withLock AnnotationsOutcome.NotFound
         is RenderOutcome.Failed -> return@withLock AnnotationsOutcome.Failed(pngOutcome.reason)
@@ -1259,6 +1272,7 @@ internal constructor(
           onLog(reason)
           return@withLock AnnotationsOutcome.Failed(reason)
         } ?: return@withLock AnnotationsOutcome.Failed("render produced no semantics")
+      val theme = if (captureTheme) fetchTheme(previewId) else null
 
       val json =
         dataJson
@@ -1270,7 +1284,7 @@ internal constructor(
                 "annotations",
                 dataJson.encodeToJsonElement(
                   ListSerializer(DesignAnnotation.serializer()),
-                  ServeDesignAnnotations.annotations(payload),
+                  ServeDesignAnnotations.annotations(payload, theme),
                 ),
               )
               // The tag index rides ALONG with the annotations rather than in an endpoint of its
@@ -1306,6 +1320,20 @@ internal constructor(
     val text = fileSystem.read(path) { readUtf8() }
     return dataJson.decodeFromString(ComposeSemanticsPayload.serializer(), text)
   }
+
+  /** The theme captured by the same subscribed render as [fetchSemantics], when available. */
+  private fun fetchTheme(previewId: String): ThemePayload? = runCatching {
+    val result = session.fetchData(previewId, Material3ThemeProduct.KIND, inline = true)
+    result.payload?.let { dataJson.decodeFromJsonElement(ThemePayload.serializer(), it) }
+      ?: result.path
+        ?.toPath()
+        ?.takeIf { fileSystem.exists(it) }
+        ?.let { path ->
+          dataJson.decodeFromString(ThemePayload.serializer(), fileSystem.read(path) { readUtf8() })
+        }
+  }
+    .onFailure { onLog("compose/theme fetch failed: ${it.message}") }
+    .getOrNull()
 
   /**
    * Fetch [previewId]'s accessibility products at [overrides] and return them merged as one JSON
@@ -1609,6 +1637,7 @@ internal constructor(
     internal const val A11Y_HIERARCHY_KIND = "a11y/hierarchy"
     internal const val A11Y_ATF_KIND = "a11y/atf"
     internal const val A11Y_TOUCH_TARGETS_KIND = "a11y/touchTargets"
+    internal const val THEME_EXTENSION_ID = "data/theme"
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     private val RENDER_ACK_TIMEOUT = 60.seconds
 

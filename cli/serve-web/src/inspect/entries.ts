@@ -10,6 +10,8 @@
 // wrong picture: stacked rectangles on the same pixels, a colour that says "fine" over a failure,
 // and findings that vanish because their bounds did not line up with a node.
 
+import { typographySpec } from "../annotate/typography.js";
+
 /** A box in the RENDER's own pixel space — the snapshot image's natural size. */
 export interface Bounds {
     x: number;
@@ -209,6 +211,7 @@ export interface Annotation {
     bounds?: Bounds;
     role?: string;
     label?: string;
+    detail?: Record<string, unknown>;
 }
 
 export interface AnnotationPayload {
@@ -224,12 +227,19 @@ export function annotationEntries(
         .filter((a): a is Annotation & { bounds: Bounds } =>
             Boolean(a && a.kind === kind && a.bounds),
         )
-        .map((a) => ({
-            kind,
-            bounds: a.bounds,
-            title: a.role || a.label || "",
-            detail: a.role ? (a.label ?? "") : "",
-            level: "info" as const,
-            color: null,
-        }));
+        .map((a) => {
+            const summary = a.role ? (a.label ?? "") : "";
+            const axes =
+                kind === "typography" ? typographySpec(a).axes : undefined;
+            return {
+                kind,
+                bounds: a.bounds,
+                title: a.role || a.label || "",
+                detail: [summary, axes ? `axes ${axes}` : ""]
+                    .filter(Boolean)
+                    .join(" · "),
+                level: "info" as const,
+                color: null,
+            };
+        });
 }

@@ -293,6 +293,9 @@ describe("annotationEntries", () => {
                 bounds: { x: 0, y: 0, width: 10, height: 10 },
                 role: "Title",
                 label: "20sp Roboto",
+                detail: {
+                    fontVariationSettings: "opsz 18.0, wght 700.0",
+                },
             },
             {
                 kind: "theme",
@@ -307,7 +310,31 @@ describe("annotationEntries", () => {
         const entries = annotationEntries(shared, "typography");
         assert.equal(entries.length, 1);
         assert.equal(entries[0].title, "Title");
-        assert.equal(entries[0].detail, "20sp Roboto");
+        assert.equal(entries[0].detail, "20sp Roboto · axes opsz=18,wght=700");
+    });
+
+    it("surfaces variable-font axes even when typography has no role", () => {
+        const entries = annotationEntries(
+            {
+                annotations: [
+                    {
+                        kind: "typography",
+                        bounds: { x: 0, y: 0, width: 10, height: 10 },
+                        label: "Roboto Flex",
+                        detail: {
+                            fontVariationSettings: [
+                                { tag: "wght", value: 650 },
+                                { tag: "wdth", value: 90 },
+                            ],
+                        },
+                    },
+                ],
+            },
+            "typography",
+        );
+
+        assert.equal(entries[0].title, "Roboto Flex");
+        assert.equal(entries[0].detail, "axes wdth=90,wght=650");
     });
 
     it("falls back to the label as the title when there is no role", () => {
