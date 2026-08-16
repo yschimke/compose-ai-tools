@@ -117,28 +117,49 @@ function bundleEntryFor(bundle, previewId, renderOutput) {
  * The theme is read off the sibling **still** rather than off the motion artifact, deliberately: a
  * capture's own id carries the same `_Dark` / `_Light` suffix, but re-deriving it here would be a
  * second implementation of the mode-naming rule that `catalog-themes.mjs` already owns, and the two
- * would eventually disagree about a catalog with unusual mode names. Matching the discovery
- * parameters against the images the join already resolved keeps one rule. When `motionPreview`
- * names a separate function, its filenames necessarily have different stems. In that case
- * [motionPreviewCells] describe the two functions' fan-outs with their preview parameters; the join
- * maps equal axis cells even when declaration order differs, and declines ambiguous cells.
+ * would eventually disagree about a catalog with unusual mode names. Taking the theme the sibling
+ * still already resolved keeps one rule.
  *
- * @param {Array<{path: string, theme?: string}>} images the component's baked stills.
+ * **That sibling is found by preview id, not by filename.** A capture and its still share a preview
+ * id, and [themeByPreviewId] carries the theme each id's candidate resolved. The filename-stem match
+ * below looks like it would do the same job and does not: a candidate image is
+ * `{state, width, height, theme, uri}` with a `data:` URI — it has no `path` at all — so that
+ * comparison silently answered `undefined` for every real catalog. A capture with no theme is pinned
+ * to *every* card of its component, so the first catalog to publish captures showed the dark
+ * recording on the light card and the light one on the dark card, offered as an unlabelled
+ * "Motion (2)" picker. The stem match is kept only as a fallback for a caller whose images do carry
+ * `path`.
+ *
+ * When `motionPreview` names a separate function, its ids differ from the still's. In that case
+ * [motionPreviewCells] describe the two functions' fan-outs with their preview parameters; the join
+ * maps equal axis cells even when declaration order differs, declines ambiguous cells, and the
+ * mapped still's id is then looked up in the same [themeByPreviewId].
+ *
+ * @param {Array<{path?: string, theme?: string}>} images the component's baked stills.
  * @param {Array<{path: string, previewId?: string, kind: string, caption?: string}>} artifacts from [motionArtifactsFor].
  * @param {Array<{id: string, params?: object}>} previewCells static preview fan-out cells.
  * @param {Array<{id: string, params?: object}>} motionPreviewCells motion preview fan-out cells.
+ * @param {Map<string, string>} [themeByPreviewId] preview id → the theme its candidate resolved.
  * @returns {Array<object>} one motion entry per artifact, theme-tagged where it could be resolved.
  */
-export function foldMotion(images, artifacts, previewCells = [], motionPreviewCells = []) {
+export function foldMotion(
+  images,
+  artifacts,
+  previewCells = [],
+  motionPreviewCells = [],
+  themeByPreviewId = undefined,
+) {
   if (!artifacts?.length) return [];
   const correspondingStillIds = equivalentFanOut(previewCells, motionPreviewCells);
   return artifacts.map((artifact) => {
     const { previewId, ...published } = artifact;
-    const theme = themeForArtifact(
-      images,
-      artifact.path,
-      correspondingStillIds.get(previewId),
-    );
+    const correspondingStillId = correspondingStillIds.get(previewId);
+    const theme =
+      themeByPreviewId?.get(previewId) ??
+      (correspondingStillId !== undefined
+        ? themeByPreviewId?.get(correspondingStillId)
+        : undefined) ??
+      themeForArtifact(images, artifact.path, correspondingStillId);
     return {
       ...published,
       ...(theme !== undefined ? { theme } : {}),
