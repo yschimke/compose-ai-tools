@@ -111,11 +111,16 @@ tasks.withType<Test>().configureEach {
     listOf("rc.embedded.input", "rc.embedded.output", "rc.view.output", "rc.semantics.report")) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
-  systemProperty(
-    "rc.dynamic-color.report",
-    (project.findProperty("rc.dynamic-color.report") as String?)
-      ?: layout.buildDirectory.file("reports/dynamic-color-diag.txt").get().asFile.absolutePath,
-  )
+  val dynamicColorReport =
+    (project.findProperty("rc.dynamic-color.report") as String?)?.let(project::file)
+      ?: layout.buildDirectory.file("reports/dynamic-color-diag.txt").get().asFile
+  systemProperty("rc.dynamic-color.report", dynamicColorReport.absolutePath)
+  // The diagnostic skips without staged input, so normal test runs advertise no missing output.
+  // When the documented diagnostic command is active, however, the report is part of the task's
+  // contract: Gradle must rerun (or restore it from the build cache) after the file is deleted.
+  if (project.findProperty("rc.embedded.input") != null) {
+    outputs.file(dynamicColorReport).withPropertyName("dynamicColorReport")
+  }
   // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.
   maxHeapSize = "2g"
 
