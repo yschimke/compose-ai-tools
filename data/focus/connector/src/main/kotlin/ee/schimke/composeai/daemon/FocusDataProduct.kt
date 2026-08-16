@@ -123,8 +123,9 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
         }
         // `@FocusedPreview(pressed = true)` — after the focus walk lands, dispatch a Press onto the
         // focused composable so its `PressInteraction.Press` fires before the renderer captures
-        // pixels. Prefer the normal focused-key path used by clickable components (including Wear
-        // M3 Button), then fall back to indirect-pointer input for Glimmer-specific gestures. See
+        // pixels. Prefer the normal focused-key path used by clickable components, then fall back
+        // to indirect-pointer input for Glimmer-specific gestures. Host implementations differ in
+        // focused-key delivery, so catalog consumers still verify the resulting pixels. See
         // [dispatchPress] for the platform rationale.
         // The matching Release is held off
         // until the NEXT capture's LaunchedEffect runs (above) — held-press across the capture
@@ -162,8 +163,8 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
 
 /**
  * Dispatches a held Press through the focused component's real input path. It first sends a focused
- * DPAD_CENTER key-down, which covers Compose components built from `clickable` or
- * `combinedClickable`, including Wear M3 Button. When that event is unhandled, it falls back to an
+ * DPAD_CENTER key-down, which can cover Compose components built from `clickable` or
+ * `combinedClickable`. When that event is unhandled, it falls back to an
  * indirect-pointer event through Compose UI's `AndroidComposeView.sendIndirectPointerEvent` — the
  * same channel real XR Glasses touchpads use.
  *
@@ -241,12 +242,9 @@ private fun View.sendIndirectPointer(action: Int): Boolean {
 }
 
 /**
- * Focus-targeted fallback for components with no indirect-pointer modifier. Wear Material 3's
- * `Button` is implemented with `combinedClickable`; unlike plain `clickable` and Glimmer's
- * `onIndirectPointerGesture`, that modifier does not consume an [IndirectPointerEvent]. A
- * DPAD_CENTER key event is Wear's ordinary focused activation channel, and `combinedClickable`
- * turns its down/up pair into the same held `PressInteraction.Press` / release lifecycle as a
- * physical button press.
+ * Focus-targeted fallback for components with no indirect-pointer modifier. A DPAD_CENTER key
+ * event is the ordinary focused activation channel for clickable components, though host
+ * implementations can differ in whether they deliver it to the focused modifier.
  */
 private fun View.dispatchKeyPress(): Boolean =
   dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
