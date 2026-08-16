@@ -830,12 +830,12 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-rc-players/dark](renders/serve-viewer-rc-players.dark.png) |
 | `light` | ![serve-viewer-rc-players/light](renders/serve-viewer-rc-players.light.png) |
 
-## serve-viewer-rc-players-player-cmp-android
+## serve-viewer-rc-players-player-java
 
 | Theme | Capture |
 | --- | --- |
-| `dark` | ![serve-viewer-rc-players-player-cmp-android/dark](renders/serve-viewer-rc-players-player-cmp-android.dark.png) |
-| `light` | ![serve-viewer-rc-players-player-cmp-android/light](renders/serve-viewer-rc-players-player-cmp-android.light.png) |
+| `dark` | ![serve-viewer-rc-players-player-java/dark](renders/serve-viewer-rc-players-player-java.dark.png) |
+| `light` | ![serve-viewer-rc-players-player-java/light](renders/serve-viewer-rc-players-player-java.light.png) |
 
 ## serve-viewer-revisions
 

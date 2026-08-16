@@ -1393,29 +1393,29 @@
       "sha256": "82ab65fffc605350e3f4fa3e6996002bd708bd096c684aa036f53969c2d0d276",
       "size": 71972
     },
-    "serve-viewer-rc-players-player-cmp-android.dark.png": {
-      "fixture": "serve-viewer-rc-players-player-cmp-android",
-      "theme": "dark",
-      "sha256": "feb9b075b595db5e34308a86a9ff98347bcba71b394a6b098fdb9bbf958d4137",
-      "size": 54015
-    },
-    "serve-viewer-rc-players-player-cmp-android.light.png": {
-      "fixture": "serve-viewer-rc-players-player-cmp-android",
-      "theme": "light",
-      "sha256": "df8412c8a6f83fcceb303ea10fb913abeeb5d4f8905ee3d4319df07f91f8ecf6",
-      "size": 52993
-    },
-    "serve-viewer-rc-players.dark.png": {
-      "fixture": "serve-viewer-rc-players",
+    "serve-viewer-rc-players-player-java.dark.png": {
+      "fixture": "serve-viewer-rc-players-player-java",
       "theme": "dark",
       "sha256": "8705a1749946c9b5ccff01e79977d229968acf20763605eab0d7cba774fc3346",
       "size": 53297
     },
-    "serve-viewer-rc-players.light.png": {
-      "fixture": "serve-viewer-rc-players",
+    "serve-viewer-rc-players-player-java.light.png": {
+      "fixture": "serve-viewer-rc-players-player-java",
       "theme": "light",
       "sha256": "a4d81d3da75b17996035a1d509b898ded288d63f511b04530e514a7083f5604b",
       "size": 52310
+    },
+    "serve-viewer-rc-players.dark.png": {
+      "fixture": "serve-viewer-rc-players",
+      "theme": "dark",
+      "sha256": "feb9b075b595db5e34308a86a9ff98347bcba71b394a6b098fdb9bbf958d4137",
+      "size": 54015
+    },
+    "serve-viewer-rc-players.light.png": {
+      "fixture": "serve-viewer-rc-players",
+      "theme": "light",
+      "sha256": "df8412c8a6f83fcceb303ea10fb913abeeb5d4f8905ee3d4319df07f91f8ecf6",
+      "size": 52993
     },
     "serve-viewer-revisions-open.dark.png": {
       "fixture": "serve-viewer-revisions-open",
