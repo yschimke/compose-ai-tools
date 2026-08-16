@@ -253,30 +253,31 @@
   // the copyable /render URL stays px-consistent). data-render-density carries the factor.
   var renderDensity = parseFloat(root.getAttribute("data-render-density")) || 2;
   // dp (string from the input) → a positive integer px value, or null when blank/non-positive.
+  // The rules below live in `cli/serve-web/src/viewer/renderQuery.ts` and ship in
+  // `serve-components.js` as `window.cpViewerQuery`.
+  //
+  // Read at CALL time, never cached at IIFE time: nothing orders the two script tags, and a handle
+  // cached at load would be null on a page that emits them the other way round — silently, with the
+  // URL rules simply not applying.
+  //
+  // Deliberately UNGUARDED, unlike `window.cpRcFonts` below. Every page that emits `viewer.js`
+  // emits `serve-components.js` immediately before it (one site, `ServeWeb.kt`, unconditional), so
+  // an absent handle means the bundle failed to load — and then the viewer cannot render anything
+  // correctly anyway. A fallback here would have to restate the rules, which is the duplication
+  // this move exists to remove; a thrown error is the honest signal.
+  function urlRules() {
+    return window.cpViewerQuery;
+  }
   function sizePx(id) {
     var el = document.getElementById(id);
     if (!el || !el.value) return null;
-    var dp = parseFloat(el.value);
-    if (!(dp > 0)) return null;
-    return String(Math.max(1, Math.round(dp * renderDensity)));
+    return urlRules().sizePx(el.value, renderDensity);
   }
   function sizeOverrides() {
     var mode = document.getElementById("cp-sizeMode");
-    var o = {};
-    if (!mode || !mode.value) return o;
-    if (mode.value === "fixed") {
-      if (sizePx("cp-fixedW")) o.widthPx = sizePx("cp-fixedW");
-      if (sizePx("cp-fixedH")) o.heightPx = sizePx("cp-fixedH");
-    }
-    if (mode.value === "min" || mode.value === "within") {
-      if (sizePx("cp-minW")) o.minWidthPx = sizePx("cp-minW");
-      if (sizePx("cp-minH")) o.minHeightPx = sizePx("cp-minH");
-    }
-    if (mode.value === "max" || mode.value === "within") {
-      if (sizePx("cp-maxW")) o.maxWidthPx = sizePx("cp-maxW");
-      if (sizePx("cp-maxH")) o.maxHeightPx = sizePx("cp-maxH");
-    }
-    return o;
+    return urlRules().sizeOverrides(mode ? mode.value : "", function (field) {
+      return sizePx("cp-" + field);
+    });
   }
   function overrides() {
     var o = {};
@@ -396,9 +397,8 @@
       var key = el.getAttribute("data-knob-key");
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
-      // See liveOverrides(): "" is a value for a string knob and a no-op for every other kind.
-      if (val === "" && knobKind(el) !== "string") return;
-      if (val === (el.getAttribute("data-knob-initial") || "")) return;
+      if (!urlRules().knobEmitted(val, el.getAttribute("data-knob-initial") || "", knobKind(el)))
+        return;
       parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
     });
     // Remote Compose knobs: rc.<name>=<kind>:<value>. The <kind>: prefix types the seed
@@ -410,9 +410,10 @@
       if (!name) return;
       var kind = el.getAttribute("data-rc-kind") || "string";
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
-      if (val === "") return;
-      if (val === (el.getAttribute("data-rc-initial") || "")) return;
-      parts.push("rc." + encodeURIComponent(name) + "=" + encodeURIComponent(kind + ":" + val));
+      if (!urlRules().rcKnobEmitted(val, el.getAttribute("data-rc-initial") || "")) return;
+      parts.push(
+        "rc." + encodeURIComponent(name) + "=" + encodeURIComponent(urlRules().rcKnobValue(kind, val))
+      );
     });
     // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
     // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
@@ -446,12 +447,6 @@
   // "Full page (scroll)" appends `scroll=long` to both snapshot formats. The server routes SVG to
   // compose/figma-svg-long and PNG to render/scroll/long.
   var scrollLong = document.getElementById("cp-scroll-long");
-  function withScroll(ext, qs) {
-    if (scrollLong && scrollLong.checked) {
-      return qs ? qs + "&scroll=long" : "scroll=long";
-    }
-    return qs;
-  }
   // The exploded 3D view (`?exploded=1` on the SVG lane): the layered figma-svg tilted back and
   // pulled apart into one sheet per visible drawing level. It is a *presentation* of the
   // vector export, so it rides only the `.svg` extension — appending it to the raster PNG lane
@@ -475,9 +470,7 @@
   // showing the flat PNG and then dropping the parameter on the next sync, which is what a
   // stricter reading here produced.
   function explodeParamOn(raw) {
-    if (raw === null || raw === undefined) return false;
-    if (raw === "") return true; // a bare `?exploded`
-    return ["1", "true", "on", "yes"].indexOf(String(raw).toLowerCase()) >= 0;
+    return urlRules().explodeParamOn(raw);
   }
   // A server-side Remote Compose player pick cannot survive the exploded view, so entering it
   // releases the pick rather than hiding it. `rcPlayer=cmp-jvm` is a renderer choice, not a mode,
@@ -501,21 +494,29 @@
   // rather than stranding the visitor on a flat SVG they never asked for — but only in that case:
   // someone who was already reading the SVG and exploded it should get their SVG back, not a PNG.
   var explodeEnabledSvg = false;
-  function withExplode(ext, qs) {
-    if (ext !== ".svg" || !explodeOn()) return qs;
-    var parts = ["exploded=1"];
-    EXPLODE_KNOBS.forEach(function (pair) {
+  // The knobs as plain values, for the rules next door to decide on.
+  function explodeKnobValues() {
+    return EXPLODE_KNOBS.map(function (pair) {
       var el = document.getElementById(pair[0]);
-      // A knob left at its authored default is omitted, so the common URL stays `?exploded=1`
-      // rather than five parameters restating the server's own defaults.
-      if (el && el.value !== "" && el.value !== el.getAttribute("data-cp-default")) {
-        parts.push(pair[1] + "=" + encodeURIComponent(el.value));
-      }
+      return {
+        param: pair[1],
+        value: el ? el.value : "",
+        defaultValue: el ? el.getAttribute("data-cp-default") || "" : "",
+      };
     });
-    return qs ? qs + "&" + parts.join("&") : parts.join("&");
+  }
+  // Just the exploded parameters, for `syncUrl` — the page's own address is written from the same
+  // helper the render URL uses, so the address bar, the copied link and the fetched bytes can never
+  // disagree about the angle on screen.
+  function explodeQuery() {
+    return urlRules().explodeParams(explodeKnobValues()).join("&");
   }
   function withSnapshotFormat(ext, qs) {
-    return withExplode(ext, withScroll(ext, qs));
+    return urlRules().withSnapshotFormat(ext, qs, {
+      scrollLong: !!(scrollLong && scrollLong.checked),
+      exploded: explodeOn(),
+      knobs: explodeKnobValues(),
+    });
   }
   // Called once the snapshot request has SETTLED, whichever way it went — pixels decoded, or a
   // failure that leaves the stage without them. The bookmarked-mode bootstrap waits on this: it
@@ -2878,7 +2879,7 @@
     // page's own address, the copied link and the fetched bytes can never disagree about the
     // angle on screen.
     if (explodeOn()) {
-      new URLSearchParams(withExplode(".svg", "")).forEach(function (value, name) {
+      new URLSearchParams(explodeQuery()).forEach(function (value, name) {
         values[name] = value;
       });
     }
