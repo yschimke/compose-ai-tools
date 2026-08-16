@@ -18,8 +18,14 @@
 
 package androidx.compose.remote.player.compose.embedded
 
+import androidx.compose.remote.core.CoreDocument
+import androidx.compose.remote.core.Operation
+import androidx.compose.remote.core.RemoteContext
+import androidx.compose.remote.core.VariableSupport
+import androidx.compose.remote.core.operations.BitmapData
 import androidx.compose.remote.core.operations.BitmapFontData
 import androidx.compose.remote.core.operations.ClipPath
+import androidx.compose.remote.core.operations.ComponentData
 import androidx.compose.remote.core.operations.ConditionalOperations
 import androidx.compose.remote.core.operations.DrawBitmapFontText
 import androidx.compose.remote.core.operations.DrawBitmapFontTextOnPath
@@ -34,6 +40,8 @@ import androidx.compose.remote.core.operations.FloatFunctionCall
 import androidx.compose.remote.core.operations.ParticlesCreate
 import androidx.compose.remote.core.operations.ParticlesLoop
 import androidx.compose.remote.core.operations.TouchExpression
+import androidx.compose.remote.core.operations.layout.Component
+import androidx.compose.remote.core.operations.layout.Container
 import androidx.compose.remote.core.operations.layout.LayoutComponent
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.LoopOperation
@@ -404,6 +412,46 @@ internal fun androidx.compose.remote.core.CoreDocument.applyOperationsReflection
   operations: ArrayList<androidx.compose.remote.core.Operation>,
 ) {
   docApplyOperationsMethod.invoke(this, context, operations)
+}
+
+/**
+ * The core's data initialization pass, except that [BitmapData] remains metadata until first draw.
+ *
+ * This deliberately mirrors `CoreDocument.applyDataOperations`: its context mode, time update,
+ * variable registration, recursive component updates, dirty/op-count bookkeeping, and operation
+ * ordering are all observable by animations and interactions. Calling the two-argument
+ * `initializeContext` and merely omitting this pass breaks those behaviors; calling the stock pass
+ * eagerly decodes every bitmap.
+ */
+internal fun CoreDocument.applyDataOperationsWithoutBitmaps(context: RemoteContext) {
+  val operations = getOperationsReflection()
+  context.mode = RemoteContext.ContextMode.DATA
+  try {
+    updateTimeReflection(context)
+    registerVariablesReflection(context, operations)
+    applyOperationsWithoutBitmaps(context, operations)
+  } finally {
+    context.mode = RemoteContext.ContextMode.UNSET
+  }
+}
+
+private fun applyOperationsWithoutBitmaps(
+  context: RemoteContext,
+  operations: Collection<Operation>,
+) {
+  operations.forEach { operation ->
+    if (operation is BitmapData) return@forEach
+    if (operation is VariableSupport) operation.updateVariables(context)
+    if (operation is Component) operation.updateVariables(context)
+    operation.markNotDirty()
+    context.incrementOpCount()
+    if (operation is Container) {
+      if (operation is ComponentData) operation.apply(context)
+      applyOperationsWithoutBitmaps(context, operation.getList())
+    } else {
+      operation.apply(context)
+    }
+  }
 }
 
 private val docOperationsField =
