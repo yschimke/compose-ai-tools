@@ -121,6 +121,8 @@ class ServeHttpServer(
    * `fetch('./composeApp.wasm')` work without threading the token through every sub-resource.
    */
   private val wasmCatalogs: Map<String, File> = emptyMap(),
+  /** Local auto-discovered apps that must use the credential-carrying `/wasm-private/` route. */
+  private val privateWasmCatalogs: Set<String> = emptySet(),
   /**
    * Experimental non-JVM Remote Compose player distribution. When present, its static files are
    * served from `/rc-player-wasm/` and RC previews advertise the `cmp-wasm` browser backend.
@@ -641,51 +643,11 @@ class ServeHttpServer(
         // the toggle appeared while every `/wasm/…` fetch 404'd — the serve-lanes E2E's "Wasm
         // iframe re-renders on knob override" failure. An unknown system 404s inside the handler
         // either way, so the route costs nothing when no app is ever registered.
-        get("/wasm/{system}/{path...}") {
-          val system = call.parameters["system"]
-          // A site hostname serves ONE catalog's app. `/wasm/<other>/…` is a constant-prefix route,
-          // so the canonical-path interceptor never sees it — without this check a site would hand
-          // out a neighbouring catalog's compiled Wasm app, which is the isolation contract broken
-          // by the heaviest asset on the box.
-          val site = call.siteSystem()
-          val dir = if (site != null && system != site) null else system?.let { wasmCatalogs[it] }
-          if (dir == null) {
-            call.respondText("not found", status = HttpStatusCode.NotFound)
-            return@get
-          }
-          val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
-          val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
-          val base = dir.toPath().toAbsolutePath().normalize()
-          val resolved = base.resolve(rel).normalize()
-          // Zip-slip guard: a crafted `../` path must not escape the app directory.
-          if (!resolved.startsWith(base)) {
-            call.respondText("not found", status = HttpStatusCode.NotFound)
-            return@get
-          }
-          val file = resolved.toFile()
-          if (!file.isFile) {
-            call.respondText("not found", status = HttpStatusCode.NotFound)
-            return@get
-          }
-          // The viewer mounts this app in a `sandbox="allow-scripts"` iframe, which has an opaque
-          // (null) origin — so the app's own ES-module + wasm fetches count as cross-origin and
-          // need CORS. `*` is safe: these are public static client assets with no session data,
-          // and keeping the strong sandbox (no `allow-same-origin`) isolates even untrusted wasm.
-          call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
-          // Cache the heavy payload (skiko + app wasm ≈ 8 MB gzipped). The filenames aren't
-          // content-hashed, so pair a moderate max-age with a size+mtime ETag: within the window
-          // the browser serves from cache (no request); after it, a conditional request gets a
-          // cheap 304 instead of re-downloading megabytes.
-          val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
-          call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
-          call.response.headers.append(HttpHeaders.ETag, etag)
-          if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
-            call.respond(HttpStatusCode.NotModified)
-            return@get
-          }
-          val bytes = withContext(Dispatchers.IO) { file.readBytes() }
-          call.respondBytes(bytes, wasmContentType(file.name))
-        }
+        get("/wasm/{system}/{path...}") { handleWasmAsset(privateRoute = false) }
+        // Auto-discovered local apps are project output, not the generic/published client assets
+        // `/wasm/` was designed for. Put the token in the path so relative JS/Wasm requests retain
+        // it, and reject the ordinary route for the same system to prevent a token-free bypass.
+        get("/wasm-private/{access}/{system}/{path...}") { handleWasmAsset(privateRoute = true) }
 
         // The CMP/Wasm Remote Compose player is a single shared app rather than a per-catalog app.
         // Keep it opt-in while operation coverage is incomplete; an unset directory simply makes
@@ -3451,6 +3413,7 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     val from = ServeBugReport.sanitizeFrom(call.request.queryParameters[ServeBugReport.FROM_PARAM])
     val ref = ServeBugReport.parsePath(from)
+    val pathSystem = ref.system?.let(::decodeQueryValue)
     // Which session the reported page was showing. Three sources, most specific first:
     //  - a top-level site publishes exactly one system and its pages carry no `/{system}` prefix,
     //    so the host itself is the answer and the path could not have named it;
@@ -3461,7 +3424,7 @@ class ServeHttpServer(
     //    screenshot, which is the most common way this affordance is reached.
     val system =
       siteSystem()
-        ?: ref.system?.takeIf { sessions.isKnownSession(it) }
+        ?: pathSystem?.takeIf { sessions.isKnownSession(it) }
         // An EXPLICIT `?session=` is the visitor's own page saying which catalog it was showing,
         // so it is honoured wherever it appears — the query-mode catalog routes (`/?session=…`,
         // `/pages/foo?session=…`, `/parity?session=…`) carry the footer too and have no system in
@@ -3491,7 +3454,8 @@ class ServeHttpServer(
         previewIds.firstOrNull { it == segment || WebEscaping.urlEncodeSegment(it) == segment }
       }
     val preview = previewId?.let { id -> host?.previews?.firstOrNull { it.id == id } }
-    val basePath = if (system == null || siteSystem() != null) "" else "/$system"
+    val basePath =
+      if (system == null || siteSystem() != null) "" else "/${WebEscaping.urlEncodeSegment(system)}"
     // The overrides the reporter actually had on screen. They live in `from`'s query (the viewer
     // rewrites it as the knobs change), and without carrying them the report embeds the DEFAULT
     // render rather than the one that prompted it — which is the whole evidentiary point.
@@ -3631,17 +3595,25 @@ class ServeHttpServer(
   private fun renderOverrideSuffix(from: String?, system: String?): String {
     val query = from?.substringAfter('?', missingDelimiterValue = "").orEmpty()
     if (query.isEmpty()) return ""
+    val pairs = query.split('&').filter { it.isNotEmpty() }
+    val revision = pairs.firstNotNullOfOrNull { pair ->
+      val key = pair.substringBefore('=')
+      if (key != ServeCatalogRevision.PARAM) return@firstNotNullOfOrNull null
+      ServeCatalogRevision.normalize(
+        decodeQueryValue(pair.substringAfter('=', missingDelimiterValue = ""))
+      )
+    }
     val params =
-      query
-        .split('&')
+      pairs
         .mapNotNull { pair ->
-          if (pair.isEmpty()) return@mapNotNull null
           val key = pair.substringBefore('=')
           val value = pair.substringAfter('=', missingDelimiterValue = "")
           if (ServeOverrides.isOverrideParam(key)) key to value else null
         }
         .toMap()
         .let { ServeWeb.SystemDisplay.normalizeOverrideParams(system ?: defaultSessionId, it) }
+        .toMutableMap()
+        .apply { revision?.let { put(ServeCatalogRevision.PARAM, it) } }
     if (params.isEmpty()) return ""
     return "?" + params.entries.joinToString("&") { "${it.key}=${it.value}" }
   }
@@ -5065,8 +5037,10 @@ class ServeHttpServer(
       // bakes the variant's theme into `uiMode` so the live render opens on the same theme as the
       // baked snapshot the visitor deep-linked to.
       val wasmSrc =
-        if (wasmCatalogs.containsKey(sessionId)) ServeUrls.wasmAppSrc(sessionId, preview.id)
-        else null
+        if (!wasmCatalogs.containsKey(sessionId)) null
+        else if (!isPublic && sessionId in privateWasmCatalogs)
+          ServeUrls.privateWasmAppSrc(sessionId, preview.id, token)
+        else ServeUrls.wasmAppSrc(sessionId, preview.id)
       // Grant the Wasm iframe its real origin only for a TRUSTED catalog's app — an unverified
       // catalog's `/wasm/` app stays opaque-origin sandboxed so it can't reach the parent viewer.
       // Fail-closed: any session without a verifiable trusted verdict gets opaque (false).
@@ -5153,7 +5127,7 @@ class ServeHttpServer(
           // The inspection layers: the accessibility focus map needs an a11y-capable daemon, the
           // typography / theme layers a semantics-capturing one. Both are session-wide facts (any
           // preview this daemon renders can be inspected), unlike the export gates above.
-          hasA11yOverlay = renderHost.hasA11yOverlay,
+          hasA11yOverlay = renderHost.hasA11yOverlayFor(preview.id),
           hasDesignAnnotations = renderHost.hasDesignAnnotations,
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
@@ -5226,11 +5200,13 @@ class ServeHttpServer(
           // catalog that publishes no references, which omits the lane entirely.
           designReference = renderHost.designReferencesFor(preview.id).firstOrNull(),
           referenceAnnotations =
-            renderHost
-              .designReferencesFor(preview.id)
-              .firstOrNull()
-              ?.let { renderHost.annotationsForReference(it.id) }
-              .orEmpty(),
+            if (revisions.pinned != null) emptyList()
+            else
+              renderHost
+                .designReferencesFor(preview.id)
+                .firstOrNull()
+                ?.let { renderHost.annotationsForReference(it.id) }
+                .orEmpty(),
           // "open in playground" — offered only when this host has the lane AND this preview
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.
@@ -6490,6 +6466,47 @@ class ServeHttpServer(
     if (isAuthorized(token, provided, isPublic)) return false
     call.respondText("not found", status = HttpStatusCode.NotFound)
     return true
+  }
+
+  private suspend fun RoutingContext.handleWasmAsset(privateRoute: Boolean) {
+    val system = call.parameters["system"]
+    val privateSystem = system in privateWasmCatalogs
+    if (
+      (privateRoute &&
+        (!privateSystem || !ServeUrls.tokensMatch(token, call.parameters["access"]))) ||
+        (!privateRoute && privateSystem && !isPublic)
+    ) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    // A site hostname serves ONE catalog's app. These constant-prefix routes bypass canonical-path
+    // isolation, so enforce the same one-catalog projection here.
+    val site = call.siteSystem()
+    val dir = if (site != null && system != site) null else system?.let { wasmCatalogs[it] }
+    if (dir == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
+    val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
+    val base = dir.toPath().toAbsolutePath().normalize()
+    val resolved = base.resolve(rel).normalize()
+    if (!resolved.startsWith(base) || !resolved.toFile().isFile) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val file = resolved.toFile()
+    // The sandboxed iframe has an opaque origin, so its ES-module and Wasm requests require CORS.
+    call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+    val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
+    call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+    call.response.headers.append(HttpHeaders.ETag, etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+    call.respondBytes(bytes, wasmContentType(file.name))
   }
 
   private suspend fun RoutingContext.rejectMissingGithubAuth(api: Boolean = false): Boolean {

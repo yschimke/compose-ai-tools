@@ -39,6 +39,7 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.PreviewSlots
+import ee.schimke.composeai.data.theme.Material3ThemeProduct
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
@@ -127,6 +128,8 @@ internal class FakeRenderSession(
   /** Extension ids passed to [enableExtensions], in call order — for assertions. */
   val enabledExtensionIds = CopyOnWriteArrayList<String>()
   val subscribedDataKinds = CopyOnWriteArrayList<String>()
+  val unsubscribedDataKinds = CopyOnWriteArrayList<String>()
+  @Volatile var lastThemeFetchParams: JsonElement? = null
   private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
   private val listeners = CopyOnWriteArrayList<NotificationListener>()
   private val counter = AtomicInteger(0)
@@ -333,6 +336,7 @@ internal class FakeRenderSession(
     params: JsonElement?,
     timeout: kotlin.time.Duration,
   ): DataFetchResult {
+    if (kind == Material3ThemeProduct.KIND) lastThemeFetchParams = params
     fetchDataHook?.invoke(previewId, kind)?.let {
       return it
     }
@@ -400,7 +404,11 @@ internal class FakeRenderSession(
     previewId: String,
     kind: String,
     timeout: kotlin.time.Duration,
-  ): DataSubscribeResult = error("unused")
+  ): DataSubscribeResult {
+    subscribedDataKinds.remove(kind)
+    unsubscribedDataKinds += kind
+    return DataSubscribeResult.OK
+  }
 
   override fun listExtensions(timeout: kotlin.time.Duration): ExtensionsListResult = error("unused")
 

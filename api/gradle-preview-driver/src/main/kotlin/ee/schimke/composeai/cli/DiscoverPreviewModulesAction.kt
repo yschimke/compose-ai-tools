@@ -89,6 +89,20 @@ class DiscoverPreviewModulesAction : BuildAction<PreviewModuleDiscoveryResult>, 
   }
 }
 
+/** Lightweight path-to-directory map for every project in the build. */
+class DiscoverGradleProjectsAction : BuildAction<ArrayList<PreviewModule>>, Serializable {
+  override fun execute(controller: BuildController): ArrayList<PreviewModule> {
+    val projects = ArrayList<PreviewModule>()
+    for (project in controller.getModel(GradleBuild::class.java).projects) {
+      val path = project.path.removePrefix(":")
+      if (path.isNotEmpty()) {
+        projects.add(PreviewModule(gradlePath = path, projectDir = project.projectDirectory))
+      }
+    }
+    return projects
+  }
+}
+
 /**
  * Result of [DiscoverPreviewModulesAction]: the modules that resolved plus the per-project failures
  * encountered while walking the build. Serialized across the Tooling-API daemon boundary, so both

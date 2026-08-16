@@ -77,6 +77,14 @@ class ServeUrlsTest {
   }
 
   @Test
+  fun `private wasm app src keeps the token in the inherited directory path`() {
+    assertEquals(
+      "/wasm-private/secret/local%3Aui/?id=button&uiMode=dark",
+      ServeUrls.privateWasmAppSrc("local:ui", "button__dark", "secret"),
+    )
+  }
+
+  @Test
   fun `github blob url joins repo ref module and source path, per-segment encoded`() {
     // The module (catalog source subdir) is prefixed ahead of the module-relative sourceFile.
     assertEquals(

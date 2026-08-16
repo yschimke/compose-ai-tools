@@ -61,10 +61,25 @@ object ServeUrls {
    * app uses its own default. The viewer's Theme control still overrides this when set.
    */
   fun wasmAppSrc(system: String, previewId: String): String {
+    return buildWasmAppSrc("/wasm/${WebEscaping.urlEncodeSegment(system)}/", previewId)
+  }
+
+  /**
+   * Token-in-path twin of [wasmAppSrc] for automatically discovered local applications. Keeping the
+   * credential in the directory prefix means the app's relative JavaScript and `.wasm` requests
+   * inherit it; a query token on `index.html` would be lost by those sub-resource URLs.
+   */
+  fun privateWasmAppSrc(system: String, previewId: String, token: String): String =
+    buildWasmAppSrc(
+      "/wasm-private/${WebEscaping.urlEncodeSegment(token)}/${WebEscaping.urlEncodeSegment(system)}/",
+      previewId,
+    )
+
+  private fun buildWasmAppSrc(base: String, previewId: String): String {
     val component = previewId.substringBefore("__")
     val theme = previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }
     return buildString {
-      append("/wasm/").append(WebEscaping.urlEncodeSegment(system)).append("/?id=")
+      append(base).append("?id=")
       append(WebEscaping.urlEncodeSegment(component))
       if (theme != null) append("&uiMode=").append(theme)
     }

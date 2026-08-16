@@ -1862,17 +1862,19 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-source-panel .CodeMirror-selected { background: var(--md-sys-color-secondary-container); }
 /* Same Kotlin token palette as playground.css. It follows the page's pinned `color-scheme` through
    light-dark(), rather than following the OS after the visitor has explicitly chosen a scheme. */
-.cp-source-panel .cm-keyword { color: light-dark(#770088, #c792ea); }
-.cp-source-panel .cm-def { color: light-dark(#0000ff, #82aaff); }
-.cp-source-panel .cm-variable-3, .cp-source-panel .cm-type {
+.cp-source-panel .CodeMirror.cm-s-default .cm-keyword { color: light-dark(#770088, #c792ea); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-def { color: light-dark(#0000ff, #82aaff); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-variable-3,
+.cp-source-panel .CodeMirror.cm-s-default .cm-type {
   color: light-dark(#008855, #82aaff); }
-.cp-source-panel .cm-string { color: light-dark(#aa1111, #c3e88d); }
-.cp-source-panel .cm-string-2 { color: light-dark(#ff5500, #c3e88d); }
-.cp-source-panel .cm-number { color: light-dark(#116644, #f78c6c); }
-.cp-source-panel .cm-comment { color: light-dark(#aa5500, #7d8799); }
-.cp-source-panel .cm-meta { color: light-dark(#555555, #ffcb6b); }
-.cp-source-panel .cm-atom { color: light-dark(#221199, #ffcb6b); }
-.cp-source-panel .cm-operator, .cp-source-panel .cm-punctuation {
+.cp-source-panel .CodeMirror.cm-s-default .cm-string { color: light-dark(#aa1111, #c3e88d); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-string-2 { color: light-dark(#ff5500, #c3e88d); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-number { color: light-dark(#116644, #f78c6c); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-comment { color: light-dark(#aa5500, #7d8799); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-meta { color: light-dark(#555555, #ffcb6b); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-atom { color: light-dark(#221199, #ffcb6b); }
+.cp-source-panel .CodeMirror.cm-s-default .cm-operator,
+.cp-source-panel .CodeMirror.cm-s-default .cm-punctuation {
   color: light-dark(currentcolor, #89ddff); }
 .cp-source-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   margin-top: 12px; }

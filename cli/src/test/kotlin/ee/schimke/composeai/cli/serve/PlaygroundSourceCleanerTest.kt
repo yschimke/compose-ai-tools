@@ -311,7 +311,12 @@ class PlaygroundSourceCleanerTest {
           )
       )
 
-    for (arguments in listOf("/* default theme */", "\n        // default theme\n        ")) {
+    for (arguments in
+      listOf(
+        "/* default theme */",
+        "/* outer /* detail */ outer */",
+        "\n        // default theme\n        ",
+      )) {
       val source =
         """
         package com.example.catalog

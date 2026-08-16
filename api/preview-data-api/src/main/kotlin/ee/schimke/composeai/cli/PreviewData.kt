@@ -332,4 +332,36 @@ data class PreviewResult(
    * constraints" / "No hardcoded special-case logic for extensions."
    */
   val dataExtensions: Map<String, ExtensionPayload> = emptyMap(),
-)
+) {
+  /**
+   * Binary-compatible constructor retained for consumers compiled before [projectDirectory] was
+   * added. A default on the new primary parameter preserves source compatibility only; this
+   * overload preserves the old JVM constructor descriptor and its default-argument bridge.
+   */
+  constructor(
+    id: String,
+    module: String,
+    functionName: String,
+    className: String,
+    sourceFile: String? = null,
+    params: PreviewParams = PreviewParams(),
+    captures: List<CaptureResult> = emptyList(),
+    pngPath: String? = null,
+    sha256: String? = null,
+    changed: Boolean? = null,
+    dataExtensions: Map<String, ExtensionPayload> = emptyMap(),
+  ) : this(
+    id = id,
+    module = module,
+    projectDirectory = null,
+    functionName = functionName,
+    className = className,
+    sourceFile = sourceFile,
+    params = params,
+    captures = captures,
+    pngPath = pngPath,
+    sha256 = sha256,
+    changed = changed,
+    dataExtensions = dataExtensions,
+  )
+}
