@@ -68,8 +68,26 @@ lane is more correct, not less** — a caution about reading the table above as 
 
 ## Regenerating
 
+The committed sweep is pinned to `homeassistant-remotecompose` source
+`72c6d941f244d3d712c6029ba54d6de3147adc12`, published as design-artifact commit
+`7d22352e435c405b5ff1c25a19bd4106fa7a3231`. Stage those exact 164 documents first:
+
+```bash
+artifact=7d22352e435c405b5ff1c25a19bd4106fa7a3231
+curl -fL "https://raw.githubusercontent.com/yschimke/homeassistant-remotecompose/$artifact/bundle/bundle.png" \
+  -o /tmp/homeassistant-remotecompose-7d22352e.bundle.png
+npm --prefix scripts/design-artifacts ci
+node scripts/design-artifacts/rc-compare.mjs \
+  --bundle /tmp/homeassistant-remotecompose-7d22352e.bundle.png \
+  --player cli/src/main/resources/rc-player/bundle.js \
+  --out /tmp/rc-lane-ab-stage \
+  --stage-embedded /tmp/rc-lane-ab-input
 ```
-scripts/rc-lane-ab/render-ab.sh <dir with <id>.rc + manifest.json> [lane-output-dir]
+
+Then render, score, and compose the evidence:
+
+```bash
+scripts/rc-lane-ab/render-ab.sh /tmp/rc-lane-ab-input [lane-output-dir]
 ```
 
 That is the whole recipe — it renders both lanes, prints the table above, and rewrites every image
