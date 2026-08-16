@@ -30,7 +30,7 @@ roborazzi = "1.71.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
-androidx-tracing = "1.3.0"
+androidx-tracing = "2.0.0"
 # androidx.tracing 2.x — the Kotlin Multiplatform rewrite, used by the CMP Remote Compose player
 # stack through `:rc-player-trace`. Pinned separately from `androidx-tracing` above rather than
 # bumping it: 2.x drags `kotlinx-coroutines-core` and `androidx.collection` in, which the daemon's
