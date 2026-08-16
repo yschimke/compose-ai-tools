@@ -1026,9 +1026,10 @@ class ServeWebFixtureTest {
         basePath = "/meshcore-mobile",
         version = version,
         // meshcore-mobile is the catalog that really publishes Figma-backed design references, so
-        // it is the one whose landing offers the design-parity view — captured here so the
-        // visual-diff bot covers the new summary-line action, named after the design tool the
-        // references came from.
+        // it is the one whose landing offers both design actions — captured here so the visual-diff
+        // bot covers the reference comparison (named after the design tool the references came
+        // from) and the parity dashboard beside it.
+        hasReferenceComparison = true,
         hasParityView = true,
         designToolLabel = "Figma",
       )
@@ -1052,6 +1053,7 @@ class ServeWebFixtureTest {
         basePath = "",
         sessionInOrigin = true,
         version = version,
+        hasReferenceComparison = true,
         hasParityView = true,
         designToolLabel = "Figma",
       )
@@ -2715,12 +2717,18 @@ class ServeWebFixtureTest {
         ),
       "a catalog with alternate formats links each one separately: $landingThemed",
     )
-    // …and the design-parity action is named after the tool it compares against.
+    // …and the reference comparison is one of them, named after the tool it compares against and
+    // deep-linking the same comparison page as its siblings — not the parity dashboard, which is a
+    // different question and keeps its own name.
     assertTrue(
       landingPath.contains(
-        "<a class=\"cp-action-chip\" href=\"/meshcore-mobile/parity\">compare to Figma</a>"
-      ),
-      "a Figma-specified catalog offers 'compare to Figma' rather than the feature's name",
+        "<a class=\"cp-action-chip\" href=\"/meshcore-mobile/compare?format=reference\">" +
+          "compare to Figma</a>"
+      ) &&
+        landingPath.contains(
+          "<a class=\"cp-action-chip\" href=\"/meshcore-mobile/parity\">design parity</a>"
+        ),
+      "a Figma-specified catalog compares against Figma and links the parity dashboard separately",
     )
     assertTrue(
       formatComparison.contains("data-compare-format=\"svg\"") &&

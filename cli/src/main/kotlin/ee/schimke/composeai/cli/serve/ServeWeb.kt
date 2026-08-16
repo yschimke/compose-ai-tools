@@ -5765,6 +5765,13 @@ $noteBlock        <div class="cp-site-footer-links">
      */
     hasRcComparison: Boolean = false,
     /**
+     * Whether this session can compare a render against its design references — gates the "compare
+     * to Figma" action, which deep-links the comparison page's `reference` format. Named after the
+     * design tool ([designToolLabel]) for the same reason the other two are named after their
+     * formats: the chip says what it puts side by side.
+     */
+    hasReferenceComparison: Boolean = false,
+    /**
      * Whether this catalog has a design-parity view to link to — it maps at least one preview to a
      * design reference, or it publishes a `parity/activity.json` feed. False (the default) omits
      * the link entirely rather than offering a page of zeroes, so a plain module / an unmapped
@@ -5780,9 +5787,9 @@ $noteBlock        <div class="cp-site-footer-links">
     designPages: List<PageLink> = emptyList(),
     /**
      * The design tool this catalog is specified by ("Figma", …), from its references' provider or
-     * its parity feed — names the parity action after the thing it compares against ("compare to
-     * Figma") rather than after the internal feature. Null (no identifiable tool) keeps the generic
-     * "design parity" label. See [designToolLabel].
+     * its parity feed — names the reference comparison after the thing it compares against
+     * ("compare to Figma") rather than after the internal format name. Null (no identifiable tool)
+     * keeps the neutral "compare to design references" label. See [designToolLabel].
      */
     designToolLabel: String? = null,
     /**
@@ -6370,17 +6377,19 @@ $noteBlock        <div class="cp-site-footer-links">
       listOfNotNull(
           compareChip("svg", "compare SVG").takeIf { hasSvgComparison },
           compareChip("rc", "compare RC players").takeIf { hasRcComparison },
-          // Named after the design tool it compares against when the catalog identifies one —
-          // "compare to Figma" says what the page is for, where "design parity" only named the
-          // feature.
-          hasParityView
-            .takeIf { it }
-            ?.let {
-              actionChip(
-                "$basePath/parity$q",
-                designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
-              )
-            },
+          // Named after the design tool it compares against when the catalog identifies one, since
+          // "compare to Figma" says what you get where "compare reference" would name the format
+          // slug. It sits with the other compare chips because it goes where they go — the same
+          // comparison page, deep-linked to its own format — rather than to a different page.
+          compareChip(
+              "reference",
+              designToolLabel?.let { tool -> "compare to $tool" } ?: "compare to design references",
+            )
+            .takeIf { hasReferenceComparison },
+          // The parity dashboard is a different question from the side-by-side: how the code and
+          // the design file have *moved*, and how far apart they are — so it keeps its own name
+          // rather than borrowing the comparison's.
+          actionChip("$basePath/parity$q", "design parity").takeIf { hasParityView },
           // Pages live in the navigation tree, which is where this catalog's other *places* are.
           // This chip is the fallback for a catalog too small to have a tree at all: without it
           // the pages would be published and unreachable. The count is in the label because one

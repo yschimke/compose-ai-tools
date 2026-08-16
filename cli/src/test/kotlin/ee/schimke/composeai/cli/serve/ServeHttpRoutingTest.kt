@@ -1761,8 +1761,9 @@ class ServeHttpRoutingTest {
       "the catalog landing links the comparison formats it carries: $landing",
     )
     assertTrue(
-      landing.contains("href=\"/compose-m3/parity\">compare to Figma</a>"),
-      "the catalog landing names the design tool its references come from: $landing",
+      landing.contains("href=\"/compose-m3/compare?format=reference\">compare to Figma</a>") &&
+        landing.contains("href=\"/compose-m3/parity\">design parity</a>"),
+      "the catalog landing compares against the design tool its references come from: $landing",
     )
   }
 
