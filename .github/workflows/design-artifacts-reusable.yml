@@ -1419,6 +1419,7 @@ jobs:
           MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${SOURCE_SHA})" \
           SKIP_IF_UNCHANGED=1 \
           CARRY_FORWARD_PATHS='parity/issues.json' \
+          REVISION_PREVIEW_INDEX=1 \
           GIT_AUTHOR_NAME='${{ inputs.commit-user-name }}' \
           GIT_AUTHOR_EMAIL='${{ inputs.commit-user-email }}' \
           GIT_COMMITTER_NAME='${{ inputs.commit-user-name }}' \

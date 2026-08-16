@@ -2322,16 +2322,36 @@ class ServeHttpServer(
    * A session with no delivery branch behind it (an uploaded bundle, a local project) gets no
    * revision surface at all rather than an empty control.
    */
-  private fun RoutingContext.catalogRevisions(renderHost: ServeHost): ServeWeb.CatalogRevisions {
+  private fun RoutingContext.catalogRevisions(
+    renderHost: ServeHost,
+    previewId: String? = null,
+  ): ServeWeb.CatalogRevisions {
     val host = catalogBundleHost(renderHost) ?: return ServeWeb.CatalogRevisions.NONE
     if (!host.supportsPinnedRevisions) return ServeWeb.CatalogRevisions.NONE
     return ServeWeb.CatalogRevisions(
       pinned =
         ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM]),
-      revisions = host.revisions,
+      revisions = if (previewId == null) host.revisions else availableRevisions(host, previewId),
       repo = host.provenance?.repo,
     )
   }
+
+  /**
+   * The catalog publishes as they apply to one preview, newest first.
+   *
+   * A delivery branch's feed is catalog-wide, so it includes commits from before a newly-added
+   * preview existed. Offering those as this preview's versions only manufactures links to honest
+   * 404s. The publisher rolls a compact preview index forward with every catalog generation, so
+   * this is an in-memory lookup rather than one historical `catalog.json` fetch per row. A missing
+   * index or entry fails open, keeping older publishers backward-compatible.
+   */
+  private fun availableRevisions(
+    host: ServeBundleHost,
+    previewId: String,
+  ): List<ServeCatalogRevision.Revision> =
+    host.revisions.filterIndexed { index, revision ->
+      index == 0 || host.revisionContainsPreview(revision.commit, previewId) != false
+    }
 
   /**
    * Answer one **pinned** image request: the published bytes at a delivery-branch commit, or a 404
@@ -2584,7 +2604,7 @@ class ServeHttpServer(
           repo = reportContext.repo,
           login = githubAuth?.currentLogin(call),
         )
-      val revisions = catalogRevisions(renderHost)
+      val revisions = catalogRevisions(renderHost, preview.id)
       val pinned = revisions.pinned != null
       markGeneration("static-page", pageCacheControl())
       call.respondText(
@@ -4455,7 +4475,7 @@ class ServeHttpServer(
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
       val previewId = call.parameters["name"]
-      val revisions = catalogRevisions(renderHost)
+      val revisions = catalogRevisions(renderHost, previewId)
       // Which catalog decides what this page is *about*. Unpinned it is the session's own list;
       // under a pin it is the revision's own catalog, asked FIRST — the same authority rule the
       // asset lanes follow, and for the same reason. Asking the tip first looks harmless while a
@@ -4484,7 +4504,32 @@ class ServeHttpServer(
           ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
       }
       if (preview == null) {
-        respondNotFoundHtml("That preview does not exist in this catalog.")
+        if (revisions.pinned != null && previewId != null) {
+          // The selected publish answered authoritatively that this id was absent. Keep the 404 —
+          // serving today's preview here would lie about the pin — but retain the revision menu so
+          // a catalog-wide publish that predates this preview is not a navigation dead end.
+          val skin = siteSkin()
+          call.respondText(
+            ServeWeb.unavailablePreviewRevisionPage(
+              previewId = previewId,
+              token = token,
+              sessionId = webSessionId,
+              basePath = basePath,
+              isPublic = isPublic,
+              revisions = revisions,
+              unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+              version = BUNDLE_VERSION,
+              siteName = skin.first,
+              themeCss = skin.second,
+              themeStorageKey = skin.third,
+              sessionInOrigin = siteSystem() != null,
+            ),
+            ContentType.Text.Html,
+            HttpStatusCode.NotFound,
+          )
+        } else {
+          respondNotFoundHtml("That preview does not exist in this catalog.")
+        }
         return@withLeasedSession
       }
       // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.

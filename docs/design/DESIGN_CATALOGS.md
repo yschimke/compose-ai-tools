@@ -216,6 +216,13 @@ A run whose output tree is byte-identical to the tip pushes **nothing**
 (`SKIP_IF_UNCHANGED=1`), so the weekly cron doesn't accumulate empty commits —
 a commit on these branches always means the rendered output actually changed.
 
+The publisher also rolls `preview-index.json` forward atomically with the commit. Its `current`
+inventory names the previews in this publish; on the next publish that inventory is promoted under
+the actual parent SHA and the oldest entry is trimmed. The preview server can therefore omit
+catalog-wide revisions that predate a particular preview with one small manifest read, rather than
+fetching and parsing every historical `catalog.json`. The index is carried unchanged during the
+byte-identical check, so this derived metadata cannot manufacture an otherwise-empty publish.
+
 The storage cost is modest despite each commit being a full ~60 MB snapshot,
 because unchanged PNGs are the same blob and git stores them once.
 `compose-preview/main` is the worked example: 770 commits of a ~69 MB tree

@@ -354,6 +354,12 @@ comparison page, one row per publish, dated and labelled by the *source* commit 
 regenerated from. Opening one pins the page. On an ordinary page view the control is a single folded
 line:
 
+The rows are preview-specific even though the commit feed is catalog-wide. Each generated delivery
+branch carries a rolling `preview-index.json`; the server uses it to omit revisions that did not
+publish the preview on the page. Branches produced before this index existed fail open and retain
+their rows, while a direct link to a genuinely absent preview still returns a contextual `404` with
+a route back to the current preview.
+
 ![The viewer's folded Revisions disclosure](images/serve-revision-viewer.png)
 
 The rules the lane holds to, each of which exists because its opposite would make a permalink a lie:

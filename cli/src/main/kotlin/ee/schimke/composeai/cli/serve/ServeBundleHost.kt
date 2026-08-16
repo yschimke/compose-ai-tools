@@ -151,6 +151,8 @@ class ServeBundleHost(
    * uploaded bundle, and for a catalog whose branch history couldn't be read.
    */
   val revisions: List<ServeCatalogRevision.Revision> = emptyList(),
+  /** Preview inventories precomputed by the publisher, keyed by historic delivery commit. */
+  private val revisionPreviewIds: Map<String, Set<String>>? = null,
   /**
    * Each design reference's path **on the delivery branch**, which is not the path the served
    * manifest carries: catalog import rewrites every raster to a server-owned `references/<id>.png`.
@@ -681,6 +683,10 @@ class ServeBundleHost(
    */
   fun pinnedCatalogIsAuthoritative(commit: String): Boolean =
     pinnedManifest?.forCommit(commit)?.catalogRead == true
+
+  /** Null means this branch or revision predates the generation-time index, so menus fail open. */
+  fun revisionContainsPreview(commit: String, previewId: String): Boolean? =
+    ServeCatalogRevision.normalize(commit)?.let { revisionPreviewIds?.get(it)?.contains(previewId) }
 
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
   fun pinnedReference(commit: String, referenceId: String): PinnedOutcome =
