@@ -748,8 +748,8 @@
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "dark",
-      "sha256": "4504606c93e9063566aec96dc1018304ae4206c76953b81a7b64205caee3536a",
-      "size": 62218
+      "sha256": "fe4b92bd3e33a46810e42f758979b702f757634419bae5e97ace68463f9449d6",
+      "size": 64659
     },
     "serve-landing-sections-filtered.light.png": {
       "fixture": "serve-landing-sections-filtered",
