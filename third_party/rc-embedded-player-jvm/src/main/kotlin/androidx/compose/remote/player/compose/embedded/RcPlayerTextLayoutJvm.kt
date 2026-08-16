@@ -34,6 +34,9 @@ import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -51,8 +54,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import java.text.BreakIterator
-import java.util.Locale
 
 /*
  * The jvm counterpart of `RcPlayerTextLayout.kt`'s two `RcPlayerText` composables. The size, weight,
@@ -120,7 +121,7 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
             else -> TextDecoration.None
         }
 
-    val textStyle =
+    val ambientLineHeightStyle =
         baseStyle.copy(
             color = color,
             fontSize = fontSizeSp,
@@ -140,16 +141,6 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                     else -> TextAlign.Start
                 },
             letterSpacing = data.letterSpacing.em,
-            lineHeight =
-                if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
-                    if (data.autosize) {
-                        (data.lineHeightMultiplier + data.lineHeightAdd / fontSize.coerceAtLeast(0.0001f)).em
-                    } else {
-                        with(density) { (fontSize * data.lineHeightMultiplier + data.lineHeightAdd).toSp() }
-                    }
-                } else {
-                    TextUnit.Unspecified
-                },
             textDecoration = textDecoration,
             // Unset means `Unspecified`, not "inherit": a document that says nothing about line
             // breaking must not pick up Material3's line-break role from the host (#3667).
@@ -161,6 +152,19 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 },
             hyphens = if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.Unspecified,
         )
+    val textStyle =
+        if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
+            ambientLineHeightStyle.copy(
+                lineHeight =
+                    if (data.autosize) {
+                        (data.lineHeightMultiplier + data.lineHeightAdd / fontSize.coerceAtLeast(0.0001f)).em
+                    } else {
+                        with(density) { (fontSize * data.lineHeightMultiplier + data.lineHeightAdd).toSp() }
+                    },
+            )
+        } else {
+            ambientLineHeightStyle
+        }
     SynchronousOneLineEllipsisText(
         text = text,
         modifier = modifier,
@@ -306,7 +310,7 @@ private fun SynchronousOneLineEllipsisText(
             subcompose(displayText) {
                     content(
                         displayText,
-                        Modifier,
+                        Modifier.clearAndSetSemantics { this.text = AnnotatedString(text) },
                         TextOverflow.Clip,
                         autoSize?.let { resolvedStyle.fontSize },
                     )
@@ -430,16 +434,13 @@ internal fun synchronousEllipsis(
     return candidate
 }
 
-private fun graphemeBoundaries(text: String): List<Int> {
-    val iterator = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(text) }
-    return buildList {
-        var boundary = iterator.first()
-        while (boundary != BreakIterator.DONE) {
-            add(boundary)
-            boundary = iterator.next()
-        }
+private val extendedGrapheme = Regex("\\X")
+
+private fun graphemeBoundaries(text: String): List<Int> =
+    buildList {
+        add(0)
+        extendedGrapheme.findAll(text).forEach { match -> add(match.range.last + 1) }
     }
-}
 
 private fun composeOverflow(overflow: Int): TextOverflow =
     when (overflow) {
