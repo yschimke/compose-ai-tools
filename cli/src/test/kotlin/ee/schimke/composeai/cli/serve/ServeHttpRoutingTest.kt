@@ -581,19 +581,20 @@ class ServeHttpRoutingTest {
       "a view axis is not an override the baked lane has to refuse",
     )
     assertTrue(body.contains("data-exploded=\"true\""), "served exploded: $body")
-    // Frame, Card, Text — one plane per level of composable nesting in the baked export.
-    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(body).count())
+    // Card and Text paint; the structural-only frame depth is retained in context, not emitted as
+    // a full-size empty sheet.
+    assertEquals(2, Regex("class=\"cp-exploded-plane\"").findAll(body).count())
     assertTrue(body.contains("data-layers=\"Card\""))
 
     // The knobs reshape the same bytes without a re-render. `explodeDepth=1` folds everything below
     // the first level together, so the stack loses a plane.
     val (_, shallow, _) = getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeDepth=1")
-    assertEquals(2, Regex("class=\"cp-exploded-plane\"").findAll(shallow).count())
+    assertEquals(1, Regex("class=\"cp-exploded-plane\"").findAll(shallow).count())
     // An out-of-range or unparseable knob falls back to the default rather than 400ing a link.
     val (bogusCode, bogus, _) =
       getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeTilt=nope&explodeDepth=999")
     assertEquals(200, bogusCode)
-    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(bogus).count())
+    assertEquals(2, Regex("class=\"cp-exploded-plane\"").findAll(bogus).count())
 
     // A hand-typed separation far past anything the slider offers is bounded, not obeyed: past
     // ~2.1e6 the canvas numbers stop surviving formatting and the picture collapses instead of
@@ -601,7 +602,7 @@ class ServeHttpRoutingTest {
     val (hugeCode, huge, _) =
       getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeGap=3000000")
     assertEquals(200, hugeCode)
-    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(huge).count())
+    assertEquals(2, Regex("class=\"cp-exploded-plane\"").findAll(huge).count())
     val height = Regex("<svg[^>]*\\bheight=\"([\\d.]+)\"").find(huge)!!.groupValues[1].toDouble()
     assertTrue(height < 10_000, "the stack is bounded, not 3 million units tall: $height")
   }

@@ -1193,10 +1193,10 @@ and selecting it scores each mock against the sticker it is mapped to:
 
 The viewer's **3D** chip, beside **SVG**, answers a question a flat render can't: *what is this
 screen made of?* It tilts the vector export back and pulls it apart into one floating sheet per
-level of composable nesting — the frame, then the root composable's own drawing, then its
-children's, and so on — with a leader line naming the composables on each sheet.
+**drawing** level of composable nesting — the frame, then the root composable's own drawing, then
+its children's, and so on — with a leader line naming the composables on each sheet.
 
-![The exploded 3D view of a screen, one sheet per level of composable nesting](../renders/exploded-view/inbox-screen.exploded.png)
+![The exploded 3D view of a screen, one sheet per visible drawing level](../renders/exploded-view/inbox-screen.exploded.png)
 
 It reuses the [`compose/figma-svg`](daemon/DATA-PRODUCTS.md) export and nothing else. That export
 already emits **every composable as a `<g id="…">`, nested exactly as the composables nest**, so the
@@ -1206,6 +1206,13 @@ not a second capture, a new data product, or a daemon capability to negotiate. E
 is assigned to the plane matching its named-group depth; each plane is re-emitted as a structural
 copy of the original tree with only that plane's elements kept, so the enclosing
 `transform` / `clip-path` chain still places everything exactly where it was.
+
+Structural depths that paint nothing are folded into the next visible sheet instead of becoming
+full-screen empty plates. Their composable names remain in that sheet's breadcrumb (for example,
+`Column › Card`), which keeps deep Compose trees understandable without turning the useful pixels
+into a thin strip of whitespace. The output's `data-plane` values retain the original logical depth.
+Opening the render URL directly also fits the full diagram to the browser viewport; its numeric
+intrinsic dimensions remain intact for downloads and design-tool imports.
 
 Two consequences worth stating plainly, because they are why this is a server-side SVG rewrite
 rather than a WebGL scene in the page:

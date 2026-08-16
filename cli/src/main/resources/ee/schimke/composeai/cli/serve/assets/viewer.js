@@ -453,7 +453,7 @@
     return qs;
   }
   // The exploded 3D view (`?exploded=1` on the SVG lane): the layered figma-svg tilted back and
-  // pulled apart into one sheet per level of composable nesting. It is a *presentation* of the
+  // pulled apart into one sheet per visible drawing level. It is a *presentation* of the
   // vector export, so it rides only the `.svg` extension — appending it to the raster PNG lane
   // would silently do nothing, and the toggle turns SVG on rather than offering the combination.
   //

@@ -20,8 +20,8 @@ import org.w3c.dom.Node
 
 /**
  * Turns a [FigmaLayeredSvg] export into an **exploded axonometric view**: the same vector drawing,
- * tilted away from the viewer and pulled apart into one floating sheet per level of composable
- * nesting, with a leader line and a label naming the composables on each sheet.
+ * tilted away from the viewer and pulled apart into one floating sheet per **drawing** level of
+ * composable nesting, with a leader line and a label naming the composables on each sheet.
  *
  * The point is to make a screen's *construction* legible in one still image — which `Surface` sits
  * under which `Scaffold`, what the `Card` contributes versus the `Text` inside it — the way a
@@ -47,9 +47,10 @@ import org.w3c.dom.Node
  *
  * Each plane is then re-emitted as a *structural copy* of the original tree with only that plane's
  * drawing elements retained — the enclosing `<g transform=…>` / `clip-path=…` chain is preserved so
- * every element still lands where it did, and `<defs>` / `<clipPath>` / `<style>` are carried over
- * once at the top so gradients, shadow filters, hoisted Material icons and embedded `@font-face`
- * blocks keep resolving from every plane.
+ * every element still lands where it did. Depths that contain no drawing are omitted and named in
+ * the next visible sheet's breadcrumb. `<defs>` / `<clipPath>` / `<style>` are carried over once at
+ * the top so gradients, shadow filters, hoisted Material icons and embedded `@font-face` blocks
+ * keep resolving from every plane.
  *
  * ## The projection
  *
@@ -193,8 +194,15 @@ object ExplodedSvg {
     // <defs> never counts as a nesting level.
     val scan = Scan(options.maxDepth)
     for (child in root.childElements()) scan.walk(child, 0)
-    val planeCount = scan.planeCount()
-    if (planeCount == 0) return svg
+    // Only emit depths that actually paint. Real Compose trees often contain several structural
+    // wrappers (`Column`, `Box`, providers, scopes) between two drawing composables. Giving every
+    // one a full-size empty sheet makes a deep screen mostly whitespace and shrinks the useful
+    // pixels to illegibility. Chrome's Layers panel makes the same distinction: non-drawing
+    // internal layers are hidden by default. Their names are not lost — [Scan.labelForVisible]
+    // folds them into the next sheet's breadcrumb.
+    val visiblePlanes = scan.occupiedPlanes()
+    if (visiblePlanes.isEmpty()) return svg
+    val planeCount = visiblePlanes.size
 
     val spin = options.spinDeg.coerceIn(SPIN_RANGE) * PI / 180.0
     val tilt = options.tiltDeg.coerceIn(TILT_RANGE) * PI / 180.0
@@ -215,9 +223,8 @@ object ExplodedSvg {
     val cy = box.minY + box.height / 2.0
     val baseE = -(a * cx + c * cy)
     val baseF = -(b * cx + d * cy)
-    // Plane 0 is the outermost frame; each further plane floats one `gap` toward the viewer, drawn
-    // as a straight-up offset on the page so the sheets stay legible at a near-portrait lean (see
-    // the class doc).
+    // Each further *visible* plane floats one `gap` toward the viewer, drawn as a straight-up
+    // offset on the page so structural-only depths do not consume space (see the class doc).
     fun planeOffsetY(plane: Int): Double = -(plane * gap)
 
     val fontSize = (max(box.width, box.height) * 0.035).coerceIn(10.0, 26.0)
@@ -258,8 +265,8 @@ object ExplodedSvg {
       if (!options.labels) emptyList()
       else
         layoutLabels(
-          planeCount = planeCount,
-          label = scan::labelFor,
+          visiblePlanes = visiblePlanes,
+          label = scan::labelForVisible,
           box = box,
           a = a,
           b = b,
@@ -317,7 +324,7 @@ object ExplodedSvg {
     planesGroup.setAttribute("class", "cp-exploded-planes")
     outSvg.appendChild(planesGroup)
 
-    for (plane in 0 until planeCount) {
+    for ((displayIndex, plane) in visiblePlanes.withIndex()) {
       val g = out.createElementNS(SVG_NS, "g")
       g.setAttribute("class", "cp-exploded-plane")
       g.setAttribute("data-plane", plane.toString())
@@ -326,7 +333,7 @@ object ExplodedSvg {
       g.setAttribute(
         "transform",
         "matrix(${fmt(a)} ${fmt(b)} ${fmt(c)} ${fmt(d)} ${fmt(baseE)} " +
-          "${fmt(baseF + planeOffsetY(plane))})",
+          "${fmt(baseF + planeOffsetY(displayIndex))})",
       )
       // The sheet outline sits behind the plane's own drawing and outside the source's device
       // clip, so a plane that paints nothing at its edges still reads as a plane.
@@ -434,10 +441,10 @@ object ExplodedSvg {
       return "$icon icon"
     }
 
-    /** Number of planes that actually paint, counted from plane 0 up to the last occupied one. */
-    fun planeCount(): Int = (occupied.indexOfLast { it } + 1).coerceAtMost(MAX_PLANES + 1)
-
     fun namesOn(plane: Int): List<String> = names[plane].toList()
+
+    /** Logical nesting depths that contain at least one drawing element. */
+    fun occupiedPlanes(): List<Int> = occupied.indices.filter { occupied[it] }
 
     /** The label for a plane: its first few composables, then a count of the rest. */
     fun labelFor(plane: Int): String {
@@ -446,6 +453,23 @@ object ExplodedSvg {
       val shown = all.take(LABEL_NAME_LIMIT).joinToString(" · ") { it.ellipsize(LABEL_NAME_CHARS) }
       val rest = all.size - LABEL_NAME_LIMIT
       return if (rest > 0) "$shown +$rest" else shown
+    }
+
+    /**
+     * Label an emitted sheet and retain the structural depths hidden immediately below it.
+     *
+     * For example, an empty `Column` depth followed by a depth that paints `Card` becomes `Column ›
+     * Card`. The diagram therefore spends space only on visible pixels while still answering how
+     * those pixels are nested.
+     */
+    fun labelForVisible(plane: Int): String {
+      val previous = (plane - 1 downTo 0).firstOrNull { occupied[it] } ?: -1
+      val parts =
+        (previous + 1..plane).mapNotNull { depth ->
+          namesOn(depth).takeIf { it.isNotEmpty() }?.let { labelFor(depth) }
+        }
+      if (parts.isEmpty()) return if (plane == 0) "Frame" else "Layer $plane"
+      return parts.joinToString(" › ").ellipsize(LABEL_TOTAL_CHARS)
     }
   }
 
@@ -458,6 +482,9 @@ object ExplodedSvg {
   private const val LABEL_NAME_LIMIT = 2
 
   private const val LABEL_NAME_CHARS = 22
+
+  /** Bound the combined structural breadcrumb so it cannot dominate the diagram's width. */
+  private const val LABEL_TOTAL_CHARS = 52
 
   private fun String.ellipsize(limit: Int): String =
     if (length <= limit) this else take(limit - 1).trimEnd() + "…"
@@ -533,7 +560,7 @@ object ExplodedSvg {
    */
   @Suppress("LongParameterList")
   private fun layoutLabels(
-    planeCount: Int,
+    visiblePlanes: List<Int>,
     label: (Int) -> String,
     box: ViewBox,
     a: Double,
@@ -549,10 +576,11 @@ object ExplodedSvg {
     val edgeY = box.minY + box.height / 2.0
     val anchorX = a * edgeX + c * edgeY + baseE
     val minSpacing = fontSize * 1.6
-    val out = ArrayList<LabelPlacement>(planeCount)
+    val out = ArrayList<LabelPlacement>(visiblePlanes.size)
     var previousY: Double? = null
-    for (plane in (planeCount - 1) downTo 0) {
-      val anchorY = b * edgeX + d * edgeY + baseF + planeOffsetY(plane)
+    for (displayIndex in visiblePlanes.indices.reversed()) {
+      val plane = visiblePlanes[displayIndex]
+      val anchorY = b * edgeX + d * edgeY + baseF + planeOffsetY(displayIndex)
       val labelY = previousY?.let { max(anchorY, it + minSpacing) } ?: anchorY
       previousY = labelY
       out.add(LabelPlacement(plane, label(plane), anchorX, anchorY, labelY))
@@ -622,11 +650,15 @@ object ExplodedSvg {
     val style = out.createElementNS(SVG_NS, "style")
     style.appendChild(
       out.createTextNode(
-        ".cp-exploded-canvas{fill:#ffffff}" +
-          ".cp-exploded-plate{fill:none;stroke:#9aa0a6;stroke-width:1;stroke-dasharray:5 5;" +
-          "opacity:.55}" +
-          ".cp-exploded-leader{fill:none;stroke:#9aa0a6;stroke-width:1}" +
-          ".cp-exploded-leader-dot{fill:#5f6368}" +
+        // A raw `/render/*.svg?exploded=1` link is a first-class viewing surface. Keep the numeric
+        // intrinsic size for downloads and design tools, but constrain the standalone root to the
+        // browser viewport so opening a tall stack does not show one cropped corner at 1:1.
+        ":root{display:block;width:auto;height:auto;max-width:100vw;max-height:100vh;margin:auto}" +
+          ".cp-exploded-canvas{fill:#ffffff}" +
+          ".cp-exploded-plate{fill:none;stroke:#747b85;stroke-width:1.25;" +
+          "stroke-dasharray:6 4;opacity:.82}" +
+          ".cp-exploded-leader{fill:none;stroke:#747b85;stroke-width:1.25}" +
+          ".cp-exploded-leader-dot{fill:#3c4043}" +
           ".cp-exploded-label{fill:#3c4043;font-family:sans-serif}"
       )
     )

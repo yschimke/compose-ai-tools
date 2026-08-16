@@ -2,8 +2,9 @@
 
 Committed evidence for the preview server's **exploded 3D** lane — `?exploded=1` on
 `/render/<id>.svg`, reachable from the viewer's **3D** chip. It tilts the layered
-`compose/figma-svg` export back and pulls it apart into one floating sheet per level of composable
-nesting, labelling each sheet with the composables that drew it.
+`compose/figma-svg` export back and pulls it apart into one floating sheet per visible drawing
+level, labelling each sheet with the composables that drew it and folding structural-only levels
+into concise breadcrumbs.
 
 The feature itself is
 [`ExplodedSvg`](../../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)

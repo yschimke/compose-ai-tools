@@ -92,7 +92,7 @@
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
 <button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show the vector (SVG) render">SVG</button>
-<button type="button" id="cp-explode-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Explode the vector render into one layer per composable">3D</button>
+<button type="button" id="cp-explode-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show how the visible drawing layers are composed">3D</button>
 <span id="cp-svg-match" class="cp-match" role="status" aria-live="polite" hidden></span><a id="cp-svg-diff" class="cp-format-link" href="/compare?format=svg&preview=com.example.ProfileCardPreview&token=demo-token-fixture&session=compose-m3" hidden>view diff →</a>
 <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
 <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
@@ -188,8 +188,8 @@
         step="1" value="6" data-cp-default="6" data-cp-unit="" disabled>
       <output id="cp-explode-depth-value" class="cp-explode-value">6</output>
     </label>
-    <div class="cp-knobs-head">One layer per level of composable nesting, from the
-      <code>compose/figma-svg</code> export. Rides the SVG link and download.</div>
+    <div class="cp-knobs-head">One sheet per visible drawing level. Structural-only
+      composables are kept in the next sheet's breadcrumb. Rides the SVG link and download.</div>
   </div>
 </details>
           <details class="cp-group" data-cp-group="locale">
