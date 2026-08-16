@@ -8129,6 +8129,7 @@ async function notifyDaemonViewport(
             mod,
             visibleByModule.get(modulePath) ?? [],
             predictedByModule.get(modulePath) ?? [],
+            gradleService ?? undefined,
         );
     }
     // Demand-driven `@ScrollingPreview` backfill. Cheap when `pendingScrollBackfill`
