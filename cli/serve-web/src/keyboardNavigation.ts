@@ -327,7 +327,6 @@ class KeyboardNavigation {
             );
         } catch (_) {
             this.globalComponentsFailed = true;
-            this.globalComponents = [];
         } finally {
             this.loadingGlobalComponents = false;
             if (this.overlay) {

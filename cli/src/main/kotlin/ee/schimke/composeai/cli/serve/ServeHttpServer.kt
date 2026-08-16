@@ -4251,6 +4251,13 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleGlobalComponents() {
     if (rejectBadToken()) return
+    // This is a front-door-only index. A top-level site has no multi-catalog front door (its root
+    // is the catalog landing), and exposing this constant `/api` route there would both reveal its
+    // neighbouring catalogs and return canonical links that the site's isolation layer rejects.
+    if (siteSystem() != null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
     val suffix =
       if (isPublic) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
     val components =

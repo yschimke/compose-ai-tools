@@ -179,10 +179,16 @@ describe("power-user keyboard navigation", () => {
             <span class="cp-id">wear-m3</span>
           </a>`,
         );
+        let componentFetches = 0;
         Object.defineProperty(globalThis, "fetch", {
             configurable: true,
-            value: async () =>
-                new Response(
+            value: async () => {
+                componentFetches++;
+                if (componentFetches === 1)
+                    return new Response("temporarily unavailable", {
+                        status: 503,
+                    });
+                return new Response(
                     JSON.stringify({
                         components: [
                             {
@@ -195,9 +201,22 @@ describe("power-user keyboard navigation", () => {
                         ],
                     }),
                     { status: 200 },
-                ),
+                );
+            },
         });
         setting.click();
+
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+        );
+        await flush();
+        assert.match(
+            document.querySelector(".cp-command-empty")!.textContent!,
+            /Components are unavailable/,
+        );
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
 
         document.dispatchEvent(
             new KeyboardEvent("keydown", { key: "c", bubbles: true }),
@@ -207,6 +226,11 @@ describe("power-user keyboard navigation", () => {
             document.querySelector(".cp-command-item")!.textContent,
             "Filled buttonCompose Material 3",
             "the home-page C palette searches components across catalogs",
+        );
+        assert.equal(
+            componentFetches,
+            2,
+            "a failed component fetch retries on reopen",
         );
         document.dispatchEvent(
             new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
