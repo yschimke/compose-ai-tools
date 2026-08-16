@@ -987,6 +987,25 @@ class ServeWebTest {
   }
 
   @Test
+  fun `a disabled theme control keeps the published spec verdict at baseline`() {
+    // Static viewers cannot apply either a URL-selected or remembered theme. The sticky bootstrap
+    // may still display that choice and mark it active, but it must not suppress a score for pixels
+    // that remain exactly the baked snapshot.
+    val html = chipHtmlFor(DesignReferenceMatch(percent = 99.6))
+    assertTrue(
+      Regex("<select id=\"cp-theme\"[^>]* disabled>").containsMatchIn(html),
+      "the static viewer's theme control is disabled: $html",
+    )
+    assertTrue(
+      html.contains(
+        "var atSpecBaseline = el.disabled || " +
+          "el.getAttribute(\"data-theme-active\") !== \"1\";"
+      ),
+      "a disabled control cannot move the initial spec verdict off baseline: $html",
+    )
+  }
+
+  @Test
   fun `the match band colours the chip without deciding whether the number shows`() {
     // Bands are read off the distribution a real catalog produces, not off round numbers: across
     // m3-catalog's 120 published pairs the median is 99.70%, so `match` is the quiet majority.
