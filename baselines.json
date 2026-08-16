@@ -742,8 +742,8 @@
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "light",
-      "sha256": "e3477d95501dd63897ede1f2de08752f816f09eed25da7de3613191e4c2b8b77",
-      "size": 56703
+      "sha256": "1c16ab70e20d6f271e0dca45a31dbc874fd3dd5fe0821070b67a60c2cfafed3c",
+      "size": 58487
     },
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
