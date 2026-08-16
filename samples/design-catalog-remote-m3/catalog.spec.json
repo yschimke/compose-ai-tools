@@ -100,7 +100,8 @@
       "name": "Theme",
       "components": [
         { "componentId": "Theme/Typography", "preview": "TypographyRemote", "parallel": "Typography", "caption": "A type ramp read from RemoteMaterialTheme.typography." },
-        { "componentId": "Theme/ColorScheme", "preview": "ColorSchemeRemote", "parallel": "ColorScheme", "caption": "Colour-scheme swatches read from RemoteMaterialTheme.colorScheme." }
+        { "componentId": "Theme/ColorScheme", "preview": "ColorSchemeRemote", "parallel": "ColorScheme", "caption": "Colour-scheme swatches read from RemoteMaterialTheme.colorScheme." },
+        { "componentId": "Theme/SystemThemeSwatches", "preview": "SystemThemeSwatchesRemote", "caption": "System-theme swatches — the catalog's only document carrying ColorTheme operations, where a light and a dark colour live in the document and the player selects between them." }
       ]
     },
     {

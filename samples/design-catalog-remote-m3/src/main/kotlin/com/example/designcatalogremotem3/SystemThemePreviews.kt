@@ -88,7 +88,11 @@ private fun SwatchTriple() {
     systemThemeColor(
       Rc.AndroidColors.SYSTEM_SURFACE_CONTAINER_HIGH_LIGHT,
       Rc.AndroidColors.SYSTEM_SURFACE_CONTAINER_HIGH_DARK,
-      Color(0xFFE6E0E9),
+      // M3 baseline light `surfaceContainerHigh`. `0xFFE6E0E9` is one step up the ramp
+      // (`surfaceContainerHighest`) and was the wrong neutral to pair with this resource — a
+      // fallback should be what the named resource would have given, since that is the whole
+      // point of carrying one.
+      Color(0xFFECE6F0),
       Color(0xFF2B2930),
     )
   )
