@@ -3881,6 +3881,50 @@ $noteBlock        <div class="cp-site-footer-links">
   )
 
   /**
+   * One component offered by the home page's cross-catalog command palette. The server keeps this
+   * compact projection beside the other suspended-catalog metadata, so global discovery neither
+   * embeds every preview in the front door nor wakes an idle catalog daemon.
+   */
+  data class ComponentSearchEntry(val previewId: String, val label: String, val keywords: String)
+
+  /**
+   * Project a catalog's previews to the same component cards its landing page exposes. Theme,
+   * state and props renders collapse to their component's default card; genuine size variants stay
+   * separate and receive the same disambiguating suffix as the visible grid.
+   */
+  fun componentSearchEntries(
+    previews: List<ServePreview>,
+    darkFirst: Boolean = false,
+  ): List<ComponentSearchEntry> {
+    val cards =
+      groupPreviews(
+        previews.filterNot {
+          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+        }
+      )
+    val duplicateLabels =
+      cards
+        .groupingBy { previewDisplayName(it.rendered(darkFirst)) }
+        .eachCount()
+        .filterValues { it > 1 }
+        .keys
+    return cards.map { card ->
+      val preview = card.rendered(darkFirst)
+      val baseLabel = previewDisplayName(preview)
+      val label =
+        if (baseLabel !in duplicateLabels) baseLabel
+        else previewSizeVariantLabel(preview.id)?.let { "$baseLabel · $it" } ?: baseLabel
+      ComponentSearchEntry(
+        previewId = preview.id,
+        label = label,
+        keywords =
+          listOfNotNull(preview.id, preview.label, preview.componentId, preview.section)
+            .joinToString(" "),
+      )
+    }
+  }
+
+  /**
    * A front-page section a catalog may be published under: the [heading] shown, its count [noun],
    * and the [repos] whose bytes are allowed to appear under it.
    */
@@ -4054,6 +4098,10 @@ $noteBlock        <div class="cp-site-footer-links">
           }
           .joinToString("\n")
       }
+    val globalComponents =
+      if (systems.isEmpty()) ""
+      else
+        "<span hidden data-cp-global-components=\"/api/components$suffix\"></span>\n"
     return document(
       title = "$HOME_TITLE — compose-preview",
       unfurlTitle = HOME_TITLE,
@@ -4062,7 +4110,7 @@ $noteBlock        <div class="cp-site-footer-links">
       navSuffix = suffix,
       headerAction = headerAction,
       version = version,
-      body = body,
+      body = body + if (globalComponents.isEmpty()) "" else "\n$globalComponents",
     )
   }
 

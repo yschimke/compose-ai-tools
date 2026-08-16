@@ -941,6 +941,14 @@ class ServeHttpRoutingTest {
     assertEquals(200, apiCode)
     assertTrue(api.contains("\"module\":\"compose-m3\""), "api for the path session: $api")
     assertTrue(api.contains("\"views\":1"), "catalog and preview engagement in api: $api")
+
+    val (componentsCode, components) = get("/api/components")
+    assertEquals(200, componentsCode)
+    assertTrue(
+      components.contains("\"catalog\":\"compose-m3\"") &&
+        components.contains("\"href\":\"/compose-m3/p/$previewId\""),
+      "global component index names the catalog and canonical viewer: $components",
+    )
   }
 
   @Test

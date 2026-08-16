@@ -163,5 +163,105 @@ describe("power-user keyboard navigation", () => {
             null,
             "Escape closes the tour even while navigation is disabled",
         );
+
+        const settings = setting.closest("details")!;
+        document.body.replaceChildren(settings);
+        document.body.insertAdjacentHTML(
+            "beforeend",
+            `
+          <span hidden data-cp-global-components="/api/components"></span>
+          <a class="cp-card cp-sys" href="/compose-m3/">
+            <span class="cp-sys-title">Compose Material 3</span>
+            <span class="cp-id">compose-m3</span>
+          </a>
+          <a class="cp-card cp-sys" href="/wear-m3/">
+            <span class="cp-sys-title">Wear Material 3</span>
+            <span class="cp-id">wear-m3</span>
+          </a>`,
+        );
+        let componentFetches = 0;
+        Object.defineProperty(globalThis, "fetch", {
+            configurable: true,
+            value: async () => {
+                componentFetches++;
+                if (componentFetches === 1)
+                    return new Response("temporarily unavailable", {
+                        status: 503,
+                    });
+                return new Response(
+                    JSON.stringify({
+                        components: [
+                            {
+                                label: "Filled button",
+                                catalog: "compose-m3",
+                                catalogTitle: "Compose Material 3",
+                                href: "/compose-m3/p/button-filled",
+                                keywords: "button-filled Buttons",
+                            },
+                        ],
+                    }),
+                    { status: 200 },
+                );
+            },
+        });
+        setting.click();
+
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+        );
+        await flush();
+        assert.match(
+            document.querySelector(".cp-command-empty")!.textContent!,
+            /Components are unavailable/,
+        );
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+        );
+        await flush();
+        assert.equal(
+            document.querySelector(".cp-command-item")!.textContent,
+            "Filled buttonCompose Material 3",
+            "the home-page C palette searches components across catalogs",
+        );
+        assert.equal(
+            componentFetches,
+            2,
+            "a failed component fetch retries on reopen",
+        );
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                key: "k",
+                metaKey: true,
+                bubbles: true,
+            }),
+        );
+        const homeSections = Array.from(
+            document.querySelectorAll(".cp-command-section"),
+        ).map((section) => section.textContent);
+        assert.deepEqual(
+            homeSections,
+            ["catalogs", "components"],
+            "the home command palette searches catalogs and components",
+        );
+        document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+
+        document.body.replaceChildren(settings);
+        setting.click();
+        setting.click();
+        assert.doesNotMatch(
+            document.getElementById("cp-keyboard-hints")!.textContent!,
+            /Components/,
+            "an empty page never advertises an empty component palette",
+        );
     });
 });

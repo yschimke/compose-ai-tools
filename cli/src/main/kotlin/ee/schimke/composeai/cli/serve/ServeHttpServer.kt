@@ -992,6 +992,7 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        get("/api/components") { handleGlobalComponents() }
         get("/api/daemons") { handleDaemonStatus(sessionInPath = false) }
         get("/{system}/api/daemons") { handleDaemonStatus(sessionInPath = true) }
         post("/api/presence") { handlePresence(sessionInPath = false) }
@@ -3583,6 +3584,8 @@ class ServeHttpServer(
      * change shape between two requests a minute apart.
      */
     val previewIds: List<String>,
+    /** Component-card projection used by the home page's cross-catalog command palette. */
+    val components: List<ServeWeb.ComponentSearchEntry>,
     val failedRenders: Int,
     val deferredPreviews: Int,
     val heroPreviewId: String?,
@@ -3685,6 +3688,7 @@ class ServeHttpServer(
     val bundle = catalogBundleHost(host) ?: return
     val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     val heroCrop = heroId?.let { bundle.contentCrop(it) }
+    val darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface)
     catalogMetaSeen[id] =
       CatalogMeta(
         title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
@@ -3692,6 +3696,7 @@ class ServeHttpServer(
         trust = BundleVerifier.summary(bundle.trust),
         previews = host.previews.size,
         previewIds = host.previews.map { it.id },
+        components = ServeWeb.componentSearchEntries(host.previews, darkStage),
         failedRenders = host.previews.count { it.renderFailure != null },
         deferredPreviews = host.liveOnlyPreviewIds.size,
         heroPreviewId = heroId,
@@ -3700,7 +3705,7 @@ class ServeHttpServer(
         // refresh — which installs a fresh host — re-bakes under a new hash.
         heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
         heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
-        darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
+        darkStage = darkStage,
         webThemeCss = bundle.webThemeCss.orEmpty(),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
@@ -4237,6 +4242,48 @@ class ServeHttpServer(
         ContentType.Application.Json,
       )
     }
+  }
+
+  /**
+   * `GET /api/components`: the listed catalogs' component cards for home-page keyboard search.
+   * Reads only resident or remembered metadata, so opening the palette never resumes every catalog
+   * daemon. The browser fetches this lazily and keeps the result for the life of the page.
+   */
+  private suspend fun RoutingContext.handleGlobalComponents() {
+    if (rejectBadToken()) return
+    // This is a front-door-only index. A top-level site has no multi-catalog front door (its root
+    // is the catalog landing), and exposing this constant `/api` route there would both reveal its
+    // neighbouring catalogs and return canonical links that the site's isolation layer rejects.
+    if (siteSystem() != null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val suffix =
+      if (isPublic) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
+    val components =
+      listedCatalogs().flatMap { system ->
+        sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
+        val meta = catalogMetaSeen[system] ?: return@flatMap emptyList()
+        val systemSegment = WebEscaping.urlEncodeSegment(system)
+        meta.components.map { component ->
+          GlobalComponentDto(
+            label = component.label,
+            catalog = system,
+            catalogTitle = meta.title ?: system,
+            href =
+              "/$systemSegment/p/${WebEscaping.urlEncodeSegment(component.previewId)}$suffix",
+            keywords = component.keywords,
+          )
+        }
+      }
+    call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(
+        GlobalComponentsResponse.serializer(),
+        GlobalComponentsResponse(components = components),
+      ),
+      ContentType.Application.Json,
+    )
   }
 
   /**
@@ -6971,6 +7018,21 @@ private data class PreviewDto(
   val liveOnly: Boolean = false,
   /** Number of viewer page opens for this preview since this server process started. */
   val views: Long = 0,
+)
+
+@Serializable
+private data class GlobalComponentsResponse(
+  val schema: String = "compose-preview-components/v1",
+  val components: List<GlobalComponentDto>,
+)
+
+@Serializable
+private data class GlobalComponentDto(
+  val label: String,
+  val catalog: String,
+  val catalogTitle: String,
+  val href: String,
+  val keywords: String,
 )
 
 /** One configured catalog on `GET /admin/catalogs`: its config plus its latest load outcome. */

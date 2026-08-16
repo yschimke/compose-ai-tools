@@ -5,7 +5,8 @@
 const ENABLED_KEY = "cp-keyboard-navigation";
 const ONBOARDED_KEY = "cp-keyboard-onboarded-v1";
 
-type Section = "all" | "components" | "variants" | "modes" | "overrides";
+type Section =
+    "all" | "catalogs" | "components" | "variants" | "modes" | "overrides";
 type CommandSection = Exclude<Section, "all">;
 
 interface Command {
@@ -15,6 +16,18 @@ interface Command {
     keywords: string;
     href?: string;
     run: () => void;
+}
+
+interface GlobalComponent {
+    label: string;
+    catalog: string;
+    catalogTitle: string;
+    href: string;
+    keywords: string;
+}
+
+interface GlobalComponentsResponse {
+    components?: GlobalComponent[];
 }
 
 function stored(key: string): string | null {
@@ -91,6 +104,9 @@ class KeyboardNavigation {
     private section: Section = "all";
     private selected = 0;
     private commands: Command[] = [];
+    private globalComponents: Command[] | null = null;
+    private loadingGlobalComponents = false;
+    private globalComponentsFailed = false;
     private returnFocus: HTMLElement | null = null;
     private settingsInput: HTMLInputElement | null = null;
 
@@ -145,8 +161,9 @@ class KeyboardNavigation {
         const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
         const entries: Array<[string, string, Section]> = [
             [isMac ? "⌘K" : "Ctrl K", "Commands", "all"],
-            ["C", "Components", "components"],
         ];
+        if (this.hasComponentProvider())
+            entries.push(["C", "Components", "components"]);
         if (document.querySelector(".cp-axes-tree, #cp-axes"))
             entries.push(["V", "Variants", "variants"]);
         if (document.querySelector(".cp-preview-primary"))
@@ -195,7 +212,7 @@ class KeyboardNavigation {
         if (key === "?") {
             event.preventDefault();
             this.openHelp();
-        } else if (key.toLowerCase() === "c") {
+        } else if (key.toLowerCase() === "c" && this.hasComponentProvider()) {
             event.preventDefault();
             this.openPalette("components");
         } else if (key.toLowerCase() === "v") {
@@ -216,7 +233,42 @@ class KeyboardNavigation {
         }
     }
 
+    private globalComponentsUrl(): string | null {
+        return (
+            document
+                .querySelector("[data-cp-global-components]")
+                ?.getAttribute("data-cp-global-components") || null
+        );
+    }
+
+    private hasComponentProvider(): boolean {
+        return (
+            this.globalComponentsUrl() !== null ||
+            this.componentCommands().length > 0
+        );
+    }
+
+    private catalogCommands(): Command[] {
+        return Array.from(
+            document.querySelectorAll<HTMLAnchorElement>(
+                ".cp-card.cp-sys[href]",
+            ),
+        ).map((element) => ({
+            section: "catalogs",
+            label:
+                text(element.querySelector(".cp-sys-title")) || text(element),
+            detail: text(element.querySelector(".cp-id")) || "Open catalog",
+            keywords: text(element),
+            href: element.href,
+            run: () => {
+                this.closeOverlay();
+                element.click();
+            },
+        }));
+    }
+
     private componentCommands(): Command[] {
+        if (this.globalComponentsUrl()) return this.globalComponents || [];
         const navigationElements = Array.from(
             document.querySelectorAll<HTMLAnchorElement>(
                 "#cp-nav-list .cp-nav-item, .cp-catalog-menu .cp-tree-component[href]",
@@ -245,6 +297,48 @@ class KeyboardNavigation {
                 element.click();
             },
         }));
+    }
+
+    private async loadGlobalComponentCommands(): Promise<void> {
+        const url = this.globalComponentsUrl();
+        if (!url || this.globalComponents || this.loadingGlobalComponents)
+            return;
+        this.loadingGlobalComponents = true;
+        this.globalComponentsFailed = false;
+        this.renderCommands();
+        try {
+            const response = await fetch(url, {
+                headers: { Accept: "application/json" },
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const body = (await response.json()) as GlobalComponentsResponse;
+            this.globalComponents = (body.components || []).map(
+                (component) => ({
+                    section: "components",
+                    label: component.label,
+                    detail: component.catalogTitle,
+                    keywords: `${component.label} ${component.catalog} ${component.catalogTitle} ${component.keywords}`,
+                    href: new URL(component.href, location.href).href,
+                    run: () => {
+                        this.closeOverlay();
+                        location.href = component.href;
+                    },
+                }),
+            );
+        } catch (_) {
+            this.globalComponentsFailed = true;
+        } finally {
+            this.loadingGlobalComponents = false;
+            if (this.overlay) {
+                this.commands = this.allCommands().filter(
+                    (command) =>
+                        this.section === "all" ||
+                        command.section === this.section,
+                );
+                this.selected = 0;
+                this.renderCommands();
+            }
+        }
     }
 
     private variantCommands(): Command[] {
@@ -373,6 +467,7 @@ class KeyboardNavigation {
 
     private allCommands(): Command[] {
         return [
+            ...this.catalogCommands(),
             ...this.componentCommands(),
             ...this.variantCommands(),
             ...this.modeCommands(),
@@ -476,8 +571,16 @@ class KeyboardNavigation {
             section === "all"
                 ? "Keyboard commands"
                 : section[0].toUpperCase() + section.slice(1);
+        const availableSections = new Set(
+            this.commands.map((command) => command.section),
+        );
+        if (this.globalComponentsUrl()) availableSections.add("components");
+        const searchScope =
+            section === "all"
+                ? Array.from(availableSections).join(", ") || "commands"
+                : section;
         dialog.innerHTML = `<header><div><span class="cp-keyboard-eyebrow">compose-preview</span><h2 id="cp-command-title">${title}</h2></div><button type="button" class="cp-keyboard-close" aria-label="Close">×</button></header>
-          <label class="cp-command-search"><span aria-hidden="true">⌕</span><input type="search" autocomplete="off" placeholder="Search ${section === "all" ? "components, variants, modes, and overrides" : section}" aria-label="Search commands" aria-controls="cp-command-list"></label>
+          <label class="cp-command-search"><span aria-hidden="true">⌕</span><input type="search" autocomplete="off" placeholder="Search ${searchScope}" aria-label="Search commands" aria-controls="cp-command-list"></label>
           <div class="cp-command-list" id="cp-command-list" role="listbox" aria-label="Commands"></div>
           <footer><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> select</span><span><kbd>Esc</kbd> close</span></footer>`;
         dialog
@@ -510,6 +613,7 @@ class KeyboardNavigation {
         });
         this.renderCommands();
         this.paletteInput?.focus();
+        void this.loadGlobalComponentCommands();
     }
 
     private filteredCommands(): Command[] {
@@ -530,8 +634,15 @@ class KeyboardNavigation {
             this.selected = Math.max(0, commands.length - 1);
         this.paletteList.innerHTML = "";
         if (!commands.length) {
-            this.paletteList.innerHTML =
-                '<p class="cp-command-empty">No matching commands.</p>';
+            const message = this.loadingGlobalComponents
+                ? "Loading components…"
+                : this.globalComponentsFailed
+                  ? "Components are unavailable."
+                  : "No matching commands.";
+            const empty = document.createElement("p");
+            empty.className = "cp-command-empty";
+            empty.textContent = message;
+            this.paletteList.appendChild(empty);
             return;
         }
         let previous = "";

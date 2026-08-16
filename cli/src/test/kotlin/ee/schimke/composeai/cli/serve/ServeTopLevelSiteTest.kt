@@ -198,6 +198,17 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `the multi-catalog component index is unavailable on a top-level site`() {
+    server = newServer()
+    assertEquals(404, get("/api/components", host = siteHost).first)
+
+    val (mainCode, mainBody, _) = get("/api/components")
+    assertEquals(200, mainCode)
+    assertTrue(mainBody.contains("\"catalog\":\"compose-m3\""), mainBody)
+    assertTrue(mainBody.contains("\"catalog\":\"wear-m3\""), mainBody)
+  }
+
+  @Test
   fun `the header bar names the catalog on every page`() {
     server = newServer()
     // The bar used to say only "compose-preview" everywhere, so which design system you were
