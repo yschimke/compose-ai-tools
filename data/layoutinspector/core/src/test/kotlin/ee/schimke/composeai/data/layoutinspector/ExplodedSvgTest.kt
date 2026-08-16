@@ -127,10 +127,10 @@ class ExplodedSvgTest {
     val planes = planes(ExplodedSvg.render(elevated))
     fun filters(plane: Element) =
       plane.descendants("g").map { it.getAttribute("filter") }.filter { it.isNotBlank() }
-    // Plane 1 owns the Card's own surface, so the shadow belongs there…
-    assertEquals(listOf("url(#shadow-2)"), filters(planes[1]))
-    // …and nowhere else: plane 2 holds only a transform-carrying fragment of the same group.
-    assertEquals(emptyList<String>(), filters(planes[2]))
+    // Logical plane 1 owns the Card's own surface, so the shadow belongs there…
+    assertEquals(listOf("url(#shadow-2)"), filters(planes[0]))
+    // …and nowhere else: logical plane 2 holds only a transform-carrying fragment of the group.
+    assertEquals(emptyList<String>(), filters(planes[1]))
     // The def still rides along for the plane that does reference it.
     assertEquals(1, parse(ExplodedSvg.render(elevated)).descendants("filter").size)
   }
@@ -168,13 +168,45 @@ class ExplodedSvgTest {
       "the shadow is on the plane that draws the surface",
       planes.last().descendants("g").any { it.getAttribute("filter") == "url(#shadow-3)" },
     )
-    // The wrapper is still named at its own nesting level; only the shadow moved.
-    assertEquals("Surface", planes.last().getAttribute("data-layers"))
-    assertEquals(
-      "the wrapper is still named at its own nesting level",
-      "Elevated",
-      planes[1].getAttribute("data-layers"),
-    )
+    // The wrapper's structural-only depth does not become a giant empty sheet. Its name is folded
+    // into the next visible sheet's breadcrumb, so the nesting remains legible.
+    assertEquals(1, planes.size)
+    assertEquals("Surface", planes.single().getAttribute("data-layers"))
+    val label =
+      parse(out).descendants("text").single { it.getAttribute("class") == "cp-exploded-label" }
+    assertEquals("Elevated › Surface", label.textContent)
+  }
+
+  @Test
+  fun `structural-only depths are folded into the next visible sheet`() {
+    val structural =
+      """
+      <svg xmlns="http://www.w3.org/2000/svg" width="200" height="400" viewBox="0 0 200 400">
+        <g id="Root">
+          <g id="Column">
+            <g id="Card"><rect x="16" y="24" width="168" height="96" fill="#E8DEF8"/></g>
+          </g>
+        </g>
+      </svg>
+      """
+        .trimIndent()
+    val out = ExplodedSvg.render(structural)
+    val planes = planes(out)
+    assertEquals("one drawing depth means one visible sheet", 1, planes.size)
+    assertEquals("3", planes.single().getAttribute("data-plane"))
+    val labels =
+      parse(out).descendants("text").filter { it.getAttribute("class") == "cp-exploded-label" }
+    assertEquals(listOf("Column › Card"), labels.map { it.textContent })
+  }
+
+  @Test
+  fun `a raw exploded svg fits the browser viewport without losing intrinsic dimensions`() {
+    val root = parse(ExplodedSvg.render(layered))
+    assertEquals(root.getAttribute("viewBox").split(" ")[2], root.getAttribute("width"))
+    assertEquals(root.getAttribute("viewBox").split(" ")[3], root.getAttribute("height"))
+    val css = root.descendants("style").joinToString("\n") { it.textContent }
+    assertTrue("raw SVG should fit viewport width: $css", css.contains("max-width:100vw"))
+    assertTrue("raw SVG should fit viewport height: $css", css.contains("max-height:100vh"))
   }
 
   @Test
@@ -363,12 +395,14 @@ class ExplodedSvgTest {
       """
         .trimIndent()
     val planes = planes(ExplodedSvg.render(withDefs))
-    // Root (1) then the icon group (2) — the `<g id>` inside <defs> must not count as a third.
-    assertEquals(3, planes.size)
-    assertEquals(1, planes[2].descendants("use").size)
+    // Root (1) then the icon group (2) — the `<g id>` inside <defs> must not count as a third, and
+    // the two non-drawing depths must not become empty sheets.
+    assertEquals(1, planes.size)
+    assertEquals("2", planes.single().getAttribute("data-plane"))
+    assertEquals(1, planes.single().descendants("use").size)
     // A fallback layer id is replaced by the icon it draws rather than repeated as
     // "ReusableComposeNode".
-    assertEquals("menu icon", planes[2].getAttribute("data-layers"))
+    assertEquals("menu icon", planes.single().getAttribute("data-layers"))
   }
 
   @Test
@@ -419,9 +453,8 @@ class ExplodedSvgTest {
     assertEquals("figma-raster/5.png", root.descendants("image").single().getAttribute("href"))
     assertEquals("true", root.getAttribute("data-exploded"))
     assertNotNull(root.descendants("clipPath").singleOrNull())
-    assertEquals(
-      listOf("Box", "Row", "Column"),
-      planes(out).drop(2).map { it.getAttribute("data-layers") },
-    )
+    assertEquals(listOf("Box", "Column"), planes(out).map { it.getAttribute("data-layers") })
+    val labels = root.descendants("text").filter { it.getAttribute("class") == "cp-exploded-label" }
+    assertEquals(listOf("Row › Column", "Box"), labels.map { it.textContent })
   }
 }

@@ -8356,15 +8356,15 @@ $rows
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
     // The exploded 3D toggle — the layered figma-svg tilted back and pulled apart into one sheet
-    // per level of composable nesting ([ExplodedSvg]). It sits beside the SVG toggle because it is
+    // per visible drawing level ([ExplodedSvg]). It sits beside the SVG toggle because it is
     // a view *of* that export rather than a separate renderer lane, and is gated on the same
     // per-preview [hasSvgExport]: with no layered export there is nothing to pull apart, so the
     // control is omitted rather than offered dead.
     val explodeToggle =
       if (hasSvgExport)
         "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
-          "aria-pressed=\"false\" title=\"Explode the vector render into one layer per " +
-          "composable\">3D</button>"
+          "aria-pressed=\"false\" title=\"Show how the visible drawing layers are " +
+          "composed\">3D</button>"
       else ""
     val svgMatch =
       if (hasSvgExport) {
@@ -9912,8 +9912,8 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
           ${slider("spin", "Spin", "-80", "80", "1", "-16", "°", "How far the layers are turned in their own plane").prependIndent("          ").trimStart()}
           ${slider("gap", "Separation", "0", "600", "5", "0", "", "Distance between layers; 0 derives one from the preview's size").prependIndent("          ").trimStart()}
           ${slider("depth", "Layers", "1", "16", "1", "6", "", "Composables nested deeper than this fold into the last layer").prependIndent("          ").trimStart()}
-          <div class="cp-knobs-head">One layer per level of composable nesting, from the
-            <code>compose/figma-svg</code> export. Rides the SVG link and download.</div>
+          <div class="cp-knobs-head">One sheet per visible drawing level. Structural-only
+            composables are kept in the next sheet's breadcrumb. Rides the SVG link and download.</div>
         </div>
       </details>
       """
