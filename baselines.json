@@ -592,14 +592,14 @@
     "serve-landing-grouped-pages-filtered.dark.png": {
       "fixture": "serve-landing-grouped-pages-filtered",
       "theme": "dark",
-      "sha256": "e6a6812e1f4bb953ac8e0ee70648e81f5f24e68c9960047fe75dbdd05b6a4365",
-      "size": 86670
+      "sha256": "cfb67ebee37653fad61681ccf3e233e241b184d661f0283e082a3134a0ef3ae5",
+      "size": 88711
     },
     "serve-landing-grouped-pages-filtered.light.png": {
       "fixture": "serve-landing-grouped-pages-filtered",
       "theme": "light",
-      "sha256": "9849f5830035d82505ac43f22f9e9e7248483f9c16b7b91d9415cf41aae2b4a1",
-      "size": 87615
+      "sha256": "d240ae52fddfab119dea122a7e3a923406f0b8e5623db94f22c0db8bf8562199",
+      "size": 85648
     },
     "serve-landing-grouped-pages-pane.dark.png": {
       "fixture": "serve-landing-grouped-pages-pane",
