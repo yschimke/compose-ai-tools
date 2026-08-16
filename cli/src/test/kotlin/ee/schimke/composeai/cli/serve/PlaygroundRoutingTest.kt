@@ -331,10 +331,16 @@ class PlaygroundRoutingTest {
   fun `authenticated user acquires the single editing lease and compiles a revision`() {
     val cookie = githubSessionCookie(githubRepoServer.port)
     val lease =
-      post("/api/1/compiler/edit-lease", "{}", githubRepoServer.port, cookie).use { resp ->
-        assertEquals(200, resp.code)
-        Json.parseToJsonElement(resp.body!!.string()).jsonObject["lease"]!!.jsonPrimitive.content
-      }
+      post(
+          "/api/1/compiler/edit-lease",
+          """{"client":"tab-a"}""",
+          githubRepoServer.port,
+          cookie,
+        )
+        .use { resp ->
+          assertEquals(200, resp.code)
+          Json.parseToJsonElement(resp.body!!.string()).jsonObject["lease"]!!.jsonPrimitive.content
+        }
     val body =
       """{"files":[{"name":"Snippet.kt","text":"@Preview fun P(){}"}],"confType":"compose-cmp","editLease":"$lease","revision":1}"""
 
@@ -345,6 +351,19 @@ class PlaygroundRoutingTest {
       assertEquals(lease, json["editLease"]?.jsonPrimitive?.content)
       assertTrue(json["previewToken"]?.jsonPrimitive?.content?.startsWith("pg_") == true)
     }
+
+    post(
+        "/api/1/compiler/edit-lease",
+        """{"client":"tab-b"}""",
+        githubRepoServer.port,
+        cookie,
+      )
+      .use { resp ->
+        assertEquals(200, resp.code)
+        val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+        assertEquals(lease, json["lease"]?.jsonPrimitive?.content)
+        assertEquals("1", json["revision"]?.jsonPrimitive?.content)
+      }
   }
 
   @Test

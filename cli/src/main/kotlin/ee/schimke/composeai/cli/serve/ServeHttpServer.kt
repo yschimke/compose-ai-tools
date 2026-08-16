@@ -1694,7 +1694,25 @@ class ServeHttpServer(
       )
       return
     }
-    val result = withContext(Dispatchers.IO) { service.acquireEditLease(owner) }
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
+      }
+    val request =
+      if (body == null || body.isEmpty()) PlaygroundEditLeaseAcquireRequest()
+      else
+        runCatching {
+          JSON.decodeFromString(
+            PlaygroundEditLeaseAcquireRequest.serializer(),
+            body.decodeToString(),
+          )
+        }
+          .getOrNull()
+    if (request == null) {
+      call.respondText("Invalid live-edit lease request.", status = HttpStatusCode.BadRequest)
+      return
+    }
+    val result = withContext(Dispatchers.IO) { service.acquireEditLease(owner, request.client) }
     call.respondText(
       JSON.encodeToString(PlaygroundEditLeaseResponse.serializer(), result),
       ContentType.Application.Json,
@@ -1729,7 +1747,9 @@ class ServeHttpServer(
       }
         .getOrNull()
     }
-    if (request == null || !service.releaseEditLease(owner, request.lease)) {
+    if (
+      request == null || !service.releaseEditLease(owner, request.lease, client = request.client)
+    ) {
       call.respondText("Live-edit lease not found.", status = HttpStatusCode.NotFound)
       return
     }
