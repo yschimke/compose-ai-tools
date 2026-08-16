@@ -5,6 +5,7 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.SlotBounds
+import ee.schimke.composeai.data.theme.ThemePayload
 
 /**
  * Derive the viewer's **typography** and **theme** inspection layers from a render's own
@@ -14,13 +15,17 @@ import ee.schimke.composeai.data.layoutinspector.SlotBounds
  * ([ServeAnnotationStore]) — the spec side of a design ↔ code comparison. The viewer needs the same
  * shape for the *code* side, and the daemon already captures it: every semantics node carries its
  * resolved typographic identity ([ComposeSemanticsNode.typography] — the size, face, weight, line
- * height the render actually resolved) and its resolved container tokens
- * ([ComposeSemanticsNode.tokens] — fill / border colour, corner radius, shape). Projecting those
- * onto [DesignAnnotation] means the viewer draws them with exactly the numbered-box + legend idiom
- * the compare page already uses, with no second overlay model to maintain.
+ * height, and variation axes the render actually resolved), while [ThemePayload.consumers]
+ * attributes that resolved style back to its Material typography role. Each semantics node also
+ * carries its resolved container tokens ([ComposeSemanticsNode.tokens] — fill / border colour,
+ * corner radius, shape). Projecting those onto [DesignAnnotation] means the viewer draws them with
+ * exactly the numbered-box + legend idiom the compare page already uses, with no second overlay
+ * model to maintain.
  *
- * Nothing is measured or inferred here: a node that resolved no typography (or no container tokens)
- * simply contributes no annotation to that layer, so a layer is empty rather than approximate.
+ * No typography metrics are re-measured here. Material roles use the theme producer's
+ * resolved-value attribution and may therefore contain multiple honest candidates when two roles
+ * resolve identically. A node that resolved no typography (or no container tokens) simply
+ * contributes no annotation to that layer.
  */
 object ServeDesignAnnotations {
 
@@ -33,12 +38,17 @@ object ServeDesignAnnotations {
    * with malformed or zero-area bounds is skipped; it can't be drawn and would only produce a
    * legend row pointing at nothing.
    */
-  fun annotations(payload: ComposeSemanticsPayload): List<DesignAnnotation> {
+  fun annotations(
+    payload: ComposeSemanticsPayload,
+    theme: ThemePayload? = null,
+  ): List<DesignAnnotation> {
     val out = mutableListOf<DesignAnnotation>()
+    val typographyTokensByNode = theme.typographyTokensByNode()
     fun walk(node: ComposeSemanticsNode) {
       val bounds = SlotBounds.parse(node.boundsInRoot)?.takeIf { it.hasArea() }
       if (bounds != null) {
-        typographyAnnotation(node, bounds)?.let(out::add)
+        typographyAnnotation(node, bounds, typographyTokensByNode[node.nodeId].orEmpty())
+          ?.let(out::add)
         themeAnnotation(node, bounds)?.let(out::add)
       }
       node.children.forEach(::walk)
@@ -60,6 +70,7 @@ object ServeDesignAnnotations {
   private fun typographyAnnotation(
     node: ComposeSemanticsNode,
     bounds: SlotBounds,
+    materialThemeTokens: List<String>,
   ): DesignAnnotation? {
     val type = node.typography ?: return null
     val size =
@@ -71,6 +82,9 @@ object ServeDesignAnnotations {
     val face = type.fontFamily?.let(::shortFace)
     val parts =
       listOfNotNull(
+        materialThemeTokens
+          .takeIf { it.isNotEmpty() }
+          ?.joinToString(" / ") { "MaterialTheme.typography.$it" },
         size,
         face,
         type.fontWeight?.toString(),
@@ -84,14 +98,16 @@ object ServeDesignAnnotations {
       bounds = bounds.toAnnotationBounds(),
       label = parts.joinToString(" · "),
       role = node.textSnippet(),
-      detail = typographyDetail(type, node),
+      detail = typographyDetail(type, node, materialThemeTokens),
     )
   }
 
   private fun typographyDetail(
     type: ComposeSemanticsTypography,
     node: ComposeSemanticsNode,
+    materialThemeTokens: List<String>,
   ): Map<String, String> = buildMap {
+    materialThemeTokens.takeIf { it.isNotEmpty() }?.let { put("token", it.joinToString(",")) }
     type.fontSize?.let { put("fontSize", it) }
     type.lineHeight?.let { put("lineHeight", it) }
     type.letterSpacing?.let { put("letterSpacing", it) }
@@ -103,6 +119,24 @@ object ServeDesignAnnotations {
     node.textColor?.foreground?.let { put("color", it) }
     node.textOverflow?.lineCount?.let { put("lines", it.toString()) }
     node.textOverflow?.maxLines?.let { put("maxLines", it.toString()) }
+  }
+
+  /**
+   * Theme consumers contain colour, typography, and shape names in one flat list. Intersecting with
+   * the payload's resolved typography keys retains only type-scale roles while preserving the
+   * consumer's stable attribution order. Both products use the same Compose `SemanticsNode.id`.
+   */
+  private fun ThemePayload?.typographyTokensByNode(): Map<String, List<String>> {
+    if (this == null || resolvedTokens.typography.isEmpty()) return emptyMap()
+    val typographyNames = resolvedTokens.typography.keys
+    return consumers
+      .mapNotNull { consumer ->
+        consumer.tokens
+          .filter { it in typographyNames }
+          .takeIf { it.isNotEmpty() }
+          ?.let { consumer.nodeId to it }
+      }
+      .toMap()
   }
 
   /**

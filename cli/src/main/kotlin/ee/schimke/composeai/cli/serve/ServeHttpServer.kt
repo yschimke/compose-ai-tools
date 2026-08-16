@@ -295,6 +295,8 @@ class ServeHttpServer(
    * route 404s rather than existing unwired.
    */
   private val projectHistory: ServeProjectHistory? = null,
+  /** Trusted module roots for local browse sessions, keyed by their session ids. */
+  private val localSourceRoots: Map<String, File> = emptyMap(),
 ) {
 
   /**
@@ -994,6 +996,7 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        get("/api/components") { handleGlobalComponents() }
         get("/api/daemons") { handleDaemonStatus(sessionInPath = false) }
         get("/{system}/api/daemons") { handleDaemonStatus(sessionInPath = true) }
         post("/api/presence") { handlePresence(sessionInPath = false) }
@@ -3599,6 +3602,8 @@ class ServeHttpServer(
      * change shape between two requests a minute apart.
      */
     val previewIds: List<String>,
+    /** Component-card projection used by the home page's cross-catalog command palette. */
+    val components: List<ServeWeb.ComponentSearchEntry>,
     val failedRenders: Int,
     val deferredPreviews: Int,
     val heroPreviewId: String?,
@@ -3700,6 +3705,7 @@ class ServeHttpServer(
     val bundle = catalogBundleHost(host)
     val heroId = bundle?.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     val heroCrop = heroId?.let { bundle?.contentCrop(it) }
+    val darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle?.stageSurface)
     catalogMetaSeen[id] =
       CatalogMeta(
         title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
@@ -3707,6 +3713,7 @@ class ServeHttpServer(
         trust = bundle?.let { BundleVerifier.summary(it.trust) },
         previews = host.previews.size,
         previewIds = host.previews.map { it.id },
+        components = ServeWeb.componentSearchEntries(host.previews, darkStage),
         failedRenders = host.previews.count { it.renderFailure != null },
         deferredPreviews = host.liveOnlyPreviewIds.size,
         heroPreviewId = heroId,
@@ -3716,7 +3723,7 @@ class ServeHttpServer(
         heroImage =
           bundle?.let { owner -> heroId?.let { heroImages.heroFor(owner, it, heroCrop) } },
         heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
-        darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle?.stageSurface),
+        darkStage = darkStage,
         webThemeCss = bundle?.webThemeCss.orEmpty(),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle?.provenance,
@@ -4256,6 +4263,46 @@ class ServeHttpServer(
   }
 
   /**
+   * `GET /api/components`: the listed catalogs' component cards for home-page keyboard search.
+   * Reads only resident or remembered metadata, so opening the palette never resumes every catalog
+   * daemon. The browser fetches this lazily and keeps the result for the life of the page.
+   */
+  private suspend fun RoutingContext.handleGlobalComponents() {
+    if (rejectBadToken()) return
+    // This is a front-door-only index. A top-level site has no multi-catalog front door (its root
+    // is the catalog landing), and exposing this constant `/api` route there would both reveal its
+    // neighbouring catalogs and return canonical links that the site's isolation layer rejects.
+    if (siteSystem() != null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val suffix = if (isPublic) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
+    val components =
+      listedCatalogs().flatMap { system ->
+        sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
+        val meta = catalogMetaSeen[system] ?: return@flatMap emptyList()
+        val systemSegment = WebEscaping.urlEncodeSegment(system)
+        meta.components.map { component ->
+          GlobalComponentDto(
+            label = component.label,
+            catalog = system,
+            catalogTitle = meta.title ?: system,
+            href = "/$systemSegment/p/${WebEscaping.urlEncodeSegment(component.previewId)}$suffix",
+            keywords = component.keywords,
+          )
+        }
+      }
+    call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(
+        GlobalComponentsResponse.serializer(),
+        GlobalComponentsResponse(components = components),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /**
    * `GET /index.json` (query) and `GET /{system}/index.json` (path): the session's previews as a
    * Storybook stories index ([StorybookCompat.Index]). This is the manifest a downstream visual
    * tool crawls to enumerate stories and their stable ids.
@@ -4506,12 +4553,12 @@ class ServeHttpServer(
    * `GET /usage/{name}` and `GET /{system}/usage/{name}`: the plain-Compose usage code behind one
    * preview, as JSON, for the viewer's **Source** panel.
    *
-   * Its own resource rather than a field on the viewer page, because producing it costs a GitHub
-   * read on a cold cache and most visitors never open the panel — the panel fetches on first entry,
-   * so a page load pays nothing.
+   * Its own resource rather than a field on the viewer page, because producing it may cost a
+   * GitHub read on a cold catalog cache or a local source read, and most visitors never open the
+   * panel — the panel fetches on first entry, so a page load pays nothing.
    *
-   * **No session lease.** This is a metadata read served entirely from the catalog registry and the
-   * resolver's cache; leasing would stand a render daemon up to answer a question about source
+   * **No session lease.** This is a source read served from the catalog registry/cache or a trusted
+   * local module root; leasing would stand a render daemon up to answer a question about source
    * text. Same reasoning as the resolver's own `locate`, which peeks rather than leases.
    *
    * 404 covers every "there is nothing to show" case — no resolver, an unknown preview, a catalog
@@ -4532,8 +4579,11 @@ class ServeHttpServer(
     sourceFile: String?,
     basePath: String,
   ): String? {
-    if (playgroundSeeds == null) return null
     if (sourceFile.isNullOrBlank()) return null
+    if (localSourceFile(system, previewId) != null) {
+      return "$basePath/usage/${WebEscaping.urlEncodeSegment(previewId)}${requestQuerySuffix()}"
+    }
+    if (playgroundSeeds == null) return null
     // The same condition the resolver applies rather than a proxy for it: a plain daemon session or
     // an uploaded bundle can carry a `sourceFile` from its own `previews.json` while having no
     // catalog source to resolve it against, and the chip would then open on an error.
@@ -4558,18 +4608,19 @@ class ServeHttpServer(
     // inside a legitimately-escaped preview id into a space and a `%2F` into a separator, so the
     // resolver could not find a preview whose viewer page rendered perfectly.
     val previewId = call.parameters["name"]
-    val seeds = playgroundSeeds
-    if (seeds == null || previewId.isNullOrBlank()) {
+    if (previewId.isNullOrBlank()) {
       respondNoUsage()
       return
     }
-    // Off the request dispatcher: an uncached seed is a synchronous GitHub GET with 10 s connect +
-    // 10 s read, and holding Ktor's request threads through that would stall unrelated routes.
-    val seed = withContext(Dispatchers.IO) { seeds.seed(sessionId, previewId) }
-    // `cleaned` and not merely non-null: a verbatim slice is the preview's own source, which is
-    // what the `source` link already offers. This panel claims to show usage code, so when the
-    // cleaner declined there is nothing here to serve.
-    if (seed == null || !seed.cleaned) {
+    // Off the request dispatcher: this is either a local file read or an uncached synchronous
+    // GitHub GET with 10 s connect + 10 s read. Neither should hold Ktor's request threads.
+    val localSeed = withContext(Dispatchers.IO) { localUsageSeed(sessionId, previewId) }
+    val seed =
+      localSeed ?: withContext(Dispatchers.IO) { playgroundSeeds?.seed(sessionId, previewId) }
+    // Hosted catalogs retain the usage-only contract: if cleaning declined, their existing GitHub
+    // source link is the honest fallback. A local browse session has no published blob URL, so its
+    // authored file is itself the useful degraded Source experience.
+    if (seed == null || (!seed.cleaned && localSeed == null)) {
       respondNoUsage()
       return
     }
@@ -4589,6 +4640,49 @@ class ServeHttpServer(
         ),
       ),
       ContentType.Application.Json,
+    )
+  }
+
+  /**
+   * Resolve a manifest source path inside its trusted local module root; never follow it outside.
+   */
+  private fun localSourceFile(system: String, previewId: String): Pair<ServePreview, File>? {
+    val root = localSourceRoots[system] ?: return null
+    val preview =
+      sessions.peekHost(system)?.previews?.firstOrNull { it.id == previewId } ?: return null
+    val relative = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return null
+    if (File(relative).isAbsolute) return null
+    return try {
+      val canonicalRoot = root.canonicalFile
+      val source = File(canonicalRoot, relative).canonicalFile
+      if (!source.toPath().startsWith(canonicalRoot.toPath()) || !source.isFile) null
+      else preview to source
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  /** Read and clean a local browse preview, falling back to its authored source when needed. */
+  private fun localUsageSeed(system: String, previewId: String): PlaygroundSeed? {
+    val (preview, source) = localSourceFile(system, previewId) ?: return null
+    if (source.length() > LOCAL_SOURCE_MAX_BYTES) return null
+    val text = source.readBytes().decodeToString()
+    if (text.contains('�')) return null
+    val cleaned =
+      try {
+        PlaygroundSourceCleaner.clean(text, preview.bodyLine, UsageRules.GENERIC)
+      } catch (_: Exception) {
+        null
+      }
+    return PlaygroundSeed(
+      catalog = system,
+      previewId = previewId,
+      fileName = source.name,
+      text = cleaned?.text ?: text,
+      blobUrl = null,
+      sliced = cleaned != null,
+      cleaned = cleaned != null,
+      residue = cleaned?.residue.orEmpty(),
     )
   }
 
@@ -4825,6 +4919,12 @@ class ServeHttpServer(
           // one canonical spec, and the manifest's order is the producer's own. Absent for every
           // catalog that publishes no references, which omits the lane entirely.
           designReference = renderHost.designReferencesFor(preview.id).firstOrNull(),
+          referenceAnnotations =
+            renderHost
+              .designReferencesFor(preview.id)
+              .firstOrNull()
+              ?.let { renderHost.annotationsForReference(it.id) }
+              .orEmpty(),
           // "open in playground" — offered only when this host has the lane AND this preview
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.
@@ -5054,7 +5154,7 @@ class ServeHttpServer(
       ) {
         val format = if (wantSvg) RcJvmServerRenderer.Format.SVG else RcJvmServerRenderer.Format.PNG
         val webMode = wantSvg && call.request.queryParameters["mode"]?.lowercase() == "web"
-        renderCmpJvmResponse(renderHost, previewId, format, webMode)
+        renderCmpJvmResponse(renderHost, previewId, format, webMode, sessionId)
         return@withLeasedSession
       }
       // Forward the fixed render axes plus any dynamic override params (`knob.<key>=…` knobs and
@@ -5461,6 +5561,7 @@ class ServeHttpServer(
     previewId: String,
     format: RcJvmServerRenderer.Format,
     webMode: Boolean,
+    sessionId: String,
   ) {
     val doc = renderHost.remoteComposeDoc(previewId)
     val spec = renderHost.remoteComposeRenderSpec(previewId)
@@ -5492,6 +5593,10 @@ class ServeHttpServer(
       cmpJvmRenderTheme(
         call.request.queryParameters["uiMode"],
         renderHost.previews.firstOrNull { it.id == previewId }?.uiMode ?: 0,
+        ServeWeb.SystemDisplay.resolveDarkFirst(
+          sessionId,
+          catalogBundleHost(renderHost)?.stageSurface,
+        ),
       )
     val result =
       withContext(Dispatchers.IO) {
@@ -6118,22 +6223,28 @@ class ServeHttpServer(
 
   companion object {
     private const val UI_MODE_NIGHT_MASK = 0x30
+    private const val UI_MODE_NIGHT_NO = 0x10
     private const val UI_MODE_NIGHT_YES = 0x20
 
     /** Resolve an explicit cmp-jvm override, falling back to the preview's baked mode. */
     internal fun cmpJvmRenderTheme(
       requestedUiMode: String?,
       bakedUiMode: Int,
+      darkFirst: Boolean = false,
     ): RcJvmServerRenderer.RenderTheme =
       when (requestedUiMode?.lowercase()) {
         "dark" -> RcJvmServerRenderer.RenderTheme.DARK
         "light" -> RcJvmServerRenderer.RenderTheme.LIGHT
-        else ->
-          if (bakedUiMode and UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES) {
-            RcJvmServerRenderer.RenderTheme.DARK
-          } else {
-            RcJvmServerRenderer.RenderTheme.LIGHT
+        else -> {
+          val bakedNight = bakedUiMode and UI_MODE_NIGHT_MASK
+          when (bakedNight) {
+            UI_MODE_NIGHT_YES -> RcJvmServerRenderer.RenderTheme.DARK
+            UI_MODE_NIGHT_NO -> RcJvmServerRenderer.RenderTheme.LIGHT
+            else ->
+              if (darkFirst) RcJvmServerRenderer.RenderTheme.DARK
+              else RcJvmServerRenderer.RenderTheme.LIGHT
           }
+        }
       }
 
     /**
@@ -6161,6 +6272,9 @@ class ServeHttpServer(
 
     /** A catalog registration is a few hundred bytes of JSON; cap it well short of a payload. */
     private const val MAX_ADMIN_BODY_BYTES = 64L * 1024
+
+    /** Local preview source is display-only and should never make an HTTP request buffer huge. */
+    private const val LOCAL_SOURCE_MAX_BYTES = 1024L * 1024
 
     const val GENERATION_HEADER: String = "X-Compose-Preview-Generation"
 
@@ -6971,6 +7085,21 @@ private data class PreviewDto(
   val liveOnly: Boolean = false,
   /** Number of viewer page opens for this preview since this server process started. */
   val views: Long = 0,
+)
+
+@Serializable
+private data class GlobalComponentsResponse(
+  val schema: String = "compose-preview-components/v1",
+  val components: List<GlobalComponentDto>,
+)
+
+@Serializable
+private data class GlobalComponentDto(
+  val label: String,
+  val catalog: String,
+  val catalogTitle: String,
+  val href: String,
+  val keywords: String,
 )
 
 /** One configured catalog on `GET /admin/catalogs`: its config plus its latest load outcome. */

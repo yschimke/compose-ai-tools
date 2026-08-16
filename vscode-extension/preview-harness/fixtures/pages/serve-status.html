@@ -73,7 +73,6 @@
     </div>
   </nav>
 </header>
-        <script>(function(){var active="dev",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
         <main class="cp-main">
               <h1 class="cp-head">Server status <span class="cp-badge cp-badge--unverified">⚠ degraded</span></h1>
       <p class="cp-sub">compose-preview serve · public (open) <span class="cp-about-ver">v0.0.0-fixture</span></p>
@@ -145,6 +144,7 @@
             <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
           </div>
         </footer>
+        <script>(function(){var active="dev",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
         <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
       </body>
     </html>

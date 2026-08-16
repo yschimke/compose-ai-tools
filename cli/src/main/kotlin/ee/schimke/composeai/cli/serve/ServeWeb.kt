@@ -3907,6 +3907,50 @@ $noteBlock        <div class="cp-site-footer-links">
   )
 
   /**
+   * One component offered by the home page's cross-catalog command palette. The server keeps this
+   * compact projection beside the other suspended-catalog metadata, so global discovery neither
+   * embeds every preview in the front door nor wakes an idle catalog daemon.
+   */
+  data class ComponentSearchEntry(val previewId: String, val label: String, val keywords: String)
+
+  /**
+   * Project a catalog's previews to the same component cards its landing page exposes. Theme, state
+   * and props renders collapse to their component's default card; genuine size variants stay
+   * separate and receive the same disambiguating suffix as the visible grid.
+   */
+  fun componentSearchEntries(
+    previews: List<ServePreview>,
+    darkFirst: Boolean = false,
+  ): List<ComponentSearchEntry> {
+    val cards =
+      groupPreviews(
+        previews.filterNot {
+          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+        }
+      )
+    val duplicateLabels =
+      cards
+        .groupingBy { previewDisplayName(it.rendered(darkFirst)) }
+        .eachCount()
+        .filterValues { it > 1 }
+        .keys
+    return cards.map { card ->
+      val preview = card.rendered(darkFirst)
+      val baseLabel = previewDisplayName(preview)
+      val label =
+        if (baseLabel !in duplicateLabels) baseLabel
+        else previewSizeVariantLabel(preview.id)?.let { "$baseLabel · $it" } ?: baseLabel
+      ComponentSearchEntry(
+        previewId = preview.id,
+        label = label,
+        keywords =
+          listOfNotNull(preview.id, preview.label, preview.componentId, preview.section)
+            .joinToString(" "),
+      )
+    }
+  }
+
+  /**
    * A front-page section a catalog may be published under: the [heading] shown, its count [noun],
    * and the [repos] whose bytes are allowed to appear under it.
    */
@@ -4121,6 +4165,9 @@ $noteBlock        <div class="cp-site-footer-links">
           }
           .joinToString("\n")
       }
+    val globalComponents =
+      if (systems.isEmpty()) ""
+      else "<span hidden data-cp-global-components=\"/api/components$suffix\"></span>\n"
     return document(
       title = "$HOME_TITLE — compose-preview",
       unfurlTitle = HOME_TITLE,
@@ -4129,7 +4176,7 @@ $noteBlock        <div class="cp-site-footer-links">
       navSuffix = suffix,
       headerAction = headerAction,
       version = version,
-      body = body,
+      body = body + if (globalComponents.isEmpty()) "" else "\n$globalComponents",
       componentBrowser = componentBrowser,
     )
   }
@@ -8588,6 +8635,12 @@ $rows
      */
     designReference: DesignReference? = null,
     /**
+     * Typography/layout facts captured from [designReference]'s own raster. The default Figma lane
+     * draws these over the spec image; Diff/Triptych pair them with the current render and reduce
+     * the legend to changed typography only.
+     */
+    referenceAnnotations: List<DesignAnnotation> = emptyList(),
+    /**
      * `/playground?from=…` for this preview — opens its Kotlin in the editor against the catalog it
      * came from. Null on a host with no playground lane, or for a preview whose source path the
      * catalog never recorded; the affordance is then omitted rather than offered dead.
@@ -9276,6 +9329,9 @@ $rows
           "aria-label=\"Wipe between the design spec and the Compose render\">" +
           "<span>Render</span></label></div>" +
           "</div>" +
+          "<script type=\"application/json\" id=\"cp-spec-annotations\">" +
+          encodeAnnotationPayload(AnnotationPayload(reference = referenceAnnotations)) +
+          "</script>" +
           // Drives the panel above: the view buttons, the four surfaces, and the verdict on the
           // design-spec chip. Emitted immediately after it — `viewer.js` calls
           // `window.cpSpecCompare` on the way into the lane, so the element has to be able to set
@@ -9575,18 +9631,24 @@ $rows
     //
     // Each row is offered only when its host can actually produce the data (an a11y-capable daemon
     // for the first, a semantics-capturing one for the other two) — never as a dead control.
+    // Published reference typography is self-contained, so static bundle viewers can inspect the
+    // Figma lane even though they cannot apply overrides or ask a daemon for render annotations.
+    val hasTypographyInspection =
+      hasDesignAnnotations || referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
     val inspectRows = buildString {
       if (hasA11yOverlay)
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-a11y\" " +
             "data-cp-inspect=\"a11y\" type=\"checkbox\"> Accessibility</label>\n"
         )
-      if (hasDesignAnnotations) {
+      if (hasTypographyInspection) {
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" " +
             "id=\"cp-inspect-typography\" data-cp-inspect=\"typography\" type=\"checkbox\"> " +
             "Typography</label>\n"
         )
+      }
+      if (hasDesignAnnotations) {
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-theme\" " +
             "data-cp-inspect=\"theme\" type=\"checkbox\"> Theme attributes</label>\n"
@@ -9937,6 +9999,16 @@ $rows
           }
         )
         .joinToString("") { "$it\n      " }
+    // The Source lane uses the same vendored Kotlin grammar as the playground, but only on pages
+    // that can actually offer source. CodeMirror is one of the deliberately selective heavy
+    // assets: a component without a derivable usage snippet should not pay its ~114 kB wire cost.
+    // viewer.js still paints a plain <pre><code> first, so either asset failing leaves readable
+    // source rather than turning an optional highlighter into a lane dependency.
+    val sourceCodeStylesheet =
+      if (usageAvailable)
+        "<link rel=\"stylesheet\" href=\"${assetHref("codemirror.css")}\">\n      "
+      else ""
+    val sourceCodeScriptTag = if (usageAvailable) "${scriptTag("codemirror.js")}\n      " else ""
     // The provenance row (source / playground / report an issue / figma spec) no longer sits under
     // the title. It is *about* the preview rather than a control over it, and four lines of small
     // links between the heading and the renderer controls is four lines of chrome between the
@@ -9982,7 +10054,7 @@ $rows
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
       """
-      ${if (browserBreadcrumb.isBlank()) "" else "$browserBreadcrumb\n      "}<div class="cp-preview-head">
+      $sourceCodeStylesheet${if (browserBreadcrumb.isBlank()) "" else "$browserBreadcrumb\n      "}<div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
         ${if (componentBrowser) "" else "<code class=\"cp-preview-id\" title=\"$idText\">$idText</code>"}
         ${if (componentBrowser) "" else viewerViewCountHtml(engagement.views)}$headTogglesHtml
@@ -10068,7 +10140,7 @@ $rows
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
       ${presenceScriptTag(presenceUrl)}
-      $compareScriptTags${scriptTag("viewer.js")}$browserTabsScript
+      $compareScriptTags$sourceCodeScriptTag${scriptTag("viewer.js")}$browserTabsScript
       """
         .trimIndent()
         .lineSequence()
@@ -10333,10 +10405,10 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
       <body${if (componentBrowser) " class=\"cp-component-browser\"" else ""}>
         ${scriptTag("serve-chrome.js")}
         ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser)}
-        $interfaceModeControls
         <main class="cp-main">
         $body
         </main>$footerBlock
+        $interfaceModeControls
         ${if (componentBrowser) "" else scriptTag("keyboard-navigation.js")}
       </body>
     </html>

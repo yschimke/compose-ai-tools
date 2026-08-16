@@ -615,6 +615,56 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the front door advertises lazy global component search only when catalogs exist`() {
+    val system =
+      ServeWeb.HomeSystem(
+        system = "compose-m3",
+        title = "Material 3",
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        heroPreviewId = null,
+      )
+
+    val gated = ServeWeb.homeIndexPage(listOf(system), token = "a token", isPublic = false)
+    assertTrue(
+      gated.contains("data-cp-global-components=\"/api/components?token=a%20token\""),
+      gated,
+    )
+    val empty = ServeWeb.homeIndexPage(emptyList(), token = "unused", isPublic = true)
+    assertFalse(empty.contains("data-cp-global-components"), empty)
+  }
+
+  @Test
+  fun `global component search collapses catalog render variants like the landing grid`() {
+    val entries =
+      ServeWeb.componentSearchEntries(
+        listOf(
+          ServePreview(
+            id = "button-filled__ideal__default__light",
+            label = "button-filled",
+            componentId = "Button/Filled",
+          ),
+          ServePreview(
+            id = "button-filled__ideal__default__dark",
+            label = "button-filled",
+            componentId = "Button/Filled",
+          ),
+          ServePreview(
+            id = "button-filled__ideal__pressed__light",
+            label = "button-filled pressed",
+            componentId = "Button/Filled",
+            state = "pressed",
+          ),
+        )
+      )
+
+    assertEquals(1, entries.size)
+    assertEquals("Button Filled", entries.single().label)
+    assertEquals("button-filled__ideal__default__light", entries.single().previewId)
+  }
+
+  @Test
   fun `the renderer combo lists every player with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
     // enabled; the opt-in CMP/Wasm and unadvertised cmp-jvm lanes remain disabled.
@@ -900,6 +950,16 @@ class ServeWebTest {
             raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
             source = DesignReferenceSource(provider = "figma"),
           ),
+        referenceAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 20, y = 30, width = 120, height = 24),
+              label = "titleLarge 22sp/28sp",
+              role = "Title",
+              detail = mapOf("token" to "titleLarge", "fontFamily" to "Roboto Flex"),
+            )
+          ),
       )
     assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane carrier is rendered")
     // The lane is a top-level chip named after the design tool it imported from — NOT an option
@@ -921,6 +981,10 @@ class ServeWebTest {
     // player lanes (bookmarkable `?mode=spec`, Back/Forward, one lane on the stage at a time).
     assertTrue(html.contains("value=\"spec\" id=\"cp-spec-toggle\""), "the mode radio is rendered")
     assertTrue(html.contains("id=\"cp-spec-img\""), "the stage image is rendered")
+    assertTrue(
+      html.contains("id=\"cp-inspect-typography\"") && html.contains("<cp-inspect-layers>"),
+      "published reference typography remains inspectable without a live annotation host: $html",
+    )
     // …and the step from "look at the spec" to "diff it" against this render.
     assertTrue(
       html.contains(
@@ -1055,6 +1119,16 @@ class ServeWebTest {
             raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
             source = DesignReferenceSource(provider = "figma"),
           ),
+        referenceAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 20, y = 30, width = 120, height = 24),
+              label = "titleLarge 22sp/28sp",
+              role = "Title",
+              detail = mapOf("token" to "titleLarge", "fontFamily" to "Roboto Flex"),
+            )
+          ),
       )
     // Four ways to look at the same pair, all four on the stage rather than behind a navigation to
     // /compare — which is the point: the render worth comparing is the one the viewer's overrides,
@@ -1089,6 +1163,10 @@ class ServeWebTest {
     }
     assertTrue(html.contains("id=\"cp-spec-wipe-range\""), "the wipe carries a range control")
     assertTrue(html.contains("id=\"cp-spec-score\""), "the match readout is rendered")
+    assertTrue(
+      html.contains("id=\"cp-spec-annotations\"") && html.contains("Roboto Flex"),
+      "the Figma raster carries its own typography for the overlay",
+    )
     // Load order is load-bearing: `viewer.js` calls `window.cpSpecCompare` on the way into the
     // lane, and `<cp-spec-compare>` draws every surface from format-compare.js's primitives. The
     // element wires itself up as its tag upgrades, so the components bundle has to be requested

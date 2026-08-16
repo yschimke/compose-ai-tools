@@ -32,6 +32,7 @@
    `prefers-color-scheme`, which is the default and the no-JS behaviour. */
 :root {
   color-scheme: light dark;
+  --cp-site-header-height: 56px;
 
   /* --- M3 baseline scheme. The reference palette Material ships when a product has not supplied a
      source colour, so an unthemed preview server looks like Material rather than like an arbitrary
@@ -581,7 +582,8 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
 .cp-toolbar { margin: 0; }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
-.cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 20px; padding: 10px 0;
+.cp-catalog-tools { position: sticky; top: var(--cp-site-header-height); z-index: 18;
+  margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
 /* The catalog's own actions — the comparison views, the parity view, the playground, Transparent.
    M3 *assist chips*: outlined, 32dp, label-large, one per destination — inside a MENU, at every
@@ -658,8 +660,9 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 @media (min-width: 960px) {
   .cp-catalog-body { display: grid; grid-template-columns: minmax(168px, 216px) minmax(0, 1fr);
     gap: 32px; align-items: start; }
-  .cp-catalog-menu { position: sticky; top: calc(var(--cp-sticky-tools, 0px) + 12px);
-    max-height: calc(100vh - var(--cp-sticky-tools, 0px) - 28px);
+  .cp-catalog-menu { position: sticky;
+    top: calc(var(--cp-site-header-height) + var(--cp-sticky-tools, 0px) + 12px);
+    max-height: calc(100vh - var(--cp-site-header-height) - var(--cp-sticky-tools, 0px) - 28px);
     overflow-y: auto; overscroll-behavior: contain; }
 }
 .cp-catalog-menu { margin: 0 0 22px; }
@@ -1460,7 +1463,12 @@ cp-history-menu { display: contents; }
   flex-wrap: wrap; width: 100%; }
 .cp-spec-compare[hidden] { display: none; }
 .cp-spec-panel { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  min-width: 0; flex: 0 1 auto; }
+  min-width: 0; flex: 0 1 auto; position: relative; }
+.cp-spec-annotation-layer { position: absolute; pointer-events: none; z-index: 2; }
+.cp-spec-type-box { border-width: 2px; background: rgba(37, 99, 235, 0.18); }
+.cp-spec-type-diff { align-items: flex-start; }
+.cp-spec-type-field { display: block; font-size: 0.68rem; line-height: 1.35;
+  font-variant-numeric: tabular-nums; }
 /* `max-height` as well as `max-width`, both against auto dimensions, so an app-screen render
    (tall, and often 1000+ px of raster) is bounded by the viewport rather than pushing the stage
    past it — the aspect ratio rides along because the canvas is a replaced element. */
@@ -1831,6 +1839,33 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-source-panel pre { margin: 0; white-space: pre; overflow-x: auto;
   font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.8125rem; line-height: 1.55; }
+/* CodeMirror is an optional, read-only upgrade over the <pre> above. Let the panel own both axes
+   rather than nesting a second scroll box, and paint its gutter from the same surface roles as the
+   rest of the viewer. `viewportMargin: Infinity` in viewer.js makes this auto-height safe. */
+.cp-source-panel .CodeMirror { height: auto; background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem; line-height: 1.55; }
+.cp-source-panel .CodeMirror-scroll { overflow: visible !important; }
+.cp-source-panel .CodeMirror-lines { padding: 0; }
+.cp-source-panel .CodeMirror-gutters { background: var(--md-sys-color-surface-container);
+  border-right: 1px solid var(--md-sys-color-outline-variant); }
+.cp-source-panel .CodeMirror-linenumber { color: var(--md-sys-color-outline); }
+.cp-source-panel .CodeMirror-selected { background: var(--md-sys-color-secondary-container); }
+/* Same Kotlin token palette as playground.css. It follows the page's pinned `color-scheme` through
+   light-dark(), rather than following the OS after the visitor has explicitly chosen a scheme. */
+.cp-source-panel .cm-keyword { color: light-dark(#770088, #c792ea); }
+.cp-source-panel .cm-def { color: light-dark(#0000ff, #82aaff); }
+.cp-source-panel .cm-variable-3, .cp-source-panel .cm-type {
+  color: light-dark(#008855, #82aaff); }
+.cp-source-panel .cm-string { color: light-dark(#aa1111, #c3e88d); }
+.cp-source-panel .cm-string-2 { color: light-dark(#ff5500, #c3e88d); }
+.cp-source-panel .cm-number { color: light-dark(#116644, #f78c6c); }
+.cp-source-panel .cm-comment { color: light-dark(#aa5500, #7d8799); }
+.cp-source-panel .cm-meta { color: light-dark(#555555, #ffcb6b); }
+.cp-source-panel .cm-atom { color: light-dark(#221199, #ffcb6b); }
+.cp-source-panel .cm-operator, .cp-source-panel .cm-punctuation {
+  color: light-dark(currentcolor, #89ddff); }
 .cp-source-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   margin-top: 12px; }
 .cp-source-note { margin: 0 0 12px; color: var(--cp-fg-muted); font-size: 0.75rem;
@@ -2143,6 +2178,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-inspect-text strong { font-weight: 650; color: var(--cp-fg); overflow-wrap: anywhere; }
 .cp-inspect-detail { color: var(--cp-fg-muted); overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums; }
+.cp-inspect-entry[data-cp-kind="typography"] .cp-inspect-detail { white-space: nowrap;
+  font-size: 0.62rem; letter-spacing: -0.02em; }
 .cp-overlay-control { display: flex; align-items: center; gap: 10px; max-width: 420px;
   margin: 22px 0 8px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-overlay-control input { flex: 1; }
@@ -2386,7 +2423,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      was already ellipsising into a stub (it is in the URL, the export links and the title
      attribute regardless). Still sticky — a preview can be several screens tall, and which
      component you are looking at is the fact worth pinning. */
-  .cp-preview-head { position: sticky; top: 0; z-index: 21; margin: 0 0 8px; padding: 6px 0;
+  .cp-preview-head { position: sticky; top: var(--cp-site-header-height); z-index: 21;
+    margin: 0 0 8px; padding: 6px 0;
     background: var(--cp-bg); row-gap: 6px; }
   .cp-preview-head .cp-preview-id { display: none; }
   /* The name is NOT clamped to one line here, though it would buy a row back: the trust verdict is
@@ -3036,7 +3074,8 @@ cp-page-zoom button:focus-visible {
 .cp-component-browser .cp-site-header { grid-template-columns: minmax(0, 1fr) auto; }
 .cp-component-browser .cp-site-lead { min-width: 0; }
 .cp-component-browser .cp-main { max-width: 1680px; }
-.cp-browser-home-tools { position: sticky; top: 0; z-index: 20; margin: 0 0 24px;
+.cp-browser-home-tools { position: sticky; top: var(--cp-site-header-height); z-index: 20;
+  margin: 0 0 24px;
   padding: 8px 0; background: var(--cp-bg); }
 .cp-browser-home-tools .cp-search { display: flex; max-width: 520px; }
 .cp-browser-provenance { margin-top: 7px; color: var(--md-sys-color-on-surface-variant);
@@ -3070,7 +3109,7 @@ cp-page-zoom button:focus-visible {
   .cp-component-browser .cp-nav-close { display: none; }
 }
 @media (max-width: 640px) {
-  .cp-browser-home-tools { top: 48px; }
+  .cp-browser-home-tools { top: var(--cp-site-header-height); }
   .cp-browser-breadcrumb { white-space: normal; }
   .cp-browser-siblings { grid-template-columns: 1fr; }
   .cp-browser-sibling-next { grid-column: 1; }

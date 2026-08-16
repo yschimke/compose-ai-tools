@@ -30,11 +30,11 @@ indirect-pointer Press does not reach Wear M3's `Button` interaction source, so
 the capture documented *focus*, not press.
 
 Wear M3's `Button` uses `combinedClickable`, which does not consume the
-indirect-pointer event. The renderer now checks whether the indirect event was
-handled and, when it was not, holds a focus-targeted `DPAD_CENTER` key-down.
-`combinedClickable` consumes that ordinary Wear input channel and emits the
-component's real pressed interaction, so the catalog no longer needs its held
-`MutableInteractionSource` stopgap.
+indirect-pointer event. The renderer can fall back to a focus-targeted
+`DPAD_CENTER` key-down, but Robolectric does not reliably deliver that path to
+Wear M3: the capture remains focus-only. The catalog therefore retains a
+narrowly scoped held `MutableInteractionSource`, with a pixel test guarding that
+the published pressed specimen differs from focus-only.
 
 The Android M3 focus ring (`m3-focus-ring-after.png`) is the counter-example
 showing the mechanism does work where the component cooperates.

@@ -5,7 +5,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import org.junit.Test
 
-/** End-to-end guard for the focused-key press fallback used by Wear M3 `combinedClickable`. */
+/** End-to-end guard that the documented Wear pressed specimen is not a focus-only capture. */
 class WearFocusedPressPixelTest {
 
   private val rendersDir = File("build/compose-previews/renders")
@@ -17,9 +17,9 @@ class WearFocusedPressPixelTest {
     val pressedImage = ImageIO.read(pressed)
     val focusedImage = ImageIO.read(focused)
 
-    // This point is inside the rounded container and outside both labels. Before the renderer's
-    // DPAD_CENTER fallback, both pixels were #D4C8EC: the requested Press never reached Wear M3's
-    // combinedClickable interaction source, so `pressed = true` only captured focus.
+    // This point is inside the rounded container and outside both labels. A synthetic focused key
+    // press does not reliably reach Wear M3's combinedClickable under Robolectric, producing the
+    // same #D4C8EC pixel in both captures. The catalog's seeded press must keep them distinct.
     val x = 30
     val y = 68
     assertThat(pressedImage.getRGB(x, y)).isNotEqualTo(focusedImage.getRGB(x, y))

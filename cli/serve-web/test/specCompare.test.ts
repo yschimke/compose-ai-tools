@@ -18,6 +18,10 @@ const framesFor = (width = 8, height = 8) => ({
     images: [{}, {}] as [unknown, unknown],
     width,
     height,
+    boxes: {
+        reference: { x: 0, y: 0, width, height },
+        candidate: { x: 0, y: 0, width, height },
+    },
 });
 
 interface Stub {
@@ -69,6 +73,7 @@ async function mount(options: { baseline?: boolean } = {}): Promise<void> {
             data-spec-chip-stale-tip="measured against the default render"
             title="97.1% match — click to see where">Button 97.1%</span>
       <div class="cp-viewer"${baseline}>
+        <img id="cp-img" data-cp-src="/render/Button.png?theme=dark">
         <span id="cp-spec-views" hidden>
           <button type="button" data-cp-spec-view="spec" aria-pressed="true">Spec</button>
           <button type="button" data-cp-spec-view="diff" aria-pressed="false">Diff</button>
@@ -76,16 +81,37 @@ async function mount(options: { baseline?: boolean } = {}): Promise<void> {
           <button type="button" data-cp-spec-view="slider" aria-pressed="false">Slider</button>
         </span>
         <span id="cp-spec-score" hidden></span>
+        <label><input class="cp-inspect" data-cp-inspect="typography" type="checkbox">Typography</label>
         <div class="cp-spec-compare" id="cp-spec-compare" hidden data-view="spec"
              data-reference="/reference/Button.png">
-          <canvas id="cp-spec-reference"></canvas>
-          <canvas id="cp-spec-diff"></canvas>
-          <canvas id="cp-spec-actual"></canvas>
+          <figure data-cp-spec-panel="reference"><canvas id="cp-spec-reference"></canvas></figure>
+          <figure data-cp-spec-panel="diff"><canvas id="cp-spec-diff"></canvas></figure>
+          <figure data-cp-spec-panel="actual"><canvas id="cp-spec-actual"></canvas></figure>
           <div class="cp-spec-wipe">
             <canvas id="cp-spec-wipe-canvas"></canvas>
             <input id="cp-spec-wipe-range" type="range" min="0" max="100" value="50">
           </div>
         </div>
+        <script type="application/json" id="cp-spec-annotations">${JSON.stringify(
+            {
+                reference: [
+                    {
+                        kind: "typography",
+                        bounds: { x: 1, y: 1, width: 4, height: 2 },
+                        role: "Label",
+                        label: "labelLarge",
+                        detail: {
+                            token: "m3/label/large",
+                            fontFamily: "Roboto",
+                            fontWeight: "500",
+                            fontSize: "14sp",
+                            lineHeight: "20sp",
+                        },
+                    },
+                ],
+            },
+        )}</script>
+        <aside id="cp-controls"></aside>
       </div>`;
     await flush();
 }
@@ -137,6 +163,73 @@ describe("<cp-spec-compare>", () => {
         assert.deepEqual(stub.normalise, [
             "https://preview.example/reference/Button.png|https://preview.example/render/Button.png",
         ]);
+    });
+
+    it("shows only changed typography beside Diff and highlights it", async () => {
+        stubCompare();
+        const urls: string[] = [];
+        globalThis.fetch = (async (url: string) => {
+            urls.push(String(url));
+            return {
+                ok: true,
+                json: async () => ({
+                    annotations: [
+                        {
+                            kind: "typography",
+                            bounds: { x: 1, y: 1, width: 4, height: 2 },
+                            role: "Label",
+                            label: "labelLarge",
+                            detail: {
+                                token: "m3/label/large",
+                                fontFamily: "Roboto",
+                                fontWeight: "600",
+                                fontSize: "14sp",
+                                lineHeight: "20sp",
+                            },
+                        },
+                    ],
+                }),
+            };
+        }) as unknown as typeof fetch;
+        await mount();
+        document.querySelector<HTMLInputElement>(
+            '[data-cp-inspect="typography"]',
+        )!.checked = true;
+        lane().open("blob:https://preview.example/current-snapshot");
+        press("diff");
+        for (let i = 0; i < 8; i++) await flush();
+        const legend = document.getElementById("cp-spec-typography-legend")!;
+        assert.equal(legend.hidden, false);
+        assert.deepEqual(
+            Array.from(legend.querySelectorAll(".cp-spec-type-field")).map(
+                (node) => node.textContent,
+            ),
+            ["Weight: 500 → 600"],
+            "matching token, family and size stay out of the legend",
+        );
+        assert.equal(
+            legend.querySelectorAll(".cp-typography-changed").length,
+            1,
+        );
+        assert.equal(
+            document.querySelectorAll(
+                '[data-cp-spec-panel="diff"] .cp-spec-type-box',
+            ).length,
+            1,
+            "the changed Compose usage is marked over the diff",
+        );
+        assert.deepEqual(urls, ["/render/Button.annotations?theme=dark"]);
+
+        document
+            .getElementById("cp-img")!
+            .setAttribute("data-cp-src", "/render/Button.png?theme=light");
+        window.dispatchEvent(new CustomEvent("cp-inspect-change"));
+        for (let i = 0; i < 5; i++) await flush();
+        assert.deepEqual(
+            urls,
+            ["/render/Button.annotations?theme=dark"],
+            "the legend remains tied to the render already copied into the canvases",
+        );
     });
 
     it("puts the live verdict on the chip, and the published one back on the way out", async () => {

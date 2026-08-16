@@ -50,6 +50,8 @@ export class InspectLayers extends LitElement {
     private installed = false;
     private root: HTMLElement | null = null;
     private img: HTMLImageElement | null = null;
+    private composeImg: HTMLImageElement | null = null;
+    private specImg: HTMLImageElement | null = null;
     private layer: HTMLElement | null = null;
     private legend: HTMLElement | null = null;
     private toggles: HTMLInputElement[] = [];
@@ -91,7 +93,13 @@ export class InspectLayers extends LitElement {
     private install(): boolean {
         if (!this.isConnected || this.installed) return true;
         this.root = document.querySelector<HTMLElement>(".cp-viewer");
-        this.img = document.getElementById("cp-img") as HTMLImageElement | null;
+        this.composeImg = document.getElementById(
+            "cp-img",
+        ) as HTMLImageElement | null;
+        this.specImg = document.getElementById(
+            "cp-spec-img",
+        ) as HTMLImageElement | null;
+        this.syncTarget();
         this.layer = document.getElementById("cp-inspect-layer");
         this.legend = document.getElementById("cp-inspect-legend");
         this.toggles = Array.from(
@@ -100,7 +108,7 @@ export class InspectLayers extends LitElement {
         // Inert on a viewer whose host can produce none of the three products.
         if (
             !this.root ||
-            !this.img ||
+            !this.composeImg ||
             !this.layer ||
             !this.legend ||
             !this.toggles.length
@@ -113,7 +121,8 @@ export class InspectLayers extends LitElement {
             this.on(toggle, "change", () => void this.refresh());
         }
         this.on(window, "resize", () => this.place());
-        this.on(this.img, "load", () => this.place());
+        this.on(this.composeImg, "load", () => this.place());
+        if (this.specImg) this.on(this.specImg, "load", () => this.place());
         // `load` alone is a race this element must not depend on winning. It fires only if the
         // frame was still in flight when the tag upgraded — and when it has already decoded, the
         // sole `place()` is the one at the end of `draw()`, whose measurements are whatever the
@@ -128,9 +137,10 @@ export class InspectLayers extends LitElement {
         // already-capped frame changes `offsetLeft` without changing the image's own box.
         if (typeof ResizeObserver === "function") {
             this.resizes = new ResizeObserver(() => this.place());
-            this.resizes.observe(this.img);
-            if (this.img.parentElement)
-                this.resizes.observe(this.img.parentElement);
+            this.resizes.observe(this.composeImg);
+            if (this.specImg) this.resizes.observe(this.specImg);
+            if (this.composeImg.parentElement)
+                this.resizes.observe(this.composeImg.parentElement);
         }
         // New pixels ⇒ new geometry and new facts. `viewer.js` stamps `data-cp-src` once the
         // replacement frame has DECODED, so that attribute is the one honest "the render changed"
@@ -138,12 +148,17 @@ export class InspectLayers extends LitElement {
         // query on every control.
         if (typeof MutationObserver === "function") {
             this.observer = new MutationObserver(() => {
+                this.syncTarget();
                 if (this.activeKinds().length) void this.refresh();
                 else this.place();
             });
-            this.observer.observe(this.img, {
+            this.observer.observe(this.composeImg, {
                 attributes: true,
                 attributeFilter: ["data-cp-src"],
+            });
+            this.observer.observe(this.root, {
+                attributes: true,
+                attributeFilter: ["data-mode", "data-spec-view"],
             });
         }
 
@@ -167,6 +182,27 @@ export class InspectLayers extends LitElement {
             .map((el) => el.getAttribute("data-cp-inspect") ?? "");
     }
 
+    private isSpec(): boolean {
+        return (
+            this.root?.getAttribute("data-mode") === "spec" &&
+            this.root?.getAttribute("data-spec-view") === "spec"
+        );
+    }
+
+    private isSpecComparison(): boolean {
+        const view = this.root?.getAttribute("data-spec-view");
+        return (
+            this.root?.getAttribute("data-mode") === "spec" &&
+            (view === "diff" || view === "triptych" || view === "slider")
+        );
+    }
+
+    /** Inspection follows the surface on the stage: Compose render or imported Figma raster. */
+    private syncTarget(): void {
+        this.img =
+            this.isSpec() && this.specImg ? this.specImg : this.composeImg;
+    }
+
     /** Restore from a deep link: `?inspect=a11y,typography`. */
     private hydrate(): void {
         const wanted = kindsFromParam(
@@ -181,7 +217,26 @@ export class InspectLayers extends LitElement {
 
     /** The URL of the frame ON SCREEN, which `viewer.js` records once its bytes have decoded. */
     private frameUrl(): string {
+        if (this.isSpec())
+            return (
+                document
+                    .getElementById("cp-spec-compare")
+                    ?.getAttribute("data-reference") ?? "spec"
+            );
         return this.img?.getAttribute("data-cp-src") ?? "";
+    }
+
+    private referenceAnnotations(): unknown {
+        const node = document.getElementById("cp-spec-annotations");
+        if (!node) return null;
+        try {
+            const payload = JSON.parse(node.textContent ?? "") as {
+                reference?: unknown;
+            };
+            return payload.reference ?? null;
+        } catch {
+            return null;
+        }
     }
 
     private urlFor(source: string): string {
@@ -196,6 +251,12 @@ export class InspectLayers extends LitElement {
     }
 
     private fetchSource(source: string): Promise<unknown> {
+        if (this.isSpec())
+            return Promise.resolve(
+                source === "annotations"
+                    ? { annotations: this.referenceAnnotations() }
+                    : null,
+            );
         if (this.cacheKey !== this.frameUrl()) {
             this.cache = new Map();
             this.cacheKey = this.frameUrl();
@@ -219,13 +280,25 @@ export class InspectLayers extends LitElement {
 
     private async refresh(): Promise<void> {
         const kinds = this.activeKinds();
+        // Every refresh supersedes the previous one, including transitions into a comparison view
+        // where this element deliberately paints nothing. Otherwise a request started on Compose
+        // can resolve after Diff/Triptych/Slider takes the stage and repaint a stale render-only
+        // legend over the comparison.
+        const generation = ++this.generation;
         this.syncUrl(kinds);
+        window.dispatchEvent(
+            new CustomEvent("cp-inspect-change", { detail: { kinds } }),
+        );
+        if (this.isSpecComparison()) {
+            this.entries = [];
+            this.draw();
+            return;
+        }
         if (!kinds.length) {
             this.entries = [];
             this.draw();
             return;
         }
-        const generation = ++this.generation;
         this.legend?.setAttribute("aria-busy", "true");
         const names = sourcesFor(kinds);
         const results = await Promise.all(
@@ -368,9 +441,9 @@ export class InspectLayers extends LitElement {
         box.className = "cp-inspect-box";
         box.setAttribute("data-cp-kind", kind);
         box.setAttribute("data-level", entry.level);
-        box.title = entry.detail
-            ? `${entry.title} · ${entry.detail}`
-            : entry.title;
+        box.title =
+            entry.tooltip ||
+            (entry.detail ? `${entry.title} · ${entry.detail}` : entry.title);
         if (entry.color)
             box.style.setProperty("--cp-inspect-color", entry.color);
         const badge = document.createElement("span");
@@ -395,6 +468,7 @@ export class InspectLayers extends LitElement {
         row.setAttribute("data-cp-kind", kind);
         row.setAttribute("data-level", entry.level);
         row.tabIndex = 0;
+        if (entry.tooltip) row.title = entry.tooltip;
         if (entry.color)
             row.style.setProperty("--cp-inspect-color", entry.color);
         const marker = document.createElement("span");

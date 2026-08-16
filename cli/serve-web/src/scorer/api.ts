@@ -38,6 +38,11 @@ export interface NormalisedPair {
     width: number;
     height: number;
     geometry: number;
+    /** Source rectangles redrawn into the shared canvas; annotation bounds use this space. */
+    boxes: {
+        reference: { x: number; y: number; width: number; height: number };
+        candidate: { x: number; y: number; width: number; height: number };
+    };
 }
 
 /** The downscale a score is computed at, from whichever box drives the shared size. */
@@ -208,6 +213,10 @@ export async function normaliseImageUrls(
         width,
         height,
         geometry: boxes.geometry,
+        boxes: {
+            reference: boxes.reference,
+            candidate: boxes.candidate,
+        },
         reference: boxCanvas(images[0], boxes.reference, width, height),
         candidate: boxCanvas(images[1], boxes.candidate, width, height),
         images,

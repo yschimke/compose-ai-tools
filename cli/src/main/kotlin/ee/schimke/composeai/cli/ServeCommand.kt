@@ -1177,6 +1177,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       closeables = emptyList(),
       catalogLoads = null,
       localCatalogSessions = opened.map { it.first.gradlePath },
+      localSourceRoots = opened.associate { it.first.gradlePath to it.first.projectDir },
     )
   }
 
@@ -2304,6 +2305,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     catalogLoads: CatalogLoadTracker?,
     /** Local project sessions to list on the component-browser front door. */
     localCatalogSessions: List<String> = emptyList(),
+    /** Module roots used to serve source for local component-browser sessions. */
+    localSourceRoots: Map<String, File> = emptyMap(),
     /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
     catalogStore: ServeCatalogStore? = null,
     /** Immediate branch-head check used by the Refresh control on catalog landing pages. */
@@ -2435,6 +2438,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         trustForwardedFor = trustForwardedFor,
         engagementStore = ServeEngagementStore(engagementFile),
         projectHistory = projectHistory,
+        localSourceRoots = localSourceRoots,
       )
     if (trustAdmin != null) {
       System.err.println(

@@ -941,6 +941,14 @@ class ServeHttpRoutingTest {
     assertEquals(200, apiCode)
     assertTrue(api.contains("\"module\":\"compose-m3\""), "api for the path session: $api")
     assertTrue(api.contains("\"views\":1"), "catalog and preview engagement in api: $api")
+
+    val (componentsCode, components) = get("/api/components")
+    assertEquals(200, componentsCode)
+    assertTrue(
+      components.contains("\"catalog\":\"compose-m3\"") &&
+        components.contains("\"href\":\"/compose-m3/p/$previewId\""),
+      "global component index names the catalog and canonical viewer: $components",
+    )
   }
 
   @Test
@@ -1845,6 +1853,91 @@ class ServeHttpRoutingTest {
   fun `an unknown system path 404s like a bad session`() {
     assertEquals(404, get("/no-such-system/").first)
     assertEquals(404, get("/no-such-system/p/$previewId").first)
+  }
+
+  @Test
+  fun `local browse sessions expose source from their contained module root`() {
+    val root = Files.createTempDirectory("local-browse-source").toFile().also { it.deleteOnExit() }
+    val relative = "src/commonMain/kotlin/example/LocalButton.kt"
+    File(root, relative).apply {
+      parentFile.mkdirs()
+      writeText(
+        """
+        package example
+
+        import androidx.compose.material3.Button
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun LocalButton() {
+          Button(onClick = {}) {}
+        }
+        """
+          .trimIndent()
+      )
+    }
+    val localId = "example.LocalButton"
+    val localHost =
+      object : ServeHost {
+        override val previews =
+          listOf(
+            ServePreview(
+              id = localId,
+              label = "Local button",
+              sourceFile = relative,
+              bodyLine = 7,
+            )
+          )
+        override val label = "local"
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Ok(png())
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+      }
+    val localRegistry = ServeSessionRegistry(open = { null })
+    localRegistry.register("local", host = localHost, pinned = true)
+    val localServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = localRegistry,
+          defaultSessionId = "local",
+          isPublic = true,
+          componentBrowser = true,
+          catalogSessions = listOf("local"),
+          localSourceRoots = mapOf("local" to root),
+        )
+        .also { it.start() }
+    try {
+      fun localGet(path: String): Pair<Int, String> {
+        val request = Request.Builder().url("http://127.0.0.1:${localServer.port}$path").build()
+        return client.newCall(request).execute().use { it.code to (it.body?.string() ?: "") }
+      }
+
+      val (pageCode, page) = localGet("/local/p/$localId")
+      assertEquals(200, pageCode)
+      assertTrue(page.contains("data-usage-src=\"/local/usage/$localId\""), page)
+
+      val (sourceCode, source) = localGet("/local/usage/$localId")
+      assertEquals(200, sourceCode)
+      assertTrue(source.contains("LocalButton"), source)
+      assertTrue(source.contains("Button(onClick"), source)
+    } finally {
+      localServer.stop()
+    }
   }
 
   @Test

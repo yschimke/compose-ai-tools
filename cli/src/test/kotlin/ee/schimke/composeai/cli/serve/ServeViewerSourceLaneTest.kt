@@ -81,6 +81,21 @@ class ServeViewerSourceLaneTest {
     assertFalse(page(usageHref = "  ").contains("cp-source-chip"))
   }
 
+  @Test
+  fun `source selectively loads the playground Kotlin highlighter before the viewer`() {
+    val highlighted = page(usageHref = "/usage/x")
+    assertTrue(highlighted.contains("codemirror.css"))
+    assertTrue(highlighted.contains("codemirror.js"))
+    assertTrue(
+      highlighted.lastIndexOf("/codemirror.js") < highlighted.lastIndexOf("/viewer.js"),
+      "the CodeMirror global must exist before viewer.js can upgrade the source block",
+    )
+
+    val ordinary = page()
+    assertFalse(ordinary.contains("codemirror.css"), "no source means no highlighter stylesheet")
+    assertFalse(ordinary.contains("codemirror.js"), "no source means no highlighter script")
+  }
+
   /**
    * The two affordances are independent on purpose. Reading the code is useful wherever a catalog
    * can be browsed; running it needs a host that can compile that catalog, which most of the public

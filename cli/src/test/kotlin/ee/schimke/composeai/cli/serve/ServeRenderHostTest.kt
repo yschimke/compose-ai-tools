@@ -1,12 +1,15 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
+import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.PreviewSlots
 import ee.schimke.composeai.data.layoutinspector.PreviewSlotsPayload
 import ee.schimke.composeai.data.layoutinspector.SlotBounds
+import ee.schimke.composeai.data.theme.Material3ThemeProduct
 import ee.schimke.composeai.render.session.RenderSession
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -511,6 +514,59 @@ class ServeRenderHostTest {
       assertEquals(1, icon.count)
       // Same box the theme annotation reports for that node — one coordinate space, not two.
       assertEquals(theme.bounds, icon.bounds)
+    }
+  }
+
+  @Test
+  fun `renderAnnotations joins Material typography consumers to semantics by node id`() {
+    val theme =
+      Json.parseToJsonElement(
+        """
+        {
+          "resolvedTokens": {
+            "colorScheme": {"primary": "#FF000000"},
+            "typography": {"labelLarge": {"fontSize": 14.0, "fontSizeUnit": "sp"}},
+            "shapes": {}
+          },
+          "consumers": [{"nodeId": "2", "tokens": ["primary", "labelLarge"]}]
+        }
+        """
+          .trimIndent()
+      )
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        fetchDataHook = { _, kind ->
+          if (kind == Material3ThemeProduct.KIND) {
+            DataFetchResult(
+              kind = kind,
+              schemaVersion = Material3ThemeProduct.SCHEMA_VERSION,
+              payload = theme,
+            )
+          } else {
+            null
+          }
+        },
+      )
+    host(session).use { h ->
+      val out = h.renderAnnotations(previewId, PreviewOverrides())
+      assertTrue(out is AnnotationsOutcome.Ok)
+      val payload = Json.parseToJsonElement(out.json.decodeToString()).jsonObject
+      val annotations =
+        Json.decodeFromJsonElement(
+          ListSerializer(DesignAnnotation.serializer()),
+          payload.getValue("annotations"),
+        )
+      val typography = annotations.single { it.kind == AnnotationKind.TYPOGRAPHY }
+
+      assertEquals("labelLarge", typography.detail["token"])
+      assertEquals(
+        "MaterialTheme.typography.labelLarge · 14.0sp/20.0sp · Roboto-Medium.ttf · 500",
+        typography.label,
+      )
+      assertTrue(Material3ThemeProduct.KIND in session.subscribedDataKinds)
+      assertTrue(ComposeSemanticsProduct.KIND in session.enabledExtensionIds)
+      assertTrue(ServeRenderHost.THEME_EXTENSION_ID in session.enabledExtensionIds)
     }
   }
 

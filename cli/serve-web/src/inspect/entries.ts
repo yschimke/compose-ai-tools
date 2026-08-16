@@ -10,6 +10,8 @@
 // wrong picture: stacked rectangles on the same pixels, a colour that says "fine" over a failure,
 // and findings that vanish because their bounds did not line up with a node.
 
+import { typographySpec } from "../annotate/typography.js";
+
 /** A box in the RENDER's own pixel space — the snapshot image's natural size. */
 export interface Bounds {
     x: number;
@@ -28,6 +30,8 @@ export interface Entry {
     level: Level;
     /** A per-node hue, only for un-flagged stops. Null when the level is carrying the colour. */
     color: string | null;
+    /** Optional expanded wording kept off the compact legend row and exposed as a tooltip. */
+    tooltip?: string;
 }
 
 /**
@@ -209,10 +213,39 @@ export interface Annotation {
     bounds?: Bounds;
     role?: string;
     label?: string;
+    detail?: Record<string, unknown>;
 }
 
 export interface AnnotationPayload {
     annotations?: Annotation[];
+}
+
+/**
+ * The compact style line established by the typography comparison UI (#3677):
+ * `token · family weight · size/line-height`. This is the glanceable line; tracking, style,
+ * and variable axes remain in the row tooltip rather than turning the narrow component legend back
+ * into the multi-line dump #3677 replaced on the comparison page.
+ */
+export function typographyDetail(annotation: Annotation): string {
+    const spec = typographySpec(annotation);
+    if (spec.labelOnly) return annotation.label ?? "";
+
+    const size =
+        spec.size === undefined
+            ? undefined
+            : `${spec.size}${
+                  spec.lineHeight === undefined
+                      ? (spec.unit ?? "")
+                      : `/${spec.lineHeight}`
+              }`;
+    const face = [
+        spec.family,
+        spec.weight === undefined ? undefined : spec.weight,
+    ]
+        .filter((value) => value !== undefined)
+        .join(" ");
+
+    return [spec.token, face || undefined, size].filter(Boolean).join(" · ");
 }
 
 /** Typography / theme entries, straight off the shared design-annotation payload. */
@@ -224,12 +257,30 @@ export function annotationEntries(
         .filter((a): a is Annotation & { bounds: Bounds } =>
             Boolean(a && a.kind === kind && a.bounds),
         )
-        .map((a) => ({
-            kind,
-            bounds: a.bounds,
-            title: a.role || a.label || "",
-            detail: a.role ? (a.label ?? "") : "",
-            level: "info" as const,
-            color: null,
-        }));
+        .map((a) => {
+            const typography = kind === "typography" ? typographySpec(a) : null;
+            const summary =
+                kind === "typography"
+                    ? typographyDetail(a)
+                    : a.role
+                      ? (a.label ?? "")
+                      : "";
+            return {
+                kind,
+                bounds: a.bounds,
+                title: a.role || a.label || "",
+                detail: summary,
+                level: "info" as const,
+                color: null,
+                tooltip:
+                    kind === "typography"
+                        ? [
+                              a.label,
+                              typography?.axes ? `axes ${typography.axes}` : "",
+                          ]
+                              .filter(Boolean)
+                              .join(" · ")
+                        : undefined,
+            };
+        });
 }

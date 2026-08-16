@@ -136,6 +136,18 @@ jobs:
           echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
           echo "[workflow] prepared external workspace at $workspace"
 
+      # Keep publication on the repository's JDK 17 above, then run the
+      # third-party consumer on its required runtime. Confetti's current
+      # classpath includes Java 21 bytecode; launching its Gradle/render JVM
+      # on 17 fails before the extension can prove the published-plugin path.
+      # The JDK 17 installed by ./.github/actions/setup remains available for
+      # Confetti modules that request a 17 toolchain.
+      - name: Use Java 21 for Confetti
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Run external-consumer e2e under xvfb
         working-directory: vscode-extension
         env:

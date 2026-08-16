@@ -1070,6 +1070,40 @@ class ServeWebFixtureTest {
         // Spec lane chip that puts the imported reference on the stage beside the renderers.
         figmaSpec = fixtureFigmaSpec,
         designReference = fixtureDesignReference,
+        hasDesignAnnotations = true,
+        referenceAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 20, y = 28, width = 160, height = 42),
+              label = "titleLarge 22sp/28sp",
+              role = "Ada Lovelace",
+              detail =
+                mapOf(
+                  "token" to "titleLarge",
+                  "fontFamily" to "Roboto Flex",
+                  "fontSize" to "22sp",
+                  "fontWeight" to "400",
+                  "lineHeight" to "28sp",
+                  "fontVariationSettings" to "'opsz' 22, 'wdth' 100, 'wght' 400",
+                ),
+            ),
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 20, y = 92, width = 116, height = 18),
+              label = "bodyMedium 14sp/20sp",
+              role = "Analytical engine",
+              detail =
+                mapOf(
+                  "token" to "bodyMedium",
+                  "fontFamily" to "Roboto Flex",
+                  "fontSize" to "14sp",
+                  "fontWeight" to "400",
+                  "lineHeight" to "20sp",
+                  "fontVariationSettings" to "'opsz' 14, 'wdth' 100, 'wght' 400",
+                ),
+            ),
+          ),
       )
     // A **Remote Compose** viewer, the shape preview.coo.ee serves for `remote-m3`: the same
     // captured `.rc` document is drawable by five different players, so this is the page the
@@ -4895,8 +4929,11 @@ class ServeWebFixtureTest {
     // with a scrim behind the open sheet. The row that sticks is the title row, which is where all
     // four disclosures now live.
     assertTrue(
-      assetText("serve.css").contains(".cp-preview-head { position: sticky; top: 0;"),
-      "the disclosure row is sticky on mobile",
+      assetText("serve.css")
+        .contains(
+          ".cp-preview-head { position: sticky; top: var(--cp-site-header-height); z-index: 21;"
+        ),
+      "the disclosure row is sticky below the global header on mobile",
     )
     assertTrue(
       assetText("serve.css").contains(".cp-viewer.cp-controls-open .cp-controls,") &&

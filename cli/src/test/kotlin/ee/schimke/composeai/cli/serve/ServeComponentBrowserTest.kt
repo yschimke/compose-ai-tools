@@ -34,6 +34,7 @@ class ServeComponentBrowserTest {
     assertTrue(html.contains("aria-label=\"Catalog / Dev mode\""))
     assertTrue(html.contains("data-cp-interface-mode=\"catalog\" aria-pressed=\"true\""))
     assertTrue(html.contains("localStorage.getItem(\"cp-interface-mode\")"))
+    assertTrue(html.indexOf("</main>") < html.indexOf("document.querySelectorAll('a[href]')"))
     assertTrue(html.contains("androidx/androidx"))
     assertTrue(html.contains("class=\"cp-component-browser\""))
     assertFalse(html.contains("84 preview(s)"))
@@ -192,5 +193,22 @@ class ServeComponentBrowserTest {
     assertTrue(html.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""))
     assertTrue(html.contains("p.set(\"chrome\",s)"))
     assertFalse(html.contains("class=\"cp-component-browser\""))
+  }
+
+  @Test
+  fun `sticky browser controls reserve the global header height`() {
+    val css =
+      checkNotNull(javaClass.getResource("/ee/schimke/composeai/cli/serve/assets/serve.css"))
+        .readText()
+
+    assertTrue(
+      css.contains(".cp-catalog-tools { position: sticky; top: var(--cp-site-header-height)")
+    )
+    assertTrue(
+      css.contains(".cp-preview-head { position: sticky; top: var(--cp-site-header-height)")
+    )
+    assertTrue(
+      css.contains(".cp-browser-home-tools { position: sticky; top: var(--cp-site-header-height)")
+    )
   }
 }

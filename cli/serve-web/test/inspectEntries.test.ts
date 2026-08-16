@@ -12,6 +12,7 @@ import {
     isFocusStop,
     levelOf,
     parseBounds,
+    typographyDetail,
     worst,
     type A11yPayload,
 } from "../src/inspect/entries.js";
@@ -293,6 +294,9 @@ describe("annotationEntries", () => {
                 bounds: { x: 0, y: 0, width: 10, height: 10 },
                 role: "Title",
                 label: "20sp Roboto",
+                detail: {
+                    fontVariationSettings: "opsz 18.0, wght 700.0",
+                },
             },
             {
                 kind: "theme",
@@ -307,7 +311,51 @@ describe("annotationEntries", () => {
         const entries = annotationEntries(shared, "typography");
         assert.equal(entries.length, 1);
         assert.equal(entries[0].title, "Title");
-        assert.equal(entries[0].detail, "20sp Roboto");
+        assert.equal(entries[0].detail, "");
+        assert.equal(entries[0].tooltip, "20sp Roboto · axes opsz=18,wght=700");
+    });
+
+    it("surfaces variable-font axes even when typography has no role", () => {
+        const entries = annotationEntries(
+            {
+                annotations: [
+                    {
+                        kind: "typography",
+                        bounds: { x: 0, y: 0, width: 10, height: 10 },
+                        label: "Roboto Flex",
+                        detail: {
+                            fontVariationSettings: [
+                                { tag: "wght", value: 650 },
+                                { tag: "wdth", value: 90 },
+                            ],
+                        },
+                    },
+                ],
+            },
+            "typography",
+        );
+
+        assert.equal(entries[0].title, "Roboto Flex");
+        assert.equal(entries[0].detail, "");
+        assert.equal(entries[0].tooltip, "Roboto Flex · axes wdth=90,wght=650");
+    });
+
+    it("uses the compact typography line from the grouped comparison", () => {
+        assert.equal(
+            typographyDetail({
+                label: "MaterialTheme.typography.titleLarge · 22.0sp/28.0sp · Roboto Flex · 500",
+                detail: {
+                    token: "titleLarge",
+                    fontFamily: "Roboto Flex",
+                    fontSize: "22.0sp",
+                    lineHeight: "28.0sp",
+                    fontWeight: "500",
+                    letterSpacing: "0.0sp",
+                    fontVariationSettings: "'opsz' 22, 'wdth' 90, 'wght' 500",
+                },
+            }),
+            "titleLarge · Roboto Flex 500 · 22/28",
+        );
     });
 
     it("falls back to the label as the title when there is no role", () => {

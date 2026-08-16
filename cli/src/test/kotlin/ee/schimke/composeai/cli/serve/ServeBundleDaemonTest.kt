@@ -15,8 +15,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -430,6 +432,61 @@ class ServeBundleDaemonTest {
       val png = File(pngPath)
       assertTrue(png.isFile, "rendered PNG must exist on disk: $pngPath")
       assertTrue(png.length() > 0L)
+    }
+  }
+
+  @Test
+  fun `materialized m3 button surfaces its Material typography in preview inspection`() {
+    val state = materializeOrSkip("typography-inspection") ?: return
+    val target =
+      assertNotNull(
+        state.previews.firstOrNull { it.id.endsWith("CatalogButtonsKt.FilledButton_Light") },
+        "packed m3 catalog should contain the typical FilledButton_Light preview",
+      )
+
+    val host =
+      ServeRenderHost.open(
+        descriptorPath = state.descriptor,
+        workspaceRoot = state.workspaceRoot,
+        workspaceName = state.workspaceName,
+        previews = state.previews,
+        label = state.label,
+        declaredThemes = state.declaredThemes,
+        onLog = { line -> System.err.println("[daemon] $line") },
+      )
+
+    host.use {
+      val outcome = host.renderAnnotations(target.id, PreviewOverrides())
+      assertTrue(
+        outcome is AnnotationsOutcome.Ok,
+        "typography inspection for ${target.id} should succeed, got $outcome",
+      )
+      val payload =
+        Json.parseToJsonElement((outcome as AnnotationsOutcome.Ok).json.decodeToString()).jsonObject
+      val annotations =
+        Json.decodeFromJsonElement(
+          ListSerializer(DesignAnnotation.serializer()),
+          payload.getValue("annotations"),
+        )
+      val label =
+        assertNotNull(
+          annotations.firstOrNull { it.kind == AnnotationKind.TYPOGRAPHY && it.role == "Filled" },
+          "the Filled button label should be available in the Typography inspection layer",
+        )
+
+      assertTrue(
+        label.detail["token"]?.split(',')?.contains("labelLarge") == true,
+        "the stock Button label should resolve to the Material labelLarge token: $label",
+      )
+      assertTrue(!label.detail["fontSize"].isNullOrBlank(), "fontSize should be resolved: $label")
+      assertTrue(
+        !label.detail["fontFamily"].isNullOrBlank(),
+        "fontFamily should be resolved: $label",
+      )
+      assertTrue(
+        !label.detail["fontWeight"].isNullOrBlank(),
+        "fontWeight should be resolved: $label",
+      )
     }
   }
 

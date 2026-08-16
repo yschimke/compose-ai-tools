@@ -97,6 +97,26 @@ interface UsageSnippet {
     playgroundHref?: string | null;
 }
 
+/** The small CodeMirror surface the read-only Source lane uses. */
+interface SourceCodeMirror {
+    getWrapperElement(): HTMLElement;
+}
+
+/**
+ * CodeMirror is a selectively loaded, vendored global rather than a bundle import. Keep the
+ * declaration deliberately narrow: the playground owns the full editor API; this lane only needs
+ * the constructor and its generated wrapper.
+ */
+interface SourceCodeMirrorFactory {
+    (place: HTMLElement, options: Record<string, unknown>): SourceCodeMirror;
+}
+
+declare global {
+    interface Window {
+        CodeMirror?: SourceCodeMirrorFactory;
+    }
+}
+
 /** One live-lane input message, in the daemon's wire shape. */
 interface InputMessage {
     kind: string;
@@ -491,6 +511,11 @@ function liveOverrides() {
     // (gestures=true). Android-daemon-only, so skipped when disabled.
     var gc = may<HTMLInputElement>("cp-gestures");
     if (gc && !gc.disabled && gc.checked) o["gestures"] = "true";
+    // setOverrides REPLACES the stream's entire override map. Keep an explicit server-side player
+    // in that replacement, especially when CMP Android/JVM is the page default; otherwise the
+    // connect URL selects it and the first onopen replay immediately clears it back to Java.
+    var livePlayer = rules.serverPlayerParam(rcPlayerBackend, !!rcPlayerPicked);
+    if (livePlayer) o.rcPlayer = livePlayer;
     return o;
 }
 // Renderer-picker state (the #cp-lane-select combo). `rcPlayerBackend` is the current Remote
@@ -586,14 +611,12 @@ function query() {
     // isolated desktop subprocess (all three PNG lanes). The js canvas replays the doc in-browser
     // (no server render), so it never sends the param, and an unpicked default stays on the
     // instant baked snapshot.
-    if (
-        rcPlayerPicked &&
-        (rcPlayerBackend === "java" ||
-            rcPlayerBackend === "cmp-android" ||
-            rcPlayerBackend === "cmp-jvm")
-    ) {
-        parts.push("rcPlayer=" + encodeURIComponent(rcPlayerBackend));
-    }
+    var serverPlayer = rules.serverPlayerParam(
+        rcPlayerBackend,
+        !!rcPlayerPicked,
+    );
+    if (serverPlayer)
+        parts.push("rcPlayer=" + encodeURIComponent(serverPlayer));
     return parts.join("&");
 }
 // "Full page (scroll)" appends `scroll=long` to both snapshot formats. The server routes SVG to
@@ -1942,9 +1965,34 @@ function renderSource(data: UsageSnippet | null) {
     sourcePanel.appendChild(note);
     var pre = document.createElement("pre");
     var code = document.createElement("code");
-    code.textContent = (data && data.text) || "";
+    var sourceText = (data && data.text) || "";
+    code.textContent = sourceText;
     pre.appendChild(code);
     sourcePanel.appendChild(pre);
+    // Upgrade the already-readable <pre> only after CodeMirror has successfully initialised. The
+    // asset is optional by design: a blocked/failed script costs line numbers and Kotlin colours,
+    // never the source itself. The read-only instance uses the exact `text/x-kotlin` clike grammar
+    // the playground editor does, so the two surfaces colour the same code the same way.
+    var selectionTarget: HTMLElement = code;
+    if (window.CodeMirror) {
+        var mirrorHost = document.createElement("div");
+        mirrorHost.className = "cp-source-code";
+        sourcePanel.insertBefore(mirrorHost, pre);
+        try {
+            var mirror = window.CodeMirror(mirrorHost, {
+                value: sourceText,
+                mode: "text/x-kotlin",
+                lineNumbers: true,
+                readOnly: "nocursor",
+                viewportMargin: Infinity,
+                screenReaderLabel: "Kotlin usage source",
+            });
+            selectionTarget = mirror.getWrapperElement();
+            pre.remove();
+        } catch (e) {
+            mirrorHost.remove();
+        }
+    }
     var actions = document.createElement("div");
     actions.className = "cp-source-actions";
     var copy = document.createElement("button");
@@ -1952,7 +2000,7 @@ function renderSource(data: UsageSnippet | null) {
     copy.className = "cp-fmt-toggle";
     copy.textContent = "Copy";
     copy.addEventListener("click", function () {
-        var text = (data && data.text) || "";
+        var text = sourceText;
         var done = function () {
             copy.textContent = "Copied";
             setTimeout(function () {
@@ -1966,7 +2014,14 @@ function renderSource(data: UsageSnippet | null) {
         var fallback = function () {
             try {
                 var range = document.createRange();
-                range.selectNodeContents(code);
+                // CodeMirror tokenises into spans; selecting its code body preserves the source's
+                // visible line breaks without including the line-number gutter. The plain <code>
+                // is the same target when the optional highlighter did not load.
+                var visibleCode =
+                    selectionTarget.querySelector<HTMLElement>(
+                        ".CodeMirror-code",
+                    ) || selectionTarget;
+                range.selectNodeContents(visibleCode);
                 var sel = window.getSelection();
                 sel!.removeAllRanges();
                 sel!.addRange(range);
@@ -2530,6 +2585,16 @@ function enterMode(m: string) {
         closeRcWasm();
         openSpec();
     } else {
+        // Browser RC lanes deliberately clear the server-side pick while they paint. Returning to
+        // the static lane must restore a non-Java default before query() renders it; otherwise the
+        // chip says CMP Android/JVM while the absent rcPlayer parameter silently selects Java.
+        var restoredPlayer = rules.restoreStaticPlayer({
+            defaultBackend: rcDefaultBackend,
+            pickedBackend: rcPlayerBackend,
+            picked: !!rcPlayerPicked,
+        });
+        rcPlayerBackend = restoredPlayer.pickedBackend;
+        rcPlayerPicked = restoredPlayer.picked;
         closeStream();
         closeWasm();
         closeRc();

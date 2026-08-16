@@ -45,6 +45,20 @@ import {
     readout,
 } from "../spec/verdict.js";
 import { rangeValueAt, seamX, splitAt, splitFraction } from "../spec/wipe.js";
+import {
+    matchAnnotationItems,
+    type AnnotationItem,
+    type Bounds,
+} from "../annotate/match.js";
+import {
+    groupTypography,
+    pairTypography,
+    typographyComparableValue,
+    typographyValue,
+    type Field,
+    type TypographyPair,
+} from "../annotate/typography.js";
+import { dataUrlFor } from "../inspect/layers.js";
 
 /** What `viewer.js` calls on the way into and out of the lane. */
 interface SpecCompareApi {
@@ -113,6 +127,12 @@ export class SpecCompare extends LitElement {
     /** Bumped to abandon a comparison in flight. */
     private generation = 0;
     private cleanups: Array<() => void> = [];
+    private annotationKey = "";
+    private annotationPromise: Promise<unknown> | null = null;
+    /** Annotation endpoint captured with the exact render normalised into [frames]. */
+    private framesAnnotationUrl = "";
+    private typographyLegend: HTMLElement | null = null;
+    private typographyLayers: HTMLElement[] = [];
 
     protected createRenderRoot(): HTMLElement {
         return this;
@@ -132,6 +152,9 @@ export class SpecCompare extends LitElement {
         this.installed = false;
         // Abandon anything in flight rather than letting it paint into a lane nobody is watching.
         this.generation++;
+        this.clearTypography();
+        this.typographyLegend?.remove();
+        this.typographyLegend = null;
         super.disconnectedCallback();
     }
 
@@ -206,6 +229,12 @@ export class SpecCompare extends LitElement {
         // is the shareable state; where the seam happened to stop is not.
         if (range) this.on(range, "input", () => this.drawWipe());
         this.bindDrag();
+        this.on(window, "resize", () => this.placeTypography());
+        this.on(
+            window,
+            "cp-inspect-change",
+            () => void this.refreshTypography(),
+        );
 
         window.cpSpecCompare = this.api;
         this.apply();
@@ -267,6 +296,7 @@ export class SpecCompare extends LitElement {
             );
         }
         if (this.open && view !== DEFAULT_VIEW) void this.compute();
+        else this.clearTypography();
     }
 
     private setScore(text: string): void {
@@ -322,10 +352,15 @@ export class SpecCompare extends LitElement {
         const api = compareApi();
         const reference = sameOrigin(this.referenceUrl, location.origin);
         const actual = sameOrigin(this.actualUrl, location.origin);
+        const annotationFrameUrl =
+            document.getElementById("cp-img")?.getAttribute("data-cp-src") ||
+            this.actualUrl;
+        const annotationUrl = dataUrlFor(annotationFrameUrl, "annotations");
         const key = `${reference}\n${actual}`;
         if (!reference || !actual || !api) {
             this.frames = null;
             this.framesKey = "";
+            this.framesAnnotationUrl = "";
             this.setScore(UNAVAILABLE);
             return;
         }
@@ -336,6 +371,7 @@ export class SpecCompare extends LitElement {
             // PUBLISHED score beside the live readout — two numbers for one comparison.
             if (this.framesMatch !== null)
                 this.setChipVerdict(this.framesMatch);
+            void this.refreshTypography();
             return;
         }
         const generation = ++this.generation;
@@ -345,6 +381,10 @@ export class SpecCompare extends LitElement {
             if (generation !== this.generation) return;
             this.frames = next;
             this.framesKey = key;
+            // Keep inspection facts tied to the same candidate that produced these canvases. The
+            // hidden render image can advance while a comparison remains open; reading its URL
+            // later would put new bounds and typography over old pixels.
+            this.framesAnnotationUrl = annotationUrl ?? "";
             this.copyInto(next.reference, this.canvas("cp-spec-reference"));
             this.copyInto(next.candidate, this.canvas("cp-spec-actual"));
             const diff = this.canvas("cp-spec-diff");
@@ -370,13 +410,302 @@ export class SpecCompare extends LitElement {
             this.scoreTip = text;
             this.framesMatch = result.percent;
             this.setChipVerdict(result.percent);
+            void this.refreshTypography();
         } catch {
             if (generation !== this.generation) return;
             this.frames = null;
             this.framesKey = "";
+            this.framesAnnotationUrl = "";
             this.framesMatch = null;
             this.scoreTip = null;
             this.setScore(UNAVAILABLE);
+            this.clearTypography();
+        }
+    }
+
+    private typographyOn(): boolean {
+        return Boolean(
+            document.querySelector<HTMLInputElement>(
+                '[data-cp-inspect="typography"]',
+            )?.checked,
+        );
+    }
+
+    private referenceAnnotations(): unknown {
+        const node = document.getElementById("cp-spec-annotations");
+        if (!node) return [];
+        try {
+            return (
+                JSON.parse(node.textContent ?? "") as { reference?: unknown }
+            ).reference;
+        } catch {
+            return [];
+        }
+    }
+
+    private actualAnnotations(): Promise<unknown> {
+        // Pixel comparison may use a snapshot object URL to avoid a second no-store render. The
+        // sibling annotations endpoint was captured when that snapshot was normalised; do not
+        // consult the live hidden image here because it may already contain a newer override.
+        const url = this.framesAnnotationUrl;
+        if (!url) return Promise.resolve([]);
+        if (this.annotationKey === url && this.annotationPromise)
+            return this.annotationPromise;
+        this.annotationKey = url;
+        this.annotationPromise = fetch(url, { credentials: "same-origin" })
+            .then((response) => {
+                if (!response.ok)
+                    throw new Error(`annotations ${response.status}`);
+                return response.json() as Promise<unknown>;
+            })
+            .then((payload) => {
+                if (
+                    payload &&
+                    typeof payload === "object" &&
+                    Array.isArray(
+                        (payload as { annotations?: unknown }).annotations,
+                    )
+                )
+                    return (payload as { annotations: unknown[] }).annotations;
+                return payload;
+            })
+            .catch(() => []);
+        return this.annotationPromise;
+    }
+
+    private changedFields(pair: TypographyPair): Field[] {
+        const fields: Field[] = [
+            "token",
+            "family",
+            "weight",
+            "size",
+            "tracking",
+            "style",
+            "axes",
+        ];
+        if (!pair.reference || !pair.actual) return fields;
+        return fields.filter((field) => {
+            if (
+                typographyComparableValue(pair.reference?.spec, field) !==
+                typographyComparableValue(pair.actual?.spec, field)
+            )
+                return true;
+            return (
+                field === "size" &&
+                typographyComparableValue(
+                    pair.reference?.spec,
+                    "lineHeight",
+                ) !== typographyComparableValue(pair.actual?.spec, "lineHeight")
+            );
+        });
+    }
+
+    private fieldLabel(field: Field): string {
+        return (
+            {
+                token: "Token",
+                family: "Family",
+                weight: "Weight",
+                size: "Size",
+                lineHeight: "Line height",
+                tracking: "Tracking",
+                style: "Style",
+                axes: "Variations",
+            } as Record<Field, string>
+        )[field];
+    }
+
+    private value(
+        pair: TypographyPair,
+        side: "reference" | "actual",
+        field: Field,
+    ): string {
+        const spec = pair[side]?.spec;
+        let value = typographyValue(spec, field);
+        if (field === "size" && spec?.lineHeight !== undefined)
+            value += `/${typographyValue(spec, "lineHeight")}`;
+        return value;
+    }
+
+    private ensureTypographyLegend(): HTMLElement | null {
+        if (this.typographyLegend?.isConnected) return this.typographyLegend;
+        const controls = document.getElementById("cp-controls");
+        const parent = controls?.parentElement;
+        if (!parent || !controls) return null;
+        const legend = document.createElement("aside");
+        legend.id = "cp-spec-typography-legend";
+        legend.className = "cp-inspect-legend cp-spec-typography-legend";
+        legend.setAttribute("aria-label", "Typography differences");
+        legend.hidden = true;
+        parent.insertBefore(legend, controls);
+        this.typographyLegend = legend;
+        return legend;
+    }
+
+    private clearTypography(): void {
+        for (const layer of this.typographyLayers) layer.remove();
+        this.typographyLayers = [];
+        if (this.typographyLegend) {
+            this.typographyLegend.textContent = "";
+            this.typographyLegend.hidden = true;
+        }
+    }
+
+    private async refreshTypography(): Promise<void> {
+        const view = this.choice.view;
+        const frames = this.frames;
+        if (
+            !this.open ||
+            !this.frames ||
+            !this.typographyOn() ||
+            (view !== "diff" && view !== "triptych")
+        ) {
+            this.clearTypography();
+            return;
+        }
+        const actual = await this.actualAnnotations();
+        if (
+            !this.open ||
+            !this.typographyOn() ||
+            this.choice.view !== view ||
+            this.frames !== frames
+        )
+            return;
+        const matched = matchAnnotationItems(
+            this.referenceAnnotations(),
+            actual,
+        );
+        const pairs = pairTypography(
+            groupTypography(matched.reference),
+            groupTypography(matched.actual),
+        ).filter((pair) => this.changedFields(pair).length > 0);
+        this.drawTypographyLegend(pairs);
+        this.drawTypographyLayers(pairs);
+    }
+
+    private drawTypographyLegend(pairs: TypographyPair[]): void {
+        const legend = this.ensureTypographyLegend();
+        if (!legend) return;
+        legend.textContent = "";
+        legend.hidden = false;
+        const head = document.createElement("div");
+        head.className = "cp-inspect-legend-head";
+        head.textContent = pairs.length
+            ? "Typography differences"
+            : "Typography matches";
+        const count = document.createElement("span");
+        count.className = "cp-inspect-legend-count";
+        count.textContent = String(pairs.length);
+        head.appendChild(count);
+        legend.appendChild(head);
+        if (!pairs.length) return;
+        const list = document.createElement("ol");
+        list.className = "cp-inspect-list";
+        for (const pair of pairs) {
+            const row = document.createElement("li");
+            row.className = "cp-inspect-entry cp-spec-type-diff";
+            row.setAttribute("data-cp-typography-marker", pair.marker);
+            const badge = document.createElement("span");
+            badge.className = "cp-inspect-badge";
+            badge.textContent = pair.marker;
+            row.appendChild(badge);
+            const text = document.createElement("span");
+            text.className = "cp-inspect-text";
+            for (const field of this.changedFields(pair)) {
+                const line = document.createElement("span");
+                line.className = "cp-spec-type-field cp-typography-changed";
+                line.textContent = `${this.fieldLabel(field)}: ${this.value(pair, "reference", field)} → ${this.value(pair, "actual", field)}`;
+                text.appendChild(line);
+            }
+            row.appendChild(text);
+            list.appendChild(row);
+        }
+        legend.appendChild(list);
+    }
+
+    private drawTypographyLayers(pairs: TypographyPair[]): void {
+        for (const layer of this.typographyLayers) layer.remove();
+        this.typographyLayers = [];
+        const view = this.choice.view;
+        const sides: Array<["reference" | "actual", string]> =
+            view === "triptych"
+                ? [
+                      ["reference", "reference"],
+                      ["actual", "actual"],
+                  ]
+                : [["actual", "diff"]];
+        for (const [side, panelName] of sides) {
+            const panel = this.compare?.querySelector<HTMLElement>(
+                `[data-cp-spec-panel="${panelName}"]`,
+            );
+            const canvas = panel?.querySelector("canvas");
+            if (!panel || !canvas) continue;
+            const layer = document.createElement("div");
+            layer.className = "cp-spec-annotation-layer";
+            layer.setAttribute("data-cp-side", side);
+            for (const pair of pairs) {
+                const group = pair[side];
+                for (const item of group?.items ?? []) {
+                    if (!item.bounds) continue;
+                    layer.appendChild(this.typographyBox(pair.marker, item));
+                }
+            }
+            panel.appendChild(layer);
+            this.typographyLayers.push(layer);
+        }
+        requestAnimationFrame(() => this.placeTypography());
+    }
+
+    private typographyBox(marker: string, item: AnnotationItem): HTMLElement {
+        const box = document.createElement("div");
+        box.className = "cp-inspect-box cp-spec-type-box";
+        box.setAttribute("data-cp-kind", "typography");
+        box.setAttribute("data-source-x", String(item.bounds?.x ?? 0));
+        box.setAttribute("data-source-y", String(item.bounds?.y ?? 0));
+        box.setAttribute("data-source-width", String(item.bounds?.width ?? 0));
+        box.setAttribute(
+            "data-source-height",
+            String(item.bounds?.height ?? 0),
+        );
+        const badge = document.createElement("span");
+        badge.className = "cp-inspect-badge";
+        badge.textContent = marker;
+        box.appendChild(badge);
+        return box;
+    }
+
+    private placeTypography(): void {
+        const frames = this.frames;
+        if (!frames) return;
+        for (const layer of this.typographyLayers) {
+            const panel = layer.parentElement;
+            const canvas = panel?.querySelector("canvas");
+            if (!canvas || !canvas.clientWidth) continue;
+            const side =
+                layer.getAttribute("data-cp-side") === "reference"
+                    ? "reference"
+                    : "candidate";
+            const crop = frames.boxes[side];
+            const sx = canvas.clientWidth / frames.width;
+            const sy = canvas.clientHeight / frames.height;
+            layer.style.left = `${canvas.offsetLeft}px`;
+            layer.style.top = `${canvas.offsetTop}px`;
+            layer.style.width = `${canvas.clientWidth}px`;
+            layer.style.height = `${canvas.clientHeight}px`;
+            for (const node of layer.querySelectorAll<HTMLElement>(
+                ".cp-spec-type-box",
+            )) {
+                const bounds: Bounds = {
+                    x: Number(node.getAttribute("data-source-x")),
+                    y: Number(node.getAttribute("data-source-y")),
+                    width: Number(node.getAttribute("data-source-width")),
+                    height: Number(node.getAttribute("data-source-height")),
+                };
+                node.style.left = `${((bounds.x - crop.x) * frames.width * sx) / crop.width}px`;
+                node.style.top = `${((bounds.y - crop.y) * frames.height * sy) / crop.height}px`;
+                node.style.width = `${(bounds.width * frames.width * sx) / crop.width}px`;
+                node.style.height = `${(bounds.height * frames.height * sy) / crop.height}px`;
+            }
         }
     }
 

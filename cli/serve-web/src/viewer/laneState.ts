@@ -65,6 +65,29 @@ export function backendRequiresRenderParam(backend: string): boolean {
     return backend === "cmp-android" || backend === "cmp-jvm";
 }
 
+/** The server-side player parameter represented by a pick, or nothing for a browser lane. */
+export function serverPlayerParam(
+    backend: string,
+    picked: boolean,
+): string | null {
+    if (!picked) return null;
+    return backend === "java" ||
+        backend === "cmp-android" ||
+        backend === "cmp-jvm"
+        ? backend
+        : null;
+}
+
+/** Restore the server-rendered default when returning from a browser-only player lane. */
+export function restoreStaticPlayer(pick: LanePick): LanePick {
+    if (pick.picked) return pick;
+    return {
+        defaultBackend: pick.defaultBackend,
+        pickedBackend: pick.defaultBackend,
+        picked: backendRequiresRenderParam(pick.defaultBackend),
+    };
+}
+
 /**
  * The lane the picker is — or would be — sitting on, in the combo's own value space.
  *
