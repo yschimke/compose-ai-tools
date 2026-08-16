@@ -67,11 +67,19 @@ const assets = (name) =>
 // hundred lines. It is a generated file now rather than a hand-written one; the
 // four external consumers are unaffected, since what they depend on is the path
 // and the `window.ComposePreviewCompare` shape, both unchanged.
+//
+// `viewer.js` is generated for the same reason and on the same terms: same path,
+// same script tag, same position after `serve-components.js` and
+// `format-compare.js`. It stays its own bundle because only the viewer page
+// carries it and it is by far the largest of these — folding 3,000 lines of lane
+// machinery into `serve-components.js` would put it on the catalog grid, the
+// compare wall and the design pages, none of which have a stage to drive.
 const BUNDLES = [
     { entry: "src/main.ts", out: "serve-components.js" },
     { entry: "src/chrome.ts", out: "serve-chrome.js" },
     { entry: "src/keyboardNavigation.ts", out: "keyboard-navigation.js" },
     { entry: "src/formatCompare.ts", out: "format-compare.js" },
+    { entry: "src/viewer.ts", out: "viewer.js" },
 ];
 
 const optionsFor = ({ entry, out }) => ({

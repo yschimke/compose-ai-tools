@@ -33,23 +33,8 @@ import {
 } from "../compare/wallRows.js";
 import "../chrome/pageTheme.js";
 import { whenParsed } from "../dom/whenParsed.js";
-
-declare global {
-    interface Window {
-        /** The Remote Compose player bundle, script-injected on demand. */
-        RC?: {
-            RcdPlayer: new (canvas: HTMLCanvasElement) => RcPlayer;
-        };
-        cpRcFonts?: { ready(): Promise<unknown> };
-    }
-}
-
-interface RcPlayer {
-    setTheme(theme: string): void;
-    loadFromArrayBuffer(buffer: ArrayBuffer): Promise<unknown>;
-    repaint?(): void;
-    fontsReady(): Promise<unknown>;
-}
+// Types only: the player bundle is script-injected at runtime, never imported.
+import type { RcPlayer } from "../rc/player.js";
 
 @customElement("cp-compare-wall")
 export class CompareWall extends LitElement {

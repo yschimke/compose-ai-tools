@@ -136,11 +136,10 @@ class ServeViewerThemeBarTest {
 
   @Test
   fun `viewer js drives the select from the chips rather than rendering themes itself`() {
-    val script = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    val script = viewerSource()
     assertTrue(
-      script.contains(
-        """var themeBarBtns = document.querySelectorAll(".cp-theme-bar .cp-theme-btn");"""
-      ),
+      script.contains("const themeBarBtns = document.querySelectorAll<HTMLButtonElement>(") &&
+        script.contains(""".cp-theme-bar .cp-theme-btn"""),
       script,
     )
     assertTrue(
@@ -154,8 +153,7 @@ class ServeViewerThemeBarTest {
     // chip can be disabled — the select itself, a missing option, a server-disabled option. What is
     // held here is that the served asset still asks for it rather than re-deriving it locally.
     assertTrue(
-      script.contains("urlRules().themeBarButton(") &&
-        script.contains("b.disabled = state.disabled;"),
+      script.contains("rules.themeBarButton(") && script.contains("b.disabled = state.disabled;"),
       script,
     )
     assertTrue(script.contains("syncThemeBar();"), script)
