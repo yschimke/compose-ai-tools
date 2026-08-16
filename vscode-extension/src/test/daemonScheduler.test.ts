@@ -259,6 +259,47 @@ describe("DaemonScheduler", () => {
         assert.strictEqual(visibleCalls.length, 1);
     });
 
+    it("waits for daemon warm-up when a viewport arrives before the launch descriptor", async () => {
+        const { gate, scheduler, log } = build();
+        gate.getOrSpawnErrors.push(
+            new Error("[daemon] no launch descriptor for mod"),
+        );
+        const gradle = new FakeGradleService();
+
+        await scheduler.setVisible(
+            mod("mod"),
+            ["new-preview"],
+            [],
+            gradle as unknown as Parameters<typeof scheduler.setVisible>[3],
+        );
+
+        const visibleCalls = gate.client!.calls.filter(
+            (c) => c.method === "setVisible",
+        );
+        assert.strictEqual(visibleCalls.length, 1);
+        assert.deepStrictEqual(visibleCalls[0].args, {
+            ids: ["new-preview"],
+        });
+        assert.ok(
+            log.some((l) => l.includes("viewport waiting")),
+            `expected viewport warm-up log, got: ${log.join(" / ")}`,
+        );
+    });
+
+    it("does not memoize a viewport when no daemon client is available", async () => {
+        const { gate, scheduler } = build();
+        gate.client = null;
+        await scheduler.setVisible(mod("mod"), ["a"], []);
+
+        gate.client = new FakeClient();
+        await scheduler.setVisible(mod("mod"), ["a"], []);
+
+        const visibleCalls = gate.client.calls.filter(
+            (c) => c.method === "setVisible",
+        );
+        assert.strictEqual(visibleCalls.length, 1);
+    });
+
     it("caps speculative renderNow at the budget", async () => {
         const { gate, scheduler } = build();
         const predicted = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"];
