@@ -1363,6 +1363,37 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The landing's Theme menu OPEN on a laptop. It is the viewer's `.cp-theme-menu` dropdown
+        // now, not a wrapping row of chips — the same control, on both of a catalog's pages — so
+        // the thing worth diffing is what one click reveals: a column of full-width rows on an M3
+        // menu surface, right-anchored under the pill that names the theme in force. Closed, this
+        // page is a title line and a one-row toolbar, and no shot of it would say whether the
+        // chips this replaced are still reachable.
+        fixture: "serve-landing-declared-themes",
+        suffix: "theme-menu",
+        apply: async (page) => {
+            await page.click(".cp-catalog-theme > summary");
+            await page.waitForSelector(
+                ".cp-catalog-theme[open] .cp-theme-menu-panel",
+            );
+            await page.mouse.move(0, 0);
+        },
+    },
+    {
+        // …and the `⋯` beside it, which took the catalog's destinations — the comparison views,
+        // the parity view, the playground, Transparent — off a chip row of their own and into a
+        // menu at every width. Same reason: closed, they are one pill.
+        fixture: "serve-landing-declared-themes",
+        suffix: "actions-menu",
+        apply: async (page) => {
+            await page.click(".cp-actions-menu > summary");
+            await page.waitForSelector(
+                ".cp-actions-menu[open] + .cp-actions-panel",
+            );
+            await page.mouse.move(0, 0);
+        },
+    },
+    {
         // The catalog landing ON A PHONE — the shot that says whether opening a catalog leads with
         // its components. Everything between the heading and the first card is chrome, and the two
         // chip GROUPS in that gap (the catalog's actions, and one Theme chip per declared theme)
@@ -1405,7 +1436,7 @@ const FIXTURE_STATES = [
             // The state above left the bar's own menu open; they are two menus over one page.
             await page.click("#cp-site-menu > summary");
             await page.click(".cp-catalog-theme > summary");
-            await page.waitForSelector(".cp-catalog-theme[open] + .cp-theme");
+            await page.waitForSelector(".cp-catalog-theme[open] .cp-theme-menu-panel");
             await page.mouse.move(0, 0);
         },
     },

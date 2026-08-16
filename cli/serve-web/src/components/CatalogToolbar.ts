@@ -1,12 +1,12 @@
 // `<cp-catalog-toolbar>` — the catalog landing's one toolbar row on a phone.
 //
-// The landing spends four blocks between its heading and its first card: the
-// catalog's actions, the Theme group, the filter field, and — on a sectioned
-// catalog — the navigation tree. `serve.css` folds the two chip groups into
-// menus and turns the tree into a scrolling strip; what CSS cannot do is put the
-// filter field on the same row as those menus, because the filter belongs to the
-// tree's sidebar (that is where it lives above 960px, beside the grid) and the
-// actions are a block of their own above the toolbar.
+// The landing spends two blocks between its toolbar and its first card on a
+// phone: the summary tally, and — on a sectioned catalog — the navigation tree.
+// The Theme group and the catalog's actions are menus at every width now (the
+// same `.cp-theme-menu` dropdown the component page's Theme control is), so
+// `serve.css` has nothing left to fold there; what CSS still cannot do is put
+// the filter field on the same row as those menus, because the filter belongs to
+// the tree's sidebar — that is where it lives above 960px, beside the grid.
 //
 // So this moves them, and moves them back. In the DOM rather than with `order`,
 // which is the same rule the viewer follows for its own two rows in
@@ -40,7 +40,6 @@ interface Home {
 export class CatalogToolbar extends LitElement {
     private phone: MediaQueryList | null = null;
     private bar: Element | null = null;
-    private actions: Element | null = null;
     private search: Element | null = null;
     private sub: Element | null = null;
     private homes: Home[] = [];
@@ -55,20 +54,22 @@ export class CatalogToolbar extends LitElement {
      * Picking a theme re-renders the grid in place — no navigation, nothing to dismiss the panel —
      * so the menu stayed open over the previews the visitor had just asked to see, for as long as
      * the declared-theme renders took to arrive. The same for Transparent, which is a toggle on the
-     * cards behind it. The chips are the disclosure's SIBLINGS, so `closest()` cannot reach the
-     * `<details>` the way the viewer's own theme menu does (`viewer-drawers.js`): the elements are
-     * held here instead. A link in the actions panel navigates and takes the whole page with it,
-     * closed or not.
+     * cards behind it. The Theme chips are INSIDE their `<details>` (`.cp-theme-menu-panel`, the
+     * viewer's own control), so that one closes the way `viewer-drawers.js` closes it; the actions
+     * panel is still its disclosure's sibling, which `closest()` cannot walk, so that one is named
+     * here. A link in the actions panel navigates and takes the whole page with it, closed or not.
      *
-     * On `document`, not on each panel: the panels are moved in and out of the toolbar by the
-     * reflow above, and a listener on the thing being moved is a listener that has to be re-bound
-     * every time the viewport crosses the breakpoint.
+     * On `document`, not on each panel: the actions panel is moved in and out of the toolbar by
+     * the reflow above, and a listener on the thing being moved is a listener that has to be
+     * re-bound every time the viewport crosses the breakpoint.
      */
     private readonly onPick = (event: Event) => {
         const target = event.target as Element | null;
         if (!target?.closest) return;
-        if (target.closest(".cp-catalog-theme + .cp-theme .cp-theme-btn"))
-            this.close(".cp-catalog-theme");
+        const themeChip = target.closest(
+            ".cp-catalog-theme .cp-theme-btn",
+        ) as Element | null;
+        if (themeChip) this.close(".cp-catalog-theme");
         if (target.closest(".cp-actions-panel .cp-bg-btn"))
             this.close(".cp-actions-menu");
     };
@@ -79,19 +80,18 @@ export class CatalogToolbar extends LitElement {
 
     connectedCallback(): void {
         super.connectedCallback();
-        // The sticky toolbar when the catalog has one — it holds the Theme group and it is already
-        // what sticks — and the actions row otherwise: a catalog with a single theme publishes no
-        // Theme control at all, so there the actions row IS the only bar there is.
-        this.bar =
-            document.querySelector(".cp-catalog-tools") ??
-            document.querySelector(".cp-catalog-actions");
-        this.actions = document.querySelector(".cp-catalog-actions");
+        // The sticky toolbar: it holds the Theme pill and the `⋯` menu, and it is already what
+        // sticks. The actions row is nested inside it, so the old fallback to that row — for a
+        // catalog with no Theme control, back when the actions stood on their own above the
+        // toolbar — no longer names anything the toolbar does not already contain.
+        this.bar = document.querySelector(".cp-catalog-tools");
         this.search = document.querySelector(".cp-catalog-menu .cp-searchbar");
         this.sub = document.querySelector(".cp-sub");
-        // Ordered as the row should read — the filter is the wide one, the menus bracket it —
-        // rather than as the markup happens to run. The summary line comes last and does not join
-        // the row at all; see `placeOnPhone`.
-        this.homes = [this.search, this.actions, this.sub]
+        // The actions row is no longer in this list: it is emitted inside the toolbar's
+        // `.cp-head-toggles` at every width, beside the Theme pill, so there is nothing to move.
+        // The filter is the only control left to bring in, and the summary line does not join the
+        // row at all; see `placeOnPhone`.
+        this.homes = [this.search, this.sub]
             .filter((el): el is Element => !!el && el !== this.bar)
             .map((el) => ({
                 el,
@@ -152,11 +152,11 @@ export class CatalogToolbar extends LitElement {
             else document.querySelector(".cp-main")?.appendChild(el);
             return;
         }
-        // Appending puts the filter after the Theme pill and before the `⋯`. When the bar IS the
-        // actions row there is nothing to append after, so the filter goes first.
-        if (el === this.search && this.bar === this.actions)
-            this.bar.insertBefore(el, this.bar.firstChild);
-        else this.bar.appendChild(el);
+        // The filter takes the width, the menus ride at the trailing edge — so it goes in front of
+        // the `.cp-head-toggles` group that holds them, and first when the bar has no such group
+        // (a catalog with neither a Theme control nor an action to offer).
+        const toggles = this.bar.querySelector(".cp-head-toggles");
+        this.bar.insertBefore(el, toggles ?? this.bar.firstChild);
     }
 
     /**

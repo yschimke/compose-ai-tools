@@ -70,9 +70,29 @@
   </nav>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3</h1></div>
-        <p class="cp-sub">5 preview(s)</p>
-        <div class="cp-catalog-actions">
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3</h1></div><p class="cp-sub">5 preview(s)</p></div>
+        <div class="cp-catalog-tools">
+<div class="cp-searchbar">
+  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
+    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+</div>
+<div class="cp-head-toggles">
+<div class="cp-toolbar">
+  <details class="cp-theme-menu cp-catalog-theme">
+    <summary class="cp-drawer-toggle cp-axis-toggle" aria-controls="cp-catalog-theme-bar">
+      <span class="cp-toggle-label">Theme</span>
+      <span class="cp-toggle-value" id="cp-catalog-theme-value">Light</span>
+      <span class="cp-theme-caret" aria-hidden="true">▾</span>
+    </summary>
+    <div class="cp-theme-menu-panel">
+      <span class="cp-theme cp-theme-bar" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
+        <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
+        <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
+      </span>
+    </div>
+  </details>
+</div>
+<div class="cp-catalog-actions">
           <details class="cp-actions-menu">
             <summary class="cp-drawer-toggle cp-axis-toggle" title="More for this catalog" aria-label="More for this catalog" aria-controls="cp-catalog-actions-panel"><span aria-hidden="true">⋯</span></summary>
           </details>
@@ -82,23 +102,6 @@
           <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
           </div>
         </div>
-<div class="cp-catalog-tools">
-<div class="cp-toolbar">
-  <details class="cp-catalog-theme">
-    <summary class="cp-drawer-toggle cp-axis-toggle" aria-controls="cp-catalog-theme-bar">
-      <span class="cp-toggle-label">Theme</span>
-      <span class="cp-toggle-value" id="cp-catalog-theme-value">Light</span>
-      <span class="cp-theme-caret" aria-hidden="true">▾</span>
-    </summary>
-  </details>
-  <span class="cp-theme" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
-    <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
-      <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
-  </span>
-</div>
-<div class="cp-searchbar">
-  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
-    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
 </div>
 </div>
 <div class="cp-grid" id="cp-grid">
@@ -295,9 +298,10 @@ applyThemeChoice();
     })();</script>
 <div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip?session=compose-m3">download all (.zip)</a></div>
 
-        <!-- Collapses this page's chrome onto one toolbar row on a phone: the actions and the tree
-             sidebar's filter field move into the sticky toolbar, and back out again above 640px.
-             Renders nothing; `serve.css` hides the tag. -->
+        <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
+             into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
+             again above 640px, and the summary tally drops below the grid. Renders nothing;
+             `serve.css` hides the tag. -->
         <cp-catalog-toolbar></cp-catalog-toolbar>
         </main>
         <footer class="cp-site-footer">
