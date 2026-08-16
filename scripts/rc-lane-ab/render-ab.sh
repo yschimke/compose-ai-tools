@@ -47,6 +47,8 @@ if [ ! -f "$input_dir/manifest.json" ]; then
   exit 1
 fi
 
+node "$repo_root/scripts/rc-lane-ab/validate-stage.mjs" inputs "$input_dir"
+
 # Fail before the renders rather than after them. Composition is the last step and takes seconds;
 # discovering a missing dependency after minutes of Gradle is a bad trade.
 python3 -c 'import PIL' 2>/dev/null || {
@@ -72,21 +74,11 @@ echo "==> rendering both lanes"
   "-Prc.view.output=$lanes_dir/view" \
   "-Prc.embedded.output=$lanes_dir/embedded"
 
-# A lane that rendered nothing is the failure this check exists to make loud. Compare against the
-# document count rather than against zero, so a partial lane fails too. The embedded lane is
-# allowed to fall short by the documents it genuinely cannot render (issue #3993) — those leave an
-# `<id>.error`, so count PNG + error against the total.
-expected=$(find "$input_dir" -name '*.rc' | wc -l | tr -d ' ')
-for lane in view embedded; do
-  count=$(find "$lanes_dir/$lane" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
-  errors=$(find "$lanes_dir/$lane" -name '*.error' 2>/dev/null | wc -l | tr -d ' ')
-  echo "    $lane: $count/$expected png, $errors error"
-  if [ "$((count + errors))" -ne "$expected" ]; then
-    echo "    ^ $lane accounted for $((count + errors)) of $expected documents." >&2
-    [ "$count" -eq 0 ] && echo "      Zero usually means the input path was not absolute." >&2
-    exit 1
-  fi
-done
+# The manifest is the source of truth, not whatever `.rc` files happen to remain in a reused
+# directory. Every manifest id must have exactly one input and one result in each lane. Embedded
+# failures are explicit `.error` results; a view error is terminal because the scorer enumerates
+# view PNGs and would otherwise silently drop that document from the A/B.
+node "$repo_root/scripts/rc-lane-ab/validate-stage.mjs" results "$input_dir" "$lanes_dir"
 
 echo "==> scoring"
 node "$repo_root/scripts/design-artifacts/rc-lane-ab-score.mjs" \
