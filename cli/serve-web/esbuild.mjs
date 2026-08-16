@@ -60,10 +60,18 @@ const assets = (name) =>
 //
 // `keyboard-navigation.js` is also emitted by every page, but stays separate so
 // its opt-in power-user UI can initialize after the complete page DOM exists.
+//
+// `format-compare.js` keeps its own name and tag because two consumers OUTSIDE the
+// browser load that exact path — the publish-time reference-score driver and the
+// compare audit — and because only the comparison surfaces need its several
+// hundred lines. It is a generated file now rather than a hand-written one; the
+// four external consumers are unaffected, since what they depend on is the path
+// and the `window.ComposePreviewCompare` shape, both unchanged.
 const BUNDLES = [
     { entry: "src/main.ts", out: "serve-components.js" },
     { entry: "src/chrome.ts", out: "serve-chrome.js" },
     { entry: "src/keyboardNavigation.ts", out: "keyboard-navigation.js" },
+    { entry: "src/formatCompare.ts", out: "format-compare.js" },
 ];
 
 const optionsFor = ({ entry, out }) => ({

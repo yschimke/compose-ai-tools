@@ -219,11 +219,13 @@ that silently changes under the reader, which no screenshot shows.
 holding canvases. `spec/sameOrigin.ts` came out with it — the guard on every URL
 reaching `drawImage`, now tried against the schemes it exists to refuse.
 
-`compare/api.ts` arrived at the same time, and is worth knowing about: two
-components now reach for `window.ComposePreviewCompare`, and declaring it in each
-was two `Window` augmentations of one property, which TypeScript rejects outright.
-One declaration, one typed handle. It is NOT a port of `format-compare.js` —
-that file still owns the metric.
+`compare/api.ts` arrived at the same time, and is worth knowing about: several
+components reach for `window.ComposePreviewCompare`, and declaring it in each was
+two `Window` augmentations of one property, which TypeScript rejects outright. One
+declaration, one typed handle — and now that the scorer is TypeScript too, that
+handle's SHAPE is taken from the implementation (`typeof scoreImages`, and so on)
+rather than restated beside it, so a changed signature is a type error at every
+call site instead of a global that answers `undefined` at runtime.
 
 `<cp-inspect-layers>` is the port where the extracted rules were least visible
 and most load-bearing. A rectangle drawn over a component looks equally right
@@ -267,48 +269,78 @@ comes before it. An element caching that handle on upgrade caches `null` and the
 diff lane silently scores nothing. `<cp-design-page>` reads it when the lane is
 entered instead, so no script order can break it.
 
-`format-compare.js` is coming apart in four steps rather than porting whole,
-because four external consumers read that file by path or basename — the
-publish-time score driver, the Chromium scorer spec, the compare audit's route
-stub, and the harness's asset list. Done so far: the dead SSIM block and the
-shared geometry threshold; then the `/compare` wall as `<cp-compare-wall>`,
-whose modules are `compare/pairing.ts` (which two artifacts a row pairs — never
-the opposite baked theme, because a plausible-looking pair scores a number that
-means nothing), `compare/state.ts` (the URL beats the remembered theme, and a
-format the catalog does not publish is ignored rather than emptying the table),
-`compare/wallRows.ts` and `compare/grade.ts`.
+`format-compare.js` came apart in four steps rather than porting whole, because
+four consumers read that file by path or basename and could not all move at once
+— the publish-time score driver, the Chromium scorer spec, the compare audit's
+route stub, and the harness's asset list.
 
-That leaves the annotation/typography engine and then the primitives, which want
-a shim rather than a move so the four consumers can migrate on their own
-schedule. `viewer.js` (3,127) is after that, and reads
-`window.ComposePreviewCompare` exactly the way the design page did — so it wants
-the same read-it-late treatment.
+1. The dead SSIM block, and the shared geometry threshold.
+2. The `/compare` wall as `<cp-compare-wall>`, with `compare/pairing.ts` (which
+   two artifacts a row pairs — never the opposite baked theme, because a
+   plausible-looking pair scores a number that means nothing), `compare/state.ts`
+   (the URL beats the remembered theme, and a format the catalog does not publish
+   is ignored rather than emptying the table), `compare/wallRows.ts` and
+   `compare/grade.ts`.
+3. The reference page as `<cp-reference-compare>`, with the annotation engine in
+   `annotate/`.
+4. The primitives themselves.
+
+Step 4 did NOT need the shim it was planned around. `format-compare.js` still
+exists, at the same path, publishing the same global — it is simply *generated*
+now, from `src/scorer/`, as a fourth esbuild bundle. All four consumers depend on
+the path and on `window.ComposePreviewCompare`, and both are unchanged, so none
+of them had to move at all.
+
+What that bought is the point: the metric every design-parity surface is built on
+— the badge on a catalog chip, the verdict in the spec lane, the ordering of the
+compare wall — had **no test of any kind**, because it lived inside an IIFE
+behind a canvas. Everything that decides a number is now DOM-free and pinned:
+`scorer/planes.ts` (the edge-tolerant search, in both directions, because
+otherwise the same pair scores differently depending on which frame you pass
+first), `scorer/contentBox.ts` (two shipped regressions live behind these rules,
+both silent — guessing an opaque backdrop from the corner pixel stripped a bled
+card's own surface, and cropping a near-empty capture stretched one heading
+across the whole comparison), `scorer/deltaMap.ts` and `scorer/svgTranslate.ts`.
+Only `scorer/frames.ts` needs a browser, and it does nothing but decode,
+downscale, sample and hand off.
+
+`viewer.js` (3,127) is next, and reads `window.ComposePreviewCompare` exactly the
+way the design page did — so it wants the same read-it-late treatment.
 
 One thing worth knowing about `grade`: the 90/75 bands are NOT the spec lane's
 99.5/97, and unifying them would make one of the two surfaces lie. A wall
 triaging dozens of rows and a lane judging one chosen pair are different
 questions about the same number.
 
-## Two bundles, and which one a thing belongs in
+## The bundles, and which one a thing belongs in
 
 `serve-components.js` carries the Lit elements and is emitted by the surfaces
 whose markup contains their tags. `serve-chrome.js` carries what *every* page
 needs — `window.cpUrlState` and the Page theme setting — and the shell
 (`ServeWeb.document`) emits it unconditionally, as the first thing in `<body>`.
+`format-compare.js` carries the comparison scorer and is emitted only by the
+surfaces that measure something; it keeps its own name because two consumers
+outside the browser load that exact path.
 
-The split exists because those two answer different questions, and the numbers
-are lopsided enough that one bundle could not serve both:
+The split exists because they answer different questions, and the numbers are
+lopsided enough that one bundle could not serve all three:
 
 | | raw | gzip |
 | --- | --- | --- |
-| `serve-components.js` | 36 kB | 12 kB |
+| `serve-components.js` | 116 kB | 35 kB |
+| `format-compare.js` | 5 kB | 2 kB |
 | `serve-chrome.js` | 2 kB | 1 kB |
 
-Almost all of the component bundle is Lit. Putting that on the front door would
-undo the reason its imagery is prebaked — a visit should cost the HTML and
-nothing else. Neither chrome module is a custom element, so that bundle carries
-no Lit at all and is *smaller* than the two files it replaced (`url-state.js` +
-`page-theme.js` were 3.6 kB gzipped between them). Every page got cheaper.
+Putting the component bundle on the front door would undo the reason its imagery
+is prebaked — a visit should cost the HTML and nothing else. Neither chrome
+module is a custom element, so that bundle carries no Lit at all and is *smaller*
+than the two files it replaced (`url-state.js` + `page-theme.js` were 3.6 kB
+gzipped between them). Every page got cheaper.
+
+The scorer is its own bundle for the opposite reason: it is small, but only the
+handful of surfaces that measure something need it, and folding it in would put
+it on every page carrying a Lit element. Keeping the filename is what lets the
+two out-of-browser consumers go on loading it by path.
 
 It also settles load order in one place. `window.cpUrlState` has to exist before
 the component bundle — `backgroundChoice.ts` reads it as `<cp-bg-toggle>`

@@ -14,7 +14,9 @@
 //
 // `run --patch <file>` swaps in a local `format-compare.js` via request interception, so a scorer
 // change is measured against byte-identical artifacts before and after. That is the whole point:
-// A/B a scoring change without deploying it.
+// A/B a scoring change without deploying it. The asset is BUILT from `cli/serve-web/src/scorer/`,
+// so run `npm run build` in `cli/serve-web/` first — patching in a stale committed bundle would
+// A/B the change against itself and report no difference.
 //
 // Usage:
 //   node scripts/compare-audit.mjs mirror --all --dir .audit-mirror
