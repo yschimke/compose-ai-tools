@@ -12,6 +12,7 @@ import {
     isFocusStop,
     levelOf,
     parseBounds,
+    typographyDetail,
     worst,
     type A11yPayload,
 } from "../src/inspect/entries.js";
@@ -310,7 +311,8 @@ describe("annotationEntries", () => {
         const entries = annotationEntries(shared, "typography");
         assert.equal(entries.length, 1);
         assert.equal(entries[0].title, "Title");
-        assert.equal(entries[0].detail, "20sp Roboto · axes opsz=18,wght=700");
+        assert.equal(entries[0].detail, "");
+        assert.equal(entries[0].tooltip, "20sp Roboto · axes opsz=18,wght=700");
     });
 
     it("surfaces variable-font axes even when typography has no role", () => {
@@ -334,7 +336,26 @@ describe("annotationEntries", () => {
         );
 
         assert.equal(entries[0].title, "Roboto Flex");
-        assert.equal(entries[0].detail, "axes wdth=90,wght=650");
+        assert.equal(entries[0].detail, "");
+        assert.equal(entries[0].tooltip, "Roboto Flex · axes wdth=90,wght=650");
+    });
+
+    it("uses the compact typography line from the grouped comparison", () => {
+        assert.equal(
+            typographyDetail({
+                label: "MaterialTheme.typography.titleLarge · 22.0sp/28.0sp · Roboto Flex · 500",
+                detail: {
+                    token: "titleLarge",
+                    fontFamily: "Roboto Flex",
+                    fontSize: "22.0sp",
+                    lineHeight: "28.0sp",
+                    fontWeight: "500",
+                    letterSpacing: "0.0sp",
+                    fontVariationSettings: "'opsz' 22, 'wdth' 90, 'wght' 500",
+                },
+            }),
+            "titleLarge · Roboto Flex 500 · 22/28",
+        );
     });
 
     it("falls back to the label as the title when there is no role", () => {

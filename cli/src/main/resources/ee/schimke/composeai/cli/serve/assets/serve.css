@@ -1448,7 +1448,12 @@ cp-history-menu { display: contents; }
   flex-wrap: wrap; width: 100%; }
 .cp-spec-compare[hidden] { display: none; }
 .cp-spec-panel { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  min-width: 0; flex: 0 1 auto; }
+  min-width: 0; flex: 0 1 auto; position: relative; }
+.cp-spec-annotation-layer { position: absolute; pointer-events: none; z-index: 2; }
+.cp-spec-type-box { border-width: 2px; background: rgba(37, 99, 235, 0.18); }
+.cp-spec-type-diff { align-items: flex-start; }
+.cp-spec-type-field { display: block; font-size: 0.68rem; line-height: 1.35;
+  font-variant-numeric: tabular-nums; }
 /* `max-height` as well as `max-width`, both against auto dimensions, so an app-screen render
    (tall, and often 1000+ px of raster) is bounded by the viewport rather than pushing the stage
    past it — the aspect ratio rides along because the canvas is a replaced element. */
@@ -2158,6 +2163,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-inspect-text strong { font-weight: 650; color: var(--cp-fg); overflow-wrap: anywhere; }
 .cp-inspect-detail { color: var(--cp-fg-muted); overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums; }
+.cp-inspect-entry[data-cp-kind="typography"] .cp-inspect-detail { white-space: nowrap;
+  font-size: 0.62rem; letter-spacing: -0.02em; }
 .cp-overlay-control { display: flex; align-items: center; gap: 10px; max-width: 420px;
   margin: 22px 0 8px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-overlay-control input { flex: 1; }

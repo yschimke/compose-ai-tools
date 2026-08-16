@@ -8496,6 +8496,12 @@ $rows
      */
     designReference: DesignReference? = null,
     /**
+     * Typography/layout facts captured from [designReference]'s own raster. The default Figma lane
+     * draws these over the spec image; Diff/Triptych pair them with the current render and reduce
+     * the legend to changed typography only.
+     */
+    referenceAnnotations: List<DesignAnnotation> = emptyList(),
+    /**
      * `/playground?from=…` for this preview — opens its Kotlin in the editor against the catalog it
      * came from. Null on a host with no playground lane, or for a preview whose source path the
      * catalog never recorded; the affordance is then omitted rather than offered dead.
@@ -9146,6 +9152,9 @@ $rows
           "aria-label=\"Wipe between the design spec and the Compose render\">" +
           "<span>Render</span></label></div>" +
           "</div>" +
+          "<script type=\"application/json\" id=\"cp-spec-annotations\">" +
+          encodeAnnotationPayload(AnnotationPayload(reference = referenceAnnotations)) +
+          "</script>" +
           // Drives the panel above: the view buttons, the four surfaces, and the verdict on the
           // design-spec chip. Emitted immediately after it — `viewer.js` calls
           // `window.cpSpecCompare` on the way into the lane, so the element has to be able to set
@@ -9443,18 +9452,24 @@ $rows
     //
     // Each row is offered only when its host can actually produce the data (an a11y-capable daemon
     // for the first, a semantics-capturing one for the other two) — never as a dead control.
+    // Published reference typography is self-contained, so static bundle viewers can inspect the
+    // Figma lane even though they cannot apply overrides or ask a daemon for render annotations.
+    val hasTypographyInspection =
+      hasDesignAnnotations || referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
     val inspectRows = buildString {
       if (hasA11yOverlay)
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-a11y\" " +
             "data-cp-inspect=\"a11y\" type=\"checkbox\"> Accessibility</label>\n"
         )
-      if (hasDesignAnnotations) {
+      if (hasTypographyInspection) {
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" " +
             "id=\"cp-inspect-typography\" data-cp-inspect=\"typography\" type=\"checkbox\"> " +
             "Typography</label>\n"
         )
+      }
+      if (hasDesignAnnotations) {
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-theme\" " +
             "data-cp-inspect=\"theme\" type=\"checkbox\"> Theme attributes</label>\n"

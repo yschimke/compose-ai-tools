@@ -4808,6 +4808,12 @@ class ServeHttpServer(
           // one canonical spec, and the manifest's order is the producer's own. Absent for every
           // catalog that publishes no references, which omits the lane entirely.
           designReference = renderHost.designReferencesFor(preview.id).firstOrNull(),
+          referenceAnnotations =
+            renderHost
+              .designReferencesFor(preview.id)
+              .firstOrNull()
+              ?.let { renderHost.annotationsForReference(it.id) }
+              .orEmpty(),
           // "open in playground" — offered only when this host has the lane AND this preview
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.

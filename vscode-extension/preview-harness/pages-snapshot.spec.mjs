@@ -1210,6 +1210,30 @@ const FIXTURE_STATES = [
       await page.waitForFunction(
         () => document.querySelectorAll(".cp-inspect-box").length > 0,
       );
+      // Typography stays on the compact one-line summary introduced by #3677.
+      await expect(
+        page.locator(
+          '.cp-inspect-entry[data-cp-kind="typography"] .cp-inspect-detail',
+        ),
+      ).toHaveCount(2);
+      const typographyLines = await page
+        .locator(
+          '.cp-inspect-entry[data-cp-kind="typography"] .cp-inspect-detail',
+        )
+        .evaluateAll((details) =>
+          details.map((detail) => ({
+            whiteSpace: getComputedStyle(detail).whiteSpace,
+            scrollWidth: detail.scrollWidth,
+            clientWidth: detail.clientWidth,
+          })),
+        );
+      expect(typographyLines).toEqual(
+        typographyLines.map((line) => ({
+          whiteSpace: "nowrap",
+          scrollWidth: line.clientWidth,
+          clientWidth: line.clientWidth,
+        })),
+      );
     },
   },
   {
@@ -1423,6 +1447,25 @@ const FIXTURE_STATES = [
       await page.mouse.move(0, 0);
     },
   },
+  {
+    // Typography follows the Figma raster when that is the surface on stage.
+    fixture: "serve-viewer-path",
+    suffix: "spec-typography",
+    apply: async (page) => {
+      await page.click('[data-cp-spec-view="spec"]');
+      await page.evaluate(() => {
+        const toggle = document.getElementById("cp-inspect-typography");
+        toggle.checked = true;
+        toggle.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll("#cp-inspect-layer .cp-inspect-box")
+            .length > 0,
+      );
+      await page.mouse.move(0, 0);
+    },
+  },
   // The three comparison views the spec lane offers once it is up. Each is drawn entirely at
   // runtime — pre-normalised canvases painted by `<cp-spec-compare>` — so the committed HTML holds
   // four empty `<canvas>` elements and none of what these views actually look like. Capturing
@@ -1446,6 +1489,8 @@ const FIXTURE_STATES = [
           );
         })
         .catch(() => {});
+      if (view === "diff" || view === "triptych")
+        await page.waitForTimeout(500);
       // Off the view segment it just clicked — see `spec-lane` above.
       await page.mouse.move(0, 0);
     },

@@ -30,6 +30,8 @@ export interface Entry {
     level: Level;
     /** A per-node hue, only for un-flagged stops. Null when the level is carrying the colour. */
     color: string | null;
+    /** Optional expanded wording kept off the compact legend row and exposed as a tooltip. */
+    tooltip?: string;
 }
 
 /**
@@ -218,6 +220,34 @@ export interface AnnotationPayload {
     annotations?: Annotation[];
 }
 
+/**
+ * The compact style line established by the typography comparison UI (#3677):
+ * `token · family weight · size/line-height`. This is the glanceable line; tracking, style,
+ * and variable axes remain in the row tooltip rather than turning the narrow component legend back
+ * into the multi-line dump #3677 replaced on the comparison page.
+ */
+export function typographyDetail(annotation: Annotation): string {
+    const spec = typographySpec(annotation);
+    if (spec.labelOnly) return annotation.label ?? "";
+
+    const size =
+        spec.size === undefined
+            ? undefined
+            : `${spec.size}${
+                  spec.lineHeight === undefined
+                      ? (spec.unit ?? "")
+                      : `/${spec.lineHeight}`
+              }`;
+    const face = [
+        spec.family,
+        spec.weight === undefined ? undefined : spec.weight,
+    ]
+        .filter((value) => value !== undefined)
+        .join(" ");
+
+    return [spec.token, face || undefined, size].filter(Boolean).join(" · ");
+}
+
 /** Typography / theme entries, straight off the shared design-annotation payload. */
 export function annotationEntries(
     payload: AnnotationPayload | null,
@@ -228,18 +258,29 @@ export function annotationEntries(
             Boolean(a && a.kind === kind && a.bounds),
         )
         .map((a) => {
-            const summary = a.role ? (a.label ?? "") : "";
-            const axes =
-                kind === "typography" ? typographySpec(a).axes : undefined;
+            const typography = kind === "typography" ? typographySpec(a) : null;
+            const summary =
+                kind === "typography"
+                    ? typographyDetail(a)
+                    : a.role
+                      ? (a.label ?? "")
+                      : "";
             return {
                 kind,
                 bounds: a.bounds,
                 title: a.role || a.label || "",
-                detail: [summary, axes ? `axes ${axes}` : ""]
-                    .filter(Boolean)
-                    .join(" · "),
+                detail: summary,
                 level: "info" as const,
                 color: null,
+                tooltip:
+                    kind === "typography"
+                        ? [
+                              a.label,
+                              typography?.axes ? `axes ${typography.axes}` : "",
+                          ]
+                              .filter(Boolean)
+                              .join(" · ")
+                        : undefined,
             };
         });
 }
