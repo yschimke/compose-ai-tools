@@ -245,25 +245,106 @@ class PlaygroundSourceCleanerTest {
 
     assertTrue(
       result.text.contains(
-        "MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {"
+        "androidx.compose.material3.MaterialTheme(colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()) {"
       ),
       result.text,
     )
     assertTrue(result.text.contains("Text(\"Card\")"), result.text)
-    assertTrue(
-      result.text.contains("import androidx.compose.foundation.isSystemInDarkTheme"),
-      result.text,
-    )
-    assertTrue(result.text.contains("import androidx.compose.material3.MaterialTheme"), result.text)
-    assertTrue(
-      result.text.contains("import androidx.compose.material3.darkColorScheme"),
-      result.text,
-    )
-    assertTrue(
-      result.text.contains("import androidx.compose.material3.lightColorScheme"),
-      result.text,
-    )
+    assertFalse(result.text.contains("import androidx.compose.foundation.isSystemInDarkTheme"))
+    assertFalse(result.text.contains("import androidx.compose.material3.MaterialTheme"))
     assertFalse(result.text.contains("import com.example.catalog.Sticker"), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  @Test
+  fun `a system Material 3 theme wrapper accepts an empty argument list`() {
+    val source =
+      """
+      package com.example.catalog
+
+      import androidx.compose.runtime.Composable
+      import com.example.catalog.Sticker
+
+      @Composable
+      fun CardPreview() = Sticker() { Unit }
+      """
+        .trimIndent()
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "Sticker" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.RENAME,
+                renameTo = "MaterialTheme",
+                special = UsageRules.MATERIAL3_SYSTEM_THEME,
+              )
+          )
+      )
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source,
+          source.lines().indexOfFirst { it.contains("Unit") } + 1,
+          rules,
+        )
+      )
+
+    assertFalse(result.text.contains("Sticker"), result.text)
+    assertTrue(result.text.contains("androidx.compose.material3.MaterialTheme("), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  @Test
+  fun `a system Material 3 expansion cannot collide with retained simple imports`() {
+    val source =
+      """
+      package com.example.catalog
+
+      import com.example.brand.MaterialTheme
+      import com.example.catalog.Sticker
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun CardPreview() = Sticker { MaterialTheme { Unit } }
+      """
+        .trimIndent()
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "Sticker" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.RENAME,
+                renameTo = "MaterialTheme",
+                special = UsageRules.MATERIAL3_SYSTEM_THEME,
+                addImports =
+                  listOf(
+                    "androidx.compose.material3.MaterialTheme",
+                    "androidx.compose.material3.darkColorScheme",
+                    "androidx.compose.material3.lightColorScheme",
+                    "androidx.compose.foundation.isSystemInDarkTheme",
+                  ),
+              )
+          )
+      )
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source,
+          source.lines().indexOfFirst { it.contains("MaterialTheme { Unit") } + 1,
+          rules,
+        )
+      )
+
+    assertTrue(result.text.contains("import com.example.brand.MaterialTheme"), result.text)
+    assertFalse(
+      result.text.contains("import androidx.compose.material3.MaterialTheme"),
+      result.text,
+    )
+    assertTrue(result.text.contains("MaterialTheme { Unit }"), result.text)
     assertEquals(emptyList(), result.residue)
   }
 

@@ -339,7 +339,7 @@ object PlaygroundSourceCleaner {
       else applySubstitute(out, rules, addedImports)
     out = applyInline(out, rules, addedImports)
     out = applyDrop(out, rules, residue)
-    out = applyMaterial3SystemTheme(out, rules, addedImports)
+    out = applyMaterial3SystemTheme(out, rules)
     out = applyRename(out, rules, addedImports)
     if (isEntry) out = stampPreview(out, rules, addedImports)
     // Residue: declared scaffolding that survived. With a parse, every *call* is visible however it
@@ -528,11 +528,7 @@ object PlaygroundSourceCleaner {
    * argument-free trailing-lambda call. `StickerFrame(tokens) { … }` may encode more than the
    * reusable stock light/dark policy; leaving it as residue is the safe and honest outcome.
    */
-  private fun applyMaterial3SystemTheme(
-    text: String,
-    rules: UsageRules,
-    addedImports: MutableSet<String>,
-  ): String {
+  private fun applyMaterial3SystemTheme(text: String, rules: UsageRules): String {
     var out = text
     for ((name, scaffold) in rules.scaffolds) {
       if (
@@ -540,15 +536,23 @@ object PlaygroundSourceCleaner {
           scaffold.special != UsageRules.MATERIAL3_SYSTEM_THEME
       )
         continue
-      var changed = false
+      // The expansion is fully qualified on purpose. A preserved component body may already use a
+      // different MaterialTheme (or colour-scheme helper) by simple name; injecting AndroidX
+      // imports would make that otherwise valid source ambiguous.
       for (at in wordOccurrences(out, name).asReversed()) {
         var next = at + name.length
         while (next < out.length && out[next].isWhitespace()) next++
+        var replaceEnd = at + name.length
+        if (out.getOrNull(next) == '(') {
+          val close = matchParen(out, next) ?: continue
+          if (out.substring(next + 1, close).isNotBlank()) continue
+          replaceEnd = close + 1
+          next = close + 1
+          while (next < out.length && out[next].isWhitespace()) next++
+        }
         if (out.getOrNull(next) != '{') continue
-        out = out.replaceRange(at, at + name.length, MATERIAL3_SYSTEM_THEME_CALL)
-        changed = true
+        out = out.replaceRange(at, replaceEnd, MATERIAL3_SYSTEM_THEME_CALL)
       }
-      if (changed) addedImports.addAll(scaffold.imports)
     }
     return out
   }
@@ -834,7 +838,7 @@ object PlaygroundSourceCleaner {
   private const val MAX_REWRITES = 64
 
   private const val MATERIAL3_SYSTEM_THEME_CALL =
-    "MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme())"
+    "androidx.compose.material3.MaterialTheme(colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme())"
 
   private data class Call(val start: Int, val argsStart: Int, val argsEnd: Int)
 
