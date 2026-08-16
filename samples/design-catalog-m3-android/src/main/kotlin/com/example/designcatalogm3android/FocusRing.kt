@@ -22,10 +22,10 @@ import ee.schimke.composeai.preview.FocusedPreview
 
 /**
  * Android-only catalog theme that opts into the Material 3 **inset focus ring** — via
- * [RippleDefaults.InsetFocusRingRippleThemeConfiguration] over [LocalRippleThemeConfiguration]
- * (material3 1.5.0-alpha+) — the keyboard-focus indicator the design system ships. CMP `material3`
- * has no equivalent yet, so the focus-ring stickers are rendered here (Robolectric) and folded into
- * the otherwise-CMP `compose-m3` catalog by the design-artifacts generator.
+ * [RippleDefaults.InsetFocusRingThemeConfiguration] over [LocalRippleThemeConfiguration] (material3
+ * 1.5.0-alpha+) — the keyboard-focus indicator the design system ships. CMP `material3` has no
+ * equivalent yet, so the focus-ring stickers are rendered here (Robolectric) and folded into the
+ * otherwise-CMP `compose-m3` catalog by the design-artifacts generator.
  *
  * Mirrors the ring-colour override the CMP-era catalog used: the stroke goes `primary` (outer) over
  * `surface` (inner gap) instead of the stock muted `secondary`/`onSecondary`, so the ring stays
@@ -37,7 +37,7 @@ private fun FocusRingSticker(content: @Composable () -> Unit) {
   val colorScheme = if (dark) darkColorScheme() else lightColorScheme()
   MaterialTheme(colorScheme = colorScheme) {
     CompositionLocalProvider(
-      LocalRippleThemeConfiguration provides RippleDefaults.InsetFocusRingRippleThemeConfiguration,
+      LocalRippleThemeConfiguration provides RippleDefaults.InsetFocusRingThemeConfiguration,
       LocalRippleConfiguration provides
         RippleConfiguration(
           focus =

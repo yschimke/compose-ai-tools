@@ -45,7 +45,7 @@ private fun WithRippleConfig(config: RippleThemeConfiguration, content: @Composa
 @Composable
 fun InsetFocusRingFanOutPreview() {
   MaterialTheme {
-    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+    WithRippleConfig(RippleDefaults.InsetFocusRingThemeConfiguration) { ButtonRow() }
   }
 }
 
@@ -62,22 +62,20 @@ fun InsetFocusRingFanOutPreview() {
 @Composable
 fun InsetFocusRingMovingPreview() {
   MaterialTheme {
-    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+    WithRippleConfig(RippleDefaults.InsetFocusRingThemeConfiguration) { ButtonRow() }
   }
 }
 
 /**
- * Opacity-focus baseline: the same row drawn under
- * `RippleDefaults.OpacityFocusRippleThemeConfiguration`. Pair-render with the inset-ring fan-out to
- * see the visual delta between the two focus-indication strategies.
+ * Opacity-focus baseline: the same row drawn under `RippleDefaults.OpacityFocusThemeConfiguration`.
+ * Pair-render with the inset-ring fan-out to see the visual delta between the two focus-indication
+ * strategies.
  */
 @Preview(name = "Opacity Focus", widthDp = 480, heightDp = 96, showBackground = true)
 @FocusedPreview(indices = [1])
 @Composable
 fun OpacityFocusPreview() {
-  MaterialTheme {
-    WithRippleConfig(RippleDefaults.OpacityFocusRippleThemeConfiguration) { ButtonRow() }
-  }
+  MaterialTheme { WithRippleConfig(RippleDefaults.OpacityFocusThemeConfiguration) { ButtonRow() } }
 }
 
 /**
@@ -94,7 +92,7 @@ fun OpacityFocusPreview() {
 @Composable
 fun FocusTraversalPreview() {
   MaterialTheme {
-    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+    WithRippleConfig(RippleDefaults.InsetFocusRingThemeConfiguration) { ButtonRow() }
   }
 }
 
@@ -109,6 +107,6 @@ fun FocusTraversalPreview() {
 @Composable
 fun FocusOverlayPreview() {
   MaterialTheme {
-    WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
+    WithRippleConfig(RippleDefaults.InsetFocusRingThemeConfiguration) { ButtonRow() }
   }
 }
