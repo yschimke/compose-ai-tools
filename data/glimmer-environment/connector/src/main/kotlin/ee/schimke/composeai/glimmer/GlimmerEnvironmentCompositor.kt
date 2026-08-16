@@ -66,8 +66,7 @@ object GlimmerEnvironmentCompositor {
       when (environment) {
         GlimmerEnvironment.Dark -> "/glimmer-environments/env_dark.jpg"
         GlimmerEnvironment.Busy -> "/glimmer-environments/env_busy.jpg"
-        GlimmerEnvironment.VeniceCanalCats ->
-          "/glimmer-environments/env_venice_canal_cats.jpg"
+        GlimmerEnvironment.VeniceCanalCats -> "/glimmer-environments/env_venice_canal_cats.jpg"
         GlimmerEnvironment.Light -> error("Light is procedural")
       }
     val source =
@@ -78,7 +77,10 @@ object GlimmerEnvironmentCompositor {
     val scaledHeight = (source.height * scale).toInt()
     val result = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
     result.createGraphics().use { graphics ->
-      graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+      graphics.setRenderingHint(
+        RenderingHints.KEY_INTERPOLATION,
+        RenderingHints.VALUE_INTERPOLATION_BICUBIC,
+      )
       graphics.drawImage(
         source,
         (width - scaledWidth) / 2,
@@ -95,7 +97,14 @@ object GlimmerEnvironmentCompositor {
     val result = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
     result.createGraphics().use { graphics ->
       graphics.paint =
-        GradientPaint(0f, 0f, Color(0xAE, 0xDD, 0xFF), 0f, height.toFloat(), Color(0xD2, 0xEA, 0xFF))
+        GradientPaint(
+          0f,
+          0f,
+          Color(0xAE, 0xDD, 0xFF),
+          0f,
+          height.toFloat(),
+          Color(0xD2, 0xEA, 0xFF),
+        )
       graphics.fillRect(0, 0, width, height)
       val hillY = (height * 0.75f).toInt()
       graphics.color = Color(0x98, 0xC7, 0x78)
