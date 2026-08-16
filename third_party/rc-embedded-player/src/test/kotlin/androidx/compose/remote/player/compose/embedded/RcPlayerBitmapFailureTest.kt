@@ -18,7 +18,12 @@
 
 package androidx.compose.remote.player.compose.embedded
 
+import androidx.compose.remote.core.CoreDocument
+import androidx.compose.remote.core.Operation
+import androidx.compose.remote.core.RemoteContext
+import androidx.compose.remote.core.WireBuffer
 import androidx.compose.remote.core.operations.BitmapData
+import androidx.compose.remote.core.operations.layout.Container
 import androidx.compose.remote.player.core.platform.AndroidRemoteContext
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -50,6 +55,41 @@ class RcPlayerBitmapFailureTest {
     assertNull(resolveBitmap(context, IMAGE_ID))
     // The failed decode is memoized, so another frame remains empty without retrying or throwing.
     assertNull(resolveBitmap(context, IMAGE_ID))
+  }
+
+  @Test
+  fun nestedRelativeUriIsSkippedDuringSetupTraversal() {
+    val context = AndroidRemoteContext()
+    val state = SnapshotRemoteComposeState()
+    context.mRemoteComposeState = state
+    val bitmap = relativeUriBitmap()
+    context.putObject(IMAGE_ID, bitmap)
+    val operations = arrayListOf<Operation>(TestContainer(arrayListOf(bitmap)))
+
+    CoreDocument().applyOperationsWithoutBitmaps(context, operations)
+
+    assertNull("setup must not decode the nested bitmap", state.getFromId(IMAGE_ID))
+  }
+
+  private fun relativeUriBitmap(): BitmapData =
+    BitmapData(
+      IMAGE_ID,
+      BitmapData.TYPE_PNG,
+      64,
+      BitmapData.ENCODING_URL,
+      64,
+      "camera/current".toByteArray(),
+    )
+
+  private class TestContainer(private val operations: ArrayList<Operation>) :
+    Operation(), Container {
+    override fun getList(): ArrayList<Operation> = operations
+
+    override fun write(buffer: WireBuffer) = Unit
+
+    override fun apply(context: RemoteContext) = Unit
+
+    override fun deepToString(indent: String): String = "${indent}TestContainer"
   }
 
   private companion object {

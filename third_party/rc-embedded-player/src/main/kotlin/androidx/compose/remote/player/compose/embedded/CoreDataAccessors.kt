@@ -435,7 +435,15 @@ internal fun CoreDocument.applyDataOperationsWithoutBitmaps(context: RemoteConte
   }
 }
 
-private fun applyOperationsWithoutBitmaps(
+/** Apply an operation tree while preserving containers and skipping every nested [BitmapData]. */
+internal fun CoreDocument.applyOperationsWithoutBitmaps(
+  context: RemoteContext,
+  operations: Collection<Operation>,
+) {
+  applyOperationsWithoutBitmapsRecursively(context, operations)
+}
+
+private fun applyOperationsWithoutBitmapsRecursively(
   context: RemoteContext,
   operations: Collection<Operation>,
 ) {
@@ -447,7 +455,7 @@ private fun applyOperationsWithoutBitmaps(
     context.incrementOpCount()
     if (operation is Container) {
       if (operation is ComponentData) operation.apply(context)
-      applyOperationsWithoutBitmaps(context, operation.getList())
+      applyOperationsWithoutBitmapsRecursively(context, operation.getList())
     } else {
       operation.apply(context)
     }

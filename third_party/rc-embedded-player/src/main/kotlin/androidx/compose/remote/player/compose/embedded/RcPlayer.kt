@@ -214,7 +214,7 @@ public fun RcPlayer(
         } else {
           document.getOperationsReflection()
         }
-      document.applyOperationsReflection(it, globalOps.withoutBitmaps())
+      document.applyOperationsWithoutBitmaps(it, globalOps)
 
       val constantOps = ArrayList<Operation>()
       fun walk(ops: Collection<Operation>) {
@@ -252,7 +252,7 @@ public fun RcPlayer(
 
       val dataOps = ArrayList<Operation>()
       document.rootLayoutComponent?.getData(dataOps, true)
-      document.applyOperationsReflection(it, dataOps.withoutBitmaps())
+      document.applyOperationsWithoutBitmaps(it, dataOps)
     }
   }
 
@@ -551,10 +551,6 @@ private fun findBitmaps(operations: Collection<Operation>, list: MutableList<Bit
     }
   }
 }
-
-/** Bitmap pixels are resolved on first draw; setup passes must only apply the other data ops. */
-private fun Collection<Operation>.withoutBitmaps(): ArrayList<Operation> =
-  filterTo(ArrayList(size)) { it !is BitmapData }
 
 private fun findComponentValues(
   operations: Collection<Operation>,
