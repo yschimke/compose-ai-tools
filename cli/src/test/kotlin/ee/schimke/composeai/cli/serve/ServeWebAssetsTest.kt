@@ -82,21 +82,9 @@ class ServeWebAssetsTest {
     }
   }
 
-  @Test
-  fun `remote compose comparison fixes theme and fonts before scoring`() {
-    val script = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
-    val theme = script.indexOf("player.setTheme(theme)")
-    val firstPaint = script.indexOf("player.repaint", startIndex = theme)
-    val fonts = script.indexOf("player.fontsReady()", startIndex = firstPaint)
-    val finalPaint = script.indexOf("player.repaint", startIndex = fonts)
-    val score = script.indexOf("scoreCanvas(pngUrl, canvas)", startIndex = finalPaint)
-    assertTrue(
-      theme >= 0 &&
-        theme < firstPaint &&
-        firstPaint < fonts &&
-        fonts < finalPaint &&
-        finalPaint < score,
-      "the RC player must apply artifact theme, discover and await fonts, then repaint before scoring",
-    )
-  }
+  // The RC lane's ordering invariant — apply the artifact theme, paint once to DISCOVER the named
+  // font families, await them, repaint with the resolved glyphs, and only then measure — moved to
+  // `<cp-compare-wall>` with the port. `compareWallElement.test.ts` drives a stub player and
+  // asserts
+  // the actual call order, which is what this test was approximating by comparing source offsets.
 }

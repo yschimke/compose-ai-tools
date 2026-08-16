@@ -267,10 +267,27 @@ comes before it. An element caching that handle on upgrade caches `null` and the
 diff lane silently scores nothing. `<cp-design-page>` reads it when the lane is
 entered instead, so no script order can break it.
 
-Left: `format-compare.js` (1,706) and `viewer.js` (3,127). Both want breaking
-into pure modules the way the drawers were, not porting whole — and
-`format-compare.js` has four external consumers that read the file by path or
-basename, so its primitives want a shim rather than a move.
+`format-compare.js` is coming apart in four steps rather than porting whole,
+because four external consumers read that file by path or basename — the
+publish-time score driver, the Chromium scorer spec, the compare audit's route
+stub, and the harness's asset list. Done so far: the dead SSIM block and the
+shared geometry threshold; then the `/compare` wall as `<cp-compare-wall>`,
+whose modules are `compare/pairing.ts` (which two artifacts a row pairs — never
+the opposite baked theme, because a plausible-looking pair scores a number that
+means nothing), `compare/state.ts` (the URL beats the remembered theme, and a
+format the catalog does not publish is ignored rather than emptying the table),
+`compare/wallRows.ts` and `compare/grade.ts`.
+
+That leaves the annotation/typography engine and then the primitives, which want
+a shim rather than a move so the four consumers can migrate on their own
+schedule. `viewer.js` (3,127) is after that, and reads
+`window.ComposePreviewCompare` exactly the way the design page did — so it wants
+the same read-it-late treatment.
+
+One thing worth knowing about `grade`: the 90/75 bands are NOT the spec lane's
+99.5/97, and unifying them would make one of the two surfaces lie. A wall
+triaging dozens of rows and a lane judging one chosen pair are different
+questions about the same number.
 
 ## Two bundles, and which one a thing belongs in
 

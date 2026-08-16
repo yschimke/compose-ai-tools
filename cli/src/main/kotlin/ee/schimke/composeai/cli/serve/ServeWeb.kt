@@ -6737,8 +6737,15 @@ object ServeWeb {
           <div id="cp-compare-formats">$empty</div>
           ${rcLanes.orEmpty()}
         </div>
-        ${if (hasRc) scriptTag("serve-components.js") else ""}
+        <!-- The components bundle is UNCONDITIONAL here now: `<cp-compare-wall>` is the wall
+             itself, not just the RC lane's player, so a catalog with no Remote Compose would
+             otherwise get a page whose element never upgrades. The tag comes after
+             `format-compare.js` for tidiness only — the element reads
+             `window.ComposePreviewCompare` when it scores rather than when it upgrades, so no
+             script order can silence it. -->
+        ${scriptTag("serve-components.js")}
         ${scriptTag("format-compare.js")}
+        <cp-compare-wall></cp-compare-wall>
         """
           .trimIndent(),
     )

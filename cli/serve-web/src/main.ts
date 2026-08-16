@@ -13,6 +13,7 @@ import "./components/BackendBadge.js";
 import "./components/BgToggle.js";
 import "./components/CatalogLive.js";
 import "./components/CatalogToolbar.js";
+import "./components/CompareWall.js";
 import "./components/DesignPage.js";
 import "./components/GroupMemory.js";
 import "./components/HistoryMenu.js";

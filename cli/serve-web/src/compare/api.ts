@@ -42,6 +42,17 @@ export interface CompareApi {
         candidate: CanvasImageSource,
         into: HTMLCanvasElement,
     ): number;
+    /** Decode one URL into an `<img>`, same-origin, without scoring it. */
+    loadImage(url: string): Promise<HTMLImageElement>;
+    /**
+     * Score a baked PNG against an SVG of the SAME render.
+     *
+     * Answers a bare percentage rather than a {@link Measurement}: the two share their geometry by
+     * construction, so there is no proportion difference for it to report.
+     */
+    scoreSvgUrls(pngUrl: string, svgUrl: string): Promise<number>;
+    /** Score a baked PNG against a canvas something else has already drawn — the RC lane's shape. */
+    scoreCanvas(pngUrl: string, canvas: HTMLCanvasElement): Promise<number>;
     /** Score two ALREADY-decoded frames — see `<cp-spec-compare>` on why that matters. */
     scoreImages(
         reference: unknown,
