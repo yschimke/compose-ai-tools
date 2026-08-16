@@ -615,6 +615,56 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the front door advertises lazy global component search only when catalogs exist`() {
+    val system =
+      ServeWeb.HomeSystem(
+        system = "compose-m3",
+        title = "Material 3",
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        heroPreviewId = null,
+      )
+
+    val gated = ServeWeb.homeIndexPage(listOf(system), token = "a token", isPublic = false)
+    assertTrue(
+      gated.contains("data-cp-global-components=\"/api/components?token=a%20token\""),
+      gated,
+    )
+    val empty = ServeWeb.homeIndexPage(emptyList(), token = "unused", isPublic = true)
+    assertFalse(empty.contains("data-cp-global-components"), empty)
+  }
+
+  @Test
+  fun `global component search collapses catalog render variants like the landing grid`() {
+    val entries =
+      ServeWeb.componentSearchEntries(
+        listOf(
+          ServePreview(
+            id = "button-filled__ideal__default__light",
+            label = "button-filled",
+            componentId = "Button/Filled",
+          ),
+          ServePreview(
+            id = "button-filled__ideal__default__dark",
+            label = "button-filled",
+            componentId = "Button/Filled",
+          ),
+          ServePreview(
+            id = "button-filled__ideal__pressed__light",
+            label = "button-filled pressed",
+            componentId = "Button/Filled",
+            state = "pressed",
+          ),
+        )
+      )
+
+    assertEquals(1, entries.size)
+    assertEquals("Button Filled", entries.single().label)
+    assertEquals("button-filled__ideal__default__light", entries.single().previewId)
+  }
+
+  @Test
   fun `the renderer combo lists every player with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
     // enabled; the opt-in CMP/Wasm and unadvertised cmp-jvm lanes remain disabled.
