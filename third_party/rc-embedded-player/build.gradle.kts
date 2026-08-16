@@ -111,6 +111,11 @@ tasks.withType<Test>().configureEach {
     listOf("rc.embedded.input", "rc.embedded.output", "rc.view.output", "rc.semantics.report")) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
+  systemProperty(
+    "rc.dynamic-color.report",
+    (project.findProperty("rc.dynamic-color.report") as String?)
+      ?: layout.buildDirectory.file("reports/dynamic-color-diag.txt").get().asFile.absolutePath,
+  )
   // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.
   maxHeapSize = "2g"
 
