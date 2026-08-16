@@ -109,6 +109,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## serve-component-browser-catalog
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-component-browser-catalog/dark](renders/serve-component-browser-catalog.dark.png) |
+| `light` | ![serve-component-browser-catalog/light](renders/serve-component-browser-catalog.light.png) |
+
+## serve-component-browser-component
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-component-browser-component/dark](renders/serve-component-browser-component.dark.png) |
+| `light` | ![serve-component-browser-component/light](renders/serve-component-browser-component.light.png) |
+
 ## serve-design-page
 
 | Theme | Capture |
@@ -613,6 +627,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-pinned/dark](renders/serve-reference-compare-pinned.dark.png) |
 | `light` | ![serve-reference-compare-pinned/light](renders/serve-reference-compare-pinned.light.png) |
 
+## serve-report-bug
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-report-bug/dark](renders/serve-report-bug.dark.png) |
+| `light` | ![serve-report-bug/light](renders/serve-report-bug.light.png) |
+
 ## serve-social-card
 
 | Theme | Capture |
@@ -815,6 +836,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-path-spec-triptych/dark](renders/serve-viewer-path-spec-triptych.dark.png) |
 | `light` | ![serve-viewer-path-spec-triptych/light](renders/serve-viewer-path-spec-triptych.light.png) |
+
+## serve-viewer-path-spec-typography
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-path-spec-typography/dark](renders/serve-viewer-path-spec-typography.dark.png) |
+| `light` | ![serve-viewer-path-spec-typography/light](renders/serve-viewer-path-spec-typography.light.png) |
 
 ## serve-viewer-pinned-lanes
 
