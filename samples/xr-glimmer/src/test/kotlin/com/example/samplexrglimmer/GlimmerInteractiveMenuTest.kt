@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * Asserts the interactive XR menu navigation GIFs produced by
  * `:samples:xr-glimmer:composePreviewRenderAll` land at the right paths with the right shape, and
- * that each env actually composites a visibly different backdrop.
+ * that each env actually composites a visibly different connector-owned backdrop.
  *
  * Each top-level function (`GlimmerXrMenuLight` etc.) carries `@FocusedPreview(indices =
  * [0, 1, 2, 3], gif = true)`, so the renderer drives focus across four Glimmer `ListItem`s (one
@@ -20,11 +20,8 @@ import org.junit.Test
  *   mode would silently quadruple the `:samples:xr-glimmer` render budget here).
  * - A future renderer change that renames the GIF (e.g. dropping the trailing `_FOCUS` suffix on
  *   the GIF path) — the new filename would land outside the assertion below.
- * - **Env-backdrop drift.** Each env composites a different procedurally-drawn backdrop with the
- *   Glimmer UI additive-blended on top, so the four GIFs must be byte-distinct. If a regression
- *   accidentally drops the env backdrop layer or the `BlendMode.Plus` wrapper, all four GIFs
- *   collapse to identical opaque-black captures and this test surfaces it — that's exactly the
- *   failure mode that motivated this iteration of the demo.
+ * - **Env-backdrop drift.** Each env is ADD-composited by the connector after raw capture, so the
+ *   four output GIFs must be byte-distinct while their `.raw.gif` siblings stay identical.
  */
 class GlimmerInteractiveMenuTest {
 
@@ -80,5 +77,12 @@ class GlimmerInteractiveMenuTest {
     files.forEach { assertThat(it.exists()).isTrue() }
     val hashes = files.map { it.readBytes().contentHashCode() }.toSet()
     assertThat(hashes).hasSize(files.size)
+  }
+
+  @Test
+  fun `raw additive GIF remains available and identical across environments`() {
+    val files = envGifBasenames.map { renderFile(rendersDir, it, suffix = ".raw", ext = "gif") }
+    files.forEach { assertThat(it.exists()).isTrue() }
+    assertThat(files.map { it.readBytes().contentHashCode() }.toSet()).hasSize(1)
   }
 }

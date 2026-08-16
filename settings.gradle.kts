@@ -492,6 +492,11 @@ include(":data-ambient-connector")
 
 project(":data-ambient-connector").projectDir = file("data/ambient/connector")
 
+include(":data-glimmer-environment-connector")
+
+project(":data-glimmer-environment-connector").projectDir =
+  file("data/glimmer-environment/connector")
+
 include(":data-gestures-core")
 
 project(":data-gestures-core").projectDir = file("data/gestures/core")

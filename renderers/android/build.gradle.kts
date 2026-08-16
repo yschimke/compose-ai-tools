@@ -86,6 +86,9 @@ dependencies {
   // architectural rule as focus: **no hardcoded ambient / `LocalAmbientModeManager` logic in
   // this module — extend the connector instead.**
   implementation(project(":data-ambient-connector"))
+  // Glimmer additive-display environment simulation. The connector owns all backdrops and ADD
+  // compositing; the renderer only forwards annotation metadata after the raw frame is captured.
+  implementation(project(":data-glimmer-environment-connector"))
   // Wear OS one-handed-gesture connector. Owns `GestureStateController` and
   // `GestureOverrideExtension` (the `AroundComposable` that primes the controller with `showHints`
   // and installs `LocalGestureRegistry` / `LocalOneHandedGestureEnabled`). The renderer wraps

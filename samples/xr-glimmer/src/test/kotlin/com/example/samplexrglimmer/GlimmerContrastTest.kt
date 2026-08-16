@@ -1,7 +1,7 @@
 package com.example.samplexrglimmer
 
 import com.google.common.truth.Truth.assertThat
-import java.io.File
+import ee.schimke.composeai.glimmer.GlimmerEnvironmentCompositor
 import javax.imageio.ImageIO
 import org.junit.Test
 
@@ -11,7 +11,7 @@ import org.junit.Test
  * HCT tone-difference** contrast bar.
  *
  * Unlike the other tests here, this one doesn't read rendered captures — it computes the same
- * additive composite Studio approximates directly from the **source backdrops** in `src/main/res/`,
+ * additive composite Studio approximates directly from the connector-owned source backdrops,
  * so it pins the calibration regardless of whether the SDK-37 render path is available. The numbers
  * it asserts are the measured tone gaps of white Glimmer text over each env; they encode, as a
  * regression gate, the qualitative finding the design doc states informally ("you see the
@@ -29,12 +29,13 @@ import org.junit.Test
  */
 class GlimmerContrastTest {
 
-  private val drawables = File("src/main/res/drawable-nodpi")
-
   private fun backdropToneGap(name: String): Double {
-    val file = File(drawables, name)
-    assertThat(file.exists()).isTrue()
-    return GlimmerContrast.meanTextToneGap(ImageIO.read(file))
+    val image =
+      GlimmerEnvironmentCompositor::class.java
+        .getResourceAsStream("/glimmer-environments/$name")
+        ?.use(ImageIO::read)
+    assertThat(image).isNotNull()
+    return GlimmerContrast.meanTextToneGap(image!!)
   }
 
   @Test
