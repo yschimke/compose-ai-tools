@@ -140,6 +140,15 @@ import { previewIdAliases } from "./preview-id-alias.mjs";
 import { selectComponentImages, selectOf } from "./catalog-select.mjs";
 import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.mjs";
 import { completenessFailure } from "./completeness-gate.mjs";
+import {
+  additionalBundleLiveConflict,
+  claimedComponentIds,
+  claimedPreviewFunctions,
+  combinedBundleMap,
+  combinedBundleEntries,
+  generatedFallbackGroups,
+  namespaceModuleRecords,
+} from "./multi-module-catalog.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -728,6 +737,12 @@ const { values } = parseArgs({
     // `FilledButtonFocused`, and this replaces the CMP module's ring-less render of
     // that function so the keyboard-focus variant shows the real ring.
     "extra-renders": { type: "string" },
+    // Additional independent module bundles for repository-wide publication. Unlike
+    // `--extra-renders`, these do not override the primary module: their candidates are appended,
+    // duplicate function names are namespaced deterministically, and uncurated renders receive a
+    // generated module/preview-group inventory.
+    "additional-renders": { type: "string", multiple: true },
+    "generate-fallbacks": { type: "boolean", default: false },
     // When set, copy the `--renders` executable bundle onto the branch under
     // `out/bundle/<file>` and record `liveBundle: {path, file}` in catalog.json.
     // `compose-preview serve --catalogs --allow-render-trusted` then fetches that
@@ -781,6 +796,16 @@ if (!values.spec || !values.renders || !values.out) {
   process.exit(2);
 }
 
+const additionalLiveConflicts = additionalBundleLiveConflict(values);
+if (additionalLiveConflicts) {
+  console.error(
+    `--additional-renders cannot be combined with ${additionalLiveConflicts.join(" or ")} — ` +
+      `repository-wide catalogs publish baked module bundles and have no single executable ` +
+      `live bundle or source module.`,
+  );
+  process.exit(2);
+}
+
 // Fail loudly rather than publish a catalog whose extra-only stickers claim a live lane
 // nothing can serve. Both prerequisites are silent when violated: with no --extra-renders
 // there is no second bundle to alias against, and with no --publish-live-bundle serve
@@ -811,10 +836,15 @@ if (effectiveBreakpoints !== undefined) spec.breakpoints = effectiveBreakpoints;
 // the join folds a function's theme/size multipreview variants (whose ids differ
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
 // also works around the published null-widthDp crash) and the vendored join.
-const { candidates, bundle } = await loadCandidates(
-  rendersPath,
-  spec.breakpoints,
-);
+const primaryRecord = await loadCandidates(rendersPath, spec.breakpoints);
+const additionalRecords = [];
+for (const path of values["additional-renders"] ?? []) {
+  additionalRecords.push(await loadCandidates(resolve(path), spec.breakpoints));
+}
+const moduleRecords = namespaceModuleRecords(primaryRecord, additionalRecords);
+let { candidates, bundle } = moduleRecords[0];
+const additionalBundles = moduleRecords.slice(1).map((record) => record.bundle);
+candidates = moduleRecords.flatMap((record) => record.candidates);
 
 // Fold a supplementary render bundle in, overriding same-named functions. Lets an
 // Android-only render (the material3 1.5.0-alpha inset focus ring, which CMP can't
@@ -860,6 +890,8 @@ if (values["extra-renders"]) {
   }
 }
 
+const allBundles = [bundle, extraBundle, ...additionalBundles].filter(Boolean);
+
 // Annotation-derived inventory (compose-ai-tools Phase 2): components discovery
 // resolved from `@CatalogComponent` / `@CatalogVariant` / `@CatalogGroup` travel on
 // each preview's `catalog` field in `previews.json`. Build the inventory from them
@@ -879,7 +911,7 @@ if (values["extra-renders"]) {
 // `candidates` above — so its `@CatalogComponent` must reach the inventory as well,
 // or the component would render but never enter `spec.groups`. Primary previews come
 // first, so a component present in both dedupes to the primary's annotation.
-const inventoryPreviews = [...bundle.previews, ...(extraBundle?.previews ?? [])];
+const inventoryPreviews = allBundles.flatMap((renderBundle) => renderBundle.previews ?? []);
 const { groups: annotationGroups, orphanVariants, withoutBreakpoints } =
   inventoryFromPreviews(inventoryPreviews, { breakpoints: catalogBreakpoints(spec) });
 if (withoutBreakpoints.length > 0) {
@@ -914,6 +946,26 @@ if (annotationGroups.length > 0) {
   );
 }
 
+// Repository-wide mode publishes every rendered preview, even when the hand-authored spec curates
+// only a primary catalog module. Annotation/spec entries stay authoritative; generated entries are
+// added only for function names neither inventory names. Single-module and legacy extra-module
+// calls never enter this block, so their output remains byte-for-byte shaped as before.
+if (values["generate-fallbacks"]) {
+  const fallbackGroups = generatedFallbackGroups(
+    moduleRecords,
+    claimedPreviewFunctions(spec.groups ?? []),
+    claimedComponentIds(spec.groups ?? []),
+  );
+  if (fallbackGroups.length > 0) {
+    spec.groups = [...(spec.groups ?? []), ...fallbackGroups];
+    const count = fallbackGroups.reduce((n, group) => n + group.components.length, 0);
+    console.log(
+      `[${spec.system}] generated ${count} fallback component(s) across ` +
+        `${fallbackGroups.length} module/preview group(s)`,
+    );
+  }
+}
+
 // Zero effective inventory: the spec declares no `groups` AND the render carried no
 // `@CatalogComponent` annotations (an author forgot them, or the render ran with a CLI/plugin that
 // predates catalog metadata). Fail here with a clear, actionable message rather than letting the
@@ -936,7 +988,7 @@ if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
 // when `groupOrder` is absent, so catalogs that don't set it are unchanged.
 spec.groups = applyGroupOrder(spec.groups, spec.groupOrder);
 
-const renderFailures = renderFailuresFromBundles([bundle, extraBundle], spec);
+const renderFailures = renderFailuresFromBundles(allBundles, spec);
 if (renderFailures.length > 0) {
   const signatures = new Set(renderFailures.map((f) => `${f.errorClass}\u0000${f.message}`));
   console.warn(
@@ -1057,15 +1109,14 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
     // Every daemon preview id per function, from the bundles' FULL preview lists — including the
     // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
     // gets declared even though no image of them exists to fold.
-    previewIdsByFunction: daemonPreviewIdsByFunction([bundle, extraBundle]),
+    previewIdsByFunction: daemonPreviewIdsByFunction(allBundles),
     // The same fan-outs with their render parameters. A separately named motion function may
     // declare annotations in a different order, so theme inheritance joins by axis identity rather
     // than zipping the two id arrays.
-    previewCellsByFunction: daemonPreviewCellsByFunction([bundle, extraBundle]),
-    // The bundle motion artifacts are read from. The primary only: a motion capture is published
-    // by the module that owns the component, and a supplementary render exists to fill in stills
-    // the primary could not produce.
-    motionBundle: bundle,
+    previewCellsByFunction: daemonPreviewCellsByFunction(allBundles),
+    // Motion artifacts are read from every catalog module. Keep the legacy extra-render supplement
+    // out: it fills in stills the primary could not produce and does not own motion captures.
+    motionBundle: [bundle, ...additionalBundles],
   });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
@@ -1325,7 +1376,11 @@ if (values["publish-live-bundle"]) {
   // Re-stamp each component's module-relative `sourceFile` (dropped by the pinned
   // buildCatalog) from the bundle's discovery previews, so the preview server can link a
   // preview to its source on GitHub. No-op when discovery recorded no paths.
-  const stampedSources = applySourceFiles(manifest, spec, sourceByFunction(bundle));
+  const sourcesByFunction = new Map();
+  for (const renderBundle of allBundles) {
+    for (const [fn, source] of sourceByFunction(renderBundle)) sourcesByFunction.set(fn, source);
+  }
+  const stampedSources = applySourceFiles(manifest, spec, sourcesByFunction);
   if (stampedSources > 0) {
     console.log(
       `[${spec.system}] stamped sourceFile on ${stampedSources} component(s) from discovery`,
@@ -1370,7 +1425,7 @@ if (values["publish-live-bundle"]) {
   //     mode-deferred record already names its theme and stays 1:1. `previewIds` stays, as the
   //     function's full list, for a consumer that wants the wider view.
   if (deferred.length > 0) {
-    const idsByFunction = daemonPreviewIdsByFunction([bundle, extraBundle]);
+    const idsByFunction = daemonPreviewIdsByFunction(allBundles);
     // Drift guard: re-derive every BAKED image's path and compare against what `buildCatalog`
     // actually wrote. A mismatch means the exporter's naming has moved out from under
     // `catalogImagePath`, so the derived deferred paths would point at routes no sticker will ever
@@ -1387,7 +1442,7 @@ if (values["publish-live-bundle"]) {
           `updated to match.`,
       );
     }
-    const records = expandDeferredRecords(deferred, spec, [bundle, extraBundle]);
+    const records = expandDeferredRecords(deferred, spec, allBundles);
     manifest.deferred = records.map((record) => {
       const ids = idsByFunction.get(record.preview) ?? [];
       return {
@@ -1426,7 +1481,7 @@ if (values["publish-live-bundle"]) {
     bridgeLivePreviewIds(
       manifest,
       spec,
-      [bundle, extraBundle],
+      allBundles,
       overriddenFunctions,
     );
     // The shared live daemon opens only the primary bundle. An extra-only image renders through a
@@ -1436,7 +1491,7 @@ if (values["publish-live-bundle"]) {
     // advertise them without eagerly parsing every supplement bundle.
     const stampedDeclarations = applyCatalogPreviewDeclarations(
       manifest,
-      [bundle, extraBundle],
+      allBundles,
     );
     if (stampedDeclarations > 0) {
       console.log(
@@ -1444,7 +1499,7 @@ if (values["publish-live-bundle"]) {
       );
     }
   }
-  stampPreviewDensities(manifest, spec, [bundle, extraBundle]);
+  stampPreviewDensities(manifest, spec, allBundles);
 
   // Publish the motion axis' bytes onto the branch, under `motion/`, and repoint each declaration
   // at where they landed.
@@ -1460,11 +1515,12 @@ if (values["publish-live-bundle"]) {
   // whose name each artifact inherits — see catalog-motion-publish.mjs), and because the rewritten
   // paths have to reach the `writeFile` that closes this block. Reading the bytes from the PRIMARY
   // bundle only mirrors `motionBundle` in the join above: a motion capture is published from the
-  // bundle that rendered it, and the `--extra-renders` supplement carries none.
+  // bundle that rendered it. Repository-wide publication therefore merges the entry views with
+  // deterministic primary-first precedence before copying the bytes.
   {
     const { published, unresolved, missing } = await publishMotionArtifacts(
       manifest,
-      bundle.entries,
+      combinedBundleEntries(allBundles),
       outPath,
     );
     if (published > 0 || missing.length > 0) {
@@ -1503,9 +1559,10 @@ if (values["publish-live-bundle"]) {
 // that ADDS a function (not just overrides a same-named one) carries its own layout tree + editable
 // figma-svg, which must land in the catalog too — otherwise a screen rendered from a second module is
 // PNG-only. Extra wins on a name clash, matching the candidate fold above.
-const layoutByFn = layoutByFunction(bundle);
-if (extraBundle)
-  for (const [fn, v] of layoutByFunction(extraBundle)) layoutByFn.set(fn, v);
+const layoutByFn = new Map();
+for (const renderBundle of allBundles) {
+  for (const [fn, value] of layoutByFunction(renderBundle)) layoutByFn.set(fn, value);
+}
 const fnByComponentId = new Map(
   spec.groups.flatMap((g) =>
     g.components.map((c) => [c.componentId, c.preview]),
@@ -1563,7 +1620,7 @@ const indexManifest = JSON.parse(
 // this is the *design* SVG — a designer imports it into Figma for an editable
 // component rather than a flat screenshot. Written under figma/<slug>.svg; the
 // index links it. Components whose render produced no drawing layers are skipped.
-const figmaSvgByFn = figmaSvgByFunctions([bundle, extraBundle]);
+const figmaSvgByFn = figmaSvgByFunctions(allBundles);
 const figmaDir = join(outPath, "figma");
 await mkdir(figmaDir, { recursive: true });
 const figmaSvgSlugs = new Set();
@@ -1584,12 +1641,11 @@ for (const component of catalog.components) {
   // figma/<slug>.svg (per-slug avoids <node>.png name collisions across components).
   // A hybrid sticker's raster crops live in whichever bundle carried its figma-svg; an id is unique
   // to one bundle, so merging both is safe (the other returns empty).
-  const rasters = extraBundle
-    ? new Map([
-        ...figmaRastersForId(bundle, carried.id),
-        ...figmaRastersForId(extraBundle, carried.id),
-      ])
-    : figmaRastersForId(bundle, carried.id);
+  const rasters = new Map(
+    allBundles.flatMap((renderBundle) => [
+      ...figmaRastersForId(renderBundle, carried.id),
+    ]),
+  );
   if (rasters.size) {
     figmaSvgHybridSlugs.add(componentSlug);
     const rasterDir = `${componentSlug}.figma-raster`;
@@ -1639,7 +1695,7 @@ for (const component of catalog.components) {
 // they are, since index.html, compare.html, design-parity's FIGMA_IMPORT.md and the
 // meshcore-mobile seeding runbook all reference that path today. The per-variant set
 // lives in a `figma/<slug>/` *directory*, so the two never collide.
-const figmaSvgsById = figmaSvgByIds([bundle, extraBundle]);
+const figmaSvgsById = figmaSvgByIds(allBundles);
 let figmaVariantSvgCount = 0;
 let figmaVariantGapCount = 0;
 const figmaVariantSvgPaths = new Set();
@@ -1674,12 +1730,11 @@ for (const component of indexManifest.components ?? []) {
     // Same two-bundle merge as the back-compat loop: a hybrid sticker's crops live in
     // whichever bundle carried its figma-svg, and a preview id belongs to one bundle,
     // so merging is safe (the other side returns empty).
-    const rasters = extraBundle
-      ? new Map([
-          ...figmaRastersForId(bundle, image.previewId),
-          ...figmaRastersForId(extraBundle, image.previewId),
-        ])
-      : figmaRastersForId(bundle, image.previewId);
+    const rasters = new Map(
+      allBundles.flatMap((renderBundle) => [
+        ...figmaRastersForId(renderBundle, image.previewId),
+      ]),
+    );
     if (rasters.size) {
       // Hybrid crops get a sibling dir keyed by the *variant* basename, not the slug:
       // a component's light and dark vectors share one `figma/<slug>/` dir and each
@@ -1715,8 +1770,8 @@ for (const component of indexManifest.components ?? []) {
   // live lane does not exist.
   const tags = catalogTagIndex(
     indexManifest,
-    [bundle, extraBundle],
-    resolveSemanticsIds(indexManifest, spec, [bundle, extraBundle]),
+    allBundles,
+    resolveSemanticsIds(indexManifest, spec, allBundles),
   );
   const tagsDir = join(outPath, "tags");
   await mkdir(tagsDir, { recursive: true });
@@ -1759,10 +1814,10 @@ const codeConnect = buildCodeConnectManifest({
   components: catalog.components,
   fnByComponentId,
   componentByComponentId,
-  targetByFn: targetsByFunction(bundle),
+  targetByFn: combinedBundleMap(allBundles, targetsByFunction),
   slug,
   figmaSvgSlugs,
-  sourceByFn: sourceByFunction(bundle),
+  sourceByFn: combinedBundleMap(allBundles, sourceByFunction),
   system: spec.system,
   title: spec.title,
   source: {
