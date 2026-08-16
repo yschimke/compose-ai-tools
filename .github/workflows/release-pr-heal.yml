@@ -67,6 +67,11 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+          # Checkout deliberately does not persist its token. Configure gh's
+          # credential helper explicitly so the guarded release-branch pushes
+          # below authenticate with this job's contents-write GITHUB_TOKEN.
+          gh auth setup-git
+
           # Only heal genuine release-please PRs. The branch name is NOT enough:
           # it's contributor-controlled, so a human or fork PR from a branch named
           # `release-please--…` could otherwise get merged + pushed by this job's
