@@ -126,6 +126,7 @@ internal class FakeRenderSession(
 
   /** Extension ids passed to [enableExtensions], in call order — for assertions. */
   val enabledExtensionIds = CopyOnWriteArrayList<String>()
+  val subscribedDataKinds = CopyOnWriteArrayList<String>()
   private val coalesceRemaining = AtomicInteger(coalescedOverrideRejections)
   private val listeners = CopyOnWriteArrayList<NotificationListener>()
   private val counter = AtomicInteger(0)
@@ -390,7 +391,10 @@ internal class FakeRenderSession(
     kind: String,
     params: JsonElement?,
     timeout: kotlin.time.Duration,
-  ): DataSubscribeResult = error("unused")
+  ): DataSubscribeResult {
+    subscribedDataKinds += kind
+    return DataSubscribeResult.OK
+  }
 
   override fun unsubscribeData(
     previewId: String,

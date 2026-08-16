@@ -211,6 +211,10 @@ dependencies {
   // Semantics text-diff engine + payload model for the `diff-semantics` command (issue #1785).
   implementation(project(":data-layoutinspector-core"))
 
+  // Material 3 resolved tokens + node-consumer attribution, joined to semantics for the live
+  // Typography inspection layer.
+  implementation(project(":data-theme-core"))
+
   // `fonts/used` sidecar file name for `bundle pack --with-semantics` font carriage.
   implementation(project(":data-fonts-core"))
 
