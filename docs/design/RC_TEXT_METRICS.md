@@ -255,10 +255,11 @@ single-line fixtures and from **8.730% to 0.000%** for the three paragraph fixtu
 single-line pixels are the clipped/visible partial glyph at the right edge; all ellipsis fixtures
 and every paragraph fixture match exactly on Android.
 
-`cmp-jvm` follows the same overflow mapping, but the current Compose Desktop/Skiko backend paints
-`StartEllipsis` and `MiddleEllipsis` as end ellipsis. The comprehensive strip makes that limit
-visible; a synchronous backend/fallback fix is tracked in
-[#3662](https://github.com/yschimke/compose-ai-tools/issues/3662).
+`cmp-jvm` follows the same overflow mapping. Compose Desktop/Skiko still paints its native
+`StartEllipsis` and `MiddleEllipsis` values as end ellipsis, so the JVM seam measures and truncates
+those two one-line modes synchronously, then asks Skiko to clip the already-ellipsized line. This is
+part of the first `ImageComposeScene` frame rather than an `onTextLayout` state update, and the
+comprehensive strip now shows the requested placement in the JVM column too.
 
 ## Not done yet
 

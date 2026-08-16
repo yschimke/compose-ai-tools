@@ -76,10 +76,10 @@ of single-line pixels and **8.730%** of paragraph pixels. The selected behavior 
 **0.154%** and **0.000%** respectively. End/start/middle ellipsis and every paragraph mode are
 pixel-identical on Android. Clip/visible retain a tiny right-edge partial-glyph difference.
 
-The JVM column also shows a real remaining limit: its current Compose Desktop/Skiko backend paints
-start and middle ellipsis as end ellipsis. That is tracked in
-[#3662](https://github.com/yschimke/compose-ai-tools/issues/3662), rather than hidden by the aggregate
-score.
+Compose Desktop/Skiko still paints its native start and middle overflow values as end ellipsis, so
+the JVM player resolves those two one-line modes synchronously from the measure-pass width. The JVM
+column now shows the requested placement in the first captured frame; which characters survive can
+still differ because the desktop lane shapes the line with different font metrics.
 
 The pictures also pin two non-obvious Java behaviors: multi-line clip continues beyond
 `maxLines = 3` while ellipsis stops at three, and the alignment value named `JUSTIFY` maps to normal
