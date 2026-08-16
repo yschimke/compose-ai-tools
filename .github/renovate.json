@@ -102,6 +102,17 @@
       "allowedVersions": "/^1\\.13\\./"
     },
     {
+      "description": "androidx.tracing:tracing: keep the daemon-specific catalog alias on the 1.x line. The standalone Android daemon sidecar packages this implementation dependency's full runtime classpath, while 2.x adds kotlinx-coroutines-core and androidx.collection even though the daemon only uses Trace.beginSection/endSection. The separate 2.x player alias is intentionally unaffected; moving the daemon to 2.x is a manual packaging decision.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "androidx.tracing:tracing"
+      ],
+      "matchCurrentValue": "/^1\\./",
+      "allowedVersions": "/^1\\./"
+    },
+    {
       "description": "compose-multiplatform: pin to the 1.10.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers. 1.11.0 ships ABI-breaking changes (non-Android `Shader` becomes a Compose wrapper type, `NativePaint`/`NativeCanvas` typealiases deprecated, `Paint.asFrameworkPaint`/`Canvas.nativeCanvas` replaced) and bumps the required Kotlin language/API to 2.2 — raising the floor is a manual decision. Keep `samples/cmp-shared`'s explicit `ui-tooling-preview` coord in lockstep so the plugin's compose-runtime compatibility check stays happy.",
       "matchManagers": [
         "gradle"
