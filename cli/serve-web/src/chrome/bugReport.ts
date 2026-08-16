@@ -109,6 +109,19 @@ function osScheme(): string {
 }
 
 /**
+ * The carried `?scheme=`, accepted only as one of the two values this can legitimately be.
+ *
+ * It arrives in a URL anyone can hand a visitor, and it lands in a markdown table cell — so
+ * `?scheme=dark|forged` would shear the Browser row and let arbitrary text pose as a diagnostic.
+ * An allowlist is the right shape here rather than escaping: there are exactly two valid answers,
+ * and anything else is not a mangled scheme but a value that was never a scheme at all. Unknown
+ * input falls back to this page's own scheme, which is at least a real observation.
+ */
+function knownScheme(value: string | null): string | undefined {
+    return value === "light" || value === "dark" ? value : undefined;
+}
+
+/**
  * On `/report-bug`, splice the browser's own facts into the report.
  *
  * The server fills the form's hidden `body` for everything it knows, leaving `{{client}}` where the
@@ -133,9 +146,13 @@ export function fillBugReportBody(): void {
     // The scheme of the page being REPORTED, carried here by the footer form; absent when the
     // visitor reached `/report-bug` directly, which is the one case the report page's own scheme
     // is the honest answer.
-    const reported =
-        new URLSearchParams(location.search).get("scheme") || undefined;
-    const filled = template.replace("{{client}}", clientBlock(reported));
+    const reported = knownScheme(
+        new URLSearchParams(location.search).get("scheme"),
+    );
+    // `replace` with a STRING replacement honours `$&`, `$'`, `` $` `` and `$1` — so a value that
+    // reached the block could splice copies of the surrounding report into itself. A function
+    // replacement is taken literally, which is what a substitution of fixed text should be.
+    const filled = template.replace("{{client}}", () => clientBlock(reported));
     body.value = filled;
     const preview = document.querySelector<HTMLElement>("#cp-bug-preview");
     if (preview) preview.textContent = filled;

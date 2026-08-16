@@ -941,7 +941,10 @@ without them having read it, is not something a footer button should do. So the 
 ![The bug-report page](design/evidence/serve-report-bug/serve-report-bug.light.png)
 
 **What it carries.** *Server*: the running build, whether the box is public or token-gated, uptime,
-and the Java + OS the renders actually happen on. *Page*: the path the visitor came from, and — when
+and the JVM + OS **the HTTP server itself runs on** — labelled `Server JVM` / `Server OS`, and
+deliberately not called "the render JVM": a project whose `daemon-launch.json` names a `javaLauncher`
+renders on that child JDK instead, so claiming this row described the renderer would file a failure
+under the wrong runtime. *Page*: the path the visitor came from, and — when
 that path names one — the design system, the preview, the catalog's `repo@branch` and the
 compose-ai-tools version that produced it, its trust verdict, its render lane, and any degradation
 in force. *Catalogs not loaded* and *Recent failures*: the same load errors and daemon/render
