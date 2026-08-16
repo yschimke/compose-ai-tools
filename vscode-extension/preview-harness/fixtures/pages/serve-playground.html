@@ -108,8 +108,8 @@ fun Greeting() {
         Text(&quot;Hello, Compose!&quot;)
     }
 }</textarea>
-          <div id="pg-status" class="cp-pg-status" hidden></div>
-          <ul id="pg-diagnostics" class="cp-pg-diags" hidden></ul>
+          <div id="pg-status" class="cp-pg-status" role="status" hidden></div>
+          <ul id="pg-diagnostics" class="cp-pg-diags" aria-live="polite" hidden></ul>
           <div id="pg-result" class="cp-doc-result cp-pg-result" hidden>
             <p id="pg-preview-note" class="cp-pg-status" hidden></p>
             <img id="pg-image" class="cp-pg-image" alt="Rendered first frame" hidden>
@@ -259,6 +259,55 @@ fun Greeting() {
   function writeSource(text) {
     if (editor) editor.setValue(text); else source.value = text;
   }
+  // CodeMirror diagnostics are deliberately drawn by this page instead of depending on its
+  // optional lint addon: the compiler already returns exact 0-based locations, and keeping the
+  // tiny renderer here preserves the editor's plain-textarea fallback. The list below the
+  // editor remains the accessible summary; these widgets put each message beside the code that
+  // caused it, which is where it is useful while fixing a failed compile.
+  var editorDiags = [];
+  var latestDiags = [];
+  function clearEditorDiags() {
+    if (!editor) return;
+    editorDiags.forEach(function (entry) {
+      if (entry.widget) entry.widget.clear();
+      if (entry.line != null) editor.removeLineClass(entry.line, "background", entry.lineClass);
+      if (entry.mark) entry.mark.clear();
+    });
+    editorDiags = [];
+  }
+  function renderEditorDiags() {
+    clearEditorDiags();
+    if (!editor) return;
+    var file = files[active];
+    latestDiags.forEach(function (d) {
+      if (d.file !== file.name || d.line == null || d.line < 0 || d.line >= editor.lineCount()) return;
+      var severity = d.severity || "info";
+      var lineClass = "cp-pg-line-" + severity;
+      editor.addLineClass(d.line, "background", lineClass);
+      var message = document.createElement("div");
+      message.className = "cp-pg-inline-diag cp-pg-inline-" + severity;
+      // The live summary below already announces the same diagnostic. Keep this visual copy
+      // out of the accessibility tree so a compile failure is not read twice.
+      message.setAttribute("aria-hidden", "true");
+      message.textContent = d.message;
+      var widget = editor.addLineWidget(d.line, message, { coverGutter: false, noHScroll: true });
+      var mark = null;
+      if (d.ch != null) {
+        var lineText = editor.getLine(d.line) || "";
+        var start = Math.max(0, Math.min(d.ch, lineText.length));
+        var endLine = d.endLine == null ? d.line : Math.max(d.line, d.endLine);
+        var endCh = d.endCh == null ? Math.min(lineText.length, start + 1) : d.endCh;
+        if (endLine !== d.line || endCh > start) {
+          mark = editor.markText(
+            { line: d.line, ch: start },
+            { line: endLine, ch: endCh },
+            { className: "cp-pg-range-" + severity }
+          );
+        }
+      }
+      editorDiags.push({ widget: widget, line: d.line, lineClass: lineClass, mark: mark });
+    });
+  }
   // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
   // buffer, `active` is the one the textarea is showing. A single-file snippet keeps exactly
   // the old shape, so nothing about the common case changes.
@@ -315,6 +364,8 @@ fun Greeting() {
     statusEl.textContent = text;
   }
   function clearOut() {
+    latestDiags = [];
+    clearEditorDiags();
     diags.hidden = true; diags.innerHTML = "";
     result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
     note.hidden = true; note.textContent = "";
@@ -330,11 +381,14 @@ fun Greeting() {
     active = i;
     writeSource(files[active].text);
     renderFiles();
+    renderEditorDiags();
   }
   function renderDiags(list) {
-    if (!list || !list.length) return;
+    latestDiags = list || [];
+    renderEditorDiags();
+    if (!latestDiags.length) return;
     diags.hidden = false;
-    list.forEach(function (d) {
+    latestDiags.forEach(function (d) {
       var li = document.createElement("li");
       li.className = "cp-pg-diag cp-pg-" + (d.severity || "info");
       // With several buffers open, "unresolved reference at line 5" is useless without the
@@ -346,8 +400,15 @@ fun Greeting() {
       li.textContent = (d.severity || "info") + ": " + d.message + loc;
       if (owner >= 0) {
         li.style.cursor = "pointer";
-        li.title = "Show " + d.file;
-        li.addEventListener("click", function () { showFile(owner); });
+        li.title = "Show " + d.file + (d.line != null ? ":" + (d.line + 1) : "");
+        li.addEventListener("click", function () {
+          showFile(owner);
+          if (editor && d.line != null) {
+            editor.setCursor({ line: d.line, ch: d.ch || 0 });
+            editor.scrollIntoView({ line: d.line, ch: d.ch || 0 }, 80);
+            editor.focus();
+          }
+        });
       }
       diags.appendChild(li);
     });

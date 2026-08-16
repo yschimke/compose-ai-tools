@@ -50,6 +50,23 @@
 .cp-pg-error { background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container); }
 .cp-pg-warning { background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); }
+/* Compiler locations stay visible in the editor while their full, accessible summary remains in
+   the list below it. A line tint makes the location scannable; the widget carries the actual
+   message immediately beneath the offending line. */
+.cp-pg-line-error { background: color-mix(in srgb, var(--md-sys-color-error-container) 55%, transparent); }
+.cp-pg-line-warning { background: light-dark(#fff4df, #362600); }
+.cp-pg-inline-diag { padding: 4px 12px; border-left: 3px solid currentcolor;
+  font-family: var(--md-sys-typescale-mono-font); font-size: 12.5px; line-height: 1.45; }
+.cp-pg-inline-error { background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container); }
+.cp-pg-inline-warning { background: light-dark(#ffdfb0, #4a3000);
+  color: light-dark(#573100, #ffd8a3); }
+.cp-pg-inline-info { background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface); }
+.cp-pg-range-error { text-decoration: underline wavy var(--md-sys-color-error) 1.5px;
+  text-underline-offset: 2px; }
+.cp-pg-range-warning { text-decoration: underline wavy light-dark(#8a4f00, #ffb95c) 1.5px;
+  text-underline-offset: 2px; }
 .cp-pg-result { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .cp-pg-image { max-width: 100%; border-radius: var(--md-sys-shape-corner-medium); border: 0;
   background: var(--md-sys-color-surface-container-lowest);
