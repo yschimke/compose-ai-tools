@@ -2671,8 +2671,8 @@ class ServeWebFixtureTest {
                 "compose-preview" to version,
                 "Mode" to "public (open)",
                 "Uptime" to "3d 4h",
-                "Java" to "17.0.11 (Eclipse Adoptium)",
-                "OS" to "Linux 6.8.0-generic (amd64)",
+                "Server JVM" to "17.0.11 (Eclipse Adoptium)",
+                "Server OS" to "Linux 6.8.0-generic (amd64)",
               ),
             ),
             ServeWeb.BugReportSection(

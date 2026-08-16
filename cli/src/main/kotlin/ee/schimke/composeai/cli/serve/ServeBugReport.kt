@@ -172,51 +172,79 @@ internal object ServeBugReport {
 
   /** The browser half of the report, filled client-side and spliced over [CLIENT_PLACEHOLDER]. */
   fun clientBlock(rows: List<Pair<String, String>>): String =
-    if (rows.isEmpty()) "" else "### Browser\n\n" + table(rows.map { "${it.first}|${it.second}" })
+    if (rows.isEmpty()) "" else "### Browser\n\n" + table(rows)
 
-  private fun serverRows(server: Server): List<String> = buildList {
-    server.version?.takeIf { it.isNotBlank() }?.let { add("compose-preview|`$it`") }
-    add("Mode|${if (server.public) "public (open)" else "token-gated"}")
-    server.uptimeSeconds?.takeIf { it >= 0 }?.let { add("Uptime|${duration(it)}") }
-    server.java?.takeIf { it.isNotBlank() }?.let { add("Java|`$it`") }
-    server.os?.takeIf { it.isNotBlank() }?.let { add("OS|`$it`") }
+  private fun serverRows(server: Server): List<Pair<String, String>> = buildList {
+    server.version?.takeIf { it.isNotBlank() }?.let { add("compose-preview" to code(it)) }
+    add("Mode" to (if (server.public) "public (open)" else "token-gated"))
+    server.uptimeSeconds?.takeIf { it >= 0 }?.let { add("Uptime" to duration(it)) }
+    // Labelled "Server JVM", not "Java", because that is all it is. A project whose
+    // `daemon-launch.json` names a `javaLauncher` renders on THAT JDK, not on the one running the
+    // HTTP server — so calling this "Java" would file a render failure under the wrong runtime and
+    // send a triager looking at the wrong toolchain. Naming the scope is honest and costs nothing;
+    // claiming the renderer's JDK without reading the daemon descriptor would not be.
+    server.java?.takeIf { it.isNotBlank() }?.let { add("Server JVM" to code(it)) }
+    server.os?.takeIf { it.isNotBlank() }?.let { add("Server OS" to code(it)) }
   }
 
-  private fun pageRows(page: Page): List<String> = buildList {
+  private fun pageRows(page: Page): List<Pair<String, String>> = buildList {
     val url = ServeIssueReport.withoutToken(page.url)?.takeIf { it.isNotBlank() }
     val path = page.path?.trim()?.takeIf { it.isNotEmpty() }
     when {
       // The path is the readable identity and the URL is the openable one, so when both are known
       // the row is a link *labelled* by the path rather than a bare URL or a dead code span.
-      url != null && path != null -> add("Page|[`$path`]($url)")
-      url != null -> add("Page|$url")
-      path != null -> add("Page|`$path`")
+      url != null && path != null -> add("Page" to "[${code(path)}](${cell(url)})")
+      url != null -> add("Page" to text(url))
+      path != null -> add("Page" to code(path))
     }
-    page.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Design system|`$it`") }
-    page.previewId?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Preview|`$it`") }
-    page.catalog?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Catalog|`$it`") }
+    page.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Design system" to code(it)) }
+    page.previewId?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Preview" to code(it)) }
+    page.catalog?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Catalog" to code(it)) }
     page.catalogToolVersion
       ?.trim()
       ?.takeIf { it.isNotEmpty() }
-      ?.let { add("Catalog rendered by|compose-ai-tools $it") }
-    page.trust?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Trust|$it") }
-    page.renderLane?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Render lane|$it") }
+      ?.let { add("Catalog rendered by" to "compose-ai-tools ${text(it)}") }
+    page.trust?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Trust" to text(it)) }
+    page.renderLane?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Render lane" to text(it)) }
     page.degradations
       .map { it.trim() }
       .filter { it.isNotEmpty() }
       .takeIf { it.isNotEmpty() }
-      ?.let { add("Degraded|${it.joinToString("; ")}") }
+      ?.let { add("Degraded" to text(it.joinToString("; "))) }
   }
 
-  /** Rows arrive as `key|value`; the header is the same two-column shell the other report uses. */
-  private fun table(rows: List<String>): String = buildString {
+  /**
+   * The header is the same two-column shell the other report uses. Values arrive already composed
+   * (a code span, a link, plain text) with their *raw* parts escaped by [code] / [text] — escaping
+   * here instead would mangle the markdown those rows deliberately contain.
+   */
+  private fun table(rows: List<Pair<String, String>>): String = buildString {
     append("| | |\n| --- | --- |\n")
-    rows.forEach { row ->
-      val cut = row.indexOf('|')
-      append("| ").append(row.substring(0, cut)).append(" | ")
-      append(row.substring(cut + 1)).append(" |\n")
+    rows.forEach { (key, value) ->
+      append("| ").append(key).append(" | ").append(value).append(" |\n")
     }
   }
+
+  /**
+   * Make arbitrary text safe inside a markdown table cell.
+   *
+   * Nearly every value in this report is text this server did not write: a degradation detail, a
+   * catalog's own provenance and trust strings, a load error. A `|` in any of them shears the row
+   * into extra columns, and a backtick closes the code span the value sits in and lets the rest
+   * render as markdown — so a report about a broken catalog arrives with its diagnostics visibly
+   * mangled, which is the worst moment for the table to stop being a table.
+   *
+   * Order matters: the backslash goes first, or it would double the escapes added after it. Same
+   * rule, and the same reason, as the browser block's own escaping in `bugReport.ts`.
+   */
+  private fun cell(value: String): String =
+    value.replace("\\", "\\\\").replace("|", "\\|").replace("`", "\\`")
+
+  /** A value shown as a code span, with its content escaped. */
+  private fun code(value: String): String = "`${cell(value)}`"
+
+  /** A value shown as plain text, with its content escaped. */
+  private fun text(value: String): String = cell(value)
 
   private fun bullets(lines: List<String>): String =
     lines.joinToString("\n", postfix = "\n") { "- $it" }
@@ -331,5 +359,18 @@ internal object ServeBugReport {
       "report-bug",
       "p",
       "compare",
+      // Query-mode routes: `/pages/foo?session=…`, `/parity?session=…`. These ARE catalog pages,
+      // but the catalog is named by `?session=`, not by the first segment — reading `pages` or
+      // `parity` as a system id would invent a design system that does not exist and file the
+      // report against it. Which catalog they belong to is recovered from the explicit session.
+      "pages",
+      "parity",
+      "usage",
+      "render",
+      "reference",
+      "hero",
+      "api",
+      "admin",
+      "wasm",
     )
 }

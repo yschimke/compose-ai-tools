@@ -57,8 +57,8 @@ class ServeBugReportTest {
     assertTrue(body.contains("| compose-preview | `1.9.0` |"), body)
     assertTrue(body.contains("| Mode | public (open) |"), body)
     assertTrue(body.contains("| Uptime | 3h 12m |"), body)
-    assertTrue(body.contains("| Java | `17.0.11 (Eclipse Adoptium)` |"), body)
-    assertTrue(body.contains("| OS | `Linux 6.18.5 (amd64)` |"), body)
+    assertTrue(body.contains("| Server JVM | `17.0.11 (Eclipse Adoptium)` |"), body)
+    assertTrue(body.contains("| Server OS | `Linux 6.18.5 (amd64)` |"), body)
     assertTrue(body.contains("| Design system | `jetnews` |"), body)
     assertTrue(body.contains("| Preview | `Article__dark` |"), body)
     assertTrue(
@@ -139,6 +139,45 @@ class ServeBugReportTest {
     // A fence marker inside the failure text would close the block early and let the rest render.
     assertFalse(body.substringAfter("### Recent failures").contains("boom ```"), body)
     assertTrue(body.contains("boom ''' and | a pipe"), body)
+  }
+
+  @Test
+  fun `table syntax in a diagnostic value cannot shear the row or escape its code span`() {
+    // Almost every value here is text this server did not write — a degradation detail, a
+    // catalog's trust string, a load error. A `|` splits the row into extra columns and a backtick
+    // closes the code span, so a report about a broken catalog would arrive visibly mangled.
+    val hostile =
+      page.copy(
+        system = "we|ird",
+        trust = "branch:owner/repo | forged",
+        renderLane = "live `daemon`",
+        degradations = listOf("broken — a\\b | c"),
+      )
+    val body = ServeBugReport.body(server, hostile)
+    assertTrue(body.contains("| Design system | `we\\|ird` |"), body)
+    assertTrue(body.contains("| Trust | branch:owner/repo \\| forged |"), body)
+    assertTrue(body.contains("| Render lane | live \\`daemon\\` |"), body)
+    // Backslash escaped FIRST, or it would double the escapes added after it.
+    assertTrue(body.contains("| Degraded | broken — a\\\\b \\| c |"), body)
+  }
+
+  @Test
+  fun `the JVM and OS rows say whose they are`() {
+    // A project whose `daemon-launch.json` names a javaLauncher renders on THAT JDK. Calling this
+    // "Java" would file a render failure under the wrong runtime.
+    val body = ServeBugReport.body(server, page)
+    assertTrue(body.contains("| Server JVM |"), body)
+    assertTrue(body.contains("| Server OS |"), body)
+    assertFalse(body.contains("| Java |"), body)
+  }
+
+  @Test
+  fun `query-mode catalog routes are not mistaken for a design system`() {
+    // `/pages/foo?session=…` and `/parity?session=…` ARE catalog pages, but the catalog is named
+    // by the query, not the first segment — reading `pages` as a system id invents one.
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/pages/shape"))
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/parity"))
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/usage/Button"))
   }
 
   @Test

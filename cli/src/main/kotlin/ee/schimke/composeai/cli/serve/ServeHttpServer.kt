@@ -49,6 +49,8 @@ import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -3460,14 +3462,19 @@ class ServeHttpServer(
     val system =
       siteSystem()
         ?: ref.system?.takeIf { sessions.isKnownSession(it) }
-        // ROOT-FORM ONLY, and both halves of that guard are load-bearing. `ref.system == null`
-        // keeps a path that DID name a system — an unknown or misspelled one — from being
-        // silently re-attributed to the default catalog, which would attach that catalog's
-        // provenance and trust, and could even match a same-named preview in it. `previewSegment
-        // != null` keeps the server's own pages (`/`, `/status`, `/docs/…`, a 404) from claiming
-        // to belong to the default catalog at all: they belong to the box, not to a system.
+        // An EXPLICIT `?session=` is the visitor's own page saying which catalog it was showing,
+        // so it is honoured wherever it appears — the query-mode catalog routes (`/?session=…`,
+        // `/pages/foo?session=…`, `/parity?session=…`) carry the footer too and have no system in
+        // their path at all.
+        ?: explicitSessionId(from)?.takeIf { sessions.isKnownSession(it) }
+        // The DEFAULT session is a guess, not a statement, so it stays narrow: root-form viewers
+        // only. `ref.system == null` keeps a path that DID name a system — an unknown or
+        // misspelled one — from being silently re-attributed to the default catalog, which would
+        // attach that catalog's provenance and trust and could even match a same-named preview in
+        // it. `previewSegment != null` keeps the server's own pages (`/`, `/status`, `/docs/…`, a
+        // 404) from claiming to belong to the default catalog at all: they belong to the box.
         ?: if (ref.system == null && ref.previewSegment != null) {
-          fromSessionId(from)?.takeIf { sessions.isKnownSession(it) }
+          defaultSessionId.takeIf { it.isNotBlank() && sessions.isKnownSession(it) }
         } else null
     // Resident host when there is one. `peekHost` deliberately never resumes a suspended catalog,
     // so an idle-timed-out session reads as null here — the last-known snapshot below is what keeps
@@ -3582,16 +3589,33 @@ class ServeHttpServer(
    * host's default. Only meaningful for a path with no `/{system}` prefix; the caller checks the
    * result is a session this server actually knows before using it.
    */
-  private fun fromSessionId(from: String?): String? {
+  private fun explicitSessionId(from: String?): String? {
     val query = from?.substringAfter('?', missingDelimiterValue = "").orEmpty()
-    val named =
+    val raw =
       query
         .split('&')
         .firstOrNull { it.startsWith("session=") }
         ?.substringAfter('=')
-        ?.takeIf { it.isNotBlank() }
-    return named ?: defaultSessionId.takeIf { it.isNotBlank() }
+        ?.takeIf { it.isNotBlank() } ?: return null
+    // Decoded, because `ServeWeb.queryString` percent-encodes it on the way out: an on-demand
+    // revision session (`feature/foo`) reaches us as `session=feature%2Ffoo` while the registry
+    // stores the raw key, so looking up the encoded spelling silently finds nothing and the report
+    // loses its catalog, preview, render lane and screenshot.
+    return decodeQueryValue(raw)
   }
+
+  /**
+   * Percent-decode a query VALUE without the `+`-means-space rule.
+   *
+   * `URLDecoder` applies `application/x-www-form-urlencoded`, where a literal `+` decodes to a
+   * space — but these values are produced by `WebEscaping.urlEncodeSegment`, which leaves `+`
+   * alone. Pre-escaping the `+` keeps it literal through the decode, so a session or preview id
+   * containing one survives instead of turning into a space that matches nothing.
+   */
+  private fun decodeQueryValue(value: String): String? = runCatching {
+    URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8)
+  }
+    .getOrNull()
 
   /**
    * The reported page's own override query, re-emitted as a `?…` suffix for a `/render` URL.
@@ -3668,8 +3692,8 @@ class ServeHttpServer(
           server.version?.let { add("compose-preview" to it) }
           add("Mode" to if (server.public) "public (open)" else "token-gated")
           server.uptimeSeconds?.let { add("Uptime" to ServeBugReport.duration(it)) }
-          server.java?.let { add("Java" to it) }
-          server.os?.let { add("OS" to it) }
+          server.java?.let { add("Server JVM" to it) }
+          server.os?.let { add("Server OS" to it) }
         },
       )
     )

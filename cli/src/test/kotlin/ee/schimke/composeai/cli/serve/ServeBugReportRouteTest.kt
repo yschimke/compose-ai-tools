@@ -29,7 +29,12 @@ class ServeBugReportRouteTest {
       .toByteArray()
 
   private fun bundle(label: String, previewIds: List<String>): ServeBundleHost {
-    val dir = Files.createTempDirectory("bugreport-$label").toFile().also { it.deleteOnExit() }
+    // A session id may legitimately contain `/` (an on-demand revision), which is not legal in a
+    // temp-directory prefix — the id is the session key, not a filename.
+    val dir =
+      Files.createTempDirectory("bugreport-${label.replace('/', '-')}").toFile().also {
+        it.deleteOnExit()
+      }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     previewIds.forEach { File(dir, "previews/$it.png").writeBytes(png()) }
@@ -173,6 +178,30 @@ class ServeBugReportRouteTest {
     assertFalse(body.contains("render/Red.png"), body)
     // The path itself is still reported — that IS where the visitor was.
     assertTrue(body.contains("/not-a-system/p/Red"), body)
+  }
+
+  @Test
+  fun `an explicit session is honoured on query-mode catalog routes with no preview`() {
+    // `/?session=…`, `/pages/foo?session=…`, `/parity?session=…` carry the footer and have no
+    // system in their path at all — the visitor's own page named the catalog, so it is used.
+    server = newServer(public = true, token = "unused")
+    for (path in listOf("%2F", "%2Fpages%2Fshape", "%2Fparity")) {
+      val (_, body) = get("/report-bug?from=$path%3Fsession%3Dcompose-m3")
+      assertTrue(body.contains("design-artifacts/compose-m3"), "$path: $body")
+      assertTrue(body.contains("<th scope=\"row\">Design system</th>"), "$path: $body")
+    }
+  }
+
+  @Test
+  fun `a percent-escaped session is decoded before it is looked up`() {
+    // `ServeWeb.queryString` percent-encodes it on the way out, so an on-demand revision session
+    // arrives as `session=a%2Fb` while the registry stores the raw key — looking up the encoded
+    // spelling silently finds nothing and the report loses everything.
+    registry.register("rev/one", host = bundle("rev/one", listOf("Blue")), pinned = true)
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fp%2FBlue%3Fsession%3Drev%252Fone")
+    assertTrue(body.contains("<th scope=\"row\">Preview</th>"), body)
+    assertTrue(body.contains("Blue"), body)
   }
 
   @Test
