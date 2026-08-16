@@ -746,6 +746,8 @@ function refreshSnapshot() {
                 status.textContent = "";
                 setSnapshotLoading(false);
                 clearModeError();
+                syncSpecBaseline();
+                snapshotSettled();
             };
             next.onerror = function () {
                 URL.revokeObjectURL(objectUrl);
@@ -797,9 +799,6 @@ function renderUrl(ext: string) {
         (qs ? "?" + qs : "")
     );
 }
-// Params that carry the LINK rather than the picture: they gate access or pin a revision, and
-// two URLs differing only in these render the same pixels.
-var LINK_ONLY_PARAMS = ["token", "session", "at"];
 // Whether the stage is showing the render the PUBLISHED design-spec score was measured against.
 //
 // The catalog bakes that score against its own snapshot — default theme, declared knob defaults,
@@ -813,14 +812,11 @@ var LINK_ONLY_PARAMS = ["token", "session", "at"];
 // other. The baked number then describes a frame that is no longer on the stage — and the spec
 // lane, scoring what IS on the stage, disagrees with the chip by ten points or more.
 function specAtBaseline() {
-    var url = renderUrl(".png");
-    var mark = url.indexOf("?");
-    if (mark < 0) return true;
-    var parts = url.slice(mark + 1).split("&");
-    for (var i = 0; i < parts.length; i++) {
-        if (LINK_ONLY_PARAMS.indexOf(parts[i].split("=")[0]) < 0) return false;
-    }
-    return true;
+    return rules.specAtPublishedBaseline(
+        root.getAttribute("data-mode") || "snapshot",
+        renderUrl(".png"),
+        img.getAttribute("data-cp-src"),
+    );
 }
 // The inline theme bootstrap publishes the initial value before serve-components.js upgrades
 // the spec element. Keep both the stage attribute and the installed element current from here on:
@@ -2567,7 +2563,10 @@ function enterMode(m: string) {
     // some unrelated control moved, and the pending push landing on that edit instead. Sync here
     // so every transition writes `?mode=` at the moment it happens. (The snapshot branch already
     // synced via refreshSnapshot; this second call is a no-op replace with identical values.)
-    else syncUrl();
+    else {
+        syncUrl();
+        syncSpecBaseline();
+    }
 }
 // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
 // live lane is active drops back to the static vector render; pressing it in the static lane

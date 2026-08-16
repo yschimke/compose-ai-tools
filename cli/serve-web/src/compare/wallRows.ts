@@ -27,7 +27,8 @@ export function keepRow(
     const needle = query.trim().toLowerCase();
     if (needle && !row.hay.includes(needle)) return false;
     const wanted = preview.trim().toLowerCase();
-    if (wanted && !row.previewIds.toLowerCase().includes(wanted)) return false;
+    const previewIds = row.previewIds.toLowerCase().split(/\s+/);
+    if (wanted && !previewIds.includes(wanted)) return false;
     return true;
 }
 
