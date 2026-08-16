@@ -1819,6 +1819,33 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-source-panel pre { margin: 0; white-space: pre; overflow-x: auto;
   font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.8125rem; line-height: 1.55; }
+/* CodeMirror is an optional, read-only upgrade over the <pre> above. Let the panel own both axes
+   rather than nesting a second scroll box, and paint its gutter from the same surface roles as the
+   rest of the viewer. `viewportMargin: Infinity` in viewer.js makes this auto-height safe. */
+.cp-source-panel .CodeMirror { height: auto; background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem; line-height: 1.55; }
+.cp-source-panel .CodeMirror-scroll { overflow: visible !important; }
+.cp-source-panel .CodeMirror-lines { padding: 0; }
+.cp-source-panel .CodeMirror-gutters { background: var(--md-sys-color-surface-container);
+  border-right: 1px solid var(--md-sys-color-outline-variant); }
+.cp-source-panel .CodeMirror-linenumber { color: var(--md-sys-color-outline); }
+.cp-source-panel .CodeMirror-selected { background: var(--md-sys-color-secondary-container); }
+/* Same Kotlin token palette as playground.css. It follows the page's pinned `color-scheme` through
+   light-dark(), rather than following the OS after the visitor has explicitly chosen a scheme. */
+.cp-source-panel .cm-keyword { color: light-dark(#770088, #c792ea); }
+.cp-source-panel .cm-def { color: light-dark(#0000ff, #82aaff); }
+.cp-source-panel .cm-variable-3, .cp-source-panel .cm-type {
+  color: light-dark(#008855, #82aaff); }
+.cp-source-panel .cm-string { color: light-dark(#aa1111, #c3e88d); }
+.cp-source-panel .cm-string-2 { color: light-dark(#ff5500, #c3e88d); }
+.cp-source-panel .cm-number { color: light-dark(#116644, #f78c6c); }
+.cp-source-panel .cm-comment { color: light-dark(#aa5500, #7d8799); }
+.cp-source-panel .cm-meta { color: light-dark(#555555, #ffcb6b); }
+.cp-source-panel .cm-atom { color: light-dark(#221199, #ffcb6b); }
+.cp-source-panel .cm-operator, .cp-source-panel .cm-punctuation {
+  color: light-dark(currentcolor, #89ddff); }
 .cp-source-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   margin-top: 12px; }
 .cp-source-note { margin: 0 0 12px; color: var(--cp-fg-muted); font-size: 0.75rem;

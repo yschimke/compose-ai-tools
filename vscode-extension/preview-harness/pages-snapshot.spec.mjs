@@ -321,9 +321,11 @@ const STYLED_FIXTURES = new Set([
 ]);
 const SERVE_ASSETS = [
   ["serve.css", "text/css"],
+  ["codemirror.css", "text/css"],
   ["playground.css", "text/css"],
   ["serve-chrome.js", "text/javascript"],
   ["serve-components.js", "text/javascript"],
+  ["codemirror.js", "text/javascript"],
   ["viewer.js", "text/javascript"],
   ["format-compare.js", "text/javascript"],
 ];
@@ -1266,7 +1268,7 @@ const FIXTURE_STATES = [
       );
       await page.click("#cp-source-chip");
       await page.waitForFunction(
-        () => !!document.querySelector("#cp-source-panel pre code"),
+        () => !!document.querySelector("#cp-source-panel .CodeMirror-code"),
       );
     },
   },
