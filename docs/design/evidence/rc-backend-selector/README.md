@@ -26,7 +26,7 @@ selector only offers lanes that actually re-render.
 
 The images below are the exact chip markup + CSS the viewer emits (`ServeWeb.viewerPage`), rendered
 in the headless Chromium shipped in the agent environment. Two host shapes are shown: a daemon-backed
-Android host (js + java + cmp-android live, cmp-jvm disabled, default = java) and a static bundle host
+Android host (js + java + cmp-android live, cmp-jvm disabled, default = cmp-android) and a static bundle host
 (only the js canvas, default = js).
 
 ### Light

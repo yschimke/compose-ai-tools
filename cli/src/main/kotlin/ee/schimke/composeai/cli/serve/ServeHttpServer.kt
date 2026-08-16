@@ -771,6 +771,12 @@ class ServeHttpServer(
         if (playgroundService != null) {
           val svc = playgroundService
           post("/api/{version}/compiler/run") { handlePlaygroundRun(svc) }
+          if (svc.editLeasesEnabled) {
+            post("/api/{version}/compiler/edit-lease") { handlePlaygroundEditLeaseAcquire(svc) }
+            post("/api/{version}/compiler/edit-lease/release") {
+              handlePlaygroundEditLeaseRelease(svc)
+            }
+          }
           // The runtime catalog selector's list. Fetched by the editor on load rather than only
           // baked into the page: catalogs are fetched in the background *after* the server is up,
           // so
@@ -1479,6 +1485,7 @@ class ServeHttpServer(
         pinnedCatalogSystems = service.pinnedCatalogSystems,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
+        editingLeaseEnabled = service.editLeasesEnabled && githubAuth?.currentLogin(call) != null,
       ),
       ContentType.Text.Html,
     )
@@ -1659,11 +1666,74 @@ class ServeHttpServer(
       )
       return
     }
-    val response = withContext(Dispatchers.IO) { service.run(request, isSecurityChecked = true) }
+    val response =
+      withContext(Dispatchers.IO) {
+        service.run(
+          request,
+          isSecurityChecked = true,
+          authenticatedOwner = githubAuth?.currentLogin(call),
+        )
+      }
     call.respondText(
       JSON.encodeToString(PlaygroundRunResponse.serializer(), response),
       ContentType.Application.Json,
     )
+  }
+
+  private suspend fun RoutingContext.handlePlaygroundEditLeaseAcquire(
+    service: PlaygroundCompileService
+  ) {
+    if (rejectBadToken()) return
+    if (rejectMissingGithubAuth(api = true)) return
+    if (rejectMissingGithubRepoAccess(api = true)) return
+    val owner = githubAuth?.currentLogin(call)
+    if (owner == null) {
+      call.respondText(
+        "GitHub sign-in is required for live editing.",
+        status = HttpStatusCode.Unauthorized,
+      )
+      return
+    }
+    val result = withContext(Dispatchers.IO) { service.acquireEditLease(owner) }
+    call.respondText(
+      JSON.encodeToString(PlaygroundEditLeaseResponse.serializer(), result),
+      ContentType.Application.Json,
+      if (result.acquired) HttpStatusCode.OK else HttpStatusCode.Conflict,
+    )
+  }
+
+  private suspend fun RoutingContext.handlePlaygroundEditLeaseRelease(
+    service: PlaygroundCompileService
+  ) {
+    if (rejectBadToken()) return
+    if (rejectMissingGithubAuth(api = true)) return
+    if (rejectMissingGithubRepoAccess(api = true)) return
+    val owner = githubAuth?.currentLogin(call)
+    if (owner == null) {
+      call.respondText(
+        "GitHub sign-in is required for live editing.",
+        status = HttpStatusCode.Unauthorized,
+      )
+      return
+    }
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
+      }
+    val request = body?.let {
+      runCatching {
+        JSON.decodeFromString(
+          PlaygroundEditLeaseReleaseRequest.serializer(),
+          it.decodeToString(),
+        )
+      }
+        .getOrNull()
+    }
+    if (request == null || !service.releaseEditLease(owner, request.lease)) {
+      call.respondText("Live-edit lease not found.", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.respondText("{\"released\":true}", ContentType.Application.Json)
   }
 
   /** `GET /d/{id}`: the permalink page. An expired (or unknown) id is a styled 404, not a hint. */
@@ -2322,16 +2392,36 @@ class ServeHttpServer(
    * A session with no delivery branch behind it (an uploaded bundle, a local project) gets no
    * revision surface at all rather than an empty control.
    */
-  private fun RoutingContext.catalogRevisions(renderHost: ServeHost): ServeWeb.CatalogRevisions {
+  private fun RoutingContext.catalogRevisions(
+    renderHost: ServeHost,
+    previewId: String? = null,
+  ): ServeWeb.CatalogRevisions {
     val host = catalogBundleHost(renderHost) ?: return ServeWeb.CatalogRevisions.NONE
     if (!host.supportsPinnedRevisions) return ServeWeb.CatalogRevisions.NONE
     return ServeWeb.CatalogRevisions(
       pinned =
         ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM]),
-      revisions = host.revisions,
+      revisions = if (previewId == null) host.revisions else availableRevisions(host, previewId),
       repo = host.provenance?.repo,
     )
   }
+
+  /**
+   * The catalog publishes as they apply to one preview, newest first.
+   *
+   * A delivery branch's feed is catalog-wide, so it includes commits from before a newly-added
+   * preview existed. Offering those as this preview's versions only manufactures links to honest
+   * 404s. The publisher rolls a compact preview index forward with every catalog generation, so
+   * this is an in-memory lookup rather than one historical `catalog.json` fetch per row. A missing
+   * index or entry fails open, keeping older publishers backward-compatible.
+   */
+  private fun availableRevisions(
+    host: ServeBundleHost,
+    previewId: String,
+  ): List<ServeCatalogRevision.Revision> =
+    host.revisions.filterIndexed { index, revision ->
+      index == 0 || host.revisionContainsPreview(revision.commit, previewId) != false
+    }
 
   /**
    * Answer one **pinned** image request: the published bytes at a delivery-branch commit, or a 404
@@ -2584,7 +2674,7 @@ class ServeHttpServer(
           repo = reportContext.repo,
           login = githubAuth?.currentLogin(call),
         )
-      val revisions = catalogRevisions(renderHost)
+      val revisions = catalogRevisions(renderHost, preview.id)
       val pinned = revisions.pinned != null
       markGeneration("static-page", pageCacheControl())
       call.respondText(
@@ -3782,6 +3872,20 @@ class ServeHttpServer(
                     trackedCallers = it.trackedCallers(),
                   )
                 },
+              editing =
+                h.editing?.invoke()?.let {
+                  EditingDto(
+                    enabled = it.enabled,
+                    active = it.active,
+                    expiresAtEpochMs = it.expiresAtEpochMs,
+                    lastRevision = it.lastRevision,
+                    acquisitions = it.acquisitions,
+                    compileAttempts = it.compileAttempts,
+                    incrementalCompiles = it.incrementalCompiles,
+                    fullFallbacks = it.fullFallbacks,
+                    lastCompileMillis = it.lastCompileMillis,
+                  )
+                },
             )
           },
       )
@@ -4455,7 +4559,7 @@ class ServeHttpServer(
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
       val previewId = call.parameters["name"]
-      val revisions = catalogRevisions(renderHost)
+      val revisions = catalogRevisions(renderHost, previewId)
       // Which catalog decides what this page is *about*. Unpinned it is the session's own list;
       // under a pin it is the revision's own catalog, asked FIRST — the same authority rule the
       // asset lanes follow, and for the same reason. Asking the tip first looks harmless while a
@@ -4484,7 +4588,32 @@ class ServeHttpServer(
           ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
       }
       if (preview == null) {
-        respondNotFoundHtml("That preview does not exist in this catalog.")
+        if (revisions.pinned != null && previewId != null) {
+          // The selected publish answered authoritatively that this id was absent. Keep the 404 —
+          // serving today's preview here would lie about the pin — but retain the revision menu so
+          // a catalog-wide publish that predates this preview is not a navigation dead end.
+          val skin = siteSkin()
+          call.respondText(
+            ServeWeb.unavailablePreviewRevisionPage(
+              previewId = previewId,
+              token = token,
+              sessionId = webSessionId,
+              basePath = basePath,
+              isPublic = isPublic,
+              revisions = revisions,
+              unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+              version = BUNDLE_VERSION,
+              siteName = skin.first,
+              themeCss = skin.second,
+              themeStorageKey = skin.third,
+              sessionInOrigin = siteSystem() != null,
+            ),
+            ContentType.Text.Html,
+            HttpStatusCode.NotFound,
+          )
+        } else {
+          respondNotFoundHtml("That preview does not exist in this catalog.")
+        }
         return@withLeasedSession
       }
       // Offer the in-browser Wasm tier when this catalog session has a Wasm app registered.
@@ -6361,6 +6490,21 @@ private data class PlaygroundDto(
   val catalogSelector: CatalogSelectorDto? = null,
   /** The per-caller compile budget, or null when the lane is unmetered. */
   val rateLimit: RateLimitDto? = null,
+  /** Authenticated single-lease incremental editing trial, or null on older/unwired lanes. */
+  val editing: EditingDto? = null,
+)
+
+@Serializable
+private data class EditingDto(
+  val enabled: Boolean,
+  val active: Boolean,
+  val expiresAtEpochMs: Long? = null,
+  val lastRevision: Long? = null,
+  val acquisitions: Long,
+  val compileAttempts: Long,
+  val incrementalCompiles: Long,
+  val fullFallbacks: Long,
+  val lastCompileMillis: Long? = null,
 )
 
 @Serializable

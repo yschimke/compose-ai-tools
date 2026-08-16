@@ -84,6 +84,7 @@ internal object CliFlags {
       "--playground-catalog-limit",
       "--playground-rate-limit",
       "--playground-caller-concurrency",
+      "--playground-edit-lease-ttl",
       "--extra-maven-repos",
       "--trust-store",
       "--catalogs",

@@ -205,6 +205,110 @@ class PlaygroundSourceCleanerTest {
     assertEquals(emptyList(), result.residue)
   }
 
+  @Test
+  fun `a system Material 3 theme wrapper keeps its lambda and follows preview uiMode`() {
+    val source =
+      """
+      package com.example.catalog
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import com.example.catalog.Sticker
+
+      @Composable
+      fun CardPreview() = Sticker {
+        Text("Card")
+      }
+      """
+        .trimIndent()
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "Sticker" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.RENAME,
+                renameTo = "MaterialTheme",
+                special = UsageRules.MATERIAL3_SYSTEM_THEME,
+              )
+          )
+      )
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source,
+          source.lines().indexOfFirst { it.contains("Text(\"Card\")") } + 1,
+          rules,
+        )
+      )
+
+    assertTrue(
+      result.text.contains(
+        "MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {"
+      ),
+      result.text,
+    )
+    assertTrue(result.text.contains("Text(\"Card\")"), result.text)
+    assertTrue(
+      result.text.contains("import androidx.compose.foundation.isSystemInDarkTheme"),
+      result.text,
+    )
+    assertTrue(result.text.contains("import androidx.compose.material3.MaterialTheme"), result.text)
+    assertTrue(
+      result.text.contains("import androidx.compose.material3.darkColorScheme"),
+      result.text,
+    )
+    assertTrue(
+      result.text.contains("import androidx.compose.material3.lightColorScheme"),
+      result.text,
+    )
+    assertFalse(result.text.contains("import com.example.catalog.Sticker"), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  @Test
+  fun `a system Material 3 theme rule does not discard wrapper arguments`() {
+    val source =
+      """
+      package com.example.catalog
+
+      import androidx.compose.runtime.Composable
+      import com.example.catalog.Sticker
+
+      @Composable
+      fun CardPreview() = Sticker("brand") {
+        Unit
+      }
+      """
+        .trimIndent()
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "Sticker" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.RENAME,
+                renameTo = "MaterialTheme",
+                special = UsageRules.MATERIAL3_SYSTEM_THEME,
+              )
+          )
+      )
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source,
+          source.lines().indexOfFirst { it.contains("Unit") } + 1,
+          rules,
+        )
+      )
+
+    assertTrue(result.text.contains("Sticker(\"brand\")"), result.text)
+    assertEquals(listOf("Sticker"), result.residue)
+    assertFalse(result.text.contains("darkColorScheme"), result.text)
+  }
+
   /** Not one annotation from either annotation package may reach the editor. */
   @Test
   fun `catalog annotations and their imports are gone`() {
@@ -414,6 +518,67 @@ class PlaygroundSourceCleanerTest {
     assertEquals("MaterialTheme", rules.scaffolds["Sticker"]?.renameTo)
     assertEquals(UsageRules.Kind.DROP, rules.scaffolds["catalogButtonSize"]?.kind)
     assertEquals(UsageRules.Kind.UNKNOWN, rules.scaffolds["toggleable"]?.kind)
+  }
+
+  @Test
+  fun `the reusable system Material 3 theme special parses without catalog-authored imports`() {
+    val rules =
+      assertNotNull(
+        UsageRules.parse(
+          """{"scaffolds":{"Sticker":{"kind":"RENAME","renameTo":"MaterialTheme","special":"MATERIAL3_SYSTEM_THEME"}}}"""
+        )
+      )
+
+    val sticker = assertNotNull(rules.scaffolds["Sticker"])
+    assertEquals(UsageRules.Kind.RENAME, sticker.kind)
+    assertEquals(UsageRules.MATERIAL3_SYSTEM_THEME, sticker.special)
+    assertEquals(
+      listOf(
+        "androidx.compose.foundation.isSystemInDarkTheme",
+        "androidx.compose.material3.MaterialTheme",
+        "androidx.compose.material3.darkColorScheme",
+        "androidx.compose.material3.lightColorScheme",
+      ),
+      sticker.imports,
+    )
+  }
+
+  @Test
+  fun `an unknown rename special is residue instead of an incomplete rename`() {
+    val source =
+      """
+      import androidx.compose.runtime.Composable
+      import com.example.Sticker
+
+      @Composable
+      fun CardPreview() = Sticker { Unit }
+      """
+        .trimIndent()
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "Sticker" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.RENAME,
+                renameTo = "MaterialTheme",
+                special = "FUTURE_THEME_POLICY",
+              )
+          )
+      )
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source,
+          source.lines().indexOfFirst { it.contains("Unit") } + 1,
+          rules,
+        )
+      )
+
+    assertTrue(result.text.contains("Sticker { Unit }"), result.text)
+    assertFalse(result.text.contains("MaterialTheme"), result.text)
+    assertEquals(listOf("Sticker"), result.residue)
   }
 
   /**

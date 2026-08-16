@@ -58,4 +58,46 @@ publish "$render" CARRY_FORWARD_PATHS
 publish "$index" DELTA_ON_TIP_PATHS
 assert_tip render-v3 issues-newer
 
+# A catalog publish carries the prior index forward and promotes its `current` inventory under the
+# actual parent SHA. The staging directory intentionally has no preview-index.json: the helper owns
+# that generated branch metadata.
+indexed="$ROOT/indexed"
+mkdir -p "$indexed"
+printf '%s\n' '{"components":[{"images":[{"path":"images/old/ideal.png"}]}]}' > "$indexed/catalog.json"
+(
+  cd "$indexed"
+  env TARGET_BRANCH=design-artifacts/index REPO=local/test GITHUB_TOKEN_INLINE=test MSG=first \
+    REMOTE_URL="$REMOTE" REVISION_PREVIEW_INDEX=1 "$HELPER"
+)
+first=$(git --git-dir="$REMOTE" rev-parse refs/heads/design-artifacts/index)
+indexed2="$ROOT/indexed2"
+mkdir -p "$indexed2"
+printf '%s\n' '{"components":[{"images":[{"path":"images/new/ideal.png"}]}]}' > "$indexed2/catalog.json"
+(
+  cd "$indexed2"
+  env TARGET_BRANCH=design-artifacts/index REPO=local/test GITHUB_TOKEN_INLINE=test MSG=second \
+    REMOTE_URL="$REMOTE" REVISION_PREVIEW_INDEX=1 "$HELPER"
+)
+index_check="$ROOT/index-check"
+git clone -q --branch design-artifacts/index "$REMOTE" "$index_check"
+node -e '
+  const fs = require("fs");
+  const index = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  if (index.current.join() !== "new__ideal") throw new Error("new current missing");
+  const prior = index.revisions.find((entry) => entry.commit === process.argv[2]);
+  if (!prior || prior.previews.join() !== "old__ideal") throw new Error("prior current not promoted");
+' "$index_check/preview-index.json" "$first"
+
+indexed3="$ROOT/indexed3"
+mkdir -p "$indexed3"
+cp "$indexed2/catalog.json" "$indexed3/catalog.json"
+before=$(git --git-dir="$REMOTE" rev-parse refs/heads/design-artifacts/index)
+(
+  cd "$indexed3"
+  env TARGET_BRANCH=design-artifacts/index REPO=local/test GITHUB_TOKEN_INLINE=test MSG=unchanged \
+    REMOTE_URL="$REMOTE" REVISION_PREVIEW_INDEX=1 SKIP_IF_UNCHANGED=1 "$HELPER"
+)
+after=$(git --git-dir="$REMOTE" rev-parse refs/heads/design-artifacts/index)
+test "$before" = "$after"
+
 echo "push-branch race tests passed"

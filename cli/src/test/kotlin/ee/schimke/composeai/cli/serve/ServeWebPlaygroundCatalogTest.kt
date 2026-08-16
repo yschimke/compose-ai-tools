@@ -22,6 +22,7 @@ class ServeWebPlaygroundCatalogTest {
     seed: PlaygroundSeed? = null,
     preselectCatalog: String? = null,
     pinnedCatalogSystems: Set<String> = emptySet(),
+    editingLeaseEnabled: Boolean = false,
   ) =
     ServeWeb.playgroundPage(
       token = "t",
@@ -31,6 +32,7 @@ class ServeWebPlaygroundCatalogTest {
       seed = seed,
       preselectCatalog = preselectCatalog,
       pinnedCatalogSystems = pinnedCatalogSystems,
+      editingLeaseEnabled = editingLeaseEnabled,
     )
 
   private val previewSeed =
@@ -67,6 +69,19 @@ class ServeWebPlaygroundCatalogTest {
       modes = listOf(PlaygroundMode.ANDROID, PlaygroundMode.REMOTE_COMPOSE),
       resolved = false,
     )
+
+  @Test
+  fun `the explicit editing lease control is rendered only when enabled`() {
+    assertFalse(page(listOf(m3)).contains("id=\"pg-edit-lease\""))
+    val html = page(listOf(m3), editingLeaseEnabled = true)
+    assertTrue(html.contains("id=\"pg-edit-lease\""))
+    assertTrue(html.contains("Acquire editing lease"))
+    assertTrue(html.contains("/api/1/compiler/edit-lease"))
+    assertTrue(html.contains("editLease: editLease"))
+    assertTrue(html.contains("window.addEventListener(\"pagehide\""))
+    assertTrue(html.contains("navigator.sendBeacon(url"))
+    assertTrue(html.contains("if (!event.persisted) releaseEditLeaseOnDiscard()"))
+  }
 
   @Test
   fun `a seeded page opens on the preview's own source, in its own catalog`() {

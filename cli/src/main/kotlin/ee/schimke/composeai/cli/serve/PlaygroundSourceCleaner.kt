@@ -329,8 +329,8 @@ object PlaygroundSourceCleaner {
     out = unqualifyScaffoldCalls(out, rules)
     // Order matters. UNWRAP first, so a wrapper takes its own arguments away with it before DROP
     // starts reasoning about which arguments mention a dropped binding. INLINE next, so a member
-    // substitution lands before DROP inspects the argument it sits in. DROP, then RENAME last —
-    // renaming early would hide a name the other passes match on.
+    // substitution lands before DROP inspects the argument it sits in. DROP, then semantic theme
+    // wrappers and RENAME last — rewriting early would hide a name the other passes match on.
     out = applyUnwrap(out, rules)
     // The parse settles argument binding, trailing-lambda calls and qualifiers; the text pass is
     // the fallback for a host with no staged sidecar (see [UsageSourceParser]).
@@ -339,6 +339,7 @@ object PlaygroundSourceCleaner {
       else applySubstitute(out, rules, addedImports)
     out = applyInline(out, rules, addedImports)
     out = applyDrop(out, rules, residue)
+    out = applyMaterial3SystemTheme(out, rules, addedImports)
     out = applyRename(out, rules, addedImports)
     if (isEntry) out = stampPreview(out, rules, addedImports)
     // Residue: declared scaffolding that survived. With a parse, every *call* is visible however it
@@ -510,11 +511,44 @@ object PlaygroundSourceCleaner {
   ): String {
     var out = text
     for ((name, scaffold) in rules.scaffolds) {
-      if (scaffold.kind != UsageRules.Kind.RENAME) continue
+      if (scaffold.kind != UsageRules.Kind.RENAME || scaffold.special != null) continue
       val to = scaffold.renameTo ?: continue
       if (!mentionsWord(out, name)) continue
       out = replaceWord(out, name, to)
       addedImports.addAll(scaffold.imports)
+    }
+    return out
+  }
+
+  /**
+   * `Sticker { … }` → a stock Material 3 theme which actually consumes the preview's `uiMode`.
+   *
+   * Only the helper name is replaced, so the trailing lambda — the component usage this cleaner is
+   * trying to preserve — stays byte-for-byte intact. The rewrite deliberately accepts only an
+   * argument-free trailing-lambda call. `StickerFrame(tokens) { … }` may encode more than the
+   * reusable stock light/dark policy; leaving it as residue is the safe and honest outcome.
+   */
+  private fun applyMaterial3SystemTheme(
+    text: String,
+    rules: UsageRules,
+    addedImports: MutableSet<String>,
+  ): String {
+    var out = text
+    for ((name, scaffold) in rules.scaffolds) {
+      if (
+        scaffold.kind != UsageRules.Kind.RENAME ||
+          scaffold.special != UsageRules.MATERIAL3_SYSTEM_THEME
+      )
+        continue
+      var changed = false
+      for (at in wordOccurrences(out, name).asReversed()) {
+        var next = at + name.length
+        while (next < out.length && out[next].isWhitespace()) next++
+        if (out.getOrNull(next) != '{') continue
+        out = out.replaceRange(at, at + name.length, MATERIAL3_SYSTEM_THEME_CALL)
+        changed = true
+      }
+      if (changed) addedImports.addAll(scaffold.imports)
     }
     return out
   }
@@ -798,6 +832,9 @@ object PlaygroundSourceCleaner {
   // ---------------------------------------------------------------------------------------------
 
   private const val MAX_REWRITES = 64
+
+  private const val MATERIAL3_SYSTEM_THEME_CALL =
+    "MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme())"
 
   private data class Call(val start: Int, val argsStart: Int, val argsEnd: Int)
 

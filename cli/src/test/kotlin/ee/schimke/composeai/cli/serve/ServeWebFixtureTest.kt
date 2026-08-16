@@ -1875,6 +1875,68 @@ class ServeWebFixtureTest {
         version = version,
       )
 
+    // A node with code behind it is an ANCHOR, not a button or a bare div. That is what makes
+    // clicking it navigate, a middle click open a tab, a modifier click do what the reader's
+    // platform says, and the status bar preview the destination — none of which a `<button>` with a
+    // click handler gives you, and all of which a screenshot passes without.
+    //
+    // Asserted here rather than in the harness because it is server-rendered markup: the capture
+    // that used to hold it had to hover a node, wait for a tooltip and evaluate in a browser to
+    // read two attributes off the emitted HTML.
+    // Matched on the manifest-linked node itself (`1:1`), not on "some /p/ anchor exists": the
+    // fixture carries several renderable nodes, so an existence check stays green while this
+    // particular overlay regresses to a span or points somewhere else.
+    val manifestNode =
+      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:1"[^>]*>""").find(designPageHtml)
+    assertTrue(manifestNode != null, "the manifest-linked node 1:1 is emitted at all")
+    assertEquals(
+      "a",
+      manifestNode!!.groupValues[1],
+      "a node with a renderable preview is emitted as an anchor",
+    )
+    // The whole final segment, not a prefix: `/p/com.example.ProfileCardPreviewLegacy` contains
+    // the id we mean and navigates somewhere else.
+    // `\shref=` and not `href=`: the latter also matches the tail of `data-href`, so swapping a
+    // real
+    // anchor for scripted navigation — precisely the inert-destination regression this is here to
+    // catch — would keep it green.
+    val hrefOf = { tag: String -> Regex("""\shref="([^"]*)"""").find(tag)?.groupValues?.get(1) }
+    val manifestHref = hrefOf(manifestNode.value)
+    assertTrue(manifestHref != null, "the manifest node carries a real href attribute")
+    // Matched through the route delimiter. `substringAfterLast` returns the WHOLE string when the
+    // delimiter is absent, so a bare `href="com.example.ProfileCardPreview"` — which resolves
+    // relative to the current page and navigates nowhere near the preview — would have passed.
+    assertEquals(
+      "com.example.ProfileCardPreview",
+      // The capture must be the FINAL segment. Unanchored, `/p/<id>/other` still yields `<id>` —
+      // and the server registers only the exact `/p/{name}` routes, so that URL navigates nowhere.
+      Regex("""/p/([^/?#]+)(?:[?#]|$)""").find(manifestHref!!)?.groupValues?.get(1),
+      "…and its destination is THAT preview, on the preview route",
+    )
+    // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
+    // tag is the same; only the target differs, so a reader never meets a node that looks
+    // navigable and is not.
+    //
+    // Matched on THAT node (`1:6`, the fixture's unlinked shape) rather than on "some anchor
+    // exists and no span does": the renderable nodes satisfy a bare existence check on their own,
+    // so this one could regress to a div and go unnoticed.
+    val unlinkedNode =
+      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:6"[^>]*>""").find(designPageHtml)
+    assertTrue(unlinkedNode != null, "the unlinked node 1:6 is emitted at all")
+    assertEquals(
+      "a",
+      unlinkedNode!!.groupValues[1],
+      "an unlinked node stays an anchor rather than becoming inert",
+    )
+    // The WHOLE href, compared as one string. Checking parts independently loses whatever part is
+    // not checked: a host check alone passes for the Figma homepage, and a key-plus-node check
+    // alone passes for a relative URL or a different host carrying the same query.
+    assertEquals(
+      "https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-6",
+      hrefOf(unlinkedNode.value),
+      "…and its destination is THIS node in the catalog's design file",
+    )
+
     val designPageIndex =
       ServeWeb.designPagesIndexPage(
         moduleLabel = "compose-m3",
@@ -2161,6 +2223,7 @@ class ServeWebFixtureTest {
         token,
         isPublic = false,
         version = version,
+        editingLeaseEnabled = true,
         catalogs =
           listOf(
             PlaygroundCatalogInfo(
@@ -5223,9 +5286,13 @@ class ServeWebFixtureTest {
     // export links and the stream's connect query. Collected only in `liveOverrides()` it would
     // reach the daemon and nowhere else — unshareable, unrestorable by Back, and applied a frame
     // late via the onopen replay instead of arriving with `stream/start`.
+    // The list moved to `cli/serve-web/src/viewer/ownedParams.ts`, where
+    // `viewerOwnedParams.test.ts`
+    // asserts each family's membership by name — including what must NOT be owned, which a grep for
+    // one line of the list could never express. What the served asset must still do is ask.
     assertTrue(
-      assetText("viewer.js").contains("\"gestures\", \"touchOverlay\","),
-      "overlays are URL-owned params",
+      assetText("viewer.js").contains("urlRules().ownsUrlParam(name)"),
+      "overlays are URL-owned params, decided by the shared list rather than a second copy",
     )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
     // was

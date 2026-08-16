@@ -46,12 +46,26 @@ function el<T extends Element>(selector: string): T {
 
 function view(): { scale: number; x: number; y: number } {
     const transform = el<HTMLElement>(".cp-page-canvas").style.transform;
+    // An EMPTY transform is the identity — that is how the element expresses 1:1, by clearing the
+    // property rather than writing `translate(0px, 0px) scale(1)`.
+    if (!transform || transform === "none") return { scale: 1, x: 0, y: 0 };
+    // ANCHORED. Unanchored, `translate(...) scale(...) rotate(180deg)` still matches its familiar
+    // substring, so the guard below would accept it and this fake layout would silently ignore an
+    // operation the browser is really applying — the zoom tests passing over a visibly different
+    // view.
     const match =
-        /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(
-            transform,
+        /^translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)$/.exec(
+            transform.trim(),
         );
-    if (!match) return { scale: 1, x: 0, y: 0 };
-    return { x: +match[1], y: +match[2], scale: +match[3] };
+    // Anything else present but unreadable is a FAILURE, not an identity. Returning the identity
+    // here — which this used to do — makes every assertion in this file fail open: a reset that
+    // emitted `translateX(...)`, or a scale that came out `NaN`, would satisfy
+    // `deepEqual(view(), { scale: 1, x: 0, y: 0 })` on a canvas that is nowhere near 1:1.
+    if (!match) throw new Error(`unreadable transform: ${transform}`);
+    const parsed = { x: +match[1], y: +match[2], scale: +match[3] };
+    if (!Object.values(parsed).every(Number.isFinite))
+        throw new Error(`non-finite transform: ${transform}`);
+    return parsed;
 }
 
 /** Where a user-unit point currently sits on screen. */
@@ -326,12 +340,30 @@ describe("<cp-page-zoom>", () => {
         await flush();
         assert.deepEqual(view(), { scale: 1, x: 0, y: 0 });
         assert.equal(el<HTMLElement>("cp-page-zoom").hidden, true);
-        assert.equal(
-            el<HTMLElement>(".cp-page-stage").classList.contains(
-                "cp-page-zoomed",
-            ),
-            false,
-        );
+        const stage = el<HTMLElement>(".cp-page-stage");
+        assert.equal(stage.classList.contains("cp-page-zoomed"), false);
+        // The published scale goes back to 1 as well. The stylesheet counter-scales every node's
+        // mark by it, so a reset that restored the view and left the variable behind would draw
+        // hairlines at the old zoom over a sheet at 1:1 — a residue no view assertion can see.
+        // Compared as the published STRING, with no `|| 1` fallback: a reset that published `0`,
+        // an empty value or `NaN` would parse-or-default its way past a numeric check while the
+        // counter-scaling stayed broken.
+        assert.equal(stage.style.getPropertyValue("--cp-page-zoom"), "1");
+    });
+
+    it("resets from a WHEEL zoom too, not only from a framed section", async () => {
+        // The capture that used to assert this could only afford one route in. Reset is reachable
+        // from a continuous wheel zoom as well as a discrete double-click frame, and the two arrive
+        // at the view through different code — `zoomAbout` versus `frameRect`.
+        await mount();
+        wheel(at(320, 215), -120, true);
+        wheel(at(320, 215), -120, true);
+        await flush();
+        assert.ok(view().scale > 1, "the wheel zoomed");
+        el<HTMLButtonElement>("[data-cp-page-zoom-reset]").click();
+        await flush();
+        assert.deepEqual(view(), { scale: 1, x: 0, y: 0 });
+        assert.equal(el<HTMLElement>("cp-page-zoom").hidden, true);
     });
 
     it("zooms in and out a notch from the corner buttons", async () => {

@@ -53,7 +53,17 @@ export function typographyToken(
     return token;
 }
 
-/** A font file or family name reduced to its family: no path, no extension, no weight suffix. */
+/**
+ * A font file or family name reduced to its family: no path, no extension, no weight suffix.
+ *
+ * ONE weight suffix, and it must only ever be applied once. `typographySpec` used to call it again
+ * on its own result, which is not idempotent: `Roboto-Medium-Bold.ttf` reduces to `Roboto-Medium`
+ * and then to `Roboto`. The page displayed the first and compared on the second, so a table showing
+ * `Roboto-Medium` beside `Roboto-Black` reported them as unchanged.
+ *
+ * Stripping one suffix IS right: weight is carried by `spec.weight` and compared there, so
+ * `Roboto-Medium` and `Roboto-Bold` are one family with two weights, not two families.
+ */
 export function typographyFamily(value: unknown): string | undefined {
     const raw = String(value ?? "").trim();
     if (!raw) return undefined;
@@ -106,8 +116,14 @@ export function typographyAxes(value: unknown): string {
 
 export interface TypographySpec {
     token?: string;
+    /**
+     * The family, reduced once: no path, no extension, no weight suffix.
+     *
+     * What is DISPLAYED and what is COMPARED, deliberately the same field. They used to be two —
+     * `family` and a `familyKey` reduced a second time — and the second reduction meant the table
+     * could show two different families and report them as unchanged. See `typographyFamily`.
+     */
     family?: string;
-    familyKey?: string;
     size?: number;
     lineHeight?: number;
     weight?: number;
@@ -157,11 +173,6 @@ export function typographySpec(item: AnnotationItem): TypographySpec {
     return {
         token,
         family,
-        // NOTE: `typographyFamily` applied to an ALREADY-reduced family. `Roboto-Medium-Bold.ttf`
-        // gives family `Roboto-Medium` and familyKey `Roboto`, and since comparison uses familyKey,
-        // two visibly different families read as unchanged. Ported as-is deliberately, so this
-        // change stays a refactor; see the follow-up.
-        familyKey: typographyFamily(family),
         size,
         lineHeight,
         weight,
@@ -186,7 +197,7 @@ export function typographySpec(item: AnnotationItem): TypographySpec {
 export function typographyGroupKey(spec: TypographySpec): string {
     return [
         spec.token ?? "",
-        spec.familyKey ?? "",
+        spec.family ?? "",
         spec.size,
         spec.unit ?? "",
         spec.lineHeight,
@@ -281,7 +292,7 @@ export function typographyDistance(
     if (a.weight !== undefined && b.weight !== undefined)
         distance += Math.abs(a.weight - b.weight) / 100;
     else if (a.weight !== b.weight) distance += 2;
-    if ((a.familyKey ?? "").toLowerCase() !== (b.familyKey ?? "").toLowerCase())
+    if ((a.family ?? "").toLowerCase() !== (b.family ?? "").toLowerCase())
         distance += 2;
     if ((a.style ?? "").toLowerCase() !== (b.style ?? "").toLowerCase())
         distance += 1;
@@ -389,8 +400,7 @@ export function typographyComparableValue(
     field: Field,
 ): string {
     if (!spec) return "—";
-    if (field === "family")
-        return (spec.familyKey || "unspecified").toLowerCase();
+    if (field === "family") return (spec.family || "unspecified").toLowerCase();
     if (field === "size")
         return spec.size === undefined ? "—" : `${spec.size}${spec.unit ?? ""}`;
     return typographyValue(spec, field).toLowerCase();

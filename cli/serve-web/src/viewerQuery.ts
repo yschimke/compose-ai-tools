@@ -12,6 +12,16 @@
 // stop applying.
 
 import { fitCap, needsRefit, zoomMode } from "./viewer/fit.js";
+import { androidKeycode, keyMessage, typedText } from "./viewer/keyInput.js";
+import {
+    anyInteractive,
+    bestLiveMode,
+    currentLaneValue,
+    laneChip,
+    laneLabelText,
+    liveTransportAvailable,
+} from "./viewer/laneState.js";
+import { ownsUrlParam } from "./viewer/ownedParams.js";
 import {
     activeThemeChoice,
     chosenThemeProvider,
@@ -31,6 +41,16 @@ import {
 } from "./viewer/renderQuery.js";
 
 const api = {
+    anyInteractive,
+    bestLiveMode,
+    currentLaneValue,
+    laneChip,
+    laneLabelText,
+    liveTransportAvailable,
+    ownsUrlParam,
+    androidKeycode,
+    typedText,
+    keyMessage,
     fitCap,
     zoomMode,
     needsRefit,

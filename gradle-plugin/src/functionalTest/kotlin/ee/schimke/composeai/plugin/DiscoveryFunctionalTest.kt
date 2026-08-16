@@ -1434,6 +1434,57 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover carries PreviewHelper a11y opt out`() {
+    val projectDir = createCmpTestProject()
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PreviewHelper.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class PreviewHelper(val includeInA11y: Boolean = true)
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/Helpers.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+        import ee.schimke.composeai.preview.PreviewHelper
+
+        @PreviewHelper(includeInA11y = false)
+        @Preview @Composable fun ColorSchemeSpecimenPreview() {}
+
+        @Preview @Composable fun ContactRow() {}
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val byFn = manifest.previews.associateBy { it.functionName }
+    assertThat(byFn.getValue("ColorSchemeSpecimenPreview").includeInA11y).isFalse()
+    assertThat(byFn.getValue("ContactRow").includeInA11y).isTrue()
+  }
+
+  @Test
   fun `composePreviewDiscover warns when a preview installs a theme under declared theme catalogs`() {
     val projectDir = createCmpTestProject()
 

@@ -52,22 +52,25 @@ export function motionPreviewFor(component) {
  */
 export function motionArtifactsFor(bundle, functionName) {
   const out = [];
-  for (const preview of bundle?.previews ?? []) {
-    if ((preview.functionName ?? preview.id) !== functionName) continue;
-    for (const capture of preview.captures ?? []) {
-      const declaration = motionDeclarationOf(capture);
-      if (!declaration) continue;
-      const path = bundleEntryFor(bundle, preview.id, capture.renderOutput);
-      if (!path) continue;
-      out.push({
-        path,
-        // Kept until `foldMotion`: a separately named motion function has a different filename
-        // stem from the still, so its position in the function's preview fan-out is the only
-        // reliable bridge back to the already-resolved static axes.
-        previewId: preview.id,
-        kind: declaration.kind,
-        ...(declaration.caption ? { caption: declaration.caption } : {}),
-      });
+  const bundles = Array.isArray(bundle) ? bundle : [bundle];
+  for (const renderBundle of bundles) {
+    for (const preview of renderBundle?.previews ?? []) {
+      if ((preview.functionName ?? preview.id) !== functionName) continue;
+      for (const capture of preview.captures ?? []) {
+        const declaration = motionDeclarationOf(capture);
+        if (!declaration) continue;
+        const path = bundleEntryFor(renderBundle, preview.id, capture.renderOutput);
+        if (!path) continue;
+        out.push({
+          path,
+          // Kept until `foldMotion`: a separately named motion function has a different filename
+          // stem from the still, so its position in the function's preview fan-out is the only
+          // reliable bridge back to the already-resolved static axes.
+          previewId: preview.id,
+          kind: declaration.kind,
+          ...(declaration.caption ? { caption: declaration.caption } : {}),
+        });
+      }
     }
   }
   return out;

@@ -93,6 +93,33 @@ class PreviewDiscoveryProjectJarTest {
     assertThat((outcome as PreviewDiscovery.Outcome.Success).manifest.previews).isEmpty()
   }
 
+  @Test
+  fun `catalog and override design kit correspondence is discovered`() {
+    val jar = File(tempDir.root, "kit-axis-classes.jar")
+    writeKitAxisPreviewClassJar(jar)
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = emptyList(),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":catalog",
+          variantName = "debug",
+          projectDirectory = tempDir.root,
+          failOnEmpty = true,
+          projectClassJars = listOf(jar),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    val base = outcome.manifest.previews.single { it.overrides == null }
+    val variant = outcome.manifest.previews.single { it.overrides != null }
+    assertThat(base.catalog?.kitAxis).isEqualTo("Configuration")
+    assertThat(variant.catalog?.kitAxis).isEqualTo("Configuration")
+    assertThat(variant.overrides?.kitAxis).isEqualTo("Show avatar")
+    assertThat(variant.overrides?.kitValue).isEqualTo("True")
+  }
+
   /**
    * Writes a JAR containing a single class with one parameterless `public static` method annotated
    * with `androidx.compose.ui.tooling.preview.Preview`. The annotation is emitted as a
@@ -121,6 +148,49 @@ class PreviewDiscoveryProjectJarTest {
     cw.visitEnd()
 
     jar.parentFile.mkdirs()
+    JarOutputStream(jar.outputStream()).use { jos ->
+      jos.putNextEntry(JarEntry("$internalName.class"))
+      jos.write(cw.toByteArray())
+      jos.closeEntry()
+    }
+  }
+
+  /** Writes the issue #3899 contract directly into CLASS-retained annotation tables. */
+  private fun writeKitAxisPreviewClassJar(jar: File) {
+    val internalName = "test/KitAxisPreviewKt"
+    val methodName = "Avatar"
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    val mv = cw.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, methodName, "()V", null, null)
+    mv.visitAnnotation("Landroidx/compose/ui/tooling/preview/Preview;", false).visitEnd()
+    mv.visitAnnotation("Lee/schimke/composeai/preview/CatalogComponent;", false).apply {
+      visit("id", "Avatar")
+      visit("kitAxis", "Configuration")
+      visitEnd()
+    }
+    mv.visitAnnotation("Lee/schimke/composeai/preview/OverrideVariant;", false).apply {
+      visit("name", "avatar")
+      visit("kitAxis", "Show avatar")
+      visit("kitValue", "True")
+      visitArray("strings").apply {
+        visit(null, "content=avatar")
+        visitEnd()
+      }
+      visitEnd()
+    }
+    mv.visitCode()
+    mv.visitInsn(Opcodes.RETURN)
+    mv.visitMaxs(0, 0)
+    mv.visitEnd()
+    cw.visitEnd()
+
     JarOutputStream(jar.outputStream()).use { jos ->
       jos.putNextEntry(JarEntry("$internalName.class"))
       jos.write(cw.toByteArray())

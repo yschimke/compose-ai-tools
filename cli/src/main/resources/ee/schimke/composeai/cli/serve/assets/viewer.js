@@ -645,17 +645,9 @@
     }
     return true;
   }
-  // Pushed to the lane AND published on the stage, and the two carry different weight.
-  //
-  // The push is what corrects the FIRST install. `serve-components.js` is emitted ahead of this
-  // file, so `<cp-spec-compare>` has already installed by the time we run, and has already fallen
-  // back to the baked verdict because the attribute did not exist yet; this call is what moves it
-  // off. It is a correction and not a guarantee: the tags are not adjacent, and a browser is free
-  // to paint parsed markup while it fetches what sits between them, so on a cold load a themed
-  // deep link can show the baked verdict for the interval before we get here.
-  //
-  // The attribute is for the installs that come later — the element's deferred retry, or a
-  // re-connect — which have no push to wait for and read the stage instead.
+  // The inline theme bootstrap publishes the initial value before serve-components.js upgrades
+  // the spec element. Keep both the stage attribute and the installed element current from here on:
+  // the attribute serves reconnects, while the push updates the existing install immediately.
   function syncSpecBaseline() {
     var at = specAtBaseline();
     root.setAttribute("data-spec-baseline", at ? "1" : "0");
@@ -945,44 +937,18 @@
   // Keyboard: focus the canvas (tabindex) to type. Maps the common keys to Android keycodes;
   // unmapped keys are dropped (the daemon ignores codes outside its translation table anyway).
   canvas.tabIndex = 0;
-  function androidKeycode(k) {
-    if (k.length === 1) {
-      var c = k.toLowerCase();
-      if (c >= "a" && c <= "z") return String(29 + (c.charCodeAt(0) - 97)); // KEYCODE_A = 29
-      if (c >= "0" && c <= "9") return String(7 + (c.charCodeAt(0) - 48)); // KEYCODE_0 = 7
-      if (k === " ") return "62"; // SPACE
-    }
-    switch (k) {
-      case "Enter": return "66";
-      case "Backspace": return "67";
-      case "Tab": return "61";
-      case "Escape": return "111";
-      case "Delete": return "112";
-      case "ArrowUp": return "19";
-      case "ArrowDown": return "20";
-      case "ArrowLeft": return "21";
-      case "ArrowRight": return "22";
-      default: return null;
-    }
-  }
-  // A printable keystroke is one whose `key` is a single character (so not "Shift", "ArrowLeft",
-  // "Backspace", …) and isn't a control character. That character — not the keycode — is what the
-  // composition inserts: the keycode names a physical key, which is why the caret and Backspace
-  // used to work here while nothing could ever be typed.
-  function typedText(ev) {
-    if (ev.ctrlKey || ev.metaKey) return null;   // a shortcut, not typing
-    var k = ev.key;
-    if (typeof k !== "string" || Array.from(k).length !== 1) return null;
-    return k.charCodeAt(0) < 0x20 || k.charCodeAt(0) === 0x7f ? null : k;
-  }
+  // The keycode/text pair moved to `cli/serve-web/src/viewer/keyInput.ts`. Both halves matter and
+  // conflating them is a shipped bug: a keycode names a PHYSICAL KEY, so sending only that made the
+  // arrows and Backspace work while nothing could ever be typed.
   function keyInput(kind, ev) {
     if (!liveActive()) return;
-    var code = androidKeycode(ev.key);
     // Carried on the release too, not just the press: a backend that suppresses the physical key
     // event for a focused text field (so the character isn't typed twice) needs to suppress both
     // halves, or the composition sees an unpaired key-up.
-    var text = typedText(ev);
-    if (code === null && text === null) return;
+    var message = urlRules().keyMessage(ev);
+    if (!message) return;
+    var code = message.code;
+    var text = message.text;
     ev.preventDefault();
     var msg = { kind: kind };
     if (code !== null) msg.keyCode = code;
@@ -2404,26 +2370,38 @@
   // separately here rather than inferred from `liveToggle`.
   var liveSignIn = document.getElementById("cp-live-signin");
   var modeHint = document.getElementById("cp-mode-hint");
-  function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
-  function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
+  // The lane decisions live in `cli/serve-web/src/viewer/laneState.ts`.
+  function liveOffer() {
+    return { daemon: !!(live && !live.disabled), wasm: !!wasmToggle };
+  }
+  function liveTransportAvailable() { return urlRules().liveTransportAvailable(liveOffer()); }
+  function bestLiveMode() { return urlRules().bestLiveMode(liveOffer()); }
   function anyLiveActive() { return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked); }
   // Every lane that paints a *running* composition rather than a finished image: the daemon
   // stream, the in-browser Wasm app, and both Remote Compose player lanes (which replay the
   // document client-side). This is what the status dot reports, so picking "JS" from the combo
   // lights the same indicator that clicking into Live does — they are the same claim.
+  function laneFlags() {
+    return {
+      rcWasm: rcWasmActive(),
+      rc: rcActive(),
+      wasm: wasmActive(),
+      spec: specActive(),
+      live: !!(live && live.checked),
+    };
+  }
   function anyInteractive() {
-    return anyLiveActive() || rcActive() || rcWasmActive();
+    return urlRules().anyInteractive(laneFlags());
   }
   // The lane the picker is (or would be) sitting on, in the combo's own value space. A daemon
   // stream is not one of the offered renderers — it is the live form of whichever one is picked —
   // so it deliberately falls through to the static player lane the toggle will return to.
   function currentLaneValue() {
-    if (rcWasmActive()) return "rc:cmp-wasm";
-    if (rcActive()) return "rc:js";
-    if (wasmActive()) return "wasm";
-    if (specActive()) return "spec";
-    if (rcDefaultBackend) return "rc:" + (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
-    return "png";
+    return urlRules().currentLaneValue(laneFlags(), {
+      defaultBackend: rcDefaultBackend || "",
+      pickedBackend: rcPlayerBackend || "",
+      picked: !!rcPlayerPicked,
+    });
   }
   // What the chip calls the current lane. "Live" while the daemon stream is up (that lane IS the
   // live form of whichever renderer is picked, and the picked one is a click away again); other-
@@ -2437,18 +2415,19 @@
     return (liveToggle && liveToggle.getAttribute("data-default-lane-label")) || "Live preview";
   }
   function laneLabelText() {
-    if (live && live.checked) return "Live";
-    if (!laneSelect) return defaultLaneLabel();
-    var wanted = currentLaneValue();
-    var label = "";
-    Array.prototype.forEach.call(laneSelect.options, function (o) {
-      if (o.value === wanted) label = o.textContent;
+    var options = null;
+    if (laneSelect) {
+      options = new Map();
+      Array.prototype.forEach.call(laneSelect.options, function (o) {
+        options.set(o.value, o.textContent);
+      });
+    }
+    return urlRules().laneLabelText({
+      live: !!(live && live.checked),
+      laneOptions: options,
+      wanted: currentLaneValue(),
+      defaultLabel: defaultLaneLabel(),
     });
-    // On the spec lane there is no matching option — the spec chip beside this one is lit and
-    // already names it, and two adjacent chips both reading "Figma" would be two controls arguing
-    // about the same fact. So this one keeps naming the render lane, which is exactly where
-    // clicking it goes back to.
-    return label || defaultLaneLabel();
   }
   function updateLiveToggle() {
     var interactive = anyInteractive();
@@ -2464,8 +2443,9 @@
     // Live chip, a combo pick, an SVG swap, Back/Forward) un-presses it too.
     if (specChip) {
       var onSpecLane = specActive();
-      specChip.setAttribute("aria-pressed", onSpecLane ? "true" : "false");
-      specChip.disabled = !specAvailable() && !onSpecLane;
+      var specState = urlRules().laneChip({ onLane: onSpecLane, available: specAvailable() });
+      specChip.setAttribute("aria-pressed", specState.pressed ? "true" : "false");
+      specChip.disabled = specState.disabled;
       specChip.title = onSpecLane
         ? "Showing the imported design spec — click to return to the render"
         : specChip.getAttribute("data-spec-chip-tip") || specChip.title;
@@ -2858,16 +2838,11 @@
   // URL) are never touched, and a control returning to its default *removes* its param rather
   // than pinning a redundant value, so an untouched viewer keeps the clean URL it was opened
   // with.
-  var URL_STATE_PARAMS = [
-    "device", "localeTag", "orientation", "fontScale",
-    "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
-    "scroll", "mode", "sizeMode", "rcPlayer", "specView", "motion",
-    "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
-    "exploded", "explodeTilt", "explodeSpin", "explodeGap", "explodeDepth",
-  ];
+  // Which parameters the viewer manages lives in `cli/serve-web/src/viewer/ownedParams.ts`.
+  // `cpUrlState.sync` DROPS any owned parameter the caller does not supply, so over-claiming
+  // deletes someone else's parameter on the next edit and under-claiming leaves a stale one behind.
   function ownsUrlParam(name) {
-    return URL_STATE_PARAMS.indexOf(name) >= 0 ||
-      name.indexOf("knob.") === 0 || name.indexOf("rc.") === 0;
+    return urlRules().ownsUrlParam(name);
   }
   function currentMode() {
     var checked = document.querySelector("input[name=\"cp-mode\"]:checked");

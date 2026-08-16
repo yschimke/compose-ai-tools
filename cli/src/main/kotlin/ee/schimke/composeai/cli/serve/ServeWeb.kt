@@ -3797,6 +3797,14 @@ $noteBlock        <div class="cp-site-footer-links">
           el.setAttribute("data-theme-active", "1");
         }
       } catch (e) {}
+      // Publish the design-score baseline before the component bundle upgrades the comparison
+      // control. A chosen theme changes the rendered side of the comparison, so the
+      // server-baked score is already stale on the first paint. viewer.js keeps this attribute in
+      // sync after controls change; this early write makes the element's initial read authoritative.
+      if (root) {
+        var atSpecBaseline = el.getAttribute("data-theme-active") !== "1";
+        root.setAttribute("data-spec-baseline", atSpecBaseline ? "1" : "0");
+      }
       // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
       // uiMode never lands a transparent sticker on a clashing surface. The server seeds
       // data-bg-theme from the baked variant (or the dark-first default); a light/dark Theme choice
@@ -4220,6 +4228,61 @@ $noteBlock        <div class="cp-site-footer-links">
   }
 
   /**
+   * The honest landing page for a preview URL pinned to a publish that did not contain that
+   * preview.
+   *
+   * This remains a 404 — showing the current render under a historical URL would make the pin a lie
+   * — but unlike the generic [notFoundPage] it keeps the catalog's revision navigator. A preview
+   * can be added between publishes, so the catalog-wide revision menu can legitimately lead to a
+   * commit where its id is absent. Dropping the menu at that point strands the visitor on the first
+   * unavailable publish they try; keeping it lets them choose another historical publish or return
+   * to current without pretending this one had pixels it never published.
+   */
+  fun unavailablePreviewRevisionPage(
+    previewId: String,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    revisions: CatalogRevisions,
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
+    sessionInOrigin: Boolean = false,
+  ): String {
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val idSeg = WebEscaping.urlEncodeSegment(previewId)
+    val query = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
+    val hrefFor: (String?) -> String = { pin -> withPin("$basePath/p/$idSeg$query", pin) }
+    val revisionMenu = revisionsHtml(revisions, includeBanner = false, hrefFor = hrefFor)
+    val pin = revisions.pinned?.let(ServeCatalogRevision::short).orEmpty()
+    val message =
+      if (pin.isBlank()) "That preview does not exist in this catalog."
+      else "This preview was not published in catalog revision $pin."
+    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    return document(
+      title = "Preview unavailable — compose-preview",
+      unfurlDescription = message,
+      unfurl = unfurl,
+      version = version,
+      navSuffix = suffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
+      body =
+        """
+        <h1 class="cp-head">Preview unavailable</h1>
+        <p class="cp-sub">${WebEscaping.htmlEscape(message)} Choose another revision or return to the current catalog.</p>
+        $revisionMenu
+        <a class="cp-back" href="${WebEscaping.htmlEscape(hrefFor(null))}">← View current preview</a>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
    * `GET /playground` — the **Stage-1 editor** for the Kotlin playground
    * (`docs/design/PLAYGROUND.md` §2). A code box + a mode selector + a Run button that POSTs to
    * `/api/{v}/compiler/run` and shows the compiler diagnostics, the first-frame render, and the
@@ -4282,6 +4345,8 @@ $noteBlock        <div class="cp-site-footer-links">
      * span.
      */
     version: String? = null,
+    /** Show the authenticated, server-enabled single stateful editing lease control. */
+    editingLeaseEnabled: Boolean = false,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val sample = WebEscaping.htmlEscape(seed?.text ?: PLAYGROUND_SAMPLE)
@@ -4464,6 +4529,16 @@ $noteBlock        <div class="cp-site-footer-links">
           PlaygroundCatalogsResponse(catalogs),
         )
       )
+    val editLeaseButton =
+      if (!editingLeaseEnabled) ""
+      else
+        """
+            <button id="pg-edit-lease" class="cp-doc-btn" type="button">Acquire editing lease</button>"""
+    val editLeaseNote =
+      if (!editingLeaseEnabled) ""
+      else
+        """
+          <p id="pg-edit-lease-note" class="cp-pg-status" hidden></p>"""
     return document(
       title = "Playground — compose-preview",
       unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
@@ -4483,8 +4558,8 @@ $noteBlock        <div class="cp-site-footer-links">
             <select id="pg-mode" class="cp-pg-mode">
               $options
             </select>
-            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
-          </div>
+            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>$editLeaseButton
+          </div>$editLeaseNote
           <div id="pg-files" class="cp-pg-files" role="tablist" aria-label="Snippet files">
             <button class="cp-pg-file" type="button" role="tab" aria-current="true"
               data-pg-file="${WebEscaping.htmlEscape(fileName)}">${
@@ -4530,6 +4605,8 @@ $noteBlock        <div class="cp-site-footer-links">
       var mode = document.getElementById("pg-mode");
       var catalog = document.getElementById("pg-catalog");
       var run = document.getElementById("pg-run");
+      var editLeaseButton = document.getElementById("pg-edit-lease");
+      var editLeaseNote = document.getElementById("pg-edit-lease-note");
       var fileBar = document.getElementById("pg-files");
       var addFile = document.getElementById("pg-add-file");
       var removeFile = document.getElementById("pg-remove-file");
@@ -4542,6 +4619,80 @@ $noteBlock        <div class="cp-site-footer-links">
       var note = document.getElementById("pg-preview-note");
       var previewList = document.getElementById("pg-previews");
       var suffix = ${jsString(querySuffix)};
+      var editLease = null;
+      var editRevision = 0;
+      function releaseEditLeaseOnDiscard() {
+        if (!editLease) return;
+        var body = JSON.stringify({ lease: editLease });
+        var url = "/api/1/compiler/edit-lease/release" + suffix;
+        editLease = null;
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+        } else {
+          fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            credentials: "same-origin",
+            keepalive: true
+          }).catch(function () {});
+        }
+      }
+      window.addEventListener("pagehide", function (event) {
+        // A bfcache page is still alive and may be restored; an actually discarded page should
+        // surrender the one host-wide lease immediately. Delivery remains best-effort, with the
+        // server TTL as the hard fallback.
+        if (!event.persisted) releaseEditLeaseOnDiscard();
+      });
+      function setEditLease(value, message, expiresAt) {
+        editLease = value;
+        editRevision = 0;
+        if (!editLeaseButton) return;
+        editLeaseButton.disabled = false;
+        editLeaseButton.textContent = value ? "Release editing lease" : "Acquire editing lease";
+        editLeaseButton.setAttribute("aria-pressed", value ? "true" : "false");
+        editLeaseNote.hidden = !message;
+        editLeaseNote.textContent = message || "";
+        if (value && expiresAt) {
+          editLeaseButton.title = "Lease expires " + new Date(expiresAt).toLocaleTimeString();
+        } else {
+          editLeaseButton.removeAttribute("title");
+        }
+      }
+      if (editLeaseButton) {
+        editLeaseButton.addEventListener("click", function () {
+          editLeaseButton.disabled = true;
+          if (!editLease) {
+            fetch("/api/1/compiler/edit-lease" + suffix, {
+              method: "POST", headers: { "Accept": "application/json" }
+            })
+              .then(function (r) {
+                return r.json().then(function (body) {
+                  if (!r.ok) throw new Error(body.message || "The editing lease is busy.");
+                  return body;
+                });
+              })
+              .then(function (body) {
+                setEditLease(body.lease, body.message, body.expiresAtEpochMs);
+              })
+              .catch(function (e) {
+                setEditLease(null, e.message || "Could not acquire editing lease.");
+              });
+          } else {
+            var releasing = editLease;
+            fetch("/api/1/compiler/edit-lease/release" + suffix, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lease: releasing })
+            })
+              .then(function (r) {
+                if (!r.ok) throw new Error("The editing lease has already expired.");
+                setEditLease(null, "Editing lease released.");
+              })
+              .catch(function (e) { setEditLease(null, e.message); });
+          }
+        });
+      }
       // The catalog selector. Each entry carries its own mode list because a catalog's bundle
       // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
       // catalog are not the same choice with a different classpath, they are different modes.
@@ -4834,7 +4985,9 @@ $noteBlock        <div class="cp-site-footer-links">
         var body = JSON.stringify({
           confType: mode.value,
           catalog: catalog ? catalog.value : "",
-          files: files
+          files: files,
+          editLease: editLease || "",
+          revision: editLease ? ++editRevision : 0
         });
         fetch("/api/1/compiler/run" + suffix, {
           method: "POST",
@@ -4850,10 +5003,23 @@ $noteBlock        <div class="cp-site-footer-links">
           .then(function (res) {
             if (myId !== reqId) return;
             run.disabled = false;
+            if (editLeaseButton) editLeaseButton.disabled = false;
             renderDiags(res.diagnostics);
             var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
-            if (res.exception) { setStatus(res.exception, true); return; }
-            if (hasError) { setStatus("Compilation failed.", true); return; }
+            if (res.exception) {
+              if (res.exception.indexOf("live-edit lease") >= 0) setEditLease(null, res.exception);
+              setStatus(res.exception, true); return;
+            }
+            if (hasError) {
+              setStatus(
+                res.revision != null
+                  ? ("Compilation failed at revision " + res.revision +
+                    (res.incremental ? " (incremental)." : " (full fallback)."))
+                  : "Compilation failed.",
+                true
+              );
+              return;
+            }
             result.hidden = false;
             if (res.image) { image.hidden = false; image.src = res.image; }
             var link = res.documentUrl || res.previewUrl;
@@ -4894,10 +5060,16 @@ $noteBlock        <div class="cp-site-footer-links">
               });
             }
             setStatus("Done.", false);
+            if (res.revision != null && editLeaseNote) {
+              editLeaseNote.hidden = false;
+              editLeaseNote.textContent = "Revision " + res.revision +
+                (res.incremental ? " compiled incrementally." : " used a full compile.");
+            }
           })
           .catch(function (e) {
             if (myId !== reqId) return;
             run.disabled = false;
+            if (editLeaseButton) editLeaseButton.disabled = false;
             setStatus(e.message || "run failed", true);
           });
       });
@@ -8625,10 +8797,22 @@ $rows
     // live/interactive, with its status dot as the live indicator. viewer.js drives both from one
     // lane value (`syncLaneSelect`), so the two can never disagree about what's on the stage.
     val rcEnabled = enabledRcPlayers.toSet()
-    // The lane the viewer opens on for a Remote Compose preview: the server-side `java` player when
-    // it's available (the default snapshot lane), else the client `js` canvas.
+    // The lane the viewer opens on for a Remote Compose preview: the server-side `cmp-android`
+    // (embedded) player when it's available, else `java`, else the client `js` canvas.
+    //
+    // The payoff is the data tier rather than the pixels (#3936). `java` is
+    // `AndroidView { RemoteComposePlayer }`, so a whole document reaches Compose as one interop
+    // leaf: `compose/figma-svg` exports it as a single raster wearing an `.svg` extension, and the
+    // semantics tree describes a black box. The embedded player emits real Compose nodes, so the
+    // same document exports editable geometry and describes the card.
+    //
+    // The two lanes were measured over all 164 documents of the homeassistant catalog before this
+    // moved (`renders/rc-embedded-lane-ab/`): 34 byte-identical, and the residual is overwhelmingly
+    // text rasterization — Skia and the Android canvas hint glyphs differently, which no amount of
+    // player work removes. `?rcPlayer=java` still selects the old lane for anything that needs it.
     val defaultRcBackend =
       when {
+        RcPlayerBackend.CMP_ANDROID.wire in rcEnabled -> RcPlayerBackend.CMP_ANDROID.wire
         RcPlayerBackend.JAVA.wire in rcEnabled -> RcPlayerBackend.JAVA.wire
         RcPlayerBackend.JS.wire in rcEnabled -> RcPlayerBackend.JS.wire
         else -> enabledRcPlayers.firstOrNull().orEmpty()
@@ -9655,11 +9839,14 @@ $rows
       <!-- Remembers which control drawers this visitor left open (`cp-grp.<id>` per
            `details.cp-group[data-cp-group]`). Renders nothing; `serve.css` hides the tag. -->
       <cp-group-memory></cp-group-memory>
+      <!-- Resolve a deep-linked or remembered theme and publish the design-score baseline before
+           the component bundle upgrades the comparison control. -->
+      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
       ${scriptTag("serve-components.js")}
       <!-- The viewer's drawers, the phone row order, the theme toggle's value and the component
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
-      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
+      ${presenceScriptTag(presenceUrl)}
       $compareScriptTags${scriptTag("viewer.js")}
       """
         .trimIndent()

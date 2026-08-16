@@ -33,10 +33,15 @@ class PlaygroundCompileServiceTest {
     render: (PlaygroundTokenStore.PlaygroundSnippet) -> ByteArray? = { null },
     capture: (PlaygroundTokenStore.PlaygroundSnippet) -> ByteArray? = { null },
     publish: (String, ByteArray, Boolean) -> String? = { _, _, _ -> null },
+    compilerOverride: PlaygroundCompileService.Compiler? = null,
+    editLeasesEnabled: Boolean = false,
+    editLeaseTtlMillis: Long = PlaygroundCompileService.DEFAULT_EDIT_LEASE_TTL_MILLIS,
+    nowMillis: () -> Long = { 1_000L },
+    scheduleEditLeaseExpiry: (Long, () -> Unit) -> Unit = { _, _ -> },
   ) =
     PlaygroundCompileService(
       catalogClasspath = { mode, _ -> classpathFor(mode) },
-      compiler = PlaygroundCompileService.Compiler(compile),
+      compiler = compilerOverride ?: PlaygroundCompileService.Compiler(compile),
       discoverer = PlaygroundCompileService.PreviewDiscoverer(discover),
       tokenStore = tokenStore,
       newWorkDir = { "/work/run${++workDirs}".toPath() },
@@ -44,6 +49,10 @@ class PlaygroundCompileServiceTest {
       renderFirstFrame = render,
       captureRemoteDocument = capture,
       publishRemoteDocument = publish,
+      editLeasesEnabled = editLeasesEnabled,
+      editLeaseTtlMillis = editLeaseTtlMillis,
+      nowMillis = nowMillis,
+      scheduleEditLeaseExpiry = scheduleEditLeaseExpiry,
     )
 
   private fun request(
@@ -550,5 +559,299 @@ class PlaygroundCompileServiceTest {
     )
     assertNull(resp.previewToken)
     assertTrue(tokenStore.snapshot().isEmpty())
+  }
+
+  @Test
+  fun `one authenticated editing lease is exclusive, renewable, and owner-released`() {
+    var now = 1_000L
+    val svc =
+      service(
+        editLeasesEnabled = true,
+        editLeaseTtlMillis = 5_000L,
+        nowMillis = { now },
+      )
+
+    val alice = svc.acquireEditLease("alice")
+    assertTrue(alice.acquired)
+    assertNotNull(alice.lease)
+    assertEquals(6_000L, alice.expiresAtEpochMs)
+
+    val bob = svc.acquireEditLease("bob")
+    assertFalse(bob.acquired)
+    assertNull(bob.lease, "a busy response never discloses the capability")
+    assertFalse(svc.releaseEditLease("bob", alice.lease!!), "ownership is checked")
+
+    now = 2_000L
+    val renewed = svc.acquireEditLease("alice")
+    assertEquals(alice.lease, renewed.lease)
+    assertEquals(7_000L, renewed.expiresAtEpochMs)
+    assertTrue(svc.releaseEditLease("alice", alice.lease!!))
+    assertTrue(svc.acquireEditLease("bob").acquired, "release makes the single slot available")
+    now = 8_000L
+    assertFalse(svc.editLeaseHealth().active, "status observes idle expiry without taking the lock")
+  }
+
+  @Test
+  fun `an abandoned editing lease deletes its workspace at the idle deadline`() {
+    var now = 1_000L
+    val scheduled = mutableListOf<Pair<Long, () -> Unit>>()
+    val svc =
+      service(
+        editLeasesEnabled = true,
+        editLeaseTtlMillis = 5_000L,
+        nowMillis = { now },
+        scheduleEditLeaseExpiry = { delay, task -> scheduled += delay to task },
+      )
+
+    val lease = svc.acquireEditLease("alice")
+    assertTrue(lease.acquired)
+    assertTrue(fs.metadataOrNull("/work/run1".toPath())?.isDirectory == true)
+    assertEquals(5_000L, scheduled.single().first)
+
+    now = 6_000L
+    scheduled.single().second.invoke()
+
+    assertFalse(svc.editLeaseHealth().active)
+    assertNull(fs.metadataOrNull("/work/run1".toPath()), "expiry reclaims the IC workspace")
+  }
+
+  @Test
+  fun `leased compile refreshes the idle deadline after work finishes`() {
+    var now = 1_000L
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ) = emptyList<PlaygroundDiagnostic>()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult {
+          now = 8_000L // The compile outlives the deadline established when it started.
+          fs.createDirectories(outputDir)
+          fs.write(outputDir / "Snippet.class") { writeUtf8("compiled") }
+          return PlaygroundCompileService.IncrementalCompileResult(emptyList(), true)
+        }
+      }
+    val svc =
+      service(
+        compilerOverride = compiler,
+        editLeasesEnabled = true,
+        editLeaseTtlMillis = 5_000L,
+        nowMillis = { now },
+      )
+    val lease = svc.acquireEditLease("alice").lease!!
+
+    svc.run(
+      request().copy(editLease = lease, revision = 1),
+      isSecurityChecked = true,
+      authenticatedOwner = "alice",
+    )
+
+    val health = svc.editLeaseHealth()
+    assertTrue(health.active)
+    assertEquals(13_000L, health.expiresAtEpochMs)
+  }
+
+  @Test
+  fun `leased revisions send precise source changes and mint immutable class snapshots`() {
+    data class Call(
+      val modified: List<String>,
+      val removed: List<String>,
+      val first: Boolean,
+    )
+    val calls = mutableListOf<Call>()
+    var generation = 0
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ): List<PlaygroundDiagnostic> = emptyList()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult {
+          calls += Call(modified.map { it.name }, removed.map { it.name }, firstBuild)
+          fs.createDirectories(outputDir)
+          fs.write(outputDir / "Snippet.class") { writeUtf8("generation-${++generation}") }
+          return PlaygroundCompileService.IncrementalCompileResult(emptyList(), true)
+        }
+      }
+    val svc = service(compilerOverride = compiler, editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice").lease!!
+
+    fun leased(revision: Long, files: List<PlaygroundFile>) =
+      svc.run(
+        PlaygroundRunRequest(
+          files = files,
+          confType = "compose-cmp",
+          editLease = lease,
+          revision = revision,
+        ),
+        isSecurityChecked = true,
+        authenticatedOwner = "alice",
+      )
+
+    val first =
+      leased(
+        1,
+        listOf(
+          PlaygroundFile("Snippet.kt", "@Preview fun P() = Unit"),
+          PlaygroundFile("Theme.kt", "object Theme"),
+        ),
+      )
+    val second = leased(2, listOf(PlaygroundFile("Snippet.kt", "@Preview fun P() = println(2)")))
+
+    assertEquals(Call(listOf("Snippet.kt", "Theme.kt"), emptyList(), true), calls[0])
+    assertEquals(Call(listOf("Snippet.kt"), listOf("Theme.kt"), false), calls[1])
+    assertEquals(1L, first.revision)
+    assertEquals(2L, second.revision)
+    assertTrue(first.incremental)
+    val firstClasses = tokenStore.get(first.previewToken!!)!!.snippet.classesDir
+    val secondClasses = tokenStore.get(second.previewToken!!)!!.snippet.classesDir
+    assertTrue(firstClasses != secondClasses, "each token owns an immutable revision snapshot")
+    assertEquals("generation-1", fs.read(firstClasses / "Snippet.class") { readUtf8() })
+    assertEquals("generation-2", fs.read(secondClasses / "Snippet.class") { readUtf8() })
+    val health = svc.editLeaseHealth()
+    assertTrue(health.active)
+    assertEquals(1, health.acquisitions)
+    assertEquals(2, health.compileAttempts)
+    assertEquals(2, health.incrementalCompiles)
+    assertEquals(0, health.fullFallbacks)
+  }
+
+  @Test
+  fun `stale or foreign leased revisions are rejected before compilation`() {
+    var compiles = 0
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ) = emptyList<PlaygroundDiagnostic>()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult {
+          compiles++
+          fs.createDirectories(outputDir)
+          return PlaygroundCompileService.IncrementalCompileResult(emptyList(), true)
+        }
+      }
+    val svc = service(compilerOverride = compiler, editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice").lease!!
+    val req = request().copy(editLease = lease, revision = 1)
+
+    assertTrue(svc.run(req, true, authenticatedOwner = "bob").exception!!.contains("not yours"))
+    svc.run(req, true, authenticatedOwner = "alice")
+    assertTrue(svc.run(req, true, authenticatedOwner = "alice").exception!!.contains("stale"))
+    assertEquals(1, compiles)
+  }
+
+  @Test
+  fun `an incremental infrastructure failure retries once through full compile`() {
+    var fullCompiles = 0
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ): List<PlaygroundDiagnostic> {
+          fullCompiles++
+          fs.createDirectories(outputDir)
+          fs.write(outputDir / "Snippet.class") { writeUtf8("full") }
+          return emptyList()
+        }
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ) =
+          PlaygroundCompileService.IncrementalCompileResult(
+            listOf(
+              PlaygroundDiagnostic(
+                PlaygroundSeverity.ERROR,
+                "compilation failed: broken IC cache",
+              )
+            ),
+            true,
+          )
+      }
+    val svc = service(compilerOverride = compiler, editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice").lease!!
+    val response =
+      svc.run(
+        request().copy(editLease = lease, revision = 1),
+        isSecurityChecked = true,
+        authenticatedOwner = "alice",
+      )
+
+    assertEquals(1, fullCompiles)
+    assertFalse(response.incremental)
+    assertNotNull(response.previewToken)
+    assertEquals(1, svc.editLeaseHealth().fullFallbacks)
+  }
+
+  @Test
+  fun `an unexpected leased compiler failure still returns the JSON contract`() {
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ) = emptyList<PlaygroundDiagnostic>()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult = error("compiler vanished")
+      }
+    val svc = service(compilerOverride = compiler, editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice").lease!!
+
+    val response =
+      svc.run(
+        request().copy(editLease = lease, revision = 1),
+        isSecurityChecked = true,
+        authenticatedOwner = "alice",
+      )
+
+    assertTrue(response.exception!!.contains("compiler vanished"))
+    assertNull(response.previewToken)
   }
 }

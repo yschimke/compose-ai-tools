@@ -281,7 +281,7 @@ const STYLED_FIXTURES = new Set([
     // captured document. The picker's whole claim is visual — one chip naming the current renderer
     // beside one combo of alternatives, where a row of six pressed-state chips used to be — so
     // captured bare it is an unstyled button next to an unstyled select and nothing about the
-    // simplification would move a baseline. `viewer.js` is needed too, for the `player-cmp-android`
+    // simplification would move a baseline. `viewer.js` is needed too, for the `player-java`
     // state below.
     "serve-viewer-rc-players",
     // The playground handoff this host cannot honour. Its whole claim is a NOTICE — an
@@ -478,14 +478,10 @@ const FIXTURE_STATES = [
             // the full state. An unlinked one would shoot the degenerate half of the same card.
             await page.hover('.cp-page-node[data-link="manifest"]');
             await page.waitForSelector(".cp-page-tip:not([hidden]) .cp-page-tip-card");
-            // The overlay is a real link now — that is what makes clicking it GO, and what makes a
-            // middle click, a modifier click and the status-bar preview work. A `<button>` here
-            // would pass every pixel assertion and none of that.
-            const tag = await page.locator('.cp-page-node[data-link="manifest"]').first().evaluate(
-                (el) => el.tagName.toLowerCase() + "|" + (el.getAttribute("href") || ""),
-            );
-            expect(tag.startsWith("a|")).toBe(true);
-            expect(tag).toContain("/p/");
+            // The overlay being a real anchor — which is what makes clicking it GO, and what makes
+            // a middle click, a modifier click and the status-bar preview work — is server-rendered
+            // markup, so it is asserted in `ServeWebFixtureTest` against the emitted HTML rather
+            // than by hovering a node and reading attributes back out of a browser.
         },
     },
     {
@@ -745,20 +741,11 @@ const FIXTURE_STATES = [
             });
             await page.evaluate(() => document.activeElement?.blur());
             await page.waitForFunction(() => document.querySelector("cp-page-zoom").hidden);
-            // Back to the IDENTITY, not merely to something small: a reset that left a residual
-            // translate would look right in a screenshot and mis-place every overlay measured after
-            // the next resize. Asserted on the computed transform rather than by comparing the
-            // canvas's box to the stage's — those legitimately differ by the stage's border.
-            const view = await page.evaluate(() => {
-                const canvas = document.querySelector(".cp-page-canvas");
-                const stage = document.querySelector(".cp-page-stage");
-                return {
-                    transform: getComputedStyle(canvas).transform,
-                    zoom: stage.style.getPropertyValue("--cp-page-zoom"),
-                };
-            });
-            expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(view.transform);
-            expect(parseFloat(view.zoom)).toBe(1);
+            // Returning to the IDENTITY — rather than merely to something small, which would look
+            // right here and mis-place every overlay measured after the next resize — is pinned in
+            // `cli/serve-web/test/pageZoom.test.ts`, which asserts the view state itself and covers
+            // reset from a wheel zoom as well as from a framed section. This state exists for the
+            // picture: the bar gone, the sheet back at 1:1.
         },
     },
     {
@@ -1379,17 +1366,20 @@ const FIXTURE_STATES = [
     })),
     {
         // Switching player through the combo. The committed HTML always opens on the default
-        // (`Java`), so this is the only way the picker's *moved* state is diffed: the combo on
-        // `CMP Android`, and — the point of the whole control — the chip beside it renaming itself
-        // to match instead of the visitor having to read which of six chips lit up.
+        // (`CMP Android`), so this is the only way the picker's *moved* state is diffed: the combo
+        // on `Java`, and — the point of the whole control — the chip beside it renaming itself to
+        // match instead of the visitor having to read which of six chips lit up.
+        //
+        // It selects whichever lane is *not* the default, so it followed the default from
+        // `cmp-android` to `java` when #3936 flipped it. Selecting the default would leave the
+        // picker where it already is and diff nothing, which is the failure this note exists to
+        // prevent the next time the default moves.
         fixture: "serve-viewer-rc-players",
-        suffix: "player-cmp-android",
+        suffix: "player-java",
         apply: async (page) => {
-            await page.selectOption("#cp-lane-select", "rc:cmp-android");
+            await page.selectOption("#cp-lane-select", "rc:java");
             await page.waitForFunction(
-                () =>
-                    document.getElementById("cp-live-toggle-label")?.textContent ===
-                    "CMP Android",
+                () => document.getElementById("cp-live-toggle-label")?.textContent === "Java",
             );
         },
     },

@@ -130,7 +130,6 @@ class BtaCompiler(
     workingDir.toFile().mkdirs()
     val cpSnapshotsDir = workingDir.resolve("cp-snapshots").also { it.toFile().mkdirs() }
     val icWorkingDir = workingDir.resolve("ic").also { it.toFile().mkdirs() }
-    val shrunkClasspathSnapshot = workingDir.resolve("shrunk-classpath-snapshot.bin")
 
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
@@ -153,7 +152,6 @@ class BtaCompiler(
             icWorkingDir,
             sourcesChanges,
             snapshotFiles,
-            shrunkClasspathSnapshot,
           )
           .build()
       builder.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)

@@ -635,14 +635,20 @@ class ServeWebTest {
     for (wire in listOf("js", "cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
       assertTrue(html.contains("value=\"rc:$wire\""), "option for $wire present")
     }
-    // Java is the seeded default: both the combo's selection and the chip's opening label.
-    assertTrue(html.contains("data-rc-default=\"java\""), "java is the default player")
+    // CMP Android is the seeded default: both the combo's selection and the chip's opening label.
+    // It opens on the embedded player because that is the lane whose output is a real Compose tree
+    // — editable figma-svg geometry and a described semantics tree, rather than one interop leaf
+    // (#3936). `?rcPlayer=java` still selects the view player.
+    assertTrue(
+      html.contains("data-rc-default=\"cmp-android\""),
+      "cmp-android is the default player",
+    )
     assertTrue(html.contains("<option value=\"rc:java\">Java</option>"), html)
     // The combo itself rests on its placeholder — the chip is what names the current lane, and a
     // combo repeating that name beside it read as two controls arguing about the same fact.
     assertTrue(html.contains("<option value=\"\" selected>Switch renderer…</option>"), html)
     assertTrue(
-      html.contains("<span id=\"cp-live-toggle-label\">Java</span>"),
+      html.contains("<span id=\"cp-live-toggle-label\">CMP Android</span>"),
       "the chip names the lane it opens on",
     )
     // cmp-jvm is the disabled option (and says why in its own label); the enabled ones are not.
@@ -1068,12 +1074,19 @@ class ServeWebTest {
     // Load order is load-bearing: `viewer.js` calls `window.cpSpecCompare` on the way into the
     // lane, and `<cp-spec-compare>` draws every surface from format-compare.js's primitives. The
     // element wires itself up as its tag upgrades, so the components bundle has to be requested
-    // before viewer.js, and the tag itself before the bundle that defines it.
+    // before viewer.js, and the tag itself before the bundle that defines it. The inline theme
+    // bootstrap must publish the baseline before that upgrade too: otherwise a cold themed deep
+    // link can paint the baked verdict while the parser waits for the later scripts.
     val tag = html.indexOf("<cp-spec-compare>")
+    val baseline = html.indexOf("root.setAttribute(\"data-spec-baseline\"")
     val components = html.indexOf("serve-components.js")
     val formatCompare = html.indexOf("format-compare.js")
     val viewer = html.indexOf("/viewer.js")
     assertTrue(tag in 1 until components, "the tag is parsed before the bundle upgrades it")
+    assertTrue(
+      baseline in (tag + 1) until components,
+      "the inline theme bootstrap publishes the baseline before the component upgrades",
+    )
     assertTrue(components in 1 until viewer, "the components bundle precedes viewer.js")
     assertTrue(formatCompare in 1 until viewer, "format-compare.js precedes viewer.js")
   }

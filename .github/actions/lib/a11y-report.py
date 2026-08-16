@@ -204,6 +204,7 @@ def select_variants(
     * Scroll / animation captures (``@ScrollingPreview`` /
       ``@AnimatedPreview``) — see [is_dynamic_preview]. Functions whose
       ONLY variants are dynamic drop out of the report entirely.
+    * Visual-only helpers carrying ``@PreviewHelper(includeInA11y = false)``.
     * Previews with no entry in a ``partial`` report — a narrowed
       ``compose-preview a11y --id X`` run only checked what it was asked
       for, so the rest were never checked and listing them with empty
@@ -224,6 +225,8 @@ def select_variants(
         if kind != "COMPOSE":
             continue
         if is_dynamic_preview(preview):
+            continue
+        if preview.get("includeInA11y", True) is False:
             continue
         by_fn.setdefault(preview["functionName"], []).append(preview)
 

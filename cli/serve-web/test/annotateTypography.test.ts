@@ -16,6 +16,7 @@ import {
     groupTypography,
     pairTypography,
     typographyAxes,
+    typographyComparableValue,
     typographyDefaults,
     typographyDistance,
     typographyFamily,
@@ -115,16 +116,62 @@ describe("typographyFamily", () => {
         assert.equal(typographyFamily(""), undefined);
     });
 
-    it("strips ONE weight suffix, which is why applying it twice loses a family", () => {
-        // Pinning current behaviour, not endorsing it. `typographySpec` calls this on an already
-        // reduced family, so `Roboto-Medium-Bold.ttf` becomes familyKey `Roboto` — and since
-        // comparison uses familyKey, `Roboto-Medium` and `Roboto-Bold` read as unchanged. Fixed in
-        // the follow-up; this test moves with it.
+    it("strips ONE weight suffix, and is NOT idempotent", () => {
+        // Which is why it must only ever be applied once. `typographySpec` used to call it again on
+        // its own result; the page then displayed the first reduction and compared on the second.
         assert.equal(
             typographyFamily("Roboto-Medium-Bold.ttf"),
             "Roboto-Medium",
         );
         assert.equal(typographyFamily("Roboto-Medium"), "Roboto");
+    });
+
+    it("keeps weight variants of one family together — weight is compared separately", () => {
+        // Reducing by one suffix is deliberate, not a bug: `spec.weight` carries the weight and is
+        // compared on its own, so these are one family at two weights rather than two families.
+        assert.equal(
+            typographyFamily("Roboto-Medium.ttf"),
+            typographyFamily("Roboto-Bold.ttf"),
+        );
+    });
+});
+
+describe("typographySpec · family", () => {
+    const specOf = (fontFamily: string) =>
+        typographySpec({ kind: "typography", detail: { fontFamily } });
+
+    it("displays and compares the SAME family", () => {
+        // The bug this replaced: the family was reduced once for display and a second time for
+        // comparison, and the reduction is not idempotent. So the table could show two visibly
+        // different families and report them as unchanged — the one thing the typography
+        // comparison exists to catch.
+        const medium = specOf("Roboto-Medium-Bold.ttf");
+        const black = specOf("Roboto-Black-Bold.ttf");
+        assert.equal(medium.family, "Roboto-Medium");
+        assert.equal(black.family, "Roboto-Black");
+        assert.notEqual(
+            typographyComparableValue(medium, "family"),
+            typographyComparableValue(black, "family"),
+            "two families shown differently must not compare as the same",
+        );
+    });
+
+    it("still treats weight variants of one family as one family", () => {
+        // The guard against over-correcting: reducing by one suffix is what makes these one family,
+        // and weight is compared on its own.
+        assert.equal(
+            typographyComparableValue(specOf("Roboto-Medium.ttf"), "family"),
+            typographyComparableValue(specOf("Roboto-Bold.ttf"), "family"),
+        );
+    });
+
+    it("groups by the family it displays", () => {
+        // `typographyGroupKey` read the second reduction too, so two usages the table showed as
+        // different families landed in one group and got one letter between them.
+        assert.notEqual(
+            typographyGroupKey(specOf("Roboto-Medium-Bold.ttf")),
+            typographyGroupKey(specOf("Roboto-Black-Bold.ttf")),
+        );
     });
 });
 

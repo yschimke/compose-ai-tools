@@ -171,6 +171,8 @@ data class CatalogEntry(
    * would see one component where the published catalog has several.
    */
   val perBreakpoint: Boolean = false,
+  /** COMPONENT: default design-kit variant property for override-variant cells. */
+  val kitAxis: String? = null,
 )
 
 @Serializable
@@ -205,6 +207,8 @@ data class PreviewInfo(
    * `compose-preview show --json`, contrib scripting, and MCP readers. False for ordinary previews.
    */
   val fixedTheme: Boolean = false,
+  /** Mirrors discovery's `@PreviewHelper(includeInA11y = false)` manifest flag. */
+  val includeInA11y: Boolean = true,
 )
 
 @Serializable

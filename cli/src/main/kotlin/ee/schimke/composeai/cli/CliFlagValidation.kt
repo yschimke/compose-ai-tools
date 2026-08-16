@@ -158,6 +158,8 @@ internal object CliFlagValidation {
             "--playground-caller-concurrency",
             "--playground-catalog-limit",
             "--playground-compile-slots",
+            "--playground-editing",
+            "--playground-edit-lease-ttl",
             "--playground-rate-limit",
             "--playground-sandbox",
             "--playground-sandbox-cpus",
