@@ -529,30 +529,6 @@ object ServeWeb {
       "<path d=\"M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z\"/>" +
       "<path d=\"M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z\"/></svg>"
 
-  /**
-   * Public-mode "about" intro: a short, static explanation of what the host is and its safety
-   * model. It sits at the **bottom** of the page it appears on (below the catalog grid / the home
-   * index), directly above [siteFooter] — the page's own content leads, and the explanation is
-   * there for whoever scrolls to it. Build and source links are NOT repeated here: [siteFooter]
-   * carries them on every page.
-   */
-  private fun aboutSection(): String =
-    """
-    <details class="cp-about cp-disclosure">
-      <summary>
-        <span class="cp-about-title">About this preview server</span>
-        <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
-      </summary>
-      <div class="cp-disclosure-body">
-        <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
-          using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
-          server never re-runs untrusted code. Catalogs are trusted by signature or their published
-          <code>design-artifacts</code> branch, and anything unverified is badged.</p>
-      </div>
-    </details>
-    """
-      .trimIndent()
-
   /** GitHub session action shown in the home-page header when OAuth is configured. */
   private fun githubAuthControl(status: GitHubAuthStatus?): String {
     status ?: return ""
@@ -572,11 +548,14 @@ object ServeWeb {
 
   /**
    * The minimal site footer — source, `/version`, and the running build — rendered by [document] at
-   * the bottom of **every** browser-facing page, below the body (and so below the bottom-of-page
-   * [aboutSection] on the pages that carry one). [version] null/blank just drops the build span;
-   * the source and `/version` links stay, so the footer is never empty.
+   * the bottom of **every** browser-facing page, below the body. [version] null/blank just drops
+   * the build span; the source and `/version` links stay, so the footer is never empty.
+   *
+   * [note] is the page's own footer block, rendered *above* the links row: on a catalog landing
+   * that's the provenance disclosure ([provenanceSection]), which belongs with the build/source
+   * metadata rather than in the middle of the catalog's content. Empty on every other page.
    */
-  private fun siteFooter(version: String?): String {
+  private fun siteFooter(version: String?, note: String = ""): String {
     val ver =
       version
         ?.takeIf { it.isNotBlank() }
@@ -584,10 +563,14 @@ object ServeWeb {
           " · <span class=\"cp-about-ver\" title=\"running preview-server build\">" +
             "server v${WebEscaping.htmlEscape(it)}</span>"
         } ?: ""
+    val noteBlock =
+      note.takeIf { it.isNotBlank() }?.let { "${it.trimEnd().prependIndent("        ")}\n" } ?: ""
     return """
       <footer class="cp-site-footer">
-        <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
-        <a href="/version">/version</a>$ver
+$noteBlock        <div class="cp-site-footer-links">
+          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
+          <a href="/version">/version</a>$ver
+        </div>
       </footer>
       """
       .trimIndent()
@@ -1048,7 +1031,7 @@ object ServeWeb {
       }
     }
     return """
-      <details class="cp-prov cp-disclosure">
+      <details class="cp-prov cp-disclosure" open>
         <summary>
           <span class="cp-prov-title">Catalog details</span>
           <span class="cp-disclosure-hint">Source, generation time and tooling</span>
@@ -3970,10 +3953,6 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
     githubAuth: GitHubAuthStatus? = null,
   ): String {
-    // The "about" intro sits at the BOTTOM of the front door (below the catalog cards, above the
-    // footer) so the systems this server publishes lead the page; it still appears only for the
-    // public server.
-    val about = if (isPublic) "\n" + aboutSection() else ""
     val headerAction = githubAuthControl(githubAuth)
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
@@ -4060,7 +4039,7 @@ object ServeWeb {
       navSuffix = suffix,
       headerAction = headerAction,
       version = version,
-      body = body + about,
+      body = body,
     )
   }
 
@@ -6288,9 +6267,6 @@ object ServeWeb {
         "<div class=\"cp-catalog-body\">\n" +
           "<aside class=\"cp-catalog-menu\" aria-label=\"Catalog menu\">\n" +
           "$sidebarHead$sidebarBody</aside>\n$gridBlock\n</div>"
-    // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
-    // own content leads; it still appears only for the public server.
-    val about = if (isPublic) "\n" + aboutSection() else ""
     // A catalog page links HOME (the front-door index) rather than sideways to its siblings: the
     // old design-systems nav row is replaced by a single back button, shown whenever this server
     // publishes catalogs (i.e. a home index exists to go back to). It rides in the site header's
@@ -6298,8 +6274,10 @@ object ServeWeb {
     // catalog page's own heading and grid then start at the top of the content column.
     val back = if (hasHomeIndex) backButton(token, isPublic) else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
-    // link) closes the catalog instead of interrupting the route from its heading to its content.
-    val prov = provenance?.let { provenanceSection(it, refreshUrl) + "\n" } ?: ""
+    // link) rides in the site footer, next to the build and source links it belongs with, rather
+    // than interrupting the route from the catalog's heading to its content. It renders expanded:
+    // it is short, and the facts a visitor would cite a rendering by shouldn't need a click.
+    val prov = provenance?.let { provenanceSection(it, refreshUrl) } ?: ""
     // The Theme control shows when there is more than one theme to choose between: a baked
     // light/dark pair to swap, and/or the app-declared themes this session can re-render under. A
     // catalog with neither (mostly theme-neutral app screens on a static bundle) never sprouts a
@@ -6458,6 +6436,7 @@ object ServeWeb {
       navSuffix = navSuffix,
       headerBreadcrumb = back,
       version = version,
+      footerNote = prov,
       themeCss = themeCss,
       // The bar names the catalog you are in, from the same heading the page shows.
       siteName = heading,
@@ -6467,7 +6446,7 @@ object ServeWeb {
         """
         $titleRow
         ${degradeBanner(degradations)}<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
-        $primaryActions$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction$prov$about
+        $primaryActions$renderFailureSummary$tools$navAndGrid$emptyState$filterScript$liveScript$downloadAction
         <!-- Collapses this page's chrome onto one toolbar row on a phone: the actions and the tree
              sidebar's filter field move into the sticky toolbar, and back out again above 640px.
              Renders nothing; `serve.css` hides the tag. -->
@@ -9665,6 +9644,11 @@ $rows
      */
     version: String? = null,
     /**
+     * The page's own block inside [siteFooter], above the source/`/version` links — the catalog
+     * landing's provenance disclosure. Empty on every other page.
+     */
+    footerNote: String = "",
+    /**
      * The served catalog's own palette, projected onto the chrome's custom properties by
      * [ServeThemeCss] and inlined after `serve.css` so it wins at equal specificity. Empty for a
      * plain module / a catalog that publishes no tokens — the page then uses the built-in chrome.
@@ -9744,7 +9728,7 @@ $rows
           .trimIndent()
       }
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
-    val footerBlock = "\n${siteFooter(version).prependIndent("        ")}"
+    val footerBlock = "\n${siteFooter(version, footerNote).prependIndent("        ")}"
     // Before `themeCss`, so a catalog palette still wins at equal specificity; the font block
     // declares faces only and collides with nothing in the chrome.
     val rcFontsBlock = if (rcFonts) "\n" + ServeRcFonts.linkTag().prependIndent("        ") else ""
