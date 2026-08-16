@@ -554,6 +554,167 @@ the stage-2 in-process BTA compile targets < 1 s warm on desktop. The playground
 rides the daemon path, so the warm edit→pixel loop is in that range, not the
 cold-fork range.
 
+### 7.2 Optional stateful editing — use BTA incrementally, keep one-shot as the default
+
+The API is **BTA**, Kotlin's experimental **Build Tools API** (not BTS). The
+playground already uses it: [`PlaygroundBtaCompiler`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundBtaCompiler.kt)
+drives the same [`BtaCompileSession`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/bta/BtaCompileSession.kt)
+that backs the editor daemon. The default one-shot Run still does not retain BTA
+incremental state: it is staged into a fresh work directory, and a sandboxed Run
+starts a fresh compiler JVM. The explicit lease added below supplies the previous
+source tree, output directory, and IC cache that incremental compilation needs.
+
+**Decision: ship a stateful trial as an opt-in layer over the existing one-shot
+contract.** It is now behind `--playground-editing`, requires configured GitHub
+authentication, and exposes exactly one explicit whole-host lease. BTA is the
+right compiler API for it, but BTA alone is not the feature. The trial also needs
+an editing-session lifetime, mutable source and output state, and immutable
+successful revisions for preview tokens; a warm bounded compiler worker remains
+the next latency step. The current Run button remains the simple and robust
+default; **Acquire editing lease** opts into the additional state. The trial
+keeps explicit Run so it can soak in production before debounce or cancellation
+changes the interaction model.
+
+#### What the newer BTA gives us
+
+The direction is now substantially less speculative than when this document was
+written:
+
+- Kotlin/JVM compilation in KGP uses BTA by default since Kotlin 2.3.20, so the
+  JVM path is exercised by normal Gradle builds ([Kotlin 2.3.20 notes](https://kotlinlang.org/docs/whatsnew2320.html#kotlin-jvm-compilation-uses-build-tools-api-by-default)).
+- BTA exposes snapshot-based JVM incremental compilation, known modified and
+  removed files (`SourcesChanges.Known`), compiler plugins, cancellable build
+  operations, and build metrics. Kotlin's proposal defines classpath
+  snapshotting over a **classes directory or JAR**, so the extracted catalog
+  `classes/` entry is not a fundamental blocker
+  ([KEEP-421 proposal](https://github.com/Kotlin/KEEP/blob/build-tools-api/proposals/extensions/build-tools-api.md#jvmplatformtoolchain)).
+- Kotlin 2.4 adds tracking for non-source configuration inputs, a structured
+  compiler-message rendering hook, and more consistent Compose incremental
+  compilation across files
+  ([Kotlin 2.4 BTA notes](https://kotlinlang.org/docs/whatsnew24.html#build-tools-api)).
+- This repo's existing `BtaCompilerIncrementalTest` passes on Kotlin 2.4.10. On
+  the 2026-08-16 development machine its three-file Compose fixture took
+  **9.943 s cold** (toolchain bootstrap + first compile) and **606 ms warm**
+  after one source edit. That is a viability measurement, not a Playground SLO:
+  the real catalog classpaths and render leg still need their own benchmark.
+
+Two caveats remain load-bearing. First, JetBrains still marks BTA experimental
+and says direct third-party build-tool integration is not yet a public contract
+([BTA documentation](https://kotlinlang.org/docs/build-tools-api.html)); we must
+pin API and implementation versions together and keep a full-compile fallback.
+Second, BTA is a **build** API, not the Kotlin Analysis API. It can produce class
+files and diagnostics faster; it does not provide completion, hover, go-to
+definition, rename, or refactoring. Those would be a separate LSP/Analysis API
+project and must not be implied by the "Live editing" label.
+
+"Full editing" therefore needs a precise boundary. This proposal supports a
+full **playground module**: multiple user-owned Kotlin files may be added,
+renamed, removed, and incrementally recompiled against one selected catalog.
+It does not make the catalog's repository into a browser IDE. Editing an
+arbitrary Gradle/Android project would additionally require source-set and
+variant modelling, resources and generated sources, Java mixed compilation,
+KSP/KAPT, dependency resolution, and build-script execution. BTA accepts the
+resolved inputs to a Kotlin compilation; it does not discover or safely execute
+that project build model for us.
+
+#### Session and compile shape
+
+Keep `/api/{version}/compiler/run` backward compatible. An ordinary request is
+unchanged. An opted-in client adds an unguessable `editLease` and a monotonically
+increasing `revision`; the server derives the known modified/removed file set by
+reconciling the posted module. The response echoes the lease and revision. The
+existing frontend's monotonic-run fence then
+also discards a slow response for an older revision.
+
+Each editing session owns:
+
+| State | Lifetime / rule |
+|---|---|
+| Staged source tree | Mutable until session TTL; filenames remain server-validated and relative. |
+| IC working directory | Private to exactly one session + catalog + mode + compiler configuration. Never share it across users or catalogs. |
+| Mutable compiler output | Reused by BTA across revisions; never handed directly to a preview token. |
+| Successful revision snapshot | Immutable classes directory copied or hard-linked after a clean compile; this is what render and preview tokens use. |
+| Last accepted revision | Reject duplicate/out-of-order writes so concurrent tabs cannot roll source state backwards. |
+
+The immutable snapshot distinction matters. A preview token minted at revision 4
+must keep rendering revision 4 after revision 5 compiles; pointing tokens at the
+incremental compiler's mutable output directory would silently change an already
+shared link. Failed compiles publish no snapshot and leave the last successful
+preview intact. If BTA reports an internal/IC fault, discard that session's IC
+state and retry the same revision as a full compile into a clean output directory;
+only a second failure reaches the user as an infrastructure error.
+
+The compiler process and IC state have different sharing boundaries:
+
+```
+warm compiler worker (toolchain + Compose plugin, keyed by Kotlin version)
+  ├─ catalog classpath snapshots (read-only, content addressed)
+  └─ current single lease → sources + output + IC cache
+```
+
+The one-lease trial intentionally avoids multi-tenant IC state. If measurement
+justifies multiple leases later, each must retain its own sources, output, and IC
+cache beneath the same worker boundary.
+
+Refactor `BtaCompileSession` accordingly: the expensive loaded
+`KotlinToolchains` belongs to the worker, while module name, output directory,
+IC directory, source changes, and compiler configuration belong to a per-edit
+session operation. Do not create one `BtaCompileSession` as currently shaped per
+browser session; that would reload the expensive toolchain for every editor and
+erase most of the win.
+
+#### Containment and capacity
+
+A warm compiler worker is compatible with the security argument in §6.3: it
+loads source into the compiler but does not execute snippet bytecode, annotation
+processors, or user-selected compiler plugins. It must still run inside the
+configured jail with the existing heap, CPU, pid, filesystem, and wall-clock
+bounds because malicious source can attack compiler resources.
+
+Make the worker protocol narrower than the current arbitrary-path child request:
+session ids and relative file changes in, diagnostics/metrics out; the parent
+chooses every host path and classpath. Recycle a worker on any of: hard timeout,
+OOM/non-zero exit, maximum compile count, maximum age, or memory watermark.
+BTA cancellation is useful for superseded revisions but is explicitly
+best-effort, so cancellation never replaces the sandbox deadline or process
+recycle. Existing per-caller rate/concurrency limits continue to apply to every
+compile, incremental or not.
+
+#### Delivery sequence and graduation gate
+
+1. **Classpath/IC correctness spike.** Teach the production snapshot cache to
+   content-hash directories as well as files, move off BTA's deprecated
+   `shrunkClasspathSnapshot` builder overload, and test edit/add/remove/rename,
+   compile-error recovery, Compose cross-file invalidation, catalog change, and
+   a classes-directory dependency.
+2. **Local opt-in.** Add stateful sessions behind a serve flag for the existing
+   in-process development posture. Keep explicit Run; this isolates compiler and
+   token semantics from debounce/UI questions.
+3. **Warm jailed worker.** Replace the authenticated public lane's disposable
+   compiler fork with a capped, recycled worker or small pool. The trial keeps
+   today's capped child-per-Run boundary and reuses only its session-owned disk
+   state, so this step improves latency without weakening the current containment
+   probe or resource accounting.
+4. **Live-edit UX.** Add the visible opt-in, 350–500 ms debounce, superseded-build
+   cancellation, "compiling revision N" state, and last-good-preview behaviour.
+   Explicit Run remains available and is the accessibility/fallback path.
+5. **Measure before defaulting.** Benchmark 1/10/50-file snippets against real
+   CMP and Android catalog classpaths. Record cold bootstrap, warm body edit,
+   ABI edit, add/remove/rename, error→fix, snapshot copy, first-frame render,
+   p50/p95, heap growth, and worker recycle. Graduate only if warm compile p95 is
+   under 1 s, materially beats a warm non-incremental compile, and 100-edit soak
+   tests show bounded memory and revision-correct preview tokens.
+
+Steps 1–2 and the explicit opt-in part of step 4 are implemented. Production
+soak counters live at `/status.json` → `playground.editing`; the lease owner and
+unguessable capability are intentionally absent. Steps 3 and the automatic UX
+remain follow-ups, and the feature remains off by default.
+
+This sequence also gives a cheap exit: if real snippets are too small for IC to
+beat the already measured 0.3–0.5 s warm non-incremental in-process compile, ship
+the **warm jailed worker** alone. It removes the public lane's repeated 3+ second
+toolchain bootstrap without taking on editing-session or IC-cache complexity.
+
 ---
 
 ## 8. Open questions — resolved

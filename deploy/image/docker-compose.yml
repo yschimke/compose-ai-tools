@@ -166,6 +166,9 @@ services:
       # compiles/minute, 1 concurrent); set SERVE_PLAYGROUND_RATE_LIMIT=0 to disable the limiter.
       SERVE_PLAYGROUND_RATE_LIMIT: "${SERVE_PLAYGROUND_RATE_LIMIT:-}"
       SERVE_PLAYGROUND_CALLER_CONCURRENCY: "${SERVE_PLAYGROUND_CALLER_CONCURRENCY:-}"
+      # Experimental: one explicit GitHub-authenticated stateful editing lease for the whole host.
+      SERVE_PLAYGROUND_EDITING: "${SERVE_PLAYGROUND_EDITING:-0}"
+      SERVE_PLAYGROUND_EDIT_LEASE_TTL: "${SERVE_PLAYGROUND_EDIT_LEASE_TTL:-}"
       # Attribute a request to the X-Forwarded-For peer rather than the proxy's own address, so the
       # per-caller budget above counts real visitors instead of lumping them under Caddy. ONLY safe
       # behind a proxy that appends the peer address it saw — which the `caddy` service below is.

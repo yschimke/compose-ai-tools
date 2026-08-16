@@ -397,6 +397,13 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val playgroundCallerConcurrency: Int =
     args.flagValue("--playground-caller-concurrency")?.toIntOrNull()?.takeIf { it > 0 } ?: 1
 
+  /** Authenticated, explicitly acquired, single-host stateful BTA editing trial. Off by default. */
+  private val playgroundEditing: Boolean = "--playground-editing" in args
+
+  private val playgroundEditLeaseTtlSeconds: Long =
+    args.flagValue("--playground-edit-lease-ttl")?.toLongOrNull()?.takeIf { it > 0 }
+      ?: PlaygroundCompileService.DEFAULT_EDIT_LEASE_TTL_MILLIS / 1000
+
   /**
    * `--trust-forwarded-for`: rate-limit an anonymous caller by the **last** `X-Forwarded-For` entry
    * rather than the socket peer.
@@ -1578,7 +1585,20 @@ class ServeCommand(args: List<String>) : Command(args) {
             ?.doc
             ?.path
         },
+        editLeasesEnabled = playgroundEditing && repoAccessGated,
+        editLeaseTtlMillis = playgroundEditLeaseTtlSeconds * 1000,
       )
+    if (playgroundEditing && !repoAccessGated) {
+      System.err.println(
+        "serve: --playground-editing requested without GitHub auth; the authenticated editing " +
+          "lease is disabled."
+      )
+    } else if (service.editLeasesEnabled) {
+      System.err.println(
+        "serve: playground live editing trial enabled — one authenticated lease, " +
+          "${playgroundEditLeaseTtlSeconds}s idle TTL"
+      )
+    }
     // No mode survived gating (e.g. an Android-only host whose daemon sidecar / android.jar is
     // absent, so every classpath gated to null): don't enable a lane that would render an empty
     // mode selector and mint dead tokens on Run. Disable it, like the no-source case above.
@@ -1686,6 +1706,7 @@ class ServeCommand(args: List<String>) : Command(args) {
               )
             }
           },
+        editing = { service.editLeaseHealth() },
       )
     }
     return PlaygroundLane(compile = service, redeem = redeem, health = health)

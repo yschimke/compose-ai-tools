@@ -771,6 +771,12 @@ class ServeHttpServer(
         if (playgroundService != null) {
           val svc = playgroundService
           post("/api/{version}/compiler/run") { handlePlaygroundRun(svc) }
+          if (svc.editLeasesEnabled) {
+            post("/api/{version}/compiler/edit-lease") { handlePlaygroundEditLeaseAcquire(svc) }
+            post("/api/{version}/compiler/edit-lease/release") {
+              handlePlaygroundEditLeaseRelease(svc)
+            }
+          }
           // The runtime catalog selector's list. Fetched by the editor on load rather than only
           // baked into the page: catalogs are fetched in the background *after* the server is up,
           // so
@@ -1479,6 +1485,7 @@ class ServeHttpServer(
         pinnedCatalogSystems = service.pinnedCatalogSystems,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
+        editingLeaseEnabled = service.editLeasesEnabled && githubAuth?.currentLogin(call) != null,
       ),
       ContentType.Text.Html,
     )
@@ -1659,11 +1666,74 @@ class ServeHttpServer(
       )
       return
     }
-    val response = withContext(Dispatchers.IO) { service.run(request, isSecurityChecked = true) }
+    val response =
+      withContext(Dispatchers.IO) {
+        service.run(
+          request,
+          isSecurityChecked = true,
+          authenticatedOwner = githubAuth?.currentLogin(call),
+        )
+      }
     call.respondText(
       JSON.encodeToString(PlaygroundRunResponse.serializer(), response),
       ContentType.Application.Json,
     )
+  }
+
+  private suspend fun RoutingContext.handlePlaygroundEditLeaseAcquire(
+    service: PlaygroundCompileService
+  ) {
+    if (rejectBadToken()) return
+    if (rejectMissingGithubAuth(api = true)) return
+    if (rejectMissingGithubRepoAccess(api = true)) return
+    val owner = githubAuth?.currentLogin(call)
+    if (owner == null) {
+      call.respondText(
+        "GitHub sign-in is required for live editing.",
+        status = HttpStatusCode.Unauthorized,
+      )
+      return
+    }
+    val result = withContext(Dispatchers.IO) { service.acquireEditLease(owner) }
+    call.respondText(
+      JSON.encodeToString(PlaygroundEditLeaseResponse.serializer(), result),
+      ContentType.Application.Json,
+      if (result.acquired) HttpStatusCode.OK else HttpStatusCode.Conflict,
+    )
+  }
+
+  private suspend fun RoutingContext.handlePlaygroundEditLeaseRelease(
+    service: PlaygroundCompileService
+  ) {
+    if (rejectBadToken()) return
+    if (rejectMissingGithubAuth(api = true)) return
+    if (rejectMissingGithubRepoAccess(api = true)) return
+    val owner = githubAuth?.currentLogin(call)
+    if (owner == null) {
+      call.respondText(
+        "GitHub sign-in is required for live editing.",
+        status = HttpStatusCode.Unauthorized,
+      )
+      return
+    }
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
+      }
+    val request = body?.let {
+      runCatching {
+        JSON.decodeFromString(
+          PlaygroundEditLeaseReleaseRequest.serializer(),
+          it.decodeToString(),
+        )
+      }
+        .getOrNull()
+    }
+    if (request == null || !service.releaseEditLease(owner, request.lease)) {
+      call.respondText("Live-edit lease not found.", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.respondText("{\"released\":true}", ContentType.Application.Json)
   }
 
   /** `GET /d/{id}`: the permalink page. An expired (or unknown) id is a styled 404, not a hint. */
@@ -3776,6 +3846,20 @@ class ServeHttpServer(
                   RateLimitDto(
                     activeCallers = it.activeCallers(),
                     trackedCallers = it.trackedCallers(),
+                  )
+                },
+              editing =
+                h.editing?.invoke()?.let {
+                  EditingDto(
+                    enabled = it.enabled,
+                    active = it.active,
+                    expiresAtEpochMs = it.expiresAtEpochMs,
+                    lastRevision = it.lastRevision,
+                    acquisitions = it.acquisitions,
+                    compileAttempts = it.compileAttempts,
+                    incrementalCompiles = it.incrementalCompiles,
+                    fullFallbacks = it.fullFallbacks,
+                    lastCompileMillis = it.lastCompileMillis,
                   )
                 },
             )
@@ -6346,6 +6430,21 @@ private data class PlaygroundDto(
   val catalogSelector: CatalogSelectorDto? = null,
   /** The per-caller compile budget, or null when the lane is unmetered. */
   val rateLimit: RateLimitDto? = null,
+  /** Authenticated single-lease incremental editing trial, or null on older/unwired lanes. */
+  val editing: EditingDto? = null,
+)
+
+@Serializable
+private data class EditingDto(
+  val enabled: Boolean,
+  val active: Boolean,
+  val expiresAtEpochMs: Long? = null,
+  val lastRevision: Long? = null,
+  val acquisitions: Long,
+  val compileAttempts: Long,
+  val incrementalCompiles: Long,
+  val fullFallbacks: Long,
+  val lastCompileMillis: Long? = null,
 )
 
 @Serializable

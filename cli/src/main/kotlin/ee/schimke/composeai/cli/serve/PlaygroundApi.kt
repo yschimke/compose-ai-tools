@@ -81,7 +81,26 @@ data class PlaygroundRunRequest(
    * the wrong thing.
    */
   val catalog: String = "",
+  /**
+   * Optional single-user editing lease. Empty keeps the original stateless, one-shot compile.
+   * Non-empty values are accepted only from the authenticated owner that acquired the lease.
+   */
+  val editLease: String = "",
+  /** Monotonic client revision within [editLease]. Required to increase on every leased compile. */
+  val revision: Long = 0,
 )
+
+/** Result of explicitly acquiring the host's one stateful Playground editing lease. */
+@Serializable
+data class PlaygroundEditLeaseResponse(
+  val acquired: Boolean,
+  val lease: String? = null,
+  val expiresAtEpochMs: Long? = null,
+  val message: String,
+)
+
+/** Body for `POST /api/{version}/compiler/edit-lease/release`. */
+@Serializable data class PlaygroundEditLeaseReleaseRequest(val lease: String = "")
 
 /**
  * One entry in the editor's catalog selector (`GET /api/{version}/compiler/catalogs`).
@@ -192,6 +211,12 @@ data class PlaygroundRunResponse(
   val documentUrl: String? = null,
   val previewId: String? = null,
   val previews: List<String> = emptyList(),
+  /** Echoed only for stateful editing compiles. */
+  val editLease: String? = null,
+  /** The accepted stateful revision. Null on the original one-shot path. */
+  val revision: Long? = null,
+  /** True when this revision used BTA incremental compilation rather than the full fallback. */
+  val incremental: Boolean = false,
 )
 
 /**

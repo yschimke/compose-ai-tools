@@ -69,6 +69,7 @@ class ServeStatusTest {
     catalogLoads: CatalogLoadTracker? = null,
     failedCatalogPreviews: List<String> = emptyList(),
     deferredCatalogPreviews: List<String> = emptyList(),
+    playgroundHealth: (() -> PlaygroundHealth)? = null,
   ): ServeHttpServer {
     registry.register(
       "default-mod",
@@ -117,6 +118,7 @@ class ServeStatusTest {
         trustStoreConfigured = true,
         catalogRefreshSeconds = 600,
         acceptBundlesEnabled = false,
+        playgroundHealth = playgroundHealth,
       )
       .also { it.start() }
   }
@@ -161,6 +163,48 @@ class ServeStatusTest {
     assertTrue(body.contains("\"catalogRefreshSeconds\":600"), body)
     // Static bundle catalogs run no daemon, so no live servers.
     assertTrue(body.contains("\"runningServers\":[]"), "static catalogs run no daemon: $body")
+  }
+
+  @Test
+  fun `status_json exposes owner-free editing soak counters`() {
+    server =
+      newServer(public = true, token = "unused") {
+        PlaygroundHealth(
+          admittedBy = "GitHub repository access",
+          sandboxProfile = "bwrap",
+          sandboxActive = true,
+          jailDropped = false,
+          sandboxMemoryMb = 1536,
+          sandboxCpus = 1.0,
+          sandboxTtlSeconds = 180,
+          probe = null,
+          compilerJailed = true,
+          compileSlots = 1,
+          modes = { emptyList() },
+          editing = {
+            PlaygroundHealth.Editing(
+              enabled = true,
+              active = true,
+              expiresAtEpochMs = 2_000,
+              lastRevision = 7,
+              acquisitions = 3,
+              compileAttempts = 12,
+              incrementalCompiles = 10,
+              fullFallbacks = 2,
+              lastCompileMillis = 418,
+            )
+          },
+        )
+      }
+
+    val (code, body) = get("/status.json")
+
+    assertEquals(200, code)
+    assertTrue(body.contains("\"editing\":{\"enabled\":true,\"active\":true"), body)
+    assertTrue(body.contains("\"lastRevision\":7"), body)
+    assertTrue(body.contains("\"incrementalCompiles\":10"), body)
+    assertTrue(body.contains("\"fullFallbacks\":2"), body)
+    assertFalse(body.contains("editLease"), "status must not expose the lease capability: $body")
   }
 
   @Test

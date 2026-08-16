@@ -75,6 +75,43 @@ class PlaygroundJailedCompiler(
     classpath: List<Path>,
     outputDir: Path,
   ): List<PlaygroundDiagnostic> {
+    return launchCompile(sources, classpath, outputDir)
+  }
+
+  override fun compileIncremental(
+    sources: List<Path>,
+    classpath: List<Path>,
+    outputDir: Path,
+    workingDir: Path,
+    modified: List<Path>,
+    removed: List<Path>,
+    firstBuild: Boolean,
+  ): PlaygroundCompileService.IncrementalCompileResult =
+    PlaygroundCompileService.IncrementalCompileResult(
+      diagnostics =
+        launchCompile(
+          sources,
+          classpath,
+          outputDir,
+          incrementalWorkingDir = workingDir,
+          modified = modified,
+          removed = removed,
+          firstBuild = firstBuild,
+        ),
+      // The child is cold, but it uses the persistent IC/output state and therefore is genuinely
+      // incremental. A future warm worker removes the remaining toolchain-bootstrap cost.
+      incremental = !firstBuild,
+    )
+
+  private fun launchCompile(
+    sources: List<Path>,
+    classpath: List<Path>,
+    outputDir: Path,
+    incrementalWorkingDir: Path? = null,
+    modified: List<Path> = emptyList(),
+    removed: List<Path> = emptyList(),
+    firstBuild: Boolean = false,
+  ): List<PlaygroundDiagnostic> {
     // The snippet's work dir — the one path the jail leaves writable, and the parent of both the
     // staged sources and the class output. Everything the compile writes (classes, the IC dir, this
     // request file) therefore lands inside the directory the token store deletes.
@@ -87,8 +124,12 @@ class PlaygroundJailedCompiler(
         outputDir = outputDir.toString(),
         btaImplJars = btaImplJars,
         compilerPluginJars = compilerPluginJars,
-        icWorkingDir = File(workDir, "bta-ic").absolutePath,
+        icWorkingDir = incrementalWorkingDir?.toString() ?: File(workDir, "bta-ic").absolutePath,
         moduleName = moduleName,
+        incremental = incrementalWorkingDir != null,
+        modified = modified.map { it.toString() },
+        removed = removed.map { it.toString() },
+        firstBuild = firstBuild,
       )
     // Admission control BEFORE the fork: without it, every concurrent POST is another whole JVM
     // holding another whole memory budget, and the per-process caps say nothing about the total.
@@ -307,6 +348,10 @@ data class PlaygroundCompileRequest(
   val compilerPluginJars: List<String>,
   val icWorkingDir: String,
   val moduleName: String,
+  val incremental: Boolean = false,
+  val modified: List<String> = emptyList(),
+  val removed: List<String> = emptyList(),
+  val firstBuild: Boolean = false,
 )
 
 /** What it answers: the same diagnostics an in-process compile would have returned. */
@@ -340,11 +385,26 @@ object PlaygroundCompileMain {
             icWorkingDir = File(request.icWorkingDir).toPath(),
             moduleName = request.moduleName,
           )
-          .compile(
-            sources = request.sources.map { it.toPath() },
-            classpath = request.classpath.map { it.toPath() },
-            outputDir = request.outputDir.toPath(),
-          )
+          .let { compiler ->
+            if (request.incremental)
+              compiler
+                .compileIncremental(
+                  sources = request.sources.map { it.toPath() },
+                  classpath = request.classpath.map { it.toPath() },
+                  outputDir = request.outputDir.toPath(),
+                  workingDir = request.icWorkingDir.toPath(),
+                  modified = request.modified.map { it.toPath() },
+                  removed = request.removed.map { it.toPath() },
+                  firstBuild = request.firstBuild,
+                )
+                .diagnostics
+            else
+              compiler.compile(
+                sources = request.sources.map { it.toPath() },
+                classpath = request.classpath.map { it.toPath() },
+                outputDir = request.outputDir.toPath(),
+              )
+          }
       } catch (t: Throwable) {
         listOf(
           PlaygroundDiagnostic(
