@@ -36,6 +36,7 @@ import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
 import { visiblePreviewsForFile } from "./previewScope";
+import { sourceMayDifferFromCachedPreviews } from "./previewSourceState";
 import { anyPreviewSourceTabOpen } from "./previewTabs";
 import {
     AccessibilityFinding,
@@ -3108,6 +3109,36 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     }
     const moduleKey = module.modulePath;
 
+    // Reconcile before bootstrap. The daemon's PreviewManifestRouter snapshots
+    // previews.json when the JVM starts and does not reload it. A Gradle build
+    // cache can restore empty class outputs while discovery still finds asset
+    // previews, leaving a non-empty but stale asset-only manifest. Starting the
+    // daemon from that file permanently rejects every code preview discovered
+    // afterward with "no manifest entry".
+    let manifest = moduleManifestCache.get(moduleKey) ?? [];
+    const repaintFile =
+        editorScope.file &&
+        gradleService.resolveModule(editorScope.file)?.modulePath === moduleKey
+            ? editorScope.file
+            : undefined;
+    let filePreviews = previewsForFile(manifest, module, filePath);
+    const sourceDiffers = await previewSourceMayDifferFromCache(
+        filePath,
+        filePreviews,
+    );
+    if (manifest.length === 0 || sourceDiffers) {
+        if (sourceDiffers) {
+            logLine(
+                `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before startup`,
+            );
+        }
+        const fresh = await reconcilePreviewManifest(module, repaintFile);
+        if (fresh) {
+            manifest = fresh;
+            filePreviews = previewsForFile(fresh, module, filePath);
+        }
+    }
+
     // Bootstrap (Gradle task + JVM spawn) happens once per module per
     // session. Normally it has already fired from the active-editor warm
     // path; on the rare case where the user saves before scope-in (e.g.
@@ -3145,46 +3176,9 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
     }
 
-    // Focus scope = the saved file's previews, derived from the most recent
-    // manifest snapshot we got from Gradle's composePreviewDiscover. The daemon
-    // reads this for queue ordering — focused first. If we don't yet have a
-    // manifest for this module the focus call is skipped; the next refresh
-    // will populate moduleManifestCache. Returning true with no ids is
-    // intentional — the daemon already saw `fileChanged` so its internal
-    // discovery + render will catch any newly-discovered previews on its
-    // own; the caller just shouldn't escalate to a Gradle render in that
-    // case (the panel will repopulate via discover + the daemon's
-    // discoveryUpdated push).
-    let manifest = moduleManifestCache.get(moduleKey) ?? [];
-    const repaintFile =
-        editorScope.file &&
-        gradleService.resolveModule(editorScope.file)?.modulePath === moduleKey
-            ? editorScope.file
-            : undefined;
-    // The manifest snapshot persists across identity edits, but it can be empty
-    // on a cold save: the first save before any discover ran, or right after an
-    // explicit refresh cleared it. An empty snapshot would derive renderIds=0
-    // and render nothing — and an identity edit keeps the daemon quiet, so no
-    // `discoveryUpdated` would repopulate it. Recover by discovering once here.
-    // (`sourceMayHaveDroppedCachedPreviews` can't cover this — it returns false
-    // for an empty preview list.) Once populated, subsequent identity saves skip
-    // this and reuse the snapshot.
-    if (manifest.length === 0) {
-        const fresh = await reconcilePreviewManifest(module, repaintFile);
-        if (fresh) {
-            manifest = fresh;
-        }
-    }
-    let filePreviews = previewsForFile(manifest, module, filePath);
-    if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
-        logLine(
-            `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`,
-        );
-        const fresh = await reconcilePreviewManifest(module, repaintFile);
-        filePreviews = fresh
-            ? previewsForFile(fresh, module, filePath)
-            : filePreviews;
-    }
+    // Focus scope = the saved file's previews, derived from the manifest we
+    // reconciled before daemon startup. The daemon reads this for queue
+    // ordering — focused first.
     const ids = prioritizeEditedPreview(
         filePath,
         filePreviews.map((p) => p.id),
@@ -4568,57 +4562,17 @@ function heavyOptInsFor(moduleId: string, previewIds: string[]): string[] {
     return previewIds.filter((id) => opted.has(id));
 }
 
-async function sourceMayHaveDroppedCachedPreviews(
+async function previewSourceMayDifferFromCache(
     filePath: string,
     previews: PreviewInfo[],
 ): Promise<boolean> {
-    if (previews.length === 0) {
-        return false;
-    }
     let source: string;
     try {
         source = await fs.promises.readFile(filePath, "utf-8");
     } catch {
         return false;
     }
-    return previews.some(
-        (preview) =>
-            !sourceLooksLikePreviewDeclaration(source, preview.functionName),
-    );
-}
-
-function sourceLooksLikePreviewDeclaration(
-    source: string,
-    functionName: string,
-): boolean {
-    const escaped = functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = new RegExp(`\\bfun\\s+${escaped}\\s*\\(`).exec(source);
-    if (!match) {
-        return false;
-    }
-
-    const lines = source.slice(0, match.index).split(/\r?\n/);
-    const annotationLines: string[] = [];
-    for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim();
-        if (line.length === 0) {
-            if (annotationLines.length === 0) {
-                continue;
-            }
-            break;
-        }
-        if (
-            line.startsWith("@") ||
-            line.startsWith("//") ||
-            line.startsWith("/*") ||
-            line.startsWith("*")
-        ) {
-            annotationLines.unshift(line);
-            continue;
-        }
-        break;
-    }
-    return annotationLines.some((line) => line.includes("Preview"));
+    return sourceMayDifferFromCachedPreviews(source, previews);
 }
 
 /**

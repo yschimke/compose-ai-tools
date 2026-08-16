@@ -129,6 +129,8 @@ export class SpecCompare extends LitElement {
     private cleanups: Array<() => void> = [];
     private annotationKey = "";
     private annotationPromise: Promise<unknown> | null = null;
+    /** Annotation endpoint captured with the exact render normalised into [frames]. */
+    private framesAnnotationUrl = "";
     private typographyLegend: HTMLElement | null = null;
     private typographyLayers: HTMLElement[] = [];
 
@@ -350,10 +352,15 @@ export class SpecCompare extends LitElement {
         const api = compareApi();
         const reference = sameOrigin(this.referenceUrl, location.origin);
         const actual = sameOrigin(this.actualUrl, location.origin);
+        const annotationFrameUrl =
+            document.getElementById("cp-img")?.getAttribute("data-cp-src") ||
+            this.actualUrl;
+        const annotationUrl = dataUrlFor(annotationFrameUrl, "annotations");
         const key = `${reference}\n${actual}`;
         if (!reference || !actual || !api) {
             this.frames = null;
             this.framesKey = "";
+            this.framesAnnotationUrl = "";
             this.setScore(UNAVAILABLE);
             return;
         }
@@ -374,6 +381,10 @@ export class SpecCompare extends LitElement {
             if (generation !== this.generation) return;
             this.frames = next;
             this.framesKey = key;
+            // Keep inspection facts tied to the same candidate that produced these canvases. The
+            // hidden render image can advance while a comparison remains open; reading its URL
+            // later would put new bounds and typography over old pixels.
+            this.framesAnnotationUrl = annotationUrl ?? "";
             this.copyInto(next.reference, this.canvas("cp-spec-reference"));
             this.copyInto(next.candidate, this.canvas("cp-spec-actual"));
             const diff = this.canvas("cp-spec-diff");
@@ -404,6 +415,7 @@ export class SpecCompare extends LitElement {
             if (generation !== this.generation) return;
             this.frames = null;
             this.framesKey = "";
+            this.framesAnnotationUrl = "";
             this.framesMatch = null;
             this.scoreTip = null;
             this.setScore(UNAVAILABLE);
@@ -432,13 +444,10 @@ export class SpecCompare extends LitElement {
     }
 
     private actualAnnotations(): Promise<unknown> {
-        // Pixel comparison may use the snapshot's object URL to avoid a second no-store render.
-        // Inspection products are sibling HTTP resources, so derive them from the honest source
-        // URL viewer.ts stamps on the image rather than appending `.annotations` to `blob:`.
-        const frameUrl =
-            document.getElementById("cp-img")?.getAttribute("data-cp-src") ||
-            this.actualUrl;
-        const url = dataUrlFor(frameUrl, "annotations");
+        // Pixel comparison may use a snapshot object URL to avoid a second no-store render. The
+        // sibling annotations endpoint was captured when that snapshot was normalised; do not
+        // consult the live hidden image here because it may already contain a newer override.
+        const url = this.framesAnnotationUrl;
         if (!url) return Promise.resolve([]);
         if (this.annotationKey === url && this.annotationPromise)
             return this.annotationPromise;

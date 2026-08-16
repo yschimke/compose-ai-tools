@@ -9452,18 +9452,24 @@ $rows
     //
     // Each row is offered only when its host can actually produce the data (an a11y-capable daemon
     // for the first, a semantics-capturing one for the other two) — never as a dead control.
+    // Published reference typography is self-contained, so static bundle viewers can inspect the
+    // Figma lane even though they cannot apply overrides or ask a daemon for render annotations.
+    val hasTypographyInspection =
+      hasDesignAnnotations || referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
     val inspectRows = buildString {
       if (hasA11yOverlay)
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-a11y\" " +
             "data-cp-inspect=\"a11y\" type=\"checkbox\"> Accessibility</label>\n"
         )
-      if (hasDesignAnnotations) {
+      if (hasTypographyInspection) {
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" " +
             "id=\"cp-inspect-typography\" data-cp-inspect=\"typography\" type=\"checkbox\"> " +
             "Typography</label>\n"
         )
+      }
+      if (hasDesignAnnotations) {
         append(
           "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-theme\" " +
             "data-cp-inspect=\"theme\" type=\"checkbox\"> Theme attributes</label>\n"
@@ -9745,6 +9751,16 @@ $rows
     val compareScriptTags =
       listOfNotNull(scriptTag("format-compare.js").takeIf { hasSvgExport || specRasterUrl != null })
         .joinToString("") { "$it\n      " }
+    // The Source lane uses the same vendored Kotlin grammar as the playground, but only on pages
+    // that can actually offer source. CodeMirror is one of the deliberately selective heavy
+    // assets: a component without a derivable usage snippet should not pay its ~114 kB wire cost.
+    // viewer.js still paints a plain <pre><code> first, so either asset failing leaves readable
+    // source rather than turning an optional highlighter into a lane dependency.
+    val sourceCodeStylesheet =
+      if (usageAvailable)
+        "<link rel=\"stylesheet\" href=\"${assetHref("codemirror.css")}\">\n      "
+      else ""
+    val sourceCodeScriptTag = if (usageAvailable) "${scriptTag("codemirror.js")}\n      " else ""
     // The provenance row (source / playground / report an issue / figma spec) no longer sits under
     // the title. It is *about* the preview rather than a control over it, and four lines of small
     // links between the heading and the renderer controls is four lines of chrome between the
@@ -9784,7 +9800,7 @@ $rows
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
       """
-      <div class="cp-preview-head">
+      $sourceCodeStylesheet<div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
         <code class="cp-preview-id" title="$idText">$idText</code>
         ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
@@ -9870,7 +9886,7 @@ $rows
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
       ${presenceScriptTag(presenceUrl)}
-      $compareScriptTags${scriptTag("viewer.js")}
+      $compareScriptTags$sourceCodeScriptTag${scriptTag("viewer.js")}
       """
         .trimIndent()
         .lineSequence()

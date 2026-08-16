@@ -164,9 +164,9 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
 /**
  * Dispatches a held Press through the focused component's real input path. It first sends a focused
  * DPAD_CENTER key-down, which can cover Compose components built from `clickable` or
- * `combinedClickable`. When that event is unhandled, it falls back to an
- * indirect-pointer event through Compose UI's `AndroidComposeView.sendIndirectPointerEvent` — the
- * same channel real XR Glasses touchpads use.
+ * `combinedClickable`. When that event is unhandled, it falls back to an indirect-pointer event
+ * through Compose UI's `AndroidComposeView.sendIndirectPointerEvent` — the same channel real XR
+ * Glasses touchpads use.
  *
  * Key input must be tried first. `AndroidComposeView.sendIndirectPointerEvent` can report that the
  * root handled an event even when the focused component has no indirect-pointer modifier; treating
@@ -242,9 +242,9 @@ private fun View.sendIndirectPointer(action: Int): Boolean {
 }
 
 /**
- * Focus-targeted fallback for components with no indirect-pointer modifier. A DPAD_CENTER key
- * event is the ordinary focused activation channel for clickable components, though host
- * implementations can differ in whether they deliver it to the focused modifier.
+ * Focus-targeted fallback for components with no indirect-pointer modifier. A DPAD_CENTER key event
+ * is the ordinary focused activation channel for clickable components, though host implementations
+ * can differ in whether they deliver it to the focused modifier.
  */
 private fun View.dispatchKeyPress(): Boolean =
   dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))

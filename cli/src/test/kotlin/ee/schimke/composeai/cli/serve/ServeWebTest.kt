@@ -931,6 +931,10 @@ class ServeWebTest {
     // player lanes (bookmarkable `?mode=spec`, Back/Forward, one lane on the stage at a time).
     assertTrue(html.contains("value=\"spec\" id=\"cp-spec-toggle\""), "the mode radio is rendered")
     assertTrue(html.contains("id=\"cp-spec-img\""), "the stage image is rendered")
+    assertTrue(
+      html.contains("id=\"cp-inspect-typography\"") && html.contains("<cp-inspect-layers>"),
+      "published reference typography remains inspectable without a live annotation host: $html",
+    )
     // …and the step from "look at the spec" to "diff it" against this render.
     assertTrue(
       html.contains(

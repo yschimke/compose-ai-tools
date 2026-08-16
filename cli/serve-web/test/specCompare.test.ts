@@ -219,6 +219,17 @@ describe("<cp-spec-compare>", () => {
             "the changed Compose usage is marked over the diff",
         );
         assert.deepEqual(urls, ["/render/Button.annotations?theme=dark"]);
+
+        document
+            .getElementById("cp-img")!
+            .setAttribute("data-cp-src", "/render/Button.png?theme=light");
+        window.dispatchEvent(new CustomEvent("cp-inspect-change"));
+        for (let i = 0; i < 5; i++) await flush();
+        assert.deepEqual(
+            urls,
+            ["/render/Button.annotations?theme=dark"],
+            "the legend remains tied to the render already copied into the canvases",
+        );
     });
 
     it("puts the live verdict on the chip, and the published one back on the way out", async () => {

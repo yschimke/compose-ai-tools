@@ -193,7 +193,7 @@ export class InspectLayers extends LitElement {
         const view = this.root?.getAttribute("data-spec-view");
         return (
             this.root?.getAttribute("data-mode") === "spec" &&
-            (view === "diff" || view === "triptych")
+            (view === "diff" || view === "triptych" || view === "slider")
         );
     }
 
@@ -280,6 +280,11 @@ export class InspectLayers extends LitElement {
 
     private async refresh(): Promise<void> {
         const kinds = this.activeKinds();
+        // Every refresh supersedes the previous one, including transitions into a comparison view
+        // where this element deliberately paints nothing. Otherwise a request started on Compose
+        // can resolve after Diff/Triptych/Slider takes the stage and repaint a stale render-only
+        // legend over the comparison.
+        const generation = ++this.generation;
         this.syncUrl(kinds);
         window.dispatchEvent(
             new CustomEvent("cp-inspect-change", { detail: { kinds } }),
@@ -294,7 +299,6 @@ export class InspectLayers extends LitElement {
             this.draw();
             return;
         }
-        const generation = ++this.generation;
         this.legend?.setAttribute("aria-busy", "true");
         const names = sourcesFor(kinds);
         const results = await Promise.all(

@@ -244,6 +244,32 @@ describe("<cp-inspect-layers>", () => {
         assert.deepEqual(stub.urls[1], "/m3/render/plain.Button.a11y?at=def");
     });
 
+    it("invalidates an in-flight render layer when Slider takes the stage", async () => {
+        const stub = stubFetch({ hold: true });
+        await mount();
+        const el = toggle("typography");
+        el.checked = true;
+        el.dispatchEvent(new Event("change"));
+        await flush();
+
+        viewer().setAttribute("data-mode", "spec");
+        viewer().setAttribute("data-spec-view", "slider");
+        await flush();
+        stub.settle();
+        for (let i = 0; i < 5; i++) await flush();
+
+        assert.equal(
+            boxes().length,
+            0,
+            "the hidden Compose image is not annotated",
+        );
+        assert.equal(
+            legend().hidden,
+            true,
+            "the stale render legend stays suppressed",
+        );
+    });
+
     it("lights up the legend row for the box under the pointer, and back", async () => {
         stubFetch();
         await mount();
