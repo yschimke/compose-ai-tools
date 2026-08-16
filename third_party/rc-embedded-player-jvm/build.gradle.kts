@@ -58,6 +58,11 @@ val sharedPlayerSources =
     "androidx/compose/remote/player/compose/embedded/SnapshotRemoteComposeState.kt",
     // The platform-neutral `RemoteContext` — ported from `AndroidRemoteContext` minus `loadBitmap`.
     "androidx/compose/remote/player/compose/embedded/StoreBackedRemoteContext.kt",
+    // `ColorTheme` index -> `android.R.color` name table, plus the light/dark mode resolution both
+    // players share. Neutral: it names resources and resolves indices through a caller-supplied
+    // lookup, and never touches `Resources` itself — which is what lets this lane behave correctly
+    // (fallbacks, and a mode that was actually chosen) with no system palette to read.
+    "androidx/compose/remote/player/compose/embedded/ColorThemeResolution.kt",
     // Opaque image-loader handle, so the evaluator can carry one without naming `Drawable`.
     "androidx/compose/remote/player/compose/embedded/RcImageSource.kt",
     // The expression evaluator itself, and the composition locals the state path reads.

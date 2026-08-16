@@ -276,23 +276,50 @@ import org.jetbrains.skia.ImageInfo
 public fun RcComposePlayer(
   bytes: ByteArray,
   modifier: Modifier = Modifier,
-  theme: Int = RcTheme.UNSPECIFIED,
+  theme: Int = RcTheme.SYSTEM,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  systemColorLookup: (name: String) -> Int? = { null },
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
-  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies)
+  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies, systemColorLookup)
 }
 
 @Composable
 public fun RcComposePlayer(
   document: RcDocument,
   modifier: Modifier = Modifier,
-  theme: Int = RcTheme.UNSPECIFIED,
+  theme: Int = RcTheme.SYSTEM,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  systemColorLookup: (name: String) -> Int? = { null },
+) {
+  // Resolve once, at the only place that can: `SYSTEM` and `UNSPECIFIED` are questions for the
+  // host, and everything below this point — section gating, and every `ColorTheme` selection —
+  // needs a concrete answer. See [rcResolveSystemTheme] for why leaving them unresolved is not a
+  // neutral default.
+  RcComposePlayerResolved(
+    document,
+    modifier,
+    rcResolveSystemTheme(theme),
+    namedValues,
+    onEvent,
+    fontFamilies,
+    systemColorLookup,
+  )
+}
+
+@Composable
+private fun RcComposePlayerResolved(
+  document: RcDocument,
+  modifier: Modifier,
+  theme: Int,
+  namedValues: Map<String, RcNamedValue>,
+  onEvent: (RcPlayerEvent) -> Unit,
+  fontFamilies: Map<String, RcFontFaces>,
+  systemColorLookup: (name: String) -> Int?,
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
@@ -300,7 +327,7 @@ public fun RcComposePlayer(
   var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
   var nextFrameRequestVersion by remember(document) { mutableIntStateOf(0) }
   val state =
-    remember(document, namedValues) {
+    remember(document, namedValues, systemColorLookup) {
       RcPlayerState(
         document,
         namedValues,
@@ -319,6 +346,7 @@ public fun RcComposePlayer(
             RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
           }
         },
+        systemColorLookup = systemColorLookup,
       )
     }
   val needsContinuousFrames =

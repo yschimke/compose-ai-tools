@@ -16,38 +16,28 @@
 
 package androidx.compose.remote.player.compose.embedded
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.remote.core.CoreDocument
 
-/** Resolves the indexed `android` ColorTheme group the same way the View player does. */
+/**
+ * Resolves the indexed `android` `ColorTheme` group against framework resources — the embedded
+ * player's equivalent of `ThemeSupport.AndroidColorEngine` in `remote-player-view`.
+ *
+ * Resolved by *name* rather than through `android.R.color.<name>`: the table spans resources
+ * introduced across API 31–34, so a name lookup degrades to "not found" on a device that predates
+ * one instead of tying this module to the compileSdk that first declared it.
+ */
+@SuppressLint("DiscouragedApi")
 internal fun resolveAndroidThemeColors(context: Context, document: CoreDocument) {
-  val indexedColorNames = runCatching {
-    Class.forName("androidx.compose.remote.creation.Rc\$AndroidColors")
-  }
-    .getOrNull()
-    ?.fields
-    ?.mapNotNull { field ->
-      if (field.type == Short::class.javaPrimitiveType) field.getShort(null).toInt() to field.name
-      else null
+  val resources = context.resources
+  resolveThemedColors(document) { name ->
+    when (val id = resources.getIdentifier(name, "color", "android")) {
+      0 -> null
+      // `getColor(id, null)`: these are plain colour resources, not theme attributes, so there is
+      // no theme to resolve against — and supplying one would let the *device's* night mode pick
+      // between them, which is the choice the document's own light/dark indices exist to make.
+      else -> runCatching { resources.getColor(id, null) }.getOrNull()
     }
-    ?.toMap()
-    .orEmpty()
-
-  document.themedColors.orEmpty().forEach { colorTheme ->
-    if (colorTheme.mColorGroupName != ANDROID_COLOR_GROUP) return@forEach
-
-    fun resolve(index: Short, fallback: Int): Int {
-      val name = indexedColorNames[index.toInt()]?.lowercase() ?: return fallback
-      return runCatching {
-          val resourceId = android.R.color::class.java.getField(name).getInt(null)
-          context.getColor(resourceId)
-        }
-        .getOrDefault(fallback)
-    }
-
-    colorTheme.mLightMode = resolve(colorTheme.mLightModeIndex, colorTheme.mLightModeFallback)
-    colorTheme.mDarkMode = resolve(colorTheme.mDarkModeIndex, colorTheme.mDarkModeFallback)
   }
 }
-
-private const val ANDROID_COLOR_GROUP = "android"

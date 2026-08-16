@@ -25,8 +25,9 @@ inside it. Vendoring is the only way to depend on it.
 ## What is vendored
 
 The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 upstream files,
-45 here — two local splits, `state/RcPlayerBitmapState.kt` and `RcPlayerShaders.kt`, plus the local
-`AndroidColorThemeResolver.kt`, each noted under "Local modifications" below). Upstream's
+46 here — two local splits, `state/RcPlayerBitmapState.kt` and `RcPlayerShaders.kt`, plus the local
+`AndroidColorThemeResolver.kt` and `ColorThemeResolution.kt`, each noted under "Local
+modifications" below). Upstream's
 `demos/`, `integration/previews/`, and the `androidx.wear.compose.remote.material3.previews` sample
 previews that live in the same source set are **not** vendored — they are demo/test scaffolding for
 the integration-test app, and they drag in Wear Material3 and `remote-creation-compose` capture.
@@ -84,12 +85,38 @@ the upstream tracking issue it was reported under.
   (`AndroidColorThemeResolver.kt`, `RcPlayer.kt`). Upstream's embedded player applies each
   `ColorTheme` operation but never performs the View player's preceding `ThemeSupport.mapColors`
   pass, so both light and dark branches retain their authored fallbacks. The embedded player now
-  maps the writer's `Rc.AndroidColors` indexes to framework `android.R.color` resources before its
-  first operation replay, retains the fallback for unknown groups or unavailable resources, and
-  exposes an explicit `theme` parameter that also reapplies colors when it changes. The paired
-  Robolectric conformance test authors one document through the public writer API and checks the
-  dark path against the AndroidX View player; light is deliberately excluded because alpha17's View
-  player has a separate cold-start light-theme bug.
+  maps the index to a framework `android.R.color` resource before its first operation replay,
+  retains the fallback for unknown groups or unavailable resources, and exposes an explicit `theme`
+  parameter that also reapplies colors when it changes. The paired Robolectric conformance test
+  authors one document through the public writer API and checks the dark path against the AndroidX
+  View player; light is deliberately excluded because alpha17's View player has a separate
+  cold-start light-theme bug.
+
+  Two follow-ups, both from not taking the AndroidX pieces on trust:
+
+  - **The index table is transcribed, not derived** (`ColorThemeResolution.kt`). Deriving it by
+    reflecting over `Rc.AndroidColors` and lowercasing the field names — which is how this started
+    — is wrong for **21 of the 196 indices** at alpha17. `SYSTEM_ACCENT2_200` is `30`, colliding
+    with `SYSTEM_ACCENT2_1000`, so index `31` has no constant and index `30` resolves to whichever
+    field reflection yields: a real resource, and the wrong colour. Twenty more are misspelled
+    against the resource they select (`SYSTEM_ERROR_620` at index `62`, where the resource is
+    `system_error_10`; the whole `system_neutral1_*` run at 78–90 spelled `SYSTEM_NEUTRAL78_0`,
+    `SYSTEM_NEUTRAL79_790`, …), so they match nothing and the colour keeps its fallback with no
+    diagnostic. The table now comes from `ThemeSupport.AndroidColors` in `remote-player-view`,
+    which is what actually resolves indices on a device. `AndroidColorTableDriftTest` keeps it
+    equal to the CMP player's copy in `:rc-player-protocol`.
+
+  - **`SYSTEM` / `UNSPECIFIED` are resolved to a real mode** (`resolveThemeMode`, used by
+    `RcPlayer` and the jvm renderer). `theme` used to default to `Theme.UNSPECIFIED` and be
+    assigned straight to `paintTheme`, and `ColorTheme.apply` selects light only for `Theme.LIGHT`
+    — so the default rendered every themed document *dark*, having just resolved the light palette
+    correctly. Measured on a themed document, the embedded lane drew `#292A2D`
+    (`system_surface_container_high_dark`) where the View lane drew `#E9E7EC`
+    (`…_high_light`); both now draw `#E9E7EC`. The default is `Theme.SYSTEM`, answered from
+    `isSystemInDarkTheme()` rather than from a `Configuration` read, so every player resolves it
+    the same way — the View player's own rule (an SDK-33-guarded `Configuration.isNightModeActive`,
+    with `UNSPECIFIED` falling through to dark) is where the divergence was found, not the
+    specification it was fixed against.
 
 ### Resolved: the two action-dispatch deltas (restored at alpha17)
 
