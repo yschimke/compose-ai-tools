@@ -642,8 +642,17 @@
     }
     return true;
   }
-  // Published on the stage as well as pushed to the lane, because the two scripts have no
-  // guaranteed order: `<cp-spec-compare>` reads the attribute when it installs, whenever that is.
+  // Pushed to the lane AND published on the stage, and the two carry different weight.
+  //
+  // The push is what corrects the FIRST install. `serve-components.js` is emitted ahead of this
+  // file, so `<cp-spec-compare>` has already installed by the time we run, and has already fallen
+  // back to the baked verdict because the attribute did not exist yet; this call is what moves it
+  // off. It is a correction and not a guarantee: the tags are not adjacent, and a browser is free
+  // to paint parsed markup while it fetches what sits between them, so on a cold load a themed
+  // deep link can show the baked verdict for the interval before we get here.
+  //
+  // The attribute is for the installs that come later — the element's deferred retry, or a
+  // re-connect — which have no push to wait for and read the stage instead.
   function syncSpecBaseline() {
     var at = specAtBaseline();
     root.setAttribute("data-spec-baseline", at ? "1" : "0");
