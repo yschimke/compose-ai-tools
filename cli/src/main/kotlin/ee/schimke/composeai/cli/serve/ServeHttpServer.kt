@@ -605,6 +605,15 @@ class ServeHttpServer(
         get("/status") { handleStatus(json = false) }
         get("/status.json") { handleStatus(json = true) }
 
+        // `/report-bug` — file a bug against the repo that ships THIS SERVER, prefilled with the
+        // diagnostics a triager would otherwise have to ask for. Distinct from the per-preview
+        // "report an issue" affordance, which files a *preview* bug against the project whose code
+        // declares it; see [ServeBugReport] for why the two are separate reports rather than one
+        // with a repo switch. Gated exactly like `/status`, and for the same reason: it reports
+        // the same catalog-load and daemon-failure detail, so a private box keeps it behind the
+        // token.
+        get(ServeBugReport.PATH) { handleBugReport() }
+
         // The crawler-facing pair (see [ServeSiteIndex]). Both are deliberately UNGATED even on a
         // token-gated host: a crawler has no token, and answering the styled HTML 404 — which is
         // what these paths did before they existed — tells it nothing. A private server's
@@ -3419,6 +3428,180 @@ class ServeHttpServer(
         ContentType.Text.Html,
       )
     }
+  }
+
+  /**
+   * `GET /report-bug`: the preview server's own bug-report page.
+   *
+   * Collects what a triager needs about *this deployment* — the running build, its posture and
+   * uptime, the JVM and OS the renders happen on, any catalog that is not cleanly loaded, and the
+   * most recent daemon-startup / render failures — then adds what the visitor was looking at,
+   * resolved from the `from` path their footer form carried. [ServeWeb.bugReportPage] shows all of
+   * it before anything is filed; [ServeBugReport] turns it into the issue body.
+   *
+   * The `from` value is browser-supplied and reaches HTML, a link, and a public issue body, so it
+   * is accepted only as a same-origin path with its token stripped ([ServeBugReport.sanitizeFrom]),
+   * and the preview it names is resolved by **matching an existing preview id** rather than being
+   * trusted as one. A path that resolves to nothing costs the report its page section and nothing
+   * else.
+   */
+  private suspend fun RoutingContext.handleBugReport() {
+    if (rejectBadToken()) return
+    val from = ServeBugReport.sanitizeFrom(call.request.queryParameters[ServeBugReport.FROM_PARAM])
+    val ref = ServeBugReport.parsePath(from)
+    // A top-level site publishes exactly one system, and its pages carry no `/{system}` prefix —
+    // so on those hosts the path can't name the catalog and the host itself does.
+    val system = siteSystem() ?: ref.system?.takeIf { sessions.isKnownSession(it) }
+    val host = system?.let { sessions.peekHost(it) }
+    val bundle = host?.let { catalogBundleHost(it) }
+    // Match, don't trust: the segment is browser-supplied, so it names a preview only if this
+    // session actually has one that encodes to it.
+    val preview =
+      ref.previewSegment?.let { segment ->
+        host?.previews?.firstOrNull {
+          it.id == segment || WebEscaping.urlEncodeSegment(it.id) == segment
+        }
+      }
+    val basePath = if (system == null || siteSystem() != null) "" else "/$system"
+    val status = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
+    val server =
+      ServeBugReport.Server(
+        version = BUNDLE_VERSION,
+        public = isPublic,
+        uptimeSeconds = status.uptimeSeconds,
+        java = "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
+        os =
+          "${System.getProperty("os.name")} ${System.getProperty("os.version")} " +
+            "(${System.getProperty("os.arch")})",
+        unhealthyCatalogs =
+          status.catalogs
+            .filter { it.loadState != "loaded" }
+            .map { catalog ->
+              val why = catalog.loadError?.takeIf { it.isNotBlank() }?.let { " — $it" } ?: ""
+              "`${catalog.id}`: ${catalog.loadState}$why"
+            },
+        recentFailures = recentFailureLines(status),
+      )
+    val page =
+      ServeBugReport.Page(
+        path = from,
+        url = from?.let { ServeIssueReport.withoutToken(externalOrigin() + it) },
+        system = system,
+        previewId = preview?.id,
+        catalog = bundle?.provenance?.let { "${it.repo}@${it.branch}" },
+        catalogToolVersion = bundle?.provenance?.toolVersion,
+        trust = bundle?.let { BundleVerifier.summary(it.trust) },
+        renderLane = host?.let { if (it.hasLiveStream) "live daemon" else "baked snapshots" },
+        degradations = host?.degradations.orEmpty().map { "${it.code} — ${it.detail}" },
+        renderUrl =
+          preview?.let {
+            ServeIssueReport.withoutToken(
+              "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(it.id)}.png"
+            )
+          },
+        publicRender = isPublic,
+      )
+    val skin = siteSkin()
+    val report =
+      ServeWeb.BugReport(
+        action = ServeBugReport.action(),
+        title = ServeBugReport.title(page),
+        body = ServeBugReport.body(server, page),
+        bodyTemplate = ServeBugReport.body(server, page, clientPlaceholder = true),
+        repo = ServeBugReport.REPO,
+        // The thumbnail is fetched by the visitor's own browser against this server, so it keeps
+        // the token the report body strips — otherwise a gated box shows a broken image on the
+        // page that is meant to prove what the reporter saw.
+        renderUrl =
+          preview?.let {
+            "$basePath/render/${WebEscaping.urlEncodeSegment(it.id)}.png" +
+              if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(token)}"
+          },
+        login = githubAuth?.currentLogin(call),
+      )
+    markGeneration("static-page", "no-store")
+    call.respondText(
+      ServeWeb.bugReportPage(
+        report = report,
+        sections = bugReportSections(server, page),
+        // The bare route, NOT `externalPageUrl()`. This page's query is browser-supplied `from`,
+        // and `og:url` would put it back into the document verbatim — echoing an unvalidated,
+        // possibly off-origin URL into the markup, which is exactly what `sanitizeFrom` refuses to
+        // do for every other use of the value. There is nothing to unfurl per-report anyway.
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalOrigin() + ServeBugReport.PATH),
+        version = BUNDLE_VERSION,
+        siteName = skin.first,
+        themeCss = skin.second,
+        themeStorageKey = skin.third,
+        navSuffix = if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(token)}",
+      ),
+      ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * The most recent failures worth carrying in a bug report, newest first: daemon startups that
+   * never came up and renders that failed or timed out, interleaved and capped.
+   *
+   * Capped because an issue body is read by a human — a server that has been failing for a week has
+   * hundreds of these, and the tail says nothing the head doesn't. The full history stays on
+   * `/status`, which the report links by way of the page it was filed from.
+   */
+  private fun recentFailureLines(status: StatusData): List<String> {
+    val view = status.toView()
+    val startup = view.failures.map { "${it.whenText}  ${it.session}: ${it.reason}" }
+    val renders =
+      view.renderFailures.map {
+        "${it.whenText}  ${it.session}: render failed after ${it.durationText} — ${it.reason}"
+      }
+    return (startup + renders).take(BUG_REPORT_FAILURE_LIMIT)
+  }
+
+  /** The same facts [ServeBugReport.body] files, grouped for the page that shows them first. */
+  private fun bugReportSections(
+    server: ServeBugReport.Server,
+    page: ServeBugReport.Page,
+  ): List<ServeWeb.BugReportSection> = buildList {
+    add(
+      ServeWeb.BugReportSection(
+        "Server",
+        buildList {
+          server.version?.let { add("compose-preview" to it) }
+          add("Mode" to if (server.public) "public (open)" else "token-gated")
+          server.uptimeSeconds?.let { add("Uptime" to ServeBugReport.duration(it)) }
+          server.java?.let { add("Java" to it) }
+          server.os?.let { add("OS" to it) }
+        },
+      )
+    )
+    add(
+      ServeWeb.BugReportSection(
+        "Page",
+        buildList {
+          page.path?.let { add("Page" to it) }
+          page.system?.let { add("Design system" to it) }
+          page.previewId?.let { add("Preview" to it) }
+          page.catalog?.let { add("Catalog" to it) }
+          page.catalogToolVersion?.let { add("Catalog rendered by" to "compose-ai-tools $it") }
+          page.trust?.let { add("Trust" to it) }
+          page.renderLane?.let { add("Render lane" to it) }
+          page.degradations.forEach { add("Degraded" to it) }
+        },
+      )
+    )
+    add(
+      ServeWeb.BugReportSection(
+        "Catalogs not loaded",
+        server.unhealthyCatalogs.map { "" to it },
+      )
+    )
+    add(ServeWeb.BugReportSection("Recent failures", server.recentFailures.map { "" to it }))
+    add(
+      ServeWeb.BugReportSection(
+        "Browser",
+        listOf("User agent, viewport, pixel ratio, colour scheme" to "added by your browser"),
+      )
+    )
   }
 
   /**
@@ -6450,6 +6633,13 @@ class ServeHttpServer(
      * while the latch is cold; the loop exits on first success.
      */
     private const val READINESS_PROBE_RETRY_MILLIS = 2000L
+
+    /**
+     * How many recent failures a bug report carries. An issue body is read by a human: a server
+     * that has been failing all week has hundreds, and the tail repeats the head. `/status` keeps
+     * the full window.
+     */
+    private const val BUG_REPORT_FAILURE_LIMIT = 8
 
     /**
      * Authorisation decision for a request: open when [isPublic], otherwise the [provided] token

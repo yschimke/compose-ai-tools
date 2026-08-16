@@ -916,6 +916,54 @@ still works, because GitHub prompts for sign-in on the issue form.
 A token-gated (`--public` off) server strips its **session token** from both URLs in the body — that
 token is the capability to drive the server, and an issue is public.
 
+## Reporting a bug in the server itself
+
+The report above is about a **preview** and goes to the project whose Kotlin declares it. A bug in
+the *server* — a knob that does nothing, a render that 500s, a page that draws wrong, a catalog that
+will not load — has no such owner, and filing it against a catalog's tracker sends it to people who
+cannot fix it. So the footer of **every** browser-facing page (the front door, `/status`, a 404, a
+catalog landing, a viewer) carries a second affordance, **report a bug**, sitting beside the build
+number it is a bug in. It always files against `yschimke/compose-ai-tools`.
+
+| Before | After |
+| --- | --- |
+| ![Footer with source and /version only](design/evidence/serve-report-bug/serve-footer-before.light.png) | ![The same footer with "report a bug" added](design/evidence/serve-report-bug/serve-footer-after.light.png) |
+
+It opens **`/report-bug`**, a page rather than a straight jump to GitHub — because a server report
+carries things nobody is looking at. The per-preview report can be one click: its whole body is
+already on screen (a preview id, the overrides in the URL bar, a render). A server report carries
+the JVM the daemon runs on, which catalogs failed to load, and what the render lanes have been
+doing, none of which appears on any page. Posting that to a public tracker, in the reporter's name,
+without them having read it, is not something a footer button should do. So the page's job is to
+**show the report before it is filed** — the same facts, grouped, with the exact markdown underneath
+— and the button then files what is on screen.
+
+![The bug-report page](design/evidence/serve-report-bug/serve-report-bug.light.png)
+
+**What it carries.** *Server*: the running build, whether the box is public or token-gated, uptime,
+and the Java + OS the renders actually happen on. *Page*: the path the visitor came from, and — when
+that path names one — the design system, the preview, the catalog's `repo@branch` and the
+compose-ai-tools version that produced it, its trust verdict, its render lane, and any degradation
+in force. *Catalogs not loaded* and *Recent failures*: the same load errors and daemon/render
+failures `/status` reports, capped at eight so the body stays readable. *Browser*: user agent,
+viewport, device pixel ratio and colour scheme, filled in by the visitor's own browser — the four
+facts the server cannot observe and the ones a "draws wrong" report turns on.
+
+**The screenshot is two-sided.** When the reporter came from a viewer the page shows that preview's
+render and the body carries it (embedded when the host is publicly reachable, linked otherwise — the
+same two conditions as above). That covers "the render is wrong". It does not cover "the page is
+wrong", which is most server bugs, so the report leaves a Screenshot section for a pasted shot of
+the whole window — the one thing the server cannot produce and the browser gives away for free.
+
+**Gating and safety.** `/report-bug` is gated exactly like `/status` (open in `--public`, else
+token-required), because it reports the same catalog-load and daemon-failure detail. The page the
+visitor came from is sent by the footer form as a `from` field and accepted only as a **same-origin
+absolute path** — no scheme, no protocol-relative `//`, no fragment, no control characters, length
+capped — and the preview it names is resolved by **matching an existing preview id** rather than
+being trusted as one. Anything that fails costs the report a row and nothing else. The session token
+is moved out of `from` into its own field by the page script and stripped again server-side: it
+reaches this server, never the issue body.
+
 ### Opening the Figma node a preview is specified by
 
 When the served catalog publishes a **Figma-backed design reference** for a preview, the viewer adds

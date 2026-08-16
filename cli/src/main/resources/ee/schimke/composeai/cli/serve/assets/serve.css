@@ -427,6 +427,14 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    so a page can put its own block (the catalog-provenance disclosure) above it. */
 .cp-site-footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-site-footer a { display: inline-flex; align-items: center; gap: 4px; }
+/* "report a bug" sits in the footer's links row and must read as one of them, but it is a GET form
+   (see ServeWeb.reportBugFormHtml for why it cannot be an anchor) — so the form is unwrapped to a
+   plain inline box and its submit button is stripped of button chrome, the same treatment the
+   per-preview .cp-report-link gets. */
+.cp-report-bug { display: inline-flex; margin: 0; }
+.cp-report-bug-link { display: inline-flex; align-items: center; gap: 4px; background: none;
+  border: 0; padding: 0; font: inherit; color: var(--cp-accent); cursor: pointer; }
+.cp-report-bug-link:hover { text-decoration: underline; }
 /* Page + section headings ride the M3 type scale rather than ad-hoc rem sizes. */
 .cp-head { margin: 0 0 4px; font-size: var(--md-sys-typescale-title-large-size);
   line-height: var(--md-sys-typescale-title-large-line); font-weight: 400; }
@@ -2225,14 +2233,33 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   border: 0; border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-high); color: inherit; }
 /* The one true "commit" action on the page — an M3 *filled button*. */
-.cp-doc-btn { font: inherit; font-size: var(--md-sys-typescale-label-large-size);
+.cp-doc-btn, .cp-bug-submit { font: inherit; font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
   min-height: 40px; padding: 10px 24px; border-radius: var(--md-sys-shape-corner-full);
   border: 0; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
   cursor: pointer;
   transition: box-shadow var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-doc-btn:hover { background: var(--md-sys-color-primary);
+.cp-doc-btn:hover, .cp-bug-submit:hover { background: var(--md-sys-color-primary);
   box-shadow: var(--md-sys-elevation-level1); }
+/* The bug-report page. The submit row keeps the button and its "nothing is sent from here" caveat
+   on one line, because the caveat is the answer to the question the button raises. */
+.cp-report-bug-form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
+  margin: 0 0 8px; }
+.cp-bug-submit { display: inline-flex; align-items: center; gap: 8px; }
+/* The facts table is a two-column key/value sheet rather than the status page's headed grid: it has
+   no column meanings to declare, so the row headers carry the whole structure. */
+.cp-report-facts th { width: 220px; text-align: left; font-weight: 500;
+  color: var(--cp-fg-muted); white-space: nowrap; }
+.cp-report-facts td { word-break: break-word; }
+/* Deliberately small. It is evidence attached to a report, not the subject of the page — a full
+   viewer-sized render here would push the thing the visitor came to press below the fold. */
+.cp-report-shot { display: block; max-width: min(100%, 320px); height: auto; margin: 4px 0 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); }
+.cp-report-preview { margin: 0; padding: 14px 16px; overflow-x: auto; white-space: pre-wrap;
+  word-break: break-word; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+  font-size: var(--md-sys-typescale-body-small-size); }
 .cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 16px 20px;
   border-radius: var(--md-sys-shape-corner-medium); border: 0;
   background: var(--md-sys-color-surface-container-low);

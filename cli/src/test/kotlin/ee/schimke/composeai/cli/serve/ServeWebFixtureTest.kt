@@ -2614,6 +2614,99 @@ class ServeWebFixtureTest {
           ),
       )
 
+    // The server's own bug-report page, captured from a *viewer* (the case that carries the most:
+    // a resolved catalog, a preview, a render thumbnail) on a box that is not entirely healthy (a
+    // catalog that failed to load and a render that timed out), because a report filed from a
+    // perfectly healthy server is the one nobody sends. The render points at the harness's
+    // placeholder lane, like every other fixture's stage.
+    val bugReportServer =
+      ServeBugReport.Server(
+        version = version,
+        public = true,
+        uptimeSeconds = 3 * 86400 + 4 * 3600,
+        java = "17.0.11 (Eclipse Adoptium)",
+        os = "Linux 6.8.0-generic (amd64)",
+        unhealthyCatalogs = listOf("`wear-m3`: failed — daemon launch timed out after 300s"),
+        recentFailures =
+          listOf(
+            "2026-07-17 09:43 UTC  compose-m3 (live bundle): render failed after " +
+              "120000ms (timeout) — timed out waiting for renderFinished"
+          ),
+      )
+    val bugReportPageContext =
+      ServeBugReport.Page(
+        path = "/compose-m3/p/button-filled?uiMode=dark",
+        url = "https://preview.coo.ee/compose-m3/p/button-filled?uiMode=dark",
+        system = "compose-m3",
+        previewId = "button-filled",
+        catalog = "yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        catalogToolVersion = "0.16.54",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        renderLane = "live daemon",
+        renderUrl = "https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark",
+        publicRender = true,
+      )
+    val bugReport =
+      ServeWeb.bugReportPage(
+        report =
+          ServeWeb.BugReport(
+            action = ServeBugReport.action(),
+            title = ServeBugReport.title(bugReportPageContext),
+            body = ServeBugReport.body(bugReportServer, bugReportPageContext),
+            bodyTemplate =
+              ServeBugReport.body(
+                bugReportServer,
+                bugReportPageContext,
+                clientPlaceholder = true,
+              ),
+            repo = ServeBugReport.REPO,
+            renderUrl = "/compose-m3/render/button-filled.png",
+            login = "yschimke",
+          ),
+        sections =
+          listOf(
+            ServeWeb.BugReportSection(
+              "Server",
+              listOf(
+                "compose-preview" to version,
+                "Mode" to "public (open)",
+                "Uptime" to "3d 4h",
+                "Java" to "17.0.11 (Eclipse Adoptium)",
+                "OS" to "Linux 6.8.0-generic (amd64)",
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Page",
+              listOf(
+                "Page" to "/compose-m3/p/button-filled?uiMode=dark",
+                "Design system" to "compose-m3",
+                "Preview" to "button-filled",
+                "Catalog" to "yschimke/compose-ai-tools@design-artifacts/compose-m3",
+                "Catalog rendered by" to "compose-ai-tools 0.16.54",
+                "Trust" to "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+                "Render lane" to "live daemon",
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Catalogs not loaded",
+              listOf("" to "`wear-m3`: failed — daemon launch timed out after 300s"),
+            ),
+            ServeWeb.BugReportSection(
+              "Recent failures",
+              listOf(
+                "" to
+                  "2026-07-17 09:43 UTC  compose-m3 (live bundle): render failed after " +
+                    "120000ms (timeout) — timed out waiting for renderFinished"
+              ),
+            ),
+            ServeWeb.BugReportSection(
+              "Browser",
+              listOf("User agent, viewport, pixel ratio, colour scheme" to "added by your browser"),
+            ),
+          ),
+        version = version,
+      )
+
     // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
     // regeneration below and the sync assertion further down, so a fixture can never be written
     // by one and forgotten by the other.
@@ -2667,6 +2760,7 @@ class ServeWebFixtureTest {
         "serve-viewer-axes-folded.html" to viewerAxesFolded,
         "serve-viewer-cross-product.html" to viewerCrossProduct,
         "serve-status.html" to serveStatus,
+        "serve-report-bug.html" to bugReport,
         "serve-landing-variants.html" to landingVariants,
         "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,
