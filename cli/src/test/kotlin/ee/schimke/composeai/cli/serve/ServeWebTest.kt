@@ -998,8 +998,7 @@ class ServeWebTest {
     )
     assertTrue(
       html.contains(
-        "var atSpecBaseline = el.disabled || " +
-          "el.getAttribute(\"data-theme-active\") !== \"1\";"
+        "var atSpecBaseline = el.disabled || " + "el.getAttribute(\"data-theme-active\") !== \"1\";"
       ),
       "a disabled control cannot move the initial spec verdict off baseline: $html",
     )
