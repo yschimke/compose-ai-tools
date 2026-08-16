@@ -1,0 +1,26 @@
+# compose-ai-tools
+
+> compose-ai-tools renders Jetpack Compose and Compose Multiplatform `@Preview` composables to PNG outside Android Studio, and produces structured UI data so developers and coding agents can inspect and verify changes.
+
+Use the install guide for consumer setup. The project supports a zero-build-edit CLI, a version-pinned Gradle plugin, a VS Code extension, CI actions, and an optional MCP server and render daemon. Java 17 or newer and Gradle 8.13 or newer are required.
+
+## Getting started
+
+- [Overview](https://yschimke.github.io/compose-ai-tools/): Choose the agent, editor, or command-line workflow and see the core rendering capabilities.
+- [Installation and requirements](https://yschimke.github.io/compose-ai-tools/install/): Install the CLI, Gradle plugin, VS Code extension, or CI actions; includes compatibility requirements and configuration examples.
+- [Compose Preview agent skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md): Agent-oriented instructions for installing, rendering, inspecting, and iterating on Compose previews.
+
+## Core documentation
+
+- [Data product reference](https://yschimke.github.io/compose-ai-tools/reference/): Index of structured outputs including accessibility, layout, theme, resources, recomposition, localization, and render traces.
+- [Agents and MCP](https://yschimke.github.io/compose-ai-tools/mcp/): Agent workflows and the MCP tools for rendering, observing semantics, diffing previews, and generating tests.
+- [Render daemon](https://yschimke.github.io/compose-ai-tools/daemon/): Optional long-lived renderer for low-latency preview iteration.
+- [How rendering works](https://github.com/yschimke/compose-ai-tools/blob/main/docs/HOW_IT_WORKS.md): Preview discovery, rendering backends, caching, and project structure.
+
+## Optional
+
+- [Source repository](https://github.com/yschimke/compose-ai-tools): Source code, samples, issues, and contribution history.
+- [Contributor documentation](https://github.com/yschimke/compose-ai-tools/blob/main/docs/README.md): Architecture, development, compatibility, release, and protocol documentation for contributors.
+- [Releases](https://github.com/yschimke/compose-ai-tools/releases): Published versions and release notes.
+- [Changelog](https://github.com/yschimke/compose-ai-tools/blob/main/CHANGELOG.md): Detailed project change history.
+- [License](https://github.com/yschimke/compose-ai-tools/blob/main/LICENSE): Apache License 2.0 terms.
