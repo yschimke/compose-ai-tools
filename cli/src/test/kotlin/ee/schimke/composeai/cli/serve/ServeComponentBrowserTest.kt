@@ -31,7 +31,10 @@ class ServeComponentBrowserTest {
       )
 
     assertTrue(html.contains("id=\"cp-browser-catalog-search\""))
-    assertTrue(html.contains("aria-label=\"Catalog / Dev mode\""))
+    assertTrue(html.contains("class=\"cp-browser-search-input\""))
+    assertTrue(html.contains("aria-label=\"Interface mode\""))
+    assertFalse(html.contains("Catalog / Dev mode"))
+    assertTrue(html.contains(">Dev</button>"))
     assertTrue(html.contains("data-cp-interface-mode=\"catalog\" aria-pressed=\"true\""))
     assertTrue(html.contains("localStorage.getItem(\"cp-interface-mode\")"))
     assertTrue(html.indexOf("</main>") < html.indexOf("document.querySelectorAll('a[href]')"))
@@ -62,6 +65,14 @@ class ServeComponentBrowserTest {
           group = "Buttons",
           theme = "light",
         ),
+        ServePreview(
+          id = "button-filled__default__dark",
+          label = "Filled button",
+          componentId = "Button/Filled",
+          section = "Components",
+          group = "Buttons",
+          theme = "dark",
+        ),
         failure,
       )
     val html =
@@ -81,6 +92,11 @@ class ServeComponentBrowserTest {
 
     assertTrue(html.contains("Catalog menu"))
     assertTrue(html.contains("Filter previews"))
+    val catalogHeadStart = html.indexOf("class=\"cp-catalog-head-row\"")
+    val headTogglesStart = html.indexOf("class=\"cp-head-toggles\"")
+    val catalogBodyStart = html.indexOf("class=\"cp-catalog-body\"")
+    assertTrue(headTogglesStart in (catalogHeadStart + 1) until catalogBodyStart)
+    assertFalse(html.contains("class=\"cp-catalog-tools\""))
     assertTrue(html.contains("Button Filled"))
     assertFalse(html.contains("Broken card"))
     assertFalse(html.contains("compare SVG"))
@@ -189,7 +205,7 @@ class ServeComponentBrowserTest {
         token = token,
       )
 
-    assertTrue(html.contains("aria-label=\"Catalog / Dev mode\""))
+    assertTrue(html.contains("aria-label=\"Interface mode\""))
     assertTrue(html.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""))
     assertTrue(html.contains("q.set(\"chrome\",s)"))
     assertFalse(html.contains("class=\"cp-component-browser\""))

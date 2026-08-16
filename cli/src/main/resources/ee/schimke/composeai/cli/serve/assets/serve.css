@@ -220,8 +220,6 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   padding: 3px; border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-low); white-space: nowrap; }
-.cp-interface-mode-label { margin: 0 7px 0 8px; color: var(--md-sys-color-on-surface-variant);
-  font-size: var(--md-sys-typescale-label-small-size); }
 .cp-interface-mode button { min-height: 30px; padding: 4px 11px; border: 0;
   border-radius: var(--md-sys-shape-corner-full); background: transparent;
   color: var(--md-sys-color-on-surface-variant); box-shadow: none; }
@@ -2318,7 +2316,6 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   /* The mark alone is the home link. Two words of product name is the single widest thing in the
      bar and the least useful of them on a phone — you know what site you are on. */
   .cp-site-wordmark { display: none; }
-  .cp-interface-mode-label { display: none; }
   .cp-interface-mode button { padding-inline: 9px; }
   /* The bar names the catalog AND a sub-page's breadcrumb opens with the same name. Inline on a
      laptop they read as one line; in a 200px slot they are the same word twice with no room for
@@ -3104,10 +3101,24 @@ cp-page-zoom button:focus-visible {
 .cp-component-browser .cp-site-header { grid-template-columns: minmax(0, 1fr) auto; }
 .cp-component-browser .cp-site-lead { min-width: 0; }
 .cp-component-browser .cp-main { max-width: 1680px; }
+.cp-component-browser .cp-catalog-head-row { align-items: center; margin-bottom: 18px; }
+.cp-component-browser .cp-catalog-head-row .cp-head-toggles { margin-left: auto; }
 .cp-browser-home-tools { position: sticky; top: var(--site-header-height); z-index: 20;
   margin: 0 0 24px;
   padding: 8px 0; background: var(--cp-bg); }
-.cp-browser-home-tools .cp-search { display: flex; max-width: 520px; }
+.cp-browser-search { width: 100%; max-width: 520px; min-height: 48px; padding: 0 16px;
+  display: flex; align-items: center; gap: 12px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant); }
+.cp-browser-search:focus-within { outline: 3px solid var(--md-sys-color-secondary);
+  outline-offset: 2px; }
+.cp-browser-search-icon { flex: 0 0 auto; font-size: 20px; line-height: 1; }
+.cp-browser-search-input { min-width: 0; flex: 1; padding: 0; border: 0; outline: 0;
+  background: transparent; color: var(--md-sys-color-on-surface); font: inherit;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking); }
+.cp-browser-search-input::placeholder { color: var(--md-sys-color-on-surface-variant); }
 .cp-browser-provenance { margin-top: 7px; color: var(--md-sys-color-on-surface-variant);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--md-sys-typescale-body-small-size); overflow-wrap: anywhere; }
