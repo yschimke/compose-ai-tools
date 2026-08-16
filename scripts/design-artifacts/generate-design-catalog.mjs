@@ -47,6 +47,7 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 import { foldVariants, variantLabel } from "./catalog-variants.mjs";
 import { foldMotion, motionArtifactsFor, motionPreviewFor } from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
+import { applyMotion } from "./apply-motion.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -469,6 +470,11 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   const missing = [];
   const noSticker = [];
   const withoutSemantics = [];
+  // The motion axis, kept BESIDE the sources as well as on them. `buildCatalog` builds its
+  // components from an allow-list and drops any field it doesn't know, `motion` included on the
+  // pinned release — so the join's own copy is what survives to be re-stamped onto the written
+  // manifest. See apply-motion.mjs.
+  const motionByComponentId = new Map();
   // Live-only coverage: entries and image axes the spec deferred (issue #2950). Recorded so
   // catalog.json still declares them — they are not lost coverage, just not rasterised here — and
   // deliberately kept OUT of `missing` / `withoutSemantics`, which is the whole point: the gate
@@ -663,7 +669,10 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         opts.previewCellsByFunction?.get(component.preview),
         opts.previewCellsByFunction?.get(motionPreviewFor(component)),
       );
-      if (motion.length > 0) source.motion = motion;
+      if (motion.length > 0) {
+        source.motion = motion;
+        motionByComponentId.set(component.componentId, motion);
+      }
       // A group may declare a top-level `section` (the tab the preview server
       // buckets it under: Themes / Components / Screens / Animations / …). It sits
       // one level above `group`, which becomes the sub-heading inside a tab.
@@ -710,7 +719,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   // is silently dropped here unless it is threaded through by hand. Missing it published a catalog
   // with no `themes[]` while the run logged that it was publishing them.
   const catalog = buildCatalog(meta, sources, opts.themeTokens, opts.themes);
-  return { catalog, missing, noSticker, withoutSemantics, deferred };
+  return { catalog, missing, noSticker, withoutSemantics, deferred, motionByComponentId };
 }
 // --- end vendored join --------------------------------------------------------
 
@@ -1100,7 +1109,7 @@ if (specDefersAnything(spec)) {
   );
 }
 
-const { catalog, missing, noSticker, withoutSemantics, deferred } =
+const { catalog, missing, noSticker, withoutSemantics, deferred, motionByComponentId } =
   catalogFromCandidates(candidates, spec, {
     ...(values.renderer ? { renderer: values.renderer } : {}),
     ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
@@ -1500,6 +1509,30 @@ if (values["publish-live-bundle"]) {
     }
   }
   stampPreviewDensities(manifest, spec, allBundles);
+
+  // Re-stamp the motion axis the join computed. `buildCatalog` copies a source's fields through an
+  // allow-list that has no `motion` in it, so without this the declarations end at the join and the
+  // publish pass below has nothing to copy — which is exactly how five components that each shipped
+  // a rendered 60fps APNG in the bundle published a catalog with no Motion section at all, on a run
+  // that reported nothing wrong. Same post-process treatment, and same reason, as `section` and
+  // `sourceFile` above.
+  {
+    const { stamped, captures, unmatched } = applyMotion(manifest, motionByComponentId);
+    if (stamped > 0) {
+      console.log(
+        `[${spec.system}] stamped motion on ${stamped} component(s) (${captures} capture(s))`,
+      );
+    }
+    // A component the join produced captures for but the manifest has no entry for means the two
+    // have drifted apart — the bytes would then never be published, silently, which is the failure
+    // this whole pass exists to end.
+    if (unmatched.length > 0) {
+      console.warn(
+        `[${spec.system}] motion: ${unmatched.length} component(s) carried captures the manifest ` +
+          `has no entry for, so they cannot be published (${unmatched.join(", ")})`,
+      );
+    }
+  }
 
   // Publish the motion axis' bytes onto the branch, under `motion/`, and repoint each declaration
   // at where they landed.
