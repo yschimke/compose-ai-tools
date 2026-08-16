@@ -13,6 +13,8 @@ Checked items are the recommended defaults. Unchecked items remain available in 
   marker promises that `?id=<component>` selects the requested component. Automatically discovered
   local distributions remain behind the browse session token, including their relative assets.
 - [x] Sticky global `Catalog / Dev mode` toggle in the header
+  The choice is the visitor's mode, remembered in the `cp_chrome` cookie the server reads on every
+  request, so no link carries it. `?chrome=catalog|dev` remains as a permalink for one request.
 - [x] Use human-readable, complete component names throughout
 - [x] Preserve catalog → category → group → component → variant hierarchy
 - [x] Keep URLs shareable for catalogs, components, and variants

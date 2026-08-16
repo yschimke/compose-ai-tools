@@ -483,6 +483,31 @@ object ServeWeb {
   internal const val PRESENCE_INTERVAL_SECONDS = 240
 
   /**
+   * Where the Catalog / Dev switch remembers the visitor's choice: a host-wide cookie, read by the
+   * server on every request (`ServeHttpServer.componentBrowserMode`).
+   *
+   * A cookie rather than `localStorage` because the choice decides what the *server* renders. Kept
+   * on the client, the only way to act on it was to put it in the URL — so every page rewrote every
+   * same-origin link to carry `?chrome=`, and a bare URL had to be bounced through a
+   * `location.replace` before it could paint. This is one header the browser already sends, and the
+   * URLs go back to being about the thing they address.
+   */
+  internal const val INTERFACE_MODE_COOKIE = "cp_chrome"
+
+  /** How long the remembered Catalog / Dev choice sticks around. A preference, so: a year. */
+  private const val INTERFACE_MODE_COOKIE_MAX_AGE = 31536000
+
+  /**
+   * Attributes the switch writes [INTERFACE_MODE_COOKIE] with: host-wide (the mode is the whole
+   * site's, not one path's) and `SameSite=Lax`, which is all a presentation preference needs — it
+   * carries no identity and gates nothing. `Secure` is appended by the script when the page is
+   * itself https, so the same markup works on a `http://127.0.0.1` dev server, where a `Secure`
+   * cookie would simply be dropped. Deliberately readable by script: the switch is client-side.
+   */
+  private const val INTERFACE_MODE_COOKIE_ATTRS =
+    "; path=/; max-age=$INTERFACE_MODE_COOKIE_MAX_AGE; samesite=lax"
+
+  /**
    * How many rows the viewer's component subtree shows inline before folding behind its title-bar
    * toggle — counting the component row, which is itself a render (the default one), not just its
    * children. Lower than the chip rows this replaced needed, because a tree spends a whole line per
@@ -10581,16 +10606,24 @@ $rows
       themeStorageKey
         .takeIf { it.isNotBlank() }
         ?.let { " data-cp-theme-key=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
-    val interfaceMode = if (componentBrowser) "catalog" else "dev"
+    // Carry the mode over from the `localStorage` key this switch used before it became a cookie,
+    // so an upgrade doesn't quietly drop a visitor back into the server's default presentation. It
+    // clears the key whatever it held, so it runs at most once per browser and the whole block can
+    // be deleted a release or two from now. The reload is what makes the carried-over mode take
+    // effect: the server has already rendered this page, and it rendered it without the cookie.
     val interfaceModeBoot =
       if (interfaceModeControl)
         "\n        " +
-          """<script>try{var q=new URLSearchParams(location.search),m=q.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){q.set("chrome",s);location.replace(location.pathname+"?"+q.toString()+location.hash);}}catch(e){}</script>"""
+          """<script>try{var s=localStorage.getItem("cp-interface-mode");if(s){localStorage.removeItem("cp-interface-mode");if((s==="catalog"||s==="dev")&&document.cookie.indexOf("$INTERFACE_MODE_COOKIE=")<0){document.cookie="$INTERFACE_MODE_COOKIE="+s+"$INTERFACE_MODE_COOKIE_ATTRS"+(location.protocol==="https:"?"; secure":"");if(document.cookie.indexOf("$INTERFACE_MODE_COOKIE="+s)>=0&&!/[?&]chrome=/.test(location.search))location.reload();}}}catch(e){}</script>"""
       else ""
+    // The switch itself: remember the choice in the cookie the server reads, drop any `?chrome=`
+    // the current URL pinned (an explicit permalink outranks the cookie, so leaving it on would
+    // make the button appear to do nothing), and reload into the chosen mode. Nothing rewrites the
+    // page's links any more — the cookie travels on its own.
     val interfaceModeControls =
       if (interfaceModeControl)
         "\n        " +
-          """<script>(function(){var active="$interfaceMode",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>"""
+          """<script>(function(){var key="$INTERFACE_MODE_COOKIE";document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{document.cookie=key+"="+mode+"$INTERFACE_MODE_COOKIE_ATTRS"+(location.protocol==="https:"?"; secure":"");}catch(e){}var u=new URL(location.href);u.searchParams.delete("chrome");if(document.cookie.indexOf(key+"="+mode)<0)u.searchParams.set("chrome",mode);var q=u.searchParams.toString();location.assign(u.pathname+(q?"?"+q:"")+u.hash);});});})();</script>"""
       else ""
     // `serve-chrome.js` is emitted as the first thing in <body>, ahead of every surface's own
     // scripts, because they read the globals it installs: the component bundle's Transparent

@@ -486,6 +486,27 @@ declared theme is replayed on load: a *stored* app-declared theme deliberately i
 the whole grid through the daemon on an ordinary page view), but a link that names one is a request
 for exactly that.
 
+### …except Catalog / Dev, which is a mode you are in
+
+The header's **Catalog / Dev** switch is the one selection that is deliberately *not* carried by the
+URL. It doesn't describe the page — it decides which interface the whole server is shown in, and it
+is the visitor's, not the link's. So it lives in a **cookie** (`cp_chrome=catalog|dev`, host-wide,
+`SameSite=Lax`, a year), which the browser sends with every request and the server reads before it
+renders anything.
+
+It used to be `localStorage`, and that had a cost the choice didn't earn: because the server picks
+the markup, a client-side value could only reach it through the address bar. Every page therefore
+rewrote every same-origin link on it to append `?chrome=`, and a bare URL had to be bounced through a
+`location.replace` before it could paint — so a parameter nobody typed ended up in every URL a
+visitor copied, shared or bookmarked. The cookie needs neither.
+
+`?chrome=catalog|dev` still works, as a **permalink**: it pins the presentation for that one request
+— outranking the cookie — for a link written to show a specific interface. It does not write the
+cookie, so following someone else's link doesn't change the mode you are in afterwards; clicking the
+switch, conversely, drops any `?chrome=` from the current URL so the choice you just made is the one
+that applies. Pages whose body depends on the cookie say so with `Vary: Cookie`, so a shared cache
+can't hand one visitor's Catalog-mode HTML to a Dev-mode visitor.
+
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
 
