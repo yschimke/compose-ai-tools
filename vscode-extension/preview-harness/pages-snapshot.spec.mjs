@@ -407,6 +407,28 @@ async function zoomPercent(page) {
 // sit anywhere in a fixture's state list without shifting the states after it.
 const PHONE_VIEWPORT = { width: 412, height: 800 };
 
+/**
+ * Put the catalog landing's two toolbar menus back to closed.
+ *
+ * Every state for a fixture runs in order against the SAME loaded page (see the runner's loop
+ * below), and a `<details>` a state opened is still open for the state after it. That costs twice:
+ * a later shot captures a panel it never asked for, and a later state that TOGGLES the same
+ * summary — `mobile-theme` clicks `.cp-catalog-theme > summary` — closes what it meant to open and
+ * then waits forever for `[open]`.
+ *
+ * So a state that opens one of these sets the state it wants rather than toggling into it: reset
+ * first, then open the one it is about. Written as an attribute write, not a click, because a
+ * click on an already-closed summary would open it.
+ */
+async function closeLandingMenus(page) {
+    await page.evaluate(() => {
+        for (const menu of document.querySelectorAll(
+            ".cp-catalog-theme, .cp-actions-menu",
+        ))
+            menu.removeAttribute("open");
+    });
+}
+
 const FIXTURE_STATES = [
     {
         // A component under the POINTER. The sheet carries no resting marks, so this is the whole
@@ -1372,6 +1394,7 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-declared-themes",
         suffix: "theme-menu",
         apply: async (page) => {
+            await closeLandingMenus(page);
             await page.click(".cp-catalog-theme > summary");
             await page.waitForSelector(
                 ".cp-catalog-theme[open] .cp-theme-menu-panel",
@@ -1386,6 +1409,8 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-declared-themes",
         suffix: "actions-menu",
         apply: async (page) => {
+            // Also what puts the Theme menu above away again.
+            await closeLandingMenus(page);
             await page.click(".cp-actions-menu > summary");
             await page.waitForSelector(
                 ".cp-actions-menu[open] + .cp-actions-panel",
@@ -1403,7 +1428,11 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-declared-themes",
         suffix: "mobile",
         viewport: PHONE_VIEWPORT,
-        apply: async () => {},
+        // "Untouched page" is a claim about state, not about doing nothing: the two states above
+        // leave a menu open, and this is the shot that has to be the RESTING catalog. It is also
+        // what leaves `.cp-catalog-theme` closed for `mobile-theme` further down, which opens it
+        // by clicking its summary and would otherwise close it instead.
+        apply: closeLandingMenus,
     },
     {
         // …and that bar's `⋮` OPEN. The phone bar is one row because the navigation — Catalogs,
