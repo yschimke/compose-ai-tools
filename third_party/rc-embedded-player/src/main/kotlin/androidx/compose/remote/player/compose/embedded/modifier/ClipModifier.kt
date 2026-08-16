@@ -44,8 +44,15 @@ internal fun Modifier.clipRect(op: ClipRectModifierOperation): Modifier {
   return this.clip(RectangleShape)
 }
 
+/**
+ * @param hoistPastDrawContent whether a `DrawContentOperation` has already been folded into the
+ *   chain. Only then is the clip moved to the front — see the note at the return.
+ */
 @Composable
-internal fun Modifier.roundedClipRect(op: RoundedClipRectModifierOperation): Modifier {
+internal fun Modifier.roundedClipRect(
+  op: RoundedClipRectModifierOperation,
+  hoistPastDrawContent: Boolean = false,
+): Modifier {
   val data = op.readDataReflection()
   val behavior = LocalCoreDocument.current.densityBehavior
   val shape =
@@ -57,10 +64,25 @@ internal fun Modifier.roundedClipRect(op: RoundedClipRectModifierOperation): Mod
       densityBehavior = behavior,
     )
 
-  // remote-core applies the rounded clip to the component's complete paint output. DrawContent
-  // precedes this operation in the wire modifier list, but appending Compose's clip would leave
-  // that draw node outside the clip. Prepend it so generated background paths are clipped too.
-  return Modifier.clip(shape).then(this)
+  // remote-core applies the rounded clip to the component's complete paint output, so the clip has
+  // to sit *outside* the draw — but *inside* the layout modifiers, at the position the wire list
+  // gives it.
+  //
+  // This used to prepend unconditionally, which put the clip ahead of `PaddingModifierOperation`
+  // too. On a switch thumb — `padding(35.4dp, 7.9dp).size(16.dp)` then this clip then a background
+  // — that clipped the padded 51x24dp box while the background painted the 16x16dp content well
+  // inside it, so the rounded shape never touched the thing it was meant to round and the thumb
+  // rendered square (compose-ai-tools#3992). The track beside it carries no padding, which is
+  // exactly why it looked correct and the thumb did not.
+  //
+  // A `Modifier.clip` clips whatever the modifiers *after* it draw, so list order already puts the
+  // draw inside: an explicit `DrawContentOperation` later in the list, or the implicit draw
+  // `toModifier` appends when a component carries no marker. The one case list order cannot serve
+  // is a `DrawContentOperation` that comes *before* this operation — there the clip still has to be
+  // hoisted past it, and [hoistPastDrawContent] says so. No document in the 164-document catalog
+  // sweep exercises that branch; it is kept because the wire format permits it, not because
+  // anything observed needs it.
+  return if (hoistPastDrawContent) Modifier.clip(shape).then(this) else this.clip(shape)
 }
 
 internal data class RemoteRoundedClipShape(
