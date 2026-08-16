@@ -37,6 +37,13 @@ flow — nobody reads a 200-character absolute URL.
 
 ## Kept diffed
 
-`serve-viewer-rc-players` is a committed page fixture with a `player-cmp-android` runtime state, so
+`serve-viewer-rc-players` is a committed page fixture with a *switched-player* runtime state, so
 the CI visual-diff bot renders and diffs both on every future PR — this page is a snapshot of the
 change, not the mechanism that keeps it covered.
+
+That state selects whichever lane is **not** the default, so it names the non-default player rather
+than a fixed one: it was `player-cmp-android` when the viewer opened on Java, and became
+`player-java` when #3936 flipped the default to the embedded player. The images above still show
+the Java-default era they were captured in — they document the chip-row collapse, which is what
+this page is about, and re-capturing them would only restate the same redesign with the two lane
+names swapped.
