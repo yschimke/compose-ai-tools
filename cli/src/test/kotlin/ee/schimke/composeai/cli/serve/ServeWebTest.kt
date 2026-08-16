@@ -1068,12 +1068,19 @@ class ServeWebTest {
     // Load order is load-bearing: `viewer.js` calls `window.cpSpecCompare` on the way into the
     // lane, and `<cp-spec-compare>` draws every surface from format-compare.js's primitives. The
     // element wires itself up as its tag upgrades, so the components bundle has to be requested
-    // before viewer.js, and the tag itself before the bundle that defines it.
+    // before viewer.js, and the tag itself before the bundle that defines it. The inline theme
+    // bootstrap must publish the baseline before that upgrade too: otherwise a cold themed deep
+    // link can paint the baked verdict while the parser waits for the later scripts.
     val tag = html.indexOf("<cp-spec-compare>")
+    val baseline = html.indexOf("root.setAttribute(\"data-spec-baseline\"")
     val components = html.indexOf("serve-components.js")
     val formatCompare = html.indexOf("format-compare.js")
     val viewer = html.indexOf("/viewer.js")
     assertTrue(tag in 1 until components, "the tag is parsed before the bundle upgrades it")
+    assertTrue(
+      baseline in (tag + 1) until components,
+      "the inline theme bootstrap publishes the baseline before the component upgrades",
+    )
     assertTrue(components in 1 until viewer, "the components bundle precedes viewer.js")
     assertTrue(formatCompare in 1 until viewer, "format-compare.js precedes viewer.js")
   }
