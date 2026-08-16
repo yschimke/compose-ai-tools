@@ -4621,9 +4621,14 @@ $noteBlock        <div class="cp-site-footer-links">
       var suffix = ${jsString(querySuffix)};
       var editLease = null;
       var editRevision = 0;
+      // One holder per document/tab: closing one tab must not tear down another tab's shared
+      // owner-wide incremental workspace.
+      var editClient = (window.crypto && typeof window.crypto.randomUUID === "function")
+        ? window.crypto.randomUUID()
+        : (Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
       function releaseEditLeaseOnDiscard() {
         if (!editLease) return;
-        var body = JSON.stringify({ lease: editLease });
+        var body = JSON.stringify({ lease: editLease, client: editClient });
         var url = "/api/1/compiler/edit-lease/release" + suffix;
         editLease = null;
         if (navigator.sendBeacon) {
@@ -4644,9 +4649,9 @@ $noteBlock        <div class="cp-site-footer-links">
         // server TTL as the hard fallback.
         if (!event.persisted) releaseEditLeaseOnDiscard();
       });
-      function setEditLease(value, message, expiresAt) {
+      function setEditLease(value, message, expiresAt, revision) {
         editLease = value;
-        editRevision = 0;
+        editRevision = value && Number.isFinite(revision) ? revision : 0;
         if (!editLeaseButton) return;
         editLeaseButton.disabled = false;
         editLeaseButton.textContent = value ? "Release editing lease" : "Acquire editing lease";
@@ -4664,7 +4669,9 @@ $noteBlock        <div class="cp-site-footer-links">
           editLeaseButton.disabled = true;
           if (!editLease) {
             fetch("/api/1/compiler/edit-lease" + suffix, {
-              method: "POST", headers: { "Accept": "application/json" }
+              method: "POST",
+              headers: { "Accept": "application/json", "Content-Type": "application/json" },
+              body: JSON.stringify({ client: editClient })
             })
               .then(function (r) {
                 return r.json().then(function (body) {
@@ -4673,7 +4680,7 @@ $noteBlock        <div class="cp-site-footer-links">
                 });
               })
               .then(function (body) {
-                setEditLease(body.lease, body.message, body.expiresAtEpochMs);
+                setEditLease(body.lease, body.message, body.expiresAtEpochMs, body.revision);
               })
               .catch(function (e) {
                 setEditLease(null, e.message || "Could not acquire editing lease.");
@@ -4683,7 +4690,7 @@ $noteBlock        <div class="cp-site-footer-links">
             fetch("/api/1/compiler/edit-lease/release" + suffix, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ lease: releasing })
+              body: JSON.stringify({ lease: releasing, client: editClient })
             })
               .then(function (r) {
                 if (!r.ok) throw new Error("The editing lease has already expired.");

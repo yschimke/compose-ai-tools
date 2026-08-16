@@ -96,11 +96,21 @@ data class PlaygroundEditLeaseResponse(
   val acquired: Boolean,
   val lease: String? = null,
   val expiresAtEpochMs: Long? = null,
+  /** Last revision accepted by this lease, so a reattached editor can continue monotonically. */
+  val revision: Long = 0,
   val message: String,
 )
 
+/** Body for `POST /api/{version}/compiler/edit-lease`. [client] is unique to one browser tab. */
+@Serializable data class PlaygroundEditLeaseAcquireRequest(val client: String = "")
+
 /** Body for `POST /api/{version}/compiler/edit-lease/release`. */
-@Serializable data class PlaygroundEditLeaseReleaseRequest(val lease: String = "")
+@Serializable
+data class PlaygroundEditLeaseReleaseRequest(
+  val lease: String = "",
+  /** Empty preserves the original whole-lease release contract for non-browser API callers. */
+  val client: String = "",
+)
 
 /**
  * One entry in the editor's catalog selector (`GET /api/{version}/compiler/catalogs`).

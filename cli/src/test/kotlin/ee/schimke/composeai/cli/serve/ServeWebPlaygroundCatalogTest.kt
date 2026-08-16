@@ -81,6 +81,9 @@ class ServeWebPlaygroundCatalogTest {
     assertTrue(html.contains("window.addEventListener(\"pagehide\""))
     assertTrue(html.contains("navigator.sendBeacon(url"))
     assertTrue(html.contains("if (!event.persisted) releaseEditLeaseOnDiscard()"))
+    assertTrue(html.contains("JSON.stringify({ client: editClient })"))
+    assertTrue(html.contains("JSON.stringify({ lease: editLease, client: editClient })"))
+    assertTrue(html.contains("body.expiresAtEpochMs, body.revision"))
   }
 
   @Test
