@@ -273,7 +273,12 @@ private object NotificationSidecar {
 
   private fun appendSmallIcon(sb: StringBuilder, n: Notification, context: Context) {
     val icon = n.smallIcon ?: return
-    val resId = icon.resId
+    val resId =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        icon.resId
+      } else {
+        @Suppress("DEPRECATION") n.icon
+      }
     val name = runCatching { context.resources.getResourceName(resId) }.getOrNull()
     sb.append("\"smallIcon\":{")
     sb.append("\"resourceId\":").append(resId)
