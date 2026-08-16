@@ -228,6 +228,7 @@ const ANNOTATIONS_PAYLOAD = {
 // the catalog-palette pair exists to show a served design system re-theming the chrome from its own
 // `tokens.dtcg.json`, which is invisible without the stylesheet the palette overrides.
 const STYLED_FIXTURES = new Set([
+  "serve-component-browser-home",
   "serve-component-browser-catalog",
   "serve-component-browser-component",
   "serve-format-compare",

@@ -714,9 +714,8 @@ class ServeWebFixtureTest {
         noun = "design system(s)",
         repos = setOf("yschimke/compose-ai-tools"),
       )
-    val homeIndex =
-      ServeWeb.homeIndexPage(
-        listOf(
+    val homeSystems =
+      listOf(
           ServeWeb.HomeSystem(
             group = designSystemsGroup,
             system = "compose-m3",
@@ -800,7 +799,10 @@ class ServeWebFixtureTest {
             heroPreviewId = "conference-screen__ideal__default__dark",
             darkStage = true,
           ),
-        ),
+        )
+    val homeIndex =
+      ServeWeb.homeIndexPage(
+        homeSystems,
         token,
         isPublic = true,
         version = version,
@@ -2292,8 +2294,18 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         basePath = "/compose-m3",
         displayTitle = "Compose Material 3",
+        declaredThemes = listOf(ServeTheme("Light", "com.example.LightThemeCatalog")),
+        canRenderThemeFor = { true },
         componentBrowser = true,
       )
+    val componentBrowserHome =
+      ServeWeb.homeIndexPage(
+        homeSystems,
+        token,
+        isPublic = true,
+        version = version,
+        componentBrowser = true,
+      ).replace(Regex("[ \\t]+\\n"), "\n")
     val componentBrowserViewer =
       ServeWeb.viewerPage(
         browserPreviews.first { it.id == "button-filled-pressed" },
@@ -2765,6 +2777,7 @@ class ServeWebFixtureTest {
         "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,
         "serve-landing-grouped.html" to landingGrouped,
+        "serve-component-browser-home.html" to componentBrowserHome,
         "serve-component-browser-catalog.html" to componentBrowserCatalog,
         "serve-component-browser-component.html" to componentBrowserViewer,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,

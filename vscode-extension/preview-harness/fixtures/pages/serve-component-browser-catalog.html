@@ -12,7 +12,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.LightThemeCatalog":"light"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body class="cp-component-browser">
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
@@ -25,14 +25,30 @@
   <span class="cp-site-catalog">Compose Material 3</span>
   <a class="cp-back" href="/">← All design systems</a>
   </div>
-  <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
-    <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+  <div class="cp-interface-mode" role="group" aria-label="Interface mode">
     <button type="button" data-cp-interface-mode="catalog" aria-pressed="true">Catalog</button>
     <button type="button" data-cp-interface-mode="dev" aria-pressed="false">Dev</button>
   </div>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Compose Material 3</h1></div></div>
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Compose Material 3</h1></div><div class="cp-head-toggles">
+<div class="cp-toolbar">
+  <details class="cp-theme-menu cp-catalog-theme">
+    <summary class="cp-drawer-toggle cp-axis-toggle" aria-controls="cp-catalog-theme-bar">
+      <span class="cp-toggle-label">Theme</span>
+      <span class="cp-toggle-value" id="cp-catalog-theme-value">Default</span>
+      <span class="cp-theme-caret" aria-hidden="true">▾</span>
+    </summary>
+    <div class="cp-theme-menu-panel">
+      <span class="cp-theme cp-theme-bar" id="cp-catalog-theme-bar" role="group" aria-label="Preview theme">
+        <button type="button" class="cp-theme-btn" data-theme-choice="default">Default</button>
+        <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightThemeCatalog" data-theme-mode="light">Light</button>
+      </span>
+    </div>
+  </details>
+</div>
+</div>
+</div>
         <div class="cp-catalog-body">
 <aside class="cp-catalog-menu" aria-label="Catalog menu">
 <div class="cp-searchbar">
@@ -173,416 +189,780 @@
 </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/serve-components.js"></script>
-<script>(function () {
-  var cards = document.querySelectorAll(".cp-card");
-  var input = document.getElementById("cp-search");
-  var count = document.getElementById("cp-count");
-  var empty = document.getElementById("cp-empty");
-  var total = cards.length;
-  // Address-bar state (`window.cpUrlState`). Every selection below is reflected into the URL so the
-  // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
-  // reachable with Back — without ever reloading: the grid re-points its own images.
-  var urlState = window.cpUrlState || null;
-  function urlParam(n) { return urlState ? urlState.get(n) : ""; }
-  function pushUrl(v) { if (urlState) urlState.push(v); }
-  function replaceUrl(v) { if (urlState) urlState.replace(v); }
-  if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
-  var navGroups = document.querySelectorAll(".cp-subgroup");
-  var treeGroups = document.querySelectorAll(".cp-tree-group");
-  var treeComponents = document.querySelectorAll(".cp-tree-component");
-  var treeLinks = document.querySelectorAll(".cp-tree-link");
-  var cpTreeStops = null;
-  var tabBtns = document.querySelectorAll(".cp-tab");
-  var treeGroups = document.querySelectorAll(".cp-tree-group");
-  var tabSections = document.querySelectorAll(".cp-section");
-  var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
-  try {
-    var storedTab = localStorage.getItem("cp-tab:compose-m3");
-    tabBtns.forEach(function (t) {
-      if (t.getAttribute("data-tab") === storedTab) current = storedTab;
-    });
-  } catch (e) {}
-  var urlTab = urlParam("tab");
-  tabBtns.forEach(function (t) {
-    if (t.getAttribute("data-tab") === urlTab) current = urlTab;
-  });
-  var initialTab = current;
-  function reflectTabs() {
-    var searching = !!(input && input.value.trim());
-    var stop = null;
-    var firstShown = null;
-    tabBtns.forEach(function (t) {
-      var on = t.getAttribute("data-tab") === current;
-      t.setAttribute("aria-selected", on ? "true" : "false");
-      if (t.hasAttribute("aria-expanded"))
-        t.setAttribute("aria-expanded", on || searching ? "true" : "false");
-      var node = t.closest(".cp-tree-node");
-      var shown = !(node && node.hidden);
-      t.tabIndex = on && shown ? 0 : -1;
-      if (shown && !firstShown) firstShown = t;
-      if (on && shown) stop = t;
-    });
-    treeGroups.forEach(function (g) { g.tabIndex = -1; });
-    if (!stop && firstShown) firstShown.tabIndex = 0;
-  }
-  reflectTabs();
-  document.documentElement.classList.add("cp-js");
-  
-  function apply() {
-    
-    var q = input ? input.value.trim().toLowerCase() : "";
-    var shown = 0;
-    cards.forEach(function (c) {
-      var lab = c.querySelector(".cp-label");
-      var idn = c.querySelector(".cp-id");
-      var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-      var searchOk = q === "" || hay.indexOf(q) !== -1;
-      var sec = c.closest(".cp-section");
-      var tabOk = q !== "" || !sec || sec.getAttribute("data-section") === current;
-      c.hidden = !(searchOk && tabOk);
-      if (searchOk && tabOk) shown++;
-    });
-    if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
-    if (empty) empty.hidden = shown !== 0;
-    navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
-    tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
-    treeComponents.forEach(function (c) {
-      var card = document.getElementById(c.getAttribute("data-group"));
-      if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);
-    });
-    treeGroups.forEach(function (g) {
-      var sub = document.getElementById(g.getAttribute("data-group"));
-      if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
-    });
-    tabBtns.forEach(function (t) {
-      var node = t.closest(".cp-tree-node");
-      var sec = document.getElementById(t.getAttribute("aria-controls"));
-      if (node) node.hidden = q !== "" && !!(sec && sec.hidden);
-    });
-    reflectTabs();
-    if (cpTreeStops) cpTreeStops();
-  }
-  if (input) input.addEventListener("input", function () {
-    // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
-    // visitor arrived from under five entries. The URL still carries the query, so the
-    // filtered grid is bookmarkable.
-    replaceUrl({ q: input.value.trim() });
-    apply();
-  });
-  
-  tabBtns.forEach(function (t) {
-    t.addEventListener("click", function (e) {
-      e.preventDefault();
-      current = t.getAttribute("data-tab");
-      try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
-      reflectTabs();
-      pushUrl({ tab: current });
-      apply();
-    });
-  });
-  if (urlState) {
-    urlState.onPop(function () {
-      var poppedTab = urlParam("tab") || initialTab;
+<script>    (function () {
+      var cards = document.querySelectorAll(".cp-card");
+      var input = document.getElementById("cp-search");
+      var count = document.getElementById("cp-count");
+      var empty = document.getElementById("cp-empty");
+      var total = cards.length;
+      // Address-bar state (`window.cpUrlState`). Every selection below is reflected into the URL so the
+      // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+      // reachable with Back — without ever reloading: the grid re-points its own images.
+      var urlState = window.cpUrlState || null;
+      function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+      function pushUrl(v) { if (urlState) urlState.push(v); }
+      function replaceUrl(v) { if (urlState) urlState.replace(v); }
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+      var navGroups = document.querySelectorAll(".cp-subgroup");
+      var treeGroups = document.querySelectorAll(".cp-tree-group");
+      var treeComponents = document.querySelectorAll(".cp-tree-component");
+      var treeLinks = document.querySelectorAll(".cp-tree-link");
+      var cpTreeStops = null;
+      var tabBtns = document.querySelectorAll(".cp-tab");
+      var treeGroups = document.querySelectorAll(".cp-tree-group");
+      var tabSections = document.querySelectorAll(".cp-section");
+      var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
+      try {
+        var storedTab = localStorage.getItem("cp-tab:compose-m3");
+        tabBtns.forEach(function (t) {
+          if (t.getAttribute("data-tab") === storedTab) current = storedTab;
+        });
+      } catch (e) {}
+      var urlTab = urlParam("tab");
       tabBtns.forEach(function (t) {
-        if (t.getAttribute("data-tab") === poppedTab) current = poppedTab;
+        if (t.getAttribute("data-tab") === urlTab) current = urlTab;
       });
-      reflectTabs();
-      if (input) input.value = urlParam("q");
-      apply();
-    });
-  }
-  (function () {
-    var tree = document.getElementById("cp-tabs");
-    if (!tree) return;
-    // The toolbar above pins itself at top:0 over everything, so publish its real height for the
-    // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
-    // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
-    // and the static fallback in the stylesheet only covers the unwrapped case.
-    // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
-    // machinery alone, which would have left an outline tree permanently expanded.
-    document.documentElement.classList.add("cp-js");
-    var tools = document.querySelector(".cp-catalog-tools");
-    if (tools) {
-      var syncTools = function () {
-        var h = Math.round(tools.getBoundingClientRect().height);
-        if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
-      };
-      syncTools();
-      if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
-      else window.addEventListener("resize", syncTools);
-    }
-    var tabBtnsForHash = tabBtns;
-    function selectTab(slug) {
-      if (!slug || slug === current) return;
-      current = slug;
-      try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
-      reflectTabs();
-      pushUrl({ tab: current });
-      apply();
-    }
-    function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
-    function applyLandingTab(landing) {
-      if (!landing.tab || landing.tab === current) return;
-      current = landing.tab;
-      initialTab = current;
-      reflectTabs();
-    }
-    // The row pointing at an id, found by COMPARING attribute values rather than by building a
-    // selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop viewer
-    // already follows).
-    function rowFor(id) {
-      var found = null;
-      treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
-      return found;
-    }
-    function markGroup(row) {
-      treeGroups.forEach(function (g) {
-        if (g === row) g.setAttribute("aria-current", "true");
-        else g.removeAttribute("aria-current");
-      });
-    }
-    // Which group and which component are open. One of each: a tree that opened every branch it
-    // was ever asked about would end up listing every component in the catalog, which is the
-    // wall the grid already is. The server marks the first group open, so the page arrives
-    // showing components rather than needing to be prised open first.
-    var openGroup = null;
-    var openCard = null;
-    treeLinks.forEach(function (r) {
-      if (r.classList.contains("cp-tree-group") && r.getAttribute("aria-expanded") === "true") {
-        openGroup = r.getAttribute("data-group");
-      }
-    });
-    function parentRow(row) {
-      var list = row.closest("ul.cp-tree-children");
-      return list ? list.previousElementSibling : null;
-    }
-    function reflectTree() {
-      treeLinks.forEach(function (r) {
-        if (!r.hasAttribute("aria-expanded")) return;
-        var id = r.getAttribute("data-group");
-        // A branch that names no in-page target is not one of the two this tracks — the Pages
-        // branch owns destinations that are elsewhere, and is written open once and left open.
-        if (!id) return;
-        var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
-        r.setAttribute("aria-expanded", on ? "true" : "false");
-      });
-    }
-    function openRow(row) {
-      var id = row.getAttribute("data-group");
-      if (row.classList.contains("cp-tree-group")) {
-        openGroup = id;
-        openCard = null;
-      } else if (row.classList.contains("cp-tree-component")) {
-        openCard = id;
-        // And the group that HOLDS it. A click can only reach a component whose group is already
-        // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
-        // on whichever group the server expanded would scroll to the card while keeping its own
-        // row, and every variant under it, collapsed out of the tree.
-        var owner = parentRow(row);
-        if (owner && owner.classList.contains("cp-tree-group")) {
-          openGroup = owner.getAttribute("data-group");
-        }
-      }
-      reflectTree();
-      syncTabStops();
-    }
-    // The fragment is part of the address this page describes, and `cpUrlState` deliberately
-    // preserves whatever hash is already there when it rewrites the query. So a click that moves
-    // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
-    // WERE. `replaceState`, not push: a jump inside the page is a scroll, not a place to come
-    // Back to.
-    function setFragment(id) {
-      var url = location.pathname + location.search + (id ? "#" + id : "");
-      try { history.replaceState(history.state, "", url); } catch (e) {}
-    }
-    // Every row that names an in-page destination. A VARIANT row is the exception: the grid
-    // folds those renders out, so it has nowhere here to jump to — it carries a plain `/p/<id>`
-    // href and is left to the browser.
-    treeLinks.forEach(function (row) {
-      row.addEventListener("click", function (e) {
-        var id = row.getAttribute("data-group");
-        if (!id) return;
-        var target = document.getElementById(id);
-        if (!target) return;
-        e.preventDefault();
-        openRow(row);
-      selectTab(row.getAttribute("data-tab"));
-        setFragment(id);
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (row.classList.contains("cp-tree-group")) markGroup(row);
-      });
-    });
-    // Keyboard: the tree pattern's roving focus. Visibility is read off layout rather than walked
-    // by hand — a collapsed branch is `display: none`, so `offsetParent` already answers "can the
-    // visitor reach this row", across all four levels and the filter's hiding at once.
-    function visibleRows() {
-      var rows = [];
-      tree.querySelectorAll(".cp-tab, .cp-tree-link").forEach(function (r) {
-        if (r.offsetParent !== null) rows.push(r);
-      });
-      return rows;
-    }
-    function focusRow(el) {
-      if (!el) return;
-      visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
-      el.focus();
-    }
-    // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
-    // Nothing established that until a first arrow press called `focusRow`, so every visible row
-    // sat in the normal tab order until then — the whole point of the pattern, lost on the one
-    // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
-    // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
-    function syncTabStops() {
-      var rows = visibleRows();
-      if (!rows.length) return;
-      var stop = null;
-      rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
-      if (!stop) stop = rows[0];
-      rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
-    }
-    cpTreeStops = syncTabStops;
-    tree.addEventListener("keydown", function (e) {
-      var items = visibleRows();
-      var at = items.indexOf(document.activeElement);
-      if (at === -1) return;
-      var key = e.key;
-      var next = null;
-      if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
-      else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
-      else if (key === "Home") next = items[0];
-      else if (key === "End") next = items[items.length - 1];
-      else if (key === "ArrowRight") {
-        // Right opens a collapsed parent, steps into an expanded one's first child, and does
-        // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
-        // second Arrow Down, walking the visitor across siblings when they asked to expand
-        // something that cannot expand.
-        var expanded = items[at].getAttribute("aria-expanded");
-        if (expanded === "false") {
-          e.preventDefault();
-          if (items[at].classList.contains("cp-tree-link")) openRow(items[at]);
-          else selectCollapsedTab(items[at]);
-          return;
-        }
-        if (expanded !== "true") return;
-        next = items[Math.min(at + 1, items.length - 1)];
-      } else if (key === "ArrowLeft") {
-        // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
-        // and the only way back up once the levels are four deep. The `data-group` test excludes
-        // the always-open Pages branch: closing it is not offered, and without the test Left on
-        // that row would clear `openCard` and collapse whichever component IS open.
-        if (
-          items[at].getAttribute("aria-expanded") === "true" &&
-          items[at].getAttribute("data-group")
-        ) {
-          e.preventDefault();
-          if (items[at].classList.contains("cp-tree-group")) openGroup = null;
-          else openCard = null;
-          reflectTree();
-          return;
-        }
-        next = parentRow(items[at]);
-      } else return;
-      if (!next) return;
-      e.preventDefault();
-      focusRow(next);
-    });
-    // What the URL's fragment names, or null when it names nothing this page has.
-    //
-    // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
-    // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
-    // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
-    // to an accented or CJK group would match no row at all and silently do nothing. A malformed
-    // escape sequence throws, and is simply not a fragment this page knows.
-    function hashTarget() {
-      var id = location.hash ? location.hash.slice(1) : "";
-      try { id = decodeURIComponent(id); } catch (e) { return null; }
-      if (!id) return null;
-      var tab = null;
-      var row = null;
-      treeLinks.forEach(function (g) {
-        if (!row && g.getAttribute("data-group") === id) {
-          tab = g.getAttribute("data-tab");
-          row = g;
-        }
-      });
-      if (!row) {
-        tabBtnsForHash.forEach(function (t) {
-          if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
+      var initialTab = current;
+      function reflectTabs() {
+        var searching = !!(input && input.value.trim());
+        var stop = null;
+        var firstShown = null;
+        tabBtns.forEach(function (t) {
+          var on = t.getAttribute("data-tab") === current;
+          t.setAttribute("aria-selected", on ? "true" : "false");
+          if (t.hasAttribute("aria-expanded"))
+            t.setAttribute("aria-expanded", on || searching ? "true" : "false");
+          var node = t.closest(".cp-tree-node");
+          var shown = !(node && node.hidden);
+          t.tabIndex = on && shown ? 0 : -1;
+          if (shown && !firstShown) firstShown = t;
+          if (on && shown) stop = t;
         });
+        treeGroups.forEach(function (g) { g.tabIndex = -1; });
+        if (!stop && firstShown) firstShown.tabIndex = 0;
       }
-      return row || tab ? { tab: tab, row: row, id: id } : null;
-    }
-    syncTabStops();
-    var landing = hashTarget();
-    if (landing) {
-      if (landing.row) openRow(landing.row);
-      applyLandingTab(landing);
+      reflectTabs();
+      document.documentElement.classList.add("cp-js");
+      var stored = null;
+try { stored = localStorage.getItem("cp-theme:compose-m3"); } catch (e) {}
+var themeBtns = document.querySelectorAll(".cp-theme-btn");
+function chipOffered(t) {
+  var offered = false;
+  themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === t) offered = true; });
+  return offered;
+}
+// The GRID always opens on published pixels. A stored app-declared theme
+// (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
+// every card at a `?themeProvider=` render and put the whole grid through the daemon on
+// what is meant to be a default page view — the single most expensive thing an idle box
+// can be made to do, and it happened on every return visit. Only the baked chips, whose
+// pixels are already published, are restored. Stickiness for app-declared themes belongs
+// to the individual preview, which reads this same key for its own Theme select.
+function validTheme(t) {
+  if (!t) return false;
+  return t === "light" || t === "dark" || t === "default";
+}
+var theme = validTheme(stored) ? stored
+  : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+// A chip is only offered when the page rendered it, so a remembered choice this catalog no
+// longer configures (a theme the app dropped) falls back to the first chip.
+var known = false;
+themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
+if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
+// The URL wins over both. `?theme=` is on the address bar only because someone picked that
+// chip (or was handed the link), which makes it the one case where replaying an app-declared
+// theme IS what was asked for — the cost the stored-value rule above avoids is the cost of
+// an *unrequested* grid re-render, not of honouring an explicit link. An unknown value (a
+// theme this catalog no longer publishes) is ignored, exactly like a stale stored one.
+var urlTheme = urlParam("theme");
+if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;
+// What the page falls back to when Back lands on an entry with no `?theme=` — the choice
+// this load resolved to, never the localStorage value a later click overwrote.
+var initialTheme = theme;
+var appliedTheme = null;
+var themeBase = ["/compose-m3/render/button-filled-default.png", "/compose-m3/render/button-outlined-default.png", "/compose-m3/render/card-elevated-default.png", "/compose-m3/render/card-filled-default.png", "/compose-m3/render/navigation-bar-default.png", "/compose-m3/render/profile-screen-default.png"];
+var themeGen = 0;
+var themeLeaseUrl = "";
+var themeLease = null;
+var themeRenderRetries = 3;
+function releaseThemeLease(lease, beacon) {
+  if (!lease || !themeLeaseUrl) return;
+  if (themeLease === lease) themeLease = null;
+  var queryAt = themeLeaseUrl.indexOf("?");
+  var url = queryAt === -1
+    ? themeLeaseUrl + "/release"
+    : themeLeaseUrl.slice(0, queryAt) + "/release" + themeLeaseUrl.slice(queryAt);
+  url += (url.indexOf("?") === -1 ? "?" : "&") + "lease=" + encodeURIComponent(lease);
+  if (beacon && navigator.sendBeacon) navigator.sendBeacon(url, "");
+  else fetch(url, { method: "POST", credentials: "same-origin", keepalive: true }).catch(function () {});
+}
+function acquireThemeLease(gen, callback) {
+  if (!themeLeaseUrl) { callback(null, 1); return; }
+  fetch(themeLeaseUrl, { method: "POST", credentials: "same-origin" })
+    .then(function (response) { return response.ok ? response.json() : null; })
+    .then(function (grant) {
+      var lease = grant && typeof grant.lease === "string" ? grant.lease : null;
+      var concurrency = grant && Number.isFinite(grant.concurrency)
+        ? Math.max(1, Math.min(5, grant.concurrency)) : 1;
+      if (gen !== themeGen) { releaseThemeLease(lease, false); return; }
+      themeLease = lease;
+      callback(lease, concurrency);
+    })
+    .catch(function () { if (gen === themeGen) callback(null, 1); });
+}
+function finishThemeJob(batch) {
+  batch.remaining--;
+  if (batch.remaining === 0) releaseThemeLease(batch.lease, false);
+}
+function clearThemeError(card) {
+  card.classList.remove("cp-theme-render-error");
+  var error = card.querySelector(".cp-theme-error");
+  if (error) error.remove();
+}
+function showThemeError(card, terminal) {
+  clearThemeError(card);
+  card.classList.add("cp-theme-render-error");
+  var error = document.createElement("span");
+  error.className = "cp-theme-error";
+  error.setAttribute("role", "status");
+  // Two different facts, and conflating them is misleading: a retryable failure really may
+  // resolve on the next attempt, while a terminal one (the server latched this preview as
+  // unrenderable) never will. Saying "unavailable" for both left a permanently broken card
+  // looking like it was still loading.
+  error.textContent = terminal
+    ? "This preview can't render live"
+    : "Theme preview unavailable";
+  var wrap = card.querySelector(".cp-imgwrap");
+  if (wrap) wrap.appendChild(error);
+}
+function runThemeWorker(queue, gen, batch) {
+  if (gen !== themeGen) return;
+  var job = queue.shift();
+  if (!job) return;
+  // A deferred card is not loading yet: it deliberately has no request until its tab or
+  // viewport reaches it. Mark it busy only when a worker actually starts the fetch. Doing
+  // this while every job was being classified left hidden-tab cards aria-busy forever,
+  // making a completed cold daemon burst look as though it had never woken the page.
+  clearThemeError(job.card);
+  job.card.classList.add("cp-reloading");
+  job.card.setAttribute("aria-busy", "true");
+  var img = job.img;
+  var settled = false;
+  function finish(ok, terminal) {
+    if (settled || gen !== themeGen) return;
+    settled = true;
+    if (!ok && !terminal && job.retries < themeRenderRetries) {
+      // Re-request rather than re-assign the identical (failed, uncached) URL. Exponential
+      // backoff gives a busy daemon time to finish without stalling the other worker.
+      job.retries++;
+      job.src = job.baseSrc + "&_retry=" + job.retries;
       setTimeout(function () {
-        var el = document.getElementById(landing.id);
-        if (el) el.scrollIntoView({ block: "start" });
-        if (landing.row && landing.row.classList.contains("cp-tree-group")) markGroup(landing.row);
-      }, 0);
-    }// Choosing a whole section retires any group fragment: the row you clicked is the statement
-    // of where you are, and a leftover `#cp-group-…` from another section would outrank it on
-    // the next load. It also has to honour the promise its own `href="#cp-panel-…"` makes — the
-    // shared handler prevents the default navigation and only swaps which panel is hidden, so
-    // from halfway down a long section the scroll simply stayed where it was. Registered after
-    // that handler, so the panel is already showing when this measures it, and it only scrolls
-    // when the panel is actually behind the sticky toolbar.
-    tabBtns.forEach(function (t) {
-      t.addEventListener("click", function () {
-        setFragment("");
-        var panel = document.getElementById(t.getAttribute("aria-controls"));
-        if (!panel) return;
-        var clearance = tools ? tools.getBoundingClientRect().height : 0;
-        if (panel.getBoundingClientRect().top < clearance) {
-          panel.scrollIntoView({ block: "start" });
-        }
-      });
-    });// Back / Forward has to resolve an entry the same way loading it fresh would. The shared pop
-    // handler reads `?tab=` only, so returning to an entry whose fragment and query disagree —
-    // `?tab=components#cp-group-themes-foundation`, which a fresh load resolves to Themes —
-    // would land on Components with the fragment's target hidden. This runs after that handler
-    // (registered later, and `onPop` is a plain listener) and re-applies the precedence.
-    if (window.cpUrlState) {
-      window.cpUrlState.onPop(function () {
-        var popped = hashTarget();
-        if (!popped || popped.tab === current) return;
-        current = popped.tab;
+        if (gen !== themeGen) return;
+        queue.push(job);
+        runThemeWorker(queue, gen, batch);
+      }, 1000 * Math.pow(2, job.retries));
+      return;
+    }
+    job.card.classList.remove("cp-reloading");
+    job.card.removeAttribute("aria-busy");
+    if (!ok) showThemeError(job.card, terminal);
+    finishThemeJob(batch);
+    runThemeWorker(queue, gen, batch);
+  }
+  // Fetch the bytes FIRST and only then put them on the card.
+  //
+  // Assigning `src` on the live <img> dropped the pixels it was showing the instant the
+  // request started, so the visitor watched the old theme's render vanish and sat looking
+  // at a broken-image glyph under the spinner for the whole ~1s daemon round trip. Holding
+  // the previous render until the new one is in hand means the card only ever shows real
+  // pixels: the old theme's, then the new theme's, swapped in a single paint.
+  //
+  // A detached `new Image()` preload would do the same job, except a themed render is
+  // `no-store` (it carries overrides), so handing its URL to the visible <img> afterwards
+  // is not reliably a cache hit and can cost a second round trip. Fetching to a blob is one
+  // request by construction.
+  fetch(job.src, { credentials: "same-origin" })
+    .then(function (response) {
+      // 409 is the server saying it has permanently given up on this preview, not that it
+      // is busy. Retrying it three times with backoff only occupies a worker that the rest
+      // of the grid needs, so retire the job on the spot.
+      if (response.status === 409) {
+        var terminal = new Error("render 409");
+        terminal.cpTerminal = true;
+        throw terminal;
+      }
+      if (!response.ok) throw new Error("render " + response.status);
+      return response.blob();
+    })
+    .then(function (blob) {
+      if (gen !== themeGen) return;
+      var url = URL.createObjectURL(blob);
+      // Release the blob this card was holding, if any. Without this every theme switch
+      // would strand one object URL per card for the life of the page.
+      var previous = img.getAttribute("data-cp-blob");
+      img.src = url;
+      img.setAttribute("data-cp-blob", url);
+      if (previous) URL.revokeObjectURL(previous);
+      finish(true);
+    })
+    .catch(function (e) { finish(false, !!(e && e.cpTerminal)); });
+}
+function runThemeQueue(queue, gen, lease, concurrency) {
+  var batch = { lease: lease, remaining: queue.length };
+  if (!batch.remaining) { releaseThemeLease(lease, false); return; }
+  var workers = Math.min(concurrency, queue.length);
+  for (var i = 0; i < workers; i++) runThemeWorker(queue, gen, batch);
+}
+// Themed renders for cards that are off-screen (or hidden by search / another tab), held
+// until the viewport reaches them. `rootMargin` starts a card a screenful early so scrolling
+// meets finished pixels rather than a spinner. No lease is taken: this is a trickle behind
+// the visitor's scroll, not the burst the visible batch asks for.
+var themeObserver = null;
+function stopDeferredTheme() {
+  if (themeObserver) themeObserver.disconnect();
+  themeObserver = null;
+}
+// Whether a card is close enough to the viewport to be worth rendering NOW. This is
+// geometry, deliberately, not `hidden`: on a flat catalog with no search nothing is hidden,
+// so partitioning on `hidden` alone would put all 80+ cards in the leased batch and defer
+// nothing — exactly the case this is here to fix. A zero-size rect (display:none, e.g. a
+// non-current tab panel) is never near the viewport.
+function nearViewport(c) {
+  var r = c.getBoundingClientRect();
+  if (!r.width && !r.height) return false;
+  var h = window.innerHeight || document.documentElement.clientHeight || 0;
+  return r.bottom > -400 && r.top < h + 400;
+}
+function deferTheme(jobs, gen) {
+  if (!jobs.length) return;
+  // No IntersectionObserver (old browser): fall back to rendering them, serially, rather
+  // than leaving those cards stuck on the wrong theme forever.
+  if (!window.IntersectionObserver) { runThemeQueue(jobs, gen, null, 1); return; }
+  // Both the observer and its worklist are per-generation locals, never shared globals: a
+  // callback already queued when the visitor picks another theme must retire ITSELF and
+  // touch nothing else. Clearing the live observer or its pending list from a stale
+  // callback would strand every not-yet-scrolled card on the previous theme's pixels.
+  var pending = jobs.slice();
+  var observer = new IntersectionObserver(function (entries) {
+    if (gen !== themeGen) { observer.disconnect(); return; }
+    var due = [];
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      observer.unobserve(e.target);
+      for (var i = 0; i < pending.length; i++) {
+        if (pending[i].card === e.target) { due.push(pending.splice(i, 1)[0]); break; }
+      }
+    });
+    if (due.length) runThemeQueue(due, gen, null, 1);
+  }, { rootMargin: "400px" });
+  themeObserver = observer;
+  jobs.forEach(function (job) { observer.observe(job.card); });
+}
+window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, true); });
+      function apply() {
+        themeBtns.forEach(function (b) {
+  b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
+});
+var selectedThemeButton = null;
+themeBtns.forEach(function (b) {
+  if (b.getAttribute("data-theme-choice") === theme) selectedThemeButton = b;
+});
+var selectedThemeMode = selectedThemeButton
+  ? selectedThemeButton.getAttribute("data-theme-mode") || "" : "";
+// Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
+// supplying themed ones), alt text, label, id, viewer link and stage backing.
+// Point a card's <img> at a plain URL, releasing whatever blob it was holding first.
+// A themed render is handed over as an object URL (see runThemeWorker); leaving a declared
+// theme for Light / Dark / Default replaces that source, and without this the blob behind
+// it would stay resident until the page unloaded — one full-resolution PNG per card, on
+// catalogs that routinely run to 80+ cards.
+function setCardSrc(img, url) {
+  var previous = img.getAttribute("data-cp-blob");
+  img.src = url;
+  if (previous) {
+    img.removeAttribute("data-cp-blob");
+    URL.revokeObjectURL(previous);
+  }
+}
+function applyVariant(c, k, withSrc) {
+  var src = c.getAttribute("data-" + k + "-src");
+  if (!src) return;
+  var img = c.querySelector("img");
+  var lab = c.querySelector(".cp-label");
+  var idn = c.querySelector(".cp-id");
+  var lbl = c.getAttribute("data-" + k + "-label");
+  if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
+  c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+  if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
+  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+  c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
+}
+cards.forEach(function (c) {
+  c.setAttribute("data-bg-default", c.getAttribute("data-bg-theme") || "");
+});
+// apply() also runs on every search keystroke; re-point the cards only when the THEME
+// actually changed, so typing never restarts an in-flight themed-render queue.
+function applyThemeChoice() {
+  if (theme === appliedTheme) return;
+  appliedTheme = theme;
+  // Turn the page over with the previews: with the Page theme setting on, the chrome
+  // follows an explicit Light/Dark pick (the Page theme setting decides; a declared theme leaves it
+  // alone). Guarded because that file is deferred to the end of the body.
+  if (window.cpPageTheme) window.cpPageTheme.follow(theme);
+  var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
+  releaseThemeLease(themeLease, false);
+  themeGen++;
+  stopDeferredTheme();
+  var themeQueue = [];
+  var themeDeferredQueue = [];
+  var themeQueueGen = themeGen;
+  cards.forEach(function (c) {
+    c.classList.remove("cp-reloading");
+    c.removeAttribute("aria-busy");
+    clearThemeError(c);
+  });
+  if (provider) {
+    cards.forEach(function (c, i) {
+      if (c.getAttribute("data-swap") === "1") applyVariant(c, c.getAttribute("data-def") || "l", false);
+      var img = c.querySelector("img");
+      var base = themeBase[i];
+      if (!img || !base) return;
+      if (selectedThemeMode) c.setAttribute("data-bg-theme", selectedThemeMode);
+      else {
+        var bgDefault = c.getAttribute("data-bg-default") || "";
+        if (bgDefault) c.setAttribute("data-bg-theme", bgDefault);
+        else c.removeAttribute("data-bg-theme");
+      }
+      var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
+      var job = {
+        card: c,
+        img: img,
+        baseSrc: themedSrc,
+        src: themedSrc,
+        retries: 0,
+      };
+      // A tabbed catalog's hidden cards can take several daemon renders before the visitor
+      // sees any response to their click. On initial load c.hidden is not assigned yet, so
+      // also compare the card's section with the saved current tab. During a live search the
+      // existing hidden state already spans tabs and remains authoritative.
+      var themeVisible = !c.hidden && nearViewport(c);
+      var themeSection = c.closest(".cp-section");
+      if (themeVisible && themeSection && (!input || input.value.trim() === "")) {
+        themeVisible = themeSection.getAttribute("data-section") === current;
+      }
+      if (themeVisible) {
+        // Visible work is queued now even when the lease falls back to one worker. Mark the
+        // whole on-screen batch busy immediately so cards waiting behind that worker cannot
+        // pass their old-theme pixels off as finished.
+        c.classList.add("cp-reloading");
+        c.setAttribute("aria-busy", "true");
+        themeQueue.push(job);
+      } else {
+        themeDeferredQueue.push(job);
+      }
+    });
+    // Off-screen cards are NOT rendered up front. A catalog is commonly 80+ cards and the
+    // shared daemon renders them one at a time (~1s each), so draining the whole grid costs a
+    // minute of daemon time — most of it for pixels the visitor never scrolls to, while the
+    // cards they ARE looking at wait behind them. They queue against the viewport instead and
+    // render as they come into view, which is also what makes an emptied search or a newly
+    // opened tab render just its own cards.
+    acquireThemeLease(themeQueueGen, function (lease, concurrency) {
+      if (lease) {
+        // Deferred jobs are stamped with the SAME page lease. They run one at a time, so they
+        // need none of its burst — but an unleased render queues on the server's single
+        // unleased-render semaphore, shared with every other page, where a scrolling visitor
+        // would be starved behind unrelated traffic. The grant is what says these renders
+        // belong to a page that was admitted.
+        themeQueue.concat(themeDeferredQueue).forEach(function (job) {
+          job.baseSrc += "&_themeLease=" + encodeURIComponent(lease);
+          job.src = job.baseSrc;
+        });
+      }
+      runThemeQueue(themeQueue, themeQueueGen, lease, concurrency);
+      // Passed WITHOUT the lease as the batch's own: the visible batch releases the grant
+      // when it drains, and a deferred batch must never release it a second time (nor hold
+      // it open across an idle scroll). The stamped URL above is what carries the token.
+      deferTheme(themeDeferredQueue, themeQueueGen);
+    });
+    return;
+  }
+  var k = theme === "dark" ? "d" : "l";
+  cards.forEach(function (c, i) {
+    if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }
+    var img = c.querySelector("img");
+    var base = themeBase[i];
+    if (img && base) setCardSrc(img, base);
+    var bgDefault = c.getAttribute("data-bg-default") || "";
+    if (bgDefault) c.setAttribute("data-bg-theme", bgDefault);
+    else c.removeAttribute("data-bg-theme");
+  });
+}
+applyThemeChoice();
+        var q = input ? input.value.trim().toLowerCase() : "";
+        var shown = 0;
+        cards.forEach(function (c) {
+          var lab = c.querySelector(".cp-label");
+          var idn = c.querySelector(".cp-id");
+          var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+          var searchOk = q === "" || hay.indexOf(q) !== -1;
+          var sec = c.closest(".cp-section");
+          var tabOk = q !== "" || !sec || sec.getAttribute("data-section") === current;
+          c.hidden = !(searchOk && tabOk);
+          if (searchOk && tabOk) shown++;
+        });
+        if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+        if (empty) empty.hidden = shown !== 0;
+        navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
+        tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
+        treeComponents.forEach(function (c) {
+          var card = document.getElementById(c.getAttribute("data-group"));
+          if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);
+        });
+        treeGroups.forEach(function (g) {
+          var sub = document.getElementById(g.getAttribute("data-group"));
+          if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
+        });
+        tabBtns.forEach(function (t) {
+          var node = t.closest(".cp-tree-node");
+          var sec = document.getElementById(t.getAttribute("aria-controls"));
+          if (node) node.hidden = q !== "" && !!(sec && sec.hidden);
+        });
         reflectTabs();
+        if (cpTreeStops) cpTreeStops();
+      }
+      if (input) input.addEventListener("input", function () {
+        // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+        // visitor arrived from under five entries. The URL still carries the query, so the
+        // filtered grid is bookmarkable.
+        replaceUrl({ q: input.value.trim() });
         apply();
-        if (popped.row) markGroup(popped.row);
       });
-    }
-    // Scroll-spy: mark the group whose cards are on screen, so the tree says where you are rather
-    // than only where you last clicked. Additive — with no `IntersectionObserver` the marking
-    // simply follows clicks.
-    if (window.IntersectionObserver) {
-      var onScreen = [];
-      var spy = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          var at = onScreen.indexOf(en.target);
-          if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
-          else if (at !== -1) onScreen.splice(at, 1);
+      themeBtns.forEach(function (b) {
+        b.addEventListener("click", function () {
+          theme = b.getAttribute("data-theme-choice");
+          try { localStorage.setItem("cp-theme:compose-m3", theme); } catch (e) {}
+          // A discrete pick gets its own history entry, so Back returns to the previous theme
+          // rather than leaving the catalog. No navigation: the grid re-points its own images.
+          pushUrl({ theme: theme });
+          apply();
         });
-        // The highest sub-group still in the band is the one being read.
-        var top = null;
-        onScreen.forEach(function (el) {
-          if (el.hidden) return;
-          if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+      });
+      tabBtns.forEach(function (t) {
+        t.addEventListener("click", function (e) {
+          e.preventDefault();
+          current = t.getAttribute("data-tab");
+          try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
+          reflectTabs();
+          pushUrl({ tab: current });
+          apply();
         });
-        if (top) markGroup(rowFor(top.id));
-      // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
-      // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
-      // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
-      // marked at all on first paint, since a catalog's first sub-group starts a header, a
-      // provenance strip and a toolbar down the page.
-      }, { rootMargin: "-64px 0px -20% 0px" });
-      document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
-    }
-  })();
-  apply();
-})();</script>
+      });
+      if (urlState) {
+        urlState.onPop(function () {
+          var poppedTheme = urlParam("theme") || initialTheme;
+          if (chipOffered(poppedTheme)) theme = poppedTheme;
+          var poppedTab = urlParam("tab") || initialTab;
+          tabBtns.forEach(function (t) {
+            if (t.getAttribute("data-tab") === poppedTab) current = poppedTab;
+          });
+          reflectTabs();
+          if (input) input.value = urlParam("q");
+          apply();
+        });
+      }
+      (function () {
+        var tree = document.getElementById("cp-tabs");
+        if (!tree) return;
+        // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+        // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
+        // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+        // and the static fallback in the stylesheet only covers the unwrapped case.
+        // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
+        // machinery alone, which would have left an outline tree permanently expanded.
+        document.documentElement.classList.add("cp-js");
+        var tools = document.querySelector(".cp-catalog-tools");
+        if (tools) {
+          var syncTools = function () {
+            var h = Math.round(tools.getBoundingClientRect().height);
+            if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+          };
+          syncTools();
+          if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+          else window.addEventListener("resize", syncTools);
+        }
+        var tabBtnsForHash = tabBtns;
+        function selectTab(slug) {
+          if (!slug || slug === current) return;
+          current = slug;
+          try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
+          reflectTabs();
+          pushUrl({ tab: current });
+          apply();
+        }
+        function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
+        function applyLandingTab(landing) {
+          if (!landing.tab || landing.tab === current) return;
+          current = landing.tab;
+          initialTab = current;
+          reflectTabs();
+        }
+        // The row pointing at an id, found by COMPARING attribute values rather than by building a
+        // selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop viewer
+        // already follows).
+        function rowFor(id) {
+          var found = null;
+          treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
+          return found;
+        }
+        function markGroup(row) {
+          treeGroups.forEach(function (g) {
+            if (g === row) g.setAttribute("aria-current", "true");
+            else g.removeAttribute("aria-current");
+          });
+        }
+        // Which group and which component are open. One of each: a tree that opened every branch it
+        // was ever asked about would end up listing every component in the catalog, which is the
+        // wall the grid already is. The server marks the first group open, so the page arrives
+        // showing components rather than needing to be prised open first.
+        var openGroup = null;
+        var openCard = null;
+        treeLinks.forEach(function (r) {
+          if (r.classList.contains("cp-tree-group") && r.getAttribute("aria-expanded") === "true") {
+            openGroup = r.getAttribute("data-group");
+          }
+        });
+        function parentRow(row) {
+          var list = row.closest("ul.cp-tree-children");
+          return list ? list.previousElementSibling : null;
+        }
+        function reflectTree() {
+          treeLinks.forEach(function (r) {
+            if (!r.hasAttribute("aria-expanded")) return;
+            var id = r.getAttribute("data-group");
+            // A branch that names no in-page target is not one of the two this tracks — the Pages
+            // branch owns destinations that are elsewhere, and is written open once and left open.
+            if (!id) return;
+            var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
+            r.setAttribute("aria-expanded", on ? "true" : "false");
+          });
+        }
+        function openRow(row) {
+          var id = row.getAttribute("data-group");
+          if (row.classList.contains("cp-tree-group")) {
+            openGroup = id;
+            openCard = null;
+          } else if (row.classList.contains("cp-tree-component")) {
+            openCard = id;
+            // And the group that HOLDS it. A click can only reach a component whose group is already
+            // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
+            // on whichever group the server expanded would scroll to the card while keeping its own
+            // row, and every variant under it, collapsed out of the tree.
+            var owner = parentRow(row);
+            if (owner && owner.classList.contains("cp-tree-group")) {
+              openGroup = owner.getAttribute("data-group");
+            }
+          }
+          reflectTree();
+          syncTabStops();
+        }
+        // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+        // preserves whatever hash is already there when it rewrites the query. So a click that moves
+        // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+        // WERE. `replaceState`, not push: a jump inside the page is a scroll, not a place to come
+        // Back to.
+        function setFragment(id) {
+          var url = location.pathname + location.search + (id ? "#" + id : "");
+          try { history.replaceState(history.state, "", url); } catch (e) {}
+        }
+        // Every row that names an in-page destination. A VARIANT row is the exception: the grid
+        // folds those renders out, so it has nowhere here to jump to — it carries a plain `/p/<id>`
+        // href and is left to the browser.
+        treeLinks.forEach(function (row) {
+          row.addEventListener("click", function (e) {
+            var id = row.getAttribute("data-group");
+            if (!id) return;
+            var target = document.getElementById(id);
+            if (!target) return;
+            e.preventDefault();
+            openRow(row);
+          selectTab(row.getAttribute("data-tab"));
+            setFragment(id);
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+            if (row.classList.contains("cp-tree-group")) markGroup(row);
+          });
+        });
+        // Keyboard: the tree pattern's roving focus. Visibility is read off layout rather than walked
+        // by hand — a collapsed branch is `display: none`, so `offsetParent` already answers "can the
+        // visitor reach this row", across all four levels and the filter's hiding at once.
+        function visibleRows() {
+          var rows = [];
+          tree.querySelectorAll(".cp-tab, .cp-tree-link").forEach(function (r) {
+            if (r.offsetParent !== null) rows.push(r);
+          });
+          return rows;
+        }
+        function focusRow(el) {
+          if (!el) return;
+          visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
+          el.focus();
+        }
+        // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
+        // Nothing established that until a first arrow press called `focusRow`, so every visible row
+        // sat in the normal tab order until then — the whole point of the pattern, lost on the one
+        // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
+        // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
+        function syncTabStops() {
+          var rows = visibleRows();
+          if (!rows.length) return;
+          var stop = null;
+          rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
+          if (!stop) stop = rows[0];
+          rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
+        }
+        cpTreeStops = syncTabStops;
+        tree.addEventListener("keydown", function (e) {
+          var items = visibleRows();
+          var at = items.indexOf(document.activeElement);
+          if (at === -1) return;
+          var key = e.key;
+          var next = null;
+          if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
+          else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
+          else if (key === "Home") next = items[0];
+          else if (key === "End") next = items[items.length - 1];
+          else if (key === "ArrowRight") {
+            // Right opens a collapsed parent, steps into an expanded one's first child, and does
+            // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
+            // second Arrow Down, walking the visitor across siblings when they asked to expand
+            // something that cannot expand.
+            var expanded = items[at].getAttribute("aria-expanded");
+            if (expanded === "false") {
+              e.preventDefault();
+              if (items[at].classList.contains("cp-tree-link")) openRow(items[at]);
+              else selectCollapsedTab(items[at]);
+              return;
+            }
+            if (expanded !== "true") return;
+            next = items[Math.min(at + 1, items.length - 1)];
+          } else if (key === "ArrowLeft") {
+            // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
+            // and the only way back up once the levels are four deep. The `data-group` test excludes
+            // the always-open Pages branch: closing it is not offered, and without the test Left on
+            // that row would clear `openCard` and collapse whichever component IS open.
+            if (
+              items[at].getAttribute("aria-expanded") === "true" &&
+              items[at].getAttribute("data-group")
+            ) {
+              e.preventDefault();
+              if (items[at].classList.contains("cp-tree-group")) openGroup = null;
+              else openCard = null;
+              reflectTree();
+              return;
+            }
+            next = parentRow(items[at]);
+          } else return;
+          if (!next) return;
+          e.preventDefault();
+          focusRow(next);
+        });
+        // What the URL's fragment names, or null when it names nothing this page has.
+        //
+        // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+        // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+        // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+        // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+        // escape sequence throws, and is simply not a fragment this page knows.
+        function hashTarget() {
+          var id = location.hash ? location.hash.slice(1) : "";
+          try { id = decodeURIComponent(id); } catch (e) { return null; }
+          if (!id) return null;
+          var tab = null;
+          var row = null;
+          treeLinks.forEach(function (g) {
+            if (!row && g.getAttribute("data-group") === id) {
+              tab = g.getAttribute("data-tab");
+              row = g;
+            }
+          });
+          if (!row) {
+            tabBtnsForHash.forEach(function (t) {
+              if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
+            });
+          }
+          return row || tab ? { tab: tab, row: row, id: id } : null;
+        }
+        syncTabStops();
+        var landing = hashTarget();
+        if (landing) {
+          if (landing.row) openRow(landing.row);
+          applyLandingTab(landing);
+          setTimeout(function () {
+            var el = document.getElementById(landing.id);
+            if (el) el.scrollIntoView({ block: "start" });
+            if (landing.row && landing.row.classList.contains("cp-tree-group")) markGroup(landing.row);
+          }, 0);
+        }// Choosing a whole section retires any group fragment: the row you clicked is the statement
+        // of where you are, and a leftover `#cp-group-…` from another section would outrank it on
+        // the next load. It also has to honour the promise its own `href="#cp-panel-…"` makes — the
+        // shared handler prevents the default navigation and only swaps which panel is hidden, so
+        // from halfway down a long section the scroll simply stayed where it was. Registered after
+        // that handler, so the panel is already showing when this measures it, and it only scrolls
+        // when the panel is actually behind the sticky toolbar.
+        tabBtns.forEach(function (t) {
+          t.addEventListener("click", function () {
+            setFragment("");
+            var panel = document.getElementById(t.getAttribute("aria-controls"));
+            if (!panel) return;
+            var clearance = tools ? tools.getBoundingClientRect().height : 0;
+            if (panel.getBoundingClientRect().top < clearance) {
+              panel.scrollIntoView({ block: "start" });
+            }
+          });
+        });// Back / Forward has to resolve an entry the same way loading it fresh would. The shared pop
+        // handler reads `?tab=` only, so returning to an entry whose fragment and query disagree —
+        // `?tab=components#cp-group-themes-foundation`, which a fresh load resolves to Themes —
+        // would land on Components with the fragment's target hidden. This runs after that handler
+        // (registered later, and `onPop` is a plain listener) and re-applies the precedence.
+        if (window.cpUrlState) {
+          window.cpUrlState.onPop(function () {
+            var popped = hashTarget();
+            if (!popped || popped.tab === current) return;
+            current = popped.tab;
+            reflectTabs();
+            apply();
+            if (popped.row) markGroup(popped.row);
+          });
+        }
+        // Scroll-spy: mark the group whose cards are on screen, so the tree says where you are rather
+        // than only where you last clicked. Additive — with no `IntersectionObserver` the marking
+        // simply follows clicks.
+        if (window.IntersectionObserver) {
+          var onScreen = [];
+          var spy = new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) {
+              var at = onScreen.indexOf(en.target);
+              if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
+              else if (at !== -1) onScreen.splice(at, 1);
+            });
+            // The highest sub-group still in the band is the one being read.
+            var top = null;
+            onScreen.forEach(function (el) {
+              if (el.hidden) return;
+              if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+            });
+            if (top) markGroup(rowFor(top.id));
+          // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
+          // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
+          // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
+          // marked at all on first paint, since a catalog's first sub-group starts a header, a
+          // provenance strip and a toolbar down the page.
+          }, { rootMargin: "-64px 0px -20% 0px" });
+          document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
+        }
+      })();
+      apply();
+    })();</script>
         <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
              into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
              again above 640px, and the summary tally drops below the grid. Renders nothing;
