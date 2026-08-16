@@ -3912,10 +3912,15 @@ class ServeWebFixtureTest {
         viewerThemes.contains("el.setAttribute(\"data-theme-active\", \"1\")"),
       "a declared catalog theme becomes the active viewer override even on a baked theme id",
     )
+    // The exclusivity rule itself moved to `cli/serve-web/src/viewer/themeChoice.ts`, where
+    // `viewerThemeChoice.test.ts` drives it over every value instead of grepping for one spelling
+    // of it. What is still worth holding HERE is the seam: `viewer.js` must ask the shared rules
+    // rather than grow a second copy, because a second copy is how the select's values and their
+    // consumption drift apart while both look right.
     assertTrue(
-      assetText("viewer.js").contains("return value.indexOf(\"theme:\") === 0") &&
-        assetText("viewer.js").contains("value === \"light\" || value === \"dark\""),
-      "the unified Theme value maps exclusively to themeProvider or uiMode",
+      assetText("viewer.js").contains("urlRules().chosenUiMode(") &&
+        assetText("viewer.js").contains("urlRules().chosenThemeProvider("),
+      "the unified Theme value is mapped by the shared rules, not restated in the viewer",
     )
 
     // The backend-provenance badge names the active tier. The Wasm tier is always CMP-WASM; the

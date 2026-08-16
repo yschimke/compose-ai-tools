@@ -171,16 +171,19 @@
   var ws = null;
   var themeChoice = document.getElementById("cp-theme");
   function activeThemeChoice() {
-    return themeChoice && !themeChoice.disabled &&
-      themeChoice.getAttribute("data-theme-active") === "1" ? themeChoice.value : "";
+    return urlRules().activeThemeChoice(
+      themeChoice && {
+        value: themeChoice.value,
+        disabled: themeChoice.disabled,
+        active: themeChoice.getAttribute("data-theme-active") === "1",
+      }
+    );
   }
   function chosenUiMode() {
-    var value = activeThemeChoice();
-    return value === "light" || value === "dark" ? value : "";
+    return urlRules().chosenUiMode(activeThemeChoice());
   }
   function chosenThemeProvider() {
-    var value = activeThemeChoice();
-    return value.indexOf("theme:") === 0 ? value.substring(6) : "";
+    return urlRules().chosenThemeProvider(activeThemeChoice());
   }
   // The Theme bar: the visible face of #cp-theme, which is in the DOM but visually removed. The
   // chips carry the select's own option values, so driving one from the other is a straight
@@ -200,13 +203,14 @@
   function syncThemeBar() {
     if (!themeChoice) return;
     themeBarBtns.forEach(function (b) {
-      var value = b.getAttribute("data-theme-choice");
-      var option = themeOptionFor(value);
-      b.disabled = themeChoice.disabled || !option || option.disabled;
-      // Pressed tracks what the select DISPLAYS, not activeThemeChoice(): before the first pick
-      // the select still shows the preview's baked theme (data-theme-active="0"), and a bar with
-      // nothing pressed would read as "no theme" over pixels that plainly have one.
-      b.setAttribute("aria-pressed", themeChoice.value === value ? "true" : "false");
+      var option = themeOptionFor(b.getAttribute("data-theme-choice"));
+      var state = urlRules().themeBarButton(
+        b.getAttribute("data-theme-choice"),
+        { value: themeChoice.value, disabled: themeChoice.disabled },
+        option && { disabled: option.disabled }
+      );
+      b.disabled = state.disabled;
+      b.setAttribute("aria-pressed", state.pressed ? "true" : "false");
     });
   }
   themeBarBtns.forEach(function (b) {
