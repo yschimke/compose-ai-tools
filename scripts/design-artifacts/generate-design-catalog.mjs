@@ -47,7 +47,7 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 import { foldVariants, variantLabel } from "./catalog-variants.mjs";
 import { foldMotion, motionArtifactsFor, motionPreviewFor } from "./catalog-motion.mjs";
 import { publishMotionArtifacts } from "./catalog-motion-publish.mjs";
-import { applyMotion } from "./apply-motion.mjs";
+import { checkMotionCarried } from "./motion-carried.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -470,10 +470,10 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   const missing = [];
   const noSticker = [];
   const withoutSemantics = [];
-  // The motion axis, kept BESIDE the sources as well as on them. `buildCatalog` builds its
-  // components from an allow-list and drops any field it doesn't know, `motion` included on the
-  // pinned release — so the join's own copy is what survives to be re-stamped onto the written
-  // manifest. See apply-motion.mjs.
+  // The motion axis, kept BESIDE the sources as well as on them, so the written manifest can be
+  // checked against what the join actually resolved. `buildCatalog` builds its components from an
+  // allow-list and drops any field it hasn't been taught — which is precisely how this axis went
+  // missing, silently, before the pin carried it. See motion-carried.mjs.
   const motionByComponentId = new Map();
   // Live-only coverage: entries and image axes the spec deferred (issue #2950). Recorded so
   // catalog.json still declares them — they are not lost coverage, just not rasterised here — and
@@ -1510,26 +1510,31 @@ if (values["publish-live-bundle"]) {
   }
   stampPreviewDensities(manifest, spec, allBundles);
 
-  // Re-stamp the motion axis the join computed. `buildCatalog` copies a source's fields through an
-  // allow-list that has no `motion` in it, so without this the declarations end at the join and the
-  // publish pass below has nothing to copy — which is exactly how five components that each shipped
-  // a rendered 60fps APNG in the bundle published a catalog with no Motion section at all, on a run
-  // that reported nothing wrong. Same post-process treatment, and same reason, as `section` and
-  // `sourceFile` above.
+  // Check the motion axis survived the export before trying to publish its bytes.
+  //
+  // `buildCatalog` copies a source's fields through an allow-list, and `motion` was not in it until
+  // `@design-parity/catalog-export` 0.1.52 — so the declarations ended at the join and the publish
+  // pass below had nothing to copy. That is exactly how five components which each shipped a
+  // rendered 60fps APNG inside the bundle published a catalog with no Motion section at all, on
+  // runs that reported nothing wrong for a day. The pin carries the field now; this says so out
+  // loud, and says the opposite even louder, so a downgraded pin or a regressed allow-list cannot
+  // go quiet again.
   {
-    const { stamped, captures, unmatched } = applyMotion(manifest, motionByComponentId);
-    if (stamped > 0) {
+    const { declared, carried, captures, dropped } = checkMotionCarried(
+      manifest,
+      motionByComponentId,
+    );
+    if (carried > 0) {
       console.log(
-        `[${spec.system}] stamped motion on ${stamped} component(s) (${captures} capture(s))`,
+        `[${spec.system}] motion: ${carried} component(s) carry ${captures} capture(s)`,
       );
     }
-    // A component the join produced captures for but the manifest has no entry for means the two
-    // have drifted apart — the bytes would then never be published, silently, which is the failure
-    // this whole pass exists to end.
-    if (unmatched.length > 0) {
+    if (dropped.length > 0) {
       console.warn(
-        `[${spec.system}] motion: ${unmatched.length} component(s) carried captures the manifest ` +
-          `has no entry for, so they cannot be published (${unmatched.join(", ")})`,
+        `[${spec.system}] motion: the join resolved captures for ${declared} component(s) but ` +
+          `catalog.json carries them for ${carried} — the export dropped the axis for ` +
+          `${dropped.join(", ")}. Their bytes cannot be published; check the ` +
+          `@design-parity/catalog-export pin (needs >= 0.1.52).`,
       );
     }
   }
