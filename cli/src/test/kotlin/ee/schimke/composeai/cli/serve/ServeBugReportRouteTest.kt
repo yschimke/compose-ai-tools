@@ -122,6 +122,34 @@ class ServeBugReportRouteTest {
   }
 
   @Test
+  fun `a root-form viewer resolves through the default session, not just a system prefix`() {
+    // `/p/Red` is the standard shape on a plain `compose-preview serve` — it names no system, and
+    // resolving only `/{system}/p/…` lost the preview, catalog and screenshot on the most common
+    // way this affordance is reached.
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fp%2FRed")
+    assertTrue(body.contains("<th scope=\"row\">Preview</th>"), body)
+    assertTrue(body.contains("Red"), body)
+    assertTrue(body.contains("/render/Red.png"), body)
+  }
+
+  @Test
+  fun `the reported render carries the overrides the visitor had on screen`() {
+    // Without this the report embeds the DEFAULT render rather than the one that prompted it.
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton-filled%3FuiMode%3Ddark")
+    assertTrue(body.contains("/compose-m3/render/button-filled.png?uiMode=dark"), body)
+  }
+
+  @Test
+  fun `routing-only params never leak into the render URL`() {
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fp%2FRed%3Fsession%3Ddefault-mod")
+    assertTrue(body.contains("/render/Red.png"), body)
+    assertFalse(body.contains("render/Red.png?session"), body)
+  }
+
+  @Test
   fun `an off-origin from is refused rather than echoed into the page or the report`() {
     server = newServer(public = true, token = "unused")
     val (code, body) = get("/report-bug?from=https%3A%2F%2Fevil.example%2Fphish")

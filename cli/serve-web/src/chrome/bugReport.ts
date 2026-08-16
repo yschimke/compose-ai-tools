@@ -13,6 +13,26 @@
 const CARRIED = ["token"];
 
 /**
+ * Run [fn] once the document has a body to query.
+ *
+ * Load-bearing, not defensive. `ServeWeb.document` emits `serve-chrome.js` as the FIRST element in
+ * `<body>`, ahead of every surface's own scripts, and the tag carries no `defer` — so at evaluation
+ * time neither the footer nor this page's own content has been parsed. Installing eagerly found no
+ * elements and no-opped permanently: the footer submitted an empty `from` (losing all page context,
+ * and on a token-gated host losing the token too, so `/report-bug` 404'd), and the report page never
+ * added its browser section. Both failures were silent — the affordance still looked right.
+ *
+ * The same shape `installPageTheme` uses for its own DOM wiring, and for the same reason.
+ */
+function whenReady(fn: () => void): void {
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", fn, { once: true });
+    } else {
+        fn();
+    }
+}
+
+/**
  * Fill the footer form's hidden inputs so pressing "report a bug" arrives at `/report-bug` knowing
  * where the visitor came from.
  *
@@ -28,10 +48,16 @@ const CARRIED = ["token"];
  * value is quoted into a public issue body while this one only ever reaches this server.
  */
 export function installBugReportLink(): void {
+    whenReady(fillBugReportLink);
+}
+
+/** The fill itself, separated from the scheduling so tests can drive it against a built DOM. */
+export function fillBugReportLink(): void {
     const form = document.querySelector<HTMLFormElement>(".cp-report-bug");
     if (!form) return;
     const from = form.querySelector<HTMLInputElement>('input[name="from"]');
     const token = form.querySelector<HTMLInputElement>('input[name="token"]');
+    const scheme = form.querySelector<HTMLInputElement>('input[name="scheme"]');
     if (from) {
         const current = new URLSearchParams(location.search);
         CARRIED.forEach(function (name) {
@@ -42,6 +68,33 @@ export function installBugReportLink(): void {
     }
     if (token)
         token.value = new URLSearchParams(location.search).get("token") ?? "";
+    // Captured HERE, on the page being reported, because it cannot be recovered on `/report-bug`:
+    // a catalog that pinned dark chrome hands the report page a scheme of its own, and the OS
+    // preference alone mislabels "dark preview on a light OS" — the exact condition a visual bug
+    // needs to reproduce.
+    if (scheme) scheme.value = pageScheme();
+}
+
+/**
+ * The scheme this page is actually PAINTED in, as opposed to the one the OS asks for.
+ *
+ * `serve.css` writes every mode-dependent value as a `light-dark()` pair and the page pins its
+ * choice with `cp-scheme-light` / `cp-scheme-dark` on `<html>` (see `pageTheme`), so those classes —
+ * not `prefers-color-scheme` — are what decided the pixels whenever a theme was selected. Falls
+ * back to the media query only when the page pinned nothing, which is the case where the two agree.
+ */
+export function pageScheme(): string {
+    const root = document.documentElement;
+    if (root.classList.contains("cp-scheme-dark")) return "dark";
+    if (root.classList.contains("cp-scheme-light")) return "light";
+    return osScheme();
+}
+
+function osScheme(): string {
+    return typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
 }
 
 /**
@@ -57,19 +110,34 @@ export function installBugReportLink(): void {
  * shown is what gets filed; updating the hidden input alone would quietly break that.
  */
 export function installBugReportBody(): void {
+    whenReady(fillBugReportBody);
+}
+
+/** The fill itself, separated from the scheduling so tests can drive it against a built DOM. */
+export function fillBugReportBody(): void {
     const body = document.querySelector<HTMLInputElement>("#cp-bug-body");
     if (!body) return;
     const template = body.getAttribute("data-report-template");
     if (!template) return;
-    const filled = template.replace("{{client}}", clientBlock());
+    // The scheme of the page being REPORTED, carried here by the footer form; absent when the
+    // visitor reached `/report-bug` directly, which is the one case the report page's own scheme
+    // is the honest answer.
+    const reported =
+        new URLSearchParams(location.search).get("scheme") || undefined;
+    const filled = template.replace("{{client}}", clientBlock(reported));
     body.value = filled;
     const preview = document.querySelector<HTMLElement>("#cp-bug-preview");
     if (preview) preview.textContent = filled;
 }
 
-/** The browser section, as the same two-column markdown table the server's sections use. */
-export function clientBlock(): string {
-    const rows = clientRows();
+/**
+ * The browser section, as the same two-column markdown table the server's sections use.
+ *
+ * [reportedScheme] is the scheme of the page the bug is about, carried from the footer form; when
+ * absent this page's own scheme stands in.
+ */
+export function clientBlock(reportedScheme?: string): string {
+    const rows = clientRows(reportedScheme);
     if (!rows.length) return "";
     return (
         "### Browser\n\n| | |\n| --- | --- |\n" +
@@ -78,12 +146,24 @@ export function clientBlock(): string {
     );
 }
 
-function clientRows(): string[][] {
+/**
+ * Make free text safe inside a markdown table cell that is itself inside a code span.
+ *
+ * Three characters matter and the ORDER matters: the backslash must go first, or escaping the
+ * others would double-escape the backslashes this pass just added. A `|` would shear the row; a
+ * backtick would close the code span and let the rest of the string render as markdown.
+ */
+function cell(text: string): string {
+    return text
+        .replace(/\\/g, "\\\\")
+        .replace(/\|/g, "\\|")
+        .replace(/`/g, "\\`");
+}
+
+function clientRows(reportedScheme?: string): string[][] {
     const rows: string[][] = [];
     const ua = navigator.userAgent;
-    // A user agent is free text from the browser and lands in a markdown table cell, where a `|`
-    // would shear the row. Escaped rather than dropped — a mangled UA is still the UA.
-    if (ua) rows.push(["User agent", "`" + ua.replace(/\|/g, "\\|") + "`"]);
+    if (ua) rows.push(["User agent", "`" + cell(ua) + "`"]);
     if (window.innerWidth && window.innerHeight) {
         rows.push([
             "Viewport",
@@ -93,9 +173,10 @@ function clientRows(): string[][] {
     if (window.devicePixelRatio) {
         rows.push(["Device pixel ratio", String(window.devicePixelRatio)]);
     }
-    const dark =
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-    rows.push(["Colour scheme", dark ? "dark" : "light"]);
+    // Both, and labelled apart: the page's scheme is what produced the pixels, the OS preference is
+    // what a triager would otherwise assume produced them. Reporting only one of a disagreeing pair
+    // is what made "dark preview on a light OS" unreproducible.
+    rows.push(["Page colour scheme", reportedScheme || pageScheme()]);
+    rows.push(["OS colour scheme", osScheme()]);
     return rows;
 }

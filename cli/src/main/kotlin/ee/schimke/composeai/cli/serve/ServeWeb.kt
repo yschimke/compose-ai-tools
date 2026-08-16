@@ -610,6 +610,10 @@ $noteBlock        <div class="cp-site-footer-links">
     "<form class=\"cp-report-bug\" method=\"get\" action=\"${ServeBugReport.PATH}\">" +
       "<input type=\"hidden\" name=\"${ServeBugReport.FROM_PARAM}\" value=\"\">" +
       "<input type=\"hidden\" name=\"token\" value=\"\">" +
+      // The scheme THIS page is painted in. Captured here because it cannot be recovered on the
+      // report page: a catalog that pinned dark chrome and an OS set to light disagree, and the
+      // report page has its own answer to that question rather than this page's.
+      "<input type=\"hidden\" name=\"scheme\" value=\"\">" +
       "<button type=\"submit\" class=\"cp-report-bug-link\"" +
       " title=\"Report a bug in the preview server itself\">$GITHUB_ICON report a bug</button>" +
       "</form>"

@@ -10,6 +10,8 @@ import assert from "node:assert/strict";
 import { resetDom } from "./setup.js";
 import {
     clientBlock,
+    fillBugReportBody,
+    fillBugReportLink,
     installBugReportBody,
     installBugReportLink,
 } from "../src/chrome/bugReport.js";
@@ -24,6 +26,7 @@ function footerForm(): HTMLFormElement {
       <form class="cp-report-bug" method="get" action="/report-bug">
         <input type="hidden" name="from" value="">
         <input type="hidden" name="token" value="">
+        <input type="hidden" name="scheme" value="">
         <button type="submit">report a bug</button>
       </form>`;
     return document.querySelector("form.cp-report-bug") as HTMLFormElement;
@@ -41,7 +44,7 @@ describe("the footer's report-a-bug form", () => {
         // The viewer rewrites its query as knobs change, so the address bar is the honest answer.
         at("/compose-m3/p/button?uiMode=dark&device=pixel_7");
         const form = footerForm();
-        installBugReportLink();
+        fillBugReportLink();
         assert.equal(
             value(form, "from"),
             "/compose-m3/p/button?uiMode=dark&device=pixel_7",
@@ -52,7 +55,7 @@ describe("the footer's report-a-bug form", () => {
         // `from` is quoted into a public issue body; `token` only ever reaches this server.
         at("/compose-m3/p/button?token=s3cret&uiMode=dark");
         const form = footerForm();
-        installBugReportLink();
+        fillBugReportLink();
         assert.equal(value(form, "from"), "/compose-m3/p/button?uiMode=dark");
         assert.equal(value(form, "token"), "s3cret");
     });
@@ -60,7 +63,7 @@ describe("the footer's report-a-bug form", () => {
     it("leaves the token field empty on a public server", () => {
         at("/compose-m3/");
         const form = footerForm();
-        installBugReportLink();
+        fillBugReportLink();
         assert.equal(value(form, "from"), "/compose-m3/");
         assert.equal(value(form, "token"), "");
     });
@@ -68,7 +71,48 @@ describe("the footer's report-a-bug form", () => {
     it("does nothing when the page has no footer form", () => {
         at("/");
         document.body.innerHTML = "";
-        assert.doesNotThrow(() => installBugReportLink());
+        assert.doesNotThrow(() => fillBugReportLink());
+    });
+
+    it("waits for the footer to be parsed before looking for it", async () => {
+        // The regression this exists for: `serve-chrome.js` is emitted as the FIRST element in
+        // <body> with no `defer`, so an eager install ran before the footer was parsed, found
+        // nothing, and no-opped permanently — the form then submitted an empty `from` (and, on a
+        // gated host, an empty token, so /report-bug 404'd) with nothing visibly wrong.
+        at("/compose-m3/p/button?uiMode=dark");
+        document.body.innerHTML = "";
+        Object.defineProperty(document, "readyState", {
+            value: "loading",
+            configurable: true,
+        });
+        installBugReportLink();
+        // The footer arrives after the script, exactly as the real document does.
+        const form = footerForm();
+        assert.equal(
+            value(form, "from"),
+            "",
+            "not filled before DOMContentLoaded",
+        );
+        Object.defineProperty(document, "readyState", {
+            value: "complete",
+            configurable: true,
+        });
+        document.dispatchEvent(new Event("DOMContentLoaded"));
+        assert.equal(value(form, "from"), "/compose-m3/p/button?uiMode=dark");
+    });
+
+    it("records the scheme the reported page is painted in, not the OS preference", () => {
+        // A catalog that pinned dark chrome on a light OS is the exact case a visual bug report
+        // has to carry; the report page cannot recover it, because it has a scheme of its own.
+        at("/compose-m3/p/button");
+        document.documentElement.classList.add("cp-scheme-dark");
+        try {
+            const form = footerForm();
+            fillBugReportLink();
+            assert.equal(value(form, "scheme"), "dark");
+        } finally {
+            document.documentElement.classList.remove("cp-scheme-dark");
+        }
     });
 });
 
@@ -79,19 +123,22 @@ describe("the report page's browser block", () => {
         const block = clientBlock();
         assert.match(block, /^### Browser\n\n\| \| \|\n\| --- \| --- \|\n/);
         assert.match(block, /\| User agent \| `.+` \|/);
-        assert.match(block, /\| Colour scheme \| (light|dark) \|/);
+        assert.match(block, /\| Page colour scheme \| (light|dark) \|/);
+        assert.match(block, /\| OS colour scheme \| (light|dark) \|/);
     });
 
-    it("escapes a pipe in the user agent so it cannot shear the table row", () => {
+    it("escapes every character that could break out of the user-agent cell", () => {
+        // A pipe shears the table row; a backtick closes the code span and lets the rest render as
+        // markdown; a backslash must be escaped FIRST or it doubles the escapes added after it.
         const original = navigator.userAgent;
         Object.defineProperty(navigator, "userAgent", {
-            value: "Weird|Browser/1.0",
+            value: "Weird|Browser\\1.0 `code`",
             configurable: true,
         });
         try {
             assert.match(
                 clientBlock(),
-                /\| User agent \| `Weird\\\|Browser\/1\.0` \|/,
+                /\| User agent \| `Weird\\\|Browser\\\\1\.0 \\`code\\`` \|/,
             );
         } finally {
             Object.defineProperty(navigator, "userAgent", {
@@ -99,6 +146,16 @@ describe("the report page's browser block", () => {
                 configurable: true,
             });
         }
+    });
+
+    it("reports the scheme the footer carried over this page's own", () => {
+        at("/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton&scheme=dark");
+        document.body.innerHTML = `
+          <input type="hidden" id="cp-bug-body" value=""
+            data-report-template="### Server\n{{client}}">`;
+        fillBugReportBody();
+        const body = document.querySelector("#cp-bug-body") as HTMLInputElement;
+        assert.match(body.value, /\| Page colour scheme \| dark \|/);
     });
 
     it("fills the hidden body AND the visible preview, so what is shown is what is filed", () => {
@@ -109,7 +166,7 @@ describe("the report page's browser block", () => {
           <input type="hidden" id="cp-bug-body" value="### Server"
             data-report-template="### Server\n{{client}}">
           <pre id="cp-bug-preview">### Server</pre>`;
-        installBugReportBody();
+        fillBugReportBody();
         const body = document.querySelector("#cp-bug-body") as HTMLInputElement;
         const preview = document.querySelector(
             "#cp-bug-preview",
@@ -121,6 +178,6 @@ describe("the report page's browser block", () => {
 
     it("does nothing on a page that is not the report page", () => {
         document.body.innerHTML = "<p>a catalog</p>";
-        assert.doesNotThrow(() => installBugReportBody());
+        assert.doesNotThrow(() => fillBugReportBody());
     });
 });

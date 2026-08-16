@@ -945,9 +945,19 @@ and the Java + OS the renders actually happen on. *Page*: the path the visitor c
 that path names one — the design system, the preview, the catalog's `repo@branch` and the
 compose-ai-tools version that produced it, its trust verdict, its render lane, and any degradation
 in force. *Catalogs not loaded* and *Recent failures*: the same load errors and daemon/render
-failures `/status` reports, capped at eight so the body stays readable. *Browser*: user agent,
-viewport, device pixel ratio and colour scheme, filled in by the visitor's own browser — the four
-facts the server cannot observe and the ones a "draws wrong" report turns on.
+failures `/status` reports, merged newest-first and capped at eight so the body stays readable.
+*Browser*: user agent, viewport, device pixel ratio, and **two** colour schemes — the one the
+reported page was painted in and the visitor's OS preference — filled in by their own browser. Those
+are the facts the server cannot observe, and the ones a "draws wrong" report turns on. The two
+schemes are reported separately because they disagree exactly when it matters: a catalog that pinned
+dark chrome on a light OS is otherwise labelled `light`, hiding the condition needed to reproduce
+the bug. The page's scheme is captured **on that page** (the footer form carries it), since
+`/report-bug` has a scheme of its own and cannot recover it afterwards.
+
+The render the report carries is the one the visitor was actually looking at: the override query on
+the page they came from (`?uiMode=dark`, a device, a font scale — the viewer rewrites it live as the
+knobs move) is normalised and re-applied to the `/render` URL, so the embedded PNG is the render that
+prompted the report rather than the component's default.
 
 **The screenshot is two-sided.** When the reporter came from a viewer the page shows that preview's
 render and the body carries it (embedded when the host is publicly reachable, linked otherwise — the
@@ -963,6 +973,14 @@ capped — and the preview it names is resolved by **matching an existing previe
 being trusted as one. Anything that fails costs the report a row and nothing else. The session token
 is moved out of `from` into its own field by the page script and stripped again server-side: it
 reaches this server, never the issue body.
+
+**Which session the reported page belonged to** is resolved three ways, most specific first: a
+top-level site publishes one system and *is* the answer; a `/{system}/…` path names it; and a
+root-form viewer (`/p/Red` — the ordinary shape on a plain `compose-preview serve`) names none, so
+its `?session=` is used, else the default session. A catalog whose daemon has since gone idle is
+still reported from the registry's last-known snapshot rather than being treated as absent — its
+provenance, trust and preview list are facts a suspension cannot change, and its render lane is
+reported honestly as `suspended (idle)` instead of being mislabelled as baked.
 
 ### Opening the Figma node a preview is specified by
 

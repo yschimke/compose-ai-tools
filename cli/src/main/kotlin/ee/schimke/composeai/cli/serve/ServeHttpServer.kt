@@ -3449,20 +3449,38 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     val from = ServeBugReport.sanitizeFrom(call.request.queryParameters[ServeBugReport.FROM_PARAM])
     val ref = ServeBugReport.parsePath(from)
-    // A top-level site publishes exactly one system, and its pages carry no `/{system}` prefix —
-    // so on those hosts the path can't name the catalog and the host itself does.
-    val system = siteSystem() ?: ref.system?.takeIf { sessions.isKnownSession(it) }
+    // Which session the reported page was showing. Three sources, most specific first:
+    //  - a top-level site publishes exactly one system and its pages carry no `/{system}` prefix,
+    //    so the host itself is the answer and the path could not have named it;
+    //  - a `/{system}/…` path names it directly;
+    //  - a ROOT-form viewer (`/p/Red`, the standard single-module shape) names none, and carries
+    //    its session in `?session=` — else it is the default session. Without this fallback every
+    //    report from a plain `compose-preview serve` lost its preview, catalog, render lane and
+    //    screenshot, which is the most common way this affordance is reached.
+    val system =
+      siteSystem()
+        ?: ref.system?.takeIf { sessions.isKnownSession(it) }
+        ?: fromSessionId(from)?.takeIf { sessions.isKnownSession(it) }
+    // Resident host when there is one. `peekHost` deliberately never resumes a suspended catalog,
+    // so an idle-timed-out session reads as null here — the last-known snapshot below is what keeps
+    // the report from silently losing a still-registered catalog's provenance and trust.
     val host = system?.let { sessions.peekHost(it) }
     val bundle = host?.let { catalogBundleHost(it) }
+    val seen = if (host == null) system?.let { catalogMetaSeen[it] } else null
     // Match, don't trust: the segment is browser-supplied, so it names a preview only if this
-    // session actually has one that encodes to it.
-    val preview =
+    // session actually has one that encodes to it. A suspended session answers from the ids its
+    // snapshot recorded, which is the same list the resident host would have offered.
+    val previewIds = host?.previews?.map { it.id } ?: seen?.previewIds.orEmpty()
+    val previewId =
       ref.previewSegment?.let { segment ->
-        host?.previews?.firstOrNull {
-          it.id == segment || WebEscaping.urlEncodeSegment(it.id) == segment
-        }
+        previewIds.firstOrNull { it == segment || WebEscaping.urlEncodeSegment(it) == segment }
       }
+    val preview = previewId?.let { id -> host?.previews?.firstOrNull { it.id == id } }
     val basePath = if (system == null || siteSystem() != null) "" else "/$system"
+    // The overrides the reporter actually had on screen. They live in `from`'s query (the viewer
+    // rewrites it as the knobs change), and without carrying them the report embeds the DEFAULT
+    // render rather than the one that prompted it — which is the whole evidentiary point.
+    val overrideSuffix = renderOverrideSuffix(from, system)
     val status = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
     val server =
       ServeBugReport.Server(
@@ -3487,16 +3505,24 @@ class ServeHttpServer(
         path = from,
         url = from?.let { ServeIssueReport.withoutToken(externalOrigin() + it) },
         system = system,
-        previewId = preview?.id,
-        catalog = bundle?.provenance?.let { "${it.repo}@${it.branch}" },
-        catalogToolVersion = bundle?.provenance?.toolVersion,
-        trust = bundle?.let { BundleVerifier.summary(it.trust) },
-        renderLane = host?.let { if (it.hasLiveStream) "live daemon" else "baked snapshots" },
+        previewId = previewId,
+        catalog = (bundle?.provenance ?: seen?.provenance)?.let { "${it.repo}@${it.branch}" },
+        catalogToolVersion = (bundle?.provenance ?: seen?.provenance)?.toolVersion,
+        trust = bundle?.let { BundleVerifier.summary(it.trust) } ?: seen?.trust,
+        // A suspended session is not a lane verdict — it is an idle daemon that resumes on the
+        // next render — so it reports what it was rather than being called "baked".
+        renderLane =
+          when {
+            host != null -> if (host.hasLiveStream) "live daemon" else "baked snapshots"
+            seen != null -> "suspended (idle)"
+            else -> null
+          },
         degradations = host?.degradations.orEmpty().map { "${it.code} — ${it.detail}" },
         renderUrl =
-          preview?.let {
+          previewId?.let {
             ServeIssueReport.withoutToken(
-              "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(it.id)}.png"
+              "${externalOrigin()}$basePath/render/${WebEscaping.urlEncodeSegment(it)}.png" +
+                overrideSuffix
             )
           },
         publicRender = isPublic,
@@ -3513,9 +3539,13 @@ class ServeHttpServer(
         // the token the report body strips — otherwise a gated box shows a broken image on the
         // page that is meant to prove what the reporter saw.
         renderUrl =
-          preview?.let {
-            "$basePath/render/${WebEscaping.urlEncodeSegment(it.id)}.png" +
-              if (isPublic) "" else "?token=${WebEscaping.urlEncodeSegment(token)}"
+          previewId?.let {
+            val gate =
+              if (isPublic) ""
+              else
+                (if (overrideSuffix.isEmpty()) "?" else "&") +
+                  "token=${WebEscaping.urlEncodeSegment(token)}"
+            "$basePath/render/${WebEscaping.urlEncodeSegment(it)}.png$overrideSuffix$gate"
           },
         login = githubAuth?.currentLogin(call),
       )
@@ -3540,21 +3570,82 @@ class ServeHttpServer(
   }
 
   /**
-   * The most recent failures worth carrying in a bug report, newest first: daemon startups that
-   * never came up and renders that failed or timed out, interleaved and capped.
+   * The session a root-form viewer path was showing, from the `?session=` its links carry, else the
+   * host's default. Only meaningful for a path with no `/{system}` prefix; the caller checks the
+   * result is a session this server actually knows before using it.
+   */
+  private fun fromSessionId(from: String?): String? {
+    val query = from?.substringAfter('?', missingDelimiterValue = "").orEmpty()
+    val named =
+      query
+        .split('&')
+        .firstOrNull { it.startsWith("session=") }
+        ?.substringAfter('=')
+        ?.takeIf { it.isNotBlank() }
+    return named ?: defaultSessionId.takeIf { it.isNotBlank() }
+  }
+
+  /**
+   * The reported page's own override query, re-emitted as a `?…` suffix for a `/render` URL.
    *
-   * Capped because an issue body is read by a human — a server that has been failing for a week has
-   * hundreds of these, and the tail says nothing the head doesn't. The full history stays on
-   * `/status`, which the report links by way of the page it was filed from.
+   * Taken from `from` rather than from this request, because `from` is the page whose pixels are
+   * being reported. Filtered to the params the render lane actually consumes
+   * ([ServeOverrides.isOverrideParam]) and normalised the same way the viewer's own links are, so
+   * routing-only params (`session`, `reference`) and the token cannot ride along — the token is
+   * added separately, and only to the on-page thumbnail.
+   *
+   * Empty when the page carried no overrides, which keeps the default render URL exactly as it was.
+   */
+  private fun renderOverrideSuffix(from: String?, system: String?): String {
+    val query = from?.substringAfter('?', missingDelimiterValue = "").orEmpty()
+    if (query.isEmpty()) return ""
+    val params =
+      query
+        .split('&')
+        .mapNotNull { pair ->
+          if (pair.isEmpty()) return@mapNotNull null
+          val key = pair.substringBefore('=')
+          val value = pair.substringAfter('=', missingDelimiterValue = "")
+          if (ServeOverrides.isOverrideParam(key)) key to value else null
+        }
+        .toMap()
+        .let { ServeWeb.SystemDisplay.normalizeOverrideParams(system ?: defaultSessionId, it) }
+    if (params.isEmpty()) return ""
+    return "?" + params.entries.joinToString("&") { "${it.key}=${it.value}" }
+  }
+
+  /**
+   * The most recent failures worth carrying in a bug report, newest first: daemon startups that
+   * never came up and renders that failed or timed out, merged and capped.
+   *
+   * Merged **by timestamp before the cap**, not concatenated. Concatenating let a run of old
+   * startup failures consume the whole budget and drop a render failure from seconds ago — hiding
+   * the very event that prompted the report. Sorting the raw records and cutting afterwards means
+   * the cap always keeps the newest, whichever kind they are.
+   *
+   * Capped because an issue body is read by a human: a server that has been failing for a week has
+   * hundreds of these and the tail says nothing the head doesn't. The full history stays on
+   * `/status`.
    */
   private fun recentFailureLines(status: StatusData): List<String> {
-    val view = status.toView()
-    val startup = view.failures.map { "${it.whenText}  ${it.session}: ${it.reason}" }
-    val renders =
-      view.renderFailures.map {
-        "${it.whenText}  ${it.session}: render failed after ${it.durationText} — ${it.reason}"
+    val startup =
+      status.failures.map { failure ->
+        failure.atEpochMillis to
+          "${formatInstant(failure.atEpochMillis)}  ${failure.session}: ${failure.reason}"
       }
-    return (startup + renders).take(BUG_REPORT_FAILURE_LIMIT)
+    val renders =
+      status.running.flatMap { daemon ->
+        daemon.renderStats?.recentFailures.orEmpty().map { failure ->
+          failure.atEpochMillis to
+            "${formatInstant(failure.atEpochMillis)}  ${daemon.label}: render failed after " +
+              "${failure.durationMs}ms${if (failure.timedOut) " (timeout)" else ""} — " +
+              failure.reason
+        }
+      }
+    return (startup + renders)
+      .sortedByDescending { it.first }
+      .take(BUG_REPORT_FAILURE_LIMIT)
+      .map { it.second }
   }
 
   /** The same facts [ServeBugReport.body] files, grouped for the page that shows them first. */
