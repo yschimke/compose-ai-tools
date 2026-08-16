@@ -1875,6 +1875,28 @@ class ServeWebFixtureTest {
         version = version,
       )
 
+    // A node with code behind it is an ANCHOR, not a button or a bare div. That is what makes
+    // clicking it navigate, a middle click open a tab, a modifier click do what the reader's
+    // platform says, and the status bar preview the destination — none of which a `<button>` with a
+    // click handler gives you, and all of which a screenshot passes without.
+    //
+    // Asserted here rather than in the harness because it is server-rendered markup: the capture
+    // that used to hold it had to hover a node, wait for a tooltip and evaluate in a browser to
+    // read two attributes off the emitted HTML.
+    assertTrue(
+      Regex("""<a class="cp-page-node" [^>]*href="[^"]*/p/[^"]*"""")
+        .containsMatchIn(designPageHtml),
+      "a node with a renderable preview is emitted as an anchor to it",
+    )
+    // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
+    // tag is the same; only the target differs, so a reader never meets a node that looks
+    // navigable and is not.
+    assertTrue(
+      designPageHtml.contains("""<a class="cp-page-node" """) &&
+        !designPageHtml.contains("""<span class="cp-page-node" """),
+      "an unlinked node still links out to the design file rather than becoming inert",
+    )
+
     val designPageIndex =
       ServeWeb.designPagesIndexPage(
         moduleLabel = "compose-m3",
