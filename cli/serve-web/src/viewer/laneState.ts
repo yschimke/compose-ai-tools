@@ -58,6 +58,13 @@ export interface LanePick {
     picked: boolean;
 }
 
+/** Whether a finished server-side RC lane must name its backend on `/render`. */
+export function backendRequiresRenderParam(backend: string): boolean {
+    // The server's absent-player default is the Java view player. Browser players do not use the
+    // snapshot route, while both embedded players need an explicit wire id.
+    return backend === "cmp-android" || backend === "cmp-jvm";
+}
+
 /**
  * The lane the picker is — or would be — sitting on, in the combo's own value space.
  *

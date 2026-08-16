@@ -494,8 +494,8 @@ function liveOverrides() {
     return o;
 }
 // Renderer-picker state (the #cp-lane-select combo). `rcPlayerBackend` is the current Remote
-// Compose player pick and `rcPlayerPicked` gates whether it rides the render URL — so page load
-// stays on the instant default snapshot until the visitor actually chooses a server-side player.
+// Compose player and `rcPlayerPicked` gates whether it rides the render URL. It is also true for an
+// embedded default that differs from the server's absent-param Java fallback.
 const laneSelect = may<HTMLSelectElement>("cp-lane-select");
 // The design-spec lane's own chip, beside the combo rather than inside it (see ServeWeb's
 // specChipHtml). Present only when this preview carries an imported reference.
@@ -504,7 +504,9 @@ var rcDefaultBackend = laneSelect
     ? laneSelect.getAttribute("data-rc-default") || ""
     : "";
 var rcPlayerBackend = rcDefaultBackend;
-var rcPlayerPicked = false;
+// An absent `rcPlayer` means Java to the server. If the page presents another server-side backend
+// as its default, that backend must ride the very first snapshot request just like a user pick.
+var rcPlayerPicked = rules.backendRequiresRenderParam(rcDefaultBackend);
 // Reconcile the picker (the combo's value AND the chip's label) with the active lane. Hoisted
 // (the real impl is assigned in the picker block below) so the common mode-transition path
 // (enterMode) can call it whenever the viewer leaves a lane through ANY control — not only a
@@ -578,8 +580,8 @@ function query() {
     // knob; omitted when unchecked so the URL stays on the baked snapshot.
     var gc = may<HTMLInputElement>("cp-gestures");
     if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
-    // Remote Compose render backend: a server-side player pick rides the render as
-    // rcPlayer=<wire>. Emitted only once the visitor picks a backend (rcPlayerPicked) and only
+    // Remote Compose render backend: a server-side player selection rides the render as
+    // rcPlayer=<wire>. Emitted for a visitor pick or a non-Java server-side default, and only
     // for a server-side lane — java / cmp-android render through the daemon, cmp-jvm through its
     // isolated desktop subprocess (all three PNG lanes). The js canvas replays the doc in-browser
     // (no server render), so it never sends the param, and an unpicked default stays on the
@@ -637,8 +639,8 @@ function explodeParamOn(raw: string | null) {
 // label, so a filtered request left the address bar and the "current renderer" chip both naming
 // a player that is no longer drawing anything.
 function dropRcPlayerPick() {
-    if (!rcPlayerPicked) return;
-    rcPlayerPicked = false;
+    if (!rcPlayerPicked && rcPlayerBackend === rcDefaultBackend) return;
+    rcPlayerPicked = rules.backendRequiresRenderParam(rcDefaultBackend);
     rcPlayerBackend = rcDefaultBackend;
     if (typeof syncLaneSelect === "function") syncLaneSelect();
 }
@@ -3738,7 +3740,8 @@ function hydrateFromUrl(popped: boolean) {
                     playerOffered = true;
             });
         }
-        rcPlayerPicked = playerOffered;
+        rcPlayerPicked =
+            playerOffered || rules.backendRequiresRenderParam(rcDefaultBackend);
         rcPlayerBackend =
             (playerOffered ? wantedPlayer : rcDefaultBackend) || "";
     }

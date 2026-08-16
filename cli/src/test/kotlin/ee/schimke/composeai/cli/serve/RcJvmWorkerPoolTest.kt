@@ -87,6 +87,28 @@ class RcJvmWorkerPoolTest {
   }
 
   @Test
+  fun cmpJvmThemeFallsBackToTheBakedPreviewMode() {
+    assertEquals(
+      RcJvmServerRenderer.RenderTheme.DARK,
+      ServeHttpServer.cmpJvmRenderTheme(null, 0x20),
+    )
+    assertEquals(
+      RcJvmServerRenderer.RenderTheme.LIGHT,
+      ServeHttpServer.cmpJvmRenderTheme(null, 0x10),
+    )
+    assertEquals(
+      RcJvmServerRenderer.RenderTheme.LIGHT,
+      ServeHttpServer.cmpJvmRenderTheme("light", 0x20),
+      "an explicit request overrides a baked dark preview",
+    )
+    assertEquals(
+      RcJvmServerRenderer.RenderTheme.DARK,
+      ServeHttpServer.cmpJvmRenderTheme("DARK", 0x10),
+      "the query remains case-insensitive",
+    )
+  }
+
+  @Test
   fun aDocumentThePlayerCannotDrawIsFailedNotUnusable() {
     pool(mode = "failed").use { pool ->
       val result = pool.render(DOC, SPEC, "", RcJvmServerRenderer.Format.PNG)

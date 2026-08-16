@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import {
     anyInteractive,
+    backendRequiresRenderParam,
     bestLiveMode,
     currentLaneValue,
     laneChip,
@@ -14,6 +15,15 @@ import {
     liveTransportAvailable,
     type LaneFlags,
 } from "../src/viewer/laneState.js";
+
+describe("backendRequiresRenderParam", () => {
+    it("names embedded server players whose default differs from Java", () => {
+        assert.equal(backendRequiresRenderParam("cmp-android"), true);
+        assert.equal(backendRequiresRenderParam("cmp-jvm"), true);
+        assert.equal(backendRequiresRenderParam("java"), false);
+        assert.equal(backendRequiresRenderParam("js"), false);
+    });
+});
 
 const lanes = (over: Partial<LaneFlags> = {}): LaneFlags => ({
     rcWasm: false,
