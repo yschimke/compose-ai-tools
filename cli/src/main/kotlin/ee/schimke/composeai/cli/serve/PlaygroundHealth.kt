@@ -65,6 +65,8 @@ data class PlaygroundHealth(
    * declare a backend this host cannot render.
    */
   val catalogSelector: (() -> CatalogSelector)? = null,
+  /** Stateful editing trial state and cumulative process-lifetime counters. */
+  val editing: (() -> Editing)? = null,
 ) {
   /**
    * A wired playground mode. "Wired" means configured with a bundle source *and* backed by an
@@ -95,5 +97,17 @@ data class PlaygroundHealth(
     val resolved: Int,
     /** `--playground-catalog-limit`. At [resolved] == [limit] a new catalog is refused. */
     val limit: Int,
+  )
+
+  data class Editing(
+    val enabled: Boolean,
+    val active: Boolean,
+    val expiresAtEpochMs: Long? = null,
+    val lastRevision: Long? = null,
+    val acquisitions: Long,
+    val compileAttempts: Long,
+    val incrementalCompiles: Long,
+    val fullFallbacks: Long,
+    val lastCompileMillis: Long? = null,
   )
 }

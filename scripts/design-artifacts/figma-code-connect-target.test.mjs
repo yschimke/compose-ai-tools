@@ -96,6 +96,26 @@ test("targetsByFunction falls back to the raw previews.json entry when parsing d
   assert.equal(byFn.get("CardPreview").confidence, "HIGH");
 });
 
+test("raw target metadata keeps a namespaced parsed function identity", () => {
+  const raw = JSON.stringify({
+    previews: [
+      {
+        id: "feature.BtnPreview",
+        functionName: "BtnPreview",
+        targets: [{ functionName: "Button", sourceFile: "Button.kt" }],
+      },
+    ],
+  });
+  const bundle = {
+    previews: [{ id: "feature.BtnPreview", functionName: ":feature::BtnPreview" }],
+    entries: { "previews.json": new TextEncoder().encode(raw) },
+  };
+
+  const byFn = targetsByFunction(bundle);
+  assert.equal(byFn.has("BtnPreview"), false);
+  assert.equal(byFn.get(":feature::BtnPreview").functionName, "Button");
+});
+
 test("targetsByFunction carries the target's parameters and className", () => {
   const bundle = {
     previews: [

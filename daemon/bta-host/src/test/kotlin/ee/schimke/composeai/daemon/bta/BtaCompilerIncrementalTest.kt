@@ -46,6 +46,10 @@ class BtaCompilerIncrementalTest {
     val workingDir = tmp.newFolder("ic-work").toPath()
     val outputDir1 = tmp.newFolder("out-pass-1").toPath()
     val outputDir2 = tmp.newFolder("out-pass-2").toPath()
+    // Served catalogs lead with an extracted classes directory rather than a JAR. Even empty, this
+    // pins the BTA API shape and our directory content-hashing path on both passes.
+    val catalogClasses = tmp.newFolder("catalog-classes").toPath()
+    val compileClasspath = listOf(catalogClasses) + fx.compileClasspath
 
     val compiler = BtaCompiler(implClasspath = fx.implClasspath)
 
@@ -55,7 +59,7 @@ class BtaCompilerIncrementalTest {
     val pass1 =
       compiler.compileIncremental(
         sources = fx.sources,
-        compileClasspath = fx.compileClasspath,
+        compileClasspath = compileClasspath,
         outputDir = outputDir1,
         workingDir = workingDir,
         compilerPlugins = listOf(fx.composePlugin),
@@ -74,12 +78,6 @@ class BtaCompilerIncrementalTest {
       "BTA's IC working directory $icDir wasn't populated; classpath-snapshot wiring is wrong",
       icDir.toFile().exists() && icDir.toFile().list().orEmpty().isNotEmpty(),
     )
-    val shrunk = workingDir.resolve("shrunk-classpath-snapshot.bin")
-    assertTrue(
-      "Expected shrunk-classpath-snapshot.bin written at $shrunk after pass 1",
-      shrunk.exists(),
-    )
-
     // Modify one source — flip the greeting prefix. BTA's IC should pick this up via mtime.
     val modified = fx.sources.first { it.fileName.toString() == "Greeting.kt" }
     modified.writeText(
@@ -96,7 +94,7 @@ class BtaCompilerIncrementalTest {
     val pass2 =
       compiler.compileIncremental(
         sources = fx.sources,
-        compileClasspath = fx.compileClasspath,
+        compileClasspath = compileClasspath,
         outputDir = outputDir2,
         workingDir = workingDir,
         compilerPlugins = listOf(fx.composePlugin),

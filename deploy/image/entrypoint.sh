@@ -270,6 +270,10 @@ fi
   args+=(--playground-rate-limit "${SERVE_PLAYGROUND_RATE_LIMIT}")
 [[ -n "${SERVE_PLAYGROUND_CALLER_CONCURRENCY:-}" ]] &&
   args+=(--playground-caller-concurrency "${SERVE_PLAYGROUND_CALLER_CONCURRENCY}")
+# Experimental stateful BTA editing: exactly one GitHub-authenticated lease across the host.
+[[ "${SERVE_PLAYGROUND_EDITING:-0}" == "1" ]] && args+=(--playground-editing)
+[[ -n "${SERVE_PLAYGROUND_EDIT_LEASE_TTL:-}" ]] &&
+  args+=(--playground-edit-lease-ttl "${SERVE_PLAYGROUND_EDIT_LEASE_TTL}")
 [[ -n "${SERVE_TRUST_FORWARDED_FOR:-}" && "${SERVE_TRUST_FORWARDED_FOR}" != "0" ]] &&
   args+=(--trust-forwarded-for)
 

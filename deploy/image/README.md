@@ -220,6 +220,26 @@ SERVE_PLAYGROUND_BUNDLE=compose-m3
 SERVE_PLAYGROUND_COMPILE_SLOTS=1
 ```
 
+For the opt-in incremental-editing trial, enable the single whole-host lease:
+
+```bash
+SERVE_PLAYGROUND_EDITING=1
+SERVE_PLAYGROUND_EDIT_LEASE_TTL=900   # idle seconds; optional, default 15 minutes
+```
+
+This knob is ignored unless GitHub auth is configured. A signed-in user explicitly presses
+**Acquire editing lease**; while they hold it, Run reuses that lease's source tree, class output,
+and Kotlin Build Tools API incremental state. Exactly one user can hold the lease across the host,
+and each successful revision still gets an immutable preview-token snapshot. Release it from the
+same button or let the idle TTL expire.
+
+The trial is deliberately easy to observe at `/status.json` → `playground.editing`: `active`,
+`lastRevision`, `acquisitions`, `compileAttempts`, `incrementalCompiles`, `fullFallbacks`, and
+`lastCompileMillis` are process-lifetime signals suitable for a production soak. No login or lease
+capability is exposed there. With a configured sandbox, compilation remains in the capped child;
+the current trial reuses its on-disk IC state but still starts a child for each Run. A recycled warm
+jailed worker is the next latency step, not a prerequisite for safely collecting correctness data.
+
 `SERVE_PLAYGROUND_BUNDLE` takes either a **served catalog system id** (as above) or a local
 `.bundle` path (`/config/playground-cmp.bundle`); a value with a path separator, a `.bundle`/`.png`
 suffix, or one that names an existing file is read as a path, anything else as a system id. Prefer

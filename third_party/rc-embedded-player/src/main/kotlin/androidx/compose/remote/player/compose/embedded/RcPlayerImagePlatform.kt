@@ -67,12 +67,22 @@ import androidx.compose.ui.graphics.asImageBitmap
 internal fun resolveBitmap(remoteContext: RemoteContext, id: Int): Bitmap? {
   val cached = remoteContext.mRemoteComposeState.getFromId(id)
   if (cached is Bitmap) return cached
+  if (cached === FailedBitmapDecode) return null
   // Not decoded yet: find the registered BitmapData and decode it now (apply = putObject +
   // loadBitmap, which caches the decoded Bitmap under the id).
   val data = remoteContext.mRemoteComposeState.getObject(id) as? BitmapData ?: return null
-  data.apply(remoteContext)
+  try {
+    data.apply(remoteContext)
+  } catch (_: Exception) {
+    // A bad or unresolvable image costs one image slot, not the whole document. Remember the
+    // failure so a recomposition/draw loop does not retry the same broken reference every frame.
+    remoteContext.mRemoteComposeState.cacheData(id, FailedBitmapDecode)
+    return null
+  }
   return remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap
 }
+
+private object FailedBitmapDecode
 
 /** [resolveBitmap] projected to a Compose [ImageBitmap]; null when there is no bitmap. */
 internal fun resolveImage(remoteContext: RemoteContext, id: Int): ImageBitmap? =

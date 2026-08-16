@@ -45,6 +45,7 @@ import androidx.compose.remote.player.compose.embedded.LocalRemoteContext
 import androidx.compose.remote.player.compose.embedded.RcPlayerRawDocument
 import androidx.compose.remote.player.compose.embedded.RcPlayerRootLayoutComponent
 import androidx.compose.remote.player.compose.embedded.SnapshotRemoteComposeState
+import androidx.compose.remote.player.compose.embedded.applyDataOperationsWithoutBitmaps
 import androidx.compose.remote.player.compose.embedded.applyOperationsReflection
 import androidx.compose.remote.player.compose.embedded.buildComputedOpIndex
 import androidx.compose.remote.player.compose.embedded.getOperationsReflection
@@ -289,13 +290,16 @@ private fun initDrawContext(
       context.loadFloat(RemoteContext.ID_FONT_SIZE, 14f * fontScale * density)
       context.loadFloat(RemoteContext.ID_DENSITY, density)
       context.density = density
-      document.initializeContext(context)
+      // Bind/reset the context without CoreDocument's eager applyDataOperations pass. Images are
+      // registered below and decoded only when a draw actually requests them.
+      document.initializeContext(context, emptyMap())
 
       // Register each bitmap's metadata (id + declared size) WITHOUT decoding pixels; the decode
       // is deferred to first draw (resolveImage drives BitmapData.apply -> loadBitmap).
       val bitmaps = ArrayList<BitmapData>()
       findBitmaps(document.getOperationsReflection(), bitmaps)
       bitmaps.forEach { bitmap -> context.putObject(bitmap.mImageId, bitmap) }
+      document.applyDataOperationsWithoutBitmaps(context)
 
       document.setLayoutCallback {}
       document.updateTimeReflection(context)
@@ -311,7 +315,7 @@ private fun initDrawContext(
         } else {
           document.getOperationsReflection()
         }
-      document.applyOperationsReflection(context, globalOps)
+      document.applyOperationsReflection(context, globalOps.withoutBitmaps())
 
       // Themed colours, before the `ColorTheme` ops in `constantOps` are applied — `ColorTheme`
       // reads the fields resolution overwrites, so resolving afterwards is resolving too late.
@@ -345,7 +349,7 @@ private fun initDrawContext(
 
       val dataOps = ArrayList<Operation>()
       document.rootLayoutComponent?.getData(dataOps, true)
-      document.applyOperationsReflection(context, dataOps)
+      document.applyOperationsReflection(context, dataOps.withoutBitmaps())
     }
   }
 
@@ -393,6 +397,10 @@ private fun findBitmaps(operations: Collection<Operation>, list: MutableList<Bit
     if (op is Container) findBitmaps(op.getList(), list)
   }
 }
+
+/** Bitmap pixels are resolved on first draw; setup passes must only apply the other data ops. */
+private fun Collection<Operation>.withoutBitmaps(): ArrayList<Operation> =
+  filterTo(ArrayList(size)) { it !is BitmapData }
 
 /** Collect every constant-like op in the tree. Mirrors `RcPlayer.kt`'s inline constant walk. */
 private fun collectConstants(operations: Collection<Operation>, out: MutableList<Operation>) {

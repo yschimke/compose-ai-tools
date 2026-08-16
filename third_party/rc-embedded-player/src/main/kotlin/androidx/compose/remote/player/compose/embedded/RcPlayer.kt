@@ -162,9 +162,10 @@ public fun RcPlayer(
       it.loadFloat(RemoteContext.ID_FONT_SIZE, 14f * density.fontScale * density.density)
       it.loadFloat(RemoteContext.ID_DENSITY, density.density)
       it.density = density.density
-      document.initializeContext(it)
-      resolveAndroidThemeColors(context, document)
-      it.paintTheme = resolvedTheme
+      // Use the overload that only binds/reset the context. The one-argument overload immediately
+      // calls applyDataOperations(), which walks every top-level operation and eagerly applies
+      // BitmapData (decoding every image before the document can compose).
+      document.initializeContext(it, emptyMap())
 
       // Register each bitmap's metadata (declared width/height for ImageAttribute, and
       // discoverability for the lazy decode) WITHOUT decoding the pixels. The costly decode
@@ -175,6 +176,10 @@ public fun RcPlayer(
       val bitmaps = ArrayList<BitmapData>()
       findBitmaps(document.getOperationsReflection(), bitmaps)
       bitmaps.forEach { bitmap -> it.putObject(bitmap.mImageId, bitmap) }
+      document.applyDataOperationsWithoutBitmaps(it)
+
+      resolveAndroidThemeColors(context, document)
+      it.paintTheme = resolvedTheme
 
       document.setLayoutCallback {}
 
@@ -209,7 +214,7 @@ public fun RcPlayer(
         } else {
           document.getOperationsReflection()
         }
-      document.applyOperationsReflection(it, globalOps)
+      document.applyOperationsReflection(it, globalOps.withoutBitmaps())
 
       val constantOps = ArrayList<Operation>()
       fun walk(ops: Collection<Operation>) {
@@ -247,7 +252,7 @@ public fun RcPlayer(
 
       val dataOps = ArrayList<Operation>()
       document.rootLayoutComponent?.getData(dataOps, true)
-      document.applyOperationsReflection(it, dataOps)
+      document.applyOperationsReflection(it, dataOps.withoutBitmaps())
     }
   }
 
@@ -430,6 +435,10 @@ public fun RcPlayer(
     // draws
     // resolve through it via the GraphContext.
     graphContext?.imageLoader = resolvedImageLoader
+    // Same shape, and for the same reason: measured component sizes live in Compose state rather
+    // than the shared store, so an expression over one (a clip radius of min(w, h) / 2, say)
+    // evaluates against 0 unless the graph can see them. See GraphContext.componentValues.
+    graphContext?.componentValues = componentValueStateMap
     CompositionLocalProvider(
       LocalCoreDocument provides document,
       LocalRemoteContext provides remoteContext,
@@ -542,6 +551,10 @@ private fun findBitmaps(operations: Collection<Operation>, list: MutableList<Bit
     }
   }
 }
+
+/** Bitmap pixels are resolved on first draw; setup passes must only apply the other data ops. */
+private fun Collection<Operation>.withoutBitmaps(): ArrayList<Operation> =
+  filterTo(ArrayList(size)) { it !is BitmapData }
 
 private fun findComponentValues(
   operations: Collection<Operation>,

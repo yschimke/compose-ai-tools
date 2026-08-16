@@ -14,7 +14,7 @@ name: Design Artifacts (reusable)
 #       with:
 #         system: your-system
 #         spec: catalog.spec.json
-#         module: ':app'
+#         module: ':app' # omit (or set modules: all) to publish every preview-enabled module
 #       secrets: inherit   # optional; only needed for buildfetch-ro-token
 #
 # The pipeline: install the released compose-preview CLI → validate the spec
@@ -25,7 +25,8 @@ name: Design Artifacts (reusable)
 #
 # Bespoke lanes some catalogs add (e.g. compose-m3's re-theme fold-in, a Wasm
 # tier) are intentionally out of scope — a caller that needs them keeps its own
-# workflow. This covers the common single-module (± one extra module) app catalog.
+# workflow. This covers single-module (± one extra module) catalogs and repository-wide baked
+# catalogs spanning every preview-enabled module.
 
 on:
   workflow_call:
@@ -39,9 +40,15 @@ on:
         required: true
         type: string
       module:
-        description: 'Gradle module path to render (e.g. ":app").'
-        required: true
+        description: 'Gradle module path to render (e.g. ":app"). Omit to discover and publish every module with the preview plugin applied.'
+        required: false
         type: string
+        default: ''
+      modules:
+        description: 'Set to "all" to discover and publish every preview-enabled Gradle module. Equivalent to omitting module; other values are rejected.'
+        required: false
+        type: string
+        default: ''
       # CodeQL reports "Checkout of untrusted code in a privileged context" (critical)
       # against the `actions/checkout` steps that consume this input and `driver-ref`
       # below. In THIS repo it is a false positive — dismissed, not fixed — and the
@@ -315,7 +322,7 @@ jobs:
   # it always has.
   shard-matrix:
     name: ${{ inputs.system }} · plan
-    if: ${{ inputs.render-shards > 1 }}
+    if: ${{ inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     permissions:
@@ -401,7 +408,7 @@ jobs:
 
   render-shard:
     name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
-    if: ${{ inputs.render-shards > 1 }}
+    if: ${{ inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
     needs: [shard-matrix]
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
@@ -704,6 +711,56 @@ jobs:
         working-directory: compose-ai-tools/scripts/design-artifacts
         run: npm ci --no-audit --no-fund --loglevel=warn
 
+      - name: Validate module selector
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.modules }}" ] && [ "${{ inputs.modules }}" != "all" ]; then
+            echo "::error title=modules input::modules supports only 'all'; use module for one Gradle path."
+            exit 1
+          fi
+
+      # Repository-wide publication keeps one executable bundle per Gradle module. Discover the
+      # module set once, order it deterministically, and prefer spec.module as the primary when the
+      # authored catalog names one — that preserves the historical unqualified function-name winner
+      # if two modules declare the same preview function.
+      - name: Discover preview-enabled modules
+        if: ${{ inputs.module == '' || inputs.modules == 'all' }}
+        working-directory: ${{ inputs.working-directory || '.' }}
+        env:
+          SPEC: ${{ inputs.spec }}
+          EXTRA_MODULE: ${{ inputs.extra-module }}
+          RENDER_SHARDS: ${{ inputs.render-shards }}
+          PUBLISH_LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+          SPLIT_PER_PREVIEW: ${{ inputs.split-per-preview }}
+          SPLIT_MODE: ${{ inputs.split-mode }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EXTRA_MODULE" ]; then
+            echo "::error title=all modules::extra-module is redundant with repository-wide discovery; omit it."
+            exit 1
+          fi
+          if [ "$RENDER_SHARDS" -gt 1 ]; then
+            echo "::error title=all modules::render-shards currently shards one module; use 1 when publishing all modules."
+            exit 1
+          fi
+          if [ "$PUBLISH_LIVE_BUNDLE" = "true" ]; then
+            echo "::error title=all modules::publish-live-bundle requires one executable module bundle; repository-wide catalogs publish baked/static bundles."
+            exit 1
+          fi
+          if [ "$SPLIT_PER_PREVIEW" = "true" ] && [ "$SPLIT_MODE" != "view-only" ]; then
+            echo "::error title=all modules::repository-wide per-preview splits must use split-mode: view-only because there is no single live classpath."
+            exit 1
+          fi
+          compose-preview list --json > "$GITHUB_WORKSPACE/discovered-previews.json"
+          preferred="$(node -e 'const fs=require("fs"); try { const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(s.module ?? ""); } catch {}' "$GITHUB_WORKSPACE/$SPEC")"
+          preferred_args=(); if [ -n "$preferred" ]; then preferred_args=(--preferred "$preferred"); fi
+          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/preview-modules.mjs" \
+            --input "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --output "$GITHUB_WORKSPACE/preview-modules.txt" \
+            "${preferred_args[@]}"
+          echo "Publishing $(wc -l < "$GITHUB_WORKSPACE/preview-modules.txt" | tr -d ' ') preview-enabled module(s):"
+          sed 's/^/  /' "$GITHUB_WORKSPACE/preview-modules.txt"
+
       # Fast, build-free pre-flight: resolve every spec `preview` against the
       # module's @Preview functions BEFORE the (long) render, so a mistyped or
       # renamed name fails here in seconds instead of as a late "missing" entry.
@@ -717,12 +774,23 @@ jobs:
           WORKDIR: ${{ inputs.working-directory }}
           LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
           LIVE_SOURCE: ${{ inputs.live-rerender-source }}
+          ALL_MODULES: ${{ inputs.module == '' || inputs.modules == 'all' }}
         run: |
           set -euo pipefail
           # Gradle path (":app", "a:b") → directory ("app", "a/b"), under the
           # build's directory when the caller is a multi-build monorepo.
           to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
-          args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
+          args=(--spec "$SPEC")
+          if [ "$ALL_MODULES" = "true" ]; then
+            while IFS= read -r discovered_module; do
+              [ -n "$discovered_module" ] && args+=(--src "$(to_dir "$discovered_module")")
+            done < "$GITHUB_WORKSPACE/preview-modules.txt"
+            # One source.module cannot describe a repository-wide catalog. Keep validation honest:
+            # deferred coverage must not pass on a live path the generate step intentionally omits.
+            LIVE_SOURCE=false
+          else
+            args+=(--module-dir "$(to_dir "$MODULE")")
+          fi
           # A catalog whose previews span the primary + one extra module must
           # resolve names against BOTH, or the extra module's previews read as
           # "missing" and fail the pre-flight.
@@ -772,8 +840,11 @@ jobs:
           SPEC: ${{ inputs.spec }}
         run: |
           set -euo pipefail
-          compose-preview list --json --module "${{ inputs.module }}" \
-            > "$GITHUB_WORKSPACE/discovered-previews.json"
+          module_args=()
+          if [ -n "${{ inputs.module }}" ] && [ "${{ inputs.modules }}" != "all" ]; then
+            module_args=(--module "${{ inputs.module }}")
+          fi
+          compose-preview list --json "${module_args[@]}" > "$GITHUB_WORKSPACE/discovered-previews.json"
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
             --spec "$GITHUB_WORKSPACE/$SPEC" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
@@ -880,12 +951,40 @@ jobs:
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          run_without_filter() {
+            if [ "${{ inputs.desktop-render }}" = "true" ]; then
+              env -u 'ORG_GRADLE_PROJECT_composePreview.filter' xvfb-run -a -s "-screen 0 2000x1400x24" "$@"
+            else
+              env -u 'ORG_GRADLE_PROJECT_composePreview.filter' "$@"
+            fi
+          }
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
-          run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
-            "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
-            --timeout ${{ inputs.render-timeout }}
+          if [ -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
+            mkdir -p "$GITHUB_WORKSPACE/module-bundles"
+            index=0
+            while IFS= read -r discovered_module; do
+              [ -z "$discovered_module" ] && continue
+              output="$GITHUB_WORKSPACE/module-bundles/$(printf '%04d' "$index").png"
+              # The authored render filter belongs to the preferred/primary module. Every later
+              # module is fallback inventory and must render in full; applying the primary's
+              # function names there can fail on no match or silently thin unrelated previews.
+              if [ "$index" -eq 0 ]; then
+                run compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
+                  "${embed[@]}" "${exclude[@]}" -o "$output" --timeout ${{ inputs.render-timeout }}
+              else
+                run_without_filter compose-preview bundle pack --module "$discovered_module" --with-semantics --progress \
+                  "${embed[@]}" -o "$output" --timeout ${{ inputs.render-timeout }}
+              fi
+              index=$((index + 1))
+            done < "$GITHUB_WORKSPACE/preview-modules.txt"
+            cp "$GITHUB_WORKSPACE/module-bundles/0000.png" "$GITHUB_WORKSPACE/bundle.png"
+          else
+            run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
+              "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+              --timeout ${{ inputs.render-timeout }}
+          fi
 
       - name: Download shard renders
         if: ${{ inputs.render-shards > 1 }}
@@ -990,10 +1089,20 @@ jobs:
           set -euo pipefail
           extra=()
           if [ -n "${{ inputs.extra-module }}" ]; then extra=(--extra-renders "$GITHUB_WORKSPACE/extra-bundle.png"); fi
+          additional=()
+          fallback=()
+          if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
+            fallback=(--generate-fallbacks)
+            while IFS= read -r additional_bundle; do
+              additional+=(--additional-renders "$additional_bundle")
+            done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
+          fi
           source_args=()
-          if [ "${{ inputs.live-rerender-source }}" = "true" ]; then
+          if [ "${{ inputs.live-rerender-source }}" = "true" ] && [ ! -f "$GITHUB_WORKSPACE/preview-modules.txt" ]; then
             source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
             source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "${{ inputs.module }}")
+          elif [ "${{ inputs.live-rerender-source }}" = "true" ]; then
+            echo "::notice title=All-module catalog::live-rerender-source is omitted because one source.module cannot represent multiple Gradle modules; baked previews are still published."
           fi
           incomplete=()
           if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
@@ -1014,6 +1123,8 @@ jobs:
             --spec "${{ inputs.spec }}" \
             --renders "$GITHUB_WORKSPACE/bundle.png" \
             "${extra[@]}" \
+            "${additional[@]}" \
+            "${fallback[@]}" \
             --out "$GITHUB_WORKSPACE/out" \
             --renderer "$(compose-preview --version | head -1)" \
             "${source_args[@]}" \
@@ -1058,6 +1169,13 @@ jobs:
           else
             compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/bundle.png" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          fi
+          if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
+            while IFS= read -r additional_bundle; do
+              module_index="$(basename "$additional_bundle" .png)"
+              compose-preview bundle split "$additional_bundle" --view-only \
+                -o "$GITHUB_WORKSPACE/out/bundle/previews/modules/$module_index"
+            done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
           fi
           if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
             if [ "${{ inputs.extra-split-mode }}" = "full" ]; then
