@@ -122,6 +122,7 @@ object PreviewResultBuilder {
           PreviewResult(
             id = p.id,
             module = module.gradlePath,
+            projectDirectory = module.projectDir.canonicalPath,
             functionName = p.functionName,
             className = p.className,
             sourceFile = p.sourceFile,

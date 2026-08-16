@@ -304,6 +304,8 @@ data class CaptureResult(
 data class PreviewResult(
   val id: String,
   val module: String,
+  /** Gradle's resolved project directory; never reconstruct this from [module]. */
+  val projectDirectory: String? = null,
   val functionName: String,
   val className: String,
   val sourceFile: String? = null,

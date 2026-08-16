@@ -405,7 +405,7 @@ jobs:
         if: ${{ inputs.cli-source == 'released' }}
         # Security boundary: this privileged reusable workflow must not execute
         # a movable action ref. Dependabot/manual upgrades should update this SHA.
-        uses: yschimke/compose-ai-tools/.github/actions/install@81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
+        uses: yschimke/compose-ai-tools/.github/actions/install@df2b08c9f091c379c1cb4285fa7221395d097e01 # catalog integrity at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -477,7 +477,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
+        uses: yschimke/compose-ai-tools/.github/actions/install@df2b08c9f091c379c1cb4285fa7221395d097e01 # catalog integrity at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -490,7 +490,7 @@ jobs:
           repository: yschimke/compose-ai-tools
           # Do not honor a caller-controlled ref here: refs/pull/* in this repo
           # can contain fork code, and this privileged workflow executes the driver.
-          ref: 81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
+          ref: df2b08c9f091c379c1cb4285fa7221395d097e01 # catalog integrity at 2026-08-16
           path: compose-ai-tools
           persist-credentials: false
 
@@ -713,7 +713,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
+        uses: yschimke/compose-ai-tools/.github/actions/install@df2b08c9f091c379c1cb4285fa7221395d097e01 # catalog integrity at 2026-08-16
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -728,7 +728,7 @@ jobs:
           repository: yschimke/compose-ai-tools
           # Never execute a caller-selected refs/pull/* revision in this
           # privileged workflow. Update this alongside the other driver pin.
-          ref: 81727e959c63ff46ba6e598760771d9905386d9a # main at 2026-08-16
+          ref: df2b08c9f091c379c1cb4285fa7221395d097e01 # catalog integrity at 2026-08-16
           path: compose-ai-tools
           persist-credentials: false
 
@@ -798,6 +798,7 @@ jobs:
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/preview-modules.mjs" \
             --input "$GITHUB_WORKSPACE/discovered-previews.json" \
             --output "$GITHUB_WORKSPACE/preview-modules.txt" \
+            --sources-output "$GITHUB_WORKSPACE/preview-module-sources.txt" \
             "${preferred_args[@]}"
           echo "Publishing $(wc -l < "$GITHUB_WORKSPACE/preview-modules.txt" | tr -d ' ') preview-enabled module(s):"
           sed 's/^/  /' "$GITHUB_WORKSPACE/preview-modules.txt"
@@ -818,14 +819,15 @@ jobs:
           ALL_MODULES: ${{ inputs.module == '' || inputs.modules == 'all' }}
         run: |
           set -euo pipefail
-          # Gradle path (":app", "a:b") → directory ("app", "a/b"), under the
-          # build's directory when the caller is a multi-build monorepo.
+          # Single-module callers predate repository-wide discovery and still use the conventional
+          # Gradle-path mapping. All-module callers consume BasicGradleProject.projectDirectory
+          # captured by discovery; settings.gradle can map :ui to components/ui (or anywhere else).
           to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC")
           if [ "$ALL_MODULES" = "true" ]; then
-            while IFS= read -r discovered_module; do
-              [ -n "$discovered_module" ] && args+=(--src "$(to_dir "$discovered_module")")
-            done < "$GITHUB_WORKSPACE/preview-modules.txt"
+            while IFS= read -r discovered_source; do
+              [ -n "$discovered_source" ] && args+=(--src "$discovered_source")
+            done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
             # One source.module cannot describe a repository-wide catalog. Keep validation honest:
             # deferred coverage must not pass on a live path the generate step intentionally omits.
             LIVE_SOURCE=false

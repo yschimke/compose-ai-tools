@@ -86,6 +86,7 @@ class PreviewResultBuilderTest {
     val home = results.single()
     assertEquals("HomeScreen", home.id)
     assertEquals(":app", home.module)
+    assertEquals(module.projectDir.canonicalPath, home.projectDirectory)
     assertNotNull(home.pngPath)
     assertTrue(File(home.pngPath!!).exists(), "PNG path should resolve: ${home.pngPath}")
     assertNotNull(home.sha256)

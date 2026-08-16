@@ -22,6 +22,7 @@ class PreviewListResponseTest {
             PreviewResult(
               id = "Preview_A",
               module = "sample-android",
+              projectDirectory = "/workspace/components/sample-android",
               functionName = "PreviewA",
               className = "com.example.PreviewsKt",
               sourceFile = "Previews.kt",
@@ -57,6 +58,10 @@ class PreviewListResponseTest {
     // Multi-capture fan-out is faithfully serialised.
     assertEquals(2, parsed.previews.single().captures.size)
     assertEquals(500L, parsed.previews.single().captures[1].advanceTimeMillis)
+    assertEquals(
+      "/workspace/components/sample-android",
+      parsed.previews.single().projectDirectory,
+    )
   }
 
   @Test
