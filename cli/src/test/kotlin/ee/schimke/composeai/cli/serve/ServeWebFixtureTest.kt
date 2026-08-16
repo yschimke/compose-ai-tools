@@ -1894,9 +1894,13 @@ class ServeWebFixtureTest {
       manifestNode!!.groupValues[1],
       "a node with a renderable preview is emitted as an anchor",
     )
-    assertTrue(
-      manifestNode.value.contains("/p/com.example.ProfileCardPreview"),
-      "…and its destination is THAT preview, not merely some /p/ URL",
+    // The whole final segment, not a prefix: `/p/com.example.ProfileCardPreviewLegacy` contains
+    // the id we mean and navigates somewhere else.
+    val manifestHref = Regex("""href="([^"]*)"""").find(manifestNode.value)!!.groupValues[1]
+    assertEquals(
+      "com.example.ProfileCardPreview",
+      manifestHref.substringBefore('?').substringAfterLast("/p/"),
+      "…and its destination is THAT preview, not one whose id merely starts the same way",
     )
     // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
     // tag is the same; only the target differs, so a reader never meets a node that looks
@@ -1913,12 +1917,13 @@ class ServeWebFixtureTest {
       unlinkedNode!!.groupValues[1],
       "an unlinked node stays an anchor rather than becoming inert",
     )
-    // The whole destination, not just its host: a regression to the Figma homepage, to another
-    // file, or to the wrong node all begin `https://www.figma.com/` and would pass a prefix check
-    // while node 1:6 no longer reaches its own design location.
-    assertTrue(
-      unlinkedNode.value.contains("ocdacdEsnHipMJD3egzxKb") &&
-        unlinkedNode.value.contains("node-id=1-6"),
+    // The WHOLE href, compared as one string. Checking parts independently loses whatever part is
+    // not checked: a host check alone passes for the Figma homepage, and a key-plus-node check
+    // alone passes for a relative URL or a different host carrying the same query.
+    val unlinkedHref = Regex("""href="([^"]*)"""").find(unlinkedNode.value)!!.groupValues[1]
+    assertEquals(
+      "https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-6",
+      unlinkedHref,
       "…and its destination is THIS node in the catalog's design file",
     )
 
