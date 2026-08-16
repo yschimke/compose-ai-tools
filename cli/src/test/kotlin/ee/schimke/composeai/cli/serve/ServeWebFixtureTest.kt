@@ -2822,10 +2822,14 @@ class ServeWebFixtureTest {
         referenceComparison.contains("{{rawScores}}"),
       "the focused comparison pins the locator, canonical overrides and score placeholder",
     )
+    // The substitution moved into `<cp-reference-compare>` with the rest of this page, so the
+    // bundle is where it is now pinned. The property being held is the same one: the filled report
+    // reaches an INPUT's `value` and nothing else — never an href or any other navigation sink.
     assertTrue(
-      assetText("format-compare.js").contains("body.value = template") &&
-        assetText("format-compare.js").contains(".replace(\"{{rawScores}}\", rawScores)"),
-      "the browser scorer substitutes the report input value after comparison",
+      assetText("serve-components.js").contains(".value=") &&
+        assetText("serve-components.js").contains("replace(\"{{render}}\",") &&
+        assetText("serve-components.js").contains("replace(\"{{rawScores}}\","),
+      "the components bundle substitutes the report input value after comparison",
     )
     val referencedState =
       ServePreview(

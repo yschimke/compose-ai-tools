@@ -6,14 +6,12 @@
 // one page and clean on the next — which reads as the page being broken rather than as a threshold
 // having drifted.
 //
-// STILL MIRRORED, deliberately, in two places this cannot reach:
+// STILL MIRRORED, deliberately, in one place this cannot reach:
+// `scripts/design-artifacts/design-reference-score.mjs`, which runs at publish time under node with
+// no build step, so it cannot import from `src/`. It carries a comment pointing here.
 //
-//   - `assets/format-compare.js`, which owns the metric and is not yet ported.
-//   - `scripts/design-artifacts/design-reference-score.mjs`, which runs at publish time under node
-//     with no build step, so it cannot import from `src/`.
-//
-// Both carry a comment pointing here. When `format-compare.js` is ported, its copy becomes an
-// import and only the publish-time driver is left to keep in step.
+// `assets/format-compare.js` used to hold a third copy. It no longer reports anything itself — the
+// reference page's result line moved to `<cp-reference-compare>` — so the copy went with it.
 
 /**
  * Below this, a difference between two content boxes' proportions is the rasteriser rather than the
