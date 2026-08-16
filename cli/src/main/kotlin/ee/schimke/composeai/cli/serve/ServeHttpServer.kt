@@ -1964,6 +1964,10 @@ class ServeHttpServer(
           hasRcComparison =
             renderHost.rcCompare() != null ||
               renderHost.previews.any { renderHost.hasRemoteComposeDoc(it.id) },
+          // Same condition `comparisonPage` turns the `reference` format on with, so the deep link
+          // never lands on a format the page does not offer.
+          hasReferenceComparison =
+            renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
           // Same condition `handleParity` serves on, so the link never leads to that route's 404.
           hasParityView =
             renderHost.parityActivity() != null ||
