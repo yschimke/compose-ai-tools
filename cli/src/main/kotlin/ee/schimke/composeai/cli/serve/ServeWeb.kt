@@ -7072,7 +7072,14 @@ $rows
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>
+        <!-- `<cp-reference-compare>` owns everything on this page: the diff, the overlay slider and
+             the annotation redline. `format-compare.js` is still here for the comparison
+             primitives it publishes on `window.ComposePreviewCompare`, and the element reads that
+             handle when it scores rather than when it upgrades, so the two tags may be in either
+             order. -->
+        ${scriptTag("serve-components.js")}
         ${scriptTag("format-compare.js")}
+        <cp-reference-compare></cp-reference-compare>
         """
           .trimIndent(),
     )

@@ -22,6 +22,7 @@ import "./components/PageZoom.js";
 import "./components/ParityLanes.js";
 import "./components/ParityScores.js";
 import "./components/RcLanes.js";
+import "./components/ReferenceCompare.js";
 import "./components/SpecCompare.js";
 import "./components/ViewerDrawers.js";
 // Not a component: installs `window.cpRcFonts` for the legacy lanes to call.
