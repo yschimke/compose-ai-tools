@@ -343,12 +343,24 @@ reading, because most of what they assert has a cheaper home:
   2px) — `cli/serve-web/src/zoom/viewport.ts` already has its own tests; the
   capture re-asserts them through a browser.
 - **Typography grouping** (`.cp-typography-group` count, `.cp-typography-count`
-  text, an override reading `wght 700`) — now covered directly by
-  `annotateTypography.test.ts` and `referenceCompareElement.test.ts`.
+  text, an override reading `wght 700`) — covered by
+  `referenceCompareElement.test.ts`. It was NOT, when this section first landed:
+  that test checked only that a group existed, and the claim here was wrong
+  until the coverage was actually written. Check before you move something.
 
-Two of them genuinely need a browser and should stay: `toBeVisible()`, which is
-a CSS question happy-dom cannot answer, and the design page's alignment check,
-which measures real laid-out geometry rather than the arithmetic behind it.
+THREE of them genuinely need a browser and should stay:
+
+- `toBeVisible()`, which is a CSS question happy-dom cannot answer;
+- the design page's alignment check, which measures real laid-out geometry
+  rather than the arithmetic behind it;
+- **`zoom-wheel`**, which reads the computed `outlineWidth` and `outlineOffset`
+  that `serve.css` produces and verifies the node marks counter-scale with
+  `--cp-page-zoom`. `viewport.test.ts` and `pageZoom.test.ts` cover the
+  arithmetic and the custom-property assignment, but neither evaluates the
+  stylesheet, so this is the only direct check that the marks stay hairlines at
+  high zoom instead of becoming slabs over the shape. Its own comment records an
+  earlier version that read `border` — always `0` on these nodes — and so
+  "passed however wrong the stylesheet was".
 
 ### The limit that matters most
 

@@ -11,6 +11,25 @@ import assert from "node:assert/strict";
 import { flush, resetDom } from "./setup.js";
 import "../src/components/ReferenceCompare.js";
 
+/**
+ * A second usage of the SAME token at a heavier weight, twice on the majority style and once on the
+ * override. `typographyDefaults` calls the most-used group the token's default, so the single
+ * heavier usage reads as a local override rather than a fidelity finding.
+ */
+const bold = (side: string) =>
+    [700, 400, 400].map((weight, i) => ({
+        kind: "typography",
+        role: `Heading ${side} ${i}`,
+        label: "Title",
+        bounds: { x: 10, y: 60 + i * 30, width: 60, height: 20 },
+        detail: {
+            token: "m3/title-medium",
+            fontSize: "20sp",
+            lineHeight: "24sp",
+            fontWeight: String(weight),
+        },
+    }));
+
 const ANNOTATIONS = {
     reference: [
         {
@@ -30,6 +49,7 @@ const ANNOTATIONS = {
                 lineHeight: "20sp",
             },
         },
+        ...bold("reference"),
     ],
     actual: [
         {
@@ -49,6 +69,7 @@ const ANNOTATIONS = {
                 lineHeight: "20sp",
             },
         },
+        ...bold("actual"),
     ],
 };
 
@@ -294,6 +315,46 @@ describe("<cp-reference-compare>", () => {
         assert.ok(lit() >= 2, "still lit for the keyboard");
         row.dispatchEvent(new Event("blur"));
         assert.equal(lit(), 0);
+    });
+
+    it("renders one row per style, with each side's usage count", async () => {
+        // The capture state `serve-reference-compare/annotated` held these three checks and nothing
+        // else did, so the harness doc's claim that they were covered here was wrong until now.
+        // The fixture carries three styles: a label pair, and a title token used twice at weight
+        // 400 with a single heavier usage that reads as an override off it.
+        stubResizeObserver();
+        stubCompare();
+        await mount();
+        await flush();
+        assert.equal(
+            document.querySelectorAll(".cp-typography-group").length,
+            3,
+            "one row per paired style, not one per usage",
+        );
+        const counts = Array.from(
+            document.querySelectorAll(".cp-typography-count"),
+        ).map((n) => n.textContent);
+        // Two sides per row. The singular/plural is the readout, so it is asserted as text.
+        assert.equal(counts.filter((c) => c === "2 usages").length, 2);
+        assert.equal(counts.filter((c) => c === "1 usage").length, 4);
+    });
+
+    it("marks a local override, and says which default it departed from", async () => {
+        // The distinction the whole table exists for: a fidelity finding is the render disagreeing
+        // with the design, an OVERRIDE is this usage departing from its own token's most-used
+        // group — on both sides equally, so it is not a defect at all. Marking one as the other
+        // would report a deliberate choice as a bug.
+        stubResizeObserver();
+        stubCompare();
+        await mount();
+        await flush();
+        const overrides = Array.from(
+            document.querySelectorAll(".cp-typography-override"),
+        ).map((n) => `${n.textContent}|${n.getAttribute("title")}`);
+        assert.deepEqual(overrides, [
+            "wght 700|Changed from titleMedium default",
+            "wght 700|Changed from titleMedium default",
+        ]);
     });
 
     it("marks the fields that differ between the two sides", async () => {
