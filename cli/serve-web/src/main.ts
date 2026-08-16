@@ -25,5 +25,8 @@ import "./components/RcLanes.js";
 import "./components/ReferenceCompare.js";
 import "./components/SpecCompare.js";
 import "./components/ViewerDrawers.js";
-// Not a component: installs `window.cpRcFonts` for the legacy lanes to call.
+// Not components: globals the legacy IIFEs call. `window.cpRcFonts` makes the page's registered
+// faces paintable before a Remote Compose lane paints; `window.cpViewerQuery` holds the rules that
+// decide what lands in a render URL, the first slice of `viewer.js` to move.
 import "./rcFonts.js";
+import "./viewerQuery.js";
