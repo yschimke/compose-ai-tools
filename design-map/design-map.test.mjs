@@ -284,3 +284,63 @@ test("projects an empty manifest without complaint", () => {
   assert.deepEqual(variants.components, []);
   assert.deepEqual(diagnostics.unmapped, []);
 });
+
+/** A `@CatalogVariant` render carrying an `@OverrideVariant` cell of its own. */
+const foldedCell = (name, of, catalog, variant, overrides) => ({
+  id: `com.example.CatalogKt.${name}_Light_VARIANT_${variant}`,
+  functionName: name,
+  sourceFile: "Catalog.kt",
+  catalog: { role: "VARIANT", componentId: of, ...catalog },
+  overrides: { name: variant, ...overrides },
+});
+
+test("variantSeeds crosses a fold's axis with its own override cell", () => {
+  assert.deepEqual(
+    variantSeeds(
+      foldedCell("CircularWavy", "Progress/Circular", { props: [{ key: "type", value: "wave" }] }, "full", {
+        seeds: [{ key: "progress", kind: "FLOAT", raw: "1.0" }],
+      }),
+    ),
+    [
+      { key: "type", raw: "wave" },
+      { key: "progress", raw: "1.0" },
+    ],
+  );
+});
+
+test("variantSeeds lets the override cell win a key collision with the fold", () => {
+  assert.deepEqual(
+    variantSeeds(
+      foldedCell("V", "Button", { state: "disabled" }, "error", {
+        seeds: [{ key: "state", kind: "STRING", raw: "error" }],
+      }),
+    ),
+    [{ key: "state", raw: "error" }],
+  );
+});
+
+test("a folded component's cells are collected under its parent, named for both axes", () => {
+  const byComponent = variantRendersByComponent([
+    component("CircularProgress", { reference: ref("1:2") }),
+    catalogVariant("CircularWavy", "CircularProgress", { props: [{ key: "type", value: "wave" }] }),
+    foldedCell("CircularWavy", "CircularProgress", { props: [{ key: "type", value: "wave" }] }, "full", {
+      seeds: [{ key: "progress", kind: "FLOAT", raw: "1.0" }],
+    }),
+  ]);
+  assert.deepEqual(
+    byComponent.get("CircularProgress").map((r) => r.name),
+    ["wave", "wave-full"],
+  );
+});
+
+test("a folded component's DARK cell is still ignored, like every other dark capture", () => {
+  const byComponent = variantRendersByComponent([
+    {
+      ...foldedCell("W", "Button", { props: [{ key: "type", value: "wave" }] }, "full", {
+        seeds: [{ key: "progress", kind: "FLOAT", raw: "1.0" }],
+      }),
+      id: "com.example.CatalogKt.W_Dark_VARIANT_full",
+    },
+  ]);
+  assert.equal(byComponent.size, 0);
+});

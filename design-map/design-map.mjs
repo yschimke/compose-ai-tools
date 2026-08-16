@@ -98,21 +98,19 @@ export function sourceForRef(ref) {
  * its non-default seeds is missing the axes it happens to sit at, and a kit that spells its default
  * size explicitly in a combination cell then has nothing to match against.
  */
-export function variantSeeds(preview) {
-  const catalog = preview.catalog;
-  if (catalog?.role === "VARIANT") {
-    // `props` names the axis; `state` is the annotation's shorthand for the one axis common enough
-    // to have its own parameter. Either is a declaration, so neither is inferred —
-    // `@CatalogVariant(state = "disabled")` says the state axis as plainly as
-    // `props = ["state=disabled"]` would.
-    const props = [...(catalog.props ?? [])];
-    if (catalog.state && !props.some((p) => p.key === "state")) {
-      props.push({ key: "state", value: catalog.state });
-    }
-    return props.map((p) => ({ key: p.key, raw: p.value }));
+function foldSeeds(catalog) {
+  // `props` names the axis; `state` is the annotation's shorthand for the one axis common enough
+  // to have its own parameter. Either is a declaration, so neither is inferred —
+  // `@CatalogVariant(state = "disabled")` says the state axis as plainly as
+  // `props = ["state=disabled"]` would.
+  const props = [...(catalog.props ?? [])];
+  if (catalog.state && !props.some((p) => p.key === "state")) {
+    props.push({ key: "state", value: catalog.state });
   }
+  return props.map((p) => ({ key: p.key, raw: p.value }));
+}
 
-  const overrides = preview.overrides;
+function cellSeeds(overrides) {
   if (!overrides) return [];
 
   const seeds = overrides.props?.length
@@ -132,13 +130,36 @@ export function variantSeeds(preview) {
   return seeds;
 }
 
+export function variantSeeds(preview) {
+  const catalog = preview.catalog;
+  const fold = catalog?.role === "VARIANT" ? foldSeeds(catalog) : [];
+  const cell = cellSeeds(preview.overrides);
+  if (!fold.length) return cell;
+  if (!cell.length) return fold;
+
+  // BOTH: an `@OverrideVariant` cell on a `@CatalogVariant` render — the folded component's own
+  // matrix. The render sits at the product of the two axes (`type=wave` AND `progress=1.0`), so it
+  // declares both; taking either half alone would resolve to a sibling node and diff the wrong
+  // frame. Folding a component used to cost it its whole matrix for want of this.
+  //
+  // The CELL wins a key collision. Both describe the same render, but the cell's value is what the
+  // renderer actually seeded, and the fold's is the default it seeded over.
+  const seeded = new Set(cell.map((s) => s.key));
+  return [...fold.filter((s) => !seeded.has(s.key)), ...cell];
+}
+
 /** The name a variant render goes by, for a report and for the design-map `state` slot. */
 function variantName(preview, seeds) {
   const catalog = preview.catalog;
+  const cell = preview.overrides?.name;
   if (catalog?.role === "VARIANT") {
-    return catalog.state ?? seeds.map((s) => s.raw).join("-");
+    // Named for the FOLD's own axis, not for the merged vector — `wave`, not `wave-1.0` — so a
+    // folded component's cells read as `wave-full` / `wave-quarter` under it, the same shape a
+    // top-level component's cells have.
+    const fold = catalog.state ?? foldSeeds(catalog).map((s) => s.raw).join("-");
+    return cell ? `${fold}-${cell}` : fold;
   }
-  return preview.overrides?.name ?? seeds.map((s) => `${s.key}=${s.raw}`).join(", ");
+  return cell ?? seeds.map((s) => `${s.key}=${s.raw}`).join(", ");
 }
 
 /**
@@ -157,10 +178,18 @@ export function variantRendersByComponent(previews) {
     // An `@OverrideVariant` render is a reseed of the SAME composable, so it keeps the parent's
     // COMPONENT role and is distinguished only by the `_VARIANT_` tag discovery puts in its id.
     // A `@CatalogVariant` render is its own composable, so it carries the VARIANT role and an
-    // ordinary light-capture id. Either way only the light capture participates.
+    // ordinary light-capture id.
+    //
+    // A VARIANT role with a `_VARIANT_` id is the third case, and it used to fall through both
+    // tests into the `continue` below: a folded component carrying a matrix of its own. Discovery
+    // emitted those renders all along — they were simply never projected, so the kit nodes they
+    // sit on went uncompared, and a component could not be folded without deleting its cells.
+    // Either way only the light capture participates.
     const isOverrideVariant =
       catalog.role === "COMPONENT" && LIGHT_VARIANT_CAPTURE.test(preview.id);
-    const isCatalogVariant = catalog.role === "VARIANT" && LIGHT_CAPTURE.test(preview.id);
+    const isCatalogVariant =
+      catalog.role === "VARIANT" &&
+      (LIGHT_CAPTURE.test(preview.id) || LIGHT_VARIANT_CAPTURE.test(preview.id));
     if (!isOverrideVariant && !isCatalogVariant) continue;
 
     // A variant that names no axis says only "this is different", which is not enough to look
