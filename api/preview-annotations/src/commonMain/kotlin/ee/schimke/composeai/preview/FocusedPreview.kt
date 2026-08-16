@@ -132,10 +132,10 @@ annotation class FocusedPreview(
    * the only consumer that routes those events into per-modifier `onClick` / `onSwipeForward` /
    * `onSwipeBackward` lambdas, and it always targets the currently-focused composable — so this
    * flag pairs naturally with `indices` (focus the n-th focusable, then press it). If the focused
-   * component has no indirect-pointer handler (including Wear Material 3 components built from
-   * `Modifier.combinedClickable`), the renderer falls back to a focused `DPAD_CENTER` key-down. Its
-   * key-up is held until the next capture, preserving the pressed interaction lifecycle without
-   * firing `onClick` in the captured frame.
+   * component has no indirect-pointer handler, the renderer attempts a focused `DPAD_CENTER`
+   * key-down. Its key-up is held until the next capture, preserving the pressed interaction
+   * lifecycle without firing `onClick` in the captured frame. Host implementations can differ in
+   * focused-key delivery; consumers should verify the resulting pressed pixels.
    *
    * Only meaningful for indexed-mode captures (`indices`) — traversal-mode (`traverse`) doesn't
    * carry a "settle and press" point. Off by default; opt in per-preview when you want the
