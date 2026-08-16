@@ -92,7 +92,7 @@ class ServeWebFixtureTest {
   private val token = "demo-token-fixture"
   private val moduleLabel = ":samples:cmp"
 
-  // A FIXED server version for the goldens: the about box surfaces the running build, but pinning a
+  // A FIXED server version for the goldens: the footer surfaces the running build, but pinning a
   // constant here (rather than the real BUNDLE_VERSION) keeps the committed HTML stable across
   // releases — production passes BUNDLE_VERSION, the fixtures pass this.
   private val version = "0.0.0-fixture"
@@ -4798,10 +4798,17 @@ class ServeWebFixtureTest {
           ),
         refreshUrl = "/compose-m3/refresh",
       )
-    assertTrue(landing.contains("class=\"cp-prov cp-disclosure\""), "the provenance details render")
     assertTrue(
-      landing.indexOf("class=\"cp-prov cp-disclosure\"") > landing.indexOf("id=\"cp-grid\""),
-      "catalog details follow the catalog content",
+      landing.contains("class=\"cp-prov cp-disclosure\" open"),
+      "the provenance details render, expanded",
+    )
+    // It lives in the site footer now, beside the build and source links.
+    assertTrue(
+      landing.indexOf("<footer class=\"cp-site-footer\">") <
+        landing.indexOf("class=\"cp-prov cp-disclosure\"") &&
+        landing.indexOf("class=\"cp-prov cp-disclosure\"") <
+          landing.indexOf("class=\"cp-site-footer-links\""),
+      "catalog details sit in the footer, above its links row",
     )
     // Links to the delivery branch and the regenerating workflow.
     assertTrue(
@@ -4860,12 +4867,11 @@ class ServeWebFixtureTest {
       home.indexOf("<footer class=\"cp-site-footer\">") < home.indexOf(">server v1.2.3<"),
       "the running server version is in the footer",
     )
-    // The about disclosure reads LAST: below the cards it explains, and above the footer.
-    assertTrue(
-      home.indexOf("class=\"cp-sys-title\"") < home.indexOf("About this preview server") &&
-        home.indexOf("About this preview server") <
-          home.indexOf("<footer class=\"cp-site-footer\">"),
-      "the about box sits under the catalog cards and above the footer",
+    // The front door carries no "about this preview server" explainer at all.
+    assertFalse(
+      home.contains("About this preview server") ||
+        home.contains("class=\"cp-about cp-disclosure\""),
+      "the about box is gone from the front door",
     )
     // A null version simply omits the pill (no dangling separator crash), and the footer's own
     // links survive it.
@@ -5010,24 +5016,24 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `public landing shows the about intro, default landing does not`() {
-    val public = ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
-    assertTrue(public.contains("class=\"cp-about cp-disclosure\""), "expected the about disclosure")
-    assertTrue(public.contains("About this preview server"), "expected the about title")
-    assertTrue(public.contains("href=\"/version\""), "expected a link to /version")
-    // The about box is the last thing in the body, above the footer.
-    assertTrue(
-      public.indexOf("id=\"cp-grid\"") < public.indexOf("About this preview server") &&
-        public.indexOf("About this preview server") <
-          public.indexOf("<footer class=\"cp-site-footer\">"),
-      "the about box sits under the grid and above the footer",
-    )
-
-    val default = ServeWeb.landingPage(moduleLabel, previews, token)
-    assertTrue(
-      !default.contains("class=\"cp-about\""),
-      "non-public landing must omit the about box",
-    )
+  fun `no landing carries the about intro, public or not`() {
+    for (landing in
+      listOf(
+        ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true),
+        ServeWeb.landingPage(moduleLabel, previews, token),
+      )) {
+      assertFalse(
+        landing.contains("class=\"cp-about cp-disclosure\""),
+        "the about disclosure is gone",
+      )
+      assertFalse(landing.contains("About this preview server"), "the about title is gone")
+      assertFalse(
+        landing.contains("How previews run and catalogs are trusted"),
+        "the about hint is gone",
+      )
+      // The footer's own links survive its removal.
+      assertTrue(landing.contains("href=\"/version\""), "expected a link to /version")
+    }
   }
 
   @Test

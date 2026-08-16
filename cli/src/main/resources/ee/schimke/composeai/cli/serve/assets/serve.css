@@ -409,7 +409,10 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   color: var(--cp-fg-muted); font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+/* The links row keeps the footer's original single-line shape; the footer itself is now a column
+   so a page can put its own block (the catalog-provenance disclosure) above it. */
+.cp-site-footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-site-footer a { display: inline-flex; align-items: center; gap: 4px; }
 /* Page + section headings ride the M3 type scale rather than ad-hoc rem sizes. */
 .cp-head { margin: 0 0 4px; font-size: var(--md-sys-typescale-title-large-size);
@@ -514,7 +517,8 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary);
   text-decoration: none; }
 /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
-   a link to re-run the generating workflow). It closes the catalog below its content. */
+   a link to re-run the generating workflow). It rides in the site footer, expanded, beside the
+   build and source links. */
 .cp-prov { margin: 18px 0 0; padding: 14px 18px; border: 0;
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low);
@@ -536,6 +540,9 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-prov-refresh:hover { text-decoration: underline; }
 .cp-prov-refresh:disabled { color: var(--cp-fg-faint); cursor: wait; text-decoration: none; }
 .cp-prov-refresh-status { color: var(--cp-fg-faint); }
+/* In the footer the strip is the first block, so it drops the leading margin it needed when it
+   trailed the catalog grid. */
+.cp-site-footer .cp-prov { margin: 0; }
 .cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   font-size: 0.85rem; }
 .cp-systems-label { font-weight: 600; color: var(--cp-fg-muted); }
