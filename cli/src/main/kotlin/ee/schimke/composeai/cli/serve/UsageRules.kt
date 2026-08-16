@@ -93,6 +93,15 @@ data class UsageRules(
     @SerialName("kind") @Serializable(with = LenientKind::class) val kind: Kind = Kind.UNKNOWN,
     /** [Kind.RENAME] only: the plain-Compose name to call instead. */
     @SerialName("renameTo") val renameTo: String? = null,
+    /**
+     * Optional reusable semantics layered onto [Kind.RENAME].
+     *
+     * A string rather than another enum on purpose: an older server ignores this new JSON key and
+     * still performs the ordinary [renameTo], so a catalog may publish the special before every
+     * server has upgraded. This build recognises [MATERIAL3_SYSTEM_THEME]. An unrecognised value is
+     * left untouched and reported as residue rather than silently degraded to an incomplete rename.
+     */
+    @SerialName("special") val special: String? = null,
     /** An import the replacement needs, e.g. `androidx.compose.material3.MaterialTheme`. */
     @SerialName("addImport") val addImport: String? = null,
     /**
@@ -101,8 +110,9 @@ data class UsageRules(
      * delegation reads and which nothing in the snippet mentions by name.
      *
      * Applies alongside [addImport] to every kind that emits a replacement — RENAME, SUBSTITUTE,
-     * INLINE; see [imports]. DROP and UNWRAP write no new code, so an import declared on one of
-     * those has nothing to serve.
+     * INLINE; see [imports]. The [MATERIAL3_SYSTEM_THEME] special supplies its standard imports
+     * itself, so every catalog gets the same complete, runnable expansion. DROP and UNWRAP write no
+     * new code, so an import declared on one of those has nothing to serve.
      */
     @SerialName("addImports") val addImports: List<String> = emptyList(),
     /** [Kind.SUBSTITUTE] only: what the call reads as, with `$0`, `$1`… for its arguments. */
@@ -135,14 +145,19 @@ data class UsageRules(
      * failure the compile gate exists to catch.
      */
     val imports: List<String>
-      get() = if (addImport == null) addImports else addImports + addImport
+      get() = buildList {
+        addAll(addImports)
+        addImport?.let(::add)
+        if (special == MATERIAL3_SYSTEM_THEME) addAll(MATERIAL3_SYSTEM_THEME_IMPORTS)
+      }
+        .distinct()
   }
 
   enum class Kind {
     /**
-     * Call the plain-Compose equivalent instead. `Sticker { }` → `MaterialTheme { }`: the sticker
-     * frame *is* a `MaterialTheme` over the baseline scheme, so the rename is the honest reading —
-     * and unwrapping it instead would leave the snippet unthemed, which is worse than noisy.
+     * Call the plain-Compose equivalent instead. A purely structural `CatalogFrame { }` can become
+     * `Box { }`; a wrapper whose meaning includes a system-responsive Material 3 scheme should add
+     * the [MATERIAL3_SYSTEM_THEME] special rather than collapsing to bare `MaterialTheme { }`.
      */
     RENAME,
 
@@ -225,6 +240,25 @@ data class UsageRules(
   }
 
   companion object {
+    /**
+     * A [Scaffold.special] value for an argument-free wrapper that means "stock Material 3,
+     * following system night mode". The cleaner preserves its trailing lambda and emits:
+     * ```
+     * MaterialTheme(
+     *   colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+     * ) { … }
+     * ```
+     */
+    const val MATERIAL3_SYSTEM_THEME = "MATERIAL3_SYSTEM_THEME"
+
+    private val MATERIAL3_SYSTEM_THEME_IMPORTS =
+      listOf(
+        "androidx.compose.foundation.isSystemInDarkTheme",
+        "androidx.compose.material3.MaterialTheme",
+        "androidx.compose.material3.darkColorScheme",
+        "androidx.compose.material3.lightColorScheme",
+      )
+
     /** Every override knob takes `(key, default, index)`; the default is `$1`. */
     private val OVERRIDE_KNOB_PARAMS = listOf("key", "default", "index")
 
