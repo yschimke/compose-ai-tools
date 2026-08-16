@@ -48,7 +48,11 @@ class PlaygroundCatalogTargetsTest {
     log: MutableList<String> = mutableListOf(),
   ) =
     PlaygroundCatalogTargets(
-      available = { available },
+      available = {
+        available.map { (system, backend) ->
+          PlaygroundCatalogAvailable(system, system, "", backend)
+        }
+      },
       modesForBackend = { backend ->
         PlaygroundCatalogTargets.naturalModes(backend).filter {
           when (it) {
@@ -220,5 +224,27 @@ class PlaygroundCatalogTargetsTest {
         suppliers = { supplier(it) },
       )
     assertEquals(listOf("alpha", "mid", "zebra"), t.targets().map { it.system })
+  }
+
+  @Test
+  fun `modules in one catalog resolve independent classpaths`() {
+    val resolves = mutableListOf<String>()
+    val available =
+      listOf(
+        PlaygroundCatalogAvailable("all", "all", ":mobile", "android"),
+        PlaygroundCatalogAvailable("all@:tv", "all", ":tv", "android"),
+      )
+    val t =
+      PlaygroundCatalogTargets(
+        available = { available },
+        modesForBackend = PlaygroundCatalogTargets::naturalModes,
+        newSupplier = { id -> supplier(id, resolves = resolves) },
+      )
+
+    assertEquals(listOf(":mobile", ":tv"), t.targets().map { it.module })
+    assertNotNull(t.classpath("all@:tv", PlaygroundMode.ANDROID))
+    assertEquals(listOf("all@:tv"), resolves)
+    assertTrue(t.targets().single { it.module == ":tv" }.resolved)
+    assertTrue(!t.targets().single { it.module == ":mobile" }.resolved)
   }
 }

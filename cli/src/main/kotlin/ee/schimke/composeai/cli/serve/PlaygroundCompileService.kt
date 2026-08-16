@@ -190,11 +190,15 @@ class PlaygroundCompileService(
     return listOfNotNull(default) +
       catalogTargets?.invoke().orEmpty().map {
         PlaygroundCatalogInfo(
-          id = it.system,
-          label = "${it.system} (${it.backend})",
+          id = it.id,
+          label =
+            if (it.module.isBlank()) "${it.system} (${it.backend})"
+            else "${it.system} · ${it.module} (${it.backend})",
           backend = it.backend,
           modes = it.modes,
           resolved = it.resolved,
+          system = it.system,
+          module = it.module,
         )
       }
   }
@@ -227,7 +231,7 @@ class PlaygroundCompileService(
    */
   fun compilesCatalog(system: String): Boolean {
     if (system.isBlank()) return false
-    if (catalogChoices().any { it.id == system && it.modes.isNotEmpty() }) return true
+    if (catalogChoices().any { it.system == system && it.modes.isNotEmpty() }) return true
     return system in pinnedCatalogSystems
   }
 

@@ -23,8 +23,18 @@ function previewFunction(preview) {
   return preview?.functionName ?? preview?.id;
 }
 
-function moduleIdentityPrefix(module) {
+export function moduleIdentityPrefix(module) {
   return `module_${Buffer.from(module, "utf8").toString("hex")}__`;
+}
+
+/** Stable filesystem-safe key for a Gradle module, shared by the manifest and workflow. */
+export function moduleArtifactKey(module) {
+  return moduleIdentityPrefix(module).slice(0, -2);
+}
+
+export function modulePreviewId(module, id) {
+  const prefix = moduleIdentityPrefix(module);
+  return String(id).startsWith(prefix) ? String(id) : `${prefix}${id}`;
 }
 
 function rewriteArtifactPath(path, oldId, newId) {
@@ -50,19 +60,17 @@ function rewriteJsonEntry(entries, name, transform) {
 }
 
 /**
- * Give an additional module's in-memory bundle identities a collision-free prefix.
- *
- * Repository-wide catalogs are baked-only, so these ids do not address a daemon. They exist solely
- * to join entries and sidecars from several bundles without allowing equal preview ids to collapse
- * onto one another. The primary bundle remains unchanged for backwards-compatible authored joins.
+ * Give an additional module's bundle identities a collision-free prefix. The same transform is
+ * applied to published executable bundles, so these ids are both safe catalog join keys and real
+ * daemon addresses. The primary remains unchanged for backwards-compatible authored joins.
  */
 function namespaceAdditionalRecord(record, module, keyByFunction) {
   const prefix = moduleIdentityPrefix(module);
   const manifest = record.bundle?.manifest ?? {};
   const entryIds = manifest.previewIds ?? (record.bundle?.previews ?? []).map((p) => p.id);
   const rawIds = manifest.rawPreviewIds ?? entryIds;
-  const entryIdMap = new Map(entryIds.map((id) => [id, `${prefix}${id}`]));
-  const rawIdMap = new Map(rawIds.map((id) => [id, `${prefix}${id}`]));
+  const entryIdMap = new Map(entryIds.map((id) => [id, modulePreviewId(module, id)]));
+  const rawIdMap = new Map(rawIds.map((id) => [id, modulePreviewId(module, id)]));
   const anyIdMap = new Map([...entryIdMap, ...rawIdMap]);
   const rewriteId = (id) => anyIdMap.get(id) ?? id;
   const artifactPathMap = new Map();
@@ -169,7 +177,7 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
  * records are sorted by Gradle path and use `<module>::<function>` only when an earlier module has
  * already claimed that function. Unique names stay untouched. Additional records also receive a
  * collision-free preview-id prefix because class-qualified ids can still be identical in separate
- * Gradle modules. Repository-wide publication is baked-only, so no daemon address is changed.
+ * Gradle modules. Live publication applies this exact prefix to the executable bundle too.
  */
 export function namespaceModuleRecords(primary, additional = []) {
   const ordered = [
@@ -250,13 +258,10 @@ export function combinedBundleMap(bundles, mapBundle) {
   return combined;
 }
 
-/** Additional module bundles are baked-only until publication carries a real per-module live lane. */
+/** Additional bundles cannot share a single buildable source module. Live publication is supported. */
 export function additionalBundleLiveConflict(values) {
   if (!(values?.["additional-renders"]?.length > 0)) return null;
-  const conflicts = [
-    values["publish-live-bundle"] && "--publish-live-bundle",
-    values["source-module"] && "--source-module",
-  ].filter(Boolean);
+  const conflicts = [values["source-module"] && "--source-module"].filter(Boolean);
   return conflicts.length > 0 ? conflicts : null;
 }
 

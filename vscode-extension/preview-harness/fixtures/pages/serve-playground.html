@@ -226,7 +226,7 @@ fun Greeting() {
   // The catalog selector. Each entry carries its own mode list because a catalog's bundle
   // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
   // catalog are not the same choice with a different classpath, they are different modes.
-  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"\",\"label\":\"Server default\",\"backend\":\"\",\"modes\":[\"compose-cmp\",\"compose-android\",\"remote-compose\"],\"resolved\":true},{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true},{\"id\":\"compose-wear\",\"label\":\"compose-wear (android)\",\"backend\":\"android\",\"modes\":[\"compose-android\",\"remote-compose\"],\"resolved\":false}]}").catalogs || [];
+  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"\",\"label\":\"Server default\",\"backend\":\"\",\"modes\":[\"compose-cmp\",\"compose-android\",\"remote-compose\"],\"resolved\":true,\"system\":\"\",\"module\":\"\"},{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true,\"system\":\"compose-m3\",\"module\":\"\"},{\"id\":\"compose-wear\",\"label\":\"compose-wear (android)\",\"backend\":\"android\",\"modes\":[\"compose-android\",\"remote-compose\"],\"resolved\":false,\"system\":\"compose-wear\",\"module\":\"\"}]}").catalogs || [];
   var modeLabels = {"compose-cmp": "Compose (Desktop)", "compose-android": "Compose (Android)", "remote-compose": "Remote Compose"};
   function selectedCatalog() {
     var id = catalog ? catalog.value : "";

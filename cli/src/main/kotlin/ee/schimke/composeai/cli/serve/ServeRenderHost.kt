@@ -188,6 +188,11 @@ data class ServePreview(
    */
   val sourceFile: String? = null,
   /**
+   * Gradle project path that owns [sourceFile]. Repository-wide catalogs set this per preview;
+   * older single-module catalogs use their catalog-wide source module instead.
+   */
+  val sourceModule: String? = null,
+  /**
    * A 1-based line inside this preview's function body within [sourceFile], from the bundle's
    * `previews.json` ([ee.schimke.composeai.cli.PreviewInfo.bodyLine]).
    *

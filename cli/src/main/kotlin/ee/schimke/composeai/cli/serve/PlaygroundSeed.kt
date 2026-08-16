@@ -29,6 +29,8 @@ import java.util.concurrent.ConcurrentHashMap
 data class PlaygroundSeed(
   /** The catalog to preselect — the system the preview belongs to. */
   val catalog: String,
+  /** Owning Gradle module, used to select the matching compile bundle in a multi-module catalog. */
+  val sourceModule: String? = null,
   /** The preview this came from, for the note the editor shows. */
   val previewId: String,
   /** Editor tab name, from the source path's basename (`FilledButton.kt`). */
@@ -273,6 +275,7 @@ class PlaygroundSeedResolver(
     val seed =
       PlaygroundSeed(
         catalog = system,
+        sourceModule = where.module,
         previewId = previewId,
         fileName = fileNameFor(where.sourceFile),
         text = cleaned?.text ?: sliced ?: text,

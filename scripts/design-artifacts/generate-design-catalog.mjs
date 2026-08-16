@@ -148,6 +148,8 @@ import {
   combinedBundleMap,
   combinedBundleEntries,
   generatedFallbackGroups,
+  moduleArtifactKey,
+  moduleIdentityPrefix,
   namespaceModuleRecords,
 } from "./multi-module-catalog.mjs";
 
@@ -333,12 +335,14 @@ function layoutByFunction(bundle) {
 function sourceByFunction(bundle) {
   const out = new Map();
   const prefer = (id) => /(_|\b)light$/i.test(id);
+  const module = bundleModulePath(bundle);
   for (const preview of bundle.previews ?? []) {
     const fn = preview.functionName ?? preview.id;
     if (out.has(fn) && !prefer(preview.id)) continue;
     if (preview.sourceFile)
-      out.set(fn, { sourceFile: preview.sourceFile, bodyLine: preview.bodyLine });
-    else if (!out.has(fn)) out.set(fn, { sourceFile: undefined, bodyLine: undefined });
+      out.set(fn, { sourceFile: preview.sourceFile, bodyLine: preview.bodyLine, module });
+    else if (!out.has(fn))
+      out.set(fn, { sourceFile: undefined, bodyLine: undefined, module });
   }
   return out;
 }
@@ -797,12 +801,9 @@ const { values } = parseArgs({
     // fetched from the same `bundle/` prefix the primary live bundle declares, so
     // without a declared liveBundle serve never opens the lane that would reach them.
     "extra-live-bundle": { type: "boolean", default: false },
-    // Optional buildable source for TRUSTED server-side re-render. When
-    // --source-module is given, a `source: {repo, ref, module}` is written into
-    // catalog.json so a `serve --allow-render-trusted` box (one with the toolchain
-    // to build it) can stand up a live, full-fidelity re-render of this catalog
-    // instead of replaying baked PNGs. Inert on the public desktop box (which never
-    // sets that flag).
+    // Optional source provenance. Repo + ref write `source` for GitHub links; adding
+    // --source-module also makes it buildable by a TRUSTED `serve --allow-render-trusted` box.
+    // Repository-wide catalogs omit the one catalog-level module and stamp it per component.
     "source-repo": { type: "string" },
     "source-ref": { type: "string" },
     "source-module": { type: "string" },
@@ -860,10 +861,17 @@ if (effectiveBreakpoints !== undefined) spec.breakpoints = effectiveBreakpoints;
 // the join folds a function's theme/size multipreview variants (whose ids differ
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
 // also works around the published null-widthDp crash) and the vendored join.
-const primaryRecord = await loadCandidates(rendersPath, spec.breakpoints);
+const primaryRecord = {
+  ...(await loadCandidates(rendersPath, spec.breakpoints)),
+  renderPath: rendersPath,
+};
 const additionalRecords = [];
 for (const path of values["additional-renders"] ?? []) {
-  additionalRecords.push(await loadCandidates(resolve(path), spec.breakpoints));
+  const renderPath = resolve(path);
+  additionalRecords.push({
+    ...(await loadCandidates(renderPath, spec.breakpoints)),
+    renderPath,
+  });
 }
 const moduleRecords = namespaceModuleRecords(primaryRecord, additionalRecords);
 let { candidates, bundle } = moduleRecords[0];
@@ -1331,12 +1339,18 @@ if (values["wasm-dist"]) {
 // systems whose bundle is a DESKTOP bundle serve can run (compose-m3); the
 // Android catalogs stay baked-PNG.
 let liveBundle = null;
+const liveBundles = [];
 if (values["publish-live-bundle"]) {
   const file = basename(rendersPath);
   const dest = join(outPath, "bundle", file);
   await mkdir(dirname(dest), { recursive: true });
   await cp(rendersPath, dest);
   liveBundle = { path: "bundle/", file };
+  liveBundles.push({
+    ...liveBundle,
+    module: bundleModulePath(moduleRecords[0].bundle),
+    previewIdPrefix: "",
+  });
   console.log(`[${spec.system}] carried live bundle → bundle/${file}`);
 
   // Lift the heavy font resources out of the carried bundle's classes/app.jar and publish them
@@ -1380,6 +1394,18 @@ if (values["publish-live-bundle"]) {
       `[${spec.system}] bundle externalize skipped (${err.message?.split("\n")[0] ?? err}) — ` +
         `publishing the self-contained bundle`,
     );
+  }
+
+  for (let index = 1; index < moduleRecords.length; index++) {
+    const record = moduleRecords[index];
+    const module = bundleModulePath(record.bundle);
+    const path = `bundle/modules/${moduleArtifactKey(module)}/`;
+    const file = basename(record.renderPath);
+    const dest = join(outPath, path, file);
+    await mkdir(dirname(dest), { recursive: true });
+    await cp(record.renderPath, dest);
+    liveBundles.push({ path, file, module, previewIdPrefix: moduleIdentityPrefix(module) });
+    console.log(`[${spec.system}] carried module live bundle ${module} → ${path}${file}`);
   }
 }
 
@@ -1427,6 +1453,7 @@ if (values["publish-live-bundle"]) {
   if (spec.display) manifest.display = spec.display;
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
+  if (liveBundles.length > 0) manifest.liveBundles = liveBundles;
   // Deferred (live-only) coverage, recorded alongside the baked components rather than inside
   // `components[].images` — an image with no `path` would reach every consumer that assumes
   // `images[]` is the baked sticker set (index.html, compare.html, matches.html, the per-variant
@@ -1483,15 +1510,16 @@ if (values["publish-live-bundle"]) {
         `route + daemon preview id (the live-only lane a trusted serve host registers them under)`,
     );
   }
-  // Buildable source for trusted server-side re-render (opt-in consumer side).
-  if (values["source-module"]) {
+  // Source provenance for links and, when module is non-empty, trusted server-side re-render.
+  // Repository-wide catalogs carry the repo/ref here and retain the owning module per component.
+  if (values["source-repo"] && values["source-ref"]) {
     manifest.source = {
-      repo: values["source-repo"] ?? "",
-      ref: values["source-ref"] ?? "",
-      module: values["source-module"],
+      repo: values["source-repo"],
+      ref: values["source-ref"],
+      module: values["source-module"] ?? "",
     };
     console.log(
-      `[${spec.system}] source → ${manifest.source.module}@${manifest.source.ref}`,
+      `[${spec.system}] source → ${manifest.source.module || "<per-preview module>"}@${manifest.source.ref}`,
     );
   }
   // Emit the catalog-id → daemon-id bridge whenever a live path can serve this catalog — a carried

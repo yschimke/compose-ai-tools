@@ -25,8 +25,8 @@ name: Design Artifacts (reusable)
 #
 # Bespoke lanes some catalogs add (e.g. compose-m3's re-theme fold-in, a Wasm
 # tier) are intentionally out of scope — a caller that needs them keeps its own
-# workflow. This covers single-module (± one extra module) catalogs and repository-wide baked
-# catalogs spanning every preview-enabled module.
+# workflow. This covers single-module (± one extra module) catalogs and repository-wide static or
+# multi-live-bundle catalogs spanning every preview-enabled module.
 
 on:
   workflow_call:
@@ -784,12 +784,8 @@ jobs:
             echo "::error title=all modules::render-shards currently shards one module; use 1 when publishing all modules."
             exit 1
           fi
-          if [ "$PUBLISH_LIVE_BUNDLE" = "true" ]; then
-            echo "::error title=all modules::publish-live-bundle requires one executable module bundle; repository-wide catalogs publish baked/static bundles."
-            exit 1
-          fi
-          if [ "$SPLIT_PER_PREVIEW" = "true" ] && [ "$SPLIT_MODE" != "view-only" ]; then
-            echo "::error title=all modules::repository-wide per-preview splits must use split-mode: view-only because there is no single live classpath."
+          if [ "$SPLIT_PER_PREVIEW" = "true" ] && [ "$SPLIT_MODE" != "view-only" ] && [ "$PUBLISH_LIVE_BUNDLE" != "true" ]; then
+            echo "::error title=all modules::repository-wide live per-preview splits require publish-live-bundle: true."
             exit 1
           fi
           compose-preview list --json > "$GITHUB_WORKSPACE/discovered-previews.json"
@@ -829,7 +825,8 @@ jobs:
               [ -n "$discovered_source" ] && args+=(--src "$discovered_source")
             done < "$GITHUB_WORKSPACE/preview-module-sources.txt"
             # One source.module cannot describe a repository-wide catalog. Keep validation honest:
-            # deferred coverage must not pass on a live path the generate step intentionally omits.
+            # deferred coverage needs the carried live bundles, while source modules are stamped
+            # per component after export.
             LIVE_SOURCE=false
           else
             args+=(--module-dir "$(to_dir "$MODULE")")
@@ -1009,7 +1006,12 @@ jobs:
             index=0
             while IFS= read -r discovered_module; do
               [ -z "$discovered_module" ] && continue
-              output="$GITHUB_WORKSPACE/module-bundles/$(printf '%04d' "$index").png"
+              if [ "$index" -eq 0 ]; then
+                output="$GITHUB_WORKSPACE/module-bundles/0000.png"
+              else
+                module_key="$(node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/module-artifact-key.mjs" --module "$discovered_module")"
+                output="$GITHUB_WORKSPACE/module-bundles/$module_key.png"
+              fi
               # The authored render filter belongs to the preferred/primary module. Every later
               # module is fallback inventory and must render in full; applying the primary's
               # function names there can fail on no match or silently thin unrelated previews.
@@ -1119,6 +1121,23 @@ jobs:
           path: ~/.cache/composeai/fonts
           key: composeai-fonts-${{ runner.os }}-${{ inputs.system }}-${{ github.run_id }}
 
+      # One executable bundle still owns exactly one Gradle module/classpath. Prefix every
+      # additional module's preview ids before publication so equal ids in two modules remain
+      # distinct daemon addresses. The primary stays unchanged for backwards compatibility.
+      - name: Namespace live module bundles
+        if: ${{ inputs.publish-live-bundle && (inputs.module == '' || inputs.modules == 'all') }}
+        run: |
+          set -euo pipefail
+          mapfile -t modules < "$GITHUB_WORKSPACE/preview-modules.txt"
+          for ((index = 1; index < ${#modules[@]}; index++)); do
+            module_key="$(node compose-ai-tools/scripts/design-artifacts/module-artifact-key.mjs --module "${modules[$index]}")"
+            bundle="$GITHUB_WORKSPACE/module-bundles/$module_key.png"
+            namespaced="$bundle.namespaced"
+            node compose-ai-tools/scripts/design-artifacts/namespace-live-bundle.mjs \
+              --input "$bundle" --output "$namespaced" --module "${modules[$index]}"
+            mv "$namespaced" "$bundle"
+          done
+
       - name: Generate importable catalog
         env:
           # The ref actually rendered (see "Check out the calling repo"). Empty ⇒ the
@@ -1145,7 +1164,9 @@ jobs:
             source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
             source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "$INPUT_MODULE")
           elif [ "$INPUT_LIVE_RERENDER_SOURCE" = "true" ]; then
-            echo "::notice title=All-module catalog::live-rerender-source is omitted because one source.module cannot represent multiple Gradle modules; baked previews are still published."
+            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
+            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}")
+            echo "::notice title=All-module catalog::source modules are recorded per preview; trusted live rendering uses the carried module bundles."
           fi
           incomplete=()
           if [ "$INPUT_ALLOW_INCOMPLETE" = "true" ]; then incomplete=(--allow-incomplete); fi
@@ -1215,10 +1236,18 @@ jobs:
           fi
           if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
             while IFS= read -r additional_bundle; do
-              module_index="$(basename "$additional_bundle" .png)"
-              compose-preview bundle split "$additional_bundle" --view-only \
-                -o "$GITHUB_WORKSPACE/out/bundle/previews/modules/$module_index"
-            done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name '*.png' ! -name '0000.png' | sort -V)
+              module_key="$(basename "$additional_bundle" .png)"
+              module_previews="$GITHUB_WORKSPACE/out/bundle/modules/$module_key/previews"
+              if [ "$INPUT_SPLIT_MODE" = "view-only" ]; then
+                compose-preview bundle split "$additional_bundle" --view-only \
+                  -o "$module_previews"
+              else
+                # Each module owns its classpath/resource closure. Additional-module splits remain
+                # self-contained instead of borrowing the primary module's external resource pool.
+                compose-preview bundle split "$additional_bundle" \
+                  -o "$module_previews"
+              fi
+            done < <(find "$GITHUB_WORKSPACE/module-bundles" -type f -name 'module_*.png' | sort)
           fi
           if [ -n "$INPUT_EXTRA_MODULE" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
             if [ "$INPUT_EXTRA_SPLIT_MODE" = "full" ]; then

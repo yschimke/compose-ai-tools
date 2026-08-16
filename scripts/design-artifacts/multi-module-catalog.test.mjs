@@ -8,8 +8,14 @@ import {
   combinedBundleMap,
   combinedBundleEntries,
   generatedFallbackGroups,
+  moduleArtifactKey,
   namespaceModuleRecords,
 } from "./multi-module-catalog.mjs";
+
+test("module artifact keys are stable and filesystem safe", () => {
+  assert.equal(moduleArtifactKey(":tv"), "module_3a7476");
+  assert.match(moduleArtifactKey(":feature:home"), /^module_[0-9a-f]+$/);
+});
 
 const record = (module, functions) => ({
   bundle: {
@@ -179,14 +185,21 @@ test("combined bundle metadata uses later-bundle precedence", () => {
   );
 });
 
-test("additional renders reject primary-only live publication modes", () => {
+test("additional renders allow live bundles but reject a single source module", () => {
   assert.deepEqual(
     additionalBundleLiveConflict({
       "additional-renders": ["feature.png"],
       "publish-live-bundle": true,
       "source-module": ":app",
     }),
-    ["--publish-live-bundle", "--source-module"],
+    ["--source-module"],
+  );
+  assert.equal(
+    additionalBundleLiveConflict({
+      "additional-renders": ["feature.png"],
+      "publish-live-bundle": true,
+    }),
+    null,
   );
   assert.equal(additionalBundleLiveConflict({ "additional-renders": ["feature.png"] }), null);
   assert.equal(additionalBundleLiveConflict({ "publish-live-bundle": true }), null);

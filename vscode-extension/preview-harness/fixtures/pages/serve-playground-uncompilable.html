@@ -231,7 +231,7 @@ fun MediaControlButtonsPlaying() {
   // The catalog selector. Each entry carries its own mode list because a catalog's bundle
   // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
   // catalog are not the same choice with a different classpath, they are different modes.
-  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true}]}").catalogs || [];
+  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true,\"system\":\"compose-m3\",\"module\":\"\"}]}").catalogs || [];
   var modeLabels = {"compose-cmp": "Compose (Desktop)", "compose-android": "Compose (Android)", "remote-compose": "Remote Compose"};
   function selectedCatalog() {
     var id = catalog ? catalog.value : "";
