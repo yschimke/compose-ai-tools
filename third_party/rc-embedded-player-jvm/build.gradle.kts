@@ -67,6 +67,10 @@ val sharedPlayerSources =
     "androidx/compose/remote/player/compose/embedded/RcImageSource.kt",
     // The expression evaluator itself, and the composition locals the state path reads.
     "androidx/compose/remote/player/compose/embedded/GraphContext.kt",
+    // The draw-nothing `PaintContext` the evaluator hands to value-producing paint operations
+    // (`ColorAttribute`). Neutral: it subclasses the `remote-core` abstract class and every member
+    // is a no-op, so there is no canvas of any kind to name.
+    "androidx/compose/remote/player/compose/embedded/GraphPaintContext.kt",
     "androidx/compose/remote/player/compose/embedded/RcPlayerCompositionLocals.kt",
     // Core easing constant -> Compose easing; split out of `RcPlayer.kt` so the expression
     // evaluator below doesn't inherit that file's Android coupling for a six-line `when`.

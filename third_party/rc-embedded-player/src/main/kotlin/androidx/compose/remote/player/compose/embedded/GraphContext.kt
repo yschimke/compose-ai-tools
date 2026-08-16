@@ -19,11 +19,13 @@
 package androidx.compose.remote.player.compose.embedded
 
 import androidx.compose.remote.core.Operation
+import androidx.compose.remote.core.PaintOperation
 import androidx.compose.remote.core.RemoteClock
 import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.core.VariableSupport
 import androidx.compose.remote.core.operations.FloatExpression
 import androidx.compose.remote.core.operations.ShaderData
+import androidx.compose.remote.core.operations.layout.Component
 import androidx.compose.remote.core.operations.utilities.ArrayAccess
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -32,8 +34,10 @@ import androidx.compose.runtime.derivedStateOf
  * A pure-Compose evaluator for *computed* operations (color/text/float/int expressions, attributes,
  * lookups) built out of `derivedStateOf` — no imperative recompute pass, no dirty flags.
  *
- * Each computed id resolves to a [derivedStateOf] that runs the op's existing `updateVariables` +
- * `apply` against **this** context. We intercept the two things an op does:
+ * Each computed id resolves to a [derivedStateOf] that runs the op's existing `updateVariables`
+ * against **this** context, then runs the op for its value — `apply`, or `paint` against a
+ * draw-nothing [GraphPaintContext] for the ops that publish from there instead (see [evaluate]). We
+ * intercept the two things an op does:
  * - **reads** (`getFloat`/`getInteger`/`getColor`/`getText`) — for a computed input we recurse into
  *   *its* `State` (so chains compose and only what's read recomputes); for a leaf we read the real
  *   snapshot-backed store via `super`, which records the snapshot dependency. So Compose discovers
@@ -115,7 +119,7 @@ internal class GraphContext(
           active += id
           try {
             if (op is VariableSupport) op.updateVariables(this) // reads inputs (tracked)
-            op.apply(this) // writes output -> captured
+            evaluate(op) // writes output -> captured
             captured.get()
           } finally {
             captureId.set(prevId)
@@ -126,6 +130,34 @@ internal class GraphContext(
       }
     return state.value
   }
+
+  /**
+   * Run [op] for its value, in whichever of the two channels it publishes through.
+   *
+   * Most computed ops write their result from `apply(RemoteContext)`, and that is all this used to
+   * do. But a value-producing [PaintOperation] (`ColorAttribute` above all) writes from
+   * `paint(PaintContext)` instead, and `PaintOperation.apply` forwards there only in
+   * `ContextMode.PAINT` with a paint context attached — so `apply` alone made those ops evaluate to
+   * nothing, and a colour built on one came out as 0: transparent. That is compose-ai-tools#3936's
+   * dropped tint. [GraphPaintContext] gives them the one thing they actually need — a context to
+   * read and write through — and drops every drawing call, so evaluating a value still cannot
+   * paint.
+   *
+   * Layout components are [PaintOperation]s too, and are deliberately *not* routed here: their
+   * `paint` renders a whole subtree rather than producing a value, and `apply` already does the
+   * right thing for them (it walks their children, which is how a component's contents get
+   * evaluated at all).
+   */
+  private fun evaluate(op: Operation) {
+    if (op is PaintOperation && op !is Component) op.paint(paintContext) else op.apply(this)
+  }
+
+  /**
+   * Shared because it is stateless — it holds a reference to this context and drops everything
+   * else, so there is nothing for concurrent or nested evaluations to race over. The capture
+   * bookkeeping that *is* stateful lives in the thread-locals above.
+   */
+  private val paintContext = GraphPaintContext(this)
 
   override fun getFloat(id: Int): Float =
     when {
