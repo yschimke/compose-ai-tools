@@ -7,15 +7,22 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 
 /**
  * Test fixtures for [DesktopInteractionRendererTest].
@@ -81,6 +88,35 @@ fun ExpandOnTap() {
     Box(modifier = Modifier.size(30.dp).background(Color.DarkGray).clickable { expanded = true })
     if (expanded) {
       Box(modifier = Modifier.size(width = 60.dp, height = 30.dp).background(Color.White))
+    }
+  }
+}
+
+/** A real separate-owner popup, used to prove the motion surface includes platform-hosted UI. */
+@Composable
+fun OpenPopupOnTap() {
+  var open by remember { mutableStateOf(false) }
+  Box(modifier = Modifier.size(30.dp).background(Color.DarkGray).clickable { open = true })
+  if (open) {
+    Popup(alignment = Alignment.TopStart, offset = IntOffset(40, 0)) {
+      Box(modifier = Modifier.size(30.dp).background(Color.White))
+    }
+  }
+}
+
+/** The real Material dialog API, not a catalog-owned Surface reconstruction. */
+@Composable
+fun OpenAlertDialogOnTap() {
+  var open by remember { mutableStateOf(false) }
+  Box(modifier = Modifier.size(30.dp).background(Color.DarkGray).clickable { open = true })
+  if (open) {
+    MaterialTheme {
+      AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Captured dialog") },
+        text = { Text("This content lives in the dialog owner.") },
+        confirmButton = { TextButton(onClick = {}) { Text("OK") } },
+      )
     }
   }
 }
