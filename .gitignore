@@ -41,6 +41,11 @@ vscode-extension/preview-harness/out/
 vscode-extension/spatial-fixtures/out/
 vscode-extension/preview-harness/test-results/
 vscode-extension/preview-harness/test-results-serve-lanes/
+# Playwright writes here when run from `vscode-extension/` rather than from the
+# harness directory — the sibling entries above only cover the latter, so two
+# failure artifacts were committed and then outlived the failure by months,
+# answering codebase greps with phantom hits from a run nobody remembers.
+vscode-extension/test-results/
 # Live XR spatial capture — generated in CI (render-xr-composite) from the real
 # composePreviewRenderXr output; never committed (the committed proxy is spatial-rich).
 vscode-extension/preview-harness/fixtures/spatial-xr-real.json
