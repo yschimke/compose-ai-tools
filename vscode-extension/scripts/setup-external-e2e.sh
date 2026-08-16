@@ -139,4 +139,18 @@ PY
 # across Gradle / AGP versions.
 echo "sdk.dir=$android_sdk_dir" > "$target_dir/local.properties"
 
+# This external smoke asserts that at least one preview renders through the
+# published-plugin path; it deliberately does not require every third-party
+# preview to be self-contained. Confetti currently includes an activity preview
+# that expects Koin application startup, so keep its per-preview error visible
+# without letting upstream application setup abort the plugin integration test.
+gradle_properties="$target_dir/gradle.properties"
+if grep -q '^composePreview\.missingRenders=' "$gradle_properties" 2>/dev/null; then
+  sed -i.bak 's/^composePreview\.missingRenders=.*/composePreview.missingRenders=warn/' \
+    "$gradle_properties"
+  rm -f "$gradle_properties.bak"
+else
+  printf '\ncomposePreview.missingRenders=warn\n' >> "$gradle_properties"
+fi
+
 echo "$target_dir"

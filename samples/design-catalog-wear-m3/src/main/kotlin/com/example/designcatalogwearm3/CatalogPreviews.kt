@@ -1,6 +1,8 @@
 package com.example.designcatalogwearm3
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,8 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -643,10 +648,11 @@ fun TextMaxLinesTruncated() = WearSticker {
 // traversal and flips `LocalInputModeManager` to Keyboard mode — which Robolectric
 // needs, since its host environment is permanently Touch and `Modifier.clickable`
 // registers its focusable as `Focusability.SystemDefined` (refused while in touch
-// mode). `pressed = true` additionally dispatches a real indirect-pointer Press
-// onto whatever the focus walk landed on, so the pressed state layer is raised by
-// the component's own interaction source. `indices = [0]` is the single Button in
-// the sticker; a single-capture `@FocusedPreview` keeps the plain
+// mode). Wear M3's `combinedClickable` does not expose a reliable synthetic input
+// path under Robolectric, so the pressed specimen seeds its interaction source
+// directly while the focused specimen continues to use real focus traversal.
+// `indices = [0]` is the single Button in the focused sticker; a single-capture
+// `@FocusedPreview` keeps the plain
 // `renders/<id>.png` filename (see `emitStaticCross` in PreviewDiscovery.kt), so
 // the design-artifacts fold by function name is untouched.
 //
@@ -657,15 +663,22 @@ fun TextMaxLinesTruncated() = WearSticker {
 @CatalogVariant(
   of = "Button/Filled",
   state = "pressed",
-  caption = "Real focused key press → pressed state layer.",
+  caption = "Held PressInteraction → pressed state layer.",
 )
 @CatalogWearModes
-@FocusedPreview(indices = [0], pressed = true)
 @Composable
 fun ButtonPressed() = WearSticker {
   val (label, onClick) =
     wearCounted(previewOverrideString("label", stringResource(R.string.label_pressed)))
-  Button(onClick = onClick) { Text(label) }
+  Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
+}
+
+/** Seeds a held press because Robolectric cannot drive Wear M3's focused key path reliably. */
+@Composable
+private fun pressedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
+  return source
 }
 
 @CatalogVariant(
