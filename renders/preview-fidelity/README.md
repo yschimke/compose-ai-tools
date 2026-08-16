@@ -13,14 +13,15 @@ pristine worktree; every "after" from the branch, through the same
 | `m3-focus-ring-before.png` | `FilledButtonFocused` driven by a hand-emitted `FocusInteraction.Focus`: a hairline outline. |
 | `m3-focus-ring-after.png` | The same sticker under `@FocusedPreview(indices = [0])` — real focus traversal raises the full M3 inset focus ring. |
 | `wear-focused-before.png` / `wear-focused-after.png` | Wear `Button/Filled` `focused`. Real focus produces a stronger state layer (`#E2D5F8` → `#D4C8EC`) than the forged interaction did. |
-| `wear-pressed-unchanged.png` | Wear `Button/Filled` `pressed`, deliberately **not** converted — see below. |
+| `wear-pressed-unchanged.png` | Historical Wear `Button/Filled` `pressed` evidence from before the focused-key fallback fixed the renderer path. |
+| `wear-pressed-after.png` | Wear `Button/Filled` `pressed` through `@FocusedPreview(pressed = true)` after the focused-key fallback. Its container is `#C2B5DB`, distinct from focus-only `#D4C8EC`. |
 | `widget-clamped-before.png` / `widget-clamped-after.png` | `LauncherWidgetClampedPreview` picking up the production condition string after the RemoteViews factory was shared. |
 | `placeholder-override-driven-new.png` | New preview: `PlaceholderCardOverrideDriven`, the preview-only wrapper that keeps the live `placeholderActive` override lane exercised. |
 | `cmp-focused-before.png` / `cmp-focused-after.png` | CMP/desktop `Button/Filled` `keyboard-focus`. Before: the forged `FocusInteraction.Focus` rendered **nothing** — `#6750A4`, the resting container colour. After, under `@FocusedPreview(indices = [0])`: `#7661AD`, the real focus state layer. |
 | `cmp-pressed-before.png` / `cmp-pressed-after.png` | CMP/desktop `Button/Filled` `pressed`. Before: also `#6750A4` — indistinguishable from resting. After, under `@FocusedPreview(indices = [0], pressed = true)`: `#8471B5`, the pressed state layer raised by a real pointer down. |
 | `cmp-resting-reference.png` | The plain `Button/Filled` sticker, unchanged, at `#6750A4` — the control that makes the two "before" captures legible as *no state at all*. |
 
-## Why the Wear `pressed` sticker was not converted
+## Why the Wear `pressed` sticker originally needed a fallback
 
 `@FocusedPreview(indices = [0], pressed = true)` was tried on it and measured.
 The resulting capture was pixel-identical to the focus-only one across the whole
@@ -28,10 +29,12 @@ button container (both `#D4C8EC`), differing **only** in the label glyphs — th
 indirect-pointer Press does not reach Wear M3's `Button` interaction source, so
 the capture documented *focus*, not press.
 
-Publishing that under `state = "pressed"` would have been the same class of
-defect #3676 exists to remove: a capture whose label promises a state the render
-does not establish. The sticker keeps its held `MutableInteractionSource` as a
-marked stopgap instead, and stays byte-identical to `main`.
+Wear M3's `Button` uses `combinedClickable`, which does not consume the
+indirect-pointer event. The renderer now checks whether the indirect event was
+handled and, when it was not, holds a focus-targeted `DPAD_CENTER` key-down.
+`combinedClickable` consumes that ordinary Wear input channel and emits the
+component's real pressed interaction, so the catalog no longer needs its held
+`MutableInteractionSource` stopgap.
 
 The Android M3 focus ring (`m3-focus-ring-after.png`) is the counter-example
 showing the mechanism does work where the component cooperates.
