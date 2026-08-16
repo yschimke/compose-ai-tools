@@ -46,8 +46,8 @@ import androidx.compose.remote.player.compose.embedded.RcPlayerRawDocument
 import androidx.compose.remote.player.compose.embedded.RcPlayerRootLayoutComponent
 import androidx.compose.remote.player.compose.embedded.SnapshotRemoteComposeState
 import androidx.compose.remote.player.compose.embedded.applyDataOperationsWithoutBitmaps
-import androidx.compose.remote.player.compose.embedded.applyOperationsWithoutBitmaps
 import androidx.compose.remote.player.compose.embedded.applyOperationsReflection
+import androidx.compose.remote.player.compose.embedded.applyOperationsWithoutBitmaps
 import androidx.compose.remote.player.compose.embedded.buildComputedOpIndex
 import androidx.compose.remote.player.compose.embedded.getOperationsReflection
 import androidx.compose.remote.player.compose.embedded.recollectCollectionsReflection

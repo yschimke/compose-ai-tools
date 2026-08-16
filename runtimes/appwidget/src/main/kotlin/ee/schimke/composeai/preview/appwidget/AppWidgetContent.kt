@@ -3,6 +3,7 @@ package ee.schimke.composeai.preview.appwidget
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -100,12 +101,27 @@ internal fun translate(context: Context, info: AppWidgetProviderInfo): LauncherW
   // bound the supported-cells rectangle on the top end; missing values fall back to the
   // platform default (no upper cap → use `minResize` as the only declared size).
   val minWidthCells =
-    if (info.targetCellWidth > 0) info.targetCellWidth else pxToCells(info.minResizeWidth, density)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && info.targetCellWidth > 0) {
+      info.targetCellWidth
+    } else {
+      pxToCells(info.minResizeWidth, density)
+    }
   val minHeightCells =
-    if (info.targetCellHeight > 0) info.targetCellHeight
-    else pxToCells(info.minResizeHeight, density)
-  val maxWidthCells = pxToCells(info.maxResizeWidth, density).coerceAtLeast(minWidthCells)
-  val maxHeightCells = pxToCells(info.maxResizeHeight, density).coerceAtLeast(minHeightCells)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && info.targetCellHeight > 0) {
+      info.targetCellHeight
+    } else {
+      pxToCells(info.minResizeHeight, density)
+    }
+  val maxWidthPx =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) info.maxResizeWidth else info.minResizeWidth
+  val maxHeightPx =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      info.maxResizeHeight
+    } else {
+      info.minResizeHeight
+    }
+  val maxWidthCells = pxToCells(maxWidthPx, density).coerceAtLeast(minWidthCells)
+  val maxHeightCells = pxToCells(maxHeightPx, density).coerceAtLeast(minHeightCells)
 
   val resizeAxes =
     when {
