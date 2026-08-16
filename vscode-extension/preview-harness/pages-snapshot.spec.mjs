@@ -478,14 +478,10 @@ const FIXTURE_STATES = [
             // the full state. An unlinked one would shoot the degenerate half of the same card.
             await page.hover('.cp-page-node[data-link="manifest"]');
             await page.waitForSelector(".cp-page-tip:not([hidden]) .cp-page-tip-card");
-            // The overlay is a real link now — that is what makes clicking it GO, and what makes a
-            // middle click, a modifier click and the status-bar preview work. A `<button>` here
-            // would pass every pixel assertion and none of that.
-            const tag = await page.locator('.cp-page-node[data-link="manifest"]').first().evaluate(
-                (el) => el.tagName.toLowerCase() + "|" + (el.getAttribute("href") || ""),
-            );
-            expect(tag.startsWith("a|")).toBe(true);
-            expect(tag).toContain("/p/");
+            // The overlay being a real anchor — which is what makes clicking it GO, and what makes
+            // a middle click, a modifier click and the status-bar preview work — is server-rendered
+            // markup, so it is asserted in `ServeWebFixtureTest` against the emitted HTML rather
+            // than by hovering a node and reading attributes back out of a browser.
         },
     },
     {
@@ -745,20 +741,11 @@ const FIXTURE_STATES = [
             });
             await page.evaluate(() => document.activeElement?.blur());
             await page.waitForFunction(() => document.querySelector("cp-page-zoom").hidden);
-            // Back to the IDENTITY, not merely to something small: a reset that left a residual
-            // translate would look right in a screenshot and mis-place every overlay measured after
-            // the next resize. Asserted on the computed transform rather than by comparing the
-            // canvas's box to the stage's — those legitimately differ by the stage's border.
-            const view = await page.evaluate(() => {
-                const canvas = document.querySelector(".cp-page-canvas");
-                const stage = document.querySelector(".cp-page-stage");
-                return {
-                    transform: getComputedStyle(canvas).transform,
-                    zoom: stage.style.getPropertyValue("--cp-page-zoom"),
-                };
-            });
-            expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(view.transform);
-            expect(parseFloat(view.zoom)).toBe(1);
+            // Returning to the IDENTITY — rather than merely to something small, which would look
+            // right here and mis-place every overlay measured after the next resize — is pinned in
+            // `cli/serve-web/test/pageZoom.test.ts`, which asserts the view state itself and covers
+            // reset from a wheel zoom as well as from a framed section. This state exists for the
+            // picture: the bar gone, the sheet back at 1:1.
         },
     },
     {

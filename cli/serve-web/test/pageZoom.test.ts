@@ -326,12 +326,30 @@ describe("<cp-page-zoom>", () => {
         await flush();
         assert.deepEqual(view(), { scale: 1, x: 0, y: 0 });
         assert.equal(el<HTMLElement>("cp-page-zoom").hidden, true);
-        assert.equal(
-            el<HTMLElement>(".cp-page-stage").classList.contains(
-                "cp-page-zoomed",
-            ),
-            false,
-        );
+        const stage = el<HTMLElement>(".cp-page-stage");
+        assert.equal(stage.classList.contains("cp-page-zoomed"), false);
+        // The published scale goes back to 1 as well. The stylesheet counter-scales every node's
+        // mark by it, so a reset that restored the view and left the variable behind would draw
+        // hairlines at the old zoom over a sheet at 1:1 — a residue no view assertion can see.
+        // Compared as the published STRING, with no `|| 1` fallback: a reset that published `0`,
+        // an empty value or `NaN` would parse-or-default its way past a numeric check while the
+        // counter-scaling stayed broken.
+        assert.equal(stage.style.getPropertyValue("--cp-page-zoom"), "1");
+    });
+
+    it("resets from a WHEEL zoom too, not only from a framed section", async () => {
+        // The capture that used to assert this could only afford one route in. Reset is reachable
+        // from a continuous wheel zoom as well as a discrete double-click frame, and the two arrive
+        // at the view through different code — `zoomAbout` versus `frameRect`.
+        await mount();
+        wheel(at(320, 215), -120, true);
+        wheel(at(320, 215), -120, true);
+        await flush();
+        assert.ok(view().scale > 1, "the wheel zoomed");
+        el<HTMLButtonElement>("[data-cp-page-zoom-reset]").click();
+        await flush();
+        assert.deepEqual(view(), { scale: 1, x: 0, y: 0 });
+        assert.equal(el<HTMLElement>("cp-page-zoom").hidden, true);
     });
 
     it("zooms in and out a notch from the corner buttons", async () => {

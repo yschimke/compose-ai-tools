@@ -1875,6 +1875,39 @@ class ServeWebFixtureTest {
         version = version,
       )
 
+    // A node with code behind it is an ANCHOR, not a button or a bare div. That is what makes
+    // clicking it navigate, a middle click open a tab, a modifier click do what the reader's
+    // platform says, and the status bar preview the destination — none of which a `<button>` with a
+    // click handler gives you, and all of which a screenshot passes without.
+    //
+    // Asserted here rather than in the harness because it is server-rendered markup: the capture
+    // that used to hold it had to hover a node, wait for a tooltip and evaluate in a browser to
+    // read two attributes off the emitted HTML.
+    assertTrue(
+      Regex("""<a class="cp-page-node" [^>]*href="[^"]*/p/[^"]*"""")
+        .containsMatchIn(designPageHtml),
+      "a node with a renderable preview is emitted as an anchor to it",
+    )
+    // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
+    // tag is the same; only the target differs, so a reader never meets a node that looks
+    // navigable and is not.
+    //
+    // Matched on THAT node (`1:6`, the fixture's unlinked shape) rather than on "some anchor
+    // exists and no span does": the renderable nodes satisfy a bare existence check on their own,
+    // so this one could regress to a div and go unnoticed.
+    val unlinkedNode =
+      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:6"[^>]*>""").find(designPageHtml)
+    assertTrue(unlinkedNode != null, "the unlinked node 1:6 is emitted at all")
+    assertEquals(
+      "a",
+      unlinkedNode!!.groupValues[1],
+      "an unlinked node stays an anchor rather than becoming inert",
+    )
+    assertTrue(
+      unlinkedNode.value.contains("href=\"https://www.figma.com/"),
+      "…and its destination is the design file, the only link it has",
+    )
+
     val designPageIndex =
       ServeWeb.designPagesIndexPage(
         moduleLabel = "compose-m3",
