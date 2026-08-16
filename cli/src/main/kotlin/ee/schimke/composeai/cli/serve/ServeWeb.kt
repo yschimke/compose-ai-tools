@@ -8797,10 +8797,22 @@ $rows
     // live/interactive, with its status dot as the live indicator. viewer.js drives both from one
     // lane value (`syncLaneSelect`), so the two can never disagree about what's on the stage.
     val rcEnabled = enabledRcPlayers.toSet()
-    // The lane the viewer opens on for a Remote Compose preview: the server-side `java` player when
-    // it's available (the default snapshot lane), else the client `js` canvas.
+    // The lane the viewer opens on for a Remote Compose preview: the server-side `cmp-android`
+    // (embedded) player when it's available, else `java`, else the client `js` canvas.
+    //
+    // The payoff is the data tier rather than the pixels (#3936). `java` is
+    // `AndroidView { RemoteComposePlayer }`, so a whole document reaches Compose as one interop
+    // leaf: `compose/figma-svg` exports it as a single raster wearing an `.svg` extension, and the
+    // semantics tree describes a black box. The embedded player emits real Compose nodes, so the
+    // same document exports editable geometry and describes the card.
+    //
+    // The two lanes were measured over all 164 documents of the homeassistant catalog before this
+    // moved (`renders/rc-embedded-lane-ab/`): 34 byte-identical, and the residual is overwhelmingly
+    // text rasterization — Skia and the Android canvas hint glyphs differently, which no amount of
+    // player work removes. `?rcPlayer=java` still selects the old lane for anything that needs it.
     val defaultRcBackend =
       when {
+        RcPlayerBackend.CMP_ANDROID.wire in rcEnabled -> RcPlayerBackend.CMP_ANDROID.wire
         RcPlayerBackend.JAVA.wire in rcEnabled -> RcPlayerBackend.JAVA.wire
         RcPlayerBackend.JS.wire in rcEnabled -> RcPlayerBackend.JS.wire
         else -> enabledRcPlayers.firstOrNull().orEmpty()
