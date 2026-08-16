@@ -31,6 +31,9 @@ package ee.schimke.composeai.preview
  * * [referenceContentsOnly] defaults to true. Set it to false only when the referenced Figma node
  *   intentionally relies on overlapping sheet content, such as an authored backdrop. Keeping this
  *   next to [reference] avoids changing unrelated previews on the same component sheet.
+ * * [kitAxis] defaults to empty. Set it when every override variant on this component uses the same
+ *   design-kit property, so individual [OverrideVariant] cells only need to name exceptional axes
+ *   or values.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -115,6 +118,8 @@ annotation class CatalogComponent(
   val referenceSet: String = "",
   val noReference: String = "",
   val referenceContentsOnly: Boolean = true,
+  /** Default design-kit variant property for this component's override-variant cells. */
+  val kitAxis: String = "",
 )
 
 /**

@@ -89,6 +89,22 @@ package ee.schimke.composeai.preview
  *
  * Resolution walks the whole meta-annotation closure, so an annotation class that is itself tagged
  * with another one contributes both sets.
+ *
+ * ## Design-kit correspondence
+ *
+ * [kitAxis] names the design-kit variant property that the seeded knob represents when its name is
+ * different or ambiguous. [kitValue] optionally names this cell's kit-side value too. Both are
+ * metadata only: they do not change the preview override seed. A component whose cells all use the
+ * same property can declare the default once with [CatalogComponent.kitAxis].
+ *
+ * ```
+ * @OverrideVariant(
+ *   name = "avatar",
+ *   strings = ["content=avatar"],
+ *   kitAxis = "Show avatar",
+ *   kitValue = "True",
+ * )
+ * ```
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)
@@ -123,6 +139,10 @@ annotation class OverrideVariant(
   val floats: Array<String> = [],
   /** Colour knob seeds, each `"key=#AARRGGBB"` (or `#RRGGBB`; or `"key#index=…"`). */
   val colors: Array<String> = [],
+  /** Design-kit variant property this cell maps to; empty keeps downstream name matching. */
+  val kitAxis: String = "",
+  /** Design-kit value this cell maps to; empty keeps downstream value matching. */
+  val kitValue: String = "",
 )
 
 /** Harness-driven state for an addressable [OverrideVariant]. */

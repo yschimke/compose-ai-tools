@@ -21,6 +21,7 @@ class CatalogEntryWireTest {
               "role": "COMPONENT",
               "componentId": "Button/Filled",
               "parallel": "FilledButton",
+              "kitAxis": "Configuration",
               "referenceContentsOnly": false
             }
           }]
@@ -30,6 +31,7 @@ class CatalogEntryWireTest {
       )
 
     assertEquals("FilledButton", manifest.previews.single().catalog?.parallel)
+    assertEquals("Configuration", manifest.previews.single().catalog?.kitAxis)
     assertEquals(false, manifest.previews.single().catalog?.referenceContentsOnly)
   }
 
