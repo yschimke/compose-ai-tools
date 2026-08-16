@@ -48,7 +48,18 @@ function whenReady(fn: () => void): void {
  * value is quoted into a public issue body while this one only ever reaches this server.
  */
 export function installBugReportLink(): void {
-    whenReady(fillBugReportLink);
+    whenReady(() => {
+        fillBugReportLink();
+        // …and again at SUBMIT, which is the only moment that actually matters. The fields describe
+        // the address bar, and `installUrlState` rewrites it with `pushState`/`replaceState` every
+        // time a knob, device, theme or history step changes the selection — so a value frozen at
+        // load describes the page as it was opened, not as it was when the visitor decided
+        // something was wrong. That would report and re-render the wrong overrides through the
+        // server's own override propagation, which is the whole point of carrying `from`.
+        document
+            .querySelector<HTMLFormElement>(".cp-report-bug")
+            ?.addEventListener("submit", fillBugReportLink);
+    });
 }
 
 /** The fill itself, separated from the scheduling so tests can drive it against a built DOM. */

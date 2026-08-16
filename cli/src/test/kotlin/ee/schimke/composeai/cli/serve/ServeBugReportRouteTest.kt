@@ -150,6 +150,32 @@ class ServeBugReportRouteTest {
   }
 
   @Test
+  fun `the server's own pages are never attributed to the default catalog`() {
+    // `/`, `/status`, `/docs/…` and a 404 belong to the BOX, not to a system. Falling back to the
+    // default session for them would attach that catalog's provenance, trust and render lane to a
+    // report about the front door.
+    server = newServer(public = true, token = "unused")
+    for (path in listOf("%2F", "%2Fstatus", "%2Fdocs%2Fsomething")) {
+      val (_, body) = get("/report-bug?from=$path")
+      assertFalse(body.contains("<th scope=\"row\">Design system</th>"), "$path: $body")
+      assertFalse(body.contains("<th scope=\"row\">Catalog</th>"), "$path: $body")
+    }
+  }
+
+  @Test
+  fun `a path naming an unknown system is not re-attributed to the default one`() {
+    // `ref.system` is set but unknown. Falling through to the default session would let a
+    // same-named preview there be matched and rendered as if it were the reported one.
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fnot-a-system%2Fp%2FRed")
+    assertFalse(body.contains("<th scope=\"row\">Design system</th>"), body)
+    assertFalse(body.contains("<th scope=\"row\">Preview</th>"), body)
+    assertFalse(body.contains("render/Red.png"), body)
+    // The path itself is still reported — that IS where the visitor was.
+    assertTrue(body.contains("/not-a-system/p/Red"), body)
+  }
+
+  @Test
   fun `an off-origin from is refused rather than echoed into the page or the report`() {
     server = newServer(public = true, token = "unused")
     val (code, body) = get("/report-bug?from=https%3A%2F%2Fevil.example%2Fphish")

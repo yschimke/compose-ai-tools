@@ -3460,7 +3460,15 @@ class ServeHttpServer(
     val system =
       siteSystem()
         ?: ref.system?.takeIf { sessions.isKnownSession(it) }
-        ?: fromSessionId(from)?.takeIf { sessions.isKnownSession(it) }
+        // ROOT-FORM ONLY, and both halves of that guard are load-bearing. `ref.system == null`
+        // keeps a path that DID name a system — an unknown or misspelled one — from being
+        // silently re-attributed to the default catalog, which would attach that catalog's
+        // provenance and trust, and could even match a same-named preview in it. `previewSegment
+        // != null` keeps the server's own pages (`/`, `/status`, `/docs/…`, a 404) from claiming
+        // to belong to the default catalog at all: they belong to the box, not to a system.
+        ?: if (ref.system == null && ref.previewSegment != null) {
+          fromSessionId(from)?.takeIf { sessions.isKnownSession(it) }
+        } else null
     // Resident host when there is one. `peekHost` deliberately never resumes a suspended catalog,
     // so an idle-timed-out session reads as null here — the last-known snapshot below is what keeps
     // the report from silently losing a still-registered catalog's provenance and trust.

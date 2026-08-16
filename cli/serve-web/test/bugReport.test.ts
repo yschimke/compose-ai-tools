@@ -101,6 +101,30 @@ describe("the footer's report-a-bug form", () => {
         assert.equal(value(form, "from"), "/compose-m3/p/button?uiMode=dark");
     });
 
+    it("re-reads the address bar at submit, not just at load", () => {
+        // `installUrlState` rewrites the URL as knobs change, so a value frozen at DOMContentLoaded
+        // describes the page as it was OPENED — not as it was when the visitor decided something
+        // was wrong. That would carry the wrong overrides into the server's render propagation.
+        at("/compose-m3/p/button?uiMode=light");
+        document.body.innerHTML = "";
+        Object.defineProperty(document, "readyState", {
+            value: "complete",
+            configurable: true,
+        });
+        const form = footerForm();
+        installBugReportLink();
+        assert.equal(value(form, "from"), "/compose-m3/p/button?uiMode=light");
+        // The visitor turns a knob; the viewer pushes the new state into the address bar.
+        at("/compose-m3/p/button?uiMode=dark&device=pixel_7");
+        form.dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true }),
+        );
+        assert.equal(
+            value(form, "from"),
+            "/compose-m3/p/button?uiMode=dark&device=pixel_7",
+        );
+    });
+
     it("records the scheme the reported page is painted in, not the OS preference", () => {
         // A catalog that pinned dark chrome on a light OS is the exact case a visual bug report
         // has to carry; the report page cannot recover it, because it has a scheme of its own.
