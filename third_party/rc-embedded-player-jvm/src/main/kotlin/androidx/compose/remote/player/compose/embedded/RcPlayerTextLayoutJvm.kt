@@ -28,8 +28,14 @@ import androidx.compose.remote.player.compose.embedded.state.rememberRemoteStrin
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import ee.schimke.composeai.rcembedded.jvm.GoogleFontTypefaceResolver
 import androidx.compose.ui.text.font.FontStyle
@@ -40,17 +46,23 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import java.text.BreakIterator
+import java.util.Locale
 
 /*
  * The jvm counterpart of `RcPlayerTextLayout.kt`'s two `RcPlayerText` composables. The size, weight,
  * slant, colour, alignment, overflow, decoration, letter-spacing and line-height handling are all
  * verbatim — they use only multiplatform Compose text APIs and desktop `material3.Text`. The known
- * backend exception is start/middle ellipsis: current Skiko paints both as end ellipsis (tracked in
- * compose-ai-tools#3662). Font family resolution also differs: Android resolves `google:`
- * families through GMS downloadable fonts and `device:` / variation-axis families through the
- * platform device-font loader (`DeviceFontFamilyName`), neither of which exists off Android.
+ * Skiko still paints Compose's start/middle overflow values as end ellipsis, so this seam resolves
+ * those two one-line modes synchronously before handing the line to `Text`. Font family resolution
+ * also differs: Android resolves `google:` families through GMS downloadable fonts and `device:` /
+ * variation-axis families through the platform device-font loader (`DeviceFontFamilyName`),
+ * neither of which exists off Android.
  *
  * A `google:` family is no longer substituted: [GoogleFontTypefaceResolver] downloads it into the
  * shared machine-local font cache — the same `(family, weight, italic) -> File` resolution the
@@ -108,29 +120,56 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
             else -> TextDecoration.None
         }
 
-    Text(
+    val textStyle =
+        baseStyle.copy(
+            color = color,
+            fontSize = fontSizeSp,
+            fontWeight = fontWeight,
+            fontFamily = fontFamily,
+            fontStyle = fontStyle,
+            textAlign =
+                if (data.justificationMode == 1) TextAlign.Justify else when (data.textAlignValue) {
+                    CoreText.TEXT_ALIGN_LEFT -> TextAlign.Left
+                    CoreText.TEXT_ALIGN_RIGHT -> TextAlign.Right
+                    CoreText.TEXT_ALIGN_CENTER -> TextAlign.Center
+                    // AndroidX Java maps this field to ALIGN_NORMAL. Actual justification is the
+                    // separate CoreText property 17 (justificationMode).
+                    CoreText.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
+                    CoreText.TEXT_ALIGN_START -> TextAlign.Start
+                    CoreText.TEXT_ALIGN_END -> TextAlign.End
+                    else -> TextAlign.Start
+                },
+            letterSpacing = data.letterSpacing.em,
+            lineHeight =
+                if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
+                    if (data.autosize) {
+                        (data.lineHeightMultiplier + data.lineHeightAdd / fontSize.coerceAtLeast(0.0001f)).em
+                    } else {
+                        with(density) { (fontSize * data.lineHeightMultiplier + data.lineHeightAdd).toSp() }
+                    }
+                } else {
+                    TextUnit.Unspecified
+                },
+            textDecoration = textDecoration,
+            // Unset means `Unspecified`, not "inherit": a document that says nothing about line
+            // breaking must not pick up Material3's line-break role from the host (#3667).
+            lineBreak =
+                when (data.lineBreakStrategy) {
+                    1 -> LineBreak.Paragraph
+                    2 -> LineBreak.Heading
+                    else -> LineBreak.Unspecified
+                },
+            hyphens = if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.Unspecified,
+        )
+    SynchronousOneLineEllipsisText(
         text = text,
         modifier = modifier,
-        color = color,
-        fontSize = fontSizeSp,
-        fontWeight = fontWeight,
-        fontFamily = fontFamily,
-        fontStyle = fontStyle,
-        textAlign =
-            if (data.justificationMode == 1) TextAlign.Justify else when (data.textAlignValue) {
-                CoreText.TEXT_ALIGN_LEFT -> TextAlign.Left
-                CoreText.TEXT_ALIGN_RIGHT -> TextAlign.Right
-                CoreText.TEXT_ALIGN_CENTER -> TextAlign.Center
-                // AndroidX Java maps this field to ALIGN_NORMAL. Actual justification is the
-                // separate CoreText property 17 (justificationMode).
-                CoreText.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
-                CoreText.TEXT_ALIGN_START -> TextAlign.Start
-                CoreText.TEXT_ALIGN_END -> TextAlign.End
-                else -> TextAlign.Start
-            },
+        overflow = composeOverflow(data.overflow),
+        maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
+        measureStyle = textStyle,
         autoSize =
             if (data.autosize) {
-                TextAutoSize.StepBased(
+                SynchronousAutoSize(
                     minFontSize = with(density) { resolvedMinFontSize.toSp() },
                     maxFontSize = with(density) { resolvedMaxFontSize.toSp() },
                     stepSize = with(density) { 0.5f.toSp() },
@@ -138,42 +177,27 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
             } else {
                 null
             },
-        overflow = composeOverflow(data.overflow),
-        maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
-        letterSpacing = data.letterSpacing.em,
-        lineHeight =
-            if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
-                if (data.autosize) {
-                    (data.lineHeightMultiplier + data.lineHeightAdd / fontSize.coerceAtLeast(0.0001f)).em
+    ) { displayText, displayModifier, displayOverflow, resolvedFontSize ->
+        Text(
+            text = displayText,
+            modifier = displayModifier,
+            autoSize =
+                if (data.autosize && resolvedFontSize == null) {
+                    TextAutoSize.StepBased(
+                        minFontSize = with(density) { resolvedMinFontSize.toSp() },
+                        maxFontSize = with(density) { resolvedMaxFontSize.toSp() },
+                        stepSize = with(density) { 0.5f.toSp() },
+                    )
                 } else {
-                    with(density) { (fontSize * data.lineHeightMultiplier + data.lineHeightAdd).toSp() }
-                }
-            } else {
-                TextUnit.Unspecified
-            },
-        textDecoration = textDecoration,
-        // Only the properties the document actually sets are overridden. Building a fresh
-        // `TextStyle` here instead — and in particular pinning `LineBreak.Simple` for the default
-        // strategy rather than leaving it unspecified — remeasured every text in every document,
-        // not just the ones using these properties: it grew the AppCard fixture's card by 3px and
-        // moved its clip rect (#3667).
-        //
-        // Unset means `Unspecified`, not "inherit": a document that says nothing about line
-        // breaking must not pick up a host's `LineBreak.Heading` (Material3 sets one per type role)
-        // just because the player happens to be composed inside a slot that provides a text style.
-        // Every other property still rides on the ambient style.
-        style =
-            baseStyle.copy(
-                lineBreak =
-                    when (data.lineBreakStrategy) {
-                        1 -> LineBreak.Paragraph
-                        2 -> LineBreak.Heading
-                        else -> LineBreak.Unspecified
-                    },
-                hyphens =
-                    if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.Unspecified,
-            ),
-    )
+                    null
+                },
+            overflow = displayOverflow,
+            maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
+            style =
+                if (resolvedFontSize == null) textStyle
+                else textStyle.copy(fontSize = resolvedFontSize),
+        )
+    }
 }
 
 @Composable
@@ -206,27 +230,215 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
             variationSettings = null,
         )
 
-    Text(
-        text = text,
-        modifier = modifier,
-        color = color,
-        fontSize = fontSizeSp,
-        fontWeight = fontWeight,
-        fontFamily = fontFamily,
-        fontStyle = fontStyle,
-        textAlign =
-            when (data.textAlignValue) {
+    val textAlign =
+        when (data.textAlignValue) {
                 TextLayout.TEXT_ALIGN_LEFT -> TextAlign.Left
                 TextLayout.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 TextLayout.TEXT_ALIGN_CENTER -> TextAlign.Center
                 TextLayout.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
                 TextLayout.TEXT_ALIGN_START -> TextAlign.Start
                 TextLayout.TEXT_ALIGN_END -> TextAlign.End
-                else -> TextAlign.Start
-            },
+            else -> TextAlign.Start
+        }
+    val textStyle =
+        LocalTextStyle.current.copy(
+            color = color,
+            fontSize = fontSizeSp,
+            fontWeight = fontWeight,
+            fontFamily = fontFamily,
+            fontStyle = fontStyle,
+            textAlign = textAlign,
+        )
+    SynchronousOneLineEllipsisText(
+        text = text,
+        modifier = modifier,
         overflow = composeOverflow(data.overflow),
         maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
-    )
+        measureStyle = textStyle,
+    ) { displayText, displayModifier, displayOverflow, _ ->
+        Text(
+            text = displayText,
+            modifier = displayModifier,
+            overflow = displayOverflow,
+            maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
+            style = textStyle,
+        )
+    }
+}
+
+/**
+ * Skiko currently treats [TextOverflow.StartEllipsis] and [TextOverflow.MiddleEllipsis] as end
+ * ellipsis. Resolve those two one-line modes during the same measure pass that supplies the width,
+ * then ask Skiko to clip the already-truncated line. `SubcomposeLayout` is important here: the
+ * renderer captures a one-frame `ImageComposeScene`, so an `onTextLayout` state update is too late.
+ */
+@Composable
+private fun SynchronousOneLineEllipsisText(
+    text: String,
+    modifier: Modifier,
+    overflow: TextOverflow,
+    maxLines: Int,
+    measureStyle: TextStyle,
+    autoSize: SynchronousAutoSize? = null,
+    content: @Composable (String, Modifier, TextOverflow, TextUnit?) -> Unit,
+) {
+    if (
+        maxLines != 1 ||
+            overflow != TextOverflow.StartEllipsis && overflow != TextOverflow.MiddleEllipsis
+    ) {
+        content(text, modifier, overflow, null)
+        return
+    }
+
+    val textMeasurer = rememberTextMeasurer()
+    SubcomposeLayout(modifier = modifier) { constraints ->
+        val resolvedStyle =
+            autoSize?.resolveStyle(text, measureStyle, constraints, textMeasurer) ?: measureStyle
+        val displayText =
+            if (constraints.hasBoundedWidth) {
+                synchronousEllipsis(text, overflow, constraints.maxWidth) { candidate ->
+                    textMeasurer.singleLineWidth(candidate, resolvedStyle)
+                }
+            } else {
+                text
+            }
+        val placeable =
+            subcompose(displayText) {
+                    content(
+                        displayText,
+                        Modifier,
+                        TextOverflow.Clip,
+                        autoSize?.let { resolvedStyle.fontSize },
+                    )
+                }
+                .single()
+                .measure(constraints)
+        val alignmentLines: Map<AlignmentLine, Int> =
+            listOf(FirstBaseline, LastBaseline).mapNotNull { line ->
+                placeable[line].takeUnless { it == AlignmentLine.Unspecified }?.let { line to it }
+            }.toMap()
+        layout(placeable.width, placeable.height, alignmentLines) {
+            placeable.place(0, 0)
+        }
+    }
+}
+
+private data class SynchronousAutoSize(
+    val minFontSize: TextUnit,
+    val maxFontSize: TextUnit,
+    val stepSize: TextUnit,
+) {
+    fun resolveStyle(
+        text: String,
+        style: TextStyle,
+        constraints: Constraints,
+        textMeasurer: TextMeasurer,
+    ): TextStyle {
+        val steps = ((maxFontSize.value - minFontSize.value) / stepSize.value).toInt().coerceAtLeast(0)
+        var low = 0
+        var high = steps
+        var best = -1
+        while (low <= high) {
+            val candidate = (low + high) / 2
+            val candidateStyle =
+                style.copy(fontSize = (minFontSize.value + candidate * stepSize.value).sp)
+            val size = textMeasurer.singleLineSize(text, candidateStyle)
+            val fits =
+                (!constraints.hasBoundedWidth || size.width <= constraints.maxWidth) &&
+                    (!constraints.hasBoundedHeight || size.height <= constraints.maxHeight)
+            if (fits) {
+                best = candidate
+                low = candidate + 1
+            } else {
+                high = candidate - 1
+            }
+        }
+        val chosen = best.coerceAtLeast(0)
+        return style.copy(fontSize = (minFontSize.value + chosen * stepSize.value).sp)
+    }
+}
+
+private fun TextMeasurer.singleLineWidth(text: String, style: TextStyle): Int =
+    singleLineSize(text, style).width
+
+private fun TextMeasurer.singleLineSize(text: String, style: TextStyle) =
+    measure(
+            text = text,
+            style = style,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            maxLines = 1,
+            constraints = Constraints(),
+        )
+        .size
+
+private const val ELLIPSIS = "\u2026"
+
+/** Plain-string equivalent of Android's one-line START/MIDDLE `TextUtils.ellipsize` split. */
+internal fun synchronousEllipsis(
+    text: String,
+    overflow: TextOverflow,
+    maxWidth: Int,
+    measureWidth: (String) -> Int,
+): String {
+    require(overflow == TextOverflow.StartEllipsis || overflow == TextOverflow.MiddleEllipsis)
+    if (measureWidth(text) <= maxWidth) return text
+    if (maxWidth <= 0 || measureWidth(ELLIPSIS) > maxWidth) return ""
+
+    val boundaries = graphemeBoundaries(text)
+    if (overflow == TextOverflow.StartEllipsis) {
+        var low = 0
+        var high = boundaries.lastIndex
+        while (low < high) {
+            val kept = (low + high + 1) / 2
+            val candidate = ELLIPSIS + text.substring(boundaries[boundaries.lastIndex - kept])
+            if (measureWidth(candidate) <= maxWidth) low = kept else high = kept - 1
+        }
+        return ELLIPSIS + text.substring(boundaries[boundaries.lastIndex - low])
+    }
+
+    val textBudget = maxWidth - measureWidth(ELLIPSIS)
+    val halfBudget = textBudget / 2
+    var suffixCount = 0
+    while (
+        suffixCount < boundaries.lastIndex &&
+            measureWidth(text.substring(boundaries[boundaries.lastIndex - suffixCount - 1])) <=
+                halfBudget
+    ) {
+        suffixCount++
+    }
+    val suffix = text.substring(boundaries[boundaries.lastIndex - suffixCount])
+    val prefixBudget = textBudget - measureWidth(suffix)
+    var prefixCount = 0
+    while (
+        prefixCount + suffixCount < boundaries.lastIndex &&
+            measureWidth(text.substring(0, boundaries[prefixCount + 1])) <= prefixBudget
+    ) {
+        prefixCount++
+    }
+    var candidate =
+        text.substring(0, boundaries[prefixCount]) +
+            ELLIPSIS +
+            text.substring(boundaries[boundaries.lastIndex - suffixCount])
+    while (measureWidth(candidate) > maxWidth && prefixCount > 0) {
+        prefixCount--
+        candidate =
+            text.substring(0, boundaries[prefixCount]) +
+                ELLIPSIS +
+                text.substring(boundaries[boundaries.lastIndex - suffixCount])
+    }
+    return candidate
+}
+
+private fun graphemeBoundaries(text: String): List<Int> {
+    val iterator = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(text) }
+    return buildList {
+        var boundary = iterator.first()
+        while (boundary != BreakIterator.DONE) {
+            add(boundary)
+            boundary = iterator.next()
+        }
+    }
 }
 
 private fun composeOverflow(overflow: Int): TextOverflow =
