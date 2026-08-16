@@ -102,7 +102,7 @@
       "allowedVersions": "/^1\\.13\\./"
     },
     {
-      "description": "androidx.tracing:tracing: keep the daemon-specific catalog alias on the 1.x line. The standalone Android daemon sidecar packages this implementation dependency's full runtime classpath, while 2.x adds kotlinx-coroutines-core and androidx.collection even though the daemon only uses Trace.beginSection/endSection. The separate 2.x player alias is intentionally unaffected; moving the daemon to 2.x is a manual packaging decision.",
+      "description": "androidx.tracing:tracing: keep the daemon-specific catalog alias on the 1.x line. The standalone Android daemon sidecar stages every runtime JAR, so 2.x would make every daemon user download and cache kotlinx-coroutines-core and androidx.collection and would enlarge the runtime classpath even though the daemon only uses Trace.beginSection/endSection. That is extra distribution weight and dependency surface with no daemon behavior benefit. The separate 2.x player alias is intentionally unaffected; moving the daemon to 2.x is a manual packaging decision.",
       "matchManagers": [
         "gradle"
       ],
