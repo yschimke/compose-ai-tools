@@ -179,14 +179,34 @@ const ANNOTATIONS_PAYLOAD = {
     {
       kind: "typography",
       bounds: { x: 20, y: 28, width: 160, height: 42 },
-      label: "22.0sp/28.0sp · Roboto · 500",
+      label:
+        "MaterialTheme.typography.titleLarge · 22.0sp/28.0sp · Roboto Flex · 500",
       role: "Ada Lovelace",
+      detail: {
+        token: "titleLarge",
+        fontFamily: "Roboto Flex",
+        fontSize: "22.0sp",
+        fontWeight: "500",
+        lineHeight: "28.0sp",
+        letterSpacing: "0.0sp",
+        fontVariationSettings: "'opsz' 22, 'wdth' 100, 'wght' 500",
+      },
     },
     {
       kind: "typography",
       bounds: { x: 20, y: 92, width: 116, height: 18 },
-      label: "14.0sp/20.0sp · Roboto · 400",
+      label:
+        "MaterialTheme.typography.bodyMedium · 14.0sp/20.0sp · Roboto Flex · 400 · tracking 0.25sp",
       role: "Analytical engine",
+      detail: {
+        token: "bodyMedium",
+        fontFamily: "Roboto Flex",
+        fontSize: "14.0sp",
+        fontWeight: "400",
+        lineHeight: "20.0sp",
+        letterSpacing: "0.25sp",
+        fontVariationSettings: "'opsz' 14, 'wdth' 100, 'wght' 400",
+      },
     },
     {
       kind: "theme",
