@@ -297,6 +297,50 @@ class PlaygroundSourceCleanerTest {
   }
 
   @Test
+  fun `a system Material 3 theme wrapper treats comment-only arguments as empty`() {
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "Sticker" to
+              UsageRules.Scaffold(
+                kind = UsageRules.Kind.RENAME,
+                renameTo = "MaterialTheme",
+                special = UsageRules.MATERIAL3_SYSTEM_THEME,
+              )
+          )
+      )
+
+    for (arguments in listOf("/* default theme */", "\n        // default theme\n        ")) {
+      val source =
+        """
+        package com.example.catalog
+
+        import androidx.compose.runtime.Composable
+        import com.example.catalog.Sticker
+
+        @Composable
+        fun CardPreview() = Sticker($arguments) { Unit }
+        """
+          .trimIndent()
+
+      val result =
+        assertNotNull(
+          PlaygroundSourceCleaner.clean(
+            source,
+            source.lines().indexOfFirst { it.contains("fun CardPreview") } + 1,
+            rules,
+          ),
+          "comment-only arguments were not cleaned: ${arguments.replace("\n", "\\n")}",
+        )
+
+      assertFalse(result.text.contains("Sticker"), result.text)
+      assertTrue(result.text.contains("androidx.compose.material3.MaterialTheme("), result.text)
+      assertEquals(emptyList(), result.residue)
+    }
+  }
+
+  @Test
   fun `a system Material 3 expansion cannot collide with retained simple imports`() {
     val source =
       """

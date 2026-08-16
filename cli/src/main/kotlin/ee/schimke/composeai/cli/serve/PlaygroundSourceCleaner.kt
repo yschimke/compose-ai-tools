@@ -545,7 +545,7 @@ object PlaygroundSourceCleaner {
         var replaceEnd = at + name.length
         if (out.getOrNull(next) == '(') {
           val close = matchParen(out, next) ?: continue
-          if (out.substring(next + 1, close).isNotBlank()) continue
+          if (containsCode(out.substring(next + 1, close))) continue
           replaceEnd = close + 1
           next = close + 1
           while (next < out.length && out[next].isWhitespace()) next++
@@ -883,6 +883,21 @@ object PlaygroundSourceCleaner {
       }
     }
     return mask
+  }
+
+  /** Whether [text] contains a non-whitespace code character rather than only comments. */
+  private fun containsCode(text: String): Boolean {
+    var i = 0
+    while (i < text.length) {
+      when {
+        text[i].isWhitespace() -> i++
+        text.startsWith("//", i) -> i = text.indexOf('\n', i).takeIf { it >= 0 } ?: text.length
+        text.startsWith("/*", i) ->
+          i = (text.indexOf("*/", i + 2).takeIf { it >= 0 }?.plus(2)) ?: text.length
+        else -> return true
+      }
+    }
+    return false
   }
 
   private fun isIdentifierChar(c: Char) = c.isLetterOrDigit() || c == '_'
