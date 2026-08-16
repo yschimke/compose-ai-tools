@@ -77,7 +77,7 @@ A few specifics that come up:
   build, not the headless shell).
 - **Live XR capture** (`spatial-xr-real`): the committed spatial fixtures wrap
   the `spatial-rich` proxy (per-panel renders assembled offline). To diff the
-  *actual* `composePreviewRenderXr` output, the `render-xr-composite` CI job
+  _actual_ `composePreviewRenderXr` output, the `render-xr-composite` CI job
   generates a fixture from the real render dir with
   [`fixtures/spatial-xr-real.gen.mjs`](fixtures/spatial-xr-real.gen.mjs)
   (`--render-dir <renders/<id>> --texture-base /spatial-fixtures/spatial-xr-real/`),
@@ -134,9 +134,9 @@ rather than booting `scenario.html` and replaying messages.
   test `ServeWebFixtureTest`, which also fails CI if the committed HTML drifts
   from `ServeWeb`. Refresh after a serve-UI change with:
 
-  ```sh
-  UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
-  ```
+    ```sh
+    UPDATE_SERVE_WEB_FIXTURES=true ./gradlew :cli:test --tests '*ServeWebFixtureTest*'
+    ```
 
 The `snapshot` path filter in `harness:snapshot` matches this spec too, so these
 land in `out/` alongside the panel fixtures and need no separate CI wiring.
@@ -327,12 +327,12 @@ maintenance for an answer that does not involve pixels.
 
 Measured on this suite:
 
-| | count |
-| --- | --- |
-| `FIXTURE_STATES` entries | 59 |
-| …carrying any `expect()` | 9 |
-| …pure captures | 50 |
-| `cli/serve-web` tests | 743 in 51 files (19 element, 32 pure) |
+|                          | count                                 |
+| ------------------------ | ------------------------------------- |
+| `FIXTURE_STATES` entries | 59                                    |
+| …carrying any `expect()` | 9                                     |
+| …pure captures           | 50                                    |
+| `cli/serve-web` tests    | 743 in 51 files (19 element, 32 pure) |
 
 The 50 pure captures are the harness doing its job. The 9 hybrids are worth
 reading, because most of what they assert has a cheaper home:
@@ -348,7 +348,8 @@ reading, because most of what they assert has a cheaper home:
   that test checked only that a group existed, and the claim here was wrong
   until the coverage was actually written. Check before you move something.
 
-THREE of them genuinely need a browser and should stay:
+FOUR `FIXTURE_STATES` entries genuinely need a browser and should stay, covering
+three categories of checks:
 
 - `toBeVisible()`, which is a CSS question happy-dom cannot answer;
 - the design page's alignment check, which measures real laid-out geometry
@@ -377,7 +378,7 @@ fixture costs a baseline. That is not a theoretical concern:
 
 Both shipped, both were found by reading code rather than by ~500 captures. A
 decision whose inputs are expensive to vary is under-covered by construction, so
-coverage of *decisions* belongs where inputs are free.
+coverage of _decisions_ belongs where inputs are free.
 
 ### Cost, for calibration
 
@@ -391,7 +392,7 @@ There are 58 page fixtures.
 3. Keep the capture for what is left: the picture.
 
 The same brittleness exists one layer down. Six Kotlin assertions that grepped
-`viewer.js` / `format-compare.js` for the *spelling* of an expression broke
+`viewer.js` / `format-compare.js` for the _spelling_ of an expression broke
 during the TypeScript migration without any behaviour changing; each was
 retargeted at the seam, with the rule itself driven by a real test. A test that
 pins source text is a screenshot of code.
