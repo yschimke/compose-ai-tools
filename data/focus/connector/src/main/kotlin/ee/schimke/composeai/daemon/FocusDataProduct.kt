@@ -121,13 +121,11 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
           }
           lastIndex.value = tabIndex
         }
-        // `@FocusedPreview(pressed = true)` — after the focus walk lands, dispatch an
-        // indirect-pointer Press onto the focused composable so its `PressInteraction.Press` fires
-        // before the renderer captures pixels. Glimmer's `Modifier.onIndirectPointerGesture`
-        // observes this event on the focused-target path and emits the pressed-state interaction.
-        // If no indirect-pointer modifier consumes it, fall back to a focused DPAD_CENTER key-down:
-        // Wear M3 Button is built from `combinedClickable`, which has no indirect-pointer handler,
-        // but does own the normal focused-key press path. See [dispatchPress] for the rationale.
+        // `@FocusedPreview(pressed = true)` — after the focus walk lands, dispatch a Press onto the
+        // focused composable so its `PressInteraction.Press` fires before the renderer captures
+        // pixels. Prefer the normal focused-key path used by clickable components (including Wear
+        // M3 Button), then fall back to indirect-pointer input for Glimmer-specific gestures. See
+        // [dispatchPress] for the platform rationale.
         // The matching Release is held off
         // until the NEXT capture's LaunchedEffect runs (above) — held-press across the capture
         // window is exactly the "finger held on touchpad" shape we want pixels to show.
@@ -163,10 +161,15 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
 }
 
 /**
- * Dispatches a held Press through the focused component's real input path. It first sends an
+ * Dispatches a held Press through the focused component's real input path. It first sends a focused
+ * DPAD_CENTER key-down, which covers Compose components built from `clickable` or
+ * `combinedClickable`, including Wear M3 Button. When that event is unhandled, it falls back to an
  * indirect-pointer event through Compose UI's `AndroidComposeView.sendIndirectPointerEvent` — the
- * same channel real XR Glasses touchpads use. When that event is unhandled, it falls back to a
- * focused DPAD_CENTER key-down, which covers Wear components built from `combinedClickable`.
+ * same channel real XR Glasses touchpads use.
+ *
+ * Key input must be tried first. `AndroidComposeView.sendIndirectPointerEvent` can report that the
+ * root handled an event even when the focused component has no indirect-pointer modifier; treating
+ * that result as proof of a component Press prevented the key fallback from ever reaching Wear M3.
  *
  * The matching Release isn't sent here — it's deferred to the next capture's `LaunchedEffect` pass
  * (via the `pressHeld` flag) so the composable stays in its pressed state for *this* capture window
@@ -196,9 +199,9 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
  */
 @OptIn(ExperimentalIndirectPointerApi::class)
 private fun View.dispatchPress(): PressChannel {
-  if (sendIndirectPointer(MotionEvent.ACTION_DOWN)) return PressChannel.IndirectPointer
-  dispatchKeyPress()
-  return PressChannel.Key
+  if (dispatchKeyPress()) return PressChannel.Key
+  sendIndirectPointer(MotionEvent.ACTION_DOWN)
+  return PressChannel.IndirectPointer
 }
 
 /**
@@ -245,9 +248,8 @@ private fun View.sendIndirectPointer(action: Int): Boolean {
  * turns its down/up pair into the same held `PressInteraction.Press` / release lifecycle as a
  * physical button press.
  */
-private fun View.dispatchKeyPress() {
+private fun View.dispatchKeyPress(): Boolean =
   dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
-}
 
 private fun View.dispatchKeyRelease() {
   dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER))

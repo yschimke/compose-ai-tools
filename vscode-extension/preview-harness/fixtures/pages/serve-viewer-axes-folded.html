@@ -308,7 +308,7 @@
   // server-baked score is already stale on the first paint. viewer.js keeps this attribute in
   // sync after controls change; this early write makes the element's initial read authoritative.
   if (root) {
-    var atSpecBaseline = el.getAttribute("data-theme-active") !== "1";
+    var atSpecBaseline = el.disabled || el.getAttribute("data-theme-active") !== "1";
     root.setAttribute("data-spec-baseline", atSpecBaseline ? "1" : "0");
   }
   // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
