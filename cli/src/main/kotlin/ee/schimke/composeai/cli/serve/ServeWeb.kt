@@ -1363,6 +1363,18 @@ $noteBlock        <div class="cp-site-footer-links">
     baseKey(stateInvariantKey(propsFamilyKey(p), p.state))
 
   /**
+   * How a comparison row names the variant it shows — `Hovered`, `Xl square`, `RTL · Font 2.0×` —
+   * or empty for the component's plain default render.
+   *
+   * The comparison page keeps every reference-bearing variant as a row of its own, so a component
+   * with a reference per state contributes a dozen rows. [componentKey] alone cannot tell them
+   * apart, which is what makes an otherwise correct page look mis-paired. Empty for the default so
+   * the overwhelmingly common one-row-per-component case still reads as just the component name.
+   */
+  private fun compareVariantLabel(p: ServePreview): String =
+    listOf(stateLabel(p.state), propsLabel(p.props)).filter { it != "Default" }.joinToString(" · ")
+
+  /**
    * One grid card: a component that may carry a baked `light` and/or `dark` variant (a pair the
    * Light/Dark control [swaps][GridCard.swappable] in place) and/or a theme-neutral render. [order]
    * preserves first-seen position so the grid keeps catalog order.
@@ -6586,47 +6598,73 @@ $noteBlock        <div class="cp-site-footer-links">
         " data-reference-detail-$theme=\"${WebEscaping.htmlEscape(detail)}\""
     }
 
+    val shownCards = cards.filter { card ->
+      listOfNotNull(card.light, card.dark, card.neutral).any { p ->
+        hasSvgFor(p.id) || hasRemoteComposeFor(p.id) || referencesFor(p.id).isNotEmpty()
+      }
+    }
+    // Every id that has a row of its own. A design reference names one exact state/props mapping,
+    // so that variant is deliberately kept OUT of the fold above and gets a row — which means it
+    // must not also ride along as an alias on its siblings' rows. It used to: `previewIdsByCard`
+    // is keyed state- and props-invariantly, so all fourteen published `button-elevated` rows
+    // carried the same twenty-eight ids, and filtering the page by one variant's id matched the
+    // lot. The alias exists for ids with NO row; an id that has one selects itself.
+    val rowPreviewIds =
+      shownCards
+        .flatMap { card -> listOfNotNull(card.light, card.dark, card.neutral).map { it.id } }
+        .toSet()
+    // The genuinely folded-out siblings still have to select something, so each is aliased onto
+    // exactly ONE row — the first row of its comparison card — rather than onto all of them.
+    val aliasesClaimed = mutableSetOf<String>()
     val rows =
-      cards
-        .filter { card ->
-          listOfNotNull(card.light, card.dark, card.neutral).any { p ->
-            hasSvgFor(p.id) || hasRemoteComposeFor(p.id) || referencesFor(p.id).isNotEmpty()
-          }
-        }
-        .joinToString("\n") { card ->
-          val variants = listOfNotNull(card.light, card.dark, card.neutral)
-          val current = if (darkFirst) card.dark ?: card.default else card.default
-          val label = componentKey(current)
-          val viewer = "$basePath/p/${WebEscaping.urlEncodeSegment(current.id)}$q"
-          val ids = previewIdsByCard[comparisonCardKey(current)].orEmpty().joinToString(" ")
-          val hay = (label + " " + ids).lowercase()
-          val pngAttrs =
-            attrs("png", "light", card.light) { true } +
-              attrs("png", "dark", card.dark) { true } +
-              attrs("png", "neutral", card.neutral) { true }
-          val svgAttrs =
-            attrs("svg", "light", card.light, hasSvgFor) +
-              attrs("svg", "dark", card.dark, hasSvgFor) +
-              attrs("svg", "neutral", card.neutral, hasSvgFor)
-          val rcAttrs =
-            attrs("rc", "light", card.light, hasRemoteComposeFor) +
-              attrs("rc", "dark", card.dark, hasRemoteComposeFor) +
-              attrs("rc", "neutral", card.neutral, hasRemoteComposeFor)
-          val referenceAttrs =
-            referenceAttrs("light", card.light) +
-              referenceAttrs("dark", card.dark) +
-              referenceAttrs("neutral", card.neutral)
-          """
+      shownCards.joinToString("\n") { card ->
+        val variants = listOfNotNull(card.light, card.dark, card.neutral)
+        val current = if (darkFirst) card.dark ?: card.default else card.default
+        val component = componentKey(current)
+        // The variant, spelled out. Every row of a component printed the bare component name, so
+        // a component with a reference per state published a run of identically-labelled rows in
+        // no stated order — fourteen rows reading `button-elevated`, each showing a different
+        // button, which looks like the pairing is wrong rather than like the label is missing.
+        val variant = compareVariantLabel(current)
+        val label = if (variant.isEmpty()) component else "$component — $variant"
+        val viewer = "$basePath/p/${WebEscaping.urlEncodeSegment(current.id)}$q"
+        val cardKey = comparisonCardKey(current)
+        val folded =
+          if (aliasesClaimed.add(cardKey))
+            previewIdsByCard[cardKey].orEmpty().filterNot { it in rowPreviewIds }
+          else emptyList()
+        val ids = (variants.map { it.id } + folded).distinct().joinToString(" ")
+        val hay = (label + " " + ids).lowercase()
+        val pngAttrs =
+          attrs("png", "light", card.light) { true } +
+            attrs("png", "dark", card.dark) { true } +
+            attrs("png", "neutral", card.neutral) { true }
+        val svgAttrs =
+          attrs("svg", "light", card.light, hasSvgFor) +
+            attrs("svg", "dark", card.dark, hasSvgFor) +
+            attrs("svg", "neutral", card.neutral, hasSvgFor)
+        val rcAttrs =
+          attrs("rc", "light", card.light, hasRemoteComposeFor) +
+            attrs("rc", "dark", card.dark, hasRemoteComposeFor) +
+            attrs("rc", "neutral", card.neutral, hasRemoteComposeFor)
+        val referenceAttrs =
+          referenceAttrs("light", card.light) +
+            referenceAttrs("dark", card.dark) +
+            referenceAttrs("neutral", card.neutral)
+        """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
             data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs>
-            <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(label)}</a></th>
+            <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(component)}${
+            if (variant.isEmpty()) ""
+            else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
+          }</a></th>
             <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
             <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
             <td class="cp-compare-score">waiting…</td>
           </tr>
           """
-            .trimIndent()
-        }
+          .trimIndent()
+      }
 
     val formatControls = buildString {
       if (hasSvg)
@@ -8573,10 +8611,25 @@ $rows
               append(" — click to see where")
             }
         val bandAttr = band?.let { " data-spec-match=\"$it\"" } ?: ""
+        // What the chip says once the render has moved OFF the snapshot the verdict was measured
+        // against. The baked number is taken against the catalog's own render — default theme,
+        // declared knob defaults — while the imported spec is exported once and never re-exported
+        // per theme. So a visitor who picks a theme changes one side of the comparison and not the
+        // other, and the published number goes on describing a frame that has left the stage. It
+        // does not merely go stale, it goes generous: a 99.6% chip over a render the spec lane
+        // scores at 88.9% reads as the lane being broken rather than as the chip being out of date.
+        // viewer.js publishes the baseline (`data-spec-baseline`) and `<cp-spec-compare>` swaps to
+        // this label until it has a live measurement to put there instead.
+        val staleTip =
+          "The published match is measured against this catalog's default render — " +
+            "click to compare the $specProviderLabel spec against what's on the stage now"
+        val staleTipAttr =
+          if (match == null) ""
+          else " data-spec-chip-stale-tip=\"${WebEscaping.htmlEscape(staleTip)}\""
         "<button type=\"button\" id=\"cp-spec-chip\" class=\"cp-spec-chip\"$bandAttr " +
           "aria-pressed=\"false\" data-spec-chip-label=\"${WebEscaping.htmlEscape(label)}\" " +
           "data-spec-chip-name=\"${WebEscaping.htmlEscape(name)}\" " +
-          "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\"$staleTipAttr " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
       }
     val usageAvailable = !usageHref.isNullOrBlank()

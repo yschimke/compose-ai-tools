@@ -1874,6 +1874,11 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-compare-table thead th { position: sticky; top: 0; z-index: 1; color: var(--cp-fg-muted);
   font-size: 0.72rem; background: light-dark(var(--cp-bg), var(--cp-surface)); }
 .cp-compare-table tbody th { min-width: 150px; font-weight: 600; word-break: break-word; }
+/* The variant under the component name. A component that publishes a reference per state gets a
+   row per state, and without this they are a run of identical labels — so it reads as secondary to
+   the component name, but on its own line where it cannot be mistaken for part of it. */
+.cp-compare-variant { display: block; font-weight: 400; font-size: 0.78rem;
+  color: var(--cp-fg-muted); }
 .cp-compare-shot { display: grid; place-items: center; width: min(260px, 30vw); min-width: 150px;
   min-height: 92px; padding: 8px; border-radius: 8px; overflow: hidden;
   background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 14px 14px; }

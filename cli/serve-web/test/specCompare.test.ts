@@ -58,12 +58,17 @@ function stubCompare(
     return stub;
 }
 
-async function mount(): Promise<void> {
+async function mount(options: { baseline?: boolean } = {}): Promise<void> {
+    const baseline =
+        options.baseline === false ? ' data-spec-baseline="0"' : "";
     document.body.innerHTML = `
       <cp-spec-compare></cp-spec-compare>
       <span id="cp-spec-chip" data-spec-match="close"
-            data-spec-chip-name="Button" data-spec-chip-label="Button 97.1%">Button 97.1%</span>
-      <div class="cp-viewer">
+            data-spec-chip-name="Button" data-spec-chip-label="Button 97.1%"
+            data-spec-chip-tip="97.1% match — click to see where"
+            data-spec-chip-stale-tip="measured against the default render"
+            title="97.1% match — click to see where">Button 97.1%</span>
+      <div class="cp-viewer"${baseline}>
         <span id="cp-spec-views" hidden>
           <button type="button" data-cp-spec-view="spec" aria-pressed="true">Spec</button>
           <button type="button" data-cp-spec-view="diff" aria-pressed="false">Diff</button>
@@ -157,6 +162,57 @@ describe("<cp-spec-compare>", () => {
             chip().getAttribute("data-spec-match"),
             "close",
             "and its published band",
+        );
+    });
+
+    it("drops the published verdict once the render leaves the baseline", async () => {
+        // The baked number is measured against the catalog's own snapshot, while the imported spec
+        // is exported once and never re-exported per theme. Pick a theme and only ONE side of that
+        // comparison moves — so the published number is no longer describing anything on the
+        // stage, and it is generous about it: the pair that publishes at 99.6% scores 88.9% under
+        // Light High Contrast. Left on the chip it makes entering the lane look like a regression.
+        await mount();
+        lane().baseline(false);
+        assert.equal(chip().textContent, "Button", "just the provider label");
+        assert.equal(
+            chip().getAttribute("data-spec-match"),
+            null,
+            "and no band — a colour is a verdict too",
+        );
+        assert.equal(chip().title, "measured against the default render");
+
+        lane().baseline(true);
+        assert.equal(chip().textContent, "Button 97.1%");
+        assert.equal(chip().getAttribute("data-spec-match"), "close");
+        assert.equal(chip().title, "97.1% match — click to see where");
+    });
+
+    it("never paints a published verdict the served page already knows is stale", async () => {
+        // A deep link naming a theme is served with the baked verdict in the markup, and viewer.js
+        // has no guaranteed ordering against this element — so the state is read off the stage at
+        // install rather than waited for.
+        await mount({ baseline: false });
+        assert.equal(chip().textContent, "Button");
+        assert.equal(chip().getAttribute("data-spec-match"), null);
+    });
+
+    it("keeps a live measurement, and its tooltip, over the baseline state", async () => {
+        // A live number was taken from the frames on the stage, which is the very thing the
+        // baseline flag is a proxy for. The tooltip has to move with it: left alone it went on
+        // quoting the publish-time verdict beside a chip reading something else.
+        stubCompare({ percent: 88.9, geometry: 0 });
+        await mount({ baseline: false });
+        lane().open("/render/Button.png?themeProvider=HighContrast");
+        press("diff");
+        for (let i = 0; i < 5; i++) await flush();
+        assert.equal(chip().textContent, "Button 88.9%");
+        assert.equal(chip().title, "88.9% match · 18.75% pixels differ");
+
+        lane().baseline(false);
+        assert.equal(
+            chip().textContent,
+            "Button 88.9%",
+            "the measurement outranks the flag",
         );
     });
 

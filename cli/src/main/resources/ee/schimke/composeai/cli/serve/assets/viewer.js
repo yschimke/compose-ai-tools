@@ -616,6 +616,38 @@
     return location.origin + base + "/render/" + encodeURIComponent(previewId) + ext +
       (qs ? "?" + qs : "");
   }
+  // Params that carry the LINK rather than the picture: they gate access or pin a revision, and
+  // two URLs differing only in these render the same pixels.
+  var LINK_ONLY_PARAMS = ["token", "session", "at"];
+  // Whether the stage is showing the render the PUBLISHED design-spec score was measured against.
+  //
+  // The catalog bakes that score against its own snapshot — default theme, declared knob defaults,
+  // no detected features. Every control here omits itself from `query()` while it sits at that
+  // default, precisely so the URL stays on the baked snapshot, which makes the render URL a direct
+  // reading of whether anything has moved: strip the link-only params and whatever is left is a
+  // deviation from what was scored.
+  //
+  // It matters because the design reference does NOT move with the render. A spec is imported once,
+  // not re-exported per theme, so choosing a theme changes one side of the comparison and not the
+  // other. The baked number then describes a frame that is no longer on the stage — and the spec
+  // lane, scoring what IS on the stage, disagrees with the chip by ten points or more.
+  function specAtBaseline() {
+    var url = renderUrl(".png");
+    var mark = url.indexOf("?");
+    if (mark < 0) return true;
+    var parts = url.slice(mark + 1).split("&");
+    for (var i = 0; i < parts.length; i++) {
+      if (LINK_ONLY_PARAMS.indexOf(parts[i].split("=")[0]) < 0) return false;
+    }
+    return true;
+  }
+  // Published on the stage as well as pushed to the lane, because the two scripts have no
+  // guaranteed order: `<cp-spec-compare>` reads the attribute when it installs, whenever that is.
+  function syncSpecBaseline() {
+    var at = specAtBaseline();
+    root.setAttribute("data-spec-baseline", at ? "1" : "0");
+    if (window.cpSpecCompare) window.cpSpecCompare.baseline(at);
+  }
   function withMode(url, mode) {
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "mode=" + mode;
   }
@@ -648,6 +680,7 @@
       }
     });
     updateSvgMatch();
+    syncSpecBaseline();
     refreshReportLink();
   }
   // Keep the "report an issue" report pointed at what is on screen. The server filled the form's
@@ -3082,6 +3115,9 @@
   syncServerControls();
   syncOverlayToggles();
   updateLiveToggle();
+  // Before the first snapshot goes out, so a deep link that already names a theme never paints the
+  // baked verdict — not even for the one frame it would take refreshLinks() to correct it.
+  syncSpecBaseline();
   refreshSnapshot();
   // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane — but only once the initial
   // snapshot has LANDED, not merely been requested.
