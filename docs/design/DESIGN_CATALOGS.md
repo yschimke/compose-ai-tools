@@ -294,6 +294,30 @@ jobs:
 Author the spec with `init-catalog-spec` and check it with `validate-catalog-spec`
 (see below) before the first run.
 
+To publish every Gradle module that applies `ee.schimke.composeai.preview`, omit `module` (or set
+`modules: all` explicitly):
+
+```yaml
+    with:
+      system: your-system
+      spec: catalog.spec.json
+      modules: all
+```
+
+The workflow discovers the same repository-wide module set as `compose-preview list`, then packs
+one bundle per module. The authored spec and `@CatalogComponent` annotations remain the curation and
+metadata overrides. Every remaining still-backed preview receives a generated entry grouped first
+by Gradle module (catalog section) and then by `@Preview(group = …)` (`Previews` when no group was
+declared). Animated/interaction captures attached to those previews travel with the generated
+entry, including GIF/APNG artifacts. If two modules use the same preview function name, the
+spec-preferred/primary module keeps the unqualified name and later modules receive a stable
+`<module>::<function>` join key.
+
+Repository-wide mode publishes baked artifacts because executable bundles retain distinct module
+classpaths. Consequently it currently requires `render-shards: 1`, does not combine with
+`extra-module` or `publish-live-bundle`, and permits per-preview splitting only with
+`split-mode: view-only`. Supplying `module` keeps the existing single-module/live-bundle behavior.
+
 For the two bespoke needs a catalog like MeshCore has, the reusable workflow
 exposes generic hooks rather than forcing a copy: `stage-font-globs` stages
 bundled faces into fontconfig before rendering (so a desktop render resolves

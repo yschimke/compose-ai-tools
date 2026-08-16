@@ -98,6 +98,22 @@ test("a declared capture the render never wrote is dropped, not published as a 4
   assert.deepEqual(motionArtifactsFor(bundle, "SwitchOn"), []);
 });
 
+test("artifacts are collected from every module bundle", () => {
+  const one = {
+    previews: [
+      { id: "One", functionName: "One", captures: [animationCapture("renders/One.gif", "one")] },
+    ],
+    entries: { "previews/One.gif": {} },
+  };
+  const two = {
+    previews: [
+      { id: "Two", functionName: "Two", captures: [animationCapture("renders/Two.gif", "two")] },
+    ],
+    entries: { "previews/Two.gif": {} },
+  };
+  assert.equal(motionArtifactsFor([one, two], "Two")[0].path, "previews/Two.gif");
+});
+
 test("a function carrying both annotations keeps its two captures apart by renderOutput", () => {
   // This is the case the plain `previews/<id>.<ext>` fallback cannot answer: both artifacts belong
   // to one preview id, and only the manifest says which file is the interaction.
