@@ -295,6 +295,27 @@ describe("<cp-reference-compare>", () => {
         assert.equal(box.style.width, "300px");
     });
 
+    it("reinstalls generated annotations without duplicating them", async () => {
+        stubResizeObserver();
+        stubCompare();
+        await mount();
+        await flush();
+        const element = document.querySelector("cp-reference-compare")!;
+        const counts = () => ({
+            layers: document.querySelectorAll(".cp-annotation-layer").length,
+            legends: document.querySelectorAll(".cp-annotation-legend").length,
+            summaries: document.querySelectorAll(".cp-typography-summary")
+                .length,
+        });
+        const initial = counts();
+
+        element.remove();
+        document.body.appendChild(element);
+        await flush();
+
+        assert.deepEqual(counts(), initial);
+    });
+
     it("groups typography into a table and lights both panels from one row", async () => {
         stubResizeObserver();
         stubCompare();

@@ -202,6 +202,21 @@ describe("typographyAxes", () => {
     });
 });
 
+describe("typographySpec · aliases", () => {
+    it("falls through blank canonical fields to populated legacy aliases", () => {
+        const spec = typographySpec(
+            usage({
+                letterSpacing: "  ",
+                tracking: "0.5sp",
+                fontVariationSettings: "",
+                variationSettings: "'wght' 650",
+            }),
+        );
+        assert.equal(spec.tracking, "0.5sp");
+        assert.equal(spec.axes, "wght=650");
+    });
+});
+
 describe("typographyGroupKey", () => {
     it("does NOT group two usages whose units differ", () => {
         // "16sp" and "16dp" are the same number and different styles.

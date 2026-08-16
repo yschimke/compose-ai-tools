@@ -61,6 +61,7 @@ export class ReferenceCompare extends LitElement {
     private panels: Panel[] = [];
     private toggles: HTMLInputElement[] = [];
     private cleanups: Array<() => void> = [];
+    private generated: HTMLElement[] = [];
     private resizes: ResizeObserver | null = null;
 
     protected createRenderRoot(): HTMLElement {
@@ -77,6 +78,10 @@ export class ReferenceCompare extends LitElement {
         this.cleanups = [];
         this.resizes?.disconnect();
         this.resizes = null;
+        for (const node of this.generated) node.remove();
+        this.generated = [];
+        this.panels = [];
+        this.toggles = [];
         this.installed = false;
         super.disconnectedCallback();
     }
@@ -207,6 +212,7 @@ export class ReferenceCompare extends LitElement {
             const layer = document.createElement("div");
             layer.className = "cp-annotation-layer";
             shot.appendChild(layer);
+            this.generated.push(layer);
             this.panels.push({ shot, image, side, items, layer, boxes: [] });
         }
         if (!this.panels.length) return;
@@ -286,7 +292,10 @@ export class ReferenceCompare extends LitElement {
             row.appendChild(text);
             legend.appendChild(row);
         });
-        if (layoutItems.length) panel.shot.parentNode?.appendChild(legend);
+        if (layoutItems.length) {
+            panel.shot.parentNode?.appendChild(legend);
+            this.generated.push(legend);
+        }
     }
 
     /**
@@ -384,6 +393,7 @@ export class ReferenceCompare extends LitElement {
         summary.appendChild(list);
         // AFTER the grid, so the table reads under the three panels it describes.
         grid.parentNode?.insertBefore(summary, grid.nextSibling);
+        this.generated.push(summary);
     }
 
     private inlineSide(

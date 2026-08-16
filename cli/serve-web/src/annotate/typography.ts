@@ -137,6 +137,15 @@ export interface TypographySpec {
     labelOnly: boolean;
 }
 
+function firstNonBlank(...values: unknown[]): unknown {
+    return values.find(
+        (value) =>
+            value !== null &&
+            value !== undefined &&
+            (typeof value !== "string" || value.trim() !== ""),
+    );
+}
+
 export function typographySpec(item: AnnotationItem): TypographySpec {
     const detail = (item.detail ?? {}) as Record<string, unknown>;
     const sizeValue =
@@ -154,11 +163,16 @@ export function typographySpec(item: AnnotationItem): TypographySpec {
         String(detail.lineHeightUnit ?? "").trim() ||
         unit;
     const tracking =
-        String(detail.letterSpacing ?? detail.tracking ?? "").trim() ||
-        undefined;
+        String(
+            firstNonBlank(detail.letterSpacing, detail.tracking) ?? "",
+        ).trim() || undefined;
     const style = String(detail.fontStyle ?? "").trim() || undefined;
     const axes = typographyAxes(
-        detail.fontVariationSettings ?? detail.variationSettings ?? detail.axes,
+        firstNonBlank(
+            detail.fontVariationSettings,
+            detail.variationSettings,
+            detail.axes,
+        ),
     );
     const token = typographyToken(detail);
     const labelOnly =
