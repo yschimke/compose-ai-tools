@@ -188,11 +188,22 @@ export class SpecCompare extends LitElement {
         this.bakedBand = this.chip?.getAttribute("data-spec-match") ?? "";
         this.referenceUrl = this.compare.getAttribute("data-reference") ?? "";
 
-        // Read rather than wait to be told. `viewer.js` publishes the baseline on the stage as it
-        // refreshes the links, but the two scripts do not have a guaranteed order — and a deep
-        // link that already names a theme (`?themeProvider=…`) is served with the baked verdict
-        // on the chip, so a first paint that trusted the served label would show the wrong number
-        // for however long the other script took to arrive.
+        // Read rather than wait to be told — for the installs that happen after `viewer.js` has
+        // spoken, not for the first one.
+        //
+        // The order is in fact fixed, and it is the unhelpful way round: `ServeWeb` emits
+        // `serve-components.js` immediately before `viewer.js`, both classic scripts, so this
+        // element upgrades and installs while the attribute is still absent. A themed deep link
+        // (`?themeProvider=…`) is served with the baked verdict on the chip, so this read falls
+        // back to `true` and the chip keeps that verdict — until `viewer.js` runs `syncSpecBaseline`
+        // moments later and pushes the correction through `baseline()`. Nothing is painted in
+        // between: two consecutive classic scripts give the browser no opportunity, so the wrong
+        // number is never on screen.
+        //
+        // What the read does buy is every install that is NOT that one — the `whenParsed()` retry
+        // above, and any re-connect — where `viewer.js` has already published and the pushed call
+        // has been and gone. Those would otherwise start from `true` with nobody left to correct
+        // them.
         this.atBaseline = this.root.getAttribute("data-spec-baseline") !== "0";
         if (!this.atBaseline) this.setChipVerdict(null);
 
