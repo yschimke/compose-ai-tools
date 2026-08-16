@@ -34,7 +34,7 @@ IMAGES = [
     (
         "picture-entity-app-mode.png",
         ["PictureEntity_AppMode_Light_picture_entity_app_mode_light-5174ea1f"],
-        "the embedded lane renders nothing at all (issue #3993)",
+        "an unloadable image now costs one slot, not the card (issue #3993)",
     ),
 ]
 

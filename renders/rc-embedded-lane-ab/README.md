@@ -1,6 +1,6 @@
 # Embedded vs view player A/B — issue #3936 step 2
 
-Full re-run after the `ColorAttribute` fix (#3977): all 164 `.rc` documents in the
+Re-run after each embedded-player fix: all 164 `.rc` documents in the
 `homeassistant-remotecompose` catalog, both lanes, same commit, same Robolectric harness
 (`RcEmbeddedRenderHarness` and `RcViewPlayerRenderHarness`), so the document is a controlled
 variable and every difference is the interpreter.
@@ -8,13 +8,18 @@ variable and every difference is the interpreter.
 Scored with pixelmatch at `threshold: 0.1` and its default anti-aliasing detection — the same
 library and settings `rc-compare.mjs` already uses, rather than a fresh ad-hoc metric.
 
-| result | documents |
-| --- | --- |
-| no differing pixels | 16 |
-| differing, under 1% of pixels | 86 |
-| differing, 1–5% | 59 |
-| differing, over 5% | 1 |
-| **unrendered on the embedded lane** | **2** |
+| result | after #3977 | after #3995, #4000 and the clip fix |
+| --- | --- | --- |
+| no differing pixels | 16 | **34** |
+| differing, under 1% of pixels | 86 | 87 |
+| differing, 1–5% | 59 | **40** |
+| differing, over 5% | 1 | 3 |
+| unrendered on the embedded lane | 2 | **0** |
+
+The "over 5%" column grew because the two `PictureEntity_AppMode` documents now *render* on the
+embedded lane instead of throwing, and they score as almost completely different from the view
+lane — which loses the whole card to an error panel. That is the embedded player being right and
+the score being measured against the wrong reference; see below.
 
 ## What the differences actually are
 
@@ -29,26 +34,37 @@ An exact-inequality pixel count cannot separate this from a real defect, and an 
 cannot either, because glyph strokes are several pixels wide and high contrast. That is why the
 numbers above use pixelmatch's AA detection.
 
-**Two real defects came out of the sweep**, both filed separately:
+**Two real defects came out of the sweep**, both since fixed:
 
-### Switch thumb renders square
+### Switch thumb rendered square — fixed
 
 ![toggle thumb](toggle-thumb.png)
 
-The view player slides a circular thumb; the embedded player draws a square one. The thumb carries
-`RoundedClipRectModifierOperation [46][46] [46][46] [46][46] [46][46]` — radii by *variable
-reference*, where `FloatExpression[46] = ([44] [45] min 2.0 /)` and `[44]`/`[45]` are
-`ComponentValue`s of the track. The track's own clip uses literal radii (`28.875`) and is correct in
-both lanes. The apparent rounding on the thumb's trailing edge is the track's clip, not the thumb's.
+Both rows are now identical. The cause was not the radius — that was a red herring I filed the
+issue on, and instrumenting it is what disproved it. `Modifier.roundedClipRect` prepended the clip
+to the *whole* accumulated chain, which put it ahead of `PaddingModifierOperation` as well as the
+draw. On a thumb built as `padding(35.4dp, 7.9dp).size(16.dp)` + clip + background, the clip wrapped
+the padded 51×24dp box while the background painted the 16×16dp content well inside it, so the
+rounded shape never touched what it was meant to round. The track beside it carries no padding,
+which is exactly why it looked correct and the thumb did not.
 
-### An unresolvable image aborts the whole document
+The radius *was* also resolving wrong — `0.5` instead of `22.0`, because `GraphContext` could not
+see `ComponentValue`s — and #3995 fixed that. It changed no pixels: `roundedRectRadiusScale` clamps
+both values to about the same thing on the box in question.
+
+### An unresolvable image aborted the whole document — fixed by #4000
 
 ![picture entity](picture-entity-app-mode.png)
 
-`PictureEntity_AppMode` (light and dark) throws `IllegalArgumentException: URI is not absolute` out
+`PictureEntity_AppMode` (light and dark) threw `IllegalArgumentException: URI is not absolute` out
 of `AndroidBitmapLoader.loadBitmap`, reached from `BitmapData.apply` during
-`CoreDocument.initializeContext`. Both players fail to load the image — the view player renders its
-own error card, the embedded player propagates the exception and renders nothing.
+`CoreDocument.initializeContext`, and rendered nothing at all.
+
+Neither player can load the image — it is referenced by a relative URI and AndroidX's loader calls
+`URI.toURL()` on it. What differs now is the cost: the embedded player draws the rest of the card
+(its title and state) with an empty image slot, while the view player replaces the entire card with
+a black error panel. **This is the one document where a large pixel difference means the embedded
+lane is more correct, not less** — a caution about reading the table above as a parity score.
 
 ## Regenerating
 
