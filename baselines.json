@@ -592,14 +592,14 @@
     "serve-landing-grouped-pages-filtered.dark.png": {
       "fixture": "serve-landing-grouped-pages-filtered",
       "theme": "dark",
-      "sha256": "cfb67ebee37653fad61681ccf3e233e241b184d661f0283e082a3134a0ef3ae5",
-      "size": 88711
+      "sha256": "e6a6812e1f4bb953ac8e0ee70648e81f5f24e68c9960047fe75dbdd05b6a4365",
+      "size": 86670
     },
     "serve-landing-grouped-pages-filtered.light.png": {
       "fixture": "serve-landing-grouped-pages-filtered",
       "theme": "light",
-      "sha256": "9849f5830035d82505ac43f22f9e9e7248483f9c16b7b91d9415cf41aae2b4a1",
-      "size": 87615
+      "sha256": "d240ae52fddfab119dea122a7e3a923406f0b8e5623db94f22c0db8bf8562199",
+      "size": 85648
     },
     "serve-landing-grouped-pages-pane.dark.png": {
       "fixture": "serve-landing-grouped-pages-pane",
@@ -616,14 +616,14 @@
     "serve-landing-grouped-pages-section-match.dark.png": {
       "fixture": "serve-landing-grouped-pages-section-match",
       "theme": "dark",
-      "sha256": "aa0f9283b1dcf5b55523b5e2b6e005436e14d23d0ea7f440c02eee08e53eaea6",
-      "size": 87610
+      "sha256": "444658c318528a96feaaa46ce68b9e4c5c1423e72394ef938c78bfcaf939984e",
+      "size": 85638
     },
     "serve-landing-grouped-pages-section-match.light.png": {
       "fixture": "serve-landing-grouped-pages-section-match",
       "theme": "light",
-      "sha256": "98519bbbd8b8407e058cde6c2726beee19b9425a84de5461e2a30721050d8645",
-      "size": 86499
+      "sha256": "26bc5e64a9f5e05419a42aeca53e612ff3bfcd1cf0d6a0d2d9f2331c5450e35d",
+      "size": 84525
     },
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",
@@ -748,14 +748,14 @@
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "dark",
-      "sha256": "fe4b92bd3e33a46810e42f758979b702f757634419bae5e97ace68463f9449d6",
-      "size": 64659
+      "sha256": "36bd4857a04354a055efd6c31422f128c9ead4175a40b6479ff6e92a568b55f5",
+      "size": 62619
     },
     "serve-landing-sections-filtered.light.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "light",
-      "sha256": "8a34f905d6896e267c8232f17ecce0d1da41bd67c57f2ebf60a061c8eb021f39",
-      "size": 63621
+      "sha256": "370945d5cde57964ed1a8681f1305e0e5ff9fc236e3d7af48c216fd448a83894",
+      "size": 61569
     },
     "serve-landing-sections-mobile.dark.png": {
       "fixture": "serve-landing-sections-mobile",
