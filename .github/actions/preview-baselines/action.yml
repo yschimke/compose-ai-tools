@@ -44,7 +44,7 @@ runs:
         echo "::warning::preview-baselines is deprecated; call ./.github/actions/apply with mode=baseline + only=compose,resources instead. See apply/action.yml for the input mapping."
 
     # This public action intentionally follows its own release tag; release-please updates it atomically.
-    - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.9.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+    - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.10.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
         mode: baseline
         only: 'compose,resources'

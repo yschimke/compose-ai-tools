@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.10.0](https://github.com/yschimke/compose-ai-tools/compare/v1.9.0...v1.10.0) (2026-08-16)
+
+
+### Features
+
+* **serve:** report a bug in the preview server itself ([#4069](https://github.com/yschimke/compose-ai-tools/issues/4069)) ([a116a61](https://github.com/yschimke/compose-ai-tools/commit/a116a6138f73bd8c1381efca4351398cb3ac5f2a))
+* **serve:** surface resolved typography details ([#4051](https://github.com/yschimke/compose-ai-tools/issues/4051)) ([e0568a9](https://github.com/yschimke/compose-ai-tools/commit/e0568a997ba11d1c73c3cdad27010de4cbbfe156))
+* **serve:** surface typography across preview comparisons ([#4053](https://github.com/yschimke/compose-ai-tools/issues/4053)) ([71d754f](https://github.com/yschimke/compose-ai-tools/commit/71d754f10e4f92c15dc0f0ea4d9f26884ff38121))
+
+
+### Bug Fixes
+
+* repair component browser CI regressions ([#4071](https://github.com/yschimke/compose-ai-tools/issues/4071)) ([85c4346](https://github.com/yschimke/compose-ai-tools/commit/85c4346c7f52809d2d507f9b743c877989b1c258))
+* **serve:** expose accessibility inspection on catalog previews ([#4070](https://github.com/yschimke/compose-ai-tools/issues/4070)) ([0ab4a9b](https://github.com/yschimke/compose-ai-tools/commit/0ab4a9b0177b48785c54d4155703d10a45d6de32))
+
 ## [1.9.0](https://github.com/yschimke/compose-ai-tools/compare/v1.8.0...v1.9.0) (2026-08-16)
 
 
