@@ -265,3 +265,76 @@ test("no artifacts folds to nothing, so a component without motion gains no fiel
   assert.deepEqual(foldMotion([{ path: "previews/Sw.png", theme: "light" }], []), []);
   assert.deepEqual(foldMotion([], undefined), []);
 });
+
+// --- theme pairing off the preview id -----------------------------------------------------------
+// These pin the shape a REAL candidate image has: `{state, width, height, theme}` plus a `data:`
+// URI, and no `path`. The original fixtures gave their images a `path`, which the production join
+// never produces — so `themeForArtifact` matched nothing, every published capture came out
+// untagged, and an untagged capture is pinned to every card of its component. The first catalog to
+// publish captures showed the dark recording on the light card and vice versa.
+
+const bakedStill = (theme) => ({
+  state: "default",
+  theme,
+  width: 221,
+  height: 210,
+  uri: "data:image/png;base64,iVBORw0KGgo=",
+});
+
+test("themes a capture from its own preview id, with images that carry no path", () => {
+  const images = [bakedStill("light"), bakedStill("dark")];
+  const artifacts = [
+    { path: "previews/pkg.Kt.SwitchOn_Light.apng", previewId: "pkg.Kt.SwitchOn_Light", kind: "interaction" },
+    { path: "previews/pkg.Kt.SwitchOn_Dark.apng", previewId: "pkg.Kt.SwitchOn_Dark", kind: "interaction" },
+  ];
+  const themeByPreviewId = new Map([
+    ["pkg.Kt.SwitchOn_Light", "light"],
+    ["pkg.Kt.SwitchOn_Dark", "dark"],
+  ]);
+
+  const folded = foldMotion(images, artifacts, [], [], themeByPreviewId);
+
+  assert.deepEqual(
+    folded.map((m) => m.theme),
+    ["light", "dark"],
+  );
+});
+
+test("a separately named motion function inherits the mapped still's theme", () => {
+  const images = [bakedStill("light")];
+  const artifacts = [
+    { path: "previews/pkg.Kt.SwitchMotion_Light.apng", previewId: "pkg.Kt.SwitchMotion_Light", kind: "interaction" },
+  ];
+  // The motion function's own id is absent from the map (it renders no still of its own); the
+  // fan-out join maps it onto the still function's cell, whose theme is then used.
+  const previewCells = [{ id: "pkg.Kt.SwitchOn_Light", params: { uiMode: 16 } }];
+  const motionPreviewCells = [{ id: "pkg.Kt.SwitchMotion_Light", params: { uiMode: 16 } }];
+  const themeByPreviewId = new Map([["pkg.Kt.SwitchOn_Light", "light"]]);
+
+  const folded = foldMotion(images, artifacts, previewCells, motionPreviewCells, themeByPreviewId);
+
+  assert.equal(folded[0].theme, "light");
+});
+
+test("an id the map does not know stays untagged rather than guessing", () => {
+  const folded = foldMotion(
+    [bakedStill("light")],
+    [{ path: "previews/pkg.Kt.Mystery.apng", previewId: "pkg.Kt.Mystery", kind: "interaction" }],
+    [],
+    [],
+    new Map([["pkg.Kt.SwitchOn_Light", "light"]]),
+  );
+  assert.equal("theme" in folded[0], false);
+});
+
+test("an unthemed catalog folds captures with no theme, as before", () => {
+  const folded = foldMotion(
+    [{ state: "default", width: 1, height: 1, uri: "data:," }],
+    [{ path: "previews/pkg.Kt.Thing.apng", previewId: "pkg.Kt.Thing", kind: "animation" }],
+    [],
+    [],
+    new Map(),
+  );
+  assert.equal("theme" in folded[0], false);
+  assert.equal(folded[0].kind, "animation");
+});

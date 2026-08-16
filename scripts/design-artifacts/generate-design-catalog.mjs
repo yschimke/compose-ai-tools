@@ -466,6 +466,20 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     );
   }
 
+  // Preview id → the theme that id's candidate resolved, read BEFORE the per-function merge
+  // flattens the candidates into one image list. This is what pairs a motion capture with the
+  // themed card it accompanies: a capture knows its preview id, and its sibling still's theme is
+  // the theme of the candidate carrying that id. Taken from the candidate rather than re-derived
+  // from the id's `_Dark` / `_Light` suffix, so there stays exactly one implementation of the
+  // mode-naming rule (`catalog-themes.mjs` owns it). See foldMotion.
+  const themeByPreviewId = new Map();
+  for (const candidate of candidates) {
+    const id = candidate?.componentId;
+    if (!id) continue;
+    const theme = (candidate.images ?? []).find((image) => image?.theme)?.theme;
+    if (theme !== undefined) themeByPreviewId.set(id, theme);
+  }
+
   const sources = [];
   const missing = [];
   const noSticker = [];
@@ -668,6 +682,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         motionArtifactsFor(opts.motionBundle, motionPreviewFor(component)),
         opts.previewCellsByFunction?.get(component.preview),
         opts.previewCellsByFunction?.get(motionPreviewFor(component)),
+        themeByPreviewId,
       );
       if (motion.length > 0) {
         source.motion = motion;
