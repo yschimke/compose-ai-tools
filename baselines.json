@@ -742,8 +742,8 @@
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "light",
-      "sha256": "1c16ab70e20d6f271e0dca45a31dbc874fd3dd5fe0821070b67a60c2cfafed3c",
-      "size": 58487
+      "sha256": "e3477d95501dd63897ede1f2de08752f816f09eed25da7de3613191e4c2b8b77",
+      "size": 56703
     },
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
@@ -832,8 +832,8 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "64f1baf620ffa1c84a9d41a3f9c91c0eefeefdfdd2300ed1827c0edb3f1e557a",
-      "size": 80905
+      "sha256": "4bd4f15b2dcd290feed1f3421509270424e16a18b61d072a18dd2402a5e35e65",
+      "size": 80832
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
