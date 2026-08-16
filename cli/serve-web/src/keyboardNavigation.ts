@@ -50,6 +50,16 @@ function text(element: Element | null): string {
     return (element?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function componentLabel(element: HTMLAnchorElement): string {
+    const named = element.querySelector(".cp-nav-name, .cp-label");
+    if (named) return text(named);
+    const withoutCounts = element.cloneNode(true) as HTMLAnchorElement;
+    withoutCounts
+        .querySelectorAll(".cp-tree-count")
+        .forEach((count) => count.remove());
+    return text(withoutCounts);
+}
+
 function controlLabel(control: HTMLElement): string {
     const explicit = control.getAttribute("aria-label");
     if (explicit) return explicit;
@@ -284,9 +294,7 @@ class KeyboardNavigation {
             componentKey,
         ).map((element) => ({
             section: "components",
-            label:
-                text(element.querySelector(".cp-nav-name, .cp-label")) ||
-                text(element),
+            label: componentLabel(element),
             detail: element.getAttribute("title") || "Open component",
             keywords: `${text(element)} ${element.getAttribute("data-search") || ""}`,
             href: element.href,

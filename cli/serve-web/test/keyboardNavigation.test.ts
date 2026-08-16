@@ -9,7 +9,7 @@ describe("power-user keyboard navigation", () => {
           <details class="cp-settings" open><input type="checkbox" data-cp-keyboard-navigation>
             <button data-cp-keyboard-tour>View keyboard tour</button></details>
           <nav class="cp-catalog-menu">
-            <a class="cp-tree-component" href="#cp-card-button">Button</a>
+            <a class="cp-tree-component" href="#cp-card-button">Button<span class="cp-tree-count">34</span></a>
             <a class="cp-tree-component" href="#cp-card-switch">Switch</a>
             <a class="cp-tree-component" href="#cp-card-caf%C3%A9">Café</a>
           </nav>
@@ -60,7 +60,7 @@ describe("power-user keyboard navigation", () => {
         assert.deepEqual(
             componentItems,
             ["Button", "Switch", "Café"],
-            "encoded tree fragments dedupe against their Unicode card ids",
+            "tree counts stay out of labels and encoded fragments dedupe against Unicode card ids",
         );
 
         const cafeCommand = Array.from(
@@ -81,7 +81,7 @@ describe("power-user keyboard navigation", () => {
             .forEach((link) =>
                 link.addEventListener("click", (event) => {
                     event.preventDefault();
-                    traversed.push(link.textContent!.trim());
+                    traversed.push(link.firstChild?.textContent?.trim() || "");
                     history.replaceState(null, "", link.href);
                 }),
             );
