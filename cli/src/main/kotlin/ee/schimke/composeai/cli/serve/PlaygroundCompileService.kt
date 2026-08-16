@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli.serve
 
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import okio.FileSystem
 import okio.Path
 
@@ -100,6 +102,10 @@ class PlaygroundCompileService(
   val editLeasesEnabled: Boolean = false,
   private val editLeaseTtlMillis: Long = DEFAULT_EDIT_LEASE_TTL_MILLIS,
   private val nowMillis: () -> Long = System::currentTimeMillis,
+  /** Schedules idle-lease reclamation; injectable so expiry behavior is deterministic in tests. */
+  private val scheduleEditLeaseExpiry: (Long, () -> Unit) -> Unit = { delayMillis, task ->
+    EDIT_LEASE_EXPIRY_EXECUTOR.schedule(task, delayMillis, TimeUnit.MILLISECONDS)
+  },
 ) {
 
   private val editLock = Any()
@@ -324,7 +330,7 @@ class PlaygroundCompileService(
       val existing = editLease
       if (existing != null) {
         if (existing.owner == owner) {
-          existing.expiresAt = nowMillis() + editLeaseTtlMillis
+          renewEditLeaseLocked(existing)
           refreshEditHealthLocked()
           return@synchronized existing.response("You already hold the live-edit lease.")
         }
@@ -353,6 +359,7 @@ class PlaygroundCompileService(
         )
       editLease = lease
       editLeaseAcquisitions++
+      scheduleEditLeaseExpiryLocked(lease)
       refreshEditHealthLocked()
       lease.response("Live editing acquired.")
     }
@@ -396,6 +403,30 @@ class PlaygroundCompileService(
     editLease = null
     cleanup(lease.workDir)
     refreshEditHealthLocked()
+  }
+
+  private fun renewEditLeaseLocked(lease: EditLease) {
+    lease.expiresAt = nowMillis() + editLeaseTtlMillis
+    scheduleEditLeaseExpiryLocked(lease)
+  }
+
+  private fun scheduleEditLeaseExpiryLocked(lease: EditLease) {
+    val leaseId = lease.id
+    val deadline = lease.expiresAt
+    scheduleEditLeaseExpiry((deadline - nowMillis()).coerceAtLeast(0L)) {
+      synchronized(editLock) {
+        val current = editLease ?: return@synchronized
+        // A release/reacquire or renewal supersedes this particular deadline's task.
+        if (current.id != leaseId || current.expiresAt != deadline) return@synchronized
+        if (current.expiresAt <= nowMillis()) {
+          purgeExpiredEditLeaseLocked()
+        } else {
+          // Wall-clock adjustment or an early scheduler wakeup: retain the lease and try again at
+          // the remaining deadline rather than leaking its workspace.
+          scheduleEditLeaseExpiryLocked(current)
+        }
+      }
+    }
   }
 
   private fun refreshEditHealthLocked() {
@@ -443,7 +474,7 @@ class PlaygroundCompileService(
             else "catalog '$catalog' cannot serve mode ${mode.name} on this host"
           )
 
-      lease.expiresAt = nowMillis() + editLeaseTtlMillis
+      renewEditLeaseLocked(lease)
       refreshEditHealthLocked()
       val config = mode to catalog
       if (lease.config != null && lease.config != config) {
@@ -474,15 +505,21 @@ class PlaygroundCompileService(
       editCompileAttempts++
       refreshEditHealthLocked()
       var compile =
-        compiler.compileIncremental(
-          sources = sources,
-          classpath = classpath.entries,
-          outputDir = classesDir,
-          workingDir = icDir,
-          modified = modified,
-          removed = removed,
-          firstBuild = firstBuild,
-        )
+        try {
+          compiler.compileIncremental(
+            sources = sources,
+            classpath = classpath.entries,
+            outputDir = classesDir,
+            workingDir = icDir,
+            modified = modified,
+            removed = removed,
+            firstBuild = firstBuild,
+          )
+        } catch (t: Throwable) {
+          renewEditLeaseLocked(lease)
+          refreshEditHealthLocked()
+          throw t
+        }
       // An internal BTA/IC failure has no source position. Reset only this lease and retry the same
       // revision through the proven full path; ordinary source diagnostics stay incremental.
       if (compile.diagnostics.isInfrastructureCompileFailure()) {
@@ -508,6 +545,8 @@ class PlaygroundCompileService(
 
       val diagnostics = compile.diagnostics
       if (diagnostics.any { it.severity == PlaygroundSeverity.ERROR }) {
+        renewEditLeaseLocked(lease)
+        refreshEditHealthLocked()
         return@synchronized PlaygroundRunResponse(
           diagnostics = diagnostics,
           errors = PlaygroundErrorsWire.project(diagnostics),
@@ -521,26 +560,32 @@ class PlaygroundCompileService(
       // bytecode. Snapshot the successful revision into an ordinary token-owned work directory.
       val revisionWorkDir = newWorkDir()
       val revisionClasses = revisionWorkDir / "classes"
-      try {
-        fileSystem.createDirectories(revisionClasses)
-        copyDirectory(classesDir, revisionClasses)
-        publishCompiled(
-            mode = mode,
-            classpath = classpath,
-            classesDir = revisionClasses,
-            workDir = revisionWorkDir,
-            diagnostics = diagnostics,
-            isSecurityChecked = isSecurityChecked,
-          )
-          .copy(
-            editLease = lease.id,
-            revision = request.revision,
-            incremental = compile.incremental,
-          )
-      } catch (t: Throwable) {
-        cleanup(revisionWorkDir)
-        failure("playground revision snapshot failed: ${t.message ?: t.javaClass.simpleName}")
-      }
+      val response =
+        try {
+          fileSystem.createDirectories(revisionClasses)
+          copyDirectory(classesDir, revisionClasses)
+          publishCompiled(
+              mode = mode,
+              classpath = classpath,
+              classesDir = revisionClasses,
+              workDir = revisionWorkDir,
+              diagnostics = diagnostics,
+              isSecurityChecked = isSecurityChecked,
+            )
+            .copy(
+              editLease = lease.id,
+              revision = request.revision,
+              incremental = compile.incremental,
+            )
+        } catch (t: Throwable) {
+          cleanup(revisionWorkDir)
+          failure("playground revision snapshot failed: ${t.message ?: t.javaClass.simpleName}")
+        }
+      // The TTL is an idle timeout. Give a continuously active owner a full window after
+      // compilation, discovery, snapshotting and first-frame rendering finish.
+      renewEditLeaseLocked(lease)
+      refreshEditHealthLocked()
+      response
     }
 
   private fun compileAndMint(
@@ -741,6 +786,10 @@ class PlaygroundCompileService(
     const val DEFAULT_EDIT_LEASE_TTL_MILLIS: Long = 15 * 60 * 1000L
 
     private val EDIT_LEASE_RANDOM = SecureRandom()
+    private val EDIT_LEASE_EXPIRY_EXECUTOR =
+      Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "playground-edit-lease-expiry").apply { isDaemon = true }
+      }
 
     private fun newEditLeaseId(): String {
       val bytes = ByteArray(18)
