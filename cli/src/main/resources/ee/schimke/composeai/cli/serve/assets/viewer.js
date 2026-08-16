@@ -2378,26 +2378,38 @@
   // separately here rather than inferred from `liveToggle`.
   var liveSignIn = document.getElementById("cp-live-signin");
   var modeHint = document.getElementById("cp-mode-hint");
-  function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
-  function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
+  // The lane decisions live in `cli/serve-web/src/viewer/laneState.ts`.
+  function liveOffer() {
+    return { daemon: !!(live && !live.disabled), wasm: !!wasmToggle };
+  }
+  function liveTransportAvailable() { return urlRules().liveTransportAvailable(liveOffer()); }
+  function bestLiveMode() { return urlRules().bestLiveMode(liveOffer()); }
   function anyLiveActive() { return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked); }
   // Every lane that paints a *running* composition rather than a finished image: the daemon
   // stream, the in-browser Wasm app, and both Remote Compose player lanes (which replay the
   // document client-side). This is what the status dot reports, so picking "JS" from the combo
   // lights the same indicator that clicking into Live does — they are the same claim.
+  function laneFlags() {
+    return {
+      rcWasm: rcWasmActive(),
+      rc: rcActive(),
+      wasm: wasmActive(),
+      spec: specActive(),
+      live: !!(live && live.checked),
+    };
+  }
   function anyInteractive() {
-    return anyLiveActive() || rcActive() || rcWasmActive();
+    return urlRules().anyInteractive(laneFlags());
   }
   // The lane the picker is (or would be) sitting on, in the combo's own value space. A daemon
   // stream is not one of the offered renderers — it is the live form of whichever one is picked —
   // so it deliberately falls through to the static player lane the toggle will return to.
   function currentLaneValue() {
-    if (rcWasmActive()) return "rc:cmp-wasm";
-    if (rcActive()) return "rc:js";
-    if (wasmActive()) return "wasm";
-    if (specActive()) return "spec";
-    if (rcDefaultBackend) return "rc:" + (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
-    return "png";
+    return urlRules().currentLaneValue(laneFlags(), {
+      defaultBackend: rcDefaultBackend || "",
+      pickedBackend: rcPlayerBackend || "",
+      picked: !!rcPlayerPicked,
+    });
   }
   // What the chip calls the current lane. "Live" while the daemon stream is up (that lane IS the
   // live form of whichever renderer is picked, and the picked one is a click away again); other-
@@ -2411,18 +2423,19 @@
     return (liveToggle && liveToggle.getAttribute("data-default-lane-label")) || "Live preview";
   }
   function laneLabelText() {
-    if (live && live.checked) return "Live";
-    if (!laneSelect) return defaultLaneLabel();
-    var wanted = currentLaneValue();
-    var label = "";
-    Array.prototype.forEach.call(laneSelect.options, function (o) {
-      if (o.value === wanted) label = o.textContent;
+    var options = null;
+    if (laneSelect) {
+      options = new Map();
+      Array.prototype.forEach.call(laneSelect.options, function (o) {
+        options.set(o.value, o.textContent);
+      });
+    }
+    return urlRules().laneLabelText({
+      live: !!(live && live.checked),
+      laneOptions: options,
+      wanted: currentLaneValue(),
+      defaultLabel: defaultLaneLabel(),
     });
-    // On the spec lane there is no matching option — the spec chip beside this one is lit and
-    // already names it, and two adjacent chips both reading "Figma" would be two controls arguing
-    // about the same fact. So this one keeps naming the render lane, which is exactly where
-    // clicking it goes back to.
-    return label || defaultLaneLabel();
   }
   function updateLiveToggle() {
     var interactive = anyInteractive();
@@ -2438,8 +2451,9 @@
     // Live chip, a combo pick, an SVG swap, Back/Forward) un-presses it too.
     if (specChip) {
       var onSpecLane = specActive();
-      specChip.setAttribute("aria-pressed", onSpecLane ? "true" : "false");
-      specChip.disabled = !specAvailable() && !onSpecLane;
+      var specState = urlRules().laneChip({ onLane: onSpecLane, available: specAvailable() });
+      specChip.setAttribute("aria-pressed", specState.pressed ? "true" : "false");
+      specChip.disabled = specState.disabled;
       specChip.title = onSpecLane
         ? "Showing the imported design spec — click to return to the render"
         : specChip.getAttribute("data-spec-chip-tip") || specChip.title;
