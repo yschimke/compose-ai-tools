@@ -11,6 +11,7 @@
 // that emits them the other way round. That failure would be silent: the URL rules would simply
 // stop applying.
 
+import { fitCap, needsRefit, zoomMode } from "./viewer/fit.js";
 import {
     activeThemeChoice,
     chosenThemeProvider,
@@ -30,6 +31,9 @@ import {
 } from "./viewer/renderQuery.js";
 
 const api = {
+    fitCap,
+    zoomMode,
+    needsRefit,
     activeThemeChoice,
     chosenUiMode,
     chosenThemeProvider,

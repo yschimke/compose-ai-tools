@@ -4475,10 +4475,16 @@ class ServeWebFixtureTest {
         view.contains(">Fit width</button>"),
       "the viewer offers width fit as an unpressed toggle over the default screen fit",
     )
+    // The cap's arithmetic — the 320px floor, the slack under the stage, the rounding that keeps a
+    // re-measure from churning — moved to `cli/serve-web/src/viewer/fit.ts`, where
+    // `viewerFit.test.ts`
+    // drives each rule instead of grepping for one spelling of the expression. What this still
+    // holds
+    // is what the SERVED asset must do: measure the stage's real position rather than guess, hand
+    // that to the shared rule, and apply a cap before the first render.
     assertTrue(
-      assetText("viewer.js").contains("var maxHeight = mode === \"fit\" ? fitCap() : \"\";") &&
-        assetText("viewer.js")
-          .contains("return Math.max(320, Math.round(window.innerHeight - top - 64)) + \"px\";") &&
+      assetText("viewer.js").contains("stage.getBoundingClientRect().top") &&
+        assetText("viewer.js").contains("urlRules().fitCap(top, window.innerHeight)") &&
         assetText("viewer.js").contains("applyZoom(\"fit\");"),
       "screen fit bounds tall previews to the space the viewport actually has left below the " +
         "chrome, measured before the initial render rather than guessed at 72vh",
