@@ -205,6 +205,8 @@ data class PreviewInfo(
    * `compose-preview show --json`, contrib scripting, and MCP readers. False for ordinary previews.
    */
   val fixedTheme: Boolean = false,
+  /** Mirrors discovery's `@PreviewHelper(includeInA11y = false)` manifest flag. */
+  val includeInA11y: Boolean = true,
 )
 
 @Serializable

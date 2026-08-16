@@ -155,6 +155,47 @@ class SelectVariantsTest(unittest.TestCase):
         rows = ar.select_variants(manifest, {})
         self.assertEqual(rows, [])
 
+    def test_filters_out_color_scheme_specimen_helper(self):
+        specimen = _preview(
+            id="x.ColorSchemeSpecimenPreview",
+            function="ColorSchemeSpecimenPreview",
+            render="renders/ColorSchemeSpecimenPreview.png",
+        )
+        specimen["includeInA11y"] = False
+        manifest = {
+            "module": "app",
+            "previews": [
+                specimen,
+                _preview(
+                    id="x.ButtonPreview",
+                    function="ButtonPreview",
+                    render="renders/ButtonPreview.png",
+                ),
+            ],
+        }
+
+        rows = ar.select_variants(manifest, {})
+
+        self.assertEqual([r["functionName"] for r in rows], ["ButtonPreview"])
+
+    def test_older_manifest_includes_unannotated_specimens(self):
+        manifest = {
+            "module": "app",
+            "previews": [
+                _preview(
+                    id="x.ColorSchemeSpecimenPreview",
+                    function="ColorSchemeSpecimenPreview",
+                ),
+            ],
+        }
+
+        rows = ar.select_variants(manifest, {})
+
+        self.assertEqual(
+            [r["functionName"] for r in rows],
+            ["ColorSchemeSpecimenPreview"],
+        )
+
     def test_merges_a11y_for_chosen_variant(self):
         manifest = {
             "module": "sample-wear",

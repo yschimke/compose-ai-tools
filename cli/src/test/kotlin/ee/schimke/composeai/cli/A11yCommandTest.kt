@@ -233,6 +233,25 @@ class A11yCommandTest {
   }
 
   @Test
+  fun `preview helper opted out of a11y never reaches the daemon work list`() {
+    val cmd = TestableReportCommand(emptyList())
+    val (module, original) = manifest("app", "ColorSchemeSpecimenPreview", "ButtonPreview")
+    val annotated =
+      original.copy(
+        previews =
+          original.previews.map {
+            if (it.id == "ColorSchemeSpecimenPreview") it.copy(includeInA11y = false) else it
+          }
+      )
+
+    val request = cmd.requestsFor(listOf(module to annotated)).single()
+
+    assertEquals(listOf("ButtonPreview"), request.previews.map { it.entryId })
+    assertEquals(listOf("ButtonPreview"), request.consumerPreviewIds)
+    assertFalse(request.narrowed, "an intentional helper exclusion is not partial coverage")
+  }
+
+  @Test
   fun `filter narrows the per-preview fan-out and marks the report partial`() {
     // The bug: `a11y --filter Alpha` used to fetch ATF for all three previews — a per-preview
     // daemon render each — to print one row. The render half was narrowed in #3734; this is the

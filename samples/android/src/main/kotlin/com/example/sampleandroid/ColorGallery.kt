@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
+import ee.schimke.composeai.preview.PreviewHelper
 import ee.schimke.composeai.preview.color.ColorSchemeSpecimen
 import ee.schimke.composeai.preview.color.ColorSpecimen
 
@@ -21,6 +22,7 @@ import ee.schimke.composeai.preview.color.ColorSpecimen
  * `TypographyGallery`'s specimen sheets.
  */
 @Preview(name = "ColorScheme specimen — light", widthDp = 360, heightDp = 1760)
+@PreviewHelper(includeInA11y = false)
 @Composable
 fun ColorSchemeSpecimenLightPreview() {
   MaterialTheme(colorScheme = lightColorScheme()) {
@@ -29,6 +31,7 @@ fun ColorSchemeSpecimenLightPreview() {
 }
 
 @Preview(name = "ColorScheme specimen — dark", widthDp = 360, heightDp = 1760)
+@PreviewHelper(includeInA11y = false)
 @Composable
 fun ColorSchemeSpecimenDarkPreview() {
   MaterialTheme(colorScheme = darkColorScheme()) {

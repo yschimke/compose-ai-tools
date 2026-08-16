@@ -49,11 +49,14 @@ class A11yReportRendererTest {
 
   private fun module(): PreviewModule = PreviewModule(gradlePath = "sample", projectDir = moduleDir)
 
-  private fun manifest(reportsView: Map<String, String> = mapOf("a11y" to "accessibility.json")) =
+  private fun manifest(
+    reportsView: Map<String, String> = mapOf("a11y" to "accessibility.json"),
+    previews: List<PreviewInfo> = emptyList(),
+  ) =
     PreviewManifest(
       module = "sample",
       variant = "debug",
-      previews = emptyList(),
+      previews = previews,
       dataExtensionReports = reportsView,
     )
 
@@ -132,6 +135,33 @@ class A11yReportRendererTest {
     val bar = renderer.annotate(previewResult("Bar"), module())
     assertNull(bar.dataExtensions["a11y"], "an unchecked preview gets no carrier")
     assertFalse(renderer.hasData(bar), "null a11yEntry is the established 'checks didn't run'")
+  }
+
+  @Test
+  fun `an opted out preview helper receives no a11y carrier`() {
+    writeReport(
+      """
+      {
+        "module": "sample",
+        "entries": [{"previewId": "ButtonPreview", "findings": []}]
+      }
+      """
+        .trimIndent()
+    )
+    val helper =
+      PreviewInfo(
+        id = "ColorSchemeSpecimenPreview",
+        functionName = "ColorSchemeSpecimenPreview",
+        className = "com.example.PreviewsKt",
+        includeInA11y = false,
+      )
+    val renderer = A11yReportRenderer()
+    renderer.load(listOf(module() to manifest(previews = listOf(helper))), verbose = false)
+
+    val result = renderer.annotate(previewResult(helper.id), module())
+
+    assertNull(result.dataExtensions["a11y"])
+    assertFalse(renderer.hasData(result))
   }
 
   @Test

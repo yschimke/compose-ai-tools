@@ -2205,6 +2205,10 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     val consumerIds = mutableListOf<String>()
     val requested = mutableListOf<RequestedPreview>()
     for (preview in manifest.previews) {
+      // A visual-only `@PreviewHelper` opted out at its declaration. Exclude it from both the
+      // daemon fan-out and this report's coverage universe: it was intentionally not checked, not
+      // missed by a narrowed request.
+      if (extensionId == "a11y" && !preview.includeInA11y) continue
       // Fetch order within a preview is load-bearing: the daemon keys its artefacts by preview id,
       // so each permutation's overlay lands on top of the last. [RequestedPreview] production keeps
       // the declared preview *first* here, and `DaemonA11yFetcher` reverses that so the base render

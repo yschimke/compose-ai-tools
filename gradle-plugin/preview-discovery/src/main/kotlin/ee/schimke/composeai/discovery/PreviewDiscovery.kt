@@ -270,6 +270,9 @@ object PreviewDiscovery {
   // "this preview's subject IS a theme — never re-render it under a themeProvider override". A
   // marker with no parameters, matched by FQN like its siblings. See `FixedTheme.kt`.
   private const val FIXED_THEME_FQN = "ee.schimke.composeai.preview.FixedTheme"
+  // Tooling/helper preview metadata. Visual-only specimens can opt out of A11y auditing while
+  // remaining ordinary renderable previews everywhere else. See `PreviewHelper.kt`.
+  private const val PREVIEW_HELPER_FQN = "ee.schimke.composeai.preview.PreviewHelper"
   private const val LAUNCHER_WIDGET_PREVIEW_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetPreview"
   // `@OverrideVariant` — repeatable; emits one extra synthetic preview per variant with
@@ -4177,6 +4180,11 @@ object PreviewDiscovery {
       // one of them. Reading it here also covers the built-in multi-preview expansion path, which
       // never sees a real `@Preview` [AnnotationInfo].
       fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
+      includeInA11y =
+        method.annotationInfo
+          .firstOrNull { it.name == PREVIEW_HELPER_FQN }
+          ?.let { annBoolean(it, "includeInA11y", default = true) }
+          ?: true,
     )
   }
 

@@ -1094,6 +1094,11 @@ data class PreviewInfo(
    * False for every ordinary preview, so older manifests and unannotated modules are unchanged.
    */
   val fixedTheme: Boolean = false,
+  /**
+   * `@PreviewHelper(includeInA11y = false)` — this preview is visual/tooling-only content that the
+   * accessibility pipeline must not audit. True for ordinary previews and older manifests.
+   */
+  val includeInA11y: Boolean = true,
 )
 
 /**

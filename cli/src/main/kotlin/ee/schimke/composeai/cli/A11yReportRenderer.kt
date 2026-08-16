@@ -53,6 +53,9 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
    */
   private var partialModules: Set<String> = emptySet()
 
+  /** Preview keys explicitly opted out via `@PreviewHelper(includeInA11y = false)`. */
+  private var excludedPreviewKeys: Set<String> = emptySet()
+
   override fun load(
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
     verbose: Boolean,
@@ -60,7 +63,11 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
     val out = mutableMapOf<String, AccessibilityEntry>()
     val enabled = mutableSetOf<String>()
     val partial = mutableSetOf<String>()
+    val excluded = mutableSetOf<String>()
     for ((module, manifest) in manifests) {
+      manifest.previews
+        .filterNot { it.includeInA11y }
+        .mapTo(excluded) { "${module.gradlePath}/${it.id}" }
       // Prefer the manifest pointer when a producer stamped one (legacy gradle-aggregated reports,
       // future daemon-stamped pointer); fall back to the conventional `accessibility.json`
       // location so a freshly-written daemon-aggregated report is still picked up even when no
@@ -100,12 +107,15 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
     a11yByKey = out
     enabledModules = enabled
     partialModules = partial
+    excludedPreviewKeys = excluded
     return enabled
   }
 
   override fun annotate(result: PreviewResult, module: PreviewModule): PreviewResult {
     if (module.gradlePath !in enabledModules) return result
-    val listed = a11yByKey["${module.gradlePath}/${result.id}"]
+    val key = "${module.gradlePath}/${result.id}"
+    if (key in excludedPreviewKeys) return result
+    val listed = a11yByKey[key]
     // A preview the report doesn't list, in a module whose report only covers part of its previews,
     // was never checked — leave the carrier off so `a11yEntry()` reads null ("checks didn't run")
     // rather than manufacturing a clean row for a preview ATF never saw (issue #3742).
