@@ -10,6 +10,7 @@ import java.io.File
 import java.nio.file.Path as NioPath
 import okio.Path
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
+import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
 
@@ -55,12 +56,7 @@ class PlaygroundBtaCompiler(
     classpath: List<Path>,
     outputDir: Path,
   ): List<PlaygroundDiagnostic> {
-    val collector = DiagnosticCollector()
-    return try {
-      // Non-incremental on purpose: a playground compiles a *fresh* snippet against a stable
-      // catalog classpath, so IC's per-entry classpath snapshotting is pure overhead — and it would
-      // throw on the catalog's leading `classes/` **directory** entry (it treats every entry as a
-      // JAR). The non-incremental path accepts directory entries and needs no icWorkingDir writes.
+    return compileWithCollector { collector ->
       session.compile(
         sources = sources.map { it.toNioPath() },
         compileClasspath = classpath.map { it.toNioPath() },
@@ -68,6 +64,53 @@ class PlaygroundBtaCompiler(
         compilerPlugins = compilerPlugins,
         diagnosticListener = collector,
       )
+    }
+  }
+
+  override fun compileIncremental(
+    sources: List<Path>,
+    classpath: List<Path>,
+    outputDir: Path,
+    workingDir: Path,
+    modified: List<Path>,
+    removed: List<Path>,
+    firstBuild: Boolean,
+  ): PlaygroundCompileService.IncrementalCompileResult {
+    val diagnostics = compileWithCollector { collector ->
+      session.compileIncremental(
+        sources = sources.map { it.toNioPath() },
+        compileClasspath = classpath.map { it.toNioPath() },
+        outputDir = outputDir.toNioPath(),
+        compilerPlugins = compilerPlugins,
+        sourcesChanges =
+          if (firstBuild) SourcesChanges.Unknown
+          else
+            SourcesChanges.Known(
+              modified.map { java.io.File(it.toString()) },
+              removed.map { java.io.File(it.toString()) },
+            ),
+        diagnosticListener = collector,
+        workingDir = workingDir.toNioPath(),
+      )
+    }
+    // The first call seeds BTA's IC state but cannot reuse any previous compilation. Report only
+    // subsequent calls as incremental so the UI and soak counters measure an actual warm edit.
+    return PlaygroundCompileService.IncrementalCompileResult(
+      diagnostics,
+      incremental = !firstBuild,
+    )
+  }
+
+  private inline fun compileWithCollector(
+    block: (DiagnosticCollector) -> Unit
+  ): List<PlaygroundDiagnostic> {
+    val collector = DiagnosticCollector()
+    return try {
+      // The ordinary path stays non-incremental: a playground compiles a *fresh* snippet against a
+      // stable catalog classpath, so retaining per-run IC state would be pure overhead. Leased
+      // editing calls the incremental entry point above, including for a catalog's `classes/`
+      // directory.
+      block(collector)
       // A clean compile: DiagnosticCollector only captures errors, so success yields no
       // diagnostics.
       emptyList()

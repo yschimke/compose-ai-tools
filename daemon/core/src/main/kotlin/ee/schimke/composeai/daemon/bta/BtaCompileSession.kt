@@ -3,6 +3,7 @@
 package ee.schimke.composeai.daemon.bta
 
 import java.net.URLClassLoader
+import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import kotlin.io.path.exists
@@ -105,8 +106,8 @@ class BtaCompileSession(
    *   rebuild invalidates the cache automatically.
    * - [sourcesChanges] defaults to [SourcesChanges.ToBeCalculated]; callers with a file watcher
    *   pass [SourcesChanges.Known] for tighter incrementality.
-   * - The BTA IC working directory is [icWorkingDir]/`ic/`; the shrunk classpath snapshot is
-   *   written to [icWorkingDir]/`shrunk-classpath-snapshot.bin`.
+   * - The BTA IC working directory is [icWorkingDir]/`ic/`; the current API owns any reduced
+   *   classpath state inside that directory rather than requiring a separate snapshot path.
    */
   fun compileIncremental(
     sources: List<Path>,
@@ -121,12 +122,13 @@ class BtaCompileSession(
      * Defaults to the session's constructor-supplied [logger].
      */
     diagnosticListener: KotlinLogger? = null,
+    /** Override for callers that share one loaded toolchain across isolated editing sessions. */
+    workingDir: Path = icWorkingDir,
   ): List<Path> {
     outputDir.toFile().mkdirs()
-    icWorkingDir.toFile().mkdirs()
-    val cpSnapshotsDir = icWorkingDir.resolve("cp-snapshots").also { it.toFile().mkdirs() }
-    val icDir = icWorkingDir.resolve("ic").also { it.toFile().mkdirs() }
-    val shrunkClasspathSnapshot = icWorkingDir.resolve("shrunk-classpath-snapshot.bin")
+    workingDir.toFile().mkdirs()
+    val cpSnapshotsDir = workingDir.resolve("cp-snapshots").also { it.toFile().mkdirs() }
+    val icDir = workingDir.resolve("ic").also { it.toFile().mkdirs() }
 
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
@@ -134,7 +136,7 @@ class BtaCompileSession(
         // Content-hash the JAR rather than path-hashing — production needs to survive in-place
         // AAR rebuilds where the JAR's path stays stable but its contents move. Reuses the
         // existing snapshot when the SHA-256 matches.
-        val sha = sha256OfFile(jar)
+        val sha = sha256OfPath(jar)
         val cached = cpSnapshotsDir.resolve("$sha.bin")
         if (!cached.exists()) {
           val snapshotOp = jvm.classpathSnapshottingOperationBuilder(jar).build()
@@ -151,7 +153,6 @@ class BtaCompileSession(
             icDir,
             sourcesChanges,
             snapshotFiles,
-            shrunkClasspathSnapshot,
           )
           .build()
       builder.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)
@@ -192,18 +193,32 @@ class BtaCompileSession(
       .map { it.toPath() }
       .toList()
 
-  private fun sha256OfFile(path: Path): String {
-    // Streamed SHA — works on the gradle-cache page-cache hot path without buffering the
-    // whole JAR. The block size is small on purpose: AAR JARs can be 10s of MB and we don't
-    // want a 64 KB allocation per call.
+  private fun sha256OfPath(path: Path): String {
+    // BTA snapshots both JARs and classes directories. Hash directory entries in stable relative
+    // path order so an extracted catalog `classes/` directory gets the same content-addressed
+    // cache semantics as a JAR rebuilt in place.
     val md = MessageDigest.getInstance("SHA-256")
     val buf = ByteArray(8 * 1024)
-    path.toFile().inputStream().use { stream ->
-      while (true) {
-        val n = stream.read(buf)
-        if (n <= 0) break
-        md.update(buf, 0, n)
+    fun hashFile(file: Path, relative: String) {
+      md.update(relative.toByteArray(Charsets.UTF_8))
+      md.update(0)
+      Files.newInputStream(file).use { stream ->
+        while (true) {
+          val n = stream.read(buf)
+          if (n <= 0) break
+          md.update(buf, 0, n)
+        }
       }
+    }
+    if (Files.isDirectory(path)) {
+      Files.walk(path).use { paths ->
+        paths
+          .filter { Files.isRegularFile(it) }
+          .sorted(compareBy { path.relativize(it).toString() })
+          .forEach { hashFile(it, path.relativize(it).toString()) }
+      }
+    } else {
+      hashFile(path, path.fileName.toString())
     }
     return md.digest().joinToString("") { "%02x".format(it) }
   }

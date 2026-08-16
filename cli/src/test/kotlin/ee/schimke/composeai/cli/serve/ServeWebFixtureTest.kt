@@ -2213,6 +2213,7 @@ class ServeWebFixtureTest {
         token,
         isPublic = false,
         version = version,
+        editingLeaseEnabled = true,
         catalogs =
           listOf(
             PlaygroundCatalogInfo(

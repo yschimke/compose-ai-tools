@@ -51,6 +51,23 @@ class PlaygroundRoutingTest {
       fileSystem = fs,
     )
 
+  private val editingPlayground =
+    PlaygroundCompileService(
+      catalogClasspath = { mode, _ ->
+        if (mode == PlaygroundMode.CMP) {
+          PlaygroundCompileService.Classpath("compose-m3", listOf("/cat/app.jar".toPath()))
+        } else {
+          null
+        }
+      },
+      compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+      discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("com.example.P") },
+      tokenStore = tokenStore,
+      newWorkDir = { "/work/edit${++workN}".toPath() },
+      fileSystem = fs,
+      editLeasesEnabled = true,
+    )
+
   private val registry = ServeSessionRegistry(open = { null })
 
   // Materialize always succeeds (a real daemon isn't in scope here) so redemption reaches its Live
@@ -137,7 +154,7 @@ class PlaygroundRoutingTest {
         sessions = registry,
         defaultSessionId = "none",
         isPublic = true,
-        playgroundService = playground,
+        playgroundService = editingPlayground,
         githubAuth = githubAuth(repositoryAccess = true),
       )
       .also { it.start() }
@@ -165,6 +182,16 @@ class PlaygroundRoutingTest {
           .build()
       )
       .execute()
+
+  private fun post(path: String, body: String, port: Int, cookie: String? = null): Response {
+    val request =
+      Request.Builder()
+        .url("http://127.0.0.1:$port$path")
+        .post(body.toRequestBody("application/json".toMediaType()))
+        .apply { cookie?.let { header("Cookie", it) } }
+        .build()
+    return client.newCall(request).execute()
+  }
 
   @Test
   fun `a clean compile returns a preview token over the run route`() {
@@ -294,7 +321,29 @@ class PlaygroundRoutingTest {
     val cookie = githubSessionCookie(githubRepoServer.port)
     get("/playground", githubRepoServer.port, cookie).use { resp ->
       assertEquals(200, resp.code)
-      assertTrue(resp.body!!.string().contains("id=\"pg-source\""))
+      val html = resp.body!!.string()
+      assertTrue(html.contains("id=\"pg-source\""))
+      assertTrue(html.contains("id=\"pg-edit-lease\""))
+    }
+  }
+
+  @Test
+  fun `authenticated user acquires the single editing lease and compiles a revision`() {
+    val cookie = githubSessionCookie(githubRepoServer.port)
+    val lease =
+      post("/api/1/compiler/edit-lease", "{}", githubRepoServer.port, cookie).use { resp ->
+        assertEquals(200, resp.code)
+        Json.parseToJsonElement(resp.body!!.string()).jsonObject["lease"]!!.jsonPrimitive.content
+      }
+    val body =
+      """{"files":[{"name":"Snippet.kt","text":"@Preview fun P(){}"}],"confType":"compose-cmp","editLease":"$lease","revision":1}"""
+
+    post("/api/1/compiler/run", body, githubRepoServer.port, cookie).use { resp ->
+      assertEquals(200, resp.code)
+      val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+      assertEquals("1", json["revision"]?.jsonPrimitive?.content)
+      assertEquals(lease, json["editLease"]?.jsonPrimitive?.content)
+      assertTrue(json["previewToken"]?.jsonPrimitive?.content?.startsWith("pg_") == true)
     }
   }
 

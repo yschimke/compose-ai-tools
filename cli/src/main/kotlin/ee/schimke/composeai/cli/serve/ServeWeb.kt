@@ -4337,6 +4337,8 @@ $noteBlock        <div class="cp-site-footer-links">
      * span.
      */
     version: String? = null,
+    /** Show the authenticated, server-enabled single stateful editing lease control. */
+    editingLeaseEnabled: Boolean = false,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val sample = WebEscaping.htmlEscape(seed?.text ?: PLAYGROUND_SAMPLE)
@@ -4519,6 +4521,16 @@ $noteBlock        <div class="cp-site-footer-links">
           PlaygroundCatalogsResponse(catalogs),
         )
       )
+    val editLeaseButton =
+      if (!editingLeaseEnabled) ""
+      else
+        """
+            <button id="pg-edit-lease" class="cp-doc-btn" type="button">Acquire editing lease</button>"""
+    val editLeaseNote =
+      if (!editingLeaseEnabled) ""
+      else
+        """
+          <p id="pg-edit-lease-note" class="cp-pg-status" hidden></p>"""
     return document(
       title = "Playground — compose-preview",
       unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
@@ -4538,8 +4550,8 @@ $noteBlock        <div class="cp-site-footer-links">
             <select id="pg-mode" class="cp-pg-mode">
               $options
             </select>
-            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
-          </div>
+            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>$editLeaseButton
+          </div>$editLeaseNote
           <div id="pg-files" class="cp-pg-files" role="tablist" aria-label="Snippet files">
             <button class="cp-pg-file" type="button" role="tab" aria-current="true"
               data-pg-file="${WebEscaping.htmlEscape(fileName)}">${
@@ -4585,6 +4597,8 @@ $noteBlock        <div class="cp-site-footer-links">
       var mode = document.getElementById("pg-mode");
       var catalog = document.getElementById("pg-catalog");
       var run = document.getElementById("pg-run");
+      var editLeaseButton = document.getElementById("pg-edit-lease");
+      var editLeaseNote = document.getElementById("pg-edit-lease-note");
       var fileBar = document.getElementById("pg-files");
       var addFile = document.getElementById("pg-add-file");
       var removeFile = document.getElementById("pg-remove-file");
@@ -4597,6 +4611,57 @@ $noteBlock        <div class="cp-site-footer-links">
       var note = document.getElementById("pg-preview-note");
       var previewList = document.getElementById("pg-previews");
       var suffix = ${jsString(querySuffix)};
+      var editLease = null;
+      var editRevision = 0;
+      function setEditLease(value, message, expiresAt) {
+        editLease = value;
+        editRevision = 0;
+        if (!editLeaseButton) return;
+        editLeaseButton.disabled = false;
+        editLeaseButton.textContent = value ? "Release editing lease" : "Acquire editing lease";
+        editLeaseButton.setAttribute("aria-pressed", value ? "true" : "false");
+        editLeaseNote.hidden = !message;
+        editLeaseNote.textContent = message || "";
+        if (value && expiresAt) {
+          editLeaseButton.title = "Lease expires " + new Date(expiresAt).toLocaleTimeString();
+        } else {
+          editLeaseButton.removeAttribute("title");
+        }
+      }
+      if (editLeaseButton) {
+        editLeaseButton.addEventListener("click", function () {
+          editLeaseButton.disabled = true;
+          if (!editLease) {
+            fetch("/api/1/compiler/edit-lease" + suffix, {
+              method: "POST", headers: { "Accept": "application/json" }
+            })
+              .then(function (r) {
+                return r.json().then(function (body) {
+                  if (!r.ok) throw new Error(body.message || "The editing lease is busy.");
+                  return body;
+                });
+              })
+              .then(function (body) {
+                setEditLease(body.lease, body.message, body.expiresAtEpochMs);
+              })
+              .catch(function (e) {
+                setEditLease(null, e.message || "Could not acquire editing lease.");
+              });
+          } else {
+            var releasing = editLease;
+            fetch("/api/1/compiler/edit-lease/release" + suffix, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lease: releasing })
+            })
+              .then(function (r) {
+                if (!r.ok) throw new Error("The editing lease has already expired.");
+                setEditLease(null, "Editing lease released.");
+              })
+              .catch(function (e) { setEditLease(null, e.message); });
+          }
+        });
+      }
       // The catalog selector. Each entry carries its own mode list because a catalog's bundle
       // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
       // catalog are not the same choice with a different classpath, they are different modes.
@@ -4889,7 +4954,9 @@ $noteBlock        <div class="cp-site-footer-links">
         var body = JSON.stringify({
           confType: mode.value,
           catalog: catalog ? catalog.value : "",
-          files: files
+          files: files,
+          editLease: editLease || "",
+          revision: editLease ? ++editRevision : 0
         });
         fetch("/api/1/compiler/run" + suffix, {
           method: "POST",
@@ -4905,10 +4972,23 @@ $noteBlock        <div class="cp-site-footer-links">
           .then(function (res) {
             if (myId !== reqId) return;
             run.disabled = false;
+            if (editLeaseButton) editLeaseButton.disabled = false;
             renderDiags(res.diagnostics);
             var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
-            if (res.exception) { setStatus(res.exception, true); return; }
-            if (hasError) { setStatus("Compilation failed.", true); return; }
+            if (res.exception) {
+              if (res.exception.indexOf("live-edit lease") >= 0) setEditLease(null, res.exception);
+              setStatus(res.exception, true); return;
+            }
+            if (hasError) {
+              setStatus(
+                res.revision != null
+                  ? ("Compilation failed at revision " + res.revision +
+                    (res.incremental ? " (incremental)." : " (full fallback)."))
+                  : "Compilation failed.",
+                true
+              );
+              return;
+            }
             result.hidden = false;
             if (res.image) { image.hidden = false; image.src = res.image; }
             var link = res.documentUrl || res.previewUrl;
@@ -4949,10 +5029,16 @@ $noteBlock        <div class="cp-site-footer-links">
               });
             }
             setStatus("Done.", false);
+            if (res.revision != null && editLeaseNote) {
+              editLeaseNote.hidden = false;
+              editLeaseNote.textContent = "Revision " + res.revision +
+                (res.incremental ? " compiled incrementally." : " used a full compile.");
+            }
           })
           .catch(function (e) {
             if (myId !== reqId) return;
             run.disabled = false;
+            if (editLeaseButton) editLeaseButton.disabled = false;
             setStatus(e.message || "run failed", true);
           });
       });
