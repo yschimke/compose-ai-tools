@@ -2313,12 +2313,24 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   .cp-search { min-height: 40px; padding: 8px 14px; min-width: 0; flex-basis: 0; }
   .cp-catalog-tools .cp-catalog-actions { flex: none; margin: 0; }
   /* Both of the toolbar's panels are capped narrower than the 320/360px they take on a laptop:
-     `max-width` caps how wide a panel is and says nothing about where it starts, and both of these
-     hang off the row's trailing edge, so an uncapped one grows leftwards past the screen and takes
-     the first characters of every label with it. Scoped to the landing's two — the viewer's own
-     Theme menu opens on a page with different neighbours and keeps its own cap. */
+     `max-width` caps how wide a panel is and says nothing about where it starts, so an uncapped one
+     grows past the screen and takes the first characters of every label with it. Scoped to the
+     landing's two — the viewer's own Theme menu opens on a page with different neighbours and keeps
+     its own cap. */
   .cp-catalog-theme .cp-theme-menu-panel, .cp-actions-panel {
     max-width: min(280px, calc(100vw - 28px)); }
+  /* …and the cap alone is not enough for the THEME panel, because it is not the last control on the
+     row: the `⋯` and the gap put its anchor ~48px inside the right edge, so a 280px panel
+     right-anchored to the pill starts at -14px on a 320px screen and the first characters of a
+     qualified `Group · Name` fall off the left of the display. (Measured: `left: -14`, panel 278px
+     wide, viewport 320.) The `⋯` panel has no such problem — it IS the last control, so its right
+     edge is the row's.
+     Dropping `position: relative` here hands the panel to the sticky toolbar, which spans the whole
+     row, and `left: 0` then anchors it to the row's left edge instead of the pill's. The cap still
+     keeps the right edge on screen, so the panel sits inside the viewport at both ends whatever a
+     catalog calls its themes. */
+  .cp-catalog-theme { position: static; }
+  .cp-catalog-theme .cp-theme-menu-panel { left: 0; right: auto; }
   /* The heading is the catalog's name and the bar three rows above it is already the catalog's
      name. Hidden rather than removed — `clip` keeps it in the accessibility tree, so the document
      still has its `<h1>` and the page still announces what it is. Only when the bar really is

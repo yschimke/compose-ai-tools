@@ -29,6 +29,9 @@ import { customElement } from "lit/decorators.js";
 
 const PHONE = "(max-width: 640px)";
 
+/** The toolbar's disclosures — the Theme pill and the `⋯` — which open one at a time. */
+const MENUS = ".cp-catalog-theme, .cp-actions-menu";
+
 /** Where an element was before it was moved, so it can be put back exactly. */
 interface Home {
     el: Element;
@@ -74,6 +77,27 @@ export class CatalogToolbar extends LitElement {
             this.close(".cp-actions-menu");
     };
 
+    /**
+     * The toolbar's two menus are one menu bar, so only one of them is ever open.
+     *
+     * `Theme` and `⋯` are independent `<details>`, and nothing made opening one close the other —
+     * so opening `⋯` and then Theme left both open, their absolutely positioned panels overlapping
+     * at the same `z-index`, with the actions panel (later in the DOM) painting over the Theme
+     * panel's first rows. Measured on a 1280px page: Theme spans x=1060–1200, actions x=1118–1252,
+     * and `elementFromPoint` over Theme's first row answered `cp-bg-btn` — the Transparent button,
+     * not the theme the visitor was reaching for. The choice underneath was unclickable until the
+     * `⋯` was dismissed by hand.
+     *
+     * Driven by `toggle` rather than by clicks on the summaries, so it holds however the disclosure
+     * was opened — pointer, Enter, or a script.
+     */
+    private readonly onDisclosureToggle = (event: Event) => {
+        const opened = event.target as HTMLDetailsElement | null;
+        if (!opened?.matches?.(MENUS) || !opened.open) return;
+        for (const peer of document.querySelectorAll<HTMLDetailsElement>(MENUS))
+            if (peer !== opened) peer.open = false;
+    };
+
     protected createRenderRoot(): HTMLElement {
         return this;
     }
@@ -103,11 +127,16 @@ export class CatalogToolbar extends LitElement {
         this.reflow();
         this.watchThemeValue();
         document.addEventListener("click", this.onPick);
+        // `toggle` does not bubble, so this listens in the CAPTURE phase, which reaches a
+        // non-bubbling event on the way down. On `document` rather than on each `<details>` for the
+        // same reason `onPick` is: the panels are moved in and out of the toolbar by the reflow.
+        document.addEventListener("toggle", this.onDisclosureToggle, true);
     }
 
     disconnectedCallback(): void {
         this.phone?.removeEventListener?.("change", this.onBreakpoint);
         document.removeEventListener("click", this.onPick);
+        document.removeEventListener("toggle", this.onDisclosureToggle, true);
         this.themeObserver?.disconnect();
         this.themeObserver = null;
         super.disconnectedCallback();

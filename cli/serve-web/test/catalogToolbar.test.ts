@@ -236,6 +236,35 @@ describe("<cp-catalog-toolbar>", () => {
         assert.equal(menu.open, false);
     });
 
+    it("opens one toolbar menu at a time", async () => {
+        // Two independent `<details>` whose panels are absolutely positioned at the same z-index:
+        // with both open the later actions panel paints over the Theme panel's first rows, and the
+        // theme underneath cannot be clicked. Measured on the real page at 1280px before the fix —
+        // Theme x=1060–1200, actions x=1118–1252, `elementFromPoint` over Theme's first row
+        // answering `cp-bg-btn`.
+        stubBreakpoint(false);
+        await mount(SECTIONED);
+        const theme = document.querySelector(
+            ".cp-catalog-theme",
+        ) as HTMLDetailsElement;
+        const actions = document.querySelector(
+            ".cp-actions-menu",
+        ) as HTMLDetailsElement;
+
+        actions.open = true;
+        actions.dispatchEvent(new Event("toggle"));
+        theme.open = true;
+        theme.dispatchEvent(new Event("toggle"));
+        assert.equal(actions.open, false, "opening Theme puts the ⋯ away");
+        assert.equal(theme.open, true);
+
+        // …and the other way round: neither is the privileged one.
+        actions.open = true;
+        actions.dispatchEvent(new Event("toggle"));
+        assert.equal(theme.open, false, "opening the ⋯ puts Theme away");
+        assert.equal(actions.open, true);
+    });
+
     it("does nothing on a page with no toolbar and no actions", async () => {
         stubBreakpoint(true);
         await mount(`<div class="cp-grid"></div>`);
