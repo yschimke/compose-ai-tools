@@ -17,18 +17,20 @@ import "../src/components/ReferenceCompare.js";
  * heavier usage reads as a local override rather than a fidelity finding.
  */
 const bold = (side: string) =>
-    [700, 400, 400].map((weight, i) => ({
-        kind: "typography",
-        role: `Heading ${side} ${i}`,
-        label: "Title",
-        bounds: { x: 10, y: 60 + i * 30, width: 60, height: 20 },
-        detail: {
-            token: "m3/title-medium",
-            fontSize: "20sp",
-            lineHeight: "24sp",
-            fontWeight: String(weight),
-        },
-    }));
+    (side === "reference" ? [700, 400, 400] : [700, 400, 400, 400]).map(
+        (weight, i) => ({
+            kind: "typography",
+            role: `Heading ${side} ${i}`,
+            label: "Title",
+            bounds: { x: 10, y: 60 + i * 30, width: 60, height: 20 },
+            detail: {
+                token: "m3/title-medium",
+                fontSize: "20sp",
+                lineHeight: "24sp",
+                fontWeight: String(weight),
+            },
+        }),
+    );
 
 const ANNOTATIONS = {
     reference: [
@@ -331,12 +333,20 @@ describe("<cp-reference-compare>", () => {
             3,
             "one row per paired style, not one per usage",
         );
-        const counts = Array.from(
-            document.querySelectorAll(".cp-typography-count"),
-        ).map((n) => n.textContent);
-        // Two sides per row. The singular/plural is the readout, so it is asserted as text.
-        assert.equal(counts.filter((c) => c === "2 usages").length, 2);
-        assert.equal(counts.filter((c) => c === "1 usage").length, 4);
+        const countsByRow = Array.from(
+            document.querySelectorAll(".cp-typography-group"),
+        ).map((row) =>
+            Array.from(row.querySelectorAll(".cp-typography-count")).map(
+                (count) => count.textContent,
+            ),
+        );
+        // Preserve row and side association: the title default is used twice in the reference but
+        // three times in the actual, while both the label and heavier override are singular per side.
+        assert.deepEqual(countsByRow, [
+            ["1 usage", "1 usage"],
+            ["1 usage", "1 usage"],
+            ["2 usages", "3 usages"],
+        ]);
     });
 
     it("marks a local override, and says which default it departed from", async () => {
