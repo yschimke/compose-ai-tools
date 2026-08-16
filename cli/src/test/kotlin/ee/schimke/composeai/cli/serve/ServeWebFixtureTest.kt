@@ -1883,10 +1883,20 @@ class ServeWebFixtureTest {
     // Asserted here rather than in the harness because it is server-rendered markup: the capture
     // that used to hold it had to hover a node, wait for a tooltip and evaluate in a browser to
     // read two attributes off the emitted HTML.
+    // Matched on the manifest-linked node itself (`1:1`), not on "some /p/ anchor exists": the
+    // fixture carries several renderable nodes, so an existence check stays green while this
+    // particular overlay regresses to a span or points somewhere else.
+    val manifestNode =
+      Regex("""<(\w+) class="cp-page-node" [^>]*data-cp-node="1:1"[^>]*>""").find(designPageHtml)
+    assertTrue(manifestNode != null, "the manifest-linked node 1:1 is emitted at all")
+    assertEquals(
+      "a",
+      manifestNode!!.groupValues[1],
+      "a node with a renderable preview is emitted as an anchor",
+    )
     assertTrue(
-      Regex("""<a class="cp-page-node" [^>]*href="[^"]*/p/[^"]*"""")
-        .containsMatchIn(designPageHtml),
-      "a node with a renderable preview is emitted as an anchor to it",
+      manifestNode.value.contains("/p/com.example.ProfileCardPreview"),
+      "…and its destination is THAT preview, not merely some /p/ URL",
     )
     // …and one WITHOUT code is still a link, to the design file — the only destination it has. The
     // tag is the same; only the target differs, so a reader never meets a node that looks
@@ -1903,9 +1913,13 @@ class ServeWebFixtureTest {
       unlinkedNode!!.groupValues[1],
       "an unlinked node stays an anchor rather than becoming inert",
     )
+    // The whole destination, not just its host: a regression to the Figma homepage, to another
+    // file, or to the wrong node all begin `https://www.figma.com/` and would pass a prefix check
+    // while node 1:6 no longer reaches its own design location.
     assertTrue(
-      unlinkedNode.value.contains("href=\"https://www.figma.com/"),
-      "…and its destination is the design file, the only link it has",
+      unlinkedNode.value.contains("ocdacdEsnHipMJD3egzxKb") &&
+        unlinkedNode.value.contains("node-id=1-6"),
+      "…and its destination is THIS node in the catalog's design file",
     )
 
     val designPageIndex =
