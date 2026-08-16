@@ -41,6 +41,25 @@ class CleanStaleRendersTest {
   }
 
   @Test
+  fun `keeps raw siblings of registered renders`() {
+    assertThat(ComposePreviewTasks.isRawSiblingOfExpected("Foo.raw.png", expected)).isTrue()
+    assertThat(ComposePreviewTasks.isRawSiblingOfExpected("Foo.glimmer.raw.png", expected)).isTrue()
+    assertThat(ComposePreviewTasks.isRawSiblingOfExpected("sub/Bar.raw.png", expected)).isTrue()
+    assertThat(
+        ComposePreviewTasks.isRawSiblingOfExpected("Animation.raw.gif", setOf("Animation.gif"))
+      )
+      .isTrue()
+  }
+
+  @Test
+  fun `drops raw artifacts with no clean sibling`() {
+    assertThat(ComposePreviewTasks.isRawSiblingOfExpected("Removed.raw.png", expected)).isFalse()
+    assertThat(ComposePreviewTasks.isRawSiblingOfExpected("Removed.glimmer.raw.png", expected))
+      .isFalse()
+    assertThat(ComposePreviewTasks.isRawSiblingOfExpected("Removed.raw.gif", expected)).isFalse()
+  }
+
+  @Test
   fun `prunes catalog-token sidecars for sheets absent from the manifest`() {
     val catalogDir = tempDir.root.resolve("build/compose-previews/data/catalog-tokens")
     catalogDir.mkdirs()

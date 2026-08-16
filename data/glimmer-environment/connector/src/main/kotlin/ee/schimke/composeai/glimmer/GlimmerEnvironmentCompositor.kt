@@ -20,11 +20,14 @@ enum class GlimmerEnvironment {
  *
  * The source capture is never treated as alpha: black is additive zero and each colour channel is
  * saturated independently. [applyToPng] preserves the source next to the composited result as
- * `<basename>.raw.png`.
+ * `<basename>.raw.png` unless the caller supplies a distinct preservation path.
  */
 object GlimmerEnvironmentCompositor {
-  fun applyToPng(file: File, environment: GlimmerEnvironment): File {
-    val raw = file.resolveSibling("${file.nameWithoutExtension}.raw.png")
+  fun applyToPng(
+    file: File,
+    environment: GlimmerEnvironment,
+    raw: File = file.resolveSibling("${file.nameWithoutExtension}.raw.png"),
+  ): File {
     file.copyTo(raw, overwrite = true)
     val capture = ImageIO.read(raw) ?: error("Unable to decode Glimmer capture: $raw")
     ImageIO.write(composite(capture, environment), "png", file)

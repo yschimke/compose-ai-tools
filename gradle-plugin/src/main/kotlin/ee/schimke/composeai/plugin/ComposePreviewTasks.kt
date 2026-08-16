@@ -2284,18 +2284,21 @@ internal object ComposePreviewTasks {
   /**
    * `<stem>.raw.<png|gif>` lives next to a clean output registered in the manifest. PNG siblings
    * are produced by `@FocusedPreview(overlay = true)`; GIF siblings are the additive RGB source
-   * preserved by `@GlimmerEnvironmentPreview` before connector compositing. Same preservation shape
-   * as [isA11ySiblingOfExpected] — match by mechanical suffix-strip, not by re-checking the
-   * manifest's overlay flag, so a `.raw.png` whose clean sibling has been removed is still garbage.
+   * preserved by `@GlimmerEnvironmentPreview` before connector compositing. When those two PNG
+   * processors are combined, `<stem>.glimmer.raw.png` additionally preserves the overlayed,
+   * pre-environment capture. Same preservation shape as [isA11ySiblingOfExpected] — match by
+   * mechanical suffix-strip, not by re-checking manifest flags, so raw artifacts whose clean
+   * sibling has been removed are still garbage.
    */
   internal fun isRawSiblingOfExpected(rel: String, expectedRelPaths: Set<String>): Boolean {
-    val extension =
+    val (suffix, extension) =
       when {
-        rel.endsWith(".raw.png") -> ".png"
-        rel.endsWith(".raw.gif") -> ".gif"
+        rel.endsWith(".glimmer.raw.png") -> ".glimmer.raw" to ".png"
+        rel.endsWith(".raw.png") -> ".raw" to ".png"
+        rel.endsWith(".raw.gif") -> ".raw" to ".gif"
         else -> return false
       }
-    val cleanSibling = rel.removeSuffix(".raw$extension") + extension
+    val cleanSibling = rel.removeSuffix("$suffix$extension") + extension
     return cleanSibling in expectedRelPaths
   }
 

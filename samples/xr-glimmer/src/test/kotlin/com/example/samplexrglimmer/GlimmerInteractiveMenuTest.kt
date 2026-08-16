@@ -85,4 +85,29 @@ class GlimmerInteractiveMenuTest {
     files.forEach { assertThat(it.exists()).isTrue() }
     assertThat(files.map { it.readBytes().contentHashCode() }.toSet()).hasSize(1)
   }
+
+  @Test
+  fun `animated Glimmer capture preserves raw GIF and composites its environment`() {
+    val base = "GlimmerXrMenuAnimated_Animated_Light"
+    val gif = renderFile(rendersDir, base, ext = "gif")
+    val raw = renderFile(rendersDir, base, suffix = ".raw", ext = "gif")
+
+    assertThat(gif.exists()).isTrue()
+    assertThat(raw.exists()).isTrue()
+    assertThat(gif.readBytes().contentEquals(raw.readBytes())).isFalse()
+  }
+
+  @Test
+  fun `focus overlay and environment retain distinct raw PNG artifacts`() {
+    val base = "GlimmerXrMenuOverlay_Overlay_Light"
+    val composited = renderFile(rendersDir, base)
+    val preOverlay = renderFile(rendersDir, base, suffix = ".raw")
+    val preEnvironment = renderFile(rendersDir, base, suffix = ".glimmer.raw")
+
+    assertThat(composited.exists()).isTrue()
+    assertThat(preOverlay.exists()).isTrue()
+    assertThat(preEnvironment.exists()).isTrue()
+    assertThat(preOverlay.readBytes().contentEquals(preEnvironment.readBytes())).isFalse()
+    assertThat(preEnvironment.readBytes().contentEquals(composited.readBytes())).isFalse()
+  }
 }
