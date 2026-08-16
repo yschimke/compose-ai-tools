@@ -3629,9 +3629,17 @@ class ServeWebFixtureTest {
     assertTrue(
       playground.contains("editor.addLineWidget") &&
         playground.contains("editor.addLineClass") &&
+        playground.contains("removeLineClass(entry.lineHandle") &&
         playground.contains("editor.markText") &&
         assetText("playground.css").contains(".cp-pg-inline-error"),
-      "located compiler errors are shown inline beside the source as well as in the summary",
+      "located compiler errors are shown inline and cleared through CodeMirror's moving line handle",
+    )
+    assertTrue(
+      playground
+        .substringAfter("removeFile.addEventListener")
+        .substringBefore("renderFiles();\n      function setStatus")
+        .contains("renderEditorDiags();"),
+      "removing the active file repaints diagnostics for the buffer that replaces it",
     )
     // The terminal status stays exactly "Done." — the e2e polls on it, so the preview note lives
     // in its own element rather than being appended to the status text.

@@ -4837,7 +4837,7 @@ $noteBlock        <div class="cp-site-footer-links">
         if (!editor) return;
         editorDiags.forEach(function (entry) {
           if (entry.widget) entry.widget.clear();
-          if (entry.line != null) editor.removeLineClass(entry.line, "background", entry.lineClass);
+          if (entry.lineHandle) editor.removeLineClass(entry.lineHandle, "background", entry.lineClass);
           if (entry.mark) entry.mark.clear();
         });
         editorDiags = [];
@@ -4850,7 +4850,10 @@ $noteBlock        <div class="cp-site-footer-links">
           if (d.file !== file.name || d.line == null || d.line < 0 || d.line >= editor.lineCount()) return;
           var severity = d.severity || "info";
           var lineClass = "cp-pg-line-" + severity;
-          editor.addLineClass(d.line, "background", lineClass);
+          // CodeMirror moves this handle with the line when edits are inserted above it. Keeping
+          // the original numeric index would clear whichever line later occupied that position and
+          // strand the actual diagnostic highlight after the next compile.
+          var lineHandle = editor.addLineClass(d.line, "background", lineClass);
           var message = document.createElement("div");
           message.className = "cp-pg-inline-diag cp-pg-inline-" + severity;
           // The live summary below already announces the same diagnostic. Keep this visual copy
@@ -4872,7 +4875,7 @@ $noteBlock        <div class="cp-site-footer-links">
               );
             }
           }
-          editorDiags.push({ widget: widget, line: d.line, lineClass: lineClass, mark: mark });
+          editorDiags.push({ widget: widget, lineHandle: lineHandle, lineClass: lineClass, mark: mark });
         });
       }
       // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
@@ -4923,6 +4926,10 @@ $noteBlock        <div class="cp-site-footer-links">
         active = Math.min(active, files.length - 1);
         writeSource(files[active].text);
         renderFiles();
+        // Removing the active file is also a tab transition. Repaint the retained diagnostics for
+        // the buffer that just became active instead of leaving its messages hidden until a click
+        // or another compile happens to refresh them.
+        renderEditorDiags();
       });
       renderFiles();
       function setStatus(text, isError) {
