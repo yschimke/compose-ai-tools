@@ -192,18 +192,10 @@ class ServeUrlStateTest {
     )
   }
 
-  @Test
-  fun `format comparison pushes its format and theme picks`() {
-    val script = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
-    assertTrue(script.contains("pushUrl({ format: format });"), "format is a discrete pick")
-    assertTrue(script.contains("pushUrl({ theme: theme });"), "so is the comparison theme")
-    assertTrue(
-      script.contains("replaceUrl({ q: search.value.trim() });"),
-      "the filter replaces, like every other typed filter",
-    )
-    assertFalse(
-      script.contains("history.replaceState"),
-      "URL writes go through window.cpUrlState, which preserves token/session and never navigates",
-    )
-  }
+  // The `/compare` wall's own push/replace rules moved to `<cp-compare-wall>` with the port, and
+  // are tested there as BEHAVIOUR rather than as source text: `compareWallElement.test.ts` drives
+  // the format and theme buttons and the search box against a stubbed `cpUrlState` and asserts what
+  // each one writes. A grep for `pushUrl({ format: format });` could not have survived
+  // minification,
+  // and said nothing about whether the call ran.
 }

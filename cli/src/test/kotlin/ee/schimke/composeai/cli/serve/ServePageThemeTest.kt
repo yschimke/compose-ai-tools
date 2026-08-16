@@ -153,11 +153,9 @@ class ServePageThemeTest {
       viewer().contains("if (window.cpPageTheme) window.cpPageTheme.follow(el.value);"),
       "the viewer's Theme select must hand the choice to page-theme.js",
     )
-    val compare = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
-    assertTrue(
-      compare.contains("window.cpPageTheme.follow(theme)"),
-      "the comparison page's Theme control must too",
-    )
+    // The comparison page's Theme control moved to `<cp-compare-wall>` with the port, and is tested
+    // there as behaviour: `compareWallElement.test.ts` clicks the control against a stubbed
+    // `cpPageTheme` and asserts the choice is handed over.
   }
 
   @Test
@@ -177,11 +175,9 @@ class ServePageThemeTest {
         .contains("window.cpPageTheme.follow(activeThemeChoice())"),
       "the viewer's Back/Forward hydrate must repaint the chrome, from the active choice",
     )
-    val compare = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
-    assertTrue(
-      compare.substringAfter("cpUrlState.onPop").contains("window.cpPageTheme.follow(theme)"),
-      "so must the comparison page's",
-    )
+    // The comparison page's pop path moved to `<cp-compare-wall>`; the same element test drives its
+    // `onPop` handler and asserts the restored theme is handed over too — which a grep could only
+    // ever claim was present, not that it ran.
   }
 
   @Test
