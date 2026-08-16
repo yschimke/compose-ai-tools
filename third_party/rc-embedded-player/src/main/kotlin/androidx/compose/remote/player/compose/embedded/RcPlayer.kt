@@ -430,6 +430,10 @@ public fun RcPlayer(
     // draws
     // resolve through it via the GraphContext.
     graphContext?.imageLoader = resolvedImageLoader
+    // Same shape, and for the same reason: measured component sizes live in Compose state rather
+    // than the shared store, so an expression over one (a clip radius of min(w, h) / 2, say)
+    // evaluates against 0 unless the graph can see them. See GraphContext.componentValues.
+    graphContext?.componentValues = componentValueStateMap
     CompositionLocalProvider(
       LocalCoreDocument provides document,
       LocalRemoteContext provides remoteContext,

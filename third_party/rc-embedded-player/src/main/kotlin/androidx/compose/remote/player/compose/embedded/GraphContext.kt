@@ -93,6 +93,24 @@ internal class GraphContext(
   /** Carried for the draw path, never called here — see [RcImageSource]. */
   internal var imageLoader: RcImageSource? = null
 
+  /**
+   * The live measured `ComponentValue` sizes, keyed by the id each one produces.
+   *
+   * These are the one class of leaf that does *not* live in the shared store: they are published as
+   * Compose state from the dispatch's `onSizeChanged` (see `RcPlayerDispatch`), because they only
+   * exist once layout has run. `rememberRemoteFloatAsState` consults them before anything else, so
+   * reading such an id *directly* has always worked — but an expression **over** one resolved its
+   * inputs through this context, found nothing in the store, and evaluated against 0.
+   *
+   * That is what made a switch thumb square: its clip radii are `FloatExpression = min(width,
+   * height) / 2` over the track's `ComponentValue`s, so the radius came out 0 while the track's own
+   * literal-radius clip was fine (compose-ai-tools#3992). Set by [RcPlayer] after construction,
+   * like [imageLoader] — the map outlives recomposition, and reading a `State` inside the
+   * `derivedStateOf` records the dependency, so a resize re-evaluates exactly the expressions that
+   * read it.
+   */
+  internal var componentValues: Map<Int, State<Float>>? = null
+
   // Capture bookkeeping is per-thread: `derivedStateOf` may be evaluated on whichever thread
   // reads
   // it (UI phases are main-thread today, but snapshot reads aren't contractually single-thread).
@@ -159,18 +177,23 @@ internal class GraphContext(
    */
   private val paintContext = GraphPaintContext(this)
 
-  override fun getFloat(id: Int): Float =
-    when {
+  override fun getFloat(id: Int): Float {
+    // Checked ahead of the store for the same reason `rememberRemoteFloatAsState` checks it
+    // first: a measured component size is never in the store, so falling through would read 0.
+    val componentValue = componentValues?.get(id)
+    return when {
       // Time variables come from the Compose frame-clock state (matching the resolver's time
       // special-case), not the raw store — so a time-driven op reads seconds/minutes/hours.
       id == RemoteContext.ID_CONTINUOUS_SEC || id == RemoteContext.ID_TIME_IN_SEC ->
         timeMillis.value / 1000f
       id == RemoteContext.ID_TIME_IN_MIN -> timeMillis.value / 60000f
       id == RemoteContext.ID_TIME_IN_HR -> timeMillis.value / 3600000f
+      componentValue != null -> componentValue.value
       realState.isFloatOverridden(id) -> super.getFloat(id)
       isComputed(id) -> (computedValue(id) as? Number)?.toFloat() ?: 0f
       else -> super.getFloat(id)
     }
+  }
 
   override fun getInteger(id: Int): Int =
     if (isComputed(id)) (computedValue(id) as? Number)?.toInt() ?: 0 else super.getInteger(id)
