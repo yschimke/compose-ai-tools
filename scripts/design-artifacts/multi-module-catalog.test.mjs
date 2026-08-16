@@ -37,6 +37,68 @@ test("additional modules are sorted and duplicate functions are deterministicall
   assert.deepEqual(z.candidates.map((it) => it.functionName), [":z::Shared"]);
 });
 
+test("additional modules namespace equal preview ids and every keyed sidecar", () => {
+  const bytes = (value) => new TextEncoder().encode(value);
+  const collisionRecord = (module) => ({
+    bundle: {
+      manifest: {
+        modulePath: module,
+        previewIds: ["pkg.ScreenPreview"],
+        rawPreviewIds: ["pkg.ScreenPreview"],
+      },
+      previews: [
+        {
+          id: "pkg.ScreenPreview",
+          functionName: "ScreenPreview",
+          captures: [{ renderOutput: "renders/pkg.ScreenPreview.gif" }],
+        },
+      ],
+      entries: {
+        "previews/pkg.ScreenPreview.png": bytes(module),
+        "previews/pkg.ScreenPreview.semantics.json": bytes(module),
+        "previews/pkg.ScreenPreview.figma-raster/node.png": bytes(module),
+        "previews.json": bytes(
+          JSON.stringify({
+            previews: [{ id: "pkg.ScreenPreview", functionName: "ScreenPreview", targets: [] }],
+          }),
+        ),
+      },
+    },
+    candidates: [
+      {
+        componentId: "ScreenPreview",
+        previewId: "pkg.ScreenPreview",
+        images: [{ path: "ScreenPreview.png", previewId: "pkg.ScreenPreview" }],
+      },
+    ],
+  });
+
+  const [primary, additional] = namespaceModuleRecords(collisionRecord(":app"), [
+    collisionRecord(":feature"),
+  ]);
+  const additionalId = additional.bundle.previews[0].id;
+  assert.equal(primary.bundle.previews[0].id, "pkg.ScreenPreview");
+  assert.notEqual(additionalId, "pkg.ScreenPreview");
+  assert.equal(additional.candidates[0].previewId, additionalId);
+  assert.equal(additional.candidates[0].images[0].previewId, additionalId);
+  assert.equal(additional.bundle.previews[0].captures[0].renderOutput, `renders/${additionalId}.gif`);
+  assert.ok(additional.bundle.entries[`previews/${additionalId}.png`]);
+  assert.ok(additional.bundle.entries[`previews/${additionalId}.semantics.json`]);
+  assert.ok(additional.bundle.entries[`previews/${additionalId}.figma-raster/node.png`]);
+  assert.deepEqual(
+    Object.keys(combinedBundleEntries([primary.bundle, additional.bundle])).filter((path) =>
+      path.endsWith(".semantics.json"),
+    ),
+    [
+      "previews/pkg.ScreenPreview.semantics.json",
+      `previews/${additionalId}.semantics.json`,
+    ],
+  );
+  const raw = JSON.parse(new TextDecoder().decode(additional.bundle.entries["previews.json"]));
+  assert.equal(raw.previews[0].id, additionalId);
+  assert.equal(raw.previews[0].functionName, ":feature::ScreenPreview");
+});
+
 test("fallback inventory groups by Gradle module and preview group and skips curated previews", () => {
   const records = namespaceModuleRecords(
     record(":catalog", ["Curated"]),

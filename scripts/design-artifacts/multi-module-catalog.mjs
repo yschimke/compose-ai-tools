@@ -23,13 +23,144 @@ function previewFunction(preview) {
   return preview?.functionName ?? preview?.id;
 }
 
+function moduleIdentityPrefix(module) {
+  return `module_${Buffer.from(module, "utf8").toString("hex")}__`;
+}
+
+function rewriteArtifactPath(path, oldId, newId) {
+  if (typeof path !== "string") return path;
+  const slash = path.lastIndexOf("/");
+  const leaf = path.slice(slash + 1);
+  if (!leaf.startsWith(oldId)) return path;
+  const suffix = leaf.slice(oldId.length);
+  if (suffix !== "" && !suffix.startsWith(".") && !suffix.startsWith("_")) return path;
+  return `${path.slice(0, slash + 1)}${newId}${suffix}`;
+}
+
+function rewriteJsonEntry(entries, name, transform) {
+  const bytes = entries[name];
+  if (!bytes) return;
+  try {
+    const value = JSON.parse(new TextDecoder().decode(bytes));
+    entries[name] = new TextEncoder().encode(JSON.stringify(transform(value)));
+  } catch {
+    // The normal bundle reader has already validated these entries. Leave an opaque/legacy entry
+    // alone rather than turning identity isolation into a second parser failure surface.
+  }
+}
+
+/**
+ * Give an additional module's in-memory bundle identities a collision-free prefix.
+ *
+ * Repository-wide catalogs are baked-only, so these ids do not address a daemon. They exist solely
+ * to join entries and sidecars from several bundles without allowing equal preview ids to collapse
+ * onto one another. The primary bundle remains unchanged for backwards-compatible authored joins.
+ */
+function namespaceAdditionalRecord(record, module, keyByFunction) {
+  const prefix = moduleIdentityPrefix(module);
+  const manifest = record.bundle?.manifest ?? {};
+  const entryIds = manifest.previewIds ?? (record.bundle?.previews ?? []).map((p) => p.id);
+  const rawIds = manifest.rawPreviewIds ?? entryIds;
+  const entryIdMap = new Map(entryIds.map((id) => [id, `${prefix}${id}`]));
+  const rawIdMap = new Map(rawIds.map((id) => [id, `${prefix}${id}`]));
+  const anyIdMap = new Map([...entryIdMap, ...rawIdMap]);
+  const rewriteId = (id) => anyIdMap.get(id) ?? id;
+  const rewriteCapture = (capture, oldId, newId) => ({
+    ...capture,
+    ...(capture?.renderOutput
+      ? { renderOutput: rewriteArtifactPath(capture.renderOutput, oldId, newId) }
+      : {}),
+  });
+
+  const previews = (record.bundle?.previews ?? []).map((preview) => {
+    const oldId = preview.id;
+    const newId = rewriteId(oldId);
+    return {
+      ...preview,
+      id: newId,
+      functionName: keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
+      ...(Array.isArray(preview.captures)
+        ? { captures: preview.captures.map((capture) => rewriteCapture(capture, oldId, newId)) }
+        : {}),
+    };
+  });
+  const candidates = (record.candidates ?? []).map((candidate) => ({
+    ...candidate,
+    functionName:
+      keyByFunction.get(candidateFunction(candidate)) ?? candidateFunction(candidate),
+    module,
+    ...(candidate.previewId ? { previewId: rewriteId(candidate.previewId) } : {}),
+    ...(Array.isArray(candidate.images)
+      ? {
+          images: candidate.images.map((image) => ({
+            ...image,
+            ...(image.previewId ? { previewId: rewriteId(image.previewId) } : {}),
+          })),
+        }
+      : {}),
+  }));
+
+  const entries = {};
+  const orderedEntryIds = [...entryIdMap.keys()].sort((a, b) => b.length - a.length);
+  for (const [path, bytes] of Object.entries(record.bundle?.entries ?? {})) {
+    let rewritten = path;
+    if (path.startsWith("previews/")) {
+      const rest = path.slice("previews/".length);
+      const oldId = orderedEntryIds.find(
+        (id) => rest === id || rest.startsWith(`${id}.`) || rest.startsWith(`${id}_`),
+      );
+      if (oldId) rewritten = `previews/${entryIdMap.get(oldId)}${rest.slice(oldId.length)}`;
+    }
+    entries[rewritten] = bytes;
+  }
+  rewriteJsonEntry(entries, "previews.json", (value) => {
+    const list = Array.isArray(value) ? value : value.previews ?? [];
+    const rewritten = list.map((preview) => ({
+      ...preview,
+      id: rewriteId(preview.id),
+      functionName: keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),
+    }));
+    return Array.isArray(value) ? rewritten : { ...value, previews: rewritten };
+  });
+  rewriteJsonEntry(entries, "bundle.json", (value) => ({
+    ...value,
+    ...(Array.isArray(value.previewIds)
+      ? { previewIds: value.previewIds.map((id) => entryIdMap.get(id) ?? id) }
+      : {}),
+    ...(Array.isArray(value.rawPreviewIds)
+      ? { rawPreviewIds: value.rawPreviewIds.map((id) => rawIdMap.get(id) ?? id) }
+      : {}),
+  }));
+
+  return {
+    ...record,
+    module,
+    candidates,
+    bundle: {
+      ...record.bundle,
+      previews,
+      entries,
+      manifest: {
+        ...manifest,
+        ...(Array.isArray(manifest.previewIds)
+          ? { previewIds: manifest.previewIds.map((id) => entryIdMap.get(id) ?? id) }
+          : {}),
+        ...(Array.isArray(manifest.rawPreviewIds)
+          ? { rawPreviewIds: manifest.rawPreviewIds.map((id) => rawIdMap.get(id) ?? id) }
+          : {}),
+      },
+    },
+  };
+}
+
 /**
  * Namespace duplicate function names across module bundles.
  *
  * The primary record wins the familiar unqualified name, preserving authored specs. Additional
  * records are sorted by Gradle path and use `<module>::<function>` only when an earlier module has
- * already claimed that function. Unique names stay untouched. Bundle entry ids are not rewritten:
- * they are normally class-qualified already, and keeping them intact preserves daemon addressing.
+ * already claimed that function. Unique names stay untouched. Additional records also receive a
+ * collision-free preview-id prefix because class-qualified ids can still be identical in separate
+ * Gradle modules. Repository-wide publication is baked-only, so no daemon address is changed.
  */
 export function namespaceModuleRecords(primary, additional = []) {
   const ordered = [
@@ -59,6 +190,7 @@ export function namespaceModuleRecords(primary, additional = []) {
         if (!owner) claimed.set(fn, module);
       }
     }
+    if (record !== ordered[0]) return namespaceAdditionalRecord(record, module, keyByFunction);
     const previews = (record.bundle?.previews ?? []).map((preview) => ({
       ...preview,
       functionName: keyByFunction.get(previewFunction(preview)) ?? previewFunction(preview),

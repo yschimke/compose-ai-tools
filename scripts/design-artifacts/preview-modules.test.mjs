@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { previewModules } from "./preview-modules.mjs";
+import { previewModuleRecords, previewModules } from "./preview-modules.mjs";
 
 test("preview modules are unique and sorted", () => {
   assert.deepEqual(
@@ -20,5 +20,24 @@ test("preferred spec module matches discovery without a leading colon", () => {
   assert.deepEqual(
     previewModules({ previews: [{ module: "feature" }, { module: "catalog" }] }, ":catalog"),
     ["catalog", "feature"],
+  );
+});
+
+test("module records retain Gradle-resolved nonconventional project directories", () => {
+  assert.deepEqual(
+    previewModuleRecords(
+      {
+        previews: [
+          { module: "ui", projectDirectory: "/workspace/components/ui" },
+          { module: "app", projectDirectory: "/workspace/application" },
+          { module: "ui", projectDirectory: "/workspace/components/ui" },
+        ],
+      },
+      ":ui",
+    ),
+    [
+      { module: "ui", projectDirectory: "/workspace/components/ui" },
+      { module: "app", projectDirectory: "/workspace/application" },
+    ],
   );
 });
