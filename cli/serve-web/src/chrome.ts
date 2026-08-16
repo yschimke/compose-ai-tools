@@ -12,6 +12,15 @@
 
 import { installUrlState } from "./chrome/installUrlState.js";
 import { installPageTheme } from "./chrome/pageTheme.js";
+import {
+    installBugReportBody,
+    installBugReportLink,
+} from "./chrome/bugReport.js";
 
 installUrlState();
 installPageTheme();
+// The footer's "report a bug" form is emitted by `ServeWeb.document`, so it is on every page — which
+// is exactly why its wiring is here rather than in a surface bundle. Both calls no-op when their
+// elements are absent, and neither depends on the two above.
+installBugReportLink();
+installBugReportBody();

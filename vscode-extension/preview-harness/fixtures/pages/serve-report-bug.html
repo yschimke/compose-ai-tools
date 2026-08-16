@@ -1,0 +1,287 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Report a bug — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <script>try{var p=new URLSearchParams(location.search),m=p.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){p.set("chrome",s);location.replace(location.pathname+"?"+p.toString()+location.hash);}}catch(e){}</script>
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <script src="/assets/serve/fixture/serve-chrome.js"></script>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span class="cp-site-wordmark">compose-preview</span>
+    </a>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
+      <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
+      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
+    </div>
+    <details class="cp-site-menu" id="cp-site-menu">
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
+    </details>
+    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+      <a href="/">Catalogs</a>
+      <a class="cp-site-status-link" id="cp-status-link" href="/status">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
+      <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+      <details class="cp-settings">
+        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+        </summary>
+        <div class="cp-settings-panel">
+          <fieldset class="cp-settings-group">
+            <legend class="cp-settings-legend">Page theme</legend>
+            <label class="cp-settings-option">
+              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+              <span>Match the preview theme</span>
+            </label>
+            <label class="cp-settings-option">
+              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+              <span>Follow my system</span>
+            </label>
+            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+              match. Turn it off to keep the page on your operating system's setting.</p>
+          </fieldset>
+          <fieldset class="cp-settings-group cp-settings-keyboard">
+            <legend class="cp-settings-legend">Keyboard</legend>
+            <label class="cp-settings-option">
+              <input type="checkbox" data-cp-keyboard-navigation>
+              <span>Power-user navigation</span>
+            </label>
+            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+              shortcuts and an on-screen command palette.</p>
+            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+              View keyboard tour
+            </button>
+          </fieldset>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+        <main class="cp-main">
+              <h1 class="cp-head">Report a bug in the preview server</h1>
+      <p class="cp-sub">This files against <a href="https://github.com/yschimke/compose-ai-tools"
+        >yschimke/compose-ai-tools</a>, the repository that ships <code>compose-preview serve</code> as @yschimke.
+        For a preview that renders wrongly, use the &ldquo;report an issue&rdquo; link on that
+        preview instead — it goes to the project whose code declares it.</p>
+
+      <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
+        action="https://github.com/yschimke/compose-ai-tools/issues/new">
+        <input type="hidden" name="title" value="Preview server issue: compose-m3">
+        <input type="hidden" name="body" id="cp-bug-body" value="### What went wrong
+
+&lt;!-- What were you doing, what did you expect, and what happened instead? --&gt;
+
+
+### Screenshot
+
+![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
+
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. A pasted screenshot of the page stays put — GitHub hosts those pixels itself. --&gt;
+
+
+### Server
+
+| | |
+| --- | --- |
+| compose-preview | `0.0.0-fixture` |
+| Mode | public (open) |
+| Uptime | 3d 4h |
+| Server JVM | `17.0.11 (Eclipse Adoptium)` |
+| Server OS | `Linux 6.8.0-generic (amd64)` |
+
+### Page
+
+| | |
+| --- | --- |
+| Page | [`/compose-m3/p/button-filled?uiMode=dark`](https://preview.coo.ee/compose-m3/p/button-filled?uiMode=dark) |
+| Design system | `compose-m3` |
+| Preview | `button-filled` |
+| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
+| Catalog rendered by | compose-ai-tools 0.16.54 |
+| Trust | branch:yschimke/compose-ai-tools@design-artifacts/compose-m3 |
+| Render lane | live daemon |
+
+### Catalogs not loaded
+
+- `wear-m3`: failed — daemon launch timed out after 300s
+
+### Recent failures
+
+```
+2026-07-17 09:43 UTC  compose-m3 (live bundle): render failed after 120000ms (timeout) — timed out waiting for renderFinished
+```
+"
+          data-report-template="### What went wrong
+
+&lt;!-- What were you doing, what did you expect, and what happened instead? --&gt;
+
+
+### Screenshot
+
+![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
+
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. A pasted screenshot of the page stays put — GitHub hosts those pixels itself. --&gt;
+
+
+### Server
+
+| | |
+| --- | --- |
+| compose-preview | `0.0.0-fixture` |
+| Mode | public (open) |
+| Uptime | 3d 4h |
+| Server JVM | `17.0.11 (Eclipse Adoptium)` |
+| Server OS | `Linux 6.8.0-generic (amd64)` |
+
+### Page
+
+| | |
+| --- | --- |
+| Page | [`/compose-m3/p/button-filled?uiMode=dark`](https://preview.coo.ee/compose-m3/p/button-filled?uiMode=dark) |
+| Design system | `compose-m3` |
+| Preview | `button-filled` |
+| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
+| Catalog rendered by | compose-ai-tools 0.16.54 |
+| Trust | branch:yschimke/compose-ai-tools@design-artifacts/compose-m3 |
+| Render lane | live daemon |
+
+{{client}}
+
+### Catalogs not loaded
+
+- `wear-m3`: failed — daemon launch timed out after 300s
+
+### Recent failures
+
+```
+2026-07-17 09:43 UTC  compose-m3 (live bundle): render failed after 120000ms (timeout) — timed out waiting for renderFinished
+```
+">
+        <button type="submit" class="cp-doc-btn cp-bug-submit"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Open a prefilled issue</button>
+        <span class="cp-muted">Opens GitHub&rsquo;s new-issue form. Nothing is sent from this
+          server &mdash; you write the description and press Submit there.</span>
+      </form>
+
+      <p class="cp-status-sec">Add a screenshot</p>
+      <p class="cp-sub">The report has a Screenshot section waiting for one. Take a shot of the
+        whole window and paste it into that section on GitHub &mdash; it uploads to GitHub&rsquo;s
+        own storage, so it keeps showing what you saw even after this server changes.</p>
+      
+      <p class="cp-status-sec">The render you were looking at</p>
+      <p class="cp-sub">Included in the report. It is a live render, so it follows the catalog — paste a screenshot below as well if the exact pixels matter.</p>
+      <img class="cp-report-shot" src="/compose-m3/render/button-filled.png" alt="the render this report is about" loading="lazy">
+
+      <p class="cp-status-sec">What gets sent</p>
+      <p class="cp-sub">Everything below travels with the report, and nothing else. Session tokens
+        are stripped from every link.</p>
+      <p class="cp-status-sec">Server</p>
+<div class="cp-status-scroll"><table class="cp-table cp-report-facts"><tbody>
+<tr><th scope="row">compose-preview</th><td>0.0.0-fixture</td></tr>
+<tr><th scope="row">Mode</th><td>public (open)</td></tr>
+<tr><th scope="row">Uptime</th><td>3d 4h</td></tr>
+<tr><th scope="row">Server JVM</th><td>17.0.11 (Eclipse Adoptium)</td></tr>
+<tr><th scope="row">Server OS</th><td>Linux 6.8.0-generic (amd64)</td></tr>
+</tbody></table></div>
+<p class="cp-status-sec">Page</p>
+<div class="cp-status-scroll"><table class="cp-table cp-report-facts"><tbody>
+<tr><th scope="row">Page</th><td>/compose-m3/p/button-filled?uiMode=dark</td></tr>
+<tr><th scope="row">Design system</th><td>compose-m3</td></tr>
+<tr><th scope="row">Preview</th><td>button-filled</td></tr>
+<tr><th scope="row">Catalog</th><td>yschimke/compose-ai-tools@design-artifacts/compose-m3</td></tr>
+<tr><th scope="row">Catalog rendered by</th><td>compose-ai-tools 0.16.54</td></tr>
+<tr><th scope="row">Trust</th><td>branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</td></tr>
+<tr><th scope="row">Render lane</th><td>live daemon</td></tr>
+</tbody></table></div>
+<p class="cp-status-sec">Catalogs not loaded</p>
+<div class="cp-status-scroll"><table class="cp-table cp-report-facts"><tbody>
+<tr><td colspan="2">`wear-m3`: failed — daemon launch timed out after 300s</td></tr>
+</tbody></table></div>
+<p class="cp-status-sec">Recent failures</p>
+<div class="cp-status-scroll"><table class="cp-table cp-report-facts"><tbody>
+<tr><td colspan="2">2026-07-17 09:43 UTC  compose-m3 (live bundle): render failed after 120000ms (timeout) — timed out waiting for renderFinished</td></tr>
+</tbody></table></div>
+<p class="cp-status-sec">Browser</p>
+<div class="cp-status-scroll"><table class="cp-table cp-report-facts"><tbody>
+<tr><th scope="row">User agent, viewport, pixel ratio, colour scheme</th><td>added by your browser</td></tr>
+</tbody></table></div>
+
+      <details class="cp-about cp-disclosure">
+        <summary>
+          <span class="cp-about-title">The report, as markdown</span>
+          <span class="cp-disclosure-hint">exactly what lands in the issue body</span>
+        </summary>
+        <div class="cp-disclosure-body">
+          <pre class="cp-report-preview" id="cp-bug-preview">### What went wrong
+
+&lt;!-- What were you doing, what did you expect, and what happened instead? --&gt;
+
+
+### Screenshot
+
+![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
+
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. A pasted screenshot of the page stays put — GitHub hosts those pixels itself. --&gt;
+
+
+### Server
+
+| | |
+| --- | --- |
+| compose-preview | `0.0.0-fixture` |
+| Mode | public (open) |
+| Uptime | 3d 4h |
+| Server JVM | `17.0.11 (Eclipse Adoptium)` |
+| Server OS | `Linux 6.8.0-generic (amd64)` |
+
+### Page
+
+| | |
+| --- | --- |
+| Page | [`/compose-m3/p/button-filled?uiMode=dark`](https://preview.coo.ee/compose-m3/p/button-filled?uiMode=dark) |
+| Design system | `compose-m3` |
+| Preview | `button-filled` |
+| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
+| Catalog rendered by | compose-ai-tools 0.16.54 |
+| Trust | branch:yschimke/compose-ai-tools@design-artifacts/compose-m3 |
+| Render lane | live daemon |
+
+### Catalogs not loaded
+
+- `wear-m3`: failed — daemon launch timed out after 300s
+
+### Recent failures
+
+```
+2026-07-17 09:43 UTC  compose-m3 (live bundle): render failed after 120000ms (timeout) — timed out waiting for renderFinished
+```
+</pre>
+        </div>
+      </details>
+        </main>
+        <footer class="cp-site-footer">
+          <div class="cp-site-footer-links">
+            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+            <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+          </div>
+        </footer>
+        <script>(function(){var active="dev",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
+        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
+      </body>
+    </html>

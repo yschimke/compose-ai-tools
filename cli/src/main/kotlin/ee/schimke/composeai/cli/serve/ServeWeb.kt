@@ -547,15 +547,22 @@ object ServeWeb {
   }
 
   /**
-   * The minimal site footer — source, `/version`, and the running build — rendered by [document] at
-   * the bottom of **every** browser-facing page, below the body. [version] null/blank just drops
-   * the build span; the source and `/version` links stay, so the footer is never empty.
+   * The minimal site footer — source, `/version`, "report a bug", and the running build — rendered
+   * by [document] at the bottom of **every** browser-facing page, below the body. [version]
+   * null/blank just drops the build span; the other entries stay, so the footer is never empty.
    *
    * [note] is the page's own footer block, rendered *above* the links row: on a catalog landing
    * that's the provenance disclosure ([provenanceSection]), which belongs with the build/source
    * metadata rather than in the middle of the catalog's content. Empty on every other page.
+   *
+   * [bugReport] false drops the "report a bug" entry — passed by the report page itself, which is
+   * where that entry leads.
    */
-  private fun siteFooter(version: String?, note: String = ""): String {
+  private fun siteFooter(
+    version: String?,
+    note: String = "",
+    bugReport: Boolean = true,
+  ): String {
     val ver =
       version
         ?.takeIf { it.isNotBlank() }
@@ -565,16 +572,51 @@ object ServeWeb {
         } ?: ""
     val noteBlock =
       note.takeIf { it.isNotBlank() }?.let { "${it.trimEnd().prependIndent("        ")}\n" } ?: ""
+    val report = if (bugReport) "\n${reportBugFormHtml().prependIndent("          ")} ·" else ""
     return """
       <footer class="cp-site-footer">
 $noteBlock        <div class="cp-site-footer-links">
-          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
+          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·$report
           <a href="/version">/version</a>$ver
         </div>
       </footer>
       """
       .trimIndent()
   }
+
+  /**
+   * The footer's "report a bug" affordance: the entry point to [ServeBugReport.PATH], the page that
+   * collects this server's diagnostics and hands the visitor a prefilled issue on the repo that
+   * ships the server.
+   *
+   * It sits in the footer, on every page, **beside the build number** — a bug in the server is a
+   * bug in that build, and the footer is the one piece of chrome every surface has, including the
+   * ones with no preview to hang a report off (the front door, `/status`, a 404, a catalog that
+   * failed to load). That is the whole difference from the per-preview affordance in
+   * [previewLinksHtml], which reports a *preview* to the repo that declares it.
+   *
+   * A **GET form** rather than a link, for the reason written up on [ServeIssueReport.action]: the
+   * two facts the report needs from the browser — which page the visitor is on, and the session
+   * token that page carries — are page-derived strings, and writing those into an `href` is a
+   * navigation sink. Here the action is a server-rendered literal, the script only ever fills input
+   * *values*, and the browser does the encoding on submit.
+   *
+   * Both inputs start empty and are filled by `serve-chrome.js`. With JS off the form still submits
+   * — on a public server that yields a report with no page section (the server's own diagnostics
+   * are all still there), and on a token-gated one the report page 404s like every other gated
+   * route reached without a token.
+   */
+  private fun reportBugFormHtml(): String =
+    "<form class=\"cp-report-bug\" method=\"get\" action=\"${ServeBugReport.PATH}\">" +
+      "<input type=\"hidden\" name=\"${ServeBugReport.FROM_PARAM}\" value=\"\">" +
+      "<input type=\"hidden\" name=\"token\" value=\"\">" +
+      // The scheme THIS page is painted in. Captured here because it cannot be recovered on the
+      // report page: a catalog that pinned dark chrome and an OS set to light disagree, and the
+      // report page has its own answer to that question rather than this page's.
+      "<input type=\"hidden\" name=\"scheme\" value=\"\">" +
+      "<button type=\"submit\" class=\"cp-report-bug-link\"" +
+      " title=\"Report a bug in the preview server itself\">$GITHUB_ICON report a bug</button>" +
+      "</form>"
 
   /**
    * Shared, intentionally compact navigation for every browser-facing page.
@@ -5907,6 +5949,150 @@ $noteBlock        <div class="cp-site-footer-links">
     )
   }
 
+  /**
+   * What [bugReportPage] draws: the assembled report, plus the pieces the page needs to show the
+   * reporter what they are about to file.
+   *
+   * [title] and [body] are [ServeBugReport]'s output for the settings the page was served at, so
+   * the form works with JS off. [bodyTemplate] is the same body with
+   * [ServeBugReport.CLIENT_PLACEHOLDER] where the browser block goes, which the page script fills
+   * from `navigator` / `window`. [renderUrl], when present, is the token-stripped `/render` PNG of
+   * whatever the reporter was looking at — shown on the page as a thumbnail so "this is what I saw"
+   * is literal rather than described.
+   */
+  data class BugReport(
+    val action: String,
+    val title: String,
+    val body: String,
+    val bodyTemplate: String,
+    val repo: String,
+    val renderUrl: String? = null,
+    /** Present only when the visitor has a GitHub session on this server. */
+    val login: String? = null,
+  )
+
+  /**
+   * `GET /report-bug` — the preview server's own bug-report page.
+   *
+   * **Why a page rather than a footer link straight to GitHub.** The per-preview report can be one
+   * click, because its whole body is facts the visitor is already looking at: a preview id, the
+   * overrides in the URL bar, a render on screen. A server report is not — it carries the JVM the
+   * daemon runs on, which catalogs failed to load, and what the render lanes have been doing, none
+   * of which is on any page. Shipping that to GitHub from a footer button would post a body the
+   * reporter has never read, on a public tracker, in their name. So the page's main job is to
+   * **show the report before it is filed**: the same markdown, rendered as the sections it will
+   * become, with a plain-text copy underneath. Pressing the button then files exactly what is on
+   * screen.
+   *
+   * The screenshot is deliberately two-sided. When the reporter came from a viewer the page embeds
+   * that preview's `/render` PNG, and the body carries it too (embedded when this host is publicly
+   * reachable, linked otherwise — the reachability rules live in [ServeIssueReport.isEmbeddable]).
+   * That covers "the render is wrong". It does **not** cover "the page is wrong", which is most
+   * server bugs, so the page also asks for a pasted screenshot of the whole window — the one thing
+   * the server cannot produce for itself and the browser gives away for free.
+   */
+  fun bugReportPage(
+    report: BugReport,
+    /** The diagnostics as rows, shown verbatim; each entry is a section title to its rows. */
+    sections: List<BugReportSection>,
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
+    navSuffix: String = "",
+  ): String {
+    fun esc(s: String) = WebEscaping.htmlEscape(s)
+    val who =
+      report.login?.takeIf { it.isNotBlank() }?.let { " as @${esc(it)}" }
+        ?: " — GitHub will ask you to sign in"
+    val sectionHtml =
+      sections
+        .filter { it.rows.isNotEmpty() }
+        .joinToString("\n") { section ->
+          val rows =
+            section.rows.joinToString("\n") { (key, value) ->
+              // A blank key marks a LIST row (a failed catalog, a failure line) rather than a
+              // key/value one. It spans both columns instead of drawing an empty header cell —
+              // which reserved the key column's width and its rule, so a section that is really a
+              // list read as a table whose left half had gone missing.
+              if (key.isBlank()) "<tr><td colspan=\"2\">${esc(value)}</td></tr>"
+              else "<tr><th scope=\"row\">${esc(key)}</th><td>${esc(value)}</td></tr>"
+            }
+          "<p class=\"cp-status-sec\">${esc(section.title)}</p>\n" +
+            "<div class=\"cp-status-scroll\"><table class=\"cp-table cp-report-facts\">" +
+            "<tbody>\n$rows\n</tbody></table></div>"
+        }
+    val shot =
+      report.renderUrl
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          "\n      <p class=\"cp-status-sec\">The render you were looking at</p>\n" +
+            "      <p class=\"cp-sub\">Included in the report. It is a live render, so it " +
+            "follows the catalog — paste a screenshot below as well if the exact pixels " +
+            "matter.</p>\n" +
+            "      <img class=\"cp-report-shot\" src=\"${esc(it)}\" alt=\"the render this " +
+            "report is about\" loading=\"lazy\">"
+        } ?: ""
+    val body =
+      """
+      <h1 class="cp-head">Report a bug in the preview server</h1>
+      <p class="cp-sub">This files against <a href="https://github.com/${esc(report.repo)}"
+        >${esc(report.repo)}</a>, the repository that ships <code>compose-preview serve</code>$who.
+        For a preview that renders wrongly, use the &ldquo;report an issue&rdquo; link on that
+        preview instead — it goes to the project whose code declares it.</p>
+
+      <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
+        action="${esc(report.action)}">
+        <input type="hidden" name="title" value="${esc(report.title)}">
+        <input type="hidden" name="body" id="cp-bug-body" value="${esc(report.body)}"
+          data-report-template="${esc(report.bodyTemplate)}">
+        <button type="submit" class="cp-doc-btn cp-bug-submit">$GITHUB_ICON
+          Open a prefilled issue</button>
+        <span class="cp-muted">Opens GitHub&rsquo;s new-issue form. Nothing is sent from this
+          server &mdash; you write the description and press Submit there.</span>
+      </form>
+
+      <p class="cp-status-sec">Add a screenshot</p>
+      <p class="cp-sub">The report has a Screenshot section waiting for one. Take a shot of the
+        whole window and paste it into that section on GitHub &mdash; it uploads to GitHub&rsquo;s
+        own storage, so it keeps showing what you saw even after this server changes.</p>
+      $shot
+
+      <p class="cp-status-sec">What gets sent</p>
+      <p class="cp-sub">Everything below travels with the report, and nothing else. Session tokens
+        are stripped from every link.</p>
+      $sectionHtml
+
+      <details class="cp-about cp-disclosure">
+        <summary>
+          <span class="cp-about-title">The report, as markdown</span>
+          <span class="cp-disclosure-hint">exactly what lands in the issue body</span>
+        </summary>
+        <div class="cp-disclosure-body">
+          <pre class="cp-report-preview" id="cp-bug-preview">${esc(report.body)}</pre>
+        </div>
+      </details>
+      """
+        .trimIndent()
+    return document(
+      title = "Report a bug — compose-preview",
+      body = body,
+      unfurlDescription = "Report a bug in this compose-preview server.",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
+      // The footer entry leads here; offering it on this page would be a button back to itself.
+      bugReport = false,
+    )
+  }
+
+  /** One titled group of `key → value` diagnostics on [bugReportPage]. */
+  data class BugReportSection(val title: String, val rows: List<Pair<String, String>>)
+
   /** Recent generation times read naturally; older builds use a compact, unambiguous UTC date. */
   private fun friendlyGeneratedAt(iso: String, nowMillis: Long): String {
     val generated = runCatching { Instant.parse(iso) }.getOrNull() ?: return prettyDate(iso)
@@ -10310,6 +10496,13 @@ $rows
     rcFonts: Boolean = false,
     /** Streamlined component-browser chrome; full mode remains the default. */
     componentBrowser: Boolean = false,
+    /**
+     * Offer the footer's "report a bug" entry. False only on the report page itself, which is what
+     * that entry opens — see [reportBugFormHtml]. Independent of [componentBrowser], which drops
+     * the footer altogether: this chooses what the footer contains, that chooses whether there is
+     * one.
+     */
+    bugReport: Boolean = true,
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -10362,7 +10555,8 @@ $rows
       }
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
     val footerBlock =
-      if (componentBrowser) "" else "\n${siteFooter(version, footerNote).prependIndent("        ")}"
+      if (componentBrowser) ""
+      else "\n${siteFooter(version, footerNote, bugReport).prependIndent("        ")}"
     // Before `themeCss`, so a catalog palette still wins at equal specificity; the font block
     // declares faces only and collides with nothing in the chrome.
     val rcFontsBlock = if (rcFonts) "\n" + ServeRcFonts.linkTag().prependIndent("        ") else ""

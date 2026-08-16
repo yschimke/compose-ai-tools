@@ -916,6 +916,75 @@ still works, because GitHub prompts for sign-in on the issue form.
 A token-gated (`--public` off) server strips its **session token** from both URLs in the body — that
 token is the capability to drive the server, and an issue is public.
 
+## Reporting a bug in the server itself
+
+The report above is about a **preview** and goes to the project whose Kotlin declares it. A bug in
+the *server* — a knob that does nothing, a render that 500s, a page that draws wrong, a catalog that
+will not load — has no such owner, and filing it against a catalog's tracker sends it to people who
+cannot fix it. So the footer of **every** browser-facing page (the front door, `/status`, a 404, a
+catalog landing, a viewer) carries a second affordance, **report a bug**, sitting beside the build
+number it is a bug in. It always files against `yschimke/compose-ai-tools`.
+
+| Before | After |
+| --- | --- |
+| ![Footer with source and /version only](design/evidence/serve-report-bug/serve-footer-before.light.png) | ![The same footer with "report a bug" added](design/evidence/serve-report-bug/serve-footer-after.light.png) |
+
+It opens **`/report-bug`**, a page rather than a straight jump to GitHub — because a server report
+carries things nobody is looking at. The per-preview report can be one click: its whole body is
+already on screen (a preview id, the overrides in the URL bar, a render). A server report carries
+the JVM the daemon runs on, which catalogs failed to load, and what the render lanes have been
+doing, none of which appears on any page. Posting that to a public tracker, in the reporter's name,
+without them having read it, is not something a footer button should do. So the page's job is to
+**show the report before it is filed** — the same facts, grouped, with the exact markdown underneath
+— and the button then files what is on screen.
+
+![The bug-report page](design/evidence/serve-report-bug/serve-report-bug.light.png)
+
+**What it carries.** *Server*: the running build, whether the box is public or token-gated, uptime,
+and the JVM + OS **the HTTP server itself runs on** — labelled `Server JVM` / `Server OS`, and
+deliberately not called "the render JVM": a project whose `daemon-launch.json` names a `javaLauncher`
+renders on that child JDK instead, so claiming this row described the renderer would file a failure
+under the wrong runtime. *Page*: the path the visitor came from, and — when
+that path names one — the design system, the preview, the catalog's `repo@branch` and the
+compose-ai-tools version that produced it, its trust verdict, its render lane, and any degradation
+in force. *Catalogs not loaded* and *Recent failures*: the same load errors and daemon/render
+failures `/status` reports, merged newest-first and capped at eight so the body stays readable.
+*Browser*: user agent, viewport, device pixel ratio, and **two** colour schemes — the one the
+reported page was painted in and the visitor's OS preference — filled in by their own browser. Those
+are the facts the server cannot observe, and the ones a "draws wrong" report turns on. The two
+schemes are reported separately because they disagree exactly when it matters: a catalog that pinned
+dark chrome on a light OS is otherwise labelled `light`, hiding the condition needed to reproduce
+the bug. The page's scheme is captured **on that page** (the footer form carries it), since
+`/report-bug` has a scheme of its own and cannot recover it afterwards.
+
+The render the report carries is the one the visitor was actually looking at: the override query on
+the page they came from (`?uiMode=dark`, a device, a font scale — the viewer rewrites it live as the
+knobs move) is normalised and re-applied to the `/render` URL, so the embedded PNG is the render that
+prompted the report rather than the component's default.
+
+**The screenshot is two-sided.** When the reporter came from a viewer the page shows that preview's
+render and the body carries it (embedded when the host is publicly reachable, linked otherwise — the
+same two conditions as above). That covers "the render is wrong". It does not cover "the page is
+wrong", which is most server bugs, so the report leaves a Screenshot section for a pasted shot of
+the whole window — the one thing the server cannot produce and the browser gives away for free.
+
+**Gating and safety.** `/report-bug` is gated exactly like `/status` (open in `--public`, else
+token-required), because it reports the same catalog-load and daemon-failure detail. The page the
+visitor came from is sent by the footer form as a `from` field and accepted only as a **same-origin
+absolute path** — no scheme, no protocol-relative `//`, no fragment, no control characters, length
+capped — and the preview it names is resolved by **matching an existing preview id** rather than
+being trusted as one. Anything that fails costs the report a row and nothing else. The session token
+is moved out of `from` into its own field by the page script and stripped again server-side: it
+reaches this server, never the issue body.
+
+**Which session the reported page belonged to** is resolved three ways, most specific first: a
+top-level site publishes one system and *is* the answer; a `/{system}/…` path names it; and a
+root-form viewer (`/p/Red` — the ordinary shape on a plain `compose-preview serve`) names none, so
+its `?session=` is used, else the default session. A catalog whose daemon has since gone idle is
+still reported from the registry's last-known snapshot rather than being treated as absent — its
+provenance, trust and preview list are facts a suspension cannot change, and its render lane is
+reported honestly as `suspended (idle)` instead of being mislabelled as baked.
+
 ### Opening the Figma node a preview is specified by
 
 When the served catalog publishes a **Figma-backed design reference** for a preview, the viewer adds
