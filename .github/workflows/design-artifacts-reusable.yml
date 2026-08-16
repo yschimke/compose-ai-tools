@@ -42,6 +42,27 @@ on:
         description: 'Gradle module path to render (e.g. ":app").'
         required: true
         type: string
+      # CodeQL reports "Checkout of untrusted code in a privileged context" (critical)
+      # against the `actions/checkout` steps that consume this input and `driver-ref`
+      # below. In THIS repo it is a false positive — dismissed, not fixed — and the
+      # reasoning is worth keeping so the next reader doesn't re-derive it:
+      #
+      #  - The rule treats a `workflow_run` trigger as privileged, because it usually
+      #    fires from a PR-triggered run whose head is untrusted. The one privileged
+      #    caller here is post-release-design-artifacts.yml → design-artifacts.yml,
+      #    and it hangs off release-please.yml, which runs only on `push` to `main`
+      #    and `workflow_dispatch`. No `pull_request`/`pull_request_target` anywhere
+      #    in that chain, so nothing a non-writer controls can start it.
+      #  - The rule treats a reusable workflow's inputs as attacker-controlled, because
+      #    a caller may pass anything. Both call sites in design-artifacts.yml pass
+      #    literals only and never set `ref` or `driver-ref`, so the checkouts resolve
+      #    to the default branch and the literal `main` respectively.
+      #
+      # An EXTERNAL caller is a different question: this workflow is meant to be called
+      # from other repos, and there the ref a caller passes is that repo's business —
+      # if you wire it into a privileged trigger, pass a ref you control, never one
+      # derived from PR head/branch/title. Re-check the first bullet before adding any
+      # new trigger to a caller in this repo.
       ref:
         description: 'Git ref of the CALLING repo to check out and render (branch, tag or SHA). Empty ⇒ the ref that triggered the caller — the normal push/PR case. Set this when the trigger cannot imply the right ref: a `schedule` run only fires for a workflow on the default branch and checks out that branch, so a catalog living on a side branch (e.g. `previews`) needs `ref: previews` here or the render finds no catalog.spec.json (issue #2963).'
         required: false
@@ -67,6 +88,8 @@ on:
         required: false
         type: string
         default: 'gradle/libs.versions.toml'
+      # Same CodeQL "privileged checkout" note as `ref` above — the default is a
+      # literal and no caller in this repo overrides it.
       driver-ref:
         description: 'compose-ai-tools ref checked out for the export driver (scripts/design-artifacts).'
         required: false
