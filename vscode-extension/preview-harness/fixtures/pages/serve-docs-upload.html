@@ -8,7 +8,7 @@
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
-        <script>try{var p=new URLSearchParams(location.search),m=p.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){p.set("chrome",s);location.replace(location.pathname+"?"+p.toString()+location.hash);}}catch(e){}</script>
+        <script>try{var q=new URLSearchParams(location.search),m=q.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){q.set("chrome",s);location.replace(location.pathname+"?"+q.toString()+location.hash);}}catch(e){}</script>
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>

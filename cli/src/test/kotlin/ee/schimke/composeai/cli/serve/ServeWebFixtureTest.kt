@@ -5025,7 +5025,7 @@ class ServeWebFixtureTest {
     assertTrue(
       assetText("serve.css")
         .contains(
-          ".cp-preview-head { position: sticky; top: var(--cp-site-header-height); z-index: 21;"
+          ".cp-preview-head { position: sticky; top: var(--site-header-height); z-index: 21;"
         ),
       "the disclosure row is sticky below the global header on mobile",
     )
