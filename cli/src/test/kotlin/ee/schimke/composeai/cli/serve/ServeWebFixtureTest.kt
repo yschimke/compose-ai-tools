@@ -714,93 +714,95 @@ class ServeWebFixtureTest {
         noun = "design system(s)",
         repos = setOf("yschimke/compose-ai-tools"),
       )
+    val homeSystems =
+      listOf(
+        ServeWeb.HomeSystem(
+          group = designSystemsGroup,
+          system = "compose-m3",
+          title = "Compose Material 3",
+          subtitle = "androidx.compose.material3:material3",
+          previewCount = 42,
+          trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+          sourceRepo = "yschimke/compose-ai-tools",
+          heroPreviewId = "button-filled__ideal__default__light",
+          // The normal path: a prebaked, content-hashed hero on the immutable `/hero/` lane, the
+          // crop already in its pixels. Captured here so the golden pins the fast markup — eager
+          // load, explicit box, no CSS clip window.
+          heroImage =
+            ServeWeb.HeroImage(
+              path = "/hero/compose-m3/1f0c9a4b7d2e6503.png",
+              width = 168,
+              height = 68,
+            ),
+        ),
+        ServeWeb.HomeSystem(
+          group = designSystemsGroup,
+          system = "wear-m3",
+          title = "Wear Compose Material 3",
+          subtitle = "androidx.wear.compose:compose-material3",
+          previewCount = 18,
+          trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
+          sourceRepo = "yschimke/compose-ai-tools",
+          heroPreviewId = "button-filled__ideal__default__light",
+          heroImage =
+            ServeWeb.HeroImage(
+              path = "/hero/wear-m3/9b3d51ca08e7f264.png",
+              width = 132,
+              height = 132,
+            ),
+          // Wear is dark-first: the hero backs on the dark stage, not the default white.
+          darkStage = true,
+        ),
+        ServeWeb.HomeSystem(
+          group = designSystemsGroup,
+          system = "remote-m3",
+          title = "Remote Compose Material 3",
+          subtitle = "androidx.wear.compose.remote:remote-material3",
+          previewCount = 6,
+          trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+          sourceRepo = "yschimke/compose-ai-tools",
+          heroPreviewId = "Button-Filled__ideal__default__light",
+          // Remote Compose draws the dark-first Wear scheme, so its catalog declares
+          // `display.surface: "dark"` and the hero backs on the dark stage too.
+          darkStage = true,
+        ),
+        // App systems published UNLISTED from their own repos but promoted to the LISTED set
+        // (`--catalogs`), so they show on the front door alongside the design systems.
+        ServeWeb.HomeSystem(
+          system = "meshcore-mobile",
+          title = "MeshCore",
+          subtitle = "ee.schimke.meshcore",
+          previewCount = 33,
+          trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+          sourceRepo = "yschimke/meshcore-mobile",
+          heroPreviewId = "device-manycontacts__ideal__default__compact",
+        ),
+        ServeWeb.HomeSystem(
+          system = "homeassistant-remotecompose",
+          title = "HomeAssistant RemoteCompose",
+          subtitle = "ee.schimke.homeassistant",
+          previewCount = 9,
+          trust =
+            "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
+          sourceRepo = "yschimke/homeassistant-remotecompose",
+          heroPreviewId = null,
+        ),
+        // A Wear app (Confetti): dark-first stage, and its hero is a conference SCREEN — the most
+        // representative view of the app — rather than a single component.
+        ServeWeb.HomeSystem(
+          system = "confetti-wear",
+          title = "Confetti (Wear)",
+          subtitle = "dev.johnoreilly.confetti",
+          previewCount = 12,
+          trust = "branch:joreilly/Confetti@design-artifacts/confetti-wear",
+          sourceRepo = "joreilly/Confetti",
+          heroPreviewId = "conference-screen__ideal__default__dark",
+          darkStage = true,
+        ),
+      )
     val homeIndex =
       ServeWeb.homeIndexPage(
-        listOf(
-          ServeWeb.HomeSystem(
-            group = designSystemsGroup,
-            system = "compose-m3",
-            title = "Compose Material 3",
-            subtitle = "androidx.compose.material3:material3",
-            previewCount = 42,
-            trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
-            sourceRepo = "yschimke/compose-ai-tools",
-            heroPreviewId = "button-filled__ideal__default__light",
-            // The normal path: a prebaked, content-hashed hero on the immutable `/hero/` lane, the
-            // crop already in its pixels. Captured here so the golden pins the fast markup — eager
-            // load, explicit box, no CSS clip window.
-            heroImage =
-              ServeWeb.HeroImage(
-                path = "/hero/compose-m3/1f0c9a4b7d2e6503.png",
-                width = 168,
-                height = 68,
-              ),
-          ),
-          ServeWeb.HomeSystem(
-            group = designSystemsGroup,
-            system = "wear-m3",
-            title = "Wear Compose Material 3",
-            subtitle = "androidx.wear.compose:compose-material3",
-            previewCount = 18,
-            trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
-            sourceRepo = "yschimke/compose-ai-tools",
-            heroPreviewId = "button-filled__ideal__default__light",
-            heroImage =
-              ServeWeb.HeroImage(
-                path = "/hero/wear-m3/9b3d51ca08e7f264.png",
-                width = 132,
-                height = 132,
-              ),
-            // Wear is dark-first: the hero backs on the dark stage, not the default white.
-            darkStage = true,
-          ),
-          ServeWeb.HomeSystem(
-            group = designSystemsGroup,
-            system = "remote-m3",
-            title = "Remote Compose Material 3",
-            subtitle = "androidx.wear.compose.remote:remote-material3",
-            previewCount = 6,
-            trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
-            sourceRepo = "yschimke/compose-ai-tools",
-            heroPreviewId = "Button-Filled__ideal__default__light",
-            // Remote Compose draws the dark-first Wear scheme, so its catalog declares
-            // `display.surface: "dark"` and the hero backs on the dark stage too.
-            darkStage = true,
-          ),
-          // App systems published UNLISTED from their own repos but promoted to the LISTED set
-          // (`--catalogs`), so they show on the front door alongside the design systems.
-          ServeWeb.HomeSystem(
-            system = "meshcore-mobile",
-            title = "MeshCore",
-            subtitle = "ee.schimke.meshcore",
-            previewCount = 33,
-            trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
-            sourceRepo = "yschimke/meshcore-mobile",
-            heroPreviewId = "device-manycontacts__ideal__default__compact",
-          ),
-          ServeWeb.HomeSystem(
-            system = "homeassistant-remotecompose",
-            title = "HomeAssistant RemoteCompose",
-            subtitle = "ee.schimke.homeassistant",
-            previewCount = 9,
-            trust =
-              "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
-            sourceRepo = "yschimke/homeassistant-remotecompose",
-            heroPreviewId = null,
-          ),
-          // A Wear app (Confetti): dark-first stage, and its hero is a conference SCREEN — the most
-          // representative view of the app — rather than a single component.
-          ServeWeb.HomeSystem(
-            system = "confetti-wear",
-            title = "Confetti (Wear)",
-            subtitle = "dev.johnoreilly.confetti",
-            previewCount = 12,
-            trust = "branch:joreilly/Confetti@design-artifacts/confetti-wear",
-            sourceRepo = "joreilly/Confetti",
-            heroPreviewId = "conference-screen__ideal__default__dark",
-            darkStage = true,
-          ),
-        ),
+        homeSystems,
         token,
         isPublic = true,
         version = version,
@@ -2292,8 +2294,19 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         basePath = "/compose-m3",
         displayTitle = "Compose Material 3",
+        declaredThemes = listOf(ServeTheme("Light", "com.example.LightThemeCatalog")),
+        canRenderThemeFor = { true },
         componentBrowser = true,
       )
+    val componentBrowserHome =
+      ServeWeb.homeIndexPage(
+          homeSystems,
+          token,
+          isPublic = true,
+          version = version,
+          componentBrowser = true,
+        )
+        .replace(Regex("[ \\t]+\\n"), "\n")
     val componentBrowserViewer =
       ServeWeb.viewerPage(
         browserPreviews.first { it.id == "button-filled-pressed" },
@@ -2765,6 +2778,7 @@ class ServeWebFixtureTest {
         "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,
         "serve-landing-grouped.html" to landingGrouped,
+        "serve-component-browser-home.html" to componentBrowserHome,
         "serve-component-browser-catalog.html" to componentBrowserCatalog,
         "serve-component-browser-component.html" to componentBrowserViewer,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,

@@ -670,8 +670,7 @@ $noteBlock        <div class="cp-site-footer-links">
         ?: ""
     val modeToggle =
       """
-      <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
-        <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+      <div class="cp-interface-mode" role="group" aria-label="Interface mode">
         <button type="button" data-cp-interface-mode="catalog" aria-pressed="${componentBrowser}">Catalog</button>
         <button type="button" data-cp-interface-mode="dev" aria-pressed="${!componentBrowser}">Dev</button>
       </div>
@@ -4179,7 +4178,10 @@ $noteBlock        <div class="cp-site-footer-links">
       else
         """
         <div class="cp-browser-home-tools">
-          <label class="cp-search"><span aria-hidden="true">⌕</span><input id="cp-browser-catalog-search" type="search" autocomplete="off" placeholder="Search catalogs" aria-label="Search catalogs"></label>
+          <label class="cp-browser-search">
+            <span class="cp-browser-search-icon" aria-hidden="true">⌕</span>
+            <input id="cp-browser-catalog-search" class="cp-browser-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search catalogs" aria-label="Search catalogs">
+          </label>
         </div>
         <p id="cp-browser-catalog-empty" class="cp-empty" hidden>No catalogs match your search.</p>
         """
@@ -7023,11 +7025,6 @@ $noteBlock        <div class="cp-site-footer-links">
         "<p class=\"cp-sub\">${previews.size} preview(s)" +
           (if (systemViews > 0) " · ${formatViews(systemViews)}" else "") +
           "$liveNote</p>"
-    val titleRow =
-      "<div class=\"cp-catalog-head-row\">" +
-        "<div class=\"cp-catalog-title\">" +
-        "<h1 class=\"cp-head cp-catalog-head\">${WebEscaping.htmlEscape(heading)}" +
-        "${compactTrustBadge(trust)}</h1>$catalogId</div>$subLine</div>"
     // …and the viewer's control row: the page's controls over what is *shown*, as compact pills at
     // the trailing edge of one bar (`.cp-head-toggles`, the same class and the same trailing auto
     // margin the viewer's title row uses), with the filter field taking the width beside them. The
@@ -7037,8 +7034,19 @@ $noteBlock        <div class="cp-site-footer-links">
       (themeToggle + primaryActions)
         .takeIf { it.isNotBlank() }
         ?.let { "<div class=\"cp-head-toggles\">\n$it</div>\n" } ?: ""
+    // Browser mode has no operational toolbar, so its Theme menu belongs on the identity row next
+    // to the catalog title. Leaving it in a full-width row of its own created an empty band between
+    // the heading and the sidebar/grid. Dev mode keeps the sticky toolbar because its controls are
+    // part of the denser authoring surface and may include a top-level search field.
+    val titleRow =
+      "<div class=\"cp-catalog-head-row\">" +
+        "<div class=\"cp-catalog-title\">" +
+        "<h1 class=\"cp-head cp-catalog-head\">${WebEscaping.htmlEscape(heading)}" +
+        "${compactTrustBadge(trust)}</h1>$catalogId</div>$subLine" +
+        (if (componentBrowser) headToggles else "") +
+        "</div>"
     val tools =
-      (searchBox + headToggles)
+      (searchBox + if (componentBrowser) "" else headToggles)
         .takeIf { it.isNotBlank() }
         ?.let { "<div class=\"cp-catalog-tools\">\n$it</div>\n" } ?: ""
     return document(
