@@ -368,9 +368,9 @@ export class InspectLayers extends LitElement {
         box.className = "cp-inspect-box";
         box.setAttribute("data-cp-kind", kind);
         box.setAttribute("data-level", entry.level);
-        box.title = entry.detail
-            ? `${entry.title} · ${entry.detail}`
-            : entry.title;
+        box.title =
+            entry.tooltip ||
+            (entry.detail ? `${entry.title} · ${entry.detail}` : entry.title);
         if (entry.color)
             box.style.setProperty("--cp-inspect-color", entry.color);
         const badge = document.createElement("span");
@@ -395,6 +395,7 @@ export class InspectLayers extends LitElement {
         row.setAttribute("data-cp-kind", kind);
         row.setAttribute("data-level", entry.level);
         row.tabIndex = 0;
+        if (entry.tooltip) row.title = entry.tooltip;
         if (entry.color)
             row.style.setProperty("--cp-inspect-color", entry.color);
         const marker = document.createElement("span");

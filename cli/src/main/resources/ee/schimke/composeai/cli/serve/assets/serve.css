@@ -2131,6 +2131,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-inspect-text strong { font-weight: 650; color: var(--cp-fg); overflow-wrap: anywhere; }
 .cp-inspect-detail { color: var(--cp-fg-muted); overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums; }
+.cp-inspect-entry[data-cp-kind="typography"] .cp-inspect-detail { white-space: nowrap;
+  font-size: 0.62rem; letter-spacing: -0.02em; }
 .cp-overlay-control { display: flex; align-items: center; gap: 10px; max-width: 420px;
   margin: 22px 0 8px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-overlay-control input { flex: 1; }
