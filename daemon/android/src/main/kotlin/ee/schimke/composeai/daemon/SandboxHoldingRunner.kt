@@ -229,7 +229,7 @@ internal fun isWearAmbientAvailable(loader: ClassLoader?): Boolean {
 /**
  * Returns `true` when the Wear one-handed-gesture API
  * (`androidx.wear.compose.material3.onehandedgesture.OneHandedGestureModifierKt`, added in
- * `wear-compose 1.7.0-alpha`) is on the supplied classloader. Gates `:data-gestures-connector`
+ * `wear-compose 1.7.0-beta`) is on the supplied classloader. Gates `:data-gestures-connector`
  * registration so a plain-Android consumer — or a Wear consumer still on `wear-compose 1.6.x` —
  * doesn't drive `GestureOverrideExtension`'s composition into unresolved gesture types.
  */

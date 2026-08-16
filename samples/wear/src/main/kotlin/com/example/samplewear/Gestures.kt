@@ -37,15 +37,15 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
-import androidx.wear.compose.material3.onehandedgesture.GestureAction
-import androidx.wear.compose.material3.onehandedgesture.GesturePriority
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureAction
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureHorizontalPageIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGesturePageIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGesturePriority
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
@@ -86,9 +86,9 @@ object GestureRoutes {
 
 @Composable
 internal fun rememberGestureConfiguration(
-  action: GestureAction,
+  action: OneHandedGestureAction,
   key: String,
-  priority: GesturePriority = GesturePriority.Clickable,
+  priority: OneHandedGesturePriority = OneHandedGesturePriority.Clickable,
 ): OneHandedGestureConfiguration =
   rememberOneHandedGestureConfiguration(
     action = action,
@@ -245,7 +245,7 @@ private fun PlayGestureButton(forceHint: Boolean) {
   var playing by remember { mutableStateOf(false) }
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureAction.Primary, key = "samplewear:play")
+    rememberGestureConfiguration(OneHandedGestureAction.Primary, key = "samplewear:play")
   val indicatorState = rememberGestureIndicatorState(forceShow = forceHint)
   val coroutineScope = rememberCoroutineScope()
   Button(
@@ -283,7 +283,7 @@ fun PrimaryActionScreen(forceHint: Boolean = false) {
 fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureAction.Dismiss, key = "samplewear:dismiss")
+    rememberGestureConfiguration(OneHandedGestureAction.Dismiss, key = "samplewear:dismiss")
   val indicatorState = rememberGestureIndicatorState(forceShow = forceHint)
   val coroutineScope = rememberCoroutineScope()
   GestureDemoScreen(
@@ -314,9 +314,9 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
   val coroutineScope = rememberCoroutineScope()
   val gestureConfiguration =
     rememberGestureConfiguration(
-      GestureAction.Primary,
+      OneHandedGestureAction.Primary,
       key = "samplewear:scroll",
-      priority = GesturePriority.Scrollable,
+      priority = OneHandedGesturePriority.Scrollable,
     )
   val indicatorState = rememberScrollGestureIndicatorState(forceHint)
   ScreenScaffold(scrollState = listState) { contentPadding ->
@@ -360,9 +360,9 @@ fun PageGestureScreen(forceHint: Boolean = false) {
   val coroutineScope = rememberCoroutineScope()
   val gestureConfiguration =
     rememberGestureConfiguration(
-      GestureAction.Primary,
+      OneHandedGestureAction.Primary,
       key = "samplewear:page",
-      priority = GesturePriority.Scrollable,
+      priority = OneHandedGesturePriority.Scrollable,
     )
   val indicatorState = rememberPageGestureIndicatorState(forceHint)
   ScreenScaffold {
@@ -405,7 +405,7 @@ fun PageGestureScreen(forceHint: Boolean = false) {
 fun DisabledGestureScreen() {
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureAction.Primary, key = "samplewear:disabled-play")
+    rememberGestureConfiguration(OneHandedGestureAction.Primary, key = "samplewear:disabled-play")
   CompositionLocalProvider(LocalOneHandedGestureEnabled provides false) {
     GestureDemoScreen(title = "Disabled", instruction = "Gestures off on this screen") {
       Button(
@@ -459,9 +459,9 @@ fun ScrollIndicatorStickerPreview() {
     val listState = rememberTransformingLazyColumnState()
     val gestureConfiguration =
       rememberGestureConfiguration(
-        GestureAction.Primary,
+        OneHandedGestureAction.Primary,
         key = "samplewear:scroll-sticker",
-        priority = GesturePriority.Scrollable,
+        priority = OneHandedGesturePriority.Scrollable,
       )
     OneHandedGestureScrollIndicator(
       gestureConfiguration = gestureConfiguration,
@@ -478,9 +478,9 @@ fun PageIndicatorStickerPreview() {
   GestureSticker {
     val gestureConfiguration =
       rememberGestureConfiguration(
-        GestureAction.Primary,
+        OneHandedGestureAction.Primary,
         key = "samplewear:page-sticker",
-        priority = GesturePriority.Scrollable,
+        priority = OneHandedGesturePriority.Scrollable,
       )
     OneHandedGestureHorizontalPageIndicator(
       gestureConfiguration = gestureConfiguration,

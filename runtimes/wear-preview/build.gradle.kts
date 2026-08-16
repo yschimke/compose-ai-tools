@@ -41,7 +41,7 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.wear.preview"
-  // wear-compose 1.7.0-alpha requires `compileSdk = 37` (mirrors :samples:design-catalog-wear-m3).
+  // wear-compose 1.7.0-beta requires `compileSdk = 37` (mirrors :samples:design-catalog-wear-m3).
   compileSdk = 37
 
   buildFeatures { compose = true }

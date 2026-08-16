@@ -19,7 +19,7 @@ import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.onehandedgesture.GestureAction
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureAction
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import androidx.wear.tooling.preview.devices.WearDevices
@@ -43,10 +43,10 @@ fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = 
   val playSource = remember { MutableInteractionSource() }
   val backSource = remember { MutableInteractionSource() }
   val playConfiguration =
-    rememberGestureConfiguration(GestureAction.Primary, key = "samplewear:media-play")
+    rememberGestureConfiguration(OneHandedGestureAction.Primary, key = "samplewear:media-play")
   val playIndicatorState = rememberGestureIndicatorState(forceShow = showIndicators)
   val backConfiguration =
-    rememberGestureConfiguration(GestureAction.Dismiss, key = "samplewear:media-back")
+    rememberGestureConfiguration(OneHandedGestureAction.Dismiss, key = "samplewear:media-back")
   val backIndicatorState = rememberGestureIndicatorState(forceShow = showIndicators)
   val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
   ScreenScaffold {

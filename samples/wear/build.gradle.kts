@@ -20,7 +20,7 @@ composePreview {
 
 android {
   namespace = "com.example.samplewear"
-  // wear-compose 1.7.0-alpha (gesture API) requires `compileSdk = 37`; override the conventions
+  // wear-compose 1.7.0-beta (gesture API) requires `compileSdk = 37`; override the conventions
   // plugin's `compileSdk = 36` default. Robolectric still renders at SDK 35 (see `composePreview`).
   compileSdk = 37
 

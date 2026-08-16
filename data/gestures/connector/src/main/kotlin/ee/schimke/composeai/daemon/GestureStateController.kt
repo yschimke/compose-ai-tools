@@ -13,9 +13,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * Process-static state holder + registry for the Wear OS one-handed-gesture connector.
  *
- * The Wear gesture framework (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-alpha`) registers
- * handlers with an **internal**, on-device-only `GestureManager`; off a Pixel Watch it silently
- * no-ops and nothing is observable. This controller makes gestures observable + drivable two ways:
+ * The Wear gesture framework (`Modifier.oneHandedGesture` in `wear-compose 1.7.0-beta`) registers
+ * handlers with an **internal**, on-device-only `OneHandedGestureManager`; off a Pixel Watch it
+ * silently no-ops and nothing is observable. This controller makes gestures observable + drivable
+ * two ways:
  * - **Opt-in, labelled** — a preview wires [reportedOneHandedGesture], which applies the real
  *   modifier *and* reports each handler here (with the author's label).
  * - **Zero-change, framework-level** — [ShadowSdkGestureInputManager] shadows the framework's

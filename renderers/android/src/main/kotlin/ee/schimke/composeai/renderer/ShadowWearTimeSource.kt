@@ -16,7 +16,7 @@ import org.robolectric.annotation.Implements
  * currentTime({ currentTimeMillis() }, timeFormat).value
  * ```
  *
- * Neither major has an inspection-mode branch (checked through `1.7.0-alpha07`), so there is no
+ * Neither major has an inspection-mode branch (checked through `1.7.0-beta01`), so there is no
  * `LocalInspectionMode` seam here the way there is elsewhere: a preview gets a fixed clock only by
  * passing its own `TimeSource`, which an activity hero — rendering the app's real screen — has no
  * way to do. Hence a shadow.
