@@ -564,7 +564,13 @@ class ServeRenderHostTest {
         "MaterialTheme.typography.labelLarge · 14.0sp/20.0sp · Roboto-Medium.ttf · 500",
         typography.label,
       )
-      assertTrue(Material3ThemeProduct.KIND in session.subscribedDataKinds)
+      assertTrue(Material3ThemeProduct.KIND !in session.subscribedDataKinds)
+      assertTrue(Material3ThemeProduct.KIND in session.unsubscribedDataKinds)
+      val themeOverrides =
+        session.lastThemeFetchParams?.jsonObject?.get(DataFetchParams.PARAM_OVERRIDES)?.let {
+          Json.decodeFromJsonElement(PreviewOverrides.serializer(), it)
+        }
+      assertEquals(PreviewOverrides(), themeOverrides)
       assertTrue(ComposeSemanticsProduct.KIND in session.enabledExtensionIds)
       assertTrue(ServeRenderHost.THEME_EXTENSION_ID in session.enabledExtensionIds)
     }

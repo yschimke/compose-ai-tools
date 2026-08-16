@@ -914,6 +914,40 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `private wasm route keeps auto-discovered local assets behind the path token`() {
+    val appDir = Files.createTempDirectory("serve-wasm-private").toFile().also { it.deleteOnExit() }
+    File(appDir, "index.html").writeText("<!doctype html><script src=app.js></script>")
+    File(appDir, "app.js").writeText("window.started = true")
+    val registry = ServeSessionRegistry(open = { null })
+    val privateServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "secret",
+          sessions = registry,
+          defaultSessionId = "local",
+          wasmCatalogs = mapOf("local" to appDir),
+          privateWasmCatalogs = setOf("local"),
+        )
+        .also { it.start() }
+    fun fetch(path: String): Pair<Int, String> {
+      val req = Request.Builder().url("http://127.0.0.1:${privateServer.port}$path").build()
+      client.newCall(req).execute().use { response ->
+        return response.code to (response.body?.string() ?: "")
+      }
+    }
+    try {
+      assertEquals(404, fetch("/wasm/local/").first, "ordinary route must not bypass the token")
+      assertEquals(404, fetch("/wasm-private/wrong/local/").first)
+      assertEquals(200, fetch("/wasm-private/secret/local/").first)
+      assertEquals("window.started = true", fetch("/wasm-private/secret/local/app.js").second)
+    } finally {
+      privateServer.stop()
+      registry.close()
+    }
+  }
+
+  @Test
   fun `a catalog is reachable under its canonical path`() {
     val (landingCode, landing) = get("/compose-m3/")
     assertEquals(200, landingCode)

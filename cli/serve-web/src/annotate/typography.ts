@@ -39,7 +39,21 @@ export function annotationUnit(value: unknown): string | undefined {
 export function typographyToken(
     detail: Record<string, unknown> | undefined,
 ): string | undefined {
-    const token = String(detail?.token ?? "").trim();
+    return typographyTokens(detail).join(",") || undefined;
+}
+
+/** Every honest candidate token carried by a resolved usage. */
+export function typographyTokens(
+    detail: Record<string, unknown> | undefined,
+): string[] {
+    return String(detail?.token ?? "")
+        .split(",")
+        .map((token) => normaliseTypographyToken(token))
+        .filter((token): token is string => Boolean(token));
+}
+
+function normaliseTypographyToken(raw: string): string | undefined {
+    const token = raw.trim();
     if (!token || token.toLowerCase() === "text") return undefined;
     const m3 = token.match(
         /^m3[/-](display|headline|title|body|label)[/-](large|medium|small)$/i,
@@ -116,6 +130,7 @@ export function typographyAxes(value: unknown): string {
 
 export interface TypographySpec {
     token?: string;
+    tokens: string[];
     /**
      * The family, reduced once: no path, no extension, no weight suffix.
      *
@@ -174,7 +189,8 @@ export function typographySpec(item: AnnotationItem): TypographySpec {
             detail.axes,
         ),
     );
-    const token = typographyToken(detail);
+    const tokens = typographyTokens(detail);
+    const token = tokens.join(",") || undefined;
     const labelOnly =
         !token &&
         !family &&
@@ -186,6 +202,7 @@ export function typographySpec(item: AnnotationItem): TypographySpec {
         !axes;
     return {
         token,
+        tokens,
         family,
         size,
         lineHeight,
@@ -259,11 +276,11 @@ export function typographyDefaults(
 ): Map<string, TypographyGroup> {
     const defaults = new Map<string, TypographyGroup>();
     for (const group of groups) {
-        const token = group.spec.token;
-        if (!token) continue;
-        const current = defaults.get(token);
-        if (!current || group.items.length > current.items.length)
-            defaults.set(token, group);
+        for (const token of group.spec.tokens) {
+            const current = defaults.get(token);
+            if (!current || group.items.length > current.items.length)
+                defaults.set(token, group);
+        }
     }
     return defaults;
 }
@@ -284,12 +301,7 @@ export function typographyDistance(
     right: TypographyGroup,
 ): number {
     if (left.key === right.key) return -200;
-    const tokenBias =
-        left.spec.token &&
-        right.spec.token &&
-        left.spec.token === right.spec.token
-            ? -100
-            : 0;
+    const tokenBias = typographyTokensOverlap(left.spec, right.spec) ? -100 : 0;
     let commonRoles = 0;
     for (const role of left.roles) if (right.roles.has(role)) commonRoles += 1;
     const roleBias = commonRoles ? -50 - commonRoles : 0;
@@ -324,7 +336,18 @@ export const TYPOGRAPHY_MATCH_CUTOFF = 15;
 export interface TypographyPair {
     reference?: TypographyGroup;
     actual?: TypographyGroup;
+    /** Same-token default used only to compare an otherwise unmatched local override. */
+    comparisonReference?: TypographyGroup;
+    comparisonActual?: TypographyGroup;
     marker: string;
+}
+
+export function typographyTokensOverlap(
+    left: TypographySpec | undefined,
+    right: TypographySpec | undefined,
+): boolean {
+    if (!left || !right) return false;
+    return left.tokens.some((token) => right.tokens.includes(token));
 }
 
 /**
@@ -360,6 +383,18 @@ export function pairTypography(
     });
     for (const actualOnly of remaining)
         pairs.push({ actual: actualOnly, marker: "" });
+    const referenceDefaults = typographyDefaults(reference);
+    const actualDefaults = typographyDefaults(actual);
+    for (const pair of pairs) {
+        if (!pair.reference && pair.actual)
+            pair.comparisonReference = pair.actual.spec.tokens
+                .map((token) => referenceDefaults.get(token))
+                .find(Boolean);
+        if (!pair.actual && pair.reference)
+            pair.comparisonActual = pair.reference.spec.tokens
+                .map((token) => actualDefaults.get(token))
+                .find(Boolean);
+    }
     pairs.forEach((pair, index) => {
         const marker =
             index < 26 ? String.fromCharCode(65 + index) : String(index + 1);

@@ -14,8 +14,10 @@ class WearFocusedPressPixelTest {
   fun `pressed capture changes the button container beyond the focused state`() {
     val pressed = uniqueRender("ButtonPressed")
     val focused = uniqueRender("ButtonFocused")
+    val resting = uniqueRender("FilledButton")
     val pressedImage = ImageIO.read(pressed)
     val focusedImage = ImageIO.read(focused)
+    val restingImage = ImageIO.read(resting)
 
     // This point is inside the rounded container and outside both labels. A synthetic focused key
     // press does not reliably reach Wear M3's combinedClickable under Robolectric, producing the
@@ -23,6 +25,7 @@ class WearFocusedPressPixelTest {
     val x = 30
     val y = 68
     assertThat(pressedImage.getRGB(x, y)).isNotEqualTo(focusedImage.getRGB(x, y))
+    assertThat(pressedImage.getRGB(x, y)).isNotEqualTo(restingImage.getRGB(x, y))
   }
 
   private fun uniqueRender(functionName: String): File {

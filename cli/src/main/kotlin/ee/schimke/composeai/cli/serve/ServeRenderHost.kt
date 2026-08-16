@@ -1257,52 +1257,55 @@ internal constructor(
         runCatching { session.subscribeData(previewId, Material3ThemeProduct.KIND) }
           .onFailure { onLog("compose/theme subscription failed: ${it.message}") }
       }
-      when (val pngOutcome = render(previewId, overrides)) {
-        RenderOutcome.NotFound -> return@withLock AnnotationsOutcome.NotFound
-        is RenderOutcome.Failed -> return@withLock AnnotationsOutcome.Failed(pngOutcome.reason)
-        RenderOutcome.Busy -> return@withLock AnnotationsOutcome.Failed("daemon busy")
-        is RenderOutcome.Ok -> {} // rendered; the semantics for these overrides is now on disk
+      try {
+        when (val pngOutcome = render(previewId, overrides)) {
+          RenderOutcome.NotFound -> return@withLock AnnotationsOutcome.NotFound
+          is RenderOutcome.Failed -> return@withLock AnnotationsOutcome.Failed(pngOutcome.reason)
+          RenderOutcome.Busy -> return@withLock AnnotationsOutcome.Failed("daemon busy")
+          is RenderOutcome.Ok -> {} // rendered; the semantics for these overrides is now on disk
+        }
+
+        val payload =
+          try {
+            fetchSemantics(previewId)
+          } catch (e: Exception) {
+            val reason = "compose/semantics fetch failed: ${e.message}"
+            onLog(reason)
+            return@withLock AnnotationsOutcome.Failed(reason)
+          } ?: return@withLock AnnotationsOutcome.Failed("render produced no semantics")
+        val theme = if (captureTheme) fetchTheme(previewId, overrides) else null
+
+        val json =
+          dataJson
+            .encodeToString(
+              JsonObject.serializer(),
+              buildJsonObject {
+                put("previewId", JsonPrimitive(previewId))
+                put(
+                  "annotations",
+                  dataJson.encodeToJsonElement(
+                    ListSerializer(DesignAnnotation.serializer()),
+                    ServeDesignAnnotations.annotations(payload, theme),
+                  ),
+                )
+                put(
+                  "tags",
+                  dataJson.encodeToJsonElement(
+                    MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
+                    ServeSemanticsTags.index(payload),
+                  ),
+                )
+              },
+            )
+            .encodeToByteArray()
+        annotationsCache.put(key, json)
+        AnnotationsOutcome.Ok(json)
+      } finally {
+        if (captureTheme) {
+          runCatching { session.unsubscribeData(previewId, Material3ThemeProduct.KIND) }
+            .onFailure { onLog("compose/theme unsubscribe failed: ${it.message}") }
+        }
       }
-
-      val payload =
-        try {
-          fetchSemantics(previewId)
-        } catch (e: Exception) {
-          val reason = "compose/semantics fetch failed: ${e.message}"
-          onLog(reason)
-          return@withLock AnnotationsOutcome.Failed(reason)
-        } ?: return@withLock AnnotationsOutcome.Failed("render produced no semantics")
-      val theme = if (captureTheme) fetchTheme(previewId) else null
-
-      val json =
-        dataJson
-          .encodeToString(
-            JsonObject.serializer(),
-            buildJsonObject {
-              put("previewId", JsonPrimitive(previewId))
-              put(
-                "annotations",
-                dataJson.encodeToJsonElement(
-                  ListSerializer(DesignAnnotation.serializer()),
-                  ServeDesignAnnotations.annotations(payload, theme),
-                ),
-              )
-              // The tag index rides ALONG with the annotations rather than in an endpoint of its
-              // own: a second endpoint would force a second render and report boxes from a frame
-              // the annotations never described. That buys agreement between these two projections,
-              // NOT agreement with the PNG the client is holding — see the KDoc above.
-              put(
-                "tags",
-                dataJson.encodeToJsonElement(
-                  MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
-                  ServeSemanticsTags.index(payload),
-                ),
-              )
-            },
-          )
-          .encodeToByteArray()
-      annotationsCache.put(key, json)
-      AnnotationsOutcome.Ok(json)
     }
   }
 
@@ -1322,16 +1325,27 @@ internal constructor(
   }
 
   /** The theme captured by the same subscribed render as [fetchSemantics], when available. */
-  private fun fetchTheme(previewId: String): ThemePayload? = runCatching {
-    val result = session.fetchData(previewId, Material3ThemeProduct.KIND, inline = true)
-    result.payload?.let { dataJson.decodeFromJsonElement(ThemePayload.serializer(), it) }
-      ?: result.path
-        ?.toPath()
-        ?.takeIf { fileSystem.exists(it) }
-        ?.let { path ->
-          dataJson.decodeFromString(ThemePayload.serializer(), fileSystem.read(path) { readUtf8() })
-        }
-  }
+  private fun fetchTheme(previewId: String, overrides: PreviewOverrides): ThemePayload? =
+    runCatching {
+      val params = buildJsonObject {
+        put(
+          DataFetchParams.PARAM_OVERRIDES,
+          Json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
+        )
+      }
+      val result =
+        session.fetchData(previewId, Material3ThemeProduct.KIND, inline = true, params = params)
+      result.payload?.let { dataJson.decodeFromJsonElement(ThemePayload.serializer(), it) }
+        ?: result.path
+          ?.toPath()
+          ?.takeIf { fileSystem.exists(it) }
+          ?.let { path ->
+            dataJson.decodeFromString(
+              ThemePayload.serializer(),
+              fileSystem.read(path) { readUtf8() },
+            )
+          }
+    }
     .onFailure { onLog("compose/theme fetch failed: ${it.message}") }
     .getOrNull()
 

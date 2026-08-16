@@ -158,10 +158,13 @@ class ServeUrlStateTest {
     assertTrue(script.contains("window.cpUrlState.onPop("), "the viewer must handle Back/Forward")
     // The interactive lanes render themselves and never reach refreshLinks, so without this the
     // chosen lane never reaches the URL and the pending push lands on some later edit instead.
-    val interactiveLaneTransition =
-      script
-        .substringAfter("// The interactive lanes drive their own render")
-        .substringBefore("// SVG format toggle")
+    val interactiveStart = "// The interactive lanes drive their own render"
+    val interactiveEnd = "// SVG format toggle"
+    val start = script.indexOf(interactiveStart)
+    val end = script.indexOf(interactiveEnd, start + interactiveStart.length)
+    assertTrue(start >= 0, "interactive-lane start marker must remain in viewer.ts")
+    assertTrue(end > start, "interactive-lane end marker must follow its start marker")
+    val interactiveLaneTransition = script.substring(start, end)
     assertTrue(
       interactiveLaneTransition.contains("syncUrl();"),
       "entering Live / Wasm / RC must write ?mode= at the moment of the transition",

@@ -81,6 +81,18 @@ export function serverPlayerParam(
 /** Restore the server-rendered default when returning from a browser-only player lane. */
 export function restoreStaticPlayer(pick: LanePick): LanePick {
     if (pick.picked) return pick;
+    const retained = serverPlayerParam(pick.pickedBackend, true);
+    if (retained) {
+        return {
+            defaultBackend: pick.defaultBackend,
+            pickedBackend: retained,
+            // Java only needs an explicit parameter when it overrides a non-Java default. Embedded
+            // defaults always need one because the server's absent-player fallback is Java.
+            picked:
+                retained !== pick.defaultBackend ||
+                backendRequiresRenderParam(pick.defaultBackend),
+        };
+    }
     return {
         defaultBackend: pick.defaultBackend,
         pickedBackend: pick.defaultBackend,

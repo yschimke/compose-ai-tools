@@ -119,6 +119,16 @@ tasks.withType<Test>().configureEach {
   // When the documented diagnostic command is active, however, the report is part of the task's
   // contract: Gradle must rerun (or restore it from the build cache) after the file is deleted.
   if (project.findProperty("rc.embedded.input") != null) {
+    val embeddedInput = project.file(project.property("rc.embedded.input").toString())
+    inputs
+      .files(
+        project.fileTree(embeddedInput) {
+          include("manifest.json")
+          include("**/*.rc")
+        }
+      )
+      .withPropertyName("embeddedDiagnosticInputs")
+      .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
     outputs.file(dynamicColorReport).withPropertyName("dynamicColorReport")
   }
   // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.

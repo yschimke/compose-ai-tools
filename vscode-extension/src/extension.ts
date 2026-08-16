@@ -3132,7 +3132,11 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
                 `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before startup`,
             );
         }
-        const fresh = await reconcilePreviewManifest(module, repaintFile);
+        const fresh = await reconcilePreviewManifest(
+            module,
+            repaintFile,
+            sourceDiffers,
+        );
         if (fresh) {
             manifest = fresh;
             filePreviews = previewsForFile(fresh, module, filePath);
@@ -8125,6 +8129,7 @@ async function notifyDaemonViewport(
             mod,
             visibleByModule.get(modulePath) ?? [],
             predictedByModule.get(modulePath) ?? [],
+            gradleService ?? undefined,
         );
     }
     // Demand-driven `@ScrollingPreview` backfill. Cheap when `pendingScrollBackfill`

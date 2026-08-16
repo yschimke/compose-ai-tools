@@ -1862,6 +1862,7 @@ const sourceChip = may<HTMLButtonElement>("cp-source-chip");
 const sourcePanel = may<HTMLElement>("cp-source-panel");
 const sourceToggle = may<HTMLInputElement>("cp-source-toggle");
 var sourceLoaded = false;
+var pendingSourceData: UsageSnippet | null | undefined;
 function sourceAvailable() {
     return !!(sourceChip && sourcePanel && usageSrc());
 }
@@ -1894,6 +1895,11 @@ function openSource() {
     canvas.hidden = true;
     sourcePanel!.hidden = false;
     if (status) status.textContent = "";
+    if (sourceLoaded && pendingSourceData !== undefined) {
+        var pending = pendingSourceData;
+        pendingSourceData = undefined;
+        renderSource(pending);
+    }
     if (!sourceLoaded) {
         sourceLoaded = true;
         renderSourceMessage("Loading…");
@@ -1901,7 +1907,13 @@ function openSource() {
             .then(function (r) {
                 return r.ok ? r.json() : Promise.reject(r.status);
             })
-            .then(renderSource)
+            .then(function (data: UsageSnippet | null) {
+                // Do not initialise CodeMirror in a display:none panel: it caches fallback
+                // dimensions and reopens with a broken gutter. Keep the payload until Source is
+                // visible again, then paint and measure it in-flow.
+                if (sourcePanel!.hidden) pendingSourceData = data;
+                else renderSource(data);
+            })
             .catch(function () {
                 // A cleaner that declined, or a catalog whose source moved, answers 404 — which is a
                 // real answer and not an error to shout about. The `source` link in the provenance row
@@ -1932,6 +1944,12 @@ function renderSourceMessage(text: string) {
     p.className = "cp-source-note";
     p.textContent = text;
     sourcePanel.appendChild(p);
+}
+function codeMirrorStylesReady() {
+    var link = document.querySelector<HTMLLinkElement>(
+        'link[href*="codemirror.css"]',
+    );
+    return !!(link && link.sheet);
 }
 /**
  * Paints the fetched snippet.
@@ -1974,7 +1992,7 @@ function renderSource(data: UsageSnippet | null) {
     // never the source itself. The read-only instance uses the exact `text/x-kotlin` clike grammar
     // the playground editor does, so the two surfaces colour the same code the same way.
     var selectionTarget: HTMLElement = code;
-    if (window.CodeMirror) {
+    if (window.CodeMirror && codeMirrorStylesReady()) {
         var mirrorHost = document.createElement("div");
         mirrorHost.className = "cp-source-code";
         sourcePanel.insertBefore(mirrorHost, pre);

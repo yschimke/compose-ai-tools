@@ -71,6 +71,33 @@ describe("server-side player persistence", () => {
         };
         assert.strictEqual(restoreStaticPlayer(pick), pick);
     });
+
+    it("restores the retained visitor pick after a browser-only lane", () => {
+        assert.deepEqual(
+            restoreStaticPlayer({
+                defaultBackend: "cmp-android",
+                pickedBackend: "java",
+                picked: false,
+            }),
+            {
+                defaultBackend: "cmp-android",
+                pickedBackend: "java",
+                picked: true,
+            },
+        );
+        assert.deepEqual(
+            restoreStaticPlayer({
+                defaultBackend: "cmp-android",
+                pickedBackend: "cmp-jvm",
+                picked: false,
+            }),
+            {
+                defaultBackend: "cmp-android",
+                pickedBackend: "cmp-jvm",
+                picked: true,
+            },
+        );
+    });
 });
 
 const lanes = (over: Partial<LaneFlags> = {}): LaneFlags => ({

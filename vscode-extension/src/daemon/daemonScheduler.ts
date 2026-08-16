@@ -173,6 +173,7 @@ export interface DaemonScheduler {
         module: ModuleInfo,
         visible: string[],
         predicted?: string[],
+        gradleService?: GradleService,
     ): Promise<void>;
     /**
      * Update one or more `(previewId, kind)` subscriptions for `module`.
@@ -496,6 +497,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         module: ModuleInfo,
         visible: string[],
         predicted: string[] = [],
+        gradleService?: GradleService,
     ): Promise<void> {
         const moduleKey = module.modulePath;
         if (
@@ -504,14 +506,42 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         ) {
             return;
         }
-        this.visibility.recordVisible(module, visible);
-        const client = await this.gate.getOrSpawn(
-            module,
-            this.daemonEvents(moduleKey),
-        );
+        let client;
+        try {
+            client = await this.gate.getOrSpawn(
+                module,
+                this.daemonEvents(moduleKey),
+            );
+        } catch (err) {
+            // Viewport messages can arrive while activation is still running
+            // composePreviewDaemonStart. Join that in-flight warm instead of
+            // surfacing an unhandled "no launch descriptor" rejection. The
+            // warm coalescer makes this cheap when another caller owns it.
+            if (!gradleService) {
+                this.logger.appendLine(
+                    `[daemon] viewport deferred for ${moduleKey}: ${(err as Error).message}`,
+                );
+                return;
+            }
+            this.logger.appendLine(
+                `[daemon] viewport waiting for ${moduleKey}: ${(err as Error).message}`,
+            );
+            const warmed = await this.warmModule(gradleService, module);
+            if (!warmed) {
+                return;
+            }
+            client = await this.gate.getOrSpawn(
+                module,
+                this.daemonEvents(moduleKey),
+            );
+        }
         if (!client) {
             return;
         }
+        // Only memoize after delivery is possible. Recording before
+        // getOrSpawn succeeds causes the retry of an identical viewport to be
+        // deduplicated forever after a bootstrap race.
+        this.visibility.recordVisible(module, visible);
         client.setVisible({ ids: visible });
 
         // D2 — drop bookkeeping for previews that fell out of view. The daemon already

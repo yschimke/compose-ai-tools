@@ -370,6 +370,7 @@ class ServeCatalogLiveHostTest {
     val overrides = knobOverride().copy(uiMode = UiMode.DARK, fontScale = 1.3f)
 
     assertTrue(composite.hasA11yOverlay)
+    assertTrue(composite.hasA11yOverlayFor(catalogId))
     val out = composite.renderA11y(catalogId, overrides) as A11yOutcome.Ok
     assertEquals(daemonId, live.lastA11yId)
     assertEquals(overrides, live.lastRenderOverrides)
@@ -392,6 +393,7 @@ class ServeCatalogLiveHostTest {
       )
     val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
 
+    assertFalse(composite.hasA11yOverlayFor(androidOnlyId))
     assertEquals(
       A11yOutcome.NotFound,
       composite.renderA11y(androidOnlyId, PreviewOverrides()),

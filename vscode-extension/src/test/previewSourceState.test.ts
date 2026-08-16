@@ -47,4 +47,48 @@ fun ExistingPreview() = Unit
             true,
         );
     });
+
+    it("detects a preview added beside an existing cached preview", () => {
+        const source = `
+@Preview fun ExistingPreview() = Unit
+@Preview fun AddedPreview() = Unit
+`;
+        assert.strictEqual(
+            sourceMayDifferFromCachedPreviews(source, [
+                { functionName: "ExistingPreview" },
+            ]),
+            true,
+        );
+    });
+
+    it("recognizes modifiers before preview functions", () => {
+        const source = `
+@Preview
+@Composable
+private suspend fun ExistingPreview() = Unit
+`;
+        assert.strictEqual(
+            sourceMayDifferFromCachedPreviews(source, [
+                { functionName: "ExistingPreview" },
+            ]),
+            false,
+        );
+    });
+
+    it("recognizes multiline preview annotations", () => {
+        const source = `
+@Preview(
+    name = "Phone",
+    device = Devices.PHONE,
+)
+@Composable
+internal fun ExistingPreview() = Unit
+`;
+        assert.strictEqual(
+            sourceMayDifferFromCachedPreviews(source, [
+                { functionName: "ExistingPreview" },
+            ]),
+            false,
+        );
+    });
 });

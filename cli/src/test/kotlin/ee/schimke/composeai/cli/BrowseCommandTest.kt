@@ -55,8 +55,13 @@ class BrowseCommandTest {
     val dist = File(web, "build/dist/wasmJs/productionExecutable").apply { mkdirs() }
     File(dist, "index.html").writeText("<html></html>")
 
-    val project = ServeCommand(emptyList()).discoverWasmProjects(root).single()
-    assertEquals("webApp", project.gradlePath)
+    val project =
+      ServeCommand(emptyList())
+        .discoverWasmProjects(root, listOf(PreviewModule("custom:web", web)))
+        .single()
+    assertEquals("custom:web", project.gradlePath)
+    assertNull(project.distribution(), "ordinary Wasm apps must not be auto-selected")
+    File(dist, "compose-preview-components.json").writeText("{\"protocol\":1}")
     assertEquals(dist, project.distribution())
     assertEquals(true, project.supports(PreviewModule("shared:ui", ui)))
     assertNull(project.takeIf { it.supports(PreviewModule("other", File(root, "other"))) })
