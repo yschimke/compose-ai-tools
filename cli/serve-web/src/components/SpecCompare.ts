@@ -54,6 +54,7 @@ import {
     groupTypography,
     pairTypography,
     typographyComparableValue,
+    typographyTokensOverlap,
     typographyValue,
     type Field,
     type TypographyPair,
@@ -433,13 +434,13 @@ export class SpecCompare extends LitElement {
 
     private referenceAnnotations(): unknown {
         const node = document.getElementById("cp-spec-annotations");
-        if (!node) return [];
+        if (!node) return null;
         try {
             return (
                 JSON.parse(node.textContent ?? "") as { reference?: unknown }
             ).reference;
         } catch {
-            return [];
+            return null;
         }
     }
 
@@ -448,7 +449,7 @@ export class SpecCompare extends LitElement {
         // sibling annotations endpoint was captured when that snapshot was normalised; do not
         // consult the live hidden image here because it may already contain a newer override.
         const url = this.framesAnnotationUrl;
-        if (!url) return Promise.resolve([]);
+        if (!url) return Promise.resolve(null);
         if (this.annotationKey === url && this.annotationPromise)
             return this.annotationPromise;
         this.annotationKey = url;
@@ -469,7 +470,7 @@ export class SpecCompare extends LitElement {
                     return (payload as { annotations: unknown[] }).annotations;
                 return payload;
             })
-            .catch(() => []);
+            .catch(() => null);
         return this.annotationPromise;
     }
 
@@ -483,19 +484,21 @@ export class SpecCompare extends LitElement {
             "style",
             "axes",
         ];
-        if (!pair.reference || !pair.actual) return fields;
+        const reference = pair.reference ?? pair.comparisonReference;
+        const actual = pair.actual ?? pair.comparisonActual;
+        if (!reference || !actual) return fields;
         return fields.filter((field) => {
+            if (field === "token")
+                return !typographyTokensOverlap(reference.spec, actual.spec);
             if (
-                typographyComparableValue(pair.reference?.spec, field) !==
-                typographyComparableValue(pair.actual?.spec, field)
+                typographyComparableValue(reference.spec, field) !==
+                typographyComparableValue(actual.spec, field)
             )
                 return true;
             return (
                 field === "size" &&
-                typographyComparableValue(
-                    pair.reference?.spec,
-                    "lineHeight",
-                ) !== typographyComparableValue(pair.actual?.spec, "lineHeight")
+                typographyComparableValue(reference.spec, "lineHeight") !==
+                    typographyComparableValue(actual.spec, "lineHeight")
             );
         });
     }
@@ -520,7 +523,11 @@ export class SpecCompare extends LitElement {
         side: "reference" | "actual",
         field: Field,
     ): string {
-        const spec = pair[side]?.spec;
+        const spec = (
+            side === "reference"
+                ? (pair.reference ?? pair.comparisonReference)
+                : (pair.actual ?? pair.comparisonActual)
+        )?.spec;
         let value = typographyValue(spec, field);
         if (field === "size" && spec?.lineHeight !== undefined)
             value += `/${typographyValue(spec, "lineHeight")}`;
@@ -558,7 +565,7 @@ export class SpecCompare extends LitElement {
             !this.open ||
             !this.frames ||
             !this.typographyOn() ||
-            (view !== "diff" && view !== "triptych")
+            (view !== "diff" && view !== "triptych" && view !== "slider")
         ) {
             this.clearTypography();
             return;
@@ -571,10 +578,12 @@ export class SpecCompare extends LitElement {
             this.frames !== frames
         )
             return;
-        const matched = matchAnnotationItems(
-            this.referenceAnnotations(),
-            actual,
-        );
+        const reference = this.referenceAnnotations();
+        if (reference === null || actual === null) {
+            this.clearTypography();
+            return;
+        }
+        const matched = matchAnnotationItems(reference, actual);
         const pairs = pairTypography(
             groupTypography(matched.reference),
             groupTypography(matched.actual),

@@ -65,12 +65,21 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
   const rawIdMap = new Map(rawIds.map((id) => [id, `${prefix}${id}`]));
   const anyIdMap = new Map([...entryIdMap, ...rawIdMap]);
   const rewriteId = (id) => anyIdMap.get(id) ?? id;
-  const rewriteCapture = (capture, oldId, newId) => ({
-    ...capture,
-    ...(capture?.renderOutput
-      ? { renderOutput: rewriteArtifactPath(capture.renderOutput, oldId, newId) }
-      : {}),
-  });
+  const artifactPathMap = new Map();
+  const rewriteCapture = (capture, oldId, newId) => {
+    if (!capture?.renderOutput) return { ...capture };
+    const oldPath = capture.renderOutput;
+    let newPath = rewriteArtifactPath(oldPath, oldId, newId);
+    // Renderer-owned motion leaves use the short function name rather than the manifest id. They
+    // therefore need their own module namespace; otherwise equal animation ids from two modules
+    // still collapse even though the preview records themselves were renamed.
+    if (newPath === oldPath) {
+      const slash = oldPath.lastIndexOf("/");
+      newPath = `${oldPath.slice(0, slash + 1)}${prefix}${oldPath.slice(slash + 1)}`;
+    }
+    artifactPathMap.set(oldPath, newPath);
+    return { ...capture, renderOutput: newPath };
+  };
 
   const previews = (record.bundle?.previews ?? []).map((preview) => {
     const oldId = preview.id;
@@ -103,7 +112,7 @@ function namespaceAdditionalRecord(record, module, keyByFunction) {
   const entries = {};
   const orderedEntryIds = [...entryIdMap.keys()].sort((a, b) => b.length - a.length);
   for (const [path, bytes] of Object.entries(record.bundle?.entries ?? {})) {
-    let rewritten = path;
+    let rewritten = artifactPathMap.get(path) ?? path;
     if (path.startsWith("previews/")) {
       const rest = path.slice("previews/".length);
       const oldId = orderedEntryIds.find(

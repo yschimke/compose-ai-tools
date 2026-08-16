@@ -163,7 +163,7 @@ internal object ServeBugReport {
       if (clientPlaceholder) append("\n").append(CLIENT_PLACEHOLDER).append("\n")
       server.unhealthyCatalogs
         .takeIf { it.isNotEmpty() }
-        ?.let { append("\n### Catalogs not loaded\n\n").append(bullets(it)) }
+        ?.let { append("\n### Catalogs not loaded\n\n").append(fence(it)) }
       server.recentFailures
         .takeIf { it.isNotEmpty() }
         ?.let { append("\n### Recent failures\n\n").append(fence(it)) }
@@ -245,9 +245,6 @@ internal object ServeBugReport {
 
   /** A value shown as plain text, with its content escaped. */
   private fun text(value: String): String = cell(value)
-
-  private fun bullets(lines: List<String>): String =
-    lines.joinToString("\n", postfix = "\n") { "- $it" }
 
   /**
    * Failure text is arbitrary — a stack frame, a classpath, a message with backticks in it — so it

@@ -555,6 +555,9 @@ interface ServeHost : AutoCloseable {
   val hasA11yOverlay: Boolean
     get() = false
 
+  /** Per-preview accessibility availability; composite hosts may only map part of a catalog. */
+  fun hasA11yOverlayFor(previewId: String): Boolean = hasA11yOverlay
+
   /**
    * Fetch [previewId]'s merged accessibility products at [overrides] as JSON (`{previewId, nodes,
    * findings, touchTargets}`), or [A11yOutcome.NotFound] when this host can't produce them. See

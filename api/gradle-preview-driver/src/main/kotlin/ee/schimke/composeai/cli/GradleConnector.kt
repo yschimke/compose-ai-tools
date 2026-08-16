@@ -476,6 +476,11 @@ class GradleConnection(
     return result?.modules ?: emptyList()
   }
 
+  /** Resolve every Gradle project path to its configured directory without realizing tasks. */
+  @JvmOverloads
+  fun findGradleProjects(timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS): List<PreviewModule> =
+    runBuildAction(DiscoverGradleProjectsAction(), timeoutSeconds = timeoutSeconds) ?: emptyList()
+
   /**
    * Resolve a single module by its Gradle path (colon-separated, with or without the leading `:`).
    * Returns `null` when no project with that path applies the plugin — callers fall back to a

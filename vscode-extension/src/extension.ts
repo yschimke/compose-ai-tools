@@ -3132,7 +3132,11 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
                 `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before startup`,
             );
         }
-        const fresh = await reconcilePreviewManifest(module, repaintFile);
+        const fresh = await reconcilePreviewManifest(
+            module,
+            repaintFile,
+            sourceDiffers,
+        );
         if (fresh) {
             manifest = fresh;
             filePreviews = previewsForFile(fresh, module, filePath);

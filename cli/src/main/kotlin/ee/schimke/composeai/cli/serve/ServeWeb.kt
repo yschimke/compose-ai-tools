@@ -659,6 +659,7 @@ $noteBlock        <div class="cp-site-footer-links">
      */
     siteName: String = "",
     componentBrowser: Boolean = false,
+    showInterfaceMode: Boolean = false,
   ): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
@@ -676,7 +677,8 @@ $noteBlock        <div class="cp-site-footer-links">
       </div>
       """
         .trimIndent()
-    val modeToggleHtml = modeToggle.prependIndent("          ").trimStart()
+    val modeToggleHtml =
+      if (showInterfaceMode) "\n" + modeToggle.prependIndent("          ") else ""
     if (componentBrowser) {
       return """
         <header class="cp-site-header">
@@ -685,8 +687,7 @@ $noteBlock        <div class="cp-site-footer-links">
               <span class="cp-site-mark" aria-hidden="true">◇</span>
               <span class="cp-site-wordmark">compose-preview</span>
             </a>$name$crumb
-          </div>
-          $modeToggleHtml
+          </div>$modeToggleHtml
         </header>
         """
         .trimIndent()
@@ -699,8 +700,7 @@ $noteBlock        <div class="cp-site-footer-links">
             <span class="cp-site-wordmark">compose-preview</span>
           </a>$name$crumb
         </div>
-        <nav class="cp-site-nav" aria-label="Primary navigation">
-          $modeToggleHtml
+        <nav class="cp-site-nav" aria-label="Primary navigation">$modeToggleHtml
           <details class="cp-site-menu" id="cp-site-menu">
             <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
               aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
@@ -4220,6 +4220,7 @@ $noteBlock        <div class="cp-site-footer-links">
       version = version,
       body = body + if (globalComponents.isEmpty()) "" else "\n$globalComponents",
       componentBrowser = componentBrowser,
+      interfaceModeControl = true,
     )
   }
 
@@ -7066,6 +7067,7 @@ $noteBlock        <div class="cp-site-footer-links">
         """
           .trimIndent(),
       componentBrowser = componentBrowser,
+      interfaceModeControl = true,
     )
   }
 
@@ -10353,6 +10355,7 @@ $rows
       // carries a captured document.
       rcFonts = hasRemoteComposeDoc,
       componentBrowser = componentBrowser,
+      interfaceModeControl = true,
     )
   }
 
@@ -10496,6 +10499,8 @@ $rows
     rcFonts: Boolean = false,
     /** Streamlined component-browser chrome; full mode remains the default. */
     componentBrowser: Boolean = false,
+    /** Show and persist the Catalog / Dev switch on pages that support both presentations. */
+    interfaceModeControl: Boolean = false,
     /**
      * Offer the footer's "report a bug" entry. False only on the report page itself, which is what
      * that entry opens — see [reportBugFormHtml]. Independent of [componentBrowser], which drops
@@ -10570,9 +10575,15 @@ $rows
         ?.let { " data-cp-theme-key=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
     val interfaceMode = if (componentBrowser) "catalog" else "dev"
     val interfaceModeBoot =
-      """<script>try{var q=new URLSearchParams(location.search),m=q.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){q.set("chrome",s);location.replace(location.pathname+"?"+q.toString()+location.hash);}}catch(e){}</script>"""
+      if (interfaceModeControl)
+        "\n        " +
+          """<script>try{var q=new URLSearchParams(location.search),m=q.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){q.set("chrome",s);location.replace(location.pathname+"?"+q.toString()+location.hash);}}catch(e){}</script>"""
+      else ""
     val interfaceModeControls =
-      """<script>(function(){var active="$interfaceMode",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>"""
+      if (interfaceModeControl)
+        "\n        " +
+          """<script>(function(){var active="$interfaceMode",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>"""
+      else ""
     // `serve-chrome.js` is emitted as the first thing in <body>, ahead of every surface's own
     // scripts, because they read the globals it installs: the component bundle's Transparent
     // toggle wires Back through the URL-state global as it upgrades, and three of the legacy
@@ -10589,8 +10600,7 @@ $rows
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
 ${ServeSiteIcon.linkTags().prependIndent("        ")}
-        <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock
-        $interfaceModeBoot
+        <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock$interfaceModeBoot
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -10598,11 +10608,10 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
       </head>
       <body${if (componentBrowser) " class=\"cp-component-browser\"" else ""}>
         ${scriptTag("serve-chrome.js")}
-        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl)}
         <main class="cp-main">
         $body
-        </main>$footerBlock
-        $interfaceModeControls
+        </main>$footerBlock$interfaceModeControls
         ${if (componentBrowser) "" else scriptTag("keyboard-navigation.js")}
       </body>
     </html>

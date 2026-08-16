@@ -859,7 +859,7 @@ object PlaygroundSourceCleaner {
           i = end
         }
         text.startsWith("/*", i) -> {
-          val end = (text.indexOf("*/", i + 2).takeIf { it >= 0 }?.plus(2)) ?: text.length
+          val end = blockCommentEnd(text, i)
           for (k in i until end) mask[k] = false
           i = end
         }
@@ -892,8 +892,7 @@ object PlaygroundSourceCleaner {
       when {
         text[i].isWhitespace() -> i++
         text.startsWith("//", i) -> i = text.indexOf('\n', i).takeIf { it >= 0 } ?: text.length
-        text.startsWith("/*", i) ->
-          i = (text.indexOf("*/", i + 2).takeIf { it >= 0 }?.plus(2)) ?: text.length
+        text.startsWith("/*", i) -> i = blockCommentEnd(text, i)
         else -> return true
       }
     }
@@ -901,6 +900,27 @@ object PlaygroundSourceCleaner {
   }
 
   private fun isIdentifierChar(c: Char) = c.isLetterOrDigit() || c == '_'
+
+  /** Kotlin block comments nest; return the terminator paired with the opener at [start]. */
+  private fun blockCommentEnd(text: String, start: Int): Int {
+    var depth = 1
+    var i = start + 2
+    while (i < text.length - 1) {
+      when {
+        text.startsWith("/*", i) -> {
+          depth++
+          i += 2
+        }
+        text.startsWith("*/", i) -> {
+          depth--
+          i += 2
+          if (depth == 0) return i
+        }
+        else -> i++
+      }
+    }
+    return text.length
+  }
 
   /** Occurrences of [word] at code positions, bounded by non-identifier characters. */
   private fun wordOccurrences(text: String, word: String): List<Int> {

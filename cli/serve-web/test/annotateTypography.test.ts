@@ -99,6 +99,13 @@ describe("typographyToken", () => {
     it("passes an unrecognised token through verbatim", () => {
         assert.equal(typographyToken({ token: "brand/hero" }), "brand/hero");
     });
+
+    it("preserves every candidate token", () => {
+        assert.equal(
+            typographyToken({ token: "titleSmall,labelLarge" }),
+            "titleSmall,labelLarge",
+        );
+    });
 });
 
 describe("typographyFamily", () => {
@@ -328,6 +335,18 @@ describe("pairTypography", () => {
         const pairs = pairTypography(reference, actual);
         assert.equal(pairs.length, 1);
         assert.equal(pairs[0].marker, "A");
+        assert.ok(pairs[0].reference && pairs[0].actual);
+    });
+
+    it("pairs when either side names a shared candidate token", () => {
+        const reference = groupTypography([
+            usage({ token: "labelLarge", fontSize: "14sp" }),
+        ]);
+        const actual = groupTypography([
+            usage({ token: "titleSmall,labelLarge", fontSize: "14sp" }),
+        ]);
+        const pairs = pairTypography(reference, actual);
+        assert.equal(pairs.length, 1);
         assert.ok(pairs[0].reference && pairs[0].actual);
     });
 

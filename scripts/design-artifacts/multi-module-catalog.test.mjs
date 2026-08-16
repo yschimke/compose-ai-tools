@@ -50,13 +50,14 @@ test("additional modules namespace equal preview ids and every keyed sidecar", (
         {
           id: "pkg.ScreenPreview",
           functionName: "ScreenPreview",
-          captures: [{ renderOutput: "renders/pkg.ScreenPreview.gif" }],
+          captures: [{ renderOutput: "previews/ScreenPreview-deadbeef.gif" }],
         },
       ],
       entries: {
         "previews/pkg.ScreenPreview.png": bytes(module),
         "previews/pkg.ScreenPreview.semantics.json": bytes(module),
         "previews/pkg.ScreenPreview.figma-raster/node.png": bytes(module),
+        "previews/ScreenPreview-deadbeef.gif": bytes(`motion:${module}`),
         "previews.json": bytes(
           JSON.stringify({
             previews: [{ id: "pkg.ScreenPreview", functionName: "ScreenPreview", targets: [] }],
@@ -81,7 +82,9 @@ test("additional modules namespace equal preview ids and every keyed sidecar", (
   assert.notEqual(additionalId, "pkg.ScreenPreview");
   assert.equal(additional.candidates[0].previewId, additionalId);
   assert.equal(additional.candidates[0].images[0].previewId, additionalId);
-  assert.equal(additional.bundle.previews[0].captures[0].renderOutput, `renders/${additionalId}.gif`);
+  const additionalMotion = additional.bundle.previews[0].captures[0].renderOutput;
+  assert.notEqual(additionalMotion, "previews/ScreenPreview-deadbeef.gif");
+  assert.ok(additional.bundle.entries[additionalMotion]);
   assert.ok(additional.bundle.entries[`previews/${additionalId}.png`]);
   assert.ok(additional.bundle.entries[`previews/${additionalId}.semantics.json`]);
   assert.ok(additional.bundle.entries[`previews/${additionalId}.figma-raster/node.png`]);

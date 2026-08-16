@@ -801,6 +801,9 @@ class ServeCatalogLiveHost(
    */
   override val hasA11yOverlay: Boolean by lazy { live.hasA11yOverlay }
 
+  override fun hasA11yOverlayFor(previewId: String): Boolean =
+    previewId in alias && live.hasA11yOverlayFor(alias.getValue(previewId))
+
   override fun hasScrollExportFor(previewId: String): Boolean =
     previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
 

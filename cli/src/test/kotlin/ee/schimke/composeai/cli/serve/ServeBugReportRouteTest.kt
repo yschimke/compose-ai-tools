@@ -61,6 +61,11 @@ class ServeBugReportRouteTest {
       host = bundle("compose-m3", listOf("button-filled")),
       pinned = true,
     )
+    registry.register(
+      "compose-m3@abcdef1",
+      host = bundle("compose-m3@abcdef1", listOf("button-filled")),
+      pinned = true,
+    )
     return ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -127,6 +132,14 @@ class ServeBugReportRouteTest {
   }
 
   @Test
+  fun `an encoded path session resolves before registry lookup`() {
+    server = newServer(public = true, token = "unused")
+    val (_, body) = get("/report-bug?from=%2Fcompose-m3%2540abcdef1%2Fp%2Fbutton-filled")
+    assertTrue(body.contains("compose-m3@abcdef1"), body)
+    assertTrue(body.contains("/compose-m3%40abcdef1/render/button-filled.png"), body)
+  }
+
+  @Test
   fun `a root-form viewer resolves through the default session, not just a system prefix`() {
     // `/p/Red` is the standard shape on a plain `compose-preview serve` — it names no system, and
     // resolving only `/{system}/p/…` lost the preview, catalog and screenshot on the most common
@@ -152,6 +165,17 @@ class ServeBugReportRouteTest {
     val (_, body) = get("/report-bug?from=%2Fp%2FRed%3Fsession%3Ddefault-mod")
     assertTrue(body.contains("/render/Red.png"), body)
     assertFalse(body.contains("render/Red.png?session"), body)
+  }
+
+  @Test
+  fun `historical revision pin remains on render evidence`() {
+    server = newServer(public = true, token = "unused")
+    val (_, body) =
+      get(
+        "/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton-filled%3Fat%3DABCDEF123456%26session%3Dcompose-m3"
+      )
+    assertTrue(body.contains("render/button-filled.png?at=abcdef123456"), body)
+    assertFalse(body.contains("render/button-filled.png?session"), body)
   }
 
   @Test

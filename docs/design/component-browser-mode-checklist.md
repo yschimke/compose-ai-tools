@@ -9,6 +9,9 @@ Checked items are the recommended defaults. Unchecked items remain available in 
 - [x] Keep the mode read-only and focused on browsing
 - [x] Discover every preview-bearing Gradle module without requiring `--module`
 - [x] Detect and build compatible CMP Wasm browser targets without requiring `--wasm-dir`
+  Compatible apps opt in by packaging `compose-preview-components.json` beside `index.html`; the
+  marker promises that `?id=<component>` selects the requested component. Automatically discovered
+  local distributions remain behind the browse session token, including their relative assets.
 - [x] Sticky global `Catalog / Dev mode` toggle in the header
 - [x] Use human-readable, complete component names throughout
 - [x] Preserve catalog → category → group → component → variant hierarchy

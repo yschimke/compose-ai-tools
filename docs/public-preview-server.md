@@ -932,7 +932,7 @@ number it is a bug in. It always files against `yschimke/compose-ai-tools`.
 It opens **`/report-bug`**, a page rather than a straight jump to GitHub — because a server report
 carries things nobody is looking at. The per-preview report can be one click: its whole body is
 already on screen (a preview id, the overrides in the URL bar, a render). A server report carries
-the JVM the daemon runs on, which catalogs failed to load, and what the render lanes have been
+the JVM the HTTP server runs on, which catalogs failed to load, and what the render lanes have been
 doing, none of which appears on any page. Posting that to a public tracker, in the reporter's name,
 without them having read it, is not something a footer button should do. So the page's job is to
 **show the report before it is filed** — the same facts, grouped, with the exact markdown underneath

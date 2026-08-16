@@ -134,7 +134,8 @@ class ServeBugReportTest {
       )
     val body = ServeBugReport.body(noisy, page)
     assertTrue(body.contains("### Catalogs not loaded"), body)
-    assertTrue(body.contains("- `wear-m3`: failed — bundle signature invalid"), body)
+    assertTrue(body.contains("`wear-m3`: failed — bundle signature invalid"), body)
+    assertTrue(body.substringAfter("### Catalogs not loaded").startsWith("\n\n```"), body)
     assertTrue(body.contains("### Recent failures"), body)
     // A fence marker inside the failure text would close the block early and let the rest render.
     assertFalse(body.substringAfter("### Recent failures").contains("boom ```"), body)

@@ -82,6 +82,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okio.Path.Companion.toPath
 
 /**
@@ -1072,6 +1074,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
       catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
+      localSourceRoots =
+        if (componentBrowser) mapOf(module.gradlePath to module.projectDir) else emptyMap(),
       // Project mode has the repository, so the viewer's history strip is computed from local git
       // instead of a published history.json — the same timeline the hosted viewer shows, sourced
       // the other way round. Only wired on this path: [runBundleServer] has no checkout to read.
@@ -1155,9 +1159,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     }
 
     val wasmCatalogs = mergedWasmCatalogs(null)
+    val privateWasmCatalogs = mutableSetOf<String>()
     automaticWasmCatalogs(opened.map { it.first }).forEach { (module, dir) ->
       // An advanced explicit --wasm-dir remains an escape hatch, and wins when supplied.
-      wasmCatalogs.putIfAbsent(module, dir)
+      if (wasmCatalogs.putIfAbsent(module, dir) == null) privateWasmCatalogs += module
     }
     if (wasmCatalogs.isNotEmpty()) {
       System.err.println("browse: in-browser CMP Wasm for: ${wasmCatalogs.keys.joinToString(", ")}")
@@ -1170,6 +1175,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       defaultSessionId = first.first.gradlePath,
       bundleStore = null,
       wasmCatalogs = wasmCatalogs,
+      privateWasmCatalogs = privateWasmCatalogs,
       bannerLabel = "${opened.size} component modules",
       bannerPreviewCount = opened.sumOf { it.second.size },
       mdnsModuleLabel = null,
@@ -2172,7 +2178,9 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    */
   private fun automaticWasmCatalogs(modules: List<PreviewModule>): Map<String, File> {
     val root = findProjectRoot() ?: return emptyMap()
-    val projects = discoverWasmProjects(root)
+    var gradleProjects = emptyList<PreviewModule>()
+    withGradle { gradle -> gradleProjects = gradle.findGradleProjects(timeoutSeconds) }
+    val projects = discoverWasmProjects(root, gradleProjects)
     if (projects.isEmpty()) return emptyMap()
 
     val assignments = modules.mapNotNull { module ->
@@ -2255,10 +2263,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           File(projectDir, "build/wasmDist"),
           File(projectDir, "build/dist/wasmJs/developmentExecutable"),
         )
-        .firstOrNull { File(it, "index.html").isFile }
+        .firstOrNull { File(it, "index.html").isFile && File(it, COMPONENT_PROTOCOL_MARKER).isFile }
   }
 
-  internal fun discoverWasmProjects(root: File): List<AutomaticWasmProject> =
+  internal fun discoverWasmProjects(
+    root: File,
+    gradleProjects: List<PreviewModule> = emptyList(),
+  ): List<AutomaticWasmProject> =
     root
       .walkTopDown()
       .onEnter { it == root || (it.name != "build" && it.name != ".gradle" && it.name != ".git") }
@@ -2278,8 +2289,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         ) {
           return@mapNotNull null
         }
+        val configuredProject = gradleProjects.firstOrNull {
+          it.projectDir.canonicalFile == dir.canonicalFile
+        }
         val relative = dir.relativeTo(root).invariantSeparatorsPath
-        val path = relative.split('/').filter { it.isNotEmpty() }.joinToString(":")
+        val path =
+          configuredProject?.gradlePath
+            ?: relative.split('/').filter { it.isNotEmpty() }.joinToString(":")
         if (path.isEmpty()) null else AutomaticWasmProject(path, dir, text)
       }
       .toList()
@@ -2297,6 +2313,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     bundleStore: ServeBundleStore?,
     /** Live (see [mergedWasmCatalogs]) so a runtime catalog's Wasm app is added/removed with it. */
     wasmCatalogs: MutableMap<String, File>,
+    /** Auto-discovered local apps whose compiled project assets stay behind the session token. */
+    privateWasmCatalogs: Set<String> = emptySet(),
     bannerLabel: String,
     bannerPreviewCount: Int,
     mdnsModuleLabel: String?,
@@ -2400,6 +2418,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         isPublic = public,
         componentBrowser = componentBrowser,
         wasmCatalogs = wasmCatalogs,
+        privateWasmCatalogs = privateWasmCatalogs,
         rcPlayerWasmDir = rcPlayerWasmDir,
         // Preserve the CONFIGURED set, not only startup successes. Failed rows then stay visible on
         // /status, and a catalog recovered by the refresher appears on the home index immediately.
@@ -3329,11 +3348,23 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       fun serve(id: String, label: String) =
         ServePreview(
           id = id,
-          label = label,
+          label = info.catalog?.caption?.takeIf { it.isNotBlank() } ?: label,
           uiMode = info.params.uiMode,
           supportsFocus = focus,
           supportsGestures = gestures,
           fixedTheme = info.fixedTheme,
+          state = info.catalog?.state,
+          props =
+            info.catalog
+              ?.props
+              ?.takeIf { it.isNotEmpty() }
+              ?.associate { it.key to JsonPrimitive(it.value) }
+              ?.let(::JsonObject),
+          section = info.catalog?.section,
+          group = info.catalog?.group,
+          sourceFile = info.sourceFile,
+          bodyLine = info.bodyLine,
+          componentId = info.catalog?.componentId,
         )
       val baseLabel = info.functionName.ifBlank { info.id }
       val rows = ServeParameterRows.rowsFor(info, module.projectDir, claimedOutputs)
@@ -3738,6 +3769,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
   }
 
   private companion object {
+    const val COMPONENT_PROTOCOL_MARKER = "compose-preview-components.json"
     const val DEFAULT_PORT = 8723
     const val DEFAULT_IDLE_EXIT_SECONDS = 60L
 
