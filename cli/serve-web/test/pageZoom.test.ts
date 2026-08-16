@@ -49,9 +49,13 @@ function view(): { scale: number; x: number; y: number } {
     // An EMPTY transform is the identity — that is how the element expresses 1:1, by clearing the
     // property rather than writing `translate(0px, 0px) scale(1)`.
     if (!transform || transform === "none") return { scale: 1, x: 0, y: 0 };
+    // ANCHORED. Unanchored, `translate(...) scale(...) rotate(180deg)` still matches its familiar
+    // substring, so the guard below would accept it and this fake layout would silently ignore an
+    // operation the browser is really applying — the zoom tests passing over a visibly different
+    // view.
     const match =
-        /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(
-            transform,
+        /^translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)$/.exec(
+            transform.trim(),
         );
     // Anything else present but unreadable is a FAILURE, not an identity. Returning the identity
     // here — which this used to do — makes every assertion in this file fail open: a reset that
