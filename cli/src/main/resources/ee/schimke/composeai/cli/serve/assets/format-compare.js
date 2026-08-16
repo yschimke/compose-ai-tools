@@ -1,8 +1,6 @@
 (function () {
   "use strict";
 
-  var C1 = 6.5025;
-  var C2 = 58.5225;
   var MAX_SIDE = 192;
   // Figma's browser SVG rasteriser and Skia's Compose rasteriser cover the same vector edge with
   // different sub-pixels. Search a small neighbourhood only for actual edge pixels, and charge a
@@ -16,6 +14,8 @@
   var BOX_SAMPLE_SIDE = 256;
   var BOX_COLOUR_TOLERANCE = 12;
   // Below this, a content-box proportion difference is rasteriser noise rather than a finding.
+  // MIRRORED in `cli/serve-web/src/compare/thresholds.ts`, which the ported surfaces share; this
+  // copy becomes an import when this file is ported.
   var GEOMETRY_REPORT_THRESHOLD = 2;
   // Smallest share of its canvas a content box may cover before cropping to it stops being
   // trustworthy — see `normalisedBoxes`.
@@ -63,8 +63,9 @@
     var context = canvas.getContext("2d", { willReadFrequently: true });
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    // The comparison backdrop is deliberately fixed. Site light/dark appearance must not change
-    // the score, and this matches the existing generated compare.html scorer.
+    // The comparison backdrop is deliberately fixed: site light/dark appearance must not change
+    // the score, and a transparent frame composited onto anything else would be scored against a
+    // different ground than its partner.
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, height);
     draw(context);
@@ -74,92 +75,6 @@
       gray[i] = 0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2];
     }
     return gray;
-  }
-
-  function blur(source, width, height) {
-    var temp = new Float32Array(width * height);
-    var output = new Float32Array(width * height);
-    var x;
-    var y;
-    for (y = 0; y < height; y++) {
-      for (x = 0; x < width; x++) {
-        var left = source[y * width + Math.max(0, x - 1)];
-        var center = source[y * width + x];
-        var right = source[y * width + Math.min(width - 1, x + 1)];
-        temp[y * width + x] = (left + 2 * center + right) / 4;
-      }
-    }
-    for (y = 0; y < height; y++) {
-      for (x = 0; x < width; x++) {
-        var up = temp[Math.max(0, y - 1) * width + x];
-        var middle = temp[y * width + x];
-        var down = temp[Math.min(height - 1, y + 1) * width + x];
-        output[y * width + x] = (up + 2 * middle + down) / 4;
-      }
-    }
-    return output;
-  }
-
-  function globalSsim(a, b) {
-    var n = a.length;
-    var s1 = 0;
-    var s2 = 0;
-    var s11 = 0;
-    var s22 = 0;
-    var s12 = 0;
-    for (var i = 0; i < n; i++) {
-      s1 += a[i];
-      s2 += b[i];
-      s11 += a[i] * a[i];
-      s22 += b[i] * b[i];
-      s12 += a[i] * b[i];
-    }
-    var m1 = s1 / n;
-    var m2 = s2 / n;
-    var v1 = s11 / n - m1 * m1;
-    var v2 = s22 / n - m2 * m2;
-    var covariance = s12 / n - m1 * m2;
-    return ((2 * m1 * m2 + C1) * (2 * covariance + C2)) /
-      ((m1 * m1 + m2 * m2 + C1) * (v1 + v2 + C2));
-  }
-
-  function ssim(a, b, width, height) {
-    var windowSize = 8;
-    var stride = 4;
-    if (width < windowSize || height < windowSize) return globalSsim(a, b);
-    var total = 0;
-    var count = 0;
-    for (var y = 0; y + windowSize <= height; y += stride) {
-      for (var x = 0; x + windowSize <= width; x += stride) {
-        var s1 = 0;
-        var s2 = 0;
-        var s11 = 0;
-        var s22 = 0;
-        var s12 = 0;
-        for (var j = 0; j < windowSize; j++) {
-          for (var i = 0; i < windowSize; i++) {
-            var index = (y + j) * width + x + i;
-            var va = a[index];
-            var vb = b[index];
-            s1 += va;
-            s2 += vb;
-            s11 += va * va;
-            s22 += vb * vb;
-            s12 += va * vb;
-          }
-        }
-        var n = windowSize * windowSize;
-        var m1 = s1 / n;
-        var m2 = s2 / n;
-        var v1 = s11 / n - m1 * m1;
-        var v2 = s22 / n - m2 * m2;
-        var covariance = s12 / n - m1 * m2;
-        total += ((2 * m1 * m2 + C1) * (2 * covariance + C2)) /
-          ((m1 * m1 + m2 * m2 + C1) * (v1 + v2 + C2));
-        count++;
-      }
-    }
-    return count ? total / count : 1;
   }
 
   function edgeMask(plane, width, height) {

@@ -39,13 +39,12 @@ export interface ScoreCell {
  */
 export const MATCH_FLOOR = 90;
 
-/**
- * Proportion drift is only worth the visitor's attention once the two content boxes are genuinely
- * different shapes — under this, it is measurement noise on artwork that matches. Mirrors
- * `format-compare.js`'s own threshold, because the focused comparison page has to agree with the
- * parity page about whether a pair is worth opening.
- */
-export const GEOMETRY_REPORT_THRESHOLD = 2;
+// Proportion drift is only worth the visitor's attention once the two content boxes are genuinely
+// different shapes. Shared with the spec lane, which is where a pair opened FROM this page lands —
+// the two have to agree about whether there is anything there.
+import { GEOMETRY_REPORT_THRESHOLD } from "../compare/thresholds.js";
+
+export { GEOMETRY_REPORT_THRESHOLD };
 
 /**
  * A pair is a finding when it is structurally off OR out of proportion.

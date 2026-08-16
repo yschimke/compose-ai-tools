@@ -43,7 +43,13 @@ const COMPARE_ASSET = path.resolve(
   "../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js",
 );
 
-/** Below this a content-box proportion difference is rasteriser noise — `format-compare.js`'s own. */
+/**
+ * Below this a content-box proportion difference is rasteriser noise.
+ *
+ * MIRRORED from `cli/serve-web/src/compare/thresholds.ts`, which the ported browser surfaces share.
+ * This driver runs at publish time under plain node with no build step, so it cannot import from
+ * `src/` — the copy stays, and so does this pointer.
+ */
 const GEOMETRY_REPORT_THRESHOLD = 2;
 
 /** A PNG file as the `data:` URL the in-page scorer loads through its own `loadImage`. */
