@@ -116,6 +116,43 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `design kit correspondence round-trips through preview manifest`() {
+    val preview =
+      PreviewInfo(
+        id = "test.Avatar_VARIANT_avatar",
+        functionName = "Avatar",
+        className = "test.CatalogKt",
+        catalog =
+          CatalogEntry(
+            role = CatalogRole.COMPONENT,
+            componentId = "Avatar",
+            kitAxis = "Configuration",
+          ),
+        overrides =
+          OverrideVariantSpec(
+            name = "avatar",
+            seeds =
+              listOf(
+                OverrideSeed(
+                  key = "content",
+                  kind = OverrideSeedKind.STRING,
+                  raw = "avatar",
+                )
+              ),
+            kitAxis = "Show avatar",
+            kitValue = "True",
+          ),
+      )
+    val manifest = PreviewManifest(module = "app", variant = "debug", previews = listOf(preview))
+
+    val decoded = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+
+    assertThat(decoded.previews.single().catalog?.kitAxis).isEqualTo("Configuration")
+    assertThat(decoded.previews.single().overrides?.kitAxis).isEqualTo("Show avatar")
+    assertThat(decoded.previews.single().overrides?.kitValue).isEqualTo("True")
+  }
+
+  @Test
   fun `gestureHint capture round-trips and defaults to null`() {
     // The renderer's `RenderPreviewCapture.gestureHint` mirror reads this shape out of
     // `previews.json`; a rename here would silently drop the `@GestureHintPreview` override.

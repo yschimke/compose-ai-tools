@@ -25,9 +25,10 @@ Every field the projection reads is defined in this repository:
 
 | Field on `previews.json` | Declared by |
 | --- | --- |
-| `catalog.reference`, `referenceSet`, `noReference`, `referenceContentsOnly` | [`@CatalogComponent`](https://github.com/yschimke/compose-ai-tools/blob/main/api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/CatalogComponent.kt) |
+| `catalog.reference`, `referenceSet`, `noReference`, `referenceContentsOnly`, `kitAxis` | [`@CatalogComponent`](https://github.com/yschimke/compose-ai-tools/blob/main/api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/CatalogComponent.kt) |
 | `catalog.props`, `catalog.state` | `@CatalogVariant` |
 | `overrides.seeds`, `overrides.props` | `@OverrideVariant` / `@PreviewAxis` |
+| `overrides.kitAxis`, `overrides.kitValue` | `@OverrideVariant` |
 
 Rename one of those and the projection has to change in the same commit. Keeping the two on
 opposite sides of a repo boundary is how a manifest reader goes quietly stale — and the reference

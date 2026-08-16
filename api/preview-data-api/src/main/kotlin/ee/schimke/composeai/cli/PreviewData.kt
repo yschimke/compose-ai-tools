@@ -171,6 +171,8 @@ data class CatalogEntry(
    * would see one component where the published catalog has several.
    */
   val perBreakpoint: Boolean = false,
+  /** COMPONENT: default design-kit variant property for override-variant cells. */
+  val kitAxis: String? = null,
 )
 
 @Serializable

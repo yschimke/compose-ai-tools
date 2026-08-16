@@ -961,6 +961,8 @@ data class CatalogEntry(
    * behaviour.
    */
   val perBreakpoint: Boolean = false,
+  /** COMPONENT only: default design-kit variant property for override-variant cells. */
+  val kitAxis: String? = null,
 )
 
 /** Kind of a seeded `previewOverride*` value — mirrors `PreviewOverrideValue`'s subtypes. */
@@ -1018,6 +1020,10 @@ data class OverrideVariantSpec(
    * with the value it already resolves to is a no-op.
    */
   val props: List<CatalogVariantProp> = emptyList(),
+  /** Explicit design-kit variant property for this cell; null keeps downstream name matching. */
+  val kitAxis: String? = null,
+  /** Explicit design-kit value for this cell; null keeps downstream value matching. */
+  val kitValue: String? = null,
 )
 
 @Serializable

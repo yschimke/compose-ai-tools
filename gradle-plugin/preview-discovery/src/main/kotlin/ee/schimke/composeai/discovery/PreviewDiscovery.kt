@@ -1183,6 +1183,7 @@ object PreviewDiscovery {
       noReference = annStringOrNull(component, "noReference"),
       referenceContentsOnly = annBoolean(component, "referenceContentsOnly", default = true),
       parallel = annStringOrNull(component, "parallel"),
+      kitAxis = annStringOrNull(component, "kitAxis"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
   }
@@ -2220,6 +2221,8 @@ object PreviewDiscovery {
           seeds = seeds,
           interaction = interaction,
           interactionIndex = interactionIndex,
+          kitAxis = (pv.getValue("kitAxis") as? String)?.takeIf { it.isNotBlank() },
+          kitValue = (pv.getValue("kitValue") as? String)?.takeIf { it.isNotBlank() },
         )
       val existing = specs.putIfAbsent(name, spec)
       // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once

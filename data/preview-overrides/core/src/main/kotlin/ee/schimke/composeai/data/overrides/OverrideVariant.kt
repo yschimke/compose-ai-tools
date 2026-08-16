@@ -65,6 +65,10 @@ data class OverrideVariantSpec(
   val seeds: List<OverrideSeed> = emptyList(),
   val interaction: OverrideVariantInteraction? = null,
   val interactionIndex: Int = 0,
+  /** Explicit design-kit variant property for this cell; null keeps downstream name matching. */
+  val kitAxis: String? = null,
+  /** Explicit design-kit value for this cell; null keeps downstream value matching. */
+  val kitValue: String? = null,
 ) {
   /**
    * The seed map (keyed by [OverrideSeed.seedKey]) this variant applies — the exact shape
