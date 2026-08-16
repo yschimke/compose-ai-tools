@@ -278,9 +278,26 @@ describe("keepRow", () => {
         // The viewer links into this wall for one component. Someone who arrives that way and then
         // types is narrowing within that preview — not starting a fresh search across the catalog,
         // which is what overriding either narrow with the other would give them.
-        assert.equal(keepRow(facts, "button", "FilledButton"), true);
-        assert.equal(keepRow(facts, "slider", "FilledButton"), false);
+        assert.equal(
+            keepRow(facts, "button", "com.example.FilledButtonPreview"),
+            true,
+        );
+        assert.equal(
+            keepRow(facts, "slider", "com.example.FilledButtonPreview"),
+            false,
+        );
         assert.equal(keepRow(facts, "button", "Slider"), false);
+    });
+
+    it("matches ?preview= as a whole id, not a substring", () => {
+        const grouped = {
+            ...facts,
+            previewIds:
+                "com.example.FilledButtonPreview com.example.IconPreview",
+        };
+        assert.equal(keepRow(grouped, "", "com.example.IconPreview"), true);
+        assert.equal(keepRow(grouped, "", "example.IconPreview"), false);
+        assert.equal(keepRow(grouped, "", "com.example.Icon"), false);
     });
 });
 

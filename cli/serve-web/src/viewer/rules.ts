@@ -11,4 +11,5 @@ export * from "./keyInput.js";
 export * from "./laneState.js";
 export * from "./ownedParams.js";
 export * from "./renderQuery.js";
+export * from "./specBaseline.js";
 export * from "./themeChoice.js";
