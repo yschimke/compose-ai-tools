@@ -367,6 +367,22 @@ class PlaygroundRoutingTest {
   }
 
   @Test
+  fun `oversized edit lease acquisition is rejected`() {
+    val cookie = githubSessionCookie(githubRepoServer.port)
+
+    post(
+        "/api/1/compiler/edit-lease",
+        "x".repeat(256 * 1024 + 1),
+        githubRepoServer.port,
+        cookie,
+      )
+      .use { resp ->
+        assertEquals(413, resp.code)
+        assertTrue(resp.body!!.string().contains("exceeds 256KB"))
+      }
+  }
+
+  @Test
   fun `the editor page explains when the playground lane isn't enabled`() {
     get("/playground", plainServer.port).use { resp ->
       assertEquals(503, resp.code)

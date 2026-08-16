@@ -884,6 +884,85 @@ class PlaygroundCompileServiceTest {
   }
 
   @Test
+  fun `busy compiler restores the last accepted source tree`() {
+    data class Call(
+      val modified: List<String>,
+      val removed: List<String>,
+      val contents: Map<String, String>,
+    )
+
+    val calls = mutableListOf<Call>()
+    val compiler =
+      object : PlaygroundCompileService.Compiler {
+        override fun compile(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+        ) = emptyList<PlaygroundDiagnostic>()
+
+        override fun compileIncremental(
+          sources: List<Path>,
+          classpath: List<Path>,
+          outputDir: Path,
+          workingDir: Path,
+          modified: List<Path>,
+          removed: List<Path>,
+          firstBuild: Boolean,
+        ): PlaygroundCompileService.IncrementalCompileResult {
+          calls +=
+            Call(
+              modified.map { it.name },
+              removed.map { it.name },
+              sources.associate { it.name to fs.read(it) { readUtf8() } },
+            )
+          if (calls.size == 2) {
+            return PlaygroundCompileService.IncrementalCompileResult(
+              listOf(
+                PlaygroundDiagnostic(
+                  PlaygroundSeverity.ERROR,
+                  "the playground is busy compiling (all 1 compile slots in use) — try again shortly",
+                )
+              ),
+              incremental = false,
+            )
+          }
+          fs.createDirectories(outputDir)
+          fs.write(outputDir / "Snippet.class") { writeUtf8("compiled") }
+          return PlaygroundCompileService.IncrementalCompileResult(emptyList(), false)
+        }
+      }
+    val svc = service(compilerOverride = compiler, editLeasesEnabled = true)
+    val lease = svc.acquireEditLease("alice").lease!!
+    fun run(revision: Long, files: List<PlaygroundFile>) =
+      svc.run(
+        request(text = files.first().text)
+          .copy(
+            files = files,
+            editLease = lease,
+            revision = revision,
+          ),
+        true,
+        authenticatedOwner = "alice",
+      )
+
+    val accepted =
+      listOf(
+        PlaygroundFile("Snippet.kt", "@Preview fun P() = println(1)"),
+        PlaygroundFile("Theme.kt", "object Theme"),
+      )
+    assertNotNull(run(1, accepted).previewToken)
+    val busy = run(2, listOf(PlaygroundFile("Snippet.kt", "@Preview fun P() = println(2)")))
+    assertTrue(busy.diagnostics.single().message.startsWith("the playground is busy"))
+
+    assertNotNull(run(3, accepted).previewToken)
+    assertEquals(
+      Call(emptyList(), emptyList(), accepted.associate { it.name to it.text }),
+      calls[2],
+      "the retry sees the accepted files on disk even though its desired map is unchanged",
+    )
+  }
+
+  @Test
   fun `stale or foreign leased revisions are rejected before compilation`() {
     var compiles = 0
     val compiler =

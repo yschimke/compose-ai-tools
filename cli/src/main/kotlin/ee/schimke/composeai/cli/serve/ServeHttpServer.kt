@@ -1698,8 +1698,15 @@ class ServeHttpServer(
       withContext(Dispatchers.IO) {
         call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
       }
+        ?: run {
+          call.respondText(
+            "playground request exceeds ${MAX_PLAYGROUND_BYTES / 1024}KB",
+            status = HttpStatusCode.PayloadTooLarge,
+          )
+          return
+        }
     val request =
-      if (body == null || body.isEmpty()) PlaygroundEditLeaseAcquireRequest()
+      if (body.isEmpty()) PlaygroundEditLeaseAcquireRequest()
       else
         runCatching {
           JSON.decodeFromString(

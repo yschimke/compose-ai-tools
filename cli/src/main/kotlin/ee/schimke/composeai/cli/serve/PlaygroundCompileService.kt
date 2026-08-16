@@ -567,6 +567,7 @@ class PlaygroundCompileService(
       // not compile or mutate IC state: report it without accepting the staged files/revision, so
       // the complete dirty set is retried on the next Run.
       if (compile.diagnostics.isCompileAdmissionFailure()) {
+        restoreStagedFiles(srcDir, accepted = lease.files, staged = desired)
         editLastCompileMillis = (System.nanoTime() - compileStarted) / 1_000_000
         renewEditLeaseLocked(lease)
         refreshEditHealthLocked()
@@ -802,6 +803,20 @@ class PlaygroundCompileService(
     val used = mutableSetOf<String>()
     return buildMap {
       files.forEach { file -> put(uniqueName(safeKtName(file.name), used), file.text) }
+    }
+  }
+
+  /** Restore the source tree after admission rejects a request before compilation starts. */
+  private fun restoreStagedFiles(
+    srcDir: Path,
+    accepted: Map<String, String>,
+    staged: Map<String, String>,
+  ) {
+    (staged.keys - accepted.keys).forEach { name ->
+      fileSystem.delete(srcDir / name, mustExist = false)
+    }
+    accepted.forEach { (name, text) ->
+      if (staged[name] != text) fileSystem.write(srcDir / name) { writeUtf8(text) }
     }
   }
 
