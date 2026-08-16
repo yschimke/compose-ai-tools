@@ -31,6 +31,11 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            The cover's leading-bytes PNG is mirrored here under its own id so
  *                            iterating the well-known directory yields every preview uniformly.
  *                            A preview with no render on disk is simply absent from this directory.
+ * previews/<id>.apng       — (also .gif) the motion capture a preview declared via
+ *                            `@InteractionPreview` / `@AnimatedPreview`, named from the SAME id as
+ *                            the still beside it so the two join by name downstream (see
+ *                            [motionBundleEntryPath]). A function owning two motion outputs
+ *                            disambiguates them with `_interaction` / `_anim`.
  * previews/<id>.error.json — structured render failure for a preview whose PNG is absent. Copied
  *                            verbatim from the renderer's `<png>.error.json` sidecar so detached
  *                            consumers can distinguish a broken render from an intentionally
@@ -696,6 +701,44 @@ const val BUNDLE_CATALOG_TOKENS_SIDECAR_EXT: String = "catalog.json"
  * here under its own id so a reader can iterate this single directory to enumerate every preview.
  */
 const val BUNDLE_PREVIEWS_DIR: String = "previews"
+
+/**
+ * Structural suffixes a motion render carries when one `@Preview` function owns more than one of
+ * them — `@AnimatedPreview` beside `@InteractionPreview`, or either beside a scroll / time / resize
+ * fan-out that already claims the plain name. Emitted by `PreviewDiscovery.buildOutputPlan` and
+ * matched again on the way out by `scripts/design-artifacts/catalog-motion-publish.mjs`; kept in
+ * step with both.
+ */
+val BUNDLE_MOTION_SUFFIXES: List<String> = listOf("_interaction", "_anim")
+
+/**
+ * The bundle entry a motion capture (`@AnimatedPreview` / `@InteractionPreview`) is packed under:
+ * `previews/<previewId>[_interaction|_anim].<ext>`.
+ *
+ * **Named from the preview id, like the still it accompanies** — never from the render's own leaf.
+ * On disk a render is `<readable>-<digest>` (docs/RENDER_FILENAMES.md), deliberately not the id, so
+ * naming a capture after its file put it in a different namespace from the
+ * `previews/<previewId>.png` beside it. Both downstream joins are by name — the export reads a
+ * capture's theme off the still sharing its stem, and names the published file after that still —
+ * so a leaf-named capture published themeless (pinned to every card of its component, light card
+ * playing the dark recording) under a filename derived from nothing a reader recognises.
+ *
+ * Reading the structural suffix off the leaf is safe because the render digest is unconditional: a
+ * stem is always `<readable>-<8 hex>` unless a structural suffix follows it, so a stem can only end
+ * in `_interaction` / `_anim` when the renderer actually put one there. A preview genuinely named
+ * `Logo_animated` renders to `Logo_animated-<digest>` and matches neither.
+ *
+ * @param bundleId the preview's in-bundle id (post-[sanitizeBundleEntryId]).
+ * @param renderLeaf the render's own filename, whose structural suffix is carried through.
+ * @return the entry path, or null when [renderLeaf] is not a motion artifact.
+ */
+fun motionBundleEntryPath(bundleId: String, renderLeaf: String): String? {
+  val extension = renderLeaf.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+  if (extension != "apng" && extension != "gif") return null
+  val stem = renderLeaf.substringBeforeLast('.')
+  val suffix = BUNDLE_MOTION_SUFFIXES.firstOrNull { stem.endsWith(it) }.orEmpty()
+  return "$BUNDLE_PREVIEWS_DIR/$bundleId$suffix.$extension"
+}
 
 /**
  * Diagnostic record describing how aggressive the minimization was. Always written into the bundle

@@ -530,14 +530,15 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewPng(preview)?.let { previewPngs[bundleIds.getValue(preview.id)] = it }
     }
 
-    // Motion captures are first-class baked artifacts too. Keep their renderer-owned leaf names:
-    // the bundled previews manifest points at `renders/<leaf>`, and catalog export deliberately
-    // joins that declaration to `previews/<leaf>` so animation/interaction siblings cannot be
-    // confused. Previously bundle pack carried only PNG stills, making every correctly rendered
-    // APNG/GIF disappear before publishing (issue #3922).
+    // Motion captures are first-class baked artifacts too, and share the stills' id space: a
+    // capture lands at `previews/<id>[_interaction|_anim].<ext>` beside the `previews/<id>.png` it
+    // documents, which is the join every downstream consumer makes (see [resolvePreviewMotion]).
+    // Previously bundle pack carried only PNG stills, making every correctly rendered APNG/GIF
+    // disappear before publishing (issue #3922); keying them by the renderer's own leaf name got
+    // the bytes in, but left them unjoinable to the sticker they belong beside.
     val motionFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
-      for ((path, bytes) in resolvePreviewMotion(preview)) {
+      for ((path, bytes) in resolvePreviewMotion(preview, bundleIds.getValue(preview.id))) {
         val previous = motionFiles.put(path, bytes)
         check(previous == null || previous.contentEquals(bytes)) {
           "composePreviewBundle: two motion captures resolve to '$path' with different bytes"
@@ -737,19 +738,39 @@ abstract class BundlePreviewTask : DefaultTask() {
       ?.readBytes()
   }
 
-  /** Motion capture bytes for [preview], keyed by their in-bundle `previews/<leaf>` path. */
-  private fun resolvePreviewMotion(preview: PreviewInfo): Map<String, ByteArray> {
+  /**
+   * Motion capture bytes for [preview], keyed by their in-bundle
+   * `previews/<bundleId>[_interaction|_anim].<ext>` path.
+   *
+   * Named from the PREVIEW ID, exactly as [resolvePreviewPng]'s still is — not from the render's
+   * own leaf. On disk a render is `<readable>-<digest>` (docs/RENDER_FILENAMES.md), which is
+   * deliberately not the id, so keying motion by the leaf put a capture and the still it documents
+   * in two different namespaces (`previews/SwitchOn_Dark-d0f22b72.apng` beside
+   * `previews/com.example.CatalogSelectionKt.SwitchOn_Dark.png`). Everything downstream joins the
+   * two by *name*: `catalog-motion.mjs` reads a capture's theme off the still sharing its stem, and
+   * `catalog-motion-publish.mjs` names the published file after that still. Both silently declined
+   * — a capture published with no theme is pinned to every card of its component, so the light card
+   * played the dark recording, and the file landed at `motion/<slug>/<render-leaf>.apng` instead of
+   * `motion/<slug>/ideal__default__dark.apng`.
+   *
+   * The `_interaction` / `_anim` suffix discovery adds when one function owns two motion outputs is
+   * carried through, since that is what keeps them apart in a single id space — see
+   * [motionBundleEntryPath], which owns the rule.
+   */
+  private fun resolvePreviewMotion(
+    preview: PreviewInfo,
+    bundleId: String,
+  ): Map<String, ByteArray> {
     val rendersRoot = rendersDir.orNull?.asFile ?: return emptyMap()
     val previewsRoot = rendersRoot.parentFile ?: rendersRoot
     val files = LinkedHashMap<String, ByteArray>()
     for (capture in preview.captures) {
       if (capture.interaction == null && capture.animation == null) continue
       val rel = capture.renderOutput.takeIf { it.isNotEmpty() } ?: continue
-      val extension = rel.substringAfterLast('.', missingDelimiterValue = "").lowercase()
-      if (extension != "apng" && extension != "gif") continue
       val source = File(previewsRoot, rel)
+      val path = motionBundleEntryPath(bundleId, source.name) ?: continue
       if (!source.isFile || source.length() <= 0) continue
-      files["$BUNDLE_PREVIEWS_DIR/${source.name}"] = source.readBytes()
+      files[path] = source.readBytes()
     }
     return files
   }
