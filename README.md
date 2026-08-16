@@ -284,6 +284,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-declared-themes/dark](renders/serve-landing-declared-themes.dark.png) |
 | `light` | ![serve-landing-declared-themes/light](renders/serve-landing-declared-themes.light.png) |
 
+## serve-landing-declared-themes-actions-menu
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-actions-menu/dark](renders/serve-landing-declared-themes-actions-menu.dark.png) |
+| `light` | ![serve-landing-declared-themes-actions-menu/light](renders/serve-landing-declared-themes-actions-menu.light.png) |
+
 ## serve-landing-declared-themes-daemon-connected
 
 | Theme | Capture |
@@ -332,6 +339,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-landing-declared-themes-theme-inflight/dark](renders/serve-landing-declared-themes-theme-inflight.dark.png) |
 | `light` | ![serve-landing-declared-themes-theme-inflight/light](renders/serve-landing-declared-themes-theme-inflight.light.png) |
+
+## serve-landing-declared-themes-theme-menu
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-theme-menu/dark](renders/serve-landing-declared-themes-theme-menu.dark.png) |
+| `light` | ![serve-landing-declared-themes-theme-menu/light](renders/serve-landing-declared-themes-theme-menu.light.png) |
 
 ## serve-landing-declared-themes-theme-render-terminal
 
