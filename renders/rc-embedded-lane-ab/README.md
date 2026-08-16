@@ -53,8 +53,21 @@ own error card, the embedded player propagates the exception and renders nothing
 ## Regenerating
 
 ```
-./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
-  --tests '*RcEmbeddedRenderHarness*' --tests '*RcViewPlayerRenderHarness*' \
-  -Prc.embedded.input=<dir of <id>.rc + manifest.json> \
-  -Prc.embedded.output=<embedded dir> -Prc.view.output=<view dir>
+scripts/rc-lane-ab/render-ab.sh <dir with <id>.rc + manifest.json> [lane-output-dir]
 ```
+
+That is the whole recipe — it renders both lanes, prints the table above, and rewrites every image
+in this directory. Don't drive the harnesses by hand: the raw Gradle command produces neither the
+scores nor these composites, and it has three ways to look like it worked while writing nothing.
+`rc.embedded.input` must be **absolute** (the harness resolves it against the *test* working
+directory, and a path it cannot resolve fails an `assumeTrue`, which reports as a skipped test in a
+green build); `--rerun` is required because the input arrives as a system property rather than a
+declared task input, so a second run is `UP-TO-DATE` and keeps the previous PNGs; and `--tests` is
+required because `rc.embedded.input` reaches every test in the module. The script's header explains
+each one, and it checks the render counts afterwards so a lane that quietly produced nothing fails
+loudly instead of recomposing stale evidence. Same trap, and the same treatment, as
+`scripts/rc-text-metrics/render-strips.sh`.
+
+Scoring is `scripts/design-artifacts/rc-lane-ab-score.mjs` (pixelmatch, from the package that
+already declares it); composition is `scripts/rc-lane-ab/compose_ab.py` (Pillow), which carries the
+list of committed images and the document ids behind each one.
