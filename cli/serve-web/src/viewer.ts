@@ -325,6 +325,19 @@ const fsVal = may<HTMLElement>("cp-fontScale-val");
 var fontScaleTouched = false;
 var ws: WebSocket | null = null;
 const themeChoice = may<HTMLSelectElement>("cp-theme");
+// The two lanes that put a FIXED frame on the stage: the spec lane's imported raster, and a
+// finished motion recording. Neither is re-pointed by an override, so `syncServerControls`
+// disables every control that would re-render — but the frame underneath was still produced with
+// whatever was picked before the lane opened, so the choices themselves are NOT moot. Read off
+// `data-mode` rather than the mode radios so it is safe to call during module init, before the
+// lane's own elements are declared.
+//
+// One predicate, two consumers: what `syncServerControls` disables and what `activeThemeChoice`
+// still lets ride the URL are the same set of lanes, and they must not be able to drift.
+function onFixedFrameLane(): boolean {
+    var mode = root.getAttribute("data-mode") || "";
+    return mode === "spec" || mode === "motion";
+}
 function activeThemeChoice() {
     return rules.activeThemeChoice(
         themeChoice && {
@@ -332,6 +345,7 @@ function activeThemeChoice() {
             disabled: themeChoice.disabled,
             active: themeChoice.getAttribute("data-theme-active") === "1",
         },
+        onFixedFrameLane(),
     );
 }
 function chosenUiMode() {
@@ -2857,7 +2871,12 @@ function syncServerControls() {
     // motion-only addition on two of them, which is the worst of both: the theme select and the
     // Remote Compose knobs stayed live over a recording while the code read as though the lane were
     // gated. If a family is dead on a fixed frame it is dead on both lanes, and it says so here.
-    var onFixedFrame = specActive() || motionActive();
+    //
+    // Shared with `activeThemeChoice`, which needs the same answer to decide that a disabled theme
+    // select still names the theme the frozen frame was rendered with. Both read `data-mode`, so
+    // "which lane froze the controls" has a single definition — the radios and the attribute are
+    // set by the same transition, and two copies of this could disagree during one.
+    var onFixedFrame = onFixedFrameLane();
     var canServerRender =
         !onWasm &&
         !onRc &&

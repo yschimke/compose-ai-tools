@@ -289,24 +289,53 @@ describe("<cp-spec-compare>", () => {
         assert.equal(chip().getAttribute("data-spec-match"), null);
     });
 
-    it("keeps a live measurement, and its tooltip, over the baseline state", async () => {
-        // A live number was taken from the frames on the stage, which is the very thing the
-        // baseline flag is a proxy for. The tooltip has to move with it: left alone it went on
-        // quoting the publish-time verdict beside a chip reading something else.
-        stubCompare({ percent: 88.9, geometry: 0 });
+    it("publishes no match score at all off the baseline", async () => {
+        // This test used to assert the opposite — that a live measurement outranked the baseline
+        // flag, because it had been taken from the frames actually on the stage. That reasoning
+        // answers the wrong objection. The problem with the baked number off the baseline is not
+        // that it is STALE, it is that no spec exists for the frame being looked at: a reference is
+        // imported once, at the catalog's default, and is never re-exported per theme. Measuring
+        // against it anyway grades the theme.
+        //
+        // `shape-bun__ideal__default__light` under Light Medium Contrast is the case that settled
+        // it. The geometry is identical — only the token colour moves — and the lane reported
+        // "90.5% match · 89.34% pixels differ", which reads as a component that has fallen apart.
+        // A live number is not a better answer than a stale one here; both are answers to a
+        // question the spec cannot be asked.
+        const stub = stubCompare({ percent: 88.9, geometry: 0 });
         await mount({ baseline: false });
         lane().open("/render/Button.png?themeProvider=HighContrast");
         press("diff");
         for (let i = 0; i < 5; i++) await flush();
-        assert.equal(chip().textContent, "Button 88.9%");
-        assert.equal(chip().title, "88.9% match · 18.75% pixels differ");
 
-        lane().baseline(false);
+        assert.deepEqual(stub.scores, [], "the pair is never scored");
+        assert.equal(chip().textContent, "Button", "just the provider label");
+        assert.equal(chip().getAttribute("data-spec-match"), null);
+        assert.equal(chip().title, "measured against the default render");
+        // The changed-pixel count survives: it is literally true about the two frames, and it is
+        // the panels' own caption. What it is no longer allowed to do is read as a verdict.
         assert.equal(
-            chip().textContent,
-            "Button 88.9%",
-            "the measurement outranks the flag",
+            score().textContent,
+            "18.75% pixels differ · the imported spec is baseline-only, " +
+                "so this is not a match score — clear the overrides to compare",
         );
+    });
+
+    it("re-decides the readout when the render returns to the baseline", async () => {
+        // The flag can flip while the lane is open, and `compute()`'s cached-frames path returns
+        // without touching the readout — so a pair scored under one baseline state would go on
+        // describing itself under the other.
+        const stub = stubCompare({ percent: 98.44, geometry: 0 });
+        await mount({ baseline: false });
+        lane().open("/render/Button.png");
+        press("triptych");
+        for (let i = 0; i < 5; i++) await flush();
+        assert.deepEqual(stub.scores, []);
+
+        lane().baseline(true);
+        for (let i = 0; i < 5; i++) await flush();
+        assert.equal(score().textContent, "98.4% match · 18.75% pixels differ");
+        assert.equal(chip().textContent, "Button 98.4%");
     });
 
     it("does not re-compare when only the view changes", async () => {

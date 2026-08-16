@@ -58,6 +58,31 @@ export function changedPercentOf(
     return pixels ? (changed * 100) / pixels : 0;
 }
 
+/**
+ * Said in place of a match score when the render on the stage is not the one the spec describes.
+ *
+ * A design spec is imported ONCE, at the catalog's baseline — default theme, declared knob
+ * defaults, no overrides. There is no per-theme, per-locale or per-font-scale export, and the
+ * comparison has no way to synthesise one. So the moment an override moves the render, the two
+ * frames are answering different questions and any percentage taken across them is measuring the
+ * override rather than the component.
+ *
+ * On `shape-bun` under Light Medium Contrast that is not a subtle overstatement: the geometry is
+ * identical and only the token colour moves, so 89% of the pixels "differ" and the lane reported
+ * "90.5% match" — a number that reads as a parity finding and is nothing of the kind. Suppressing
+ * it costs a reader nothing, because there was no honest number to lose.
+ *
+ * The changed-pixel count still goes out, because it is literally true about the two frames in
+ * front of the visitor. What it is NOT is a verdict, and the line says so rather than leaving the
+ * reader to infer it.
+ */
+export function offBaselineReadout(changedPercent: number): string {
+    return (
+        `${changedPercent.toFixed(2)}% pixels differ · the imported spec is baseline-only, ` +
+        `so this is not a match score — clear the overrides to compare`
+    );
+}
+
 /** Said in place of a number when the pair cannot be compared at all. */
 export const UNAVAILABLE = "Comparison unavailable";
 

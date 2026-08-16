@@ -14,13 +14,27 @@ function isPublishedPng(url: string): boolean {
     return true;
 }
 
+/**
+ * The stages whose comparison subject is the baked PNG snapshot.
+ *
+ * `spec` is one of them, which is not obvious and is the whole reason this is a set. The spec lane
+ * takes the render off the stage and puts the imported reference there — but the frame it is
+ * COMPARING is still the snapshot underneath (`specActualUrl` hands the lane that image, or its
+ * object URL). Excluding `spec` made this predicate answer `false` for every visit to the lane,
+ * baseline or not, so the one consumer that exists could never tell a clean comparison from one
+ * taken against an overridden render. Every other stage — `live`, `wasm`, `rc` — genuinely is not
+ * the baked snapshot and stays out.
+ */
+const SNAPSHOT_STAGES = new Set(["snapshot", "spec"]);
+
 /** Whether the visible stage still represents the snapshot used for the published spec score. */
 export function specAtPublishedBaseline(
     stage: string,
     desiredPngUrl: string,
     landedRenderUrl: string | null,
 ): boolean {
-    if (stage !== "snapshot" || !isPublishedPng(desiredPngUrl)) return false;
+    if (!SNAPSHOT_STAGES.has(stage) || !isPublishedPng(desiredPngUrl))
+        return false;
 
     // Before the first client-side fetch, the server-rendered image is the requested baseline.
     // Once a fetched frame has landed, its provenance is authoritative until replacement pixels

@@ -37,6 +37,27 @@ describe("activeThemeChoice", () => {
         assert.equal(activeThemeChoice(select({ disabled: true })), "");
     });
 
+    it("still names the theme a frozen frame was rendered with", () => {
+        // The spec and motion lanes disable every re-rendering control, this one included — but
+        // the frame under the lane was produced with the picked theme and the spec lane is
+        // actively comparing against it. Answering "" made `query()` drop `themeProvider`, which
+        // `syncUrl` then deleted from the address bar: the page went on showing (and diffing) a
+        // Light Medium Contrast render under a URL claiming the baseline, so reloading it gave a
+        // different picture than the one on screen.
+        assert.equal(
+            activeThemeChoice(select({ disabled: true }), true),
+            "dark",
+        );
+    });
+
+    it("does not resurrect a choice that was never made", () => {
+        // Frozen or not, an untouched select is still only DISPLAYING the baked theme.
+        assert.equal(
+            activeThemeChoice(select({ disabled: true, active: false }), true),
+            "",
+        );
+    });
+
     it("answers nothing on a page with no theme control at all", () => {
         assert.equal(activeThemeChoice(null), "");
     });

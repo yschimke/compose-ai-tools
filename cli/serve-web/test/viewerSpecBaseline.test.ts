@@ -48,6 +48,22 @@ describe("specAtPublishedBaseline", () => {
         );
     });
 
+    it("answers for the spec lane, which is the only thing that asks", () => {
+        // The lane takes the render off the stage and puts the imported reference there, so the
+        // stage reads `spec` — but the frame being COMPARED is still the snapshot underneath.
+        // Excluding it made this predicate false on every visit to the lane, baseline or not,
+        // which is the same as having no signal at all.
+        assert.equal(specAtPublishedBaseline("spec", baseline, baseline), true);
+        assert.equal(
+            specAtPublishedBaseline(
+                "spec",
+                `${baseline}?themeProvider=com.example.LightMediumContrastTheme`,
+                `${baseline}?themeProvider=com.example.LightMediumContrastTheme`,
+            ),
+            false,
+        );
+    });
+
     it("rejects alternate renderers and vector frames", () => {
         assert.equal(
             specAtPublishedBaseline("live", baseline, baseline),

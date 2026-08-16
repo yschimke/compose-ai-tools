@@ -42,6 +42,7 @@ import {
     changedPercentOf,
     chipText,
     matchBand,
+    offBaselineReadout,
     readout,
 } from "../spec/verdict.js";
 import { rangeValueAt, seamX, splitAt, splitFraction } from "../spec/wipe.js";
@@ -98,8 +99,17 @@ export class SpecCompare extends LitElement {
      * what is actually on the stage under Light High Contrast, reads 88.9%. Entering the lane then
      * looks like a regression when all that happened is that the honest number arrived.
      *
-     * Off the baseline the chip therefore falls back to the plain provider label — the same thing
-     * every catalog without a baked score shows — until the lane produces a live measurement.
+     * The live measurement was the answer to that, and it is the wrong one. It replaced a number
+     * describing the wrong frame with a number describing the wrong QUESTION: there is no spec for
+     * a themed render to be measured against, so scoring one grades the theme. On
+     * `shape-bun__ideal__default__light` under Light Medium Contrast the geometry matches exactly,
+     * only the token colour moves, and the lane reported "90.5% match · 89.34% pixels differ" —
+     * which reads as a catastrophic parity failure in a component that is pixel-correct.
+     *
+     * So off the baseline NEITHER number is published. The chip falls back to the plain provider
+     * label — the same thing every catalog without a baked score shows — and the readout says the
+     * spec is baseline-only instead of quoting a match. The panels still paint: the pictures are
+     * honest, it is only the arithmetic over them that has nothing to say.
      */
     private atBaseline = true;
     private referenceUrl = "";
@@ -192,10 +202,18 @@ export class SpecCompare extends LitElement {
         baseline: (atBaseline) => {
             if (atBaseline === this.atBaseline) return;
             this.atBaseline = atBaseline;
-            // Only the chip's RESTING state moves. A live measurement outranks this either way —
-            // it was taken from the frames on the stage, which is the very thing being asked
-            // about — and a knob edit that invalidates it re-enters `compute()` anyway.
-            if (!this.liveOnChip) this.setChipVerdict(null);
+            // A live measurement used to outrank this unconditionally, on the grounds that it was
+            // taken from the frames on the stage. That holds only while a comparable spec exists
+            // for those frames. Off the baseline there IS no such spec — the reference was
+            // exported once, at the catalog's default — so a live number is not the better answer
+            // to the same question, it is a confident answer to a different one. Both numbers go.
+            if (!atBaseline || !this.liveOnChip) this.setChipVerdict(null);
+            // The readout is decided by this too, and `compute()`'s cached-frames path returns
+            // without touching it. Drop the key so the SAME pair is re-decided rather than left
+            // reporting under the baseline state it was scored in.
+            this.framesKey = "";
+            this.framesMatch = null;
+            if (this.open) this.apply();
         },
     };
 
@@ -393,6 +411,27 @@ export class SpecCompare extends LitElement {
                 ? api.diffCanvases(next.reference, next.candidate, diff)
                 : 0;
             this.drawWipe();
+            const changedPercent = changedPercentOf(
+                changed,
+                next.width,
+                next.height,
+            );
+            // Off the baseline the pictures are still worth painting — a visitor holding a themed
+            // render against the baseline art is doing something legitimate, and the three panels
+            // are honestly labelled Spec / Diff / Render. What must not happen is a SCORE: the
+            // reference has no version of itself for this render, so a percentage across the two
+            // grades the override. Return before scoring rather than computing a number and
+            // declining to show it — an unscored pair cannot leak one through the cached-frames
+            // path, the chip, or the tooltip.
+            if (!this.atBaseline) {
+                const stale = offBaselineReadout(changedPercent);
+                this.setScore(stale);
+                this.scoreTip = null;
+                this.framesMatch = null;
+                this.setChipVerdict(null);
+                void this.refreshTypography();
+                return;
+            }
             // Scored from the frames just decoded, NOT by re-requesting the two URLs. An
             // override-bearing `/render` is `no-store`, so asking again would be a second render —
             // and a second render can come back different, leaving the percentage describing a
@@ -404,7 +443,7 @@ export class SpecCompare extends LitElement {
             if (generation !== this.generation) return;
             const text = readout(
                 result.percent,
-                changedPercentOf(changed, next.width, next.height),
+                changedPercent,
                 result.geometry,
             );
             this.setScore(text);
