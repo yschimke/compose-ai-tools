@@ -75,6 +75,17 @@ async function openOverridesGroup(page) {
     });
 }
 
+// The catalog landing's theme chips are behind a dropdown — the same `.cp-theme-menu` the viewer's
+// Theme control has always been — so a chip is resolvable but invisible until the menu is opened,
+// and Playwright refuses to click it ("element is not visible"). Same shape as
+// `openOverridesGroup` above, and idempotent for the same reason: a pick closes the menu again
+// (`<cp-catalog-toolbar>`), so a caller cannot know what state it inherits.
+async function openCatalogThemeBar(page) {
+  const bar = page.locator("#cp-catalog-theme-bar");
+  if ((await bar.count()) && (await bar.isHidden()))
+    await page.locator(".cp-catalog-theme > summary").click();
+}
+
 function requirePreview() {
   // In CI the boot step starts a known compose-m3 daemon serve, so a missing
   // label-knob preview is a real regression — FAIL, don't green-skip the required
@@ -443,6 +454,7 @@ test("catalog selections land in the URL and Back restores them without reloadin
   );
   const chip = themeChips.nth(1);
   const chosen = await chip.getAttribute("data-theme-choice");
+  await openCatalogThemeBar(page);
   await chip.click();
   await expect
     .poll(() =>

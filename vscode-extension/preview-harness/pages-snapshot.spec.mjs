@@ -429,6 +429,25 @@ async function closeLandingMenus(page) {
     });
 }
 
+/**
+ * Open the landing's Theme menu — the landing's `openThemeBar`, and idempotent for the same reason.
+ *
+ * The landing's theme chips used to be a bar standing open in the toolbar, so a state that wanted
+ * one just clicked it. They are a dropdown now (the viewer's), which makes every such click a click
+ * on a resolvable, invisible, unclickable element — a sixty-second timeout each. Worse, the state
+ * left behind by the state before decides it: `<cp-catalog-toolbar>` closes this menu on a pick, so
+ * back-to-back chip states would find it open, then closed.
+ *
+ * So the chip states ask for it open and do not care what came before, exactly as the viewer's
+ * equivalent does. Through the summary rather than by setting `open`, so it keeps testing the
+ * control a reader actually uses.
+ */
+async function openCatalogThemeBar(page) {
+    const bar = page.locator("#cp-catalog-theme-bar");
+    if ((await bar.count()) && (await bar.isHidden()))
+        await page.click(".cp-catalog-theme > summary");
+}
+
 const FIXTURE_STATES = [
     {
         // A component under the POINTER. The sheet carries no resting marks, so this is the whole
@@ -1247,6 +1266,7 @@ const FIXTURE_STATES = [
             const wantDark = await page.evaluate(
                 () => !window.matchMedia("(prefers-color-scheme: dark)").matches,
             );
+            await openCatalogThemeBar(page);
             await page.click(`[data-theme-choice="${wantDark ? "dark" : "light"}"]`);
             await page.waitForFunction(
                 (cls) => document.documentElement.classList.contains(cls),
@@ -1477,6 +1497,11 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-declared-themes",
         suffix: "daemon-connected",
         apply: async (page) => {
+            // The state before this one (`mobile-theme`) leaves the Theme menu open, and the
+            // runner restores the viewport between states but not the DOM. This shot is about a
+            // pill in the header, so it takes the page back to resting first — and so do the
+            // daemon/theme states after it, which inherit from here.
+            await closeLandingMenus(page);
             await page.route("**/api/daemons*", (route) =>
                 route.fulfill({
                     status: 200,
@@ -1549,6 +1574,7 @@ const FIXTURE_STATES = [
             await page.evaluate(() => {
                 themeRenderRetries = 0;
             });
+            await openCatalogThemeBar(page);
             await page.getByRole("button", { name: "Brand Light" }).click();
             await page.waitForSelector(".cp-theme-render-error");
         },
@@ -1575,6 +1601,7 @@ const FIXTURE_STATES = [
                 }
                 return new Promise(() => {});
             });
+            await openCatalogThemeBar(page);
             await page.getByRole("button", { name: "Brand Dark" }).click();
             await page.waitForSelector(".cp-reloading");
         },
@@ -1738,6 +1765,7 @@ const FIXTURE_STATES = [
                     body: "NotFoundException: File res/drawable/ic_play.xml",
                 }),
             );
+            await openCatalogThemeBar(page);
             await page.click('[data-theme-choice^="theme:"]');
             await page.waitForSelector(".cp-theme-error");
             // Hold until the workers have settled, so the shot isn't racing a spinner. A terminal
@@ -2262,6 +2290,8 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
     await page.goto(
         "/preview-harness/fixtures/pages/serve-landing-declared-themes.html",
     );
+    // The chips are behind the landing's Theme dropdown, the same as the viewer's.
+    await openCatalogThemeBar(page);
     await page.getByRole("button", { name: "Brand Light" }).click();
 
     await expect.poll(() => completed, { timeout: 10_000 }).toBe(3);
