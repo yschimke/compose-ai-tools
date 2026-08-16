@@ -228,6 +228,8 @@ const ANNOTATIONS_PAYLOAD = {
 // the catalog-palette pair exists to show a served design system re-theming the chrome from its own
 // `tokens.dtcg.json`, which is invisible without the stylesheet the palette overrides.
 const STYLED_FIXTURES = new Set([
+  "serve-component-browser-catalog",
+  "serve-component-browser-component",
   "serve-format-compare",
   // The Remote Compose player wall. Its whole claim is a LAYOUT — one column per player, a diff
   // growing inside a player's own column — and it is only visible at all once `format-compare.js`

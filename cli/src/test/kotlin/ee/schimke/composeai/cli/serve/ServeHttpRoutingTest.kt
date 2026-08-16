@@ -1439,6 +1439,43 @@ class ServeHttpRoutingTest {
     assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
   }
 
+  @Test
+  fun `the component-browser home index includes plain local module sessions`() {
+    val localRegistry = ServeSessionRegistry(open = { null })
+    localRegistry.register("shared:ui", host = burstHost, pinned = true)
+    val localServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = localRegistry,
+          defaultSessionId = "shared:ui",
+          isPublic = true,
+          componentBrowser = true,
+          catalogSessions = listOf("shared:ui"),
+        )
+        .also { it.start() }
+    try {
+      val request = Request.Builder().url("http://127.0.0.1:${localServer.port}/").build()
+      val body = client.newCall(request).execute().use { it.body?.string().orEmpty() }
+      assertTrue(body.contains("href=\"/shared%3Aui/\""), body)
+      assertTrue(body.contains("burst"), body)
+      assertTrue(body.contains("class=\"cp-component-browser\""), body)
+
+      val devRequest =
+        Request.Builder().url("http://127.0.0.1:${localServer.port}/?chrome=dev").build()
+      val devBody = client.newCall(devRequest).execute().use { it.body?.string().orEmpty() }
+      assertFalse(devBody.contains("class=\"cp-component-browser\""), devBody)
+      assertTrue(
+        devBody.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""),
+        devBody,
+      )
+    } finally {
+      localServer.stop()
+      localRegistry.close()
+    }
+  }
+
   /**
    * Every route answers HEAD, because that is the probe a link unfurler sends before it commits to
    * downloading a page or its `og:image`. Before [io.ktor.server.plugins.autohead.AutoHeadResponse]
@@ -1816,6 +1853,91 @@ class ServeHttpRoutingTest {
   fun `an unknown system path 404s like a bad session`() {
     assertEquals(404, get("/no-such-system/").first)
     assertEquals(404, get("/no-such-system/p/$previewId").first)
+  }
+
+  @Test
+  fun `local browse sessions expose source from their contained module root`() {
+    val root = Files.createTempDirectory("local-browse-source").toFile().also { it.deleteOnExit() }
+    val relative = "src/commonMain/kotlin/example/LocalButton.kt"
+    File(root, relative).apply {
+      parentFile.mkdirs()
+      writeText(
+        """
+        package example
+
+        import androidx.compose.material3.Button
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun LocalButton() {
+          Button(onClick = {}) {}
+        }
+        """
+          .trimIndent()
+      )
+    }
+    val localId = "example.LocalButton"
+    val localHost =
+      object : ServeHost {
+        override val previews =
+          listOf(
+            ServePreview(
+              id = localId,
+              label = "Local button",
+              sourceFile = relative,
+              bodyLine = 7,
+            )
+          )
+        override val label = "local"
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Ok(png())
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+      }
+    val localRegistry = ServeSessionRegistry(open = { null })
+    localRegistry.register("local", host = localHost, pinned = true)
+    val localServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = localRegistry,
+          defaultSessionId = "local",
+          isPublic = true,
+          componentBrowser = true,
+          catalogSessions = listOf("local"),
+          localSourceRoots = mapOf("local" to root),
+        )
+        .also { it.start() }
+    try {
+      fun localGet(path: String): Pair<Int, String> {
+        val request = Request.Builder().url("http://127.0.0.1:${localServer.port}$path").build()
+        return client.newCall(request).execute().use { it.code to (it.body?.string() ?: "") }
+      }
+
+      val (pageCode, page) = localGet("/local/p/$localId")
+      assertEquals(200, pageCode)
+      assertTrue(page.contains("data-usage-src=\"/local/usage/$localId\""), page)
+
+      val (sourceCode, source) = localGet("/local/usage/$localId")
+      assertEquals(200, sourceCode)
+      assertTrue(source.contains("LocalButton"), source)
+      assertTrue(source.contains("Button(onClick"), source)
+    } finally {
+      localServer.stop()
+    }
   }
 
   @Test

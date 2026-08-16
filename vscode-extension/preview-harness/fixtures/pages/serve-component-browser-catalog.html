@@ -1,9 +1,9 @@
     <!doctype html>
-    <html lang="en" data-cp-theme-key="cp-theme:meshcore-mobile">
+    <html lang="en" data-cp-theme-key="cp-theme:compose-m3">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>meshcore-mobile — compose-preview</title>
+        <title>Compose Material 3 — compose-preview</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -12,9 +12,9 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:meshcore-mobile"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
-      <body>
+      <body class="cp-component-browser">
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
         <header class="cp-site-header">
   <div class="cp-site-lead">
@@ -22,74 +22,18 @@
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span class="cp-site-wordmark">compose-preview</span>
     </a>
-    <span class="cp-site-catalog">meshcore-mobile</span>
-    <a class="cp-back" href="/">← All design systems</a>
+  <span class="cp-site-catalog">Compose Material 3</span>
+  <a class="cp-back" href="/">← All design systems</a>
   </div>
-  <nav class="cp-site-nav" aria-label="Primary navigation">
-    <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
-      <span class="cp-interface-mode-label">Catalog / Dev mode</span>
-      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
-      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
-    </div>
-    <details class="cp-site-menu" id="cp-site-menu">
-      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
-        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
-    </details>
-    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
-      <a href="/">Catalogs</a>
-      <a class="cp-site-status-link" id="cp-status-link" href="/status">Status<span
-        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
-      <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
-      <details class="cp-settings">
-        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
-          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
-        </summary>
-        <div class="cp-settings-panel">
-          <fieldset class="cp-settings-group">
-            <legend class="cp-settings-legend">Page theme</legend>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-              <span>Match the preview theme</span>
-            </label>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-              <span>Follow my system</span>
-            </label>
-            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-              match. Turn it off to keep the page on your operating system's setting.</p>
-          </fieldset>
-          <fieldset class="cp-settings-group cp-settings-keyboard">
-            <legend class="cp-settings-legend">Keyboard</legend>
-            <label class="cp-settings-option">
-              <input type="checkbox" data-cp-keyboard-navigation>
-              <span>Power-user navigation</span>
-            </label>
-            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
-              shortcuts and an on-screen command palette.</p>
-            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
-              View keyboard tour
-            </button>
-          </fieldset>
-        </div>
-      </details>
-    </div>
-  </nav>
+  <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
+    <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+    <button type="button" data-cp-interface-mode="catalog" aria-pressed="true">Catalog</button>
+    <button type="button" data-cp-interface-mode="dev" aria-pressed="false">Dev</button>
+  </div>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">meshcore-mobile</h1></div><p class="cp-sub">9 preview(s)</p></div>
-        <div class="cp-catalog-tools">
-<div class="cp-head-toggles">
-<div class="cp-catalog-actions">
-          <details class="cp-actions-menu">
-            <summary class="cp-drawer-toggle cp-axis-toggle" title="More for this catalog" aria-label="More for this catalog" aria-controls="cp-catalog-actions-panel"><span aria-hidden="true">⋯</span></summary>
-          </details>
-          <div class="cp-actions-panel" id="cp-catalog-actions-panel">
-          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
-          </div>
-        </div>
-</div>
-</div>
-<div class="cp-catalog-body">
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Compose Material 3</h1></div></div>
+        <div class="cp-catalog-body">
 <aside class="cp-catalog-menu" aria-label="Catalog menu">
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
@@ -98,53 +42,38 @@
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog sections">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog sections">
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true" aria-expanded="true" aria-owns="cp-tree-children-themes">Themes<span class="cp-tab-count">2</span></a>
-  <ul class="cp-tree-children" id="cp-tree-children-themes" role="group">
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-themes-foundation" data-tab="themes" data-group="cp-group-themes-foundation" aria-expanded="true" aria-owns="cp-tree-of-cp-group-themes-foundation">Foundation<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-themes-foundation" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-theme-meshcore-light__ideal__default__compact" data-tab="themes" data-group="cp-card-theme-meshcore-light__ideal__default__compact">Theme · MeshCore (light)</a>
-        </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-theme-material3-light__ideal__default__compact" data-tab="themes" data-group="cp-card-theme-material3-light__ideal__default__compact">Theme · Material 3 (light)</a>
-        </li>
-      </ul>
-    </li>
-  </ul>
-</li>
-<li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-components">Components<span class="cp-tab-count">4</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="true" aria-expanded="true" aria-owns="cp-tree-children-components">Components<span class="cp-tab-count">5</span></a>
   <ul class="cp-tree-children" id="cp-tree-children-components" role="group">
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-device" data-tab="components" data-group="cp-group-components-device" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-device">Device<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-device" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-devicesummarycard-populated__ideal__default__compact" data-tab="components" data-group="cp-card-devicesummarycard-populated__ideal__default__compact">Device summary · Populated</a>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-buttons" data-tab="components" data-group="cp-group-components-buttons" aria-expanded="true" aria-owns="cp-tree-of-cp-group-components-buttons">Buttons<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-buttons" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-filled-default" data-tab="components" data-group="cp-card-button-filled-default">Button Filled</a>
         </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-devicesummarycard-loading__ideal__default__compact" data-tab="components" data-group="cp-card-devicesummarycard-loading__ideal__default__compact">Device summary · Loading</a>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-outlined-default" data-tab="components" data-group="cp-card-button-outlined-default">Button Outlined</a>
         </li>
       </ul>
     </li>
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-contacts" data-tab="components" data-group="cp-group-components-contacts" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-contacts">Contacts<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-contacts" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-contactrow-variants__ideal__default__compact" data-tab="components" data-group="cp-card-contactrow-variants__ideal__default__compact">Contact row · Variants</a>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-cards" data-tab="components" data-group="cp-group-components-cards" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-cards">Cards<span class="cp-tree-count">2</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-cards" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-elevated-default" data-tab="components" data-group="cp-card-card-elevated-default">Card Elevated</a>
         </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-contactlist-many__ideal__default__compact" data-tab="components" data-group="cp-card-contactlist-many__ideal__default__compact">Contact list · Many</a>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-filled-default" data-tab="components" data-group="cp-card-card-filled-default">Card Filled</a>
+        </li>
+      </ul>
+    </li>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-navigation" data-tab="components" data-group="cp-group-components-navigation" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-navigation">Navigation<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-navigation" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-navigation-bar-default" data-tab="components" data-group="cp-card-navigation-bar-default">Navigation Navigation Bar</a>
         </li>
       </ul>
     </li>
   </ul>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-screens">Screens<span class="cp-tab-count">3</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-screens">Screens<span class="cp-tab-count">1</span></a>
   <ul class="cp-tree-children" id="cp-tree-children-screens" role="group">
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-scanner" data-tab="screens" data-group="cp-group-screens-scanner" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-scanner">Scanner<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-scanner" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-scanner-savedpopulated__ideal__default__compact" data-tab="screens" data-group="cp-card-scanner-savedpopulated__ideal__default__compact">Scanner · Saved populated</a>
-        </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-scanner-blemany__ideal__default__compact" data-tab="screens" data-group="cp-card-scanner-blemany__ideal__default__compact">Scanner · BLE many</a>
-        </li>
-      </ul>
-    </li>
-    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-device" data-tab="screens" data-group="cp-group-screens-device" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-device">Device<span class="cp-tree-count">1</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-device" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-device-manycontacts__ideal__default__compact" data-tab="screens" data-group="cp-card-device-manycontacts__ideal__default__compact">Device · Many contacts</a>
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-account" data-tab="screens" data-group="cp-group-screens-account" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-account">Account<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-account" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-profile-screen-default" data-tab="screens" data-group="cp-card-profile-screen-default">Screens Profile</a>
         </li>
       </ul>
     </li>
@@ -154,81 +83,68 @@
 </nav>
 </aside>
 <div class="cp-sections" id="cp-grid">
-<section class="cp-section" id="cp-panel-themes" role="region" aria-labelledby="cp-tab-themes" data-section="themes">
-<h2 class="cp-section-head">Themes</h2>
-<div class="cp-subgroup" id="cp-group-themes-foundation">
-<h3 class="cp-group-head">Foundation</h3>
-<div class="cp-cards">
-<a class="cp-card" id="cp-card-theme-meshcore-light__ideal__default__compact" href="/meshcore-mobile/p/theme-meshcore-light__ideal__default__compact">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Theme · MeshCore (light)" src="/meshcore-mobile/render/theme-meshcore-light__ideal__default__compact.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="theme-meshcore-light__ideal__default__compact">Theme · MeshCore (light)</div>
-    <div class="cp-id">theme-meshcore-light__ideal__default__compact</div>
-    
-  </div>
-</a>
-<a class="cp-card" id="cp-card-theme-material3-light__ideal__default__compact" href="/meshcore-mobile/p/theme-material3-light__ideal__default__compact">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Theme · Material 3 (light)" src="/meshcore-mobile/render/theme-material3-light__ideal__default__compact.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="theme-material3-light__ideal__default__compact">Theme · Material 3 (light)</div>
-    <div class="cp-id">theme-material3-light__ideal__default__compact</div>
-    
-  </div>
-</a>
-</div>
-</div>
-</section>
 <section class="cp-section" id="cp-panel-components" role="region" aria-labelledby="cp-tab-components" data-section="components">
 <h2 class="cp-section-head">Components</h2>
-<div class="cp-subgroup" id="cp-group-components-device">
-<h3 class="cp-group-head">Device</h3>
+<div class="cp-subgroup" id="cp-group-components-buttons">
+<h3 class="cp-group-head">Buttons</h3>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-devicesummarycard-populated__ideal__default__compact" href="/meshcore-mobile/p/devicesummarycard-populated__ideal__default__compact">
+<a class="cp-card" id="cp-card-button-filled-default" href="/compose-m3/p/button-filled-default">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Device summary · Populated" src="/meshcore-mobile/render/devicesummarycard-populated__ideal__default__compact.png">
+    <img loading="lazy" alt="Button Filled" src="/compose-m3/render/button-filled-default.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="devicesummarycard-populated__ideal__default__compact">Device summary · Populated</div>
-    <div class="cp-id">devicesummarycard-populated__ideal__default__compact</div>
+    <div class="cp-label" title="button-filled-default">Button Filled</div>
+    
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-devicesummarycard-loading__ideal__default__compact" href="/meshcore-mobile/p/devicesummarycard-loading__ideal__default__compact">
+<a class="cp-card" id="cp-card-button-outlined-default" href="/compose-m3/p/button-outlined-default">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Device summary · Loading" src="/meshcore-mobile/render/devicesummarycard-loading__ideal__default__compact.png">
+    <img loading="lazy" alt="Button Outlined" src="/compose-m3/render/button-outlined-default.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="devicesummarycard-loading__ideal__default__compact">Device summary · Loading</div>
-    <div class="cp-id">devicesummarycard-loading__ideal__default__compact</div>
+    <div class="cp-label" title="button-outlined-default">Button Outlined</div>
+    
     
   </div>
 </a>
 </div>
 </div>
-<div class="cp-subgroup" id="cp-group-components-contacts">
-<h3 class="cp-group-head">Contacts</h3>
+<div class="cp-subgroup" id="cp-group-components-cards">
+<h3 class="cp-group-head">Cards</h3>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-contactrow-variants__ideal__default__compact" href="/meshcore-mobile/p/contactrow-variants__ideal__default__compact">
+<a class="cp-card" id="cp-card-card-elevated-default" href="/compose-m3/p/card-elevated-default">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Contact row · Variants" src="/meshcore-mobile/render/contactrow-variants__ideal__default__compact.png">
+    <img loading="lazy" alt="Card Elevated" src="/compose-m3/render/card-elevated-default.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="contactrow-variants__ideal__default__compact">Contact row · Variants</div>
-    <div class="cp-id">contactrow-variants__ideal__default__compact</div>
+    <div class="cp-label" title="card-elevated-default">Card Elevated</div>
+    
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-contactlist-many__ideal__default__compact" href="/meshcore-mobile/p/contactlist-many__ideal__default__compact">
+<a class="cp-card" id="cp-card-card-filled-default" href="/compose-m3/p/card-filled-default">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Contact list · Many" src="/meshcore-mobile/render/contactlist-many__ideal__default__compact.png">
+    <img loading="lazy" alt="Card Filled" src="/compose-m3/render/card-filled-default.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="contactlist-many__ideal__default__compact">Contact list · Many</div>
-    <div class="cp-id">contactlist-many__ideal__default__compact</div>
+    <div class="cp-label" title="card-filled-default">Card Filled</div>
+    
+    
+  </div>
+</a>
+</div>
+</div>
+<div class="cp-subgroup" id="cp-group-components-navigation">
+<h3 class="cp-group-head">Navigation</h3>
+<div class="cp-cards">
+<a class="cp-card" id="cp-card-navigation-bar-default" href="/compose-m3/p/navigation-bar-default">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Navigation Navigation Bar" src="/compose-m3/render/navigation-bar-default.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="navigation-bar-default">Navigation Navigation Bar</div>
+    
     
   </div>
 </a>
@@ -237,41 +153,16 @@
 </section>
 <section class="cp-section" id="cp-panel-screens" role="region" aria-labelledby="cp-tab-screens" data-section="screens">
 <h2 class="cp-section-head">Screens</h2>
-<div class="cp-subgroup" id="cp-group-screens-scanner">
-<h3 class="cp-group-head">Scanner</h3>
+<div class="cp-subgroup" id="cp-group-screens-account">
+<h3 class="cp-group-head">Account</h3>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-scanner-savedpopulated__ideal__default__compact" href="/meshcore-mobile/p/scanner-savedpopulated__ideal__default__compact">
+<a class="cp-card" id="cp-card-profile-screen-default" href="/compose-m3/p/profile-screen-default">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Scanner · Saved populated" src="/meshcore-mobile/render/scanner-savedpopulated__ideal__default__compact.png">
+    <img loading="lazy" alt="Screens Profile" src="/compose-m3/render/profile-screen-default.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="scanner-savedpopulated__ideal__default__compact">Scanner · Saved populated</div>
-    <div class="cp-id">scanner-savedpopulated__ideal__default__compact</div>
+    <div class="cp-label" title="profile-screen-default">Screens Profile</div>
     
-  </div>
-</a>
-<a class="cp-card" id="cp-card-scanner-blemany__ideal__default__compact" href="/meshcore-mobile/p/scanner-blemany__ideal__default__compact">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Scanner · BLE many" src="/meshcore-mobile/render/scanner-blemany__ideal__default__compact.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="scanner-blemany__ideal__default__compact">Scanner · BLE many</div>
-    <div class="cp-id">scanner-blemany__ideal__default__compact</div>
-    
-  </div>
-</a>
-</div>
-</div>
-<div class="cp-subgroup" id="cp-group-screens-device">
-<h3 class="cp-group-head">Device</h3>
-<div class="cp-cards">
-<a class="cp-card" id="cp-card-device-manycontacts__ideal__default__compact" href="/meshcore-mobile/p/device-manycontacts__ideal__default__compact">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Device · Many contacts" src="/meshcore-mobile/render/device-manycontacts__ideal__default__compact.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="device-manycontacts__ideal__default__compact">Device · Many contacts</div>
-    <div class="cp-id">device-manycontacts__ideal__default__compact</div>
     
   </div>
 </a>
@@ -306,7 +197,7 @@
   var tabSections = document.querySelectorAll(".cp-section");
   var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
   try {
-    var storedTab = localStorage.getItem("cp-tab:meshcore-mobile");
+    var storedTab = localStorage.getItem("cp-tab:compose-m3");
     tabBtns.forEach(function (t) {
       if (t.getAttribute("data-tab") === storedTab) current = storedTab;
     });
@@ -383,7 +274,7 @@
     t.addEventListener("click", function (e) {
       e.preventDefault();
       current = t.getAttribute("data-tab");
-      try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
+      try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
       reflectTabs();
       pushUrl({ tab: current });
       apply();
@@ -424,7 +315,7 @@
     function selectTab(slug) {
       if (!slug || slug === current) return;
       current = slug;
-      try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
+      try { localStorage.setItem("cp-tab:compose-m3", current); } catch (e) {}
       reflectTabs();
       pushUrl({ tab: current });
       apply();
@@ -692,21 +583,13 @@
   })();
   apply();
 })();</script>
-<div class="cp-catalog-download"><a class="cp-action-chip" href="/meshcore-mobile/bundle.zip">download all (.zip)</a></div>
-
         <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
              into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
              again above 640px, and the summary tally drops below the grid. Renders nothing;
              `serve.css` hides the tag. -->
         <cp-catalog-toolbar></cp-catalog-toolbar>
         </main>
-        <footer class="cp-site-footer">
-          <div class="cp-site-footer-links">
-            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
-            <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
-          </div>
-        </footer>
-        <script>(function(){var active="dev",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
-        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
+        <script>(function(){var active="catalog",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
+        
       </body>
     </html>

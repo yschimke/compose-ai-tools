@@ -616,6 +616,7 @@ $noteBlock        <div class="cp-site-footer-links">
      * which keep the bare brand.
      */
     siteName: String = "",
+    componentBrowser: Boolean = false,
   ): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
@@ -624,6 +625,30 @@ $noteBlock        <div class="cp-site-footer-links">
         .takeIf { it.isNotBlank() }
         ?.let { "\n          <span class=\"cp-site-catalog\">${WebEscaping.htmlEscape(it)}</span>" }
         ?: ""
+    val modeToggle =
+      """
+      <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
+        <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+        <button type="button" data-cp-interface-mode="catalog" aria-pressed="${componentBrowser}">Catalog</button>
+        <button type="button" data-cp-interface-mode="dev" aria-pressed="${!componentBrowser}">Dev</button>
+      </div>
+      """
+        .trimIndent()
+    val modeToggleHtml = modeToggle.prependIndent("          ").trimStart()
+    if (componentBrowser) {
+      return """
+        <header class="cp-site-header">
+          <div class="cp-site-lead">
+            <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
+              <span class="cp-site-mark" aria-hidden="true">◇</span>
+              <span class="cp-site-wordmark">compose-preview</span>
+            </a>$name$crumb
+          </div>
+          $modeToggleHtml
+        </header>
+        """
+        .trimIndent()
+    }
     return """
       <header class="cp-site-header">
         <div class="cp-site-lead">
@@ -633,6 +658,7 @@ $noteBlock        <div class="cp-site-footer-links">
           </a>$name$crumb
         </div>
         <nav class="cp-site-nav" aria-label="Primary navigation">
+          $modeToggleHtml
           <details class="cp-site-menu" id="cp-site-menu">
             <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
               aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
@@ -3888,8 +3914,8 @@ $noteBlock        <div class="cp-site-footer-links">
   data class ComponentSearchEntry(val previewId: String, val label: String, val keywords: String)
 
   /**
-   * Project a catalog's previews to the same component cards its landing page exposes. Theme,
-   * state and props renders collapse to their component's default card; genuine size variants stay
+   * Project a catalog's previews to the same component cards its landing page exposes. Theme, state
+   * and props renders collapse to their component's default card; genuine size variants stay
    * separate and receive the same disambiguating suffix as the visible grid.
    */
   fun componentSearchEntries(
@@ -4019,8 +4045,9 @@ $noteBlock        <div class="cp-site-footer-links">
     /** Absolute page + representative hero URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
     githubAuth: GitHubAuthStatus? = null,
+    componentBrowser: Boolean = false,
   ): String {
-    val headerAction = githubAuthControl(githubAuth)
+    val headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth)
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     fun card(s: HomeSystem): String {
@@ -4054,17 +4081,35 @@ $noteBlock        <div class="cp-site-footer-links">
           ?.takeIf { it.isNotBlank() }
           ?.let { "\n            <div class=\"cp-sys-desc\">${WebEscaping.htmlEscape(it)}</div>" }
           ?: ""
+      val provenance =
+        if (!componentBrowser) ""
+        else
+          s.sourceRepo
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+              "\n            <div class=\"cp-browser-provenance\">${WebEscaping.htmlEscape(it)}</div>"
+            } ?: ""
+      val technicalId =
+        if (componentBrowser) "" else "\n          <div class=\"cp-id\">$sysId</div>"
+      val totals =
+        if (componentBrowser) ""
+        else
+          "\n          <div class=\"cp-sys-foot\">${s.previewCount} preview(s)" +
+            (if (s.views > 0) " · ${formatViews(s.views)}" else "") +
+            "</div>"
       // A dark-first (Wear) system backs its hero on the dark stage — same `data-bg-theme` hook the
       // catalog grid and viewer use — so a light-on-transparent Wear sticker isn't washed out on
       // white.
       val bg = if (s.darkStage) " data-bg-theme=\"dark\"" else ""
+      val searchAttr =
+        if (!componentBrowser) ""
+        else
+          " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
       return """
-      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix">
+      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix"$searchAttr>
         <div class="cp-imgwrap">$img</div>
         <div class="cp-meta">
-          <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>
-          <div class="cp-id">$sysId</div>$desc
-          <div class="cp-sys-foot">${s.previewCount} preview(s)${if (s.views > 0) " · ${formatViews(s.views)}" else ""}</div>
+          <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance$totals
         </div>
       </a>
       """
@@ -4078,7 +4123,7 @@ $noteBlock        <div class="cp-site-footer-links">
       return """
       <div class="cp-section-title">
         <h1 class="cp-head">$head</h1>
-        <span class="cp-section-count">$count</span>
+        ${if (componentBrowser) "" else "<span class=\"cp-section-count\">$count</span>"}
       </div>
       <div class="cp-grid cp-syslist" id="$gridId">
       ${list.joinToString("\n") { card(it) }}
@@ -4087,10 +4132,32 @@ $noteBlock        <div class="cp-site-footer-links">
         .trimIndent()
     }
     val sections = homeSections(systems)
+    val catalogSearch =
+      if (!componentBrowser || systems.isEmpty()) ""
+      else
+        """
+        <div class="cp-browser-home-tools">
+          <label class="cp-search"><span aria-hidden="true">⌕</span><input id="cp-browser-catalog-search" type="search" autocomplete="off" placeholder="Search catalogs" aria-label="Search catalogs"></label>
+        </div>
+        <p id="cp-browser-catalog-empty" class="cp-empty" hidden>No catalogs match your search.</p>
+        """
+          .trimIndent() +
+          """
+          <script>(function(){var q=document.getElementById("cp-browser-catalog-search"),e=document.getElementById("cp-browser-catalog-empty");if(!q)return;q.addEventListener("input",function(){var n=q.value.trim().toLowerCase(),shown=0;document.querySelectorAll(".cp-sys").forEach(function(c){var hit=!n||(c.getAttribute("data-browser-search")||"").indexOf(n)>=0;c.hidden=!hit;if(hit)shown++;});document.querySelectorAll(".cp-section-title").forEach(function(h){var g=h.nextElementSibling;h.hidden=!!g&&!Array.prototype.some.call(g.children,function(c){return !c.hidden;});});if(e)e.hidden=shown!==0;});})();</script>
+          """
+            .trimIndent()
     val body =
       if (systems.isEmpty()) {
         "<h1 class=\"cp-head\">Design Systems</h1>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
+      } else if (componentBrowser) {
+        catalogSearch +
+          "\n" +
+          sections
+            .mapIndexed { index, s ->
+              section(s.heading, s.systems, s.noun, if (index == 0) "cp-grid" else "cp-grid-$index")
+            }
+            .joinToString("\n")
       } else {
         sections
           .mapIndexed { index, s ->
@@ -4100,8 +4167,7 @@ $noteBlock        <div class="cp-site-footer-links">
       }
     val globalComponents =
       if (systems.isEmpty()) ""
-      else
-        "<span hidden data-cp-global-components=\"/api/components$suffix\"></span>\n"
+      else "<span hidden data-cp-global-components=\"/api/components$suffix\"></span>\n"
     return document(
       title = "$HOME_TITLE — compose-preview",
       unfurlTitle = HOME_TITLE,
@@ -4111,6 +4177,7 @@ $noteBlock        <div class="cp-site-footer-links">
       headerAction = headerAction,
       version = version,
       body = body + if (globalComponents.isEmpty()) "" else "\n$globalComponents",
+      componentBrowser = componentBrowser,
     )
   }
 
@@ -6238,7 +6305,19 @@ $noteBlock        <div class="cp-site-footer-links">
     sessionInOrigin: Boolean = false,
     /** Validated catalog-published issues, matched onto each component card. */
     parityIssues: List<ParityIssue> = emptyList(),
+    componentBrowser: Boolean = false,
   ): String {
+    @Suppress("NAME_SHADOWING") val designPages = if (componentBrowser) emptyList() else designPages
+    @Suppress("NAME_SHADOWING")
+    val parityIssues = if (componentBrowser) emptyList() else parityIssues
+    @Suppress("NAME_SHADOWING") val hasSvgComparison = hasSvgComparison && !componentBrowser
+    @Suppress("NAME_SHADOWING") val hasRcComparison = hasRcComparison && !componentBrowser
+    @Suppress("NAME_SHADOWING")
+    val hasReferenceComparison = hasReferenceComparison && !componentBrowser
+    @Suppress("NAME_SHADOWING") val hasParityView = hasParityView && !componentBrowser
+    @Suppress("NAME_SHADOWING") val playgroundHref = playgroundHref?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING")
+    val degradations = if (componentBrowser) emptyList() else degradations
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
     // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
@@ -6250,7 +6329,7 @@ $noteBlock        <div class="cp-site-footer-links">
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
     val catalogId =
-      if (heading == moduleLabel) ""
+      if (componentBrowser || heading == moduleLabel) ""
       else "<p class=\"cp-catalog-id\">${WebEscaping.htmlEscape(moduleLabel)}</p>"
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
     // variants keep their own token. Only affects the background — the Light/Dark filter axis below
@@ -6267,33 +6346,36 @@ $noteBlock        <div class="cp-site-footer-links">
     val groups =
       groupPreviews(
         previews.filterNot {
-          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+          (componentBrowser && it.renderFailure != null) ||
+            (it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it)))
         }
       )
     val cardAnchors = mintCardAnchors(groups)
     val renderFailureSummary =
-      previews
-        .mapNotNull { it.renderFailure }
-        .groupBy { it.errorClass to it.message }
-        .takeIf { it.isNotEmpty() }
-        ?.let { failures ->
-          buildString {
-            val total = failures.values.sumOf { it.size }
-            append("<aside class=\"cp-render-failure-summary\"><strong>$total failed render")
-            if (total != 1) append("s")
-            append("</strong><ul>")
-            failures.forEach { (signature, occurrences) ->
-              append("<li><span>")
-              append(WebEscaping.htmlEscape(signature.first.substringAfterLast('.')))
-              if (signature.second.isNotBlank()) {
-                append(": ")
-                append(WebEscaping.htmlEscape(signature.second))
+      if (componentBrowser) ""
+      else
+        previews
+          .mapNotNull { it.renderFailure }
+          .groupBy { it.errorClass to it.message }
+          .takeIf { it.isNotEmpty() }
+          ?.let { failures ->
+            buildString {
+              val total = failures.values.sumOf { it.size }
+              append("<aside class=\"cp-render-failure-summary\"><strong>$total failed render")
+              if (total != 1) append("s")
+              append("</strong><ul>")
+              failures.forEach { (signature, occurrences) ->
+                append("<li><span>")
+                append(WebEscaping.htmlEscape(signature.first.substringAfterLast('.')))
+                if (signature.second.isNotBlank()) {
+                  append(": ")
+                  append(WebEscaping.htmlEscape(signature.second))
+                }
+                append("</span><strong>×${occurrences.size}</strong></li>")
               }
-              append("</span><strong>×${occurrences.size}</strong></li>")
+              append("</ul></aside>\n")
             }
-            append("</ul></aside>\n")
-          }
-        } ?: ""
+          } ?: ""
     // Size/breakpoint variants intentionally remain separate cards, but catalog-authored labels
     // often omit that axis (for example three "Edgebutton" cards at Small/Large/XL Round). Add a
     // qualifier only when the base label actually collides, keeping ordinary one-card labels terse.
@@ -6376,8 +6458,8 @@ $noteBlock        <div class="cp-site-footer-links">
           </div>
           <div class="cp-meta">
             <div class="cp-label" title="${WebEscaping.htmlEscape(def.id)}">${WebEscaping.htmlEscape(defaultLabel)}</div>
-            <div class="cp-id">${WebEscaping.htmlEscape(def.id)}</div>$issueBadge
-            ${viewCountHtml(cardViews(card))}
+            ${if (componentBrowser) "" else "<div class=\"cp-id\">${WebEscaping.htmlEscape(def.id)}</div>"}$issueBadge
+            ${if (componentBrowser) "" else viewCountHtml(cardViews(card))}
           </div>
         </a>
         """
@@ -6437,8 +6519,8 @@ $noteBlock        <div class="cp-site-footer-links">
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>
-              <div class="cp-id">$idText</div>$issueBadge
-              ${viewCountHtml(engagement[p.id]?.views ?: 0L)}
+              ${if (componentBrowser) "" else "<div class=\"cp-id\">$idText</div>"}$issueBadge
+              ${if (componentBrowser) "" else viewCountHtml(engagement[p.id]?.views ?: 0L)}
             </div>
           </a>
           """
@@ -6642,17 +6724,19 @@ $noteBlock        <div class="cp-site-footer-links">
     // [themeBaseJs]) — a card's entry is its light/dark pair of ids, or a pair of empty strings
     // when this session can't stream it.
     val liveScript =
-      catalogLiveScript(
-        basePath = basePath,
-        query = linkQuery(token, linkSessionId, basePath, isPublic),
-        cards =
-          orderedCards.map { card ->
-            fun streamable(p: ServePreview) = if (canStreamLiveFor(p.id)) p.id else ""
-            if (card.swappable) streamable(card.light!!) to streamable(card.dark!!)
-            else streamable(card.default).let { it to it }
-          },
-        signInHref = liveSignInHref,
-      )
+      if (componentBrowser) ""
+      else
+        catalogLiveScript(
+          basePath = basePath,
+          query = linkQuery(token, linkSessionId, basePath, isPublic),
+          cards =
+            orderedCards.map { card ->
+              fun streamable(p: ServePreview) = if (canStreamLiveFor(p.id)) p.id else ""
+              if (card.swappable) streamable(card.light!!) to streamable(card.dark!!)
+              else streamable(card.default).let { it to it }
+            },
+          signInHref = liveSignInHref,
+        )
     // Discoverability for the gesture: the per-card affordance only appears on hover, so the
     // header says once that the lane exists. Shown exactly when a card can actually take it.
     val liveNote =
@@ -6713,7 +6797,9 @@ $noteBlock        <div class="cp-site-footer-links">
         )
         .joinToString("\n          ")
     val transparentAction =
-      if (hasPreviews) bgPickerHtml("Show the transparent checkerboard behind each preview") else ""
+      if (hasPreviews && !componentBrowser)
+        bgPickerHtml("Show the transparent checkerboard behind each preview")
+      else ""
     val catalogActions =
       listOf(actionChips, transparentAction).filter { it.isNotBlank() }.joinToString("\n          ")
     // …behind one `⋯` menu beside the Theme pill, at every width. These are the catalog's
@@ -6735,17 +6821,21 @@ $noteBlock        <div class="cp-site-footer-links">
             "          $it\n          </div>\n        </div>\n"
         } ?: ""
     val downloadAction =
-      "\n<div class=\"cp-catalog-download\">" +
-        actionChip("$basePath/bundle.zip$q", "download all (.zip)") +
-        "</div>\n"
+      if (componentBrowser) ""
+      else
+        "\n<div class=\"cp-catalog-download\">" +
+          actionChip("$basePath/bundle.zip$q", "download all (.zip)") +
+          "</div>\n"
     // The viewer's identity line, on the landing: name, trust verdict, id and the preview/view
     // tally on ONE baseline (`.cp-preview-head` does the same three above the render). They all
     // answer "what am I looking at", and as two stacked blocks with a chip row under them they
     // answered it across three rows of a fold that is meant to be showing previews.
     val subLine =
-      "<p class=\"cp-sub\">${previews.size} preview(s)" +
-        (if (systemViews > 0) " · ${formatViews(systemViews)}" else "") +
-        "$liveNote</p>"
+      if (componentBrowser) ""
+      else
+        "<p class=\"cp-sub\">${previews.size} preview(s)" +
+          (if (systemViews > 0) " · ${formatViews(systemViews)}" else "") +
+          "$liveNote</p>"
     val titleRow =
       "<div class=\"cp-catalog-head-row\">" +
         "<div class=\"cp-catalog-title\">" +
@@ -6772,7 +6862,7 @@ $noteBlock        <div class="cp-site-footer-links">
       navSuffix = navSuffix,
       headerBreadcrumb = back,
       version = version,
-      footerNote = prov,
+      footerNote = if (componentBrowser) "" else prov,
       themeCss = themeCss,
       // The bar names the catalog you are in, from the same heading the page shows.
       siteName = heading,
@@ -6789,6 +6879,7 @@ $noteBlock        <div class="cp-site-footer-links">
         <cp-catalog-toolbar></cp-catalog-toolbar>
         """
           .trimIndent(),
+      componentBrowser = componentBrowser,
     )
   }
 
@@ -8625,7 +8716,25 @@ $rows
      */
     sessionInOrigin: Boolean = false,
     parityIssues: List<ParityIssue> = emptyList(),
+    componentBrowser: Boolean = false,
   ): String {
+    @Suppress("NAME_SHADOWING")
+    val designReference = designReference?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING") val sourceHref = sourceHref?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING") val reportIssue = reportIssue?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING") val figmaSpec = figmaSpec?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING") val playgroundHref = playgroundHref?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING")
+    val historyManifestUrl = historyManifestUrl?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING") val historyRepo = historyRepo?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING")
+    val historyInlineJson = historyInlineJson?.takeUnless { componentBrowser }
+    @Suppress("NAME_SHADOWING")
+    val revisions = if (componentBrowser) CatalogRevisions.NONE else revisions
+    @Suppress("NAME_SHADOWING")
+    val parityIssues = if (componentBrowser) emptyList() else parityIssues
+    @Suppress("NAME_SHADOWING")
+    val degradations = if (componentBrowser) emptyList() else degradations
     // The session id links may carry. Null on a rooted site (and for the default session): the
     // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
     // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
@@ -8648,15 +8757,21 @@ $rows
     val pinned = revisions.pinned
     @Suppress("NAME_SHADOWING") val canApplyOverrides = canApplyOverrides && pinned == null
     @Suppress("NAME_SHADOWING") val canRenderOverrides = canRenderOverrides && pinned == null
-    @Suppress("NAME_SHADOWING") val hasLiveStream = hasLiveStream && pinned == null
+    @Suppress("NAME_SHADOWING")
+    val hasLiveStream = hasLiveStream && pinned == null && !componentBrowser
     @Suppress("NAME_SHADOWING") val wasmSrc = wasmSrc?.takeIf { pinned == null }
     @Suppress("NAME_SHADOWING") val hasSvgExport = hasSvgExport && pinned == null
-    @Suppress("NAME_SHADOWING") val hasScrollExport = hasScrollExport && pinned == null
-    @Suppress("NAME_SHADOWING") val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null
     @Suppress("NAME_SHADOWING")
-    val enabledRcPlayers = if (pinned == null) enabledRcPlayers else emptyList()
-    @Suppress("NAME_SHADOWING") val hasA11yOverlay = hasA11yOverlay && pinned == null
-    @Suppress("NAME_SHADOWING") val hasDesignAnnotations = hasDesignAnnotations && pinned == null
+    val hasScrollExport = hasScrollExport && pinned == null && !componentBrowser
+    @Suppress("NAME_SHADOWING")
+    val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null && !componentBrowser
+    @Suppress("NAME_SHADOWING")
+    val enabledRcPlayers =
+      if (pinned == null && !componentBrowser) enabledRcPlayers else emptyList()
+    @Suppress("NAME_SHADOWING")
+    val hasA11yOverlay = hasA11yOverlay && pinned == null && !componentBrowser
+    @Suppress("NAME_SHADOWING")
+    val hasDesignAnnotations = hasDesignAnnotations && pinned == null && !componentBrowser
     // A published capture is a file on the branch exactly as the baked render and the design
     // reference are, so by the pinned-page rule it ought to STAY and take the pin. It cannot yet:
     // `/motion/<id><ext>` reads the branch tip the session is holding, with no revision to resolve
@@ -8666,12 +8781,12 @@ $rows
     // route learns to resolve a capture at a revision this becomes `withPin` like the reference.
     val motionCaptures = if (pinned == null) preview.motion else emptyList()
     @Suppress("NAME_SHADOWING")
-    val executableBundleHref = executableBundleHref?.takeIf { pinned == null }
+    val executableBundleHref = executableBundleHref?.takeIf { pinned == null && !componentBrowser }
     val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val displayName = previewDisplayName(preview)
-    val issueRows = parityIssueRowsHtml(parityIssues)
+    val issueRows = if (componentBrowser) "" else parityIssueRowsHtml(parityIssues)
     val label = WebEscaping.htmlEscape(displayName)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
@@ -8720,7 +8835,7 @@ $rows
     // render. Offered only when the session can export SVG ([hasSvgExport]), the same gate as the
     // SVG direct-link row.
     val svgFmtToggle =
-      if (hasSvgExport)
+      if (hasSvgExport && !componentBrowser)
         "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
@@ -8730,13 +8845,13 @@ $rows
     // per-preview [hasSvgExport]: with no layered export there is nothing to pull apart, so the
     // control is omitted rather than offered dead.
     val explodeToggle =
-      if (hasSvgExport)
+      if (hasSvgExport && !componentBrowser)
         "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show how the visible drawing layers are " +
           "composed\">3D</button>"
       else ""
     val svgMatch =
-      if (hasSvgExport) {
+      if (hasSvgExport && !componentBrowser) {
         val compareQuery =
           listOf(
               "format=svg",
@@ -8980,12 +9095,26 @@ $rows
       if (!usageAvailable) ""
       else {
         val tip = "Show the plain Compose that produces this render"
-        "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip\" " +
+        val tabClass = if (componentBrowser) " cp-browser-tab" else ""
+        val tabAttrs = if (componentBrowser) " role=\"tab\" aria-selected=\"false\"" else ""
+        "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
           "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
           "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
           "data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">Source</button>"
       }
+    val browserPreviewTab =
+      if (!componentBrowser || !usageAvailable) ""
+      else
+        "<button type=\"button\" id=\"cp-browser-preview-tab\" " +
+          "class=\"cp-spec-chip cp-browser-tab\" role=\"tab\" aria-selected=\"true\">Preview</button>"
+    val browserTabsScript =
+      if (!componentBrowser) ""
+      else
+        """
+        <script>(function(){var p=document.getElementById("cp-browser-preview-tab"),s=document.getElementById("cp-source-chip"),r=document.getElementById("cp-source-toggle"),w=document.getElementById("cp-wasm-toggle");function wasm(){if(!w)return;w.checked=true;w.dispatchEvent(new Event("change",{bubbles:true}));}function sync(){if(!p||!s||!r)return;var source=!!r.checked;p.setAttribute("aria-selected",source?"false":"true");s.setAttribute("aria-selected",source?"true":"false");}if(p&&s&&r){p.addEventListener("click",function(){if(r.checked)s.click();setTimeout(function(){if(!r.checked)wasm();sync();},0);});s.addEventListener("click",function(){setTimeout(function(){if(!r.checked)wasm();sync();},0);});window.addEventListener("popstate",function(){setTimeout(sync,0);});}var requested=new URLSearchParams(location.search).get("mode");if(w&&!requested)wasm();setTimeout(sync,0);})();</script>
+        """
+          .trimIndent()
     // ---- The Motion lane -------------------------------------------------------------------
     //
     // The recorded interaction behind this card, on the stage in place of the still.
@@ -9109,7 +9238,7 @@ $rows
     // as two controls arguing about the same fact ("Java  [Java ▾]"). So the chip answers *what am
     // I looking at* and this answers *what else could I look at* — which is the whole split.
     val laneSelectHtml =
-      if (lanes.size < 2) ""
+      if (componentBrowser || lanes.size < 2) ""
       else
         lanes.joinToString(
           separator = "",
@@ -9357,20 +9486,22 @@ $rows
         else -> "size, locale, font scale"
       }
     val snapshotNote =
-      when {
-        overridesLive -> ""
-        wasmSrc != null ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — turn on <strong>Live preview</strong> to " +
-            "interact. Day/Night, Font scale, Locale &amp; declared knob values apply in " +
-            "the browser; " +
-            serverOnlyOverrideNote +
-            "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
-        else ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (" +
-            snapshotOverrideList +
-            ") need the live server, not a published catalog. " +
-            "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
-      }
+      if (componentBrowser) ""
+      else
+        when {
+          overridesLive -> ""
+          wasmSrc != null ->
+            "<div class=\"cp-note\">Pre-rendered snapshot — turn on <strong>Live preview</strong> to " +
+              "interact. Day/Night, Font scale, Locale &amp; declared knob values apply in " +
+              "the browser; " +
+              serverOnlyOverrideNote +
+              "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
+          else ->
+            "<div class=\"cp-note\">Pre-rendered snapshot — overrides (" +
+              snapshotOverrideList +
+              ") need the live server, not a published catalog. " +
+              "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
+        }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
     // One Theme axis replaces the separate Day/Night + app-theme controls. The two defaults map to
@@ -9608,7 +9739,7 @@ $rows
         )
     }
     val featureControlsHtml =
-      if (featureRows.isEmpty()) ""
+      if (componentBrowser || featureRows.isEmpty()) ""
       else
         """
         <details class="cp-group" data-cp-group="features">
@@ -9642,7 +9773,8 @@ $rows
           .prependIndent("    ") + "\n"
       else ""
     val sizeControlsHtml =
-      if (isAppScreen)
+      if (componentBrowser && !isAppScreen) ""
+      else if (isAppScreen)
         """
         <details class="cp-group" data-cp-group="size">
           <summary>Size</summary>
@@ -9698,7 +9830,7 @@ $rows
     // controls only when they are needed.
     val controlsToggle =
       "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-controls-toggle\" " +
-        "aria-expanded=\"false\" aria-controls=\"cp-controls\">⚙ Overrides</button>"
+        "aria-expanded=\"false\" aria-controls=\"cp-controls\">⚙ ${if (componentBrowser) "Controls" else "Overrides"}</button>"
     // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
     // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
@@ -9717,6 +9849,69 @@ $rows
       else
         "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
           "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
+    val browserComponentNav =
+      if (!componentBrowser) ""
+      else {
+        val seeds = LinkedHashMap<String, ServePreview>()
+        siblings
+          .filter { it.renderFailure == null }
+          .forEach { candidate ->
+            val key = componentKey(candidate)
+            val existing = seeds[key]
+            val candidateIsDefault = !isNonDefaultState(candidate) && !hasNonDefaultProps(candidate)
+            val existingIsDefault =
+              existing != null && !isNonDefaultState(existing) && !hasNonDefaultProps(existing)
+            if (existing == null || (candidateIsDefault && !existingIsDefault))
+              seeds[key] = candidate
+          }
+        val components = groupPreviews(seeds.values.toList()).map { it.rendered(viewerDarkFirst) }
+        val currentIndex = components.indexOfFirst { componentKey(it) == componentKey(preview) }
+        fun linkAt(index: Int, relation: String, arrow: String): String {
+          val target = components.getOrNull(index) ?: return ""
+          val href = "$basePath/p/${WebEscaping.urlEncodeSegment(target.id)}$q"
+          return "<a class=\"cp-browser-sibling cp-browser-sibling-$relation\" href=\"$href\" " +
+            "rel=\"$relation\"><span aria-hidden=\"true\">$arrow</span>" +
+            "<span>${WebEscaping.htmlEscape(previewDisplayName(target))}</span></a>"
+        }
+        if (currentIndex < 0) ""
+        else
+          "<nav class=\"cp-browser-siblings\" aria-label=\"Adjacent components\">" +
+            linkAt(currentIndex - 1, "prev", "←") +
+            linkAt(currentIndex + 1, "next", "→") +
+            "</nav>"
+      }
+    val browserVariantLabel =
+      if (!componentBrowser) ""
+      else
+        buildList {
+            preview.state?.takeUnless { it == "default" }?.let { add(stateLabel(it)) }
+            propsLabel(preview.props).takeIf { it.isNotBlank() }?.let { add(it) }
+          }
+          .joinToString(" · ")
+    val browserBreadcrumb =
+      if (!componentBrowser) ""
+      else {
+        val parts = buildList {
+          val catalogLabel = catalogTitle?.takeIf { it.isNotBlank() } ?: "Components"
+          add("<a href=\"$basePath/$q\">${WebEscaping.htmlEscape(catalogLabel)}</a>")
+          preview.section
+            ?.takeIf { it.isNotBlank() }
+            ?.let { add("<span>${WebEscaping.htmlEscape(it)}</span>") }
+          preview.group
+            ?.takeIf { it.isNotBlank() }
+            ?.let { add("<span>${WebEscaping.htmlEscape(it)}</span>") }
+          add(
+            "<span${if (browserVariantLabel.isBlank()) " aria-current=\"page\"" else ""}>" +
+              "${WebEscaping.htmlEscape(displayName)}</span>"
+          )
+          if (browserVariantLabel.isNotBlank()) {
+            add("<span aria-current=\"page\">${WebEscaping.htmlEscape(browserVariantLabel)}</span>")
+          }
+        }
+        "<nav class=\"cp-browser-breadcrumb\" aria-label=\"Breadcrumb\">" +
+          parts.joinToString("<span class=\"cp-browser-separator\" aria-hidden=\"true\">›</span>") +
+          "</nav>"
+      }
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
     // alternatives, the design-spec chip (top level, not an option inside the combo), the two
     // subtle
@@ -9724,7 +9919,8 @@ $rows
     // currently showing.
     val primaryControls =
       listOf(
-          liveToggleHtml,
+          browserPreviewTab,
+          liveToggleHtml.takeUnless { componentBrowser }.orEmpty(),
           laneSelectHtml,
           specChipHtml,
           sourceChipHtml,
@@ -9797,7 +9993,11 @@ $rows
     // the element wires itself up as soon as its tag upgrades, so the ordering `spec-compare.js`
     // needed is preserved without a script tag of its own.
     val compareScriptTags =
-      listOfNotNull(scriptTag("format-compare.js").takeIf { hasSvgExport || specRasterUrl != null })
+      listOfNotNull(
+          scriptTag("format-compare.js").takeIf {
+            (hasSvgExport && !componentBrowser) || specRasterUrl != null
+          }
+        )
         .joinToString("") { "$it\n      " }
     // The Source lane uses the same vendored Kotlin grammar as the playground, but only on pages
     // that can actually offer source. CodeMirror is one of the deliberately selective heavy
@@ -9815,14 +10015,16 @@ $rows
     // visitor and the render. It now rides directly above the export bar, where the other
     // "take this away with you" affordances (the PNG and SVG links) already live.
     val previewLinks =
-      previewLinksHtml(
-        sourceHref,
-        preview.sourceFile,
-        reportIssue,
-        figmaSpec,
-        playgroundHref,
-        executableBundleHref,
-      )
+      if (componentBrowser) ""
+      else
+        previewLinksHtml(
+          sourceHref,
+          preview.sourceFile,
+          reportIssue,
+          figmaSpec,
+          playgroundHref,
+          executableBundleHref,
+        )
     // Every disclosure the page has, in one group, at the end of the identity row: the component
     // list, the state/variant axes, the theme chips, the overrides drawer. They were scattered —
     // two on the viewer bar, two implicit in rows that were simply always open — which is why the
@@ -9844,15 +10046,19 @@ $rows
     val headTogglesHtml =
       if (headToggles.isEmpty()) ""
       else "\n        <div class=\"cp-head-toggles\">${headToggles.joinToString("")}</div>"
+    val browserVariant =
+      if (!componentBrowser) ""
+      else if (browserVariantLabel.isBlank()) ""
+      else "<p class=\"cp-browser-variant\">" + WebEscaping.htmlEscape(browserVariantLabel) + "</p>"
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
       """
-      $sourceCodeStylesheet<div class="cp-preview-head">
+      $sourceCodeStylesheet${if (browserBreadcrumb.isBlank()) "" else "$browserBreadcrumb\n      "}<div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
-        <code class="cp-preview-id" title="$idText">$idText</code>
-        ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
-      </div>
+        ${if (componentBrowser) "" else "<code class=\"cp-preview-id\" title=\"$idText\">$idText</code>"}
+        ${if (componentBrowser) "" else viewerViewCountHtml(engagement.views)}$headTogglesHtml
+      </div>${if (browserVariant.isBlank()) "" else "\n      $browserVariant"}
       $revisionBanner${degradeBanner(degradations)}$issueRows
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
@@ -9885,7 +10091,7 @@ $rows
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           $themeSelectorHtml
           $sizeControlsHtml
-          ${exportShapeGroupsHtml(hasScrollExport, hasSvgExport)}
+          ${if (componentBrowser) "" else exportShapeGroupsHtml(hasScrollExport, hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -9908,7 +10114,7 @@ $rows
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
-          ${remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides || hasRcWasm)}
+          ${if (componentBrowser) "" else remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides || hasRcWasm)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -9919,7 +10125,7 @@ $rows
       <div class="cp-below">
         $snapshotNote
       </div>$previewLinks
-      ${downloadLinksHtml(hasSvgExport)}
+      ${downloadLinksHtml(hasSvgExport)}${if (browserComponentNav.isBlank()) "" else "\n      $browserComponentNav"}
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
@@ -9934,7 +10140,7 @@ $rows
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
       ${presenceScriptTag(presenceUrl)}
-      $compareScriptTags$sourceCodeScriptTag${scriptTag("viewer.js")}
+      $compareScriptTags$sourceCodeScriptTag${scriptTag("viewer.js")}$browserTabsScript
       """
         .trimIndent()
         .lineSequence()
@@ -9960,6 +10166,7 @@ $rows
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
       // carries a captured document.
       rcFonts = hasRemoteComposeDoc,
+      componentBrowser = componentBrowser,
     )
   }
 
@@ -10101,6 +10308,8 @@ $rows
      * deliberately system-font, and a page with no canvas lane shouldn't carry the block.
      */
     rcFonts: Boolean = false,
+    /** Streamlined component-browser chrome; full mode remains the default. */
+    componentBrowser: Boolean = false,
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -10152,7 +10361,8 @@ $rows
           .trimIndent()
       }
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
-    val footerBlock = "\n${siteFooter(version, footerNote).prependIndent("        ")}"
+    val footerBlock =
+      if (componentBrowser) "" else "\n${siteFooter(version, footerNote).prependIndent("        ")}"
     // Before `themeCss`, so a catalog palette still wins at equal specificity; the font block
     // declares faces only and collides with nothing in the chrome.
     val rcFontsBlock = if (rcFonts) "\n" + ServeRcFonts.linkTag().prependIndent("        ") else ""
@@ -10164,6 +10374,11 @@ $rows
       themeStorageKey
         .takeIf { it.isNotBlank() }
         ?.let { " data-cp-theme-key=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    val interfaceMode = if (componentBrowser) "catalog" else "dev"
+    val interfaceModeBoot =
+      """<script>try{var p=new URLSearchParams(location.search),m=p.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){p.set("chrome",s);location.replace(location.pathname+"?"+p.toString()+location.hash);}}catch(e){}</script>"""
+    val interfaceModeControls =
+      """<script>(function(){var active="$interfaceMode",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>"""
     // `serve-chrome.js` is emitted as the first thing in <body>, ahead of every surface's own
     // scripts, because they read the globals it installs: the component bundle's Transparent
     // toggle wires Back through the URL-state global as it upgrades, and three of the legacy
@@ -10181,18 +10396,20 @@ $rows
         <title>${WebEscaping.htmlEscape(title)}</title>
 ${ServeSiteIcon.linkTags().prependIndent("        ")}
         <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock
+        $interfaceModeBoot
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
         ${pageThemeScript(themeStorageKey, declaredThemes)}
       </head>
-      <body>
+      <body${if (componentBrowser) " class=\"cp-component-browser\"" else ""}>
         ${scriptTag("serve-chrome.js")}
-        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser)}
         <main class="cp-main">
         $body
         </main>$footerBlock
-        ${scriptTag("keyboard-navigation.js")}
+        $interfaceModeControls
+        ${if (componentBrowser) "" else scriptTag("keyboard-navigation.js")}
       </body>
     </html>
     """

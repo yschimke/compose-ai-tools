@@ -64,6 +64,17 @@ project — no build edits required:
 compose-preview render    # render every @Preview to PNG
 ```
 
+To browse those previews in a streamlined, Storybook-like component catalog:
+
+```sh
+compose-preview browse
+```
+
+This discovers every local preview-bearing module, starts a loopback-only server, and opens its
+browser URL. Compatible CMP browser targets are built and connected automatically; other
+components retain the baked snapshot and source-code experience. Pass `--module :app` only to
+deliberately narrow the project-wide catalog.
+
 The CLI injects itself into your build at runtime, so projects that already
 use `com.android.application` / `com.android.library` /
 `org.jetbrains.compose` just work. Full options on the

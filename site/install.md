@@ -38,9 +38,20 @@ Then:
 compose-preview doctor    # check Java + project compatibility
 compose-preview list      # scan @Preview annotations
 compose-preview render    # render every @Preview to PNG
+compose-preview browse    # Storybook-like local component browser
 compose-preview render-matrix --id com.example.MyPreview \
     --ui-mode light,dark --font-scale 1.0,2.0   # one preview across a grid
 ```
+
+`browse` scans every valid preview module. When a conventional executable CMP Wasm browser project
+owns the previews or depends on their module, its distribution is built and attached automatically:
+
+```sh
+compose-preview browse
+```
+
+Java/Android-only composables remain available as rendered snapshots with their sample source.
+`--module :shared:ui` is an optional narrowing control, not required setup.
 
 Because the CLI auto-injects, projects that already apply
 `com.android.application` / `com.android.library` / `org.jetbrains.compose`

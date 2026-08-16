@@ -109,6 +109,20 @@ internal object CliFlagValidation {
           "-v",
           "--with-daemon",
         ),
+      "browse" to
+        commandBase +
+          setOf(
+            "--help",
+            "-h",
+            "--host",
+            "--lan",
+            "--no-history",
+            "--no-open",
+            "--port",
+            "--public",
+            "--token",
+            "--wasm-dir",
+          ),
       "serve" to
         commandBase +
           setOf(
@@ -130,6 +144,7 @@ internal object CliFlagValidation {
             "--catalogs",
             "--catalogs-file",
             "--catalogs-unlisted",
+            "--component-browser",
             "--discover",
             "--doc-ttl",
             "--engagement-file",
@@ -152,6 +167,7 @@ internal object CliFlagValidation {
             "--lan",
             "--live-seats",
             "--no-history",
+            "--open-browser",
             "--playground",
             "--playground-android-bundle",
             "--playground-bundle",

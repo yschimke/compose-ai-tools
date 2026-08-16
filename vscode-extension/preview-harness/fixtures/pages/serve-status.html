@@ -8,6 +8,7 @@
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <script>try{var p=new URLSearchParams(location.search),m=p.get("chrome"),s=localStorage.getItem("cp-interface-mode");if(m==="catalog"||m==="dev")localStorage.setItem("cp-interface-mode",m);else if(s==="catalog"||s==="dev"){p.set("chrome",s);location.replace(location.pathname+"?"+p.toString()+location.hash);}}catch(e){}</script>
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -23,6 +24,11 @@
     </a>
   </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
+    <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
+      <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
+      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
+    </div>
     <details class="cp-site-menu" id="cp-site-menu">
       <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
         aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
@@ -138,6 +144,7 @@
             <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
           </div>
         </footer>
+        <script>(function(){var active="dev",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
         <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
       </body>
     </html>

@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile card — compose-preview</title>
+        <title>Button Filled — compose-preview</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -14,73 +14,31 @@
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
         <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
-      <body>
+      <body class="cp-component-browser">
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
         <header class="cp-site-header">
   <div class="cp-site-lead">
-    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span class="cp-site-wordmark">compose-preview</span>
     </a>
-    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?token=demo-token-fixture&amp;session=compose-m3">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
+  <span class="cp-site-catalog">Compose Material 3</span>
+  <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/compose-m3/">Compose Material 3</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
   </div>
-  <nav class="cp-site-nav" aria-label="Primary navigation">
-    <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
-      <span class="cp-interface-mode-label">Catalog / Dev mode</span>
-      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
-      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
-    </div>
-    <details class="cp-site-menu" id="cp-site-menu">
-      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
-        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
-    </details>
-    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
-      <a href="/?token=demo-token-fixture">Catalogs</a>
-      <a class="cp-site-status-link" id="cp-status-link" href="/status?token=demo-token-fixture">Status<span
-        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
-      <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
-      <details class="cp-settings">
-        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
-          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
-        </summary>
-        <div class="cp-settings-panel">
-          <fieldset class="cp-settings-group">
-            <legend class="cp-settings-legend">Page theme</legend>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-              <span>Match the preview theme</span>
-            </label>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-              <span>Follow my system</span>
-            </label>
-            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-              match. Turn it off to keep the page on your operating system's setting.</p>
-          </fieldset>
-          <fieldset class="cp-settings-group cp-settings-keyboard">
-            <legend class="cp-settings-legend">Keyboard</legend>
-            <label class="cp-settings-option">
-              <input type="checkbox" data-cp-keyboard-navigation>
-              <span>Power-user navigation</span>
-            </label>
-            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
-              shortcuts and an on-screen command palette.</p>
-            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
-              View keyboard tour
-            </button>
-          </fieldset>
-        </div>
-      </details>
-    </div>
-  </nav>
+  <div class="cp-interface-mode" role="group" aria-label="Catalog / Dev mode">
+    <span class="cp-interface-mode-label">Catalog / Dev mode</span>
+    <button type="button" data-cp-interface-mode="catalog" aria-pressed="true">Catalog</button>
+    <button type="button" data-cp-interface-mode="dev" aria-pressed="false">Dev</button>
+  </div>
 </header>
         <main class="cp-main">
               <link rel="stylesheet" href="/assets/serve/fixture/codemirror.css">
+      <nav class="cp-browser-breadcrumb" aria-label="Breadcrumb"><a href="/compose-m3/">Compose Material 3</a><span class="cp-browser-separator" aria-hidden="true">›</span><span>Components</span><span class="cp-browser-separator" aria-hidden="true">›</span><span>Buttons</span><span class="cp-browser-separator" aria-hidden="true">›</span><span>Button Filled</span><span class="cp-browser-separator" aria-hidden="true">›</span><span aria-current="page">Pressed · label Continue</span></nav>
       <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Profile card</h1>
-        <code class="cp-preview-id" title="com.example.ProfileCardPreview">com.example.ProfileCardPreview</code>
+        <h1 class="cp-head cp-preview-title">Button Filled</h1>
 
-        <div class="cp-head-toggles"><details class="cp-theme-menu">
+
+        <div class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><details class="cp-theme-menu">
   <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
     <span class="cp-toggle-label">Theme</span>
     <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
@@ -90,28 +48,39 @@
     <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
   </span></div>
-</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Overrides</button></div>
+</details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Controls</button></div>
       </div>
+      <p class="cp-browser-variant">Pressed · label Continue</p>
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — click for the live, interactive preview">
-            <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
-          </button>
-<button type="button" id="cp-source-chip" class="cp-spec-chip cp-source-chip" aria-pressed="false" aria-controls="cp-source-panel" data-source-chip-tip="Show the plain Compose that produces this render" data-usage-src="/usage/com.example.ProfileCardPreview" title="Show the plain Compose that produces this render">Source</button>
+      <button type="button" id="cp-browser-preview-tab" class="cp-spec-chip cp-browser-tab" role="tab" aria-selected="true">Preview</button>
+<button type="button" id="cp-source-chip" class="cp-spec-chip cp-source-chip cp-browser-tab" role="tab" aria-selected="false" aria-pressed="false" aria-controls="cp-source-panel" data-source-chip-tip="Show the plain Compose that produces this render" data-usage-src="/compose-m3/usage/button-filled-pressed" title="Show the plain Compose that produces this render">Source</button>
 <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
 <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
 <input type="radio" name="cp-mode" value="source" id="cp-source-toggle" tabindex="-1">
         </span>
       </div>
 
-      <div class="cp-viewer" data-preview-id="com.example.ProfileCardPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
+      <div class="cp-viewer" data-preview-id="button-filled-pressed" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
+              <aside class="cp-nav" id="cp-nav" aria-label="Components">
+        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
+        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
 
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Profile card"><canvas id="cp-canvas" hidden></canvas><div class="cp-source-panel" id="cp-source-panel" role="region" aria-label="Usage source" hidden></div><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <ul class="cp-nav-list" id="cp-nav-list">
+        <li><a class="cp-nav-item" href="/compose-m3/p/button-filled-default" title="button-filled-default" data-search="Button Filled button-filled-default"><img class="cp-nav-thumb" loading="lazy" alt="" src="/compose-m3/render/button-filled-default.png"><span class="cp-nav-name">Button Filled</span></a></li>
+<li><a class="cp-nav-item" href="/compose-m3/p/button-outlined-default" title="button-outlined-default" data-search="Button Outlined button-outlined-default"><img class="cp-nav-thumb" loading="lazy" alt="" src="/compose-m3/render/button-outlined-default.png"><span class="cp-nav-name">Button Outlined</span></a></li>
+<li><a class="cp-nav-item" href="/compose-m3/p/card-elevated-default" title="card-elevated-default" data-search="Card Elevated card-elevated-default"><img class="cp-nav-thumb" loading="lazy" alt="" src="/compose-m3/render/card-elevated-default.png"><span class="cp-nav-name">Card Elevated</span></a></li>
+<li><a class="cp-nav-item" href="/compose-m3/p/card-filled-default" title="card-filled-default" data-search="Card Filled card-filled-default"><img class="cp-nav-thumb" loading="lazy" alt="" src="/compose-m3/render/card-filled-default.png"><span class="cp-nav-name">Card Filled</span></a></li>
+<li><a class="cp-nav-item" href="/compose-m3/p/navigation-bar-default" title="navigation-bar-default" data-search="Navigation Navigation Bar navigation-bar-default"><img class="cp-nav-thumb" loading="lazy" alt="" src="/compose-m3/render/navigation-bar-default.png"><span class="cp-nav-name">Navigation Navigation Bar</span></a></li>
+<li><a class="cp-nav-item" href="/compose-m3/p/profile-screen-default" title="profile-screen-default" data-search="Screens Profile profile-screen-default"><img class="cp-nav-thumb" loading="lazy" alt="" src="/compose-m3/render/profile-screen-default.png"><span class="cp-nav-name">Screens Profile</span></a></li>
+        </ul>
+        <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
+      </aside>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="Button Filled"><canvas id="cp-canvas" hidden></canvas><div class="cp-source-panel" id="cp-source-panel" role="region" aria-label="Usage source" hidden></div><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
@@ -136,34 +105,7 @@
     <option value="dark">Night (Default)</option>
   </select>
 </span>
-          <details class="cp-group" data-cp-group="size">
-            <summary>Size</summary>
-            <div class="cp-group-body">
-              <div class="cp-size">
-                <label>Size mode
-                  <select id="cp-sizeMode">
-                    <option value="">(default)</option>
-                    <option value="fixed">Fixed size</option>
-                    <option value="max">Max</option>
-                    <option value="min">Min</option>
-                    <option value="within">Within (min–max)</option>
-                  </select>
-                </label>
-                <div class="cp-size-row" id="cp-size-fixed" hidden>
-                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-min" hidden>
-                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-max" hidden>
-                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                </div>
-              </div>
-            </div>
-          </details>
+
 
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
@@ -201,16 +143,7 @@
               </label>
             </div>
           </details>
-                  <details class="cp-group" data-cp-group="overlays">
-          <summary>Overlays</summary>
-          <div class="cp-group-body">
 
-            <div class="cp-overlays">
-  <div class="cp-overlays-head">Overlays (Live Compose)</div>
-  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"> Show touches</label>
-</div>
-          </div>
-        </details>
 
 
 
@@ -236,7 +169,18 @@
   <input id="cp-url-png" class="cp-url" type="text" readonly tabindex="-1"
     aria-label="PNG URL">
 </span>
+<span class="cp-link-group">
+  <span class="cp-link-kind">SVG</span>
+  <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-svg"
+    title="Copy the SVG URL of the current view (overrides applied)">Copy link</button>
+  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-svg"
+    data-copyimg-ext=".svg" title="Copy the SVG itself to the clipboard">Copy SVG</button>
+  <a id="cp-dl-svg" class="cp-dl" download title="Save the SVG to a file">Download</a>
+  <input id="cp-url-svg" class="cp-url" type="text" readonly tabindex="-1"
+    aria-label="SVG URL">
+</span>
       </div>
+      <nav class="cp-browser-siblings" aria-label="Adjacent components"><a class="cp-browser-sibling cp-browser-sibling-prev" href="/compose-m3/p/button-filled-default" rel="prev"><span aria-hidden="true">←</span><span>Button Filled</span></a><a class="cp-browser-sibling cp-browser-sibling-next" href="/compose-m3/p/button-outlined-default" rel="next"><span aria-hidden="true">→</span><span>Button Outlined</span></a></nav>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
@@ -321,15 +265,9 @@
       <cp-viewer-drawers></cp-viewer-drawers>
 
       <script src="/assets/serve/fixture/codemirror.js"></script>
-      <script src="/assets/serve/fixture/viewer.js"></script>
+      <script src="/assets/serve/fixture/viewer.js"></script><script>(function(){var p=document.getElementById("cp-browser-preview-tab"),s=document.getElementById("cp-source-chip"),r=document.getElementById("cp-source-toggle"),w=document.getElementById("cp-wasm-toggle");function wasm(){if(!w)return;w.checked=true;w.dispatchEvent(new Event("change",{bubbles:true}));}function sync(){if(!p||!s||!r)return;var source=!!r.checked;p.setAttribute("aria-selected",source?"false":"true");s.setAttribute("aria-selected",source?"true":"false");}if(p&&s&&r){p.addEventListener("click",function(){if(r.checked)s.click();setTimeout(function(){if(!r.checked)wasm();sync();},0);});s.addEventListener("click",function(){setTimeout(function(){if(!r.checked)wasm();sync();},0);});window.addEventListener("popstate",function(){setTimeout(sync,0);});}var requested=new URLSearchParams(location.search).get("mode");if(w&&!requested)wasm();setTimeout(sync,0);})();</script>
         </main>
-        <footer class="cp-site-footer">
-          <div class="cp-site-footer-links">
-            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
-            <a href="/version">/version</a>
-          </div>
-        </footer>
-        <script>(function(){var active="dev",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
-        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
+        <script>(function(){var active="catalog",key="cp-interface-mode";function url(mode,href){var u=new URL(href||location.href,location.href);u.searchParams.set("chrome",mode);return u.pathname+"?"+u.searchParams.toString()+u.hash;}document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{localStorage.setItem(key,mode);}catch(e){}location.assign(url(mode));});});document.querySelectorAll('a[href]').forEach(function(a){try{var u=new URL(a.href,location.href);if(u.origin!==location.origin||u.protocol!==location.protocol||u.pathname.indexOf("/assets/")===0)return;u.searchParams.set("chrome",active);a.href=u.pathname+"?"+u.searchParams.toString()+u.hash;}catch(e){}});})();</script>
+        
       </body>
     </html>

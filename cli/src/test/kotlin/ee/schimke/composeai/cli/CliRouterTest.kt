@@ -81,6 +81,10 @@ class CliRouterTest {
 
   @Test
   fun `flat names remain valid back-compat aliases`() {
+    assertEquals(
+      CliRouter.Route.Run("browse", listOf("--module", ":app")),
+      CliRouter.route(arrayOf("browse", "--module", ":app")),
+    )
     assertEquals(CliRouter.Route.Run("a11y", emptyList()), CliRouter.route(arrayOf("a11y")))
     assertEquals(
       CliRouter.Route.Run("render", listOf("--output", "out.png")),
