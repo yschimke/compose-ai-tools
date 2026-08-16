@@ -5037,7 +5037,7 @@ class ServeHttpServer(
       ) {
         val format = if (wantSvg) RcJvmServerRenderer.Format.SVG else RcJvmServerRenderer.Format.PNG
         val webMode = wantSvg && call.request.queryParameters["mode"]?.lowercase() == "web"
-        renderCmpJvmResponse(renderHost, previewId, format, webMode)
+        renderCmpJvmResponse(renderHost, previewId, format, webMode, sessionId)
         return@withLeasedSession
       }
       // Forward the fixed render axes plus any dynamic override params (`knob.<key>=…` knobs and
@@ -5444,6 +5444,7 @@ class ServeHttpServer(
     previewId: String,
     format: RcJvmServerRenderer.Format,
     webMode: Boolean,
+    sessionId: String,
   ) {
     val doc = renderHost.remoteComposeDoc(previewId)
     val spec = renderHost.remoteComposeRenderSpec(previewId)
@@ -5475,6 +5476,10 @@ class ServeHttpServer(
       cmpJvmRenderTheme(
         call.request.queryParameters["uiMode"],
         renderHost.previews.firstOrNull { it.id == previewId }?.uiMode ?: 0,
+        ServeWeb.SystemDisplay.resolveDarkFirst(
+          sessionId,
+          catalogBundleHost(renderHost)?.stageSurface,
+        ),
       )
     val result =
       withContext(Dispatchers.IO) {
@@ -6101,22 +6106,28 @@ class ServeHttpServer(
 
   companion object {
     private const val UI_MODE_NIGHT_MASK = 0x30
+    private const val UI_MODE_NIGHT_NO = 0x10
     private const val UI_MODE_NIGHT_YES = 0x20
 
     /** Resolve an explicit cmp-jvm override, falling back to the preview's baked mode. */
     internal fun cmpJvmRenderTheme(
       requestedUiMode: String?,
       bakedUiMode: Int,
+      darkFirst: Boolean = false,
     ): RcJvmServerRenderer.RenderTheme =
       when (requestedUiMode?.lowercase()) {
         "dark" -> RcJvmServerRenderer.RenderTheme.DARK
         "light" -> RcJvmServerRenderer.RenderTheme.LIGHT
-        else ->
-          if (bakedUiMode and UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES) {
-            RcJvmServerRenderer.RenderTheme.DARK
-          } else {
-            RcJvmServerRenderer.RenderTheme.LIGHT
+        else -> {
+          val bakedNight = bakedUiMode and UI_MODE_NIGHT_MASK
+          when (bakedNight) {
+            UI_MODE_NIGHT_YES -> RcJvmServerRenderer.RenderTheme.DARK
+            UI_MODE_NIGHT_NO -> RcJvmServerRenderer.RenderTheme.LIGHT
+            else ->
+              if (darkFirst) RcJvmServerRenderer.RenderTheme.DARK
+              else RcJvmServerRenderer.RenderTheme.LIGHT
           }
+        }
       }
 
     /**

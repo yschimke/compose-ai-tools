@@ -106,6 +106,16 @@ class RcJvmWorkerPoolTest {
       ServeHttpServer.cmpJvmRenderTheme("DARK", 0x10),
       "the query remains case-insensitive",
     )
+    assertEquals(
+      RcJvmServerRenderer.RenderTheme.DARK,
+      ServeHttpServer.cmpJvmRenderTheme(null, 0, darkFirst = true),
+      "an unspecified preview follows the catalog's dark-first display policy",
+    )
+    assertEquals(
+      RcJvmServerRenderer.RenderTheme.LIGHT,
+      ServeHttpServer.cmpJvmRenderTheme(null, 0x10, darkFirst = true),
+      "an explicitly light preview still wins over the catalog fallback",
+    )
   }
 
   @Test
