@@ -874,8 +874,8 @@
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "dc9a2bc559ca59d56a642ea721ed0786f90d07cec83a9a4eafe7c9a6018b8525",
-      "size": 83938
+      "sha256": "b750a629a31ef921b4f325ba477d0d5486e3fd86d6cea5cf56d5dbbec6bddc47",
+      "size": 83967
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
