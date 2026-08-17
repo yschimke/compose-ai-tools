@@ -168,6 +168,14 @@ class ServeBundleHost(
    */
   private val fetchPinnedAsset: ((commit: String, path: String) -> ByteArray?)? = null,
   /**
+   * [fetchPinnedAsset], but reporting **why** a read failed.
+   *
+   * Preferred over [fetchPinnedAsset] when supplied; the plain seam remains for callers (and the
+   * fixtures) that have no way to tell a throttle from an absence. This is what makes
+   * [pinnedMisses] safe to keep forever — see the reasoning there.
+   */
+  private val fetchPinnedAssetOutcome: ((commit: String, path: String) -> BranchFetch)? = null,
+  /**
    * Resolves ids to branch paths **as they were at a given commit** ([ServePinnedManifest]). Null
    * for a host with no delivery branch; when present it takes precedence over the tip's maps below,
    * which remain the fallback for a commit whose manifests can't be read.
@@ -637,7 +645,7 @@ class ServeBundleHost(
    * from. False for a plain uploaded bundle, whose bytes exist nowhere but this disk.
    */
   val supportsPinnedRevisions: Boolean
-    get() = fetchPinnedAsset != null
+    get() = fetchPinnedAsset != null || fetchPinnedAssetOutcome != null
 
   /**
    * [previewId]'s baked render **as published at [commit]**, or null when there is no such thing.
@@ -765,7 +773,9 @@ class ServeBundleHost(
    * recency order worth maintaining, and the cost of a miss is one small fetch.
    */
   private fun pinnedAsset(commit: String, path: String?): PinnedOutcome {
-    val fetch = fetchPinnedAsset ?: return PinnedOutcome.Missing
+    // Either seam is enough to have a pinned lane; the outcome-reporting one is preferred
+    // wherever it is wired, and the plain one remains for callers that cannot distinguish.
+    if (fetchPinnedAssetOutcome == null && fetchPinnedAsset == null) return PinnedOutcome.Missing
     val safePath = ServeCatalogRevision.normalizePath(path) ?: return PinnedOutcome.Missing
     val pin = ServeCatalogRevision.normalize(commit) ?: return PinnedOutcome.Missing
     val key = "$pin/$safePath"
@@ -784,16 +794,27 @@ class ServeBundleHost(
     // does not exist — those are different answers and a permalink must not confuse them.
     if (!pinnedPermits.tryAcquire(PINNED_FETCH_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
       return PinnedOutcome.Busy
-    val bytes =
+    val outcome =
       try {
         // Re-checked under the permit: while this caller waited, the fetch it is queued behind may
         // have been for exactly this URL — the common case on a page whose images share a commit.
-        pinnedCache[key] ?: runCatching { fetch(pin, safePath) }.getOrNull()
+        pinnedCache[key]?.let { BranchFetch.Ok(it) }
+          ?: runCatching {
+            fetchPinnedAssetOutcome?.invoke(pin, safePath)
+              ?: fetchPinnedAsset?.invoke(pin, safePath)?.let { BranchFetch.Ok(it) }
+              ?: BranchFetch.NotFound
+          }
+            .getOrElse { BranchFetch.Transport(it::class.simpleName ?: "error") }
       } finally {
         pinnedPermits.release()
       }
+    val bytes = outcome.bytesOrNull
     if (bytes == null) {
-      remember(pinnedMisses, key, MAX_PINNED_MISS_ENTRIES)
+      // ONLY a real absence is remembered. `(commit, path)` is immutable, so "that revision has no
+      // such file" is permanent and worth keeping — but a throttle or a 503 says nothing about the
+      // revision, and memoising one turns a blip into a hole that outlives it. That was the
+      // accepted cost of not being able to tell them apart; [BranchFetch] removes the excuse.
+      if (outcome == BranchFetch.NotFound) remember(pinnedMisses, key, MAX_PINNED_MISS_ENTRIES)
       return PinnedOutcome.Missing
     }
     synchronized(pinnedCache) {

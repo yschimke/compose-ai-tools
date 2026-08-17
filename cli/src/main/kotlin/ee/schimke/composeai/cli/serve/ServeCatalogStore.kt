@@ -789,6 +789,12 @@ class ServeCatalogStore(
           fetchPinnedAsset = { commit, path ->
             ServeCatalogRevision.assetUrl(repo, commit, path)?.let { fetchCatalogAsset(it) }
           },
+          // The same read, but reporting WHY it failed — which is the only thing that makes the
+          // host's permanent negative cache safe. See [ServeBundleHost.fetchPinnedAssetOutcome].
+          fetchPinnedAssetOutcome = { commit, path ->
+            ServeCatalogRevision.assetUrl(repo, commit, path)?.let { fetchCatalogAssetOutcome(it) }
+              ?: BranchFetch.NotFound
+          },
           // Ids are stable across publishes; the paths under them are not. So a pinned request
           // resolves its path from the manifests AT that commit, with the tip's maps above as the
           // fallback. Same seam again: the host names a commit and one of two declared manifest
@@ -2484,13 +2490,62 @@ class ServeCatalogStore(
         .build()
     }
 
-    private fun httpFetch(url: String, maxBytes: Long): ByteArray? {
-      httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-        if (!response.isSuccessful) return null
-        val body = response.body ?: return null
-        return readCapped(body.byteStream(), maxBytes)
+    /**
+     * One branch read, retried while the answer is a "right now" failure.
+     *
+     * The retry is the whole reason this exists: `raw.githubusercontent.com` rate-limits an
+     * unauthenticated reader, and a server publishing twenty-odd catalogs meets that regularly. A
+     * single 429 used to be indistinguishable from a missing file and cost the reader the asset
+     * outright; two short, `Retry-After`-aware attempts turn most of them into a served response. A
+     * [BranchFetch.NotFound] is never retried — the answer will not change, and asking again is how
+     * a catalog of genuinely-absent assets turns into a thundering herd.
+     */
+    internal fun httpFetchOutcome(
+      url: String,
+      maxBytes: Long,
+      sleep: (Long) -> Unit = { Thread.sleep(it) },
+    ): BranchFetch {
+      var last: BranchFetch = httpFetchOnce(url, maxBytes)
+      var attempt = 1
+      while (true) {
+        val delay = BranchFetch.retryDelayMillis(last, attempt) ?: return last
+        try {
+          sleep(delay)
+        } catch (_: InterruptedException) {
+          Thread.currentThread().interrupt()
+          return last
+        }
+        last = httpFetchOnce(url, maxBytes)
+        if (!last.isTransient) return last
+        attempt++
       }
     }
+
+    /**
+     * A single attempt. Only [java.io.IOException] becomes [BranchFetch.Transport]: the size cap in
+     * [readCapped] throws too, and it must keep propagating rather than being retried — the asset
+     * will be exactly as oversized the second time, and the existing call sites already catch it.
+     */
+    private fun httpFetchOnce(url: String, maxBytes: Long): BranchFetch =
+      try {
+        httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+          if (!response.isSuccessful) {
+            BranchFetch.ofStatus(
+              response.code,
+              BranchFetch.parseRetryAfter(response.header("Retry-After")),
+            )
+          } else {
+            val body = response.body
+            if (body == null) BranchFetch.Unavailable(response.code)
+            else BranchFetch.Ok(readCapped(body.byteStream(), maxBytes))
+          }
+        }
+      } catch (e: java.io.IOException) {
+        BranchFetch.Transport(e::class.simpleName ?: "IOException")
+      }
+
+    private fun httpFetch(url: String, maxBytes: Long): ByteArray? =
+      httpFetchOutcome(url, maxBytes).bytesOrNull
 
     private fun httpExists(url: String): Boolean =
       httpClient.newCall(Request.Builder().url(url).head().build()).execute().use {
@@ -2541,6 +2596,21 @@ class ServeCatalogStore(
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
     if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES)
+
+  /**
+   * [fetchCatalogAsset], keeping the reason a failure failed.
+   *
+   * The injected [fetch] seam still answers `ByteArray?` — 48 tests build one, and widening it
+   * would be a large diff for no test's benefit. A stub that answers null is reported as
+   * [BranchFetch.NotFound], which is what those tests mean by it; only the real network path
+   * distinguishes a throttle, and only the real network path can.
+   */
+  private fun fetchCatalogAssetOutcome(url: String): BranchFetch =
+    if (fetch != null) {
+      fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
+    } else {
+      httpFetchOutcome(url, MAX_FETCH_BYTES)
+    }
 
   /**
    * Fetch [urls] **concurrently**, returning `url → bytes` for the ones that came back. A URL that
