@@ -123,6 +123,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-component-browser-component/dark](renders/serve-component-browser-component.dark.png) |
 | `light` | ![serve-component-browser-component/light](renders/serve-component-browser-component.light.png) |
 
+## serve-component-browser-component-daemon-connected
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-component-browser-component-daemon-connected/dark](renders/serve-component-browser-component-daemon-connected.dark.png) |
+| `light` | ![serve-component-browser-component-daemon-connected/light](renders/serve-component-browser-component-daemon-connected.light.png) |
+
 ## serve-component-browser-home
 
 | Theme | Capture |

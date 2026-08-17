@@ -193,6 +193,18 @@
       "sha256": "9316a0f0d2e662b99bfe2046bb11a3ec1a6343a0df3e9e9ce06d1a8a9b208257",
       "size": 61247
     },
+    "serve-component-browser-component-daemon-connected.dark.png": {
+      "fixture": "serve-component-browser-component-daemon-connected",
+      "theme": "dark",
+      "sha256": "88cfcee50b67642dabd0fc4d29bbf52b4bb2629f15c6319eda8702e4bf864d46",
+      "size": 61982
+    },
+    "serve-component-browser-component-daemon-connected.light.png": {
+      "fixture": "serve-component-browser-component-daemon-connected",
+      "theme": "light",
+      "sha256": "d63918cad8bd4a4ef526fa2f777b27461c38614a23da26424e6d761ffbb42741",
+      "size": 60540
+    },
     "serve-component-browser-component.dark.png": {
       "fixture": "serve-component-browser-component",
       "theme": "dark",
@@ -874,8 +886,8 @@
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "b750a629a31ef921b4f325ba477d0d5486e3fd86d6cea5cf56d5dbbec6bddc47",
-      "size": 83967
+      "sha256": "dc9a2bc559ca59d56a642ea721ed0786f90d07cec83a9a4eafe7c9a6018b8525",
+      "size": 83938
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
