@@ -465,3 +465,54 @@ test("declared kit names reach the sidecar, which is the only reader that matter
     { key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" },
   ]);
 });
+
+test("a cell that names only its exceptional value inherits the component's axis", () => {
+  // The documented shape of the component-level default: the component names the kit property
+  // once, and a cell only has to say which of its values it sits at.
+  const previews = [
+    component("ListItem", { reference: ref("1:2"), kitAxis: "Show avatar" }),
+    overrideVariant("ListItem", "avatar", {
+      seeds: [{ key: "content", raw: "avatar" }],
+      kitValue: "True",
+    }),
+  ];
+  previews[1].catalog.kitAxis = "Show avatar";
+  const { variants } = projectDesignMap(previews);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "content", raw: "avatar", kitAxis: "Show avatar", kitValue: "True" },
+  ]);
+});
+
+test("a driven interaction does not make a one-knob cell's declaration ambiguous", () => {
+  // The `state` seed comes from the harness, not from the annotation, so it is not one of the
+  // knobs the declaration might be naming. Counting it would report a cell whose annotation is
+  // perfectly clear about its single seeded knob as unplaceable.
+  const { variants, diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    overrideVariant("Button", "l-pressed", {
+      seeds: [{ key: "size", raw: "l" }],
+      interaction: "Pressed",
+      kitAxis: "Size",
+      kitValue: "Large",
+    }),
+  ]);
+  assert.deepEqual(diagnostics.unplacedDeclarations, []);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "size", raw: "l", kitAxis: "Size", kitValue: "Large" },
+    { key: "state", raw: "pressed" },
+  ]);
+});
+
+test("an interaction-only cell's declaration lands on the state seed it does have", () => {
+  const { variants } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    overrideVariant("Button", "pressed", {
+      interaction: "Pressed",
+      kitAxis: "State",
+      kitValue: "Presssed",
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "state", raw: "pressed", kitAxis: "State", kitValue: "Presssed" },
+  ]);
+});

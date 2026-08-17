@@ -164,23 +164,36 @@ function cellSeeds(overrides, catalog) {
   // that knob already has. Without this the variant declares nothing: `seeds` is empty, an empty
   // vector matches every sibling, and the render is dropped as "names no axis".
   const interaction = overrides.interaction;
-  if (interaction && interaction !== "None" && !seeds.some((s) => s.key === "state")) {
-    seeds.push({ key: "state", raw: String(interaction).toLowerCase() });
-  }
+  const drivenState =
+    interaction && interaction !== "None" && !seeds.some((s) => s.key === "state")
+      ? { key: "state", raw: String(interaction).toLowerCase() }
+      : undefined;
 
   // A COMPONENT's own `kitAxis` is a DEFAULT for its cells — "every variant of this one turns the
-  // same kit property" — so a cell that names its own wins, and a cell the default cannot be
-  // placed on simply does not get it. That silence is right for a default and wrong for the
-  // explicit form: one is a blanket that need not cover everything, the other is an assertion
-  // about this cell that could not be honoured.
+  // same kit property" — so a cell that names its own axis wins, and a cell that names only its
+  // exceptional VALUE still inherits the axis, which is the case the default exists for. A default
+  // that cannot be placed is silent, where the explicit form is reported: one is a blanket that
+  // need not cover everything, the other is an assertion about this cell that could not be
+  // honoured.
   const componentDefault = catalog?.role === "COMPONENT" ? catalog.kitAxis : undefined;
-  if (overrides.kitAxis || overrides.kitValue) {
-    return declareKitNames(seeds, overrides.kitAxis, overrides.kitValue);
-  }
-  if (componentDefault && seeds.length === 1) {
-    return declareKitNames(seeds, componentDefault, undefined);
-  }
-  return { seeds, unattached: [] };
+  const axis = overrides.kitAxis ?? componentDefault;
+  const explicit = Boolean(overrides.kitAxis || overrides.kitValue);
+
+  // The interaction axis is not a knob anybody seeded — the harness drives it — so it does not
+  // count towards "which knob does this declaration name". A cell seeding `size=l` and pressing
+  // the component still names one knob, and its declaration belongs to that one. Only an
+  // interaction-only cell has the state seed as its subject.
+  const declarable = seeds.length ? seeds : drivenState ? [drivenState] : [];
+  const declared = explicit
+    ? declareKitNames(declarable, axis, overrides.kitValue)
+    : axis && declarable.length === 1
+      ? declareKitNames(declarable, axis, undefined)
+      : { seeds: declarable, unattached: [] };
+
+  return {
+    seeds: seeds.length && drivenState ? [...declared.seeds, drivenState] : declared.seeds,
+    unattached: declared.unattached,
+  };
 }
 
 export function variantSeeds(preview) {

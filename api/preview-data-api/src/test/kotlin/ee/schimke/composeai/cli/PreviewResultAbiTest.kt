@@ -25,4 +25,33 @@ class PreviewResultAbiTest {
       }
     )
   }
+
+  @Test
+  fun `CatalogEntry retains the constructor descriptor from before kitValue`() {
+    // Appending a defaulted parameter keeps SOURCE compatibility and changes the JVM descriptor,
+    // so a consumer of the published `preview-data-api` compiled against the previous artifact
+    // would fail with NoSuchMethodError. `CatalogEntry` is decoded far more often than it is
+    // constructed, which is exactly why the break would surface late and somewhere else.
+    assertTrue(
+      CatalogEntry::class.java.constructors.any { constructor ->
+        constructor.parameterTypes.toList() ==
+          listOf(
+            CatalogRole::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            java.lang.Boolean.TYPE,
+            String::class.java,
+            String::class.java,
+            List::class.java,
+            java.lang.Boolean.TYPE,
+            String::class.java,
+          )
+      }
+    )
+  }
 }

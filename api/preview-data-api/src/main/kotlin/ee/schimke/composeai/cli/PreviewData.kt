@@ -178,7 +178,47 @@ data class CatalogEntry(
   val kitAxis: String? = null,
   /** VARIANT: the design-kit value this variant maps to, when the kit spells it differently. */
   val kitValue: String? = null,
-)
+) {
+  /**
+   * Binary-compatible constructor retained for consumers compiled before [kitValue] was added. A
+   * default on the new primary parameter preserves source compatibility only — appending it still
+   * changes the JVM constructor descriptor and its default-argument bridge — so a consumer built
+   * against the previous artifact would fail with `NoSuchMethodError` without this overload. Same
+   * policy as [PreviewResult]'s pre-`projectDirectory` constructor below.
+   */
+  constructor(
+    role: CatalogRole,
+    componentId: String,
+    group: String? = null,
+    section: String? = null,
+    caption: String? = null,
+    reference: String? = null,
+    referenceSet: String? = null,
+    noReference: String? = null,
+    referenceContentsOnly: Boolean = true,
+    parallel: String? = null,
+    state: String? = null,
+    props: List<CatalogVariantProp> = emptyList(),
+    perBreakpoint: Boolean = false,
+    kitAxis: String? = null,
+  ) : this(
+    role = role,
+    componentId = componentId,
+    group = group,
+    section = section,
+    caption = caption,
+    reference = reference,
+    referenceSet = referenceSet,
+    noReference = noReference,
+    referenceContentsOnly = referenceContentsOnly,
+    parallel = parallel,
+    state = state,
+    props = props,
+    perBreakpoint = perBreakpoint,
+    kitAxis = kitAxis,
+    kitValue = null,
+  )
+}
 
 @Serializable
 data class PreviewInfo(
