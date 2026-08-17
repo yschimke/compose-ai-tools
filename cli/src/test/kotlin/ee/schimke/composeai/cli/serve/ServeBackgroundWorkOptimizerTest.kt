@@ -171,6 +171,175 @@ class ServeBackgroundWorkOptimizerTest {
     assertNull(snap.pauseReason)
   }
 
+  /**
+   * Park [system] at the admission door and return once it is genuinely queued.
+   *
+   * The polling matters: starting the thread proves nothing about whether it has reached the lock,
+   * and asserting on priority order before both waiters are registered would test the scheduler
+   * rather than the priority rule.
+   */
+  private fun queueWaiter(
+    bg: ServeBackgroundWork,
+    system: String,
+    expectWaiting: Int,
+    ran: MutableList<String>,
+    release: CountDownLatch,
+  ): Thread {
+    val t = Thread {
+      bg.withOptimizerSlot(system, waitMillis = 10_000) {
+        synchronized(ran) { ran += system }
+        release.await(5, TimeUnit.SECONDS)
+        true
+      }
+    }
+      .also(Thread::start)
+    // Polled on the queue itself, not the `waiting` counter: the two are updated together under the
+    // same lock, but only the queue is what the priority assertions below actually read.
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (bg.optimizerAdmissionSnapshot().waitingSystems.size < expectWaiting) {
+      check(System.nanoTime() < deadline) { "$system never reached the door" }
+      Thread.sleep(5)
+    }
+    return t
+  }
+
+  @Test
+  fun `the lane goes to whoever has gone longest without one, not whoever asked first`() {
+    // The starvation this exists to prevent: a fair semaphore only orders the callers blocked on it
+    // right now, so a catalog refused twenty times arrived at attempt twenty-one with no advantage
+    // over one that had just run. On the deployed box that read as `admissions 5, refusals 20` with
+    // m3-catalog — the largest queue on the box — never admitted once.
+    var now = 0L
+    val bg = work(lanes = 1, now = { now })
+    val ran = mutableListOf<String>()
+
+    // `recent` runs first and therefore most recently; `stale` ran long ago.
+    now = 100
+    bg.withOptimizerSlot("stale", waitMillis = 1_000) { true }
+    now = 200
+    bg.withOptimizerSlot("recent", waitMillis = 1_000) { true }
+
+    now = 300
+    val holderRelease = CountDownLatch(1)
+    val holding = CountDownLatch(1)
+    val holder = Thread {
+      bg.withOptimizerSlot("holder", waitMillis = 1_000) {
+        holding.countDown()
+        holderRelease.await(5, TimeUnit.SECONDS)
+        true
+      }
+    }
+      .also(Thread::start)
+    assertTrue(holding.await(5, TimeUnit.SECONDS))
+
+    // `recent` queues FIRST, `stale` second — so arrival order and priority order disagree.
+    val release = CountDownLatch(1)
+    val tRecent = queueWaiter(bg, "recent", expectWaiting = 1, ran = ran, release = release)
+    val tStale = queueWaiter(bg, "stale", expectWaiting = 2, ran = ran, release = release)
+
+    assertEquals(
+      listOf("stale", "recent"),
+      bg.optimizerAdmissionSnapshot().waitingSystems,
+      "the door should report who is next, in the order they will be let in",
+    )
+
+    holderRelease.countDown()
+    holder.join(10_000)
+    // One lane, so the first entrant is decided before the second can start.
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (synchronized(ran) { ran.isEmpty() }) {
+      check(System.nanoTime() < deadline) { "nobody was admitted" }
+      Thread.sleep(5)
+    }
+    assertEquals(
+      "stale",
+      synchronized(ran) { ran.first() },
+      "the longest-waiting system goes first",
+    )
+
+    release.countDown()
+    tRecent.join(10_000)
+    tStale.join(10_000)
+    // `waiting` is a gauge, not a tally. It read as a tally once — the decrement was dropped when
+    // admission moved off the semaphore — and a door that reports a permanent queue is worse than
+    // one that reports none, because it looks exactly like the starvation this change fixes.
+    assertEquals(0, bg.optimizerAdmissionSnapshot().waiting)
+    assertEquals(emptyList(), bg.optimizerAdmissionSnapshot().waitingSystems)
+  }
+
+  @Test
+  fun `a system that has never run outranks every system that has`() {
+    // The anti-starvation guarantee stated positively: every catalog gets a lane before any catalog
+    // gets a second one. That holds without knowing how much work each has left, which is why there
+    // is no size heuristic here.
+    var now = 0L
+    val bg = work(lanes = 1, now = { now })
+    val ran = mutableListOf<String>()
+
+    now = 100
+    bg.withOptimizerSlot("veteran", waitMillis = 1_000) { true }
+
+    now = 200
+    val holderRelease = CountDownLatch(1)
+    val holding = CountDownLatch(1)
+    val holder = Thread {
+      bg.withOptimizerSlot("holder", waitMillis = 1_000) {
+        holding.countDown()
+        holderRelease.await(5, TimeUnit.SECONDS)
+        true
+      }
+    }
+      .also(Thread::start)
+    assertTrue(holding.await(5, TimeUnit.SECONDS))
+
+    val release = CountDownLatch(1)
+    val tVeteran = queueWaiter(bg, "veteran", expectWaiting = 1, ran = ran, release = release)
+    val tNewcomer = queueWaiter(bg, "newcomer", expectWaiting = 2, ran = ran, release = release)
+
+    assertEquals(listOf("newcomer", "veteran"), bg.optimizerAdmissionSnapshot().waitingSystems)
+
+    holderRelease.countDown()
+    holder.join(10_000)
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (synchronized(ran) { ran.isEmpty() }) {
+      check(System.nanoTime() < deadline) { "nobody was admitted" }
+      Thread.sleep(5)
+    }
+    assertEquals("newcomer", synchronized(ran) { ran.first() })
+
+    release.countDown()
+    tVeteran.join(10_000)
+    tNewcomer.join(10_000)
+  }
+
+  @Test
+  fun `priority admission still never exceeds the lane count`() {
+    // Rotation must not be bought by widening the door — the cap is the reason the box stopped
+    // thrashing, and a priority queue that admits an extra pass would undo it.
+    val bg = work(lanes = 2)
+    val inside = AtomicInteger()
+    val peak = AtomicInteger()
+    val done = CountDownLatch(6)
+    val threads =
+      (1..6).map { n ->
+        Thread {
+            bg.withOptimizerSlot("cat-$n", waitMillis = 5_000) {
+              val now = inside.incrementAndGet()
+              peak.getAndUpdate { max -> maxOf(max, now) }
+              Thread.sleep(20)
+              inside.decrementAndGet()
+              true
+            }
+            done.countDown()
+          }
+          .also(Thread::start)
+      }
+    assertTrue(done.await(20, TimeUnit.SECONDS))
+    threads.forEach { it.join(10_000) }
+    assertTrue(peak.get() <= 2, "never more than ${2} inside the door, saw ${peak.get()}")
+    assertEquals(0, bg.optimizerAdmissionSnapshot().running)
+  }
+
   @Test
   fun `admission counters distinguish work done from work refused`() {
     // The pair that tells an operator the cap is working rather than wedged: refusals climbing

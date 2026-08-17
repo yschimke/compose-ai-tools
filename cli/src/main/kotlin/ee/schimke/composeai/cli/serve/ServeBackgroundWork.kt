@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
 import kotlinx.serialization.Serializable
 
 /**
@@ -62,7 +63,21 @@ class ServeBackgroundWork(
   private val lastCatalogLoadFinishedAt = AtomicLong(Long.MIN_VALUE)
 
   private val optimizerLanes = maxConcurrentOptimizers.coerceAtLeast(1)
-  private val optimizerPermits = Semaphore(optimizerLanes, true)
+  // Admission is a priority handoff, not a semaphore — see [withOptimizerSlot]. All four fields
+  // below are guarded by [admissionLock].
+  private val admissionLock = ReentrantLock()
+  private val laneFreed = admissionLock.newCondition()
+  private var optimizerLanesInUse = 0
+  private val optimizerQueue = ArrayList<OptimizerWaiter>()
+  private var optimizerArrivals = 0L
+  /**
+   * When each system's last pass *ended*, and the whole of admission's memory.
+   *
+   * End, not start: a pass that held a lane for an hour finished recently, and keying on its start
+   * would let it outrank catalogs that have been waiting that entire hour. A system absent from
+   * this map has never run and sorts ahead of every system that has.
+   */
+  private val optimizerLastRanAt = ConcurrentHashMap<String, Long>()
   private val optimizerRunning = ConcurrentHashMap.newKeySet<String>()
   private val optimizerWaiting = AtomicInteger()
   private val optimizerAdmissions = AtomicLong()
@@ -142,30 +157,7 @@ class ServeBackgroundWork(
    * waiting for.
    */
   fun <T : Any> withOptimizerSlot(system: String, waitMillis: Long, block: () -> T): T? {
-    if (optimizersPaused()) {
-      optimizerRefusals.incrementAndGet()
-      return null
-    }
-    val waitedFrom = clock()
-    optimizerWaiting.incrementAndGet()
-    val acquired =
-      try {
-        optimizerPermits.tryAcquire(waitMillis.coerceAtLeast(0), TimeUnit.MILLISECONDS)
-      } catch (_: InterruptedException) {
-        Thread.currentThread().interrupt()
-        false
-      } finally {
-        optimizerWaiting.decrementAndGet()
-      }
-    optimizerAdmissionWaitMillis.addAndGet((clock() - waitedFrom).coerceAtLeast(0))
-    if (!acquired) {
-      optimizerRefusals.incrementAndGet()
-      return null
-    }
-    // Re-checked under the permit: a pause can land while this catalog was queueing, and admitting
-    // it then would let one pass slip past an operator who just asked for quiet.
-    if (optimizersPaused()) {
-      optimizerPermits.release()
+    if (!acquireOptimizerLane(system, waitMillis)) {
       optimizerRefusals.incrementAndGet()
       return null
     }
@@ -175,8 +167,93 @@ class ServeBackgroundWork(
       block()
     } finally {
       optimizerRunning.remove(system)
-      optimizerPermits.release()
+      releaseOptimizerLane(system)
     }
+  }
+
+  /**
+   * Take a lane for [system], preferring whoever has gone longest without one.
+   *
+   * **This was a fair `Semaphore` and fairness there did not reach far enough.** A semaphore orders
+   * the callers *currently blocked on it*, and an optimizer pass is only blocked for
+   * `OPTIMIZER_ADMISSION_WAIT_MILLIS` (20s) before it gives up and parks until the next presence
+   * heartbeat. So the ordering only ever covered whoever happened to be at the door inside the same
+   * 20s window, and a catalog refused on one attempt arrived at the next one with no advantage over
+   * a catalog that had just run. Nothing accumulated, so nothing prevented the same few systems
+   * winning every draw.
+   *
+   * Measured on the deployed box 45 minutes after v1.14.0: `admissions 5, refusals 20`, with three
+   * catalogs having taken both lanes and the other nineteen reporting `turnsGranted 0` — including
+   * `m3-catalog`, the largest queue on the box at 10,120 targets and therefore the one that most
+   * needed the time.
+   *
+   * [optimizerLastRanAt] is the memory the semaphore lacked. A never-run system outranks every
+   * system that has run, and among equals it is first-come — so **every catalog gets a lane before
+   * any catalog gets a second**, which is a stronger guarantee than a size heuristic and needs no
+   * knowledge of how much work each one has left.
+   */
+  private fun acquireOptimizerLane(system: String, waitMillis: Long): Boolean {
+    val waitedFrom = clock()
+    admissionLock.lock()
+    val waiter =
+      OptimizerWaiter(
+        system = system,
+        lastRanAt = optimizerLastRanAt[system] ?: Long.MIN_VALUE,
+        arrival = optimizerArrivals++,
+      )
+    optimizerQueue.add(waiter)
+    optimizerWaiting.incrementAndGet()
+    try {
+      var remainingNanos = TimeUnit.MILLISECONDS.toNanos(waitMillis.coerceAtLeast(0))
+      while (true) {
+        // Re-checked every wakeup rather than only on entry: a pause can land while this catalog is
+        // queueing, and admitting it then would let one pass slip past an operator who just asked
+        // for quiet.
+        if (optimizersPaused()) return false
+        if (optimizerLanesInUse < optimizerLanes && optimizerQueue.min() === waiter) {
+          optimizerLanesInUse++
+          return true
+        }
+        if (remainingNanos <= 0) return false
+        remainingNanos =
+          try {
+            laneFreed.awaitNanos(remainingNanos)
+          } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return false
+          }
+      }
+    } finally {
+      optimizerQueue.remove(waiter)
+      optimizerWaiting.decrementAndGet()
+      // Whether this waiter was admitted or gave up, the queue's head may have moved — and the
+      // remaining waiters are parked in `awaitNanos` with no other reason to look again. Without
+      // this, a free lane can sit unclaimed until someone's timeout happens to fire.
+      laneFreed.signalAll()
+      admissionLock.unlock()
+      optimizerAdmissionWaitMillis.addAndGet((clock() - waitedFrom).coerceAtLeast(0))
+    }
+  }
+
+  private fun releaseOptimizerLane(system: String) {
+    admissionLock.lock()
+    try {
+      optimizerLanesInUse--
+      optimizerLastRanAt[system] = clock()
+      laneFreed.signalAll()
+    } finally {
+      admissionLock.unlock()
+    }
+  }
+
+  /** One catalog queued for a lane. Ordered by [acquireOptimizerLane]'s priority rule. */
+  private class OptimizerWaiter(
+    val system: String,
+    val lastRanAt: Long,
+    val arrival: Long,
+  ) : Comparable<OptimizerWaiter> {
+    override fun compareTo(other: OptimizerWaiter): Int =
+      compareValuesBy(this, other, { it.lastRanAt }, { it.arrival })
   }
 
   /**
@@ -195,6 +272,14 @@ class ServeBackgroundWork(
     val until = clock() + millis.coerceAtLeast(0)
     optimizerPausedUntil.set(until)
     optimizerPauseReason["reason"] = reason.take(MAX_PAUSE_REASON_CHARS)
+    // Wake the queue so a pause is felt at the door now, rather than when each waiter's admission
+    // timeout happens to expire.
+    admissionLock.lock()
+    try {
+      laneFreed.signalAll()
+    } finally {
+      admissionLock.unlock()
+    }
     return until
   }
 
@@ -211,11 +296,20 @@ class ServeBackgroundWork(
   fun optimizerAdmissionSnapshot(): ThemeOptimizerAdmissionSnapshot {
     val until = optimizerPausedUntil.get()
     val paused = clock() < until
+    val queued = admissionLock.run {
+      lock()
+      try {
+        optimizerQueue.sorted().map { it.system }
+      } finally {
+        unlock()
+      }
+    }
     return ThemeOptimizerAdmissionSnapshot(
       lanes = optimizerLanes,
       running = optimizerRunning.size,
       runningSystems = optimizerRunning.toSortedSet().toList(),
       waiting = optimizerWaiting.get(),
+      waitingSystems = queued,
       admissions = optimizerAdmissions.get(),
       refusals = optimizerRefusals.get(),
       admissionWaitMillis = optimizerAdmissionWaitMillis.get(),
@@ -310,6 +404,10 @@ class ServeBackgroundWork(
  * The number that matters when the box feels slow is [running] against [lanes], and [waiting]
  * beside it: passes parked at the door are cheap, passes inside the door are not. [refusals]
  * climbing while [admissions] holds steady is the cap doing its job.
+ *
+ * [waitingSystems] is who is at the door **in the order they will be let in**, which is the read
+ * that was missing when the cap starved the box's largest catalog: `refusals 20` said work was
+ * being turned away and nothing said the same system was being turned away every time.
  */
 @Serializable
 data class ThemeOptimizerAdmissionSnapshot(
@@ -317,6 +415,7 @@ data class ThemeOptimizerAdmissionSnapshot(
   val running: Int,
   val runningSystems: List<String>,
   val waiting: Int,
+  val waitingSystems: List<String> = emptyList(),
   val admissions: Long,
   val refusals: Long,
   val admissionWaitMillis: Long,
