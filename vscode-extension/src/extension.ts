@@ -83,6 +83,7 @@ import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
 import { mergePermissionsChange } from "./daemon/permissionsMerge";
 import { PreviewOverrideStore } from "./daemon/previewOverrideStore";
 import { DaemonRefreshIndicator } from "./daemonRefreshIndicator";
+import { DaemonWarmScopeLedger } from "./daemonWarmScopes";
 import {
     buildHistorySource,
     HistoryPanel,
@@ -358,10 +359,10 @@ const daemonRefresh = new DaemonRefreshIndicator({
     clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
 });
 
-/** Module/file scopes that already received a daemon view-open pre-render in
- *  this extension session. Keeps "show this file's previews" warm-up from
- *  re-rendering the same cards on every focus bounce. */
-const daemonShownPreviewWarmScopes = new Set<string>();
+/** Which (module, file) scopes the daemon has already pre-rendered, and for
+ *  which previews. See {@link DaemonWarmScopeLedger} for why the id set is part
+ *  of the key rather than the scope alone. */
+const daemonShownPreviewWarmScopes = new DaemonWarmScopeLedger();
 const daemonStartupProgressTimers = new Map<string, NodeJS.Timeout>();
 /** Workspace-state key for per-module phase-duration calibration. Shape:
  *  `Record<moduleId, PhaseDurations>`. Updated after every successful refresh
@@ -3908,10 +3909,10 @@ async function warmShownPreviewsForFile(
         gradleService.workspaceRoot,
         module,
     );
-    const scopeKey = `${module.modulePath}::${filterFile}`;
-    if (daemonShownPreviewWarmScopes.has(scopeKey)) {
-        return;
-    }
+    const scopeKey = DaemonWarmScopeLedger.scopeKey(
+        module.modulePath,
+        filterFile,
+    );
 
     const ids = (moduleManifestCache.get(module.modulePath) ?? [])
         .filter((p) =>
@@ -3927,7 +3928,16 @@ async function warmShownPreviewsForFile(
         return;
     }
 
-    daemonShownPreviewWarmScopes.add(scopeKey);
+    // Computed BEFORE the guard, unlike the old bare-scope check: the question
+    // is not "has this file been warmed" but "has it been warmed for THESE
+    // previews". A focus bounce answers the same ids and still skips; a file
+    // that just grew a `@Preview` does not, and gets the render its new card
+    // needs. Costs one filter over the module manifest per bounce.
+    if (!daemonShownPreviewWarmScopes.shouldWarm(scopeKey, ids)) {
+        return;
+    }
+
+    daemonShownPreviewWarmScopes.markWarmed(scopeKey, ids);
     try {
         await daemonScheduler.setFocus(module, ids);
         await daemonScheduler.setVisible(module, ids, []);
@@ -3943,7 +3953,7 @@ async function warmShownPreviewsForFile(
         await daemonScheduler.awaitPendingSubscribes(module.modulePath);
         await daemonScheduler.renderNow(module, ids, "fast", reason);
     } catch (err) {
-        daemonShownPreviewWarmScopes.delete(scopeKey);
+        daemonShownPreviewWarmScopes.forget(scopeKey);
         logLine(
             `daemon: view-open warmup failed for ${module.modulePath}: ${String((err as Error).message ?? err)}`,
         );
@@ -3951,12 +3961,7 @@ async function warmShownPreviewsForFile(
 }
 
 function clearDaemonShownPreviewWarmScopes(moduleId: string): void {
-    const prefix = `${moduleId}::`;
-    for (const key of [...daemonShownPreviewWarmScopes]) {
-        if (key.startsWith(prefix)) {
-            daemonShownPreviewWarmScopes.delete(key);
-        }
-    }
+    daemonShownPreviewWarmScopes.clearModule(moduleId);
 }
 
 /**
