@@ -43,6 +43,7 @@ services:
       # named volume below. Without it the cache is memory-only and every deploy starts from zero:
       # m3-catalog needs ~28h of background rendering to warm its 10,120 targets, against a box that
       # is redeployed and whose catalogs regenerate several times a day.
+      SERVE_THEME_CACHE_DIR: "${SERVE_THEME_CACHE_DIR:-}"
       SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-}"
       # Top-level sites (<host>=<system>[,…]): serve one of the catalogs above on a hostname
       # of its own, where it presents as the whole server. Caddy in front must route the name

@@ -179,6 +179,11 @@ services:
       SERVE_CATALOG_REFRESH: "${SERVE_CATALOG_REFRESH:-}"
       # RSS feed history work sleeps after this many seconds without a feed request. Empty ⇒ 7 days.
       SERVE_CATALOG_FEED_IDLE: "${SERVE_CATALOG_FEED_IDLE:-}"
+      # Warmed theme renders (the per-catalog theme cache) persist across container recreation when
+      # this points at a mounted volume. Unset means memory-only: the server declines to persist to
+      # a temp dir rather than spend disk and render time on a cache thrown away with the container.
+      SERVE_THEME_CACHE_DIR: "${SERVE_THEME_CACHE_DIR:-}"
+      SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-}"
       # Bundle-upload lane (POST a locally-built bundle and browse it here). Off unless asked for.
       SERVE_ACCEPT_BUNDLES: "${SERVE_ACCEPT_BUNDLES:-}"
       SERVE_ACCEPT_BUNDLES_FROM: "${SERVE_ACCEPT_BUNDLES_FROM:-}"
