@@ -182,6 +182,27 @@ interface SetPreviewsMessage {
 const PANEL_UPDATE_BUDGET_MS = 3 * 60_000;
 
 /**
+ * Budget for a wait whose condition is gated on a *render*, not on a repaint.
+ *
+ * {@link PANEL_UPDATE_BUDGET_MS}'s "already there on the first poll" reasoning
+ * only holds when the awaited value is something `refresh` posted before it
+ * resolved. It does not hold for a PNG: discovery announces a preview's id as
+ * soon as it has scanned the recompiled classes, and the renderer writes that
+ * preview's capture afterwards — on the daemon path, behind another
+ * `composePreviewDiscover` + render pass that starts once the refresh has
+ * already returned.
+ *
+ * Three minutes is under-sized for that. Scenario A's own cold cmp render
+ * measures ~195s on CI, past `PANEL_UPDATE_BUDGET_MS` on its own, and scenario
+ * B cut a healthy edit → recompile → discover → render round trip short on run
+ * 32002150579 ("capture … not on disk" at exactly 180000ms). The Mocha ceiling
+ * (via {@link budgetWithin}) is still the backstop that keeps the diagnostic,
+ * so the only thing a larger budget costs is how long a genuinely stuck render
+ * takes to report.
+ */
+const RENDER_ROUND_TRIP_BUDGET_MS = 8 * 60_000;
+
+/**
  * Budget for the awaited `triggerRefresh` itself.
  *
  * {@link PANEL_UPDATE_BUDGET_MS} only bounds the *poll after* the refresh
@@ -398,6 +419,35 @@ function fullRenderPath(
     // same way the extension does in `GradleService.readPreviewImage`:
     // `<workspaceRoot>/<projectDir>/build/compose-previews/<renderOutput>`.
     return path.join(repoRoot, first, "build", "compose-previews", output);
+}
+
+/**
+ * The captures a `setPreviews` advertises whose PNG is not on disk, as
+ * `<preview id> → <resolved path>` strings. Empty means the post is fully
+ * backed by rendered files.
+ *
+ * Discovery publishes a preview's captures as soon as it has scanned the
+ * recompiled classes; the renderer writes the PNGs afterwards. So a post with
+ * entries here is normally the *transient* moment between the two, which no
+ * user sees as anything but a card that fills in a second later — the thing
+ * worth failing on is a post that never becomes empty. Scenarios therefore
+ * poll on this rather than asserting against the first settled post, and keep
+ * the assertion afterwards so a permanently-missing PNG still reports the
+ * path it always did.
+ */
+function missingCaptures(repoRoot: string, msg: SetPreviewsMessage): string[] {
+    const missing: string[] = [];
+    for (const p of msg.previews) {
+        for (const c of p.captures ?? []) {
+            const resolved = fullRenderPath(
+                repoRoot,
+                msg.moduleDir,
+                c.renderOutput,
+            );
+            if (!fs.existsSync(resolved)) missing.push(`${p.id} → ${resolved}`);
+        }
+    }
+    return missing;
 }
 
 function dumpTranscript(
@@ -773,7 +823,14 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 // `Timeout of 1800000ms exceeded`, losing the one diagnostic
                 // that names the missing file. That is the trade this budget
                 // (plus `describeState` below) buys back.
-                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+                //
+                // Sized as a render round trip, not a panel repaint: what is
+                // being waited on here is a PNG the renderer has yet to write
+                // for a source file that was edited a moment ago, so the whole
+                // recompile → discover → render chain is inside the window.
+                // This used to be PANEL_UPDATE_BUDGET_MS, which cut a healthy
+                // run short at exactly 180000ms on run 32002150579.
+                budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
@@ -906,22 +963,45 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.resetMessages();
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
+        const deadlineAt = Date.now() + this.timeout();
 
         const p1 = api.triggerRefresh(cmpFile, true, "full");
         const p2 = api.triggerRefresh(cmpFile, true, "full");
         const p3 = api.triggerRefresh(cmpFile, true, "full");
         await Promise.all([p1, p2, p3]);
 
+        // Wait for the SETTLED post — every advertised capture backed by a PNG —
+        // rather than the first non-empty one, for the same reason scenario B
+        // does: the burst's winning refresh republishes ids as soon as discovery
+        // has scanned, and its renders land after. Asserting C1 against the first
+        // post read that gap as the coalescing bug and failed on a slow runner
+        // (run 31978767049: RedBoxPreview / BlueBoxPreview "pointing at missing
+        // PNGs"). C1 below is unchanged and still fails on a PNG that never
+        // arrives — as this wait's timeout, naming the same paths.
         const settled = await waitFor(
-            "settled cmp setPreviews after rapid burst",
-            this.timeout(),
+            "settled cmp setPreviews after rapid burst, with captures on disk",
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
                 return latestSetPreviewsMatching(
                     msgs,
+                    (m) =>
+                        nonEmptyForModule(cmpNeedle)(m) &&
+                        missingCaptures(repoRoot, m).length === 0,
+                );
+            },
+            () => {
+                const latest = latestSetPreviewsMatching(
+                    api.getPostedMessages(),
                     nonEmptyForModule(cmpNeedle),
                 );
+                if (!latest) return "no non-empty cmp setPreviews posted";
+                return `latest cmp setPreviews: ${
+                    latest.previews.length
+                } preview(s); captures not on disk: ${
+                    missingCaptures(repoRoot, latest).join(", ") || "<none>"
+                }`;
             },
         );
 
@@ -939,19 +1019,10 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // Invariant C1: every capture in the final post resolves to an on-disk PNG.
         // A coalescing bug that drops the imageJobs pass on the in-flight refresh
         // would leave the panel showing PreviewInfo entries pointing at PNGs that
-        // a later overwrite has clobbered.
-        const missing: string[] = [];
-        for (const p of settled.previews) {
-            for (const c of p.captures ?? []) {
-                const resolved = fullRenderPath(
-                    repoRoot,
-                    settled.moduleDir,
-                    c.renderOutput,
-                );
-                if (!fs.existsSync(resolved))
-                    missing.push(`${p.id} → ${resolved}`);
-            }
-        }
+        // a later overwrite has clobbered. Re-checked here rather than trusted
+        // from the wait above: the PNGs must still be there once the burst has
+        // fully quiesced, so a *later* clobber is caught too.
+        const missing = missingCaptures(repoRoot, settled);
         assert.deepStrictEqual(
             missing,
             [],
