@@ -72,6 +72,14 @@ The plugin also separately renders Android XML resources directly
 (vector drawables, adaptive icons, animated-vector drawables) — that
 is a different feature; see
 [`skills/compose-preview/references/resource-previews.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/resource-previews.md).
+An `<animated-vector>` is captured there in motion (a GIF, plus a
+keyframe filmstrip PNG), including one with `repeatCount="infinite"` —
+but as a **bare drawable at its intrinsic size**. For a
+`windowSplashScreenAnimatedIcon`, that is the icon on its own, not the
+splash window it launches inside. The window composition is a separate
+surface: `SplashScreenSurface` renders it as a still and
+`AnimatedSplashScreenSurface` (paired with `@AnimatedPreview`) renders
+it in motion, both from `:splash-preview-runtime`.
 
 ## Companion products
 
