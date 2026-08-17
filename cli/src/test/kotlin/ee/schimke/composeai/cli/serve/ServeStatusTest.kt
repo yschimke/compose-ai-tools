@@ -14,6 +14,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -544,5 +549,66 @@ class ServeStatusTest {
     // The generated links keep the token so clicking them doesn't hit the intentional 404.
     assertTrue(html.contains("href=\"/status.json?token=s3cret\""), "status.json link keeps token")
     assertTrue(html.contains("href=\"/compose-m3/?token=s3cret\""), "catalog link keeps token")
+  }
+
+  @Test
+  fun `status reports delivery-branch read counters`() {
+    // The gap this closes: renders have had failure telemetry for a long time, and branch reads —
+    // the lane that actually talks to GitHub — had none. So "is GitHub rate-limiting us, or was
+    // that asset never published?" could only be answered by reproducing it by hand with curl.
+    val stats = BranchFetchStats(clock = { 1_700_000_000_000L })
+    stats.record(BranchFetch.Ok(byteArrayOf(1)))
+    stats.record(BranchFetch.NotFound)
+    stats.record(BranchFetch.Throttled(5))
+
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          branchFetchStats = { stats.snapshot() },
+        )
+        .also { it.start() }
+
+    val (code, body) = get("/status.json")
+    assertEquals(200, code)
+    val branch =
+      Json.parseToJsonElement(body).jsonObject["branchFetch"]?.jsonObject
+        ?: error("status.json carries no branchFetch: $body")
+    assertEquals(3, branch["attempted"]?.jsonPrimitive?.int)
+    assertEquals(1, branch["ok"]?.jsonPrimitive?.int)
+    // The two that must never merge: an absent asset is routine, a throttle is the alert.
+    assertEquals(1, branch["notFound"]?.jsonPrimitive?.int)
+    assertEquals(1, branch["throttled"]?.jsonPrimitive?.int)
+    assertEquals(
+      1_700_000_000_000L,
+      branch["lastThrottleAtEpochMillis"]?.jsonPrimitive?.long,
+      "a monitor needs to know WHEN, not just whether",
+    )
+  }
+
+  @Test
+  fun `a server that has read no branch advertises no counters`() {
+    // Null rather than a block of zeros, like the render roll-up: "nothing has been read" and
+    // "everything read succeeded" are different answers, and a monitor that saw `throttled: 0` from
+    // a server that has never read a branch would be reading reassurance into silence.
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+        )
+        .also { it.start() }
+
+    val (code, body) = get("/status.json")
+    assertEquals(200, code)
+    val field = Json.parseToJsonElement(body).jsonObject["branchFetch"]
+    assertTrue(field == null || field is kotlinx.serialization.json.JsonNull, "got $field in $body")
   }
 }

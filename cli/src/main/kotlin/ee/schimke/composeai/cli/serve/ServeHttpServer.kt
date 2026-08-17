@@ -267,6 +267,12 @@ class ServeHttpServer(
    */
   private val playgroundHealth: (() -> PlaygroundHealth)? = null,
   /**
+   * Delivery-branch read counters for `/status.json`, read from the catalog store that owns them. A
+   * provider rather than the snapshot itself because `/status.json` is polled and the numbers move;
+   * null for a server with no catalog store, whose branch-read count is not zero but undefined.
+   */
+  private val branchFetchStats: (() -> BranchFetchSnapshot?)? = null,
+  /**
    * Per-caller budget on the compile lane (issue #3214), or null to leave it unmetered. Every other
    * playground bound is a whole-host one, so without this two callers issuing back-to-back compiles
    * hold every slot and everyone else is told the playground is busy.
@@ -4217,6 +4223,7 @@ class ServeHttpServer(
             )
           },
         recentDaemonFailures = failures.map { FailureDto(it.atEpochMillis, it.session, it.reason) },
+        branchFetch = branchFetchStats?.invoke(),
         renderStats =
           RenderPerfSnapshot.aggregate(
             // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something
@@ -7107,6 +7114,16 @@ private data class StatusResponse(
   val catalogList: List<CatalogDto>,
   val runningServers: List<RunningServerDto>,
   val recentDaemonFailures: List<FailureDto>,
+  /**
+   * Delivery-branch read counters ([BranchFetchSnapshot]). Null until this server has read a branch
+   * at all. Additive on `compose-preview-serve/status/v1`.
+   *
+   * This is what makes "is GitHub rate-limiting us?" a question you answer by looking rather than
+   * by reproducing it with `curl` — `throttled` climbing while `notFound` holds still is a rate
+   * limit, and `notFound` on its own is the ordinary case of a catalog declaring an asset a given
+   * revision never published.
+   */
+  val branchFetch: BranchFetchSnapshot? = null,
   /**
    * Server-wide render-latency roll-up across the running live daemons (see
    * [RenderPerfSnapshot.aggregate] — counts sum, `firstRenderMs` is the worst first render,

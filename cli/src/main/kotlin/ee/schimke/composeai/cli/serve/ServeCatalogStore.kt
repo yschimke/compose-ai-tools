@@ -2596,16 +2596,30 @@ class ServeCatalogStore(
     runCatching {
       val url = ServeCatalogRevision.commitsFeedUrl(repo, branch)
       val body =
-        if (fetch != null) fetch.invoke(url)
-        else networkFetch(url, MAX_FEED_FETCH_BYTES).bytesOrNull
+        if (fetch != null) fetch.invoke(url) else branchRead(url, MAX_FEED_FETCH_BYTES).bytesOrNull
       body?.toString(Charsets.UTF_8)?.let { ServeCatalogRevision.parseCommitsFeed(it) }
     }
     .getOrNull()
     .orEmpty()
 
+  /**
+   * Delivery-branch read counters for this store (`/status.json` → `branchFetch`).
+   *
+   * Per-store and wrapped around [networkFetch] rather than recorded inside the default HTTP
+   * transport, for two reasons that are the same reason: a counter on the companion would be
+   * process-global mutable state shared by every store in a test JVM, **and** it would record
+   * nothing at all for a store given an injected transport — telemetry that goes quiet exactly when
+   * someone has configured something unusual is worse than none, because it reads as healthy.
+   */
+  val branchFetchStats = BranchFetchStats()
+
+  /** [networkFetch] with its outcome counted. Every network read in this store goes through it. */
+  private fun branchRead(url: String, maxBytes: Long): BranchFetch =
+    networkFetch(url, maxBytes).also(branchFetchStats::record)
+
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
-    if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES).bytesOrNull
+    if (fetch != null) fetch.invoke(url) else branchRead(url, MAX_FETCH_BYTES).bytesOrNull
 
   /**
    * [fetchCatalogAsset], keeping the reason a failure failed.
@@ -2619,7 +2633,7 @@ class ServeCatalogStore(
     if (fetch != null) {
       fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
     } else {
-      networkFetch(url, MAX_FETCH_BYTES)
+      branchRead(url, MAX_FETCH_BYTES)
     }
 
   /**
@@ -2715,5 +2729,5 @@ class ServeCatalogStore(
    */
   private fun fetchExecutableBundle(url: String): ByteArray? =
     if (fetch != null) fetch.invoke(url)
-    else networkFetch(url, MAX_LIVE_BUNDLE_FETCH_BYTES).bytesOrNull
+    else branchRead(url, MAX_LIVE_BUNDLE_FETCH_BYTES).bytesOrNull
 }

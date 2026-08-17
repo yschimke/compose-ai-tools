@@ -2457,6 +2457,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         docStore = docStore,
         playgroundService = playgroundLane?.compile,
         playgroundHealth = playgroundLane?.health,
+        branchFetchStats = catalogStore?.let { store -> { store.branchFetchStats.snapshot() } },
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
         playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
