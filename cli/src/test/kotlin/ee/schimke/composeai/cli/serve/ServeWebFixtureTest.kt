@@ -52,6 +52,17 @@ import kotlinx.serialization.json.buildJsonObject
  * the server version ([version]) and the cache-busting hash in every asset href (see
  * [stableAssetHrefs]). Both are volatile, neither is a surface anyone reviews, and left alone they
  * made this test fail for reasons no reviewer could act on.
+ *
+ * **What these goldens do NOT prove.** Every page here is built by calling `ServeWeb` directly with
+ * arguments this test chooses — which is what lets it capture states a live server can't easily be
+ * put into (a pinned revision, published parity issues, a degraded session). The cost is that a
+ * fixture says only "the renderer draws this when handed these arguments"; it says nothing about
+ * whether the HTTP handler ever hands them over. That gap is not hypothetical: the viewer's
+ * per-preview "report an issue" affordance was passed `reportIssue = null` by the real handler for
+ * weeks while these goldens went on rendering it from this test's own `fixtureReportIssue`, so the
+ * harness screenshotted an affordance nobody could click. Anything that must actually be *wired*
+ * belongs in a route test against an embedded server — see [ServeViewerIssueReportRouteTest] and
+ * [ServeBugReportRouteTest] — with the golden covering only how it looks.
  */
 class ServeWebFixtureTest {
 

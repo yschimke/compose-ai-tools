@@ -2726,15 +2726,7 @@ class ServeHttpServer(
         respondNotFoundHtml("That preview has no matching design reference.")
         return@withLeasedSession
       }
-      val overrideParams =
-        call.request.queryParameters
-          .entries()
-          .mapNotNull { (key, values) ->
-            val value = values.firstOrNull() ?: return@mapNotNull null
-            if (ServeOverrides.isOverrideParam(key)) key to value else null
-          }
-          .toMap()
-          .let { ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it) }
+      val overrideParams = requestOverrideParams(sessionId)
       val bundleHost = catalogBundleHost(renderHost)
       val sourceHref =
         bundleHost?.catalogSource?.let { source ->
@@ -3663,6 +3655,28 @@ class ServeHttpServer(
     URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8)
   }
     .getOrNull()
+
+  /**
+   * **This** request's override query, as the map a report or a render URL means by "the overrides
+   * in force".
+   *
+   * Filtered to the params the render lane actually consumes ([ServeOverrides.isOverrideParam]) and
+   * normalised exactly the way the page's own links are, so routing-only params (`session`,
+   * `reference`) and the token never ride along into a caller that meant the *overrides*.
+   *
+   * Shared by the viewer and the focused comparison rather than written out at each: the two file
+   * reports about the same preview, and an override normalised one way in one report and another
+   * way in the other would make the same bug arrive looking like two.
+   */
+  private fun RoutingContext.requestOverrideParams(sessionId: String): Map<String, String> =
+    call.request.queryParameters
+      .entries()
+      .mapNotNull { (key, values) ->
+        val value = values.firstOrNull() ?: return@mapNotNull null
+        if (ServeOverrides.isOverrideParam(key)) key to value else null
+      }
+      .toMap()
+      .let { ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it) }
 
   /**
    * The reported page's own override query, re-emitted as a `?…` suffix for a `/render` URL.
@@ -5165,6 +5179,45 @@ class ServeHttpServer(
             preview.sourceFile,
           )
         }
+      // The prefilled "report an issue" report for the preview on screen, filed against the repo
+      // that owns its Kotlin.
+      //
+      // Built here rather than only on the focused comparison. Every fact a *preview* bug turns on
+      // is concrete on this page — which preview, which component, which variant, the overrides in
+      // force, the catalog build it came from, and the PNG at those exact settings — and the viewer
+      // is where someone actually notices a button rendering wrongly. Only the two reference-scoped
+      // facts are unavailable, and both are optional by construction: with `referenceId` left null
+      // the body drops its "Raw comparison" row and [ServeIssueReport.locator] returns null, so no
+      // parity-locator fence is emitted. Those stay exclusive to the comparison, which is the only
+      // page that can honestly name a design reference or a parity score.
+      val reportContext =
+        ServeIssueReport.Context(
+          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+          previewId = preview.id,
+          previewLabel = preview.label,
+          system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+          componentId = ServeIssueReport.componentIdFor(preview),
+          variant = ServeIssueReport.variantFor(preview),
+          overrides = requestOverrideParams(sessionId),
+          sourceUrl = sourceHref,
+          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
+          toolVersion = bundleHost?.provenance?.toolVersion,
+          viewerUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+          // `imageUrl` already carries this page's override suffix, so the report links the render
+          // the visitor is looking at rather than the preview's defaults. Token-stripped, like
+          // every URL that reaches an issue body.
+          renderUrl = ServeIssueReport.withoutToken(imageUrl),
+          publicRender = isPublic,
+        )
+      val reportIssue =
+        ServeWeb.ReportIssue(
+          action = ServeIssueReport.action(reportContext.repo),
+          title = ServeIssueReport.title(reportContext),
+          body = ServeIssueReport.body(reportContext),
+          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
+          repo = reportContext.repo,
+          login = githubAuth?.currentLogin(call),
+        )
       val liveAuthPrompt =
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
@@ -5281,9 +5334,7 @@ class ServeHttpServer(
             ),
           version = BUNDLE_VERSION,
           sourceHref = sourceHref,
-          // A viewer cannot reliably name the selected design reference or the parity score.
-          // Reporting lives on the focused comparison, where both are concrete.
-          reportIssue = null,
+          reportIssue = reportIssue,
           // The Figma node this preview is specified by, when the catalog publishes a Figma-backed
           // design reference for it. Resolved from data the catalog already carries — nothing is
           // fetched from Figma, here or anywhere else in serve.
