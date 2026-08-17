@@ -344,3 +344,124 @@ test("a folded component's DARK cell is still ignored, like every other dark cap
   ]);
   assert.equal(byComponent.size, 0);
 });
+
+test("variantSeeds carries a cell's declared kit axis and value onto its seed", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("DatePicker", "range", {
+        seeds: [{ key: "type", raw: "range" }],
+        kitAxis: "Type",
+        kitValue: "Full-screen (range)",
+      }),
+    ),
+    [{ key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" }],
+  );
+});
+
+test("variantSeeds carries a CatalogVariant's declaration onto its prop", () => {
+  assert.deepEqual(
+    variantSeeds(
+      catalogVariant("DatePickerRange", "DatePicker", {
+        props: [{ key: "type", value: "range" }],
+        kitAxis: "Type",
+        kitValue: "Full-screen (range)",
+      }),
+    ),
+    [{ key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" }],
+  );
+});
+
+test("either kit name stands alone — an axis without a value, a value without an axis", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("ListItem", "avatar", {
+        seeds: [{ key: "content", raw: "avatar" }],
+        kitAxis: "Show avatar",
+      }),
+    ),
+    [{ key: "content", raw: "avatar", kitAxis: "Show avatar" }],
+  );
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("Carousel", "hero", {
+        seeds: [{ key: "layout", raw: "hero" }],
+        kitValue: "Center-aligned hero",
+      }),
+    ),
+    [{ key: "layout", raw: "hero", kitValue: "Center-aligned hero" }],
+  );
+});
+
+test("a component's kitAxis is a default its cells inherit, and each cell can override", () => {
+  const previews = [
+    component("ListItem", { reference: ref("1:2"), kitAxis: "Show avatar" }),
+    overrideVariant("ListItem", "avatar", { seeds: [{ key: "content", raw: "avatar" }] }),
+    overrideVariant("ListItem", "icon", {
+      seeds: [{ key: "content", raw: "icon" }],
+      kitAxis: "Show icon",
+    }),
+  ];
+  // A cell render is `base.copy(id = …, overrides = spec)`, so it carries the SAME catalog entry
+  // as its component — which is how a component-level default reaches a cell at all.
+  for (const preview of previews.slice(1)) preview.catalog.kitAxis = "Show avatar";
+  const { variants } = projectDesignMap(previews);
+  assert.deepEqual(
+    variants.components[0].renders.map((r) => r.seeds[0].kitAxis),
+    ["Show avatar", "Show icon"],
+  );
+});
+
+test("a declaration with more than one knob to sit on is reported, not guessed at", () => {
+  // Which of the two knobs does `Type` name? The annotation carries one pair per cell and cannot
+  // say, and picking one would pin the wrong axis — a confident reference to the wrong node.
+  const { variants, diagnostics } = projectDesignMap([
+    component("DatePicker", { reference: ref("1:2") }),
+    overrideVariant("DatePicker", "range-input", {
+      seeds: [
+        { key: "type", raw: "range" },
+        { key: "mode", raw: "input" },
+      ],
+      kitAxis: "Type",
+    }),
+  ]);
+  assert.deepEqual(diagnostics.unplacedDeclarations, [
+    {
+      previewId: "com.example.CatalogKt.DatePicker_Light_VARIANT_range-input",
+      kitAxis: "Type",
+      kitValue: undefined,
+      seeds: ["type", "mode"],
+    },
+  ]);
+  // The seeds still resolve on their own spelling; only the declaration is dropped.
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "type", raw: "range" },
+    { key: "mode", raw: "input" },
+  ]);
+});
+
+test("a component default that cannot be placed is silent — a default need not cover everything", () => {
+  const { diagnostics } = projectDesignMap([
+    component("DatePicker", { reference: ref("1:2"), kitAxis: "Type" }),
+    overrideVariant("DatePicker", "range-input", {
+      seeds: [
+        { key: "type", raw: "range" },
+        { key: "mode", raw: "input" },
+      ],
+    }),
+  ]);
+  assert.deepEqual(diagnostics.unplacedDeclarations, []);
+});
+
+test("declared kit names reach the sidecar, which is the only reader that matters", () => {
+  const { variants } = projectDesignMap([
+    component("DatePicker", { reference: ref("1:2") }),
+    overrideVariant("DatePicker", "range", {
+      seeds: [{ key: "type", raw: "range" }],
+      kitAxis: "Type",
+      kitValue: "Full-screen (range)",
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" },
+  ]);
+});

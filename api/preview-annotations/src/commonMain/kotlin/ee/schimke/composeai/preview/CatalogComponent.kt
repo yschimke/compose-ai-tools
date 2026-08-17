@@ -145,6 +145,32 @@ annotation class CatalogComponent(
  * @CatalogModes @Composable fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
  * ```
  *
+ * ### Design-kit correspondence: [kitAxis] and [kitValue]
+ *
+ * [props] is the Compose side — `type=range` is what the API calls it, and it is what a reader of
+ * this catalog greps for. A design map resolver translates that to the kit's own axis through
+ * published alias tables, and some spellings no table reaches: the Material 3 kit files that
+ * variant as `Type=Full-screen (range)`, parentheses and all. Naming the kit's spelling in [props]
+ * to make the join work puts a kit string in code that has no business holding one, and it rots the
+ * next time the kit renames a value.
+ *
+ * So name both sides instead — the code keeps its own word, the declaration carries the kit's:
+ * ```kotlin
+ * @CatalogVariant(
+ *   of = "DatePicker/Modal",
+ *   props = ["type=range"],
+ *   kitAxis = "Type",
+ *   kitValue = "Full-screen (range)",
+ * )
+ * ```
+ *
+ * Either alone is meaningful: [kitAxis] when only the axis *name* differs, [kitValue] when only the
+ * value's spelling does. Both are **authoritative** downstream — a resolver that honours them stops
+ * consulting its alias tables for that knob, so a misspelt declaration resolves to nothing rather
+ * than quietly falling back to a guess. They apply to a variant declaring exactly ONE [props] entry
+ * (or [state]); with several there is nothing to say which knob the axis names, and the projection
+ * reports the declaration rather than picking one.
+ *
  * Same discovery policy as [CatalogComponent] (`@Target(FUNCTION)`, `BINARY` retention, FQN match).
  */
 @Retention(AnnotationRetention.BINARY)
@@ -155,6 +181,12 @@ annotation class CatalogVariant(
   val state: String = "",
   val caption: String = "",
   val props: Array<String> = [],
+  /**
+   * Design-kit variant property this variant's prop names; empty keeps downstream name matching.
+   */
+  val kitAxis: String = "",
+  /** Design-kit value this variant maps to; empty keeps downstream value matching. */
+  val kitValue: String = "",
 )
 
 /**

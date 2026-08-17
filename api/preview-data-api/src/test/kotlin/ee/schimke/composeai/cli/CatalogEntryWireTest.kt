@@ -36,6 +36,39 @@ class CatalogEntryWireTest {
   }
 
   @Test
+  fun `a variant's kit axis and value survive manifest decoding`() {
+    // The pair a variant declares when the kit spells its value differently — `type=range` against
+    // the kit's `Type=Full-screen (range)`. Dropping either half here strands the declaration on
+    // the annotation, which is where it sat, unread, before anything projected it.
+    val manifest =
+      Json.decodeFromString<PreviewManifest>(
+        """
+        {
+          "module": ":sample",
+          "variant": "debug",
+          "previews": [{
+            "id": "test.DatePickerRange",
+            "functionName": "DatePickerRange",
+            "className": "test.CatalogKt",
+            "catalog": {
+              "role": "VARIANT",
+              "componentId": "DatePicker/Modal",
+              "props": [{ "key": "type", "value": "range" }],
+              "kitAxis": "Type",
+              "kitValue": "Full-screen (range)"
+            }
+          }]
+        }
+        """
+          .trimIndent()
+      )
+
+    val catalog = manifest.previews.single().catalog
+    assertEquals("Type", catalog?.kitAxis)
+    assertEquals("Full-screen (range)", catalog?.kitValue)
+  }
+
+  @Test
   fun `catalog breakpoints survive manifest decoding`() {
     // `perBreakpoint` drives a FAN-OUT: the design-artifacts export mints one catalog component per
     // breakpoint the function rendered at, so a reader that dropped the field would report one

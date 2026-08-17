@@ -171,8 +171,13 @@ data class CatalogEntry(
    * would see one component where the published catalog has several.
    */
   val perBreakpoint: Boolean = false,
-  /** COMPONENT: default design-kit variant property for override-variant cells. */
+  /**
+   * The design-kit variant property this entry's knobs turn: on a COMPONENT the default for its
+   * override-variant cells, on a VARIANT the axis its single [props] entry means.
+   */
   val kitAxis: String? = null,
+  /** VARIANT: the design-kit value this variant maps to, when the kit spells it differently. */
+  val kitValue: String? = null,
 )
 
 @Serializable

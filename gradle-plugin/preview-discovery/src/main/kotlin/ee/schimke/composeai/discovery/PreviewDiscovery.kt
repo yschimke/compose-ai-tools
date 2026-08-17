@@ -1170,6 +1170,8 @@ object PreviewDiscovery {
           caption = annStringOrNull(variant, "caption"),
           state = annStringOrNull(variant, "state"),
           props = annStringArray(variant, "props").mapNotNull(::parseCatalogProp),
+          kitAxis = annStringOrNull(variant, "kitAxis"),
+          kitValue = annStringOrNull(variant, "kitValue"),
         )
       }
     val component = annotations.firstOrNull { it.name == CATALOG_COMPONENT_FQN } ?: return null
