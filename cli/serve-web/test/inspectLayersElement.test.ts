@@ -40,8 +40,11 @@ interface Fetches {
     settle(): void;
 }
 
-function stubFetch(options: { hold?: boolean; fail?: boolean } = {}): Fetches {
+function stubFetch(
+    options: { hold?: boolean; fail?: boolean; failTimes?: number } = {},
+): Fetches {
     const held: Array<() => void> = [];
+    let failuresLeft = options.failTimes ?? 0;
     const state: Fetches = {
         urls: [],
         settle: () => {
@@ -51,6 +54,10 @@ function stubFetch(options: { hold?: boolean; fail?: boolean } = {}): Fetches {
     globalThis.fetch = (async (url: string) => {
         state.urls.push(String(url));
         if (options.hold) await new Promise<void>((r) => held.push(r));
+        if (failuresLeft > 0) {
+            failuresLeft--;
+            return { ok: false, status: 500 };
+        }
         if (options.fail) return { ok: false, status: 404 };
         return {
             ok: true,
@@ -354,6 +361,27 @@ describe("<cp-inspect-layers>", () => {
         await tick("a11y");
         assert.equal(boxes().length, 0);
         assert.equal(legend().hidden, true);
+    });
+
+    it("retries a failed fetch instead of serving the failure back forever", async () => {
+        // A failure is not this frame's answer. The per-frame cache exists so re-ticking a layer
+        // doesn't re-run a render of the SAME pixels — but caching the rejection meant one 500
+        // blanked the layer for as long as the frame stayed on screen: every re-tick replayed the
+        // stored null, so a server that had already recovered still looked broken. Which is exactly
+        // how a deep-linked `?inspect=a11y` presented as "the overlay doesn't work".
+        const stub = stubFetch({ failTimes: 1 });
+        await mount();
+        await tick("a11y");
+        assert.equal(boxes().length, 0, "nothing to draw from the failure");
+
+        const el = toggle("a11y");
+        el.checked = false;
+        el.dispatchEvent(new Event("change"));
+        for (let i = 0; i < 3; i++) await flush();
+        await tick("a11y");
+        assert.equal(stub.urls.length, 2, "the second tick asks again");
+        assert.equal(boxes().length, 2);
+        assert.equal(legend().hidden, false);
     });
 
     it("re-places the boxes when the stage reflows under them", async () => {

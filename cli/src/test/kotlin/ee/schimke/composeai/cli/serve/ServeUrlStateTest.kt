@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -87,9 +88,33 @@ class ServeUrlStateTest {
     // localStorage was last written with — otherwise Back out of a theme lands on that theme.
     assertTrue(html.contains("""urlParam("tab") || initialTab"""), html)
     assertTrue(html.contains("""urlParam("theme") || initialTheme"""), html)
+    // Scoped to the grid's own script rather than the whole document. The page shell gained ONE
+    // deliberate reload in #4087 — the one-time `cp-interface-mode` localStorage→cookie migration,
+    // which reloads so the server can re-render with the cookie it just set — and a document-wide
+    // search for `location.reload()` cannot tell that apart from the regression this guards. What
+    // must stay true is narrower and still the point: the grid restores state by re-pointing its
+    // own images, so its script never reloads.
+    val gridScript =
+      html
+        .substringAfter("""var cards = document.querySelectorAll(".cp-card");""")
+        .substringBefore("</script>")
+    // `substringAfter` hands back the WHOLE string when its delimiter is absent, so a renamed
+    // marker would quietly re-point this at some other script and assert nothing. Pin the slice to
+    // the script that actually carries the popstate wiring, and fail loudly if it ever drifts.
+    assertTrue(
+      gridScript.contains("urlState.onPop(function () {"),
+      "the extracted slice must be the grid script that restores state",
+    )
     assertFalse(
-      html.contains("location.reload()"),
+      gridScript.contains("location.reload()"),
       "restoring state must re-point the grid in place, never reload the catalog",
+    )
+    // …and the shell's migration stays the ONLY reload on the page, so a second one appearing
+    // anywhere still fails here rather than hiding behind the exemption above.
+    assertEquals(
+      1,
+      html.split("location.reload()").size - 1,
+      "the one-time cp-interface-mode migration is the only reload the landing page emits",
     )
   }
 

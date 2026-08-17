@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -652,6 +653,101 @@ class ServeRenderHostTest {
       assertTrue(payload.getValue("findings").jsonArray.isEmpty())
       assertTrue(payload.getValue("touchTargets").jsonArray.isEmpty())
     }
+  }
+
+  @Test
+  fun `renderA11y enables the daemon's inactive a11y extension before fetching`() {
+    // The bug behind "the a11y overlay doesn't work" on a served catalog. The daemon registers its
+    // inspection products INACTIVE, so a `data/fetch` on a session nobody enabled fails `-32020
+    // kind not advertised`. `renderA11y` read no capability of its own, so nothing ran the enable:
+    // on a host whose flags were never asked for — the per-preview daemons `ServeCatalogLiveHost`
+    // routes this lane to, while answering `hasA11yOverlayFor` from the SHARED one — every
+    // accessibility fetch 500'd, until an unrelated SVG or scroll request happened to enable that
+    // daemon and the same URL silently started working.
+    lateinit var session: FakeRenderSession
+    session =
+      FakeRenderSession(
+        newRenderRoot(),
+        fetchDataHook = { _, kind ->
+          when (kind) {
+            ServeRenderHost.A11Y_HIERARCHY_KIND,
+            ServeRenderHost.A11Y_ATF_KIND,
+            ServeRenderHost.A11Y_TOUCH_TARGETS_KIND -> {
+              // Model the daemon: an un-enabled extension's kinds are simply not advertised.
+              check(ServeRenderHost.A11Y_EXTENSION_ID in session.enabledExtensionIds) {
+                "data/fetch: kind not advertised: $kind"
+              }
+              if (kind == ServeRenderHost.A11Y_HIERARCHY_KIND)
+                a11yFetch(kind, """{"nodes":[{"label":"Follow","boundsInScreen":"0,0,48,24"}]}""")
+              else a11yFetch(kind, "{}")
+            }
+            else -> null
+          }
+        },
+      )
+    host(session).use { h ->
+      // Nothing has read a capability flag — exactly the state a freshly-leased per-preview daemon
+      // is in when the viewer asks it for the overlay.
+      val out = h.renderA11y(previewId, PreviewOverrides())
+      assertTrue(out is A11yOutcome.Ok, "expected Ok, got $out")
+      assertTrue(
+        ServeRenderHost.A11Y_EXTENSION_ID in session.enabledExtensionIds,
+        "the a11y lane must enable the extension it fetches from",
+      )
+    }
+  }
+
+  @Test
+  fun `renderA11y is NotFound rather than a 500 when the backend has no a11y extension`() {
+    // Mirrors `renderSvg` on a backend without figma-svg: a host that reports the extension unknown
+    // cannot produce the hierarchy at all, so the lane 404s cleanly instead of fetching into a
+    // `-32020` the viewer surfaces as a 500.
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        unknownExtensionIds = setOf(ServeRenderHost.A11Y_EXTENSION_ID),
+        fetchDataHook = { _, kind ->
+          if (kind.startsWith("a11y/")) error("kind not advertised: $kind") else null
+        },
+      )
+    host(session).use { h ->
+      assertFalse(h.hasA11yOverlay)
+      assertTrue(h.renderA11y(previewId, PreviewOverrides()) is A11yOutcome.NotFound)
+    }
+  }
+
+  @Test
+  fun `renderA11y reports a daemon that cannot be opened instead of throwing`() {
+    // Forcing the enable moved the daemon OPEN into this lane, and that open is deliberately
+    // outside the enable's own `runCatching` so a transient failure leaves the lazy uninitialized
+    // and the next caller retries. It must not escape as an exception: the route only translates
+    // outcome values, so a throw would skip its 500-with-reason and its log line entirely.
+    val logged = CopyOnWriteArrayList<String>()
+    val opens = AtomicInteger(0)
+    // Not `use {}`: a host whose open failed has no subprocess to reap, and `close()` reaches for
+    // the session again to find that out — which would re-throw the stubbed failure from the
+    // cleanup and mask the outcome this test is about.
+    val h =
+      ServeRenderHost(
+        openSession = {
+          opens.incrementAndGet()
+          throw IllegalStateException("daemon handshake timed out")
+        },
+        previews = listOf(ServePreview(previewId, "Red")),
+        onLog = { logged += it },
+      )
+    val out = h.renderA11y(previewId, PreviewOverrides())
+    assertTrue(out is A11yOutcome.Failed, "expected Failed, got $out")
+    assertTrue(
+      out.reason.contains("daemon handshake timed out"),
+      "the failure must carry the open's reason, got '${out.reason}'",
+    )
+    assertTrue(logged.any { it.contains("daemon handshake timed out") }, "logged: $logged")
+
+    // Nothing was cached, so a later request still tries — the whole point of leaving the lazy
+    // uninitialized.
+    h.renderA11y(previewId, PreviewOverrides())
+    assertEquals(2, opens.get(), "a failed open must not be remembered as the answer")
   }
 
   @Test
