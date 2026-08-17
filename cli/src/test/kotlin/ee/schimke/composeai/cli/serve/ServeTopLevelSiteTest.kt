@@ -480,6 +480,46 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `a site host does not report the box's branch-read counters`() {
+    // `/status` on a site reports on ONE app by design — a monitor pointed at the site alerts on
+    // the site, and a visitor learns nothing about what else the box runs. The branch-read counters
+    // are box-wide with no per-system breakdown, so including them would fire this site's monitor
+    // on a neighbour's throttle AND disclose that the neighbour exists.
+    val stats = BranchFetchStats(clock = { 5L })
+    stats.record(BranchFetch.Throttled(3))
+    registry.register(
+      "compose-m3",
+      host = bundle("compose-m3", listOf("button-filled"), "Compose Material 3"),
+      pinned = true,
+    )
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "",
+          isPublic = true,
+          catalogSessions = listOf("compose-m3"),
+          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+          branchFetchStats = { stats.snapshot() },
+        )
+        .also { it.start() }
+
+    val (siteCode, siteBody, _) = get("/status.json", host = siteHost)
+    assertEquals(200, siteCode)
+    assertFalse(
+      siteBody.contains("\"throttled\":1"),
+      "a site must not surface the box's branch counters: $siteBody",
+    )
+
+    // The main host still reports them — this scopes the field, it does not remove it.
+    val (mainCode, mainBody, _) = get("/status.json")
+    assertEquals(200, mainCode)
+    assertTrue(mainBody.contains("\"throttled\":1"), "the box's own status still counts: $mainBody")
+  }
+
+  @Test
   fun `an unauthenticated refusal never carries the access token`() {
     // The interceptor runs BEFORE the routes' own token gate, and the styled 404 threads the access
     // token through its links — so on a token-gated box a made-up path would have handed the secret

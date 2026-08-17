@@ -1440,7 +1440,11 @@ class ServeCatalogStoreTest {
         fetch = fetch,
         networkProbe = { url ->
           requested += "HEAD $url"
-          url.endsWith("bundle/previews/FilledButton_Dark.png")
+          // Outcome-shaped like the seam it stands in for: a probe that answered a bare Boolean
+          // could not tell "absent" from "the branch refused us", which is what left the
+          // executable-bundle lane invisible to /status.json.
+          if (url.endsWith("bundle/previews/FilledButton_Dark.png")) BranchFetch.Ok(ByteArray(0))
+          else BranchFetch.NotFound
         },
         buildTrustedBundle = { _, _, _, _, _, access ->
           perPreviewAccess = access

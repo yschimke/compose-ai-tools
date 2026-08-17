@@ -4223,7 +4223,12 @@ class ServeHttpServer(
             )
           },
         recentDaemonFailures = failures.map { FailureDto(it.atEpochMillis, it.session, it.reason) },
-        branchFetch = branchFetchStats?.invoke(),
+        // Omitted on a site host. `/status` there reports on ONE app by design — "a monitor
+        // pointed at the site alerts on the site, and a visitor learns nothing about what else the
+        // box runs" — and these counters are box-wide with no per-system breakdown. Including them
+        // would both fire a site's monitor on a neighbour's throttle and disclose that the
+        // neighbour exists, which is the one thing a top-level site is for.
+        branchFetch = if (onlySystem == null) branchFetchStats?.invoke() else null,
         renderStats =
           RenderPerfSnapshot.aggregate(
             // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something

@@ -76,7 +76,13 @@ class ServeCatalogStore(
    * request to GitHub for pins alone. One seam, one answer shape, nothing to forget to wire.
    */
   private val networkFetch: (url: String, maxBytes: Long) -> BranchFetch = ::httpFetchOutcome,
-  private val networkProbe: (url: String) -> Boolean = ::httpExists,
+  /**
+   * Existence probe (a `HEAD`), outcome-shaped like [networkFetch] so it is counted too. A probe
+   * that answered a bare `Boolean` collapsed "absent" and "the branch refused us" into `false`, so
+   * a throttled executable-bundle lane went quiet with `/status.json` still reading healthy — the
+   * same blindness this telemetry exists to remove, one seam over.
+   */
+  private val networkProbe: (url: String) -> BranchFetch = ::httpProbeOutcome,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
    * Called when the catalog declares an in-browser Wasm app (`webRender` in `catalog.json`) and its
@@ -1368,7 +1374,7 @@ class ServeCatalogStore(
   ): Boolean {
     val cached = File(File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR), "$stem.png")
     if (cached.isFile && cached.length() > 0 && isCompleteExecutableBundle(cached)) return true
-    return runCatching { networkProbe(perPreviewBundleUrl(stem, liveBundle, base)) }
+    return runCatching { branchProbe(perPreviewBundleUrl(stem, liveBundle, base)) }
       .getOrDefault(false)
   }
 
@@ -2555,9 +2561,23 @@ class ServeCatalogStore(
     private fun httpFetch(url: String, maxBytes: Long): ByteArray? =
       httpFetchOutcome(url, maxBytes).bytesOrNull
 
-    private fun httpExists(url: String): Boolean =
-      httpClient.newCall(Request.Builder().url(url).head().build()).execute().use {
-        it.isSuccessful
+    /**
+     * A `HEAD` probe as an outcome. [BranchFetch.Ok] carries no bytes — nothing was asked for; it
+     * means only "the branch has this". The point of the type here is the failure side: a `429` on
+     * a probe is a throttle to count, not an absent file.
+     */
+    private fun httpProbeOutcome(url: String): BranchFetch =
+      try {
+        httpClient.newCall(Request.Builder().url(url).head().build()).execute().use { response ->
+          if (response.isSuccessful) BranchFetch.Ok(ByteArray(0))
+          else
+            BranchFetch.ofStatus(
+              response.code,
+              BranchFetch.parseRetryAfter(response.header("Retry-After")),
+            )
+        }
+      } catch (e: java.io.IOException) {
+        BranchFetch.Transport(e::class.simpleName ?: "IOException")
       }
 
     private fun readCapped(input: InputStream, max: Long): ByteArray {
@@ -2616,6 +2636,10 @@ class ServeCatalogStore(
   /** [networkFetch] with its outcome counted. Every network read in this store goes through it. */
   private fun branchRead(url: String, maxBytes: Long): BranchFetch =
     networkFetch(url, maxBytes).also(branchFetchStats::record)
+
+  /** [networkProbe] with its outcome counted; true only when the branch actually has the file. */
+  private fun branchProbe(url: String): Boolean =
+    networkProbe(url).also(branchFetchStats::record) is BranchFetch.Ok
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
