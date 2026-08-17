@@ -75,6 +75,14 @@ fi
 [[ -n "${SERVE_CATALOGS_UNLISTED:-}" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
 [[ -n "${SERVE_CATALOG_FEED_IDLE:-}" ]] &&
   args+=(--catalog-feed-idle-timeout "${SERVE_CATALOG_FEED_IDLE}")
+
+# Warmed theme renders survive a container recreation when this points at a mounted volume.
+# Defaults beside catalogs.json (/config/theme-cache) — the server declines to persist at all
+# rather than fall back to a temp dir, since a theme cache thrown away with the container costs
+# disk and render time to buy nothing.
+[[ -n "${SERVE_THEME_CACHE_DIR:-}" ]] && args+=(--theme-cache-dir "${SERVE_THEME_CACHE_DIR}")
+[[ -n "${SERVE_THEME_CACHE_MAX_BYTES:-}" ]] &&
+  args+=(--theme-cache-max-bytes "${SERVE_THEME_CACHE_MAX_BYTES}")
 # Top-level sites (<host>=<system>[,…]): one of the catalogs above, additionally served on a
 # hostname of its own where it looks like the only thing here. A routing view over the same
 # sessions — no extra catalog, no extra render.

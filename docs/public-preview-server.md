@@ -629,10 +629,43 @@ declares themes gets a leading **Default** chip to return to. The choice persist
 
 Completed catalog-grid theme renders are cached on the catalog host, above the LRU pool of
 preview-scoped daemons. Re-selecting a theme therefore reuses its PNGs even if those daemons were
-evicted. Refreshing the catalog replaces the host, so the replacement starts with an empty cache;
-mixed theme-plus-knob renders remain in the daemon's bounded override cache rather than growing
-this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or shared
-proxy from replaying old-catalog pixels after refresh.
+evicted. Mixed theme-plus-knob renders remain in the daemon's bounded override cache rather than
+growing this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or
+shared proxy from replaying old-catalog pixels after refresh.
+
+### The cache can outlive the process (`--theme-cache-dir`)
+
+In memory alone that cache is dropped by two separate events — a server restart, and a catalog
+reload, since every load builds a fresh session state. On `preview.coo.ee` those fired **7–10 times
+a day** (on 2026-08-17: three delivery-branch regenerations and four releases) against an
+`m3-catalog` needing roughly **28 hours** of background rendering to warm its 10,120 targets. It had
+never once had a window long enough to finish, which reads on `/status` as a `cached` count that
+keeps returning to zero.
+
+Pointing `--theme-cache-dir` at a durable directory adds a disk tier under the memory one. Memory
+stays a 128 MB window onto it — a fully warmed catalog is several times that — so lookups fall
+through to disk and promote, and `cached` counts both tiers.
+
+Reuse is decided by a **fingerprint of what produced the pixels**, not by the cache key alone: the
+content hash of the classpath the daemon renders with, the daemon variant, the tool version, and the
+render config. Each `(system, fingerprint)` pair is its own directory, so a new catalog revision or
+a new server build simply writes a new generation and reads none of the old one — invalidation is
+structural rather than something a reader must remember to check. Generations nothing can read any
+more are swept once the catalog pass finishes; a live set that exceeds `--theme-cache-max-bytes` is
+reported rather than evicted, because deleting what is currently being warmed would just make the
+optimizer render it again.
+
+Because a fingerprint can only cover the inputs it was told about, the first optimizer pass
+re-renders a small sample and compares it to what was adopted from disk. A mismatch discards the
+whole generation — an input the fingerprint missed makes every entry under that name suspect. A
+daemon that cannot answer yet verifies nothing rather than discarding anything.
+
+There is deliberately **no temp-directory fallback**: a theme cache thrown away with the container
+would cost disk and render time to buy nothing, so where there is no durable location the server
+runs memory-only and says so. On the Compose stack that durable location is a named volume
+(`theme_cache:/config/theme-cache` in `deploy/vps/docker-compose.yml`), which is what survives the
+container recreation a deploy performs. `/status.json` reports the tier as `themeCache` — generation
+count, bytes, hits and writes.
 
 The cache can also be filled **ahead of the first visitor** — an idle pass that walks each catalog's
 `previews × declaredThemes` set and renders the missing entries — but that pass is **off by

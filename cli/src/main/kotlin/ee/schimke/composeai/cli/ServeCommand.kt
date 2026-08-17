@@ -5,6 +5,7 @@ import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.CatalogRefreshResult
 import ee.schimke.composeai.cli.serve.CatalogThemeCache
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
+import ee.schimke.composeai.cli.serve.GenerationInputs
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.LiveSeatLimiter
@@ -68,6 +69,8 @@ import ee.schimke.composeai.cli.serve.ServeTrustAdmin
 import ee.schimke.composeai.cli.serve.ServeTrustStoreFile
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.cli.serve.ServeWeb
+import ee.schimke.composeai.cli.serve.ThemeCacheFingerprint
+import ee.schimke.composeai.cli.serve.ThemeCacheStore
 import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
 import ee.schimke.composeai.cli.serve.detectedFeaturesOf
@@ -744,6 +747,115 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    */
   private val backgroundWork =
     ServeBackgroundWork(maxConcurrentRenders = ServeBackgroundWork.renderLaneFor(liveSeatLimiter))
+
+  /**
+   * Durable home for warmed theme renders (`--theme-cache-dir`), or null to keep the cache in
+   * memory only.
+   *
+   * Defaults beside `catalogs.json` exactly as the feed cache does, because that is the directory a
+   * deployment already mounts as a persistent volume — and persistence across container recreation
+   * is the entire point.
+   *
+   * **Unlike the feed cache, there is deliberately no temp-directory fallback.** A theme cache in
+   * `/tmp` would be written once, read never, and thrown away with the container: it would consume
+   * disk and render time to buy exactly nothing, while reporting itself as working. Where there is
+   * no durable location, the honest configuration is no disk tier at all.
+   */
+  private val themeCacheStore: ThemeCacheStore? by lazy {
+    val explicit = args.flagValue("--theme-cache-dir")?.takeIf { it.isNotBlank() }?.let(::File)
+    val preferred =
+      explicit
+        ?: catalogsFile?.displayPath?.let(::File)?.absoluteFile?.parentFile?.resolve("theme-cache")
+        ?: return@lazy null
+    if (!(preferred.isDirectory || preferred.mkdirs()) || !preferred.canWrite()) {
+      System.err.println("serve: theme cache disabled — $preferred is not writable")
+      return@lazy null
+    }
+    val maxBytes =
+      args.flagValue("--theme-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
+        ?: ThemeCacheStore.DEFAULT_MAX_BYTES
+    System.err.println("serve: theme cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB)")
+    ThemeCacheStore(preferred, maxBytes = maxBytes)
+  }
+
+  /**
+   * Reclaim theme-cache generations nothing can read any more.
+   *
+   * Run once the catalog pass has finished, which is the only moment the live set is actually
+   * known: sweeping earlier would delete a generation a catalog three places down the list was
+   * about to adopt. On a box regenerating several times a day this is where the disk is won back —
+   * every superseded catalog revision and every previous server version leaves a generation behind.
+   */
+  private fun sweepThemeCache() {
+    val store = themeCacheStore ?: return
+    val result = runCatching { store.sweep(liveThemeGenerations.toSet()) }.getOrNull() ?: return
+    if (result.deletedGenerations > 0) {
+      System.err.println(
+        "serve: theme cache swept ${result.deletedGenerations} stale generation(s), " +
+          "${result.reclaimedBytes / (1024 * 1024)} MB reclaimed"
+      )
+    }
+    if (result.overCap) {
+      System.err.println(
+        "serve: theme cache is ${result.bytes / (1024 * 1024)} MB, over its cap — every generation " +
+          "still in use, so nothing was evicted. Raise --theme-cache-max-bytes or serve fewer catalogs."
+      )
+    }
+  }
+
+  /** Generations opened this run, so [ThemeCacheStore.sweep] knows what it must not reclaim. */
+  private val liveThemeGenerations =
+    java.util.concurrent.ConcurrentHashMap.newKeySet<ThemeCacheStore.GenerationId>()
+
+  /**
+   * Build the disk tier for one catalog generation, or null when it has no durable identity.
+   *
+   * The fingerprint is computed from the daemon's own launch descriptor — the classpath it will
+   * render with, and the variant it will render as — so nothing here has to be kept in step by hand
+   * with what the renderer actually loads.
+   */
+  private fun themeCacheFor(system: String, vararg descriptors: File): CatalogThemeCache {
+    val store = themeCacheStore ?: return CatalogThemeCache()
+    val launches = descriptors.map {
+      ServeBundleDaemon.readLaunchDescriptor(it) ?: return CatalogThemeCache()
+    }
+    if (launches.isEmpty()) return CatalogThemeCache()
+    // The JVM the render runs in is part of what produced the pixels; the descriptor's system
+    // properties are deliberately NOT, because they are dominated by absolute paths that a fresh
+    // staging directory changes on every load — hashing those would make every load a new
+    // generation and buy nothing.
+    val renderConfig = launches.flatMap { it.jvmArgs }.sorted().joinToString(" ")
+    val variant = launches.map { it.variant }.distinct().sorted().joinToString("+")
+    // A multi-module catalog renders from several bundles at once and its generation is all of them
+    // together — any one changing changes what a visitor sees.
+    val fingerprint =
+      ThemeCacheFingerprint.combine(
+        launches.map { launch ->
+          ThemeCacheFingerprint.of(
+            classpath = launch.classpath.map(::File),
+            variant = launch.variant,
+            toolVersion = BUNDLE_VERSION,
+            renderConfig = launch.jvmArgs.sorted().joinToString(" "),
+          ) ?: return CatalogThemeCache()
+        }
+      ) ?: return CatalogThemeCache()
+    val inputs =
+      GenerationInputs(
+        system = system,
+        fingerprint = fingerprint,
+        toolVersion = BUNDLE_VERSION,
+        variant = variant,
+        renderConfig = renderConfig,
+      )
+    val generation = store.open(system, fingerprint, inputs) ?: return CatalogThemeCache()
+    liveThemeGenerations += ThemeCacheStore.GenerationId(system, fingerprint)
+    if (generation.loadedEntries > 0) {
+      System.err.println(
+        "serve: catalog $system → ${generation.loadedEntries} theme renders adopted from disk"
+      )
+    }
+    return CatalogThemeCache(persistence = generation)
+  }
 
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
@@ -2459,6 +2571,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         playgroundHealth = playgroundLane?.health,
         branchFetchStats = catalogStore?.let { store -> { store.branchFetchStats.snapshot() } },
         themeOptimizerStats = { backgroundWork.optimizerAdmissionSnapshot() },
+        themeCacheStats = { themeCacheStore?.snapshot() },
         themeOptimizerAdmin = backgroundWork,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
@@ -2858,6 +2971,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           // However the pass ended — loaded, failed, or shut down mid-pass — background catalog
           // work is free to start; leaving it claimed would park the optimizer forever.
           backgroundWork.initialCatalogLoadFinished()
+          sweepThemeCache()
           if (!closed.get()) onComplete(loaded)
         }
       }
@@ -3121,34 +3235,35 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // the mapped ids get a live lane. See ServeCatalogLiveHost. The rehydrated external-resource
     // pool (fonts lifted out of classes/app.jar) joins the daemon classpath so text rasterises with
     // the same faces.
-    val state =
+    val materialized =
       ServeBundleDaemon.materialize(
-          bundleFile,
-          destDir,
-          system,
-          extraMavenRepos = extraMavenRepos,
-          extraClasspathDirs = listOfNotNull(externalResourcesDir),
-        )
-        ?.copy(
-          previewAliases = alias,
-          bakedFallback = bakedFallback,
-          perPreviewResolve = perPreviewPool::get,
-          executableBundleAvailable = perPreviewBundle.available,
-          executableBundleProvider = { daemonId ->
-            perPreviewBundle.fetch(daemonId)?.takeIf(File::isFile)?.readBytes()
-          },
-          perPreviewStreamCount = perPreviewPool::activeStreamCount,
-          perPreviewRenderStats = perPreviewPool::renderPerfStats,
-          perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
-          perPreviewReapIdle = perPreviewPool::reapIdle,
-          catalogThemeCache = CatalogThemeCache(),
-          serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
-          backgroundWork = backgroundWork,
-        )
+        bundleFile,
+        destDir,
+        system,
+        extraMavenRepos = extraMavenRepos,
+        extraClasspathDirs = listOfNotNull(externalResourcesDir),
+      )
         ?: run {
           perPreviewPool.close()
           return false
         }
+    val state =
+      materialized.copy(
+        previewAliases = alias,
+        bakedFallback = bakedFallback,
+        perPreviewResolve = perPreviewPool::get,
+        executableBundleAvailable = perPreviewBundle.available,
+        executableBundleProvider = { daemonId ->
+          perPreviewBundle.fetch(daemonId)?.takeIf(File::isFile)?.readBytes()
+        },
+        perPreviewStreamCount = perPreviewPool::activeStreamCount,
+        perPreviewRenderStats = perPreviewPool::renderPerfStats,
+        perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
+        perPreviewReapIdle = perPreviewPool::reapIdle,
+        catalogThemeCache = themeCacheFor(system, materialized.descriptor),
+        serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
+        backgroundWork = backgroundWork,
+      )
     // Now that the backend is known, the pool's daemons charge this catalog's real weight — an
     // Android/Robolectric per-preview daemon is not the same cost to the box as a desktop one.
     perPreviewSeatWeight = state.liveSeatWeight
@@ -3344,7 +3459,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           },
           perPreviewPoolStats = { opened.map { it.pool.snapshot() } },
           perPreviewReapIdle = { idle -> opened.sumOf { it.pool.reapIdle(idle) } },
-          catalogThemeCache = CatalogThemeCache(),
+          catalogThemeCache =
+            themeCacheFor(system, *opened.map { it.state.descriptor }.toTypedArray()),
           serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
           backgroundWork = backgroundWork,
         )
@@ -3443,7 +3559,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         // URLs and falls back to baked PNGs for ids it can't render.
         previewAliases = alias,
         bakedFallback = bakedFallback,
-        catalogThemeCache = CatalogThemeCache(),
+        catalogThemeCache = themeCacheFor(system, built.descriptor),
         serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
         backgroundWork = backgroundWork,
         // A source-built Android/Robolectric catalog costs the same heavier live-seat weight as the

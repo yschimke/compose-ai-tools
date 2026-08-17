@@ -39,6 +39,11 @@ services:
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
       SERVE_CATALOG_FEED_IDLE: "${SERVE_CATALOG_FEED_IDLE:-}"
+      # Warmed theme renders (the per-catalog theme cache) persist under /config/theme-cache, on the
+      # named volume below. Without it the cache is memory-only and every deploy starts from zero:
+      # m3-catalog needs ~28h of background rendering to warm its 10,120 targets, against a box that
+      # is redeployed and whose catalogs regenerate several times a day.
+      SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-}"
       # Top-level sites (<host>=<system>[,…]): serve one of the catalogs above on a hostname
       # of its own, where it presents as the whole server. Caddy in front must route the name
       # here; catalogs.json's "sites" is the durable form of the same setting.
@@ -70,6 +75,10 @@ services:
       - ../preview.coo.ee/producers.json:/config/producers.json:ro
       # Generated RSS plus the partial Git object cache survive preview-container recreation.
       - catalog_feed_cache:/config/catalog-feeds
+      # Warmed theme renders survive preview-container recreation, which is the whole point: the
+      # cache is keyed by a fingerprint of the classpath + renderer version, so a new catalog
+      # revision or a new server build simply writes a new generation and the stale ones are swept.
+      - theme_cache:/config/theme-cache
     expose:
       - "8080"
     # One warm Desktop daemon fits comfortably in a few GB; this cap just keeps a
@@ -100,5 +109,6 @@ services:
 
 volumes:
   catalog_feed_cache:
+  theme_cache:
   caddy_data:
   caddy_config:

@@ -607,6 +607,26 @@ internal object ServeBundleDaemon {
   private const val BUNDLE_MANIFEST_PATH_PROPERTY = "composeai.daemon.bundleManifestPath"
 
   private val json = Json { encodeDefaults = true }
+
+  /**
+   * Read back a `daemon-launch.json` written by [materialize].
+   *
+   * Exists so the theme cache can fingerprint a generation from the launch the daemon will actually
+   * perform — the classpath it loads and the variant it renders as — rather than from a parallel
+   * description of it that someone would have to keep in step by hand.
+   *
+   * Null on anything unreadable, which the caller treats as "this generation has no durable
+   * identity" and therefore as "do not persist".
+   */
+  fun readLaunchDescriptor(descriptorFile: File): DaemonLaunchDescriptor? = runCatching {
+    launchDescriptorJson.decodeFromString(
+      DaemonLaunchDescriptor.serializer(),
+      descriptorFile.readText(),
+    )
+  }
+    .getOrNull()
+
+  private val launchDescriptorJson = Json { ignoreUnknownKeys = true }
   private val overridesJson = Json { ignoreUnknownKeys = true }
   private val previewsManifestJson = Json {
     ignoreUnknownKeys = true

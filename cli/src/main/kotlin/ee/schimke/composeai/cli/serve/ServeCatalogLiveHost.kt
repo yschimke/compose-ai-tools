@@ -253,6 +253,11 @@ class ServeCatalogLiveHost(
    */
   private val themeRendersInFlight = ConcurrentHashMap.newKeySet<String>()
   private val optimizationStarted = AtomicBoolean()
+  /**
+   * Persisted renders are checked against this renderer once per host — see
+   * [verifyPersistedRenders].
+   */
+  private val persistenceVerified = AtomicBoolean()
   private val optimizationActive = AtomicBoolean()
   private val warmExecutor by lazy {
     Executors.newSingleThreadExecutor { r ->
@@ -501,6 +506,40 @@ class ServeCatalogLiveHost(
     }
   }
 
+  /**
+   * Check a few renders adopted from disk against what this daemon produces now, once per host.
+   *
+   * The fingerprint that named the persisted generation covers the inputs it was told about. An
+   * input nobody thought of — a base image bumped without a release, a render default that never
+   * reached the config string — changes the pixels without changing the name, and every entry under
+   * that name is then quietly wrong. That matters more here than in an ordinary build cache: a
+   * stale build artifact gets caught by a test, a stale preview is handed to an agent as ground
+   * truth.
+   *
+   * Rendered through [live] rather than [renderPrefetch], deliberately: the prefetch path consults
+   * this very cache and would hand back the bytes being verified, so the comparison would pass by
+   * construction. Only a `DAEMON` generation counts as fresh evidence — anything served from a
+   * cache proves nothing, and a daemon that cannot answer yet is "no evidence", not "mismatch".
+   */
+  private fun verifyPersistedRenders(jobs: List<ThemeOptimizationJob>) {
+    if (!persistenceVerified.compareAndSet(false, true)) return
+    val byKey = jobs.associateBy { it.cacheKey }
+    val trustworthy = catalogThemeCache.verifySample { key ->
+      val job = byKey[key] ?: return@verifySample null
+      val daemonId = alias[job.previewId] ?: return@verifySample null
+      val outcome = runCatching { live.render(daemonId, job.overrides) }.getOrNull()
+      (outcome as? RenderOutcome.Ok)
+        ?.takeIf { it.generation == RenderOutcome.Generation.DAEMON }
+        ?.png
+    }
+    if (!trustworthy) {
+      System.err.println(
+        "serve: catalog $label — persisted theme renders no longer match this renderer; " +
+          "dropped the generation and re-warming from scratch"
+      )
+    }
+  }
+
   /** Why an optimizer pass returned; only [SLICE_SPENT] asks for another lane. */
   private enum class PassOutcome {
     /** Every target this pass could see is cached — nothing left to re-queue for. */
@@ -530,6 +569,7 @@ class ServeCatalogLiveHost(
     // amortised across all of them and the pass never interleaves two previews' daemon opens.
     val byPreview =
       jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
+    verifyPersistedRenders(jobs)
     var previewsDone = 0
     for ((previewId, previewJobs) in byPreview) {
       // The slice is checked HERE and nowhere finer, on the preview boundary. A preview is the
