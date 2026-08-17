@@ -1763,24 +1763,26 @@ const motionChip = may<HTMLButtonElement>("cp-motion-chip");
 const motionToggle = may<HTMLInputElement>("cp-motion-toggle");
 const motionLane = may<HTMLElement>("cp-motion-lane");
 const motionCaption = may<HTMLElement>("cp-motion-caption");
-var motionButtons = motionLane
-    ? Array.prototype.slice.call(motionLane.querySelectorAll(".cp-motion-view"))
+const motionSelect = may<HTMLSelectElement>("cp-motion-select");
+var motionOptions: HTMLOptionElement[] = motionSelect
+    ? Array.prototype.slice.call(motionSelect.options)
     : [];
 var motionErrorBound = false;
-// The buttons are the lane's source of truth, so a preview with ONE capture still renders one
-// (its group merely hidden) and this has a single code path rather than a special case.
-function motionPicked() {
-    for (var i = 0; i < motionButtons.length; i++) {
-        if (motionButtons[i].getAttribute("aria-pressed") === "true")
-            return motionButtons[i];
-    }
-    return motionButtons[0] || null;
+// The options are the lane's source of truth, so a preview with ONE capture still renders one
+// (its menu merely hidden) and this has a single code path rather than a special case.
+function motionPicked(): HTMLOptionElement | null {
+    if (!motionSelect) return null;
+    return (
+        motionSelect.options[motionSelect.selectedIndex] ||
+        motionOptions[0] ||
+        null
+    );
 }
 // The same origin check the spec raster and the Wasm frame get, for the same reason: the URL
 // arrives on a server-set data- attribute, so it is resolved against our own origin and refused
 // unless it stays on it — which is also what defuses the DOM-text-as-HTML rule for the write.
-function motionSrcOf(button: HTMLElement | null) {
-    var raw = button ? button.getAttribute("data-motion-src") || "" : "";
+function motionSrcOf(option: HTMLElement | null) {
+    var raw = option ? option.getAttribute("data-motion-src") || "" : "";
     if (!raw) return "";
     var u;
     try {
@@ -1796,23 +1798,21 @@ function motionAvailable() {
 }
 /** The picked capture's published id — what `?motion=` carries. */
 function motionPickedId() {
-    var button = motionPicked();
-    return button ? button.getAttribute("data-motion-id") || "" : "";
+    var option = motionPicked();
+    return option ? option.value : "";
 }
 /**
- * Press the button for a named capture, if this preview published one. Used by URL hydration:
- * a shared `?mode=motion&motion=<id>` link has to open on the recording that was shared, and an
- * id this preview does not carry is ignored rather than blanking the lane.
+ * Select a named capture, if this preview published one. Used by URL hydration: a shared
+ * `?mode=motion&motion=<id>` link has to open on the recording that was shared, and an id this
+ * preview does not carry is ignored rather than blanking the lane.
  */
 function pickMotion(id: string) {
-    if (!id) return false;
-    const wanted = motionButtons.find(function (b) {
-        return b.getAttribute("data-motion-id") === id;
+    if (!id || !motionSelect) return false;
+    const wanted = motionOptions.find(function (o) {
+        return o.value === id;
     });
     if (!wanted) return false;
-    motionButtons.forEach(function (b) {
-        b.setAttribute("aria-pressed", b === wanted ? "true" : "false");
-    });
+    motionSelect.value = id;
     return true;
 }
 // The radio, not `data-mode` — exactly as specActive() and sourceActive() do, and for the same
@@ -1822,8 +1822,8 @@ function motionActive() {
     return !!(motionToggle && motionToggle.checked);
 }
 function playMotion() {
-    var button = motionPicked();
-    var src = motionSrcOf(button);
+    var option = motionPicked();
+    var src = motionSrcOf(option);
     if (!src) return;
     // One capture failing must not condemn the rest. The error overlay is shared across lanes and
     // is raised by this lane's own `error` handler, so without this a picker click away from a
@@ -1831,16 +1831,21 @@ function playMotion() {
     // message sitting over it. Cleared on the way IN, so the message survives until something is
     // actually done about it.
     clearModeError();
-    // The caption names the recording — but ONLY when nothing else already does. With two or more
-    // captures the picker is visible and its pressed button carries the same words, and printing
-    // them again beside it is two controls stating one fact ("Tap the avatar [Tap the avatar]").
-    // So the readout is what stands in for the picker on the single-capture case, not a label
-    // duplicating it.
+    // The detail: what the annotation actually said about this recording, printed once it is the
+    // one on the stage. The menu carries only the caption's opening clause, so this is where the
+    // rest of it lands — and it is per-pick rather than all at once, which is the whole trade the
+    // menu buys (N captions across the bar became one, beside the frames they describe).
+    //
+    // The server omits `data-motion-detail` when the caption is already the whole title, so a
+    // short caption prints once, not twice beside its own menu entry. With the menu hidden — the
+    // single-capture case — the title is on nothing else on the row, so the readout stands in for
+    // it rather than leaving the frames unnamed.
     if (motionCaption) {
+        var detail = option
+            ? option.getAttribute("data-motion-detail") || ""
+            : "";
         motionCaption.textContent =
-            motionButtons.length > 1 || !button
-                ? ""
-                : button.getAttribute("data-motion-label") || "";
+            detail || (motionOptions.length > 1 || !option ? "" : option.text);
     }
     // A property write of an origin-checked URL, like every other image lane here. Guarded so
     // re-entering the lane on the capture already loaded does not re-request it; closeMotion()
@@ -3254,27 +3259,21 @@ if (motionChip) {
         else if (motionAvailable()) setMode("motion");
     });
 }
-// The per-capture picker, shown only when a preview published more than one. Switching while the
+// The per-capture menu, shown only when a preview published more than one. Switching while the
 // lane is up swaps the capture in place rather than leaving and re-entering: the visitor is
 // changing WHICH recording they are watching, not which lane they are in, so it is not a mode
 // transition and does not belong in the history stack.
-motionButtons.forEach(function (button) {
-    button.addEventListener("click", function () {
-        motionButtons.forEach(function (other) {
-            other.setAttribute(
-                "aria-pressed",
-                other === button ? "true" : "false",
-            );
-        });
+if (motionSelect) {
+    motionSelect.addEventListener("change", function () {
         if (motionActive()) {
             playMotion();
             // Replaces rather than pushes: switching recording inside the lane is not a lane change,
             // so it belongs in the address without burying the page the visitor arrived from under a
-            // Back entry per click. `urlPush` is left false, which is exactly what replace means here.
+            // Back entry per pick. `urlPush` is left false, which is exactly what replace means here.
             syncUrl();
         } else setMode("motion");
     });
-});
+}
 // ---- The renderer combo box ------------------------------------------------------------------
 // One `<select>` holding every lane this preview can be drawn by: the Remote Compose players
 // (`rc:js` paints client-side via setMode("rc"), `rc:cmp-wasm` in its own frame, and
@@ -3663,9 +3662,9 @@ function syncUrl() {
     // render describes nothing), and only past the first, which is what the lane opens on anyway.
     // Without it a multi-capture preview's shared link always restored the FIRST capture, so the
     // page someone sent was not the page they were looking at.
-    if (mode === "motion" && motionButtons.length > 1) {
+    if (mode === "motion" && motionOptions.length > 1) {
         var pickedMotion = motionPickedId();
-        if (pickedMotion && motionPicked() !== motionButtons[0])
+        if (pickedMotion && motionPicked() !== motionOptions[0])
             values.motion = pickedMotion;
     }
     window.cpUrlState.sync(values, ownsUrlParam, !push);
@@ -3868,14 +3867,11 @@ function hydrateFromUrl(popped: boolean) {
     if (window.cpSpecCompare)
         window.cpSpecCompare.hydrate(q.get("specView") || "");
     // Same ordering, same reason: the bookmarked `?mode=motion` is applied at the very bottom of
-    // this file, so pressing the named capture's button first is what makes openMotion() request
-    // the shared recording instead of loading the first one and swapping a moment later. A URL
-    // that names no capture falls back to the first, which is where the lane opens.
-    if (motionButtons.length && !pickMotion(q.get("motion") || "")) {
-        motionButtons.forEach(function (b, i) {
-            b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
-        });
-    }
+    // this file, so selecting the named capture first is what makes openMotion() request the shared
+    // recording instead of loading the first one and swapping a moment later. A URL that names no
+    // capture falls back to the first, which is where the lane opens.
+    if (motionSelect && !pickMotion(q.get("motion") || ""))
+        motionSelect.selectedIndex = 0;
     syncLaneSelect();
 }
 hydrateFromUrl(false);

@@ -1309,8 +1309,14 @@ class ServeWebFixtureTest {
     // showing the recording instead of the render. The Source panel is isolated for exactly this
     // reason, and this is the same shape of state.
     //
-    // Two captures, because the per-capture picker only appears when there is a choice to make, and
+    // Two captures, because the per-capture menu only appears when there is a choice to make, and
     // an interacted shot is the only place its markup is ever visible.
+    //
+    // Their captions are the shape catalogs actually publish — a line of instruction followed by a
+    // paragraph of what to watch for — rather than the two-word labels this fixture used to carry.
+    // Those made the picker look fine at every width and hid the reason it is a menu at all: on the
+    // old segmented group this pair is two paragraphs side by side, wider than the render they
+    // introduce. A fixture that cannot show the problem cannot show it fixed either.
     val viewerMotion =
       ServeWeb.viewerPage(
         ServePreview(
@@ -1321,12 +1327,16 @@ class ServeWebFixtureTest {
               ServeMotion(
                 id = "switch-on__ideal__default__light",
                 kind = "interaction",
-                caption = "Toggle on",
+                caption =
+                  "Toggle on. The thumb travels the full width of the track and the container " +
+                    "recolours to the checked state as it lands.",
               ),
               ServeMotion(
                 id = "switch-on__ideal__default__light__anim",
                 kind = "animation",
-                caption = "Thumb settle",
+                caption =
+                  "Thumb settle. Released mid-travel, the thumb overshoots and settles back " +
+                    "through the theme's spatial spring rather than snapping to the stop.",
               ),
             ),
         ),
@@ -4322,8 +4332,14 @@ class ServeWebFixtureTest {
     )
     // The annotation's caption is what names the recording — without it a capture tells the reader
     // only that *something* moved.
-    assertTrue(view.contains(">Press</button>"), "the declared caption labels its capture")
-    assertTrue(view.contains(">Elevation settle</button>"), "…and so does the second one")
+    assertTrue(view.contains(">Press</option>"), "the declared caption labels its capture")
+    assertTrue(view.contains(">Elevation settle</option>"), "…and so does the second one")
+    // A caption short enough to BE a title carries no detail attribute: printing it in the menu and
+    // again in the readout beside it is two controls stating one fact.
+    assertFalse(
+      view.contains("data-motion-detail=\"Press\""),
+      "a caption the menu already shows in full is not repeated in the readout",
+    )
 
     // A lane like every other: its own hidden mode radio, which is what buys `?mode=motion`,
     // restore-on-load and Back/Forward without a second mechanism.
@@ -4351,8 +4367,40 @@ class ServeWebFixtureTest {
       viewerSource().contains("if (m !== \"motion\") closeMotion();"),
       "every transition out of motion closes the lane",
     )
+    // The captions catalogs actually write: a line of instruction, then a paragraph of what to
+    // watch for. On a button that was the whole paragraph across the control row; in the menu it is
+    // the opening clause, and the rest rides to the readout on the option.
+    val prose =
+      ServeWeb.viewerPage(
+        plain.copy(
+          motion =
+            listOf(
+              ServeMotion(
+                id = "card__filled__interaction",
+                kind = "interaction",
+                caption =
+                  "Toggle repeatedly. The container morphs between its unchecked and checked " +
+                    "shapes through the theme's spatial animation.",
+              )
+            )
+        ),
+        token,
+        sessionId = "compose-m3",
+      )
+    assertTrue(
+      prose.contains(">Toggle repeatedly</option>"),
+      "the menu shows the caption's opening clause, not the paragraph behind it",
+    )
+    assertTrue(
+      prose.contains(
+        "data-motion-detail=\"Toggle repeatedly. The container morphs between its unchecked " +
+          "and checked shapes through the theme&#39;s spatial animation.\""
+      ),
+      "…and the words themselves are kept, on the option the readout prints from",
+    )
+
     // Two caption-less captures of the SAME kind — permitted by the manifest, and what the
-    // annotation defaults produce. Both buttons used to read "Interaction", leaving no way by eye
+    // annotation defaults produce. Both entries used to read "Interaction", leaving no way by eye
     // or by screen reader to tell which recording either one selects.
     val sameKind =
       ServeWeb.viewerPage(
@@ -4367,13 +4415,13 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
       )
     assertTrue(
-      sameKind.contains(">Interaction 1</button>") && sameKind.contains(">Interaction 2</button>"),
-      "a repeated fallback label is numbered so the two buttons can be told apart",
+      sameKind.contains(">Interaction 1</option>") && sameKind.contains(">Interaction 2</option>"),
+      "a repeated fallback label is numbered so the two entries can be told apart",
     )
     // …and a lone capture is NOT numbered: "Interaction 1" on a preview with one recording is a
     // count of something nobody was choosing between.
     assertTrue(
-      view.contains(">Press</button>") && !view.contains(">Press 1</button>"),
+      view.contains(">Press</option>") && !view.contains(">Press 1</option>"),
       "a label that stands alone keeps its plain form",
     )
 
@@ -4397,12 +4445,13 @@ class ServeWebFixtureTest {
       "…and carries no mode radio a URL could still name",
     )
 
-    // The caption readout stands IN FOR the picker on a single-capture preview rather than
-    // repeating it: with two captures the pressed button already carries the same words, and
-    // printing them again beside it is two controls stating one fact.
+    // The readout prints the caption in full for whichever capture is on the stage, and falls back
+    // to standing IN FOR the menu on a single-capture preview — where the menu is hidden and
+    // nothing else on the row names the recording.
     assertTrue(
-      viewerSourceFlat().contains("motionButtons.length > 1 || !button"),
-      "the caption names the recording only when no visible button already does",
+      viewerSourceFlat()
+        .contains("detail || (motionOptions.length > 1 || !option ? \"\" : option.text)"),
+      "the readout shows the detail, or the title when no visible menu carries it",
     )
   }
 

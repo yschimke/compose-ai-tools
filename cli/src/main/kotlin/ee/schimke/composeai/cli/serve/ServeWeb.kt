@@ -9374,65 +9374,52 @@ $rows
     //
     // Not an `<option>` inside the renderer combo, for the same reason the spec chip is not: that
     // combo is headed "Switch renderer" and this is not a renderer — it is the same render, moving.
-    // What to call each capture. The annotation's own caption when it declared one — that names the
-    // property the reader is being shown, which is the whole point of the recording — falling back
-    // to its kind, and only then to a bare "Capture". A weak label is honest; it appears only when
-    // the annotation said nothing to be honest about.
-    //
-    // Numbered ONLY where a label would otherwise repeat. Two caption-less interaction captures are
-    // permitted by the manifest and are what the annotation defaults produce, and they used to give
-    // the picker two buttons both reading "Interaction" — no way, by eye or by screen reader, to
-    // tell which recording either one selects. Numbering unconditionally would instead put a "1"
-    // on every single-capture preview, which is a count nobody asked for; this numbers a run only
-    // when there is a run to disambiguate, and it catches duplicate *captions* too.
-    val motionLabels: List<String> = run {
-      val base = motionCaptures.map { capture ->
-        capture.caption?.takeIf { it.isNotBlank() }
-          ?: when (capture.kind) {
-            "interaction" -> "Interaction"
-            "animation" -> "Animation"
-            else -> "Capture"
-          }
-      }
-      val totals = base.groupingBy { it }.eachCount()
-      val seen = mutableMapOf<String, Int>()
-      base.map { label ->
-        if (totals[label] == 1) label
-        else {
-          val n = (seen[label] ?: 0) + 1
-          seen[label] = n
-          "$label $n"
-        }
-      }
-    }
+    // What to call each capture, split in two by [MotionCaptureLabels]: a brief title for the menu
+    // and the annotation's caption in full for the readout beside the frames. The captions catalogs
+    // actually write are a line of instruction followed by a paragraph of what to watch for, and
+    // printing that on a control is what made this row wider than the render it introduces.
+    val motionLabels = MotionCaptureLabels.of(motionCaptures)
     // Session-scoped like every other asset link on this page. Deliberately NOT pin-carrying: the
     // route reads the bytes straight off the delivery branch the session is holding, so a `pin`
     // param would name a publish the handler has no way to honour — a link that quietly lies about
     // which publish it is showing is worse than one that does not offer the choice.
     fun motionSrc(capture: ServeMotion): String =
       "$basePath/motion/${WebEscaping.urlEncodeSegment(capture.id)}${capture.extension}$q"
-    // The picker, and the src holder. Rendered even for a single capture — the button IS where the
-    // lane reads its source from, so there is one code path rather than two — but the group is
+    // The picker, and the src holder. Rendered even for a single capture — the option IS where the
+    // lane reads its source from, so there is one code path rather than two — but the menu is
     // `hidden` until there is genuinely a choice to make, because a "pick one of one" control is
     // just noise on the bar.
+    //
+    // A menu rather than the segmented group the spec views use, which is where this started: a
+    // segment is as wide as its label, so N captions sat across the bar at once, each one a
+    // sentence, and the row grew past the render it introduces. A closed `<select>` shows ONE brief
+    // title at a fixed width however many recordings there are — and unlike the renderer combo
+    // beside it this is a state field, not a command menu: nothing else on the page names which
+    // recording is playing, so the control has to keep showing it.
+    //
+    // The caption in full rides on the option and is printed by the readout on pick, so the words
+    // the annotation wrote are one selection away rather than spent on the control.
     val motionSelector =
       if (motionCaptures.isEmpty()) ""
       else {
-        val buttons =
+        val options =
           motionCaptures
             .mapIndexed { index, capture ->
               val label = motionLabels[index]
-              "<button type=\"button\" class=\"cp-motion-view\" " +
-                "data-motion-id=\"${WebEscaping.htmlEscape(capture.id)}\" " +
-                "data-motion-src=\"${WebEscaping.htmlEscape(motionSrc(capture))}\" " +
-                "data-motion-label=\"${WebEscaping.htmlEscape(label)}\" " +
-                "aria-pressed=\"${index == 0}\">${WebEscaping.htmlEscape(label)}</button>"
+              val detail =
+                if (label.detail == label.title) ""
+                else " data-motion-detail=\"${WebEscaping.htmlEscape(label.detail)}\""
+              "<option value=\"${WebEscaping.htmlEscape(capture.id)}\" " +
+                "data-motion-src=\"${WebEscaping.htmlEscape(motionSrc(capture))}\"" +
+                "$detail${if (index == 0) " selected" else ""}>" +
+                "${WebEscaping.htmlEscape(label.title)}</option>"
             }
             .joinToString("")
-        val groupHidden = if (motionCaptures.size < 2) " hidden" else ""
+        val menuHidden = if (motionCaptures.size < 2) " hidden" else ""
         "<span class=\"cp-motion-lane\" id=\"cp-motion-lane\" hidden>" +
-          "<span class=\"cp-motion-views\" id=\"cp-motion-views\" role=\"group\" " +
-          "aria-label=\"Recorded interaction\"$groupHidden>$buttons</span>" +
+          "<select class=\"cp-motion-select\" id=\"cp-motion-select\" " +
+          "aria-label=\"Recorded interaction\" " +
+          "title=\"Which recorded interaction to play\"$menuHidden>$options</select>" +
           "<span class=\"cp-motion-caption\" id=\"cp-motion-caption\" role=\"status\" " +
           "aria-live=\"polite\"></span></span>"
       }
@@ -9444,7 +9431,11 @@ $rows
       else {
         val tip =
           if (motionCaptures.size == 1)
-            "Play this preview's recorded interaction \u2014 ${motionLabels[0]}"
+            // The caption IN FULL, not the menu's brief title: a tooltip has room for a sentence,
+            // and this is the one place a reader can find out what the recording shows without
+            // starting it. The readout inside the lane says the same thing once they have.
+            "Play this preview's recorded interaction \u2014 " +
+              motionLabels[0].detail.ifBlank { motionLabels[0].title }
           else "Play this preview's recorded interactions (${motionCaptures.size})"
         "<button type=\"button\" id=\"cp-motion-chip\" class=\"cp-spec-chip cp-motion-chip\" " +
           "aria-pressed=\"false\" aria-controls=\"cp-motion-img\" " +
