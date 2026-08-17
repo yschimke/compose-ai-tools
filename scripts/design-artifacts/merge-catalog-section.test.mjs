@@ -291,3 +291,80 @@ test("a folded catalog cannot redefine an id the host already published", async 
   const merged = JSON.parse(await readFile(join(into, "annotations/index.json"), "utf8"));
   assert.equal(merged.previews.shared__id[0].label, "HOST");
 });
+
+test("mergeCatalogSection unions tag indexes instead of colliding", async () => {
+  // Regression (compose-samples): once the folded M3 section emitted a non-empty
+  // tags/index.json, every folding catalog aborted the `Fold in extra section` step
+  // with "asset 'tags/index.json' differs between the two catalogs". Both sides
+  // legitimately carry one — it is keyed by served preview id, not a per-component file.
+  const root = await mkdtemp(join(tmpdir(), "merge-catalog-tags-"));
+  const into = join(root, "into");
+  const from = join(root, "from");
+  await mkdir(join(into, "tags"), { recursive: true });
+  await mkdir(join(from, "tags"), { recursive: true });
+  await writeFile(join(into, "catalog.json"), JSON.stringify(manifest([comp("Host/One")])));
+  await writeFile(join(from, "catalog.json"), JSON.stringify(manifest([comp("M3/Two")])));
+  await writeFile(
+    join(into, "tags/index.json"),
+    JSON.stringify({
+      schema: "compose-preview-tags/v1",
+      previews: {
+        "host-one__ideal__default": {
+          submit: { count: 1, bounds: { x: 0, y: 0, width: 10, height: 4 }, space: "render-pixels" },
+        },
+      },
+    }),
+  );
+  await writeFile(
+    join(from, "tags/index.json"),
+    JSON.stringify({
+      schema: "compose-preview-tags/v1",
+      previews: {
+        "m3-two__ideal__default": { fab: { count: 2, space: "render-pixels" } },
+      },
+    }),
+  );
+
+  await mergeCatalogSection({ into, from, section: "Material 3" });
+
+  const merged = JSON.parse(await readFile(join(into, "tags/index.json"), "utf8"));
+  assert.equal(merged.schema, "compose-preview-tags/v1");
+  assert.deepEqual(Object.keys(merged.previews).sort(), [
+    "host-one__ideal__default",
+    "m3-two__ideal__default",
+  ]);
+  // The tag index publishes only `previews`; folding must not graft on an empty
+  // `references` map that belongs to the annotations manifest.
+  assert.deepEqual(Object.keys(merged).sort(), ["previews", "schema"]);
+});
+
+test("a folded catalog cannot redefine tag geometry the host already published", async () => {
+  // A scoped parity acceptance resolves an element against this map, so a borrowed
+  // catalog silently moving the host's bounds would retarget the host's own gate.
+  const root = await mkdtemp(join(tmpdir(), "merge-catalog-tags-win-"));
+  const into = join(root, "into");
+  const from = join(root, "from");
+  await mkdir(join(into, "tags"), { recursive: true });
+  await mkdir(join(from, "tags"), { recursive: true });
+  await writeFile(join(into, "catalog.json"), JSON.stringify(manifest([comp("Host/One")])));
+  await writeFile(join(from, "catalog.json"), JSON.stringify(manifest([comp("M3/Two")])));
+  await writeFile(
+    join(into, "tags/index.json"),
+    JSON.stringify({
+      schema: "compose-preview-tags/v1",
+      previews: { shared__id: { submit: { count: 1, space: "render-pixels" } } },
+    }),
+  );
+  await writeFile(
+    join(from, "tags/index.json"),
+    JSON.stringify({
+      schema: "compose-preview-tags/v1",
+      previews: { shared__id: { submit: { count: 99, space: "render-pixels" } } },
+    }),
+  );
+
+  await mergeCatalogSection({ into, from, section: "Material 3" });
+
+  const merged = JSON.parse(await readFile(join(into, "tags/index.json"), "utf8"));
+  assert.equal(merged.previews.shared__id.submit.count, 1);
+});

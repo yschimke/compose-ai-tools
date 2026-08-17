@@ -115,6 +115,23 @@ async function sameBytes(a, b) {
 const ANNOTATIONS_REL = join("annotations", "index.json");
 
 /**
+ * The other nested asset that is a *map*: the published tag index.
+ *
+ * `tags/index.json` is `served preview id → {testTag: {count, bounds, space}}` (see
+ * `tag-index.mjs`), so — exactly like `annotations/index.json` above — both catalogs
+ * legitimately carry their own and byte-comparing them aborts the fold. That is not
+ * hypothetical: it took every folding catalog in compose-samples down once the M3
+ * section started emitting a non-empty one, which is the same way the annotations
+ * case first surfaced.
+ *
+ * Union by preview id, host wins. A folded component becomes a tab in the host, so
+ * its element gates belong alongside the host's; and a borrowed catalog must never
+ * redefine the geometry of an id the host already published, since a scoped parity
+ * acceptance resolves against exactly this map.
+ */
+const TAG_INDEX_REL = join("tags", "index.json");
+
+/**
  * The one nested directory that is **catalog-level**, not per-component.
  *
  * `themes/<provider-fqn>.dtcg.json` is a declared theme's own token set — a sibling of the
@@ -133,7 +150,15 @@ const ANNOTATIONS_REL = join("annotations", "index.json");
  */
 const THEMES_DIR = "themes";
 
-async function mergeAnnotationManifests(src, dest) {
+/**
+ * Union two `{schema, <map>: {id → …}}` sidecars, writing the result to [dest].
+ *
+ * Shared by the two nested map assets above. [mapKeys] names the id-keyed maps that
+ * manifest carries, and is also what the output declares — annotations publish
+ * `previews` + `references`, the tag index only `previews`, and neither should grow
+ * an empty map belonging to the other.
+ */
+async function mergeIdKeyedManifests(src, dest, mapKeys) {
   const read = async (p) => {
     try {
       return JSON.parse(await readFile(p, "utf8"));
@@ -143,14 +168,12 @@ async function mergeAnnotationManifests(src, dest) {
   };
   const a = (await read(dest)) ?? {};
   const b = (await read(src)) ?? {};
-  const schema = a.schema ?? b.schema;
   // Host entries win a key collision: the fold is additive, and a borrowed
   // catalog must never silently redefine an id the host already published.
-  const merged = {
-    schema,
-    previews: { ...(b.previews ?? {}), ...(a.previews ?? {}) },
-    references: { ...(b.references ?? {}), ...(a.references ?? {}) },
-  };
+  const merged = { schema: a.schema ?? b.schema };
+  for (const key of mapKeys) {
+    merged[key] = { ...(b[key] ?? {}), ...(a[key] ?? {}) };
+  }
   await mkdir(dirname(dest), { recursive: true });
   await writeFile(dest, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 }
@@ -167,7 +190,12 @@ async function copyAssets(fromDir, intoDir) {
     if (rel.split(sep)[0] === THEMES_DIR) continue;
     const dest = join(intoDir, rel);
     if (rel === ANNOTATIONS_REL) {
-      await mergeAnnotationManifests(src, dest);
+      await mergeIdKeyedManifests(src, dest, ["previews", "references"]);
+      copied += 1;
+      continue;
+    }
+    if (rel === TAG_INDEX_REL) {
+      await mergeIdKeyedManifests(src, dest, ["previews"]);
       copied += 1;
       continue;
     }
