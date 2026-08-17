@@ -229,6 +229,11 @@ data class ServeSites(private val byHost: Map<String, String>) {
         // `GET /usage/<previewId>` — the viewer's Source panel.
         "usage",
         "render",
+        // `GET /motion/<previewId>.apng` — the viewer's Motion lane. Omitted when the lane landed,
+        // which made every published capture 404 on a site host: the interceptor runs before
+        // routing, so `/motion/…` was read as a neighbour catalog and refused with the site's own
+        // styled page rather than reaching `handleMotion` at all.
+        "motion",
         "history",
         "compare",
         "reference",

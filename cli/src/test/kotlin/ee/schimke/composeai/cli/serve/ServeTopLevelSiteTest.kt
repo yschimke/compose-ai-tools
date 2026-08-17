@@ -51,6 +51,34 @@ class ServeTopLevelSiteTest {
     )
   }
 
+  /**
+   * Bytes a fixture capture serves. Deliberately readable text rather than a PNG signature: nothing
+   * on this path decodes the image, and a recognisable body makes "which 404 was that" legible in
+   * an assertion message.
+   */
+  private val captureMarker = "fixture-capture-bytes"
+
+  /**
+   * [bundle] plus one published capture, wired the way [ServeCatalogStore] wires a real one: the id
+   * is declared, its branch path names the extension, and the bytes arrive through the fetch seam
+   * on first request rather than being staged up front.
+   */
+  private fun motionBundle(label: String, previewId: String, motionId: String): ServeBundleHost {
+    val dir = Files.createTempDirectory("site-motion-$label").toFile().also { it.deleteOnExit() }
+    File(dir, "index.html").writeText("<html></html>")
+    File(dir, "previews").apply { mkdirs() }
+    File(dir, "previews/$previewId.png").writeBytes(png())
+    return ServeBundleHost(
+      dir,
+      label = label,
+      title = label,
+      declaredBaked = listOf(previewId),
+      declaredMotion = listOf(motionId),
+      fetchMotion = { id -> if (id == motionId) captureMarker.toByteArray() else null },
+      motionBranchPaths = mapOf(motionId to "motion/switch-on/ideal__default__light.apng"),
+    )
+  }
+
   private val registry = ServeSessionRegistry(open = { null })
   private var server: ServeHttpServer? = null
   private val client =
@@ -368,6 +396,45 @@ class ServeTopLevelSiteTest {
         assertTrue(body.contains(marker), "'$path' answered something else: ${body.take(200)}")
       }
     }
+  }
+
+  @Test
+  fun `a published capture is reachable on a site host`() {
+    // `motion` was missing from ServeSites.RESERVED_SYSTEMS, so this interceptor — which runs
+    // BEFORE routing — read `/motion/…` as a neighbour catalog and answered the site's own styled
+    // 404. Every capture on every site host was unreachable, and the viewer reported it as "the
+    // recorded interaction could not be loaded", which reads as a missing artifact rather than a
+    // route that was never consulted. The assertion is deliberately on the BYTES: a 404 from the
+    // handler and a 404 from the interceptor are both 404s, and only one of them is this bug.
+    val motionId = "switch-on__ideal__default__light"
+    registry.register(
+      "compose-m3",
+      host = motionBundle("compose-m3", "switch-on", motionId),
+      pinned = true,
+    )
+    registry.register("wear-m3", host = bundle("wear-m3", listOf("chip"), "Wear M3"), pinned = true)
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "",
+          isPublic = true,
+          catalogSessions = listOf("compose-m3", "wear-m3"),
+          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+        )
+        .also { it.start() }
+
+    val (code, body, location) = get("/motion/$motionId.apng", host = siteHost)
+    assertEquals(200, code, "the capture must reach handleMotion (Location: $location)")
+    assertEquals(captureMarker, body, "the handler served the declared capture")
+
+    // The canonical spelling on the main host is unchanged — the site is an additional door onto
+    // the same bytes, never a replacement for them.
+    assertEquals(200, get("/compose-m3/motion/$motionId.apng").first)
+    // A neighbour's capture is still not reachable through this hostname.
+    assertEquals(404, get("/wear-m3/motion/$motionId.apng", host = siteHost).first)
   }
 
   @Test
