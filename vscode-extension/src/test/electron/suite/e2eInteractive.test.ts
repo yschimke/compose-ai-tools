@@ -192,13 +192,15 @@ const PANEL_UPDATE_BUDGET_MS = 3 * 60_000;
  * `composePreviewDiscover` + render pass that starts once the refresh has
  * already returned.
  *
- * Three minutes is under-sized for that. Scenario A's own cold cmp render
- * measures ~195s on CI, past `PANEL_UPDATE_BUDGET_MS` on its own, and scenario
- * B cut a healthy edit → recompile → discover → render round trip short on run
- * 32002150579 ("capture … not on disk" at exactly 180000ms). The Mocha ceiling
- * (via {@link budgetWithin}) is still the backstop that keeps the diagnostic,
- * so the only thing a larger budget costs is how long a genuinely stuck render
- * takes to report.
+ * Scenario A's own cold cmp render measures 195–347s on CI, past
+ * `PANEL_UPDATE_BUDGET_MS` on its own, so a wait that spans a render wants the
+ * larger window. The Mocha ceiling (via {@link budgetWithin}) is still the
+ * backstop that keeps the diagnostic, so the only thing this costs is how long
+ * a genuinely stuck render takes to report.
+ *
+ * Not for scenario B: its wait looked like this shape and is not — see the
+ * comment on its `waitFor`. A budget only helps a wait that is *slow*; B's is
+ * *silent*, and a short budget reports that sooner.
  */
 const RENDER_ROUND_TRIP_BUDGET_MS = 8 * 60_000;
 
@@ -824,13 +826,16 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 // that names the missing file. That is the trade this budget
                 // (plus `describeState` below) buys back.
                 //
-                // Sized as a render round trip, not a panel repaint: what is
-                // being waited on here is a PNG the renderer has yet to write
-                // for a source file that was edited a moment ago, so the whole
-                // recompile → discover → render chain is inside the window.
-                // This used to be PANEL_UPDATE_BUDGET_MS, which cut a healthy
-                // run short at exactly 180000ms on run 32002150579.
-                budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
+                // Kept at the panel-repaint budget on purpose, even though the
+                // wait spans a render. Raising it to a render round trip was
+                // tried (run 32005009908) on the theory that a cold recompile →
+                // discover → render simply outran 180s; it did not. The refresh
+                // resolves, `composePreviewDiscover` runs, and then the
+                // extension issues no further Gradle command at all — the full
+                // 480s expired in silence, the same shape as the scenario-E
+                // wedge that {@link REFRESH_BUDGET_MS} documents. A wedge is
+                // what this budget exists to report quickly, so leave it short.
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
