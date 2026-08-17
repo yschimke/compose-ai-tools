@@ -349,86 +349,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.a11y.png",
-      "cleanBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.png",
-      "findings": [
-        {
-          "boundsInScreen": "137,61,290,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFD0BCFF\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,2203,290,2237",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF49454F\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,1825,290,1859",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFE6E0E9\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,1699,290,1733",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF141218\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        }
-      ],
-      "functionName": "ColorSchemeSpecimenDarkPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark",
-      "rendersDir": "android",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light-ea02bc05.a11y.png",
-      "cleanBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light-ea02bc05.png",
-      "findings": [
-        {
-          "boundsInScreen": "137,1825,290,1859",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF1D1B20\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,1699,290,1733",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFFEF7FF\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,61,290,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF6750A4\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,187,290,221",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFFFFFFF\" is identical to that of 4 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        }
-      ],
-      "functionName": "ColorSchemeSpecimenLightPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenLightPreview_ColorScheme specimen \u2014 light",
-      "rendersDir": "android",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "ConfigProbePreview_Default-14dd58a7.a11y.png",
       "cleanBasename": "ConfigProbePreview_Default-14dd58a7.png",
       "findings": [],
@@ -437,6 +357,17 @@
       "previewId": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Default",
       "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "CustomStyleAbiPreview_CustomStyle_ABI-f176cb2a.png",
+      "findings": [],
+      "functionName": "CustomStyleAbiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.CustomStyleAbiPreviewKt.CustomStyleAbiPreview_CustomStyle ABI",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/CustomStyleAbiPreview.kt",
       "variant": ""
     },
     {
@@ -3234,6 +3165,25 @@
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
+      "annotatedBasename": "SystemThemeSwatchesRemote_width_200dp_height_200dp_dpi_320-c8673ea8.a11y.png",
+      "cleanBasename": "SystemThemeSwatchesRemote_width_200dp_height_200dp_dpi_320-c8673ea8.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "SystemThemeSwatchesRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.SystemThemePreviewsKt.SystemThemeSwatchesRemote_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/SystemThemePreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
+    },
+    {
       "annotatedBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.a11y.png",
       "cleanBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.png",
       "findings": [
@@ -4038,7 +3988,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.png",
       "findings": [],
       "functionName": "SdkMatrixPreview",
@@ -4533,6 +4483,17 @@
       "variant": "spec:width=960,height=720,dpi=160"
     },
     {
+      "annotatedBasename": "GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.a11y.png",
+      "cleanBasename": "GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.png",
+      "findings": [],
+      "functionName": "GlimmerXrMenuOverlay",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuOverlay_Overlay Light",
+      "rendersDir": "xr-glimmer",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
       "annotatedBasename": "NowPlayingCard_Glimmer_Busy-46226e1d.a11y.png",
       "cleanBasename": "NowPlayingCard_Glimmer_Busy-46226e1d.png",
       "findings": [],
@@ -4587,5 +4548,6 @@
       "sourceFile": "com/example/sample/Previews.kt",
       "variant": ""
     }
-  ]
+  ],
+  "status": "atf-unavailable"
 }

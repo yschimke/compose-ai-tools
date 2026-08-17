@@ -1,8 +1,11 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 337 preview(s) across 20 module(s) · 71 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 338 preview(s) across 20 module(s) · 72 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
+
+> [!WARNING]
+> ATF data unavailable for this run — the daemon did not return accessibility findings. The renders below are **not** accessibility-checked.
 
 ## android
 
@@ -90,31 +93,15 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | WARNING | TextSizeCheck | com.android.internal.widget.ImageFloatingTextView #text | Consider modifying the LayoutParams to allow for text expansion. |
 
-### `ColorSchemeSpecimenDarkPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark-789b6eae.a11y.png" width="400" />
-
-| # | Level | Rule | Element | Message |
-|--:|---|---|---|---|
-| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFD0BCFF" is identical to that of 1 other item(s). |
-| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF49454F" is identical to that of 1 other item(s). |
-| 3 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFE6E0E9" is identical to that of 2 other item(s). |
-| 4 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF141218" is identical to that of 2 other item(s). |
-
-### `ColorSchemeSpecimenLightPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light-ea02bc05.a11y.png" width="400" />
-
-| # | Level | Rule | Element | Message |
-|--:|---|---|---|---|
-| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF1D1B20" is identical to that of 1 other item(s). |
-| 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFFEF7FF" is identical to that of 2 other item(s). |
-| 3 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FF6750A4" is identical to that of 1 other item(s). |
-| 4 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "#FFFFFFFF" is identical to that of 4 other item(s). |
-
 ### `ConfigProbePreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ConfigProbePreview_Default-14dd58a7.a11y.png" width="400" />
+
+_No findings._
+
+### `CustomStyleAbiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/CustomStyleAbiPreview_CustomStyle_ABI-f176cb2a.png" width="400" />
 
 _No findings._
 
@@ -1588,6 +1575,14 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
 
+### `SystemThemeSwatchesRemote` · `spec:width=200dp,height=200dp,dpi=320`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-remote-m3/SystemThemeSwatchesRemote_width_200dp_height_200dp_dpi_320-c8673ea8.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
 ### `TextRemoteButton` · `spec:width=200dp,height=200dp,dpi=320`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-remote-m3/TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.a11y.png" width="400" />
@@ -1985,7 +1980,7 @@ _No findings._
 
 ### `SdkMatrixPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/sdk-matrix/SdkMatrixPreview_SdkMatrixPreview-79bf257a.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/sdk-matrix/SdkMatrixPreview_SdkMatrixPreview-79bf257a.png" width="400" />
 
 _No findings._
 
@@ -2239,6 +2234,12 @@ _No findings._
 ### `GlimmerListPressedWalk` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk-9c7abcd2_FOCUS_0.a11y.png" width="400" />
+
+_No findings._
+
+### `GlimmerXrMenuOverlay` · `spec:width=960,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerXrMenuOverlay_Overlay_Light-60fc9d78.a11y.png" width="400" />
 
 _No findings._
 
