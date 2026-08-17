@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.12.0](https://github.com/yschimke/compose-ai-tools/compare/v1.11.1...v1.12.0) (2026-08-17)
+
+
+### Features
+
+* **design-map:** project a variant's declared kit axis and value ([#4094](https://github.com/yschimke/compose-ai-tools/issues/4094)) ([db09322](https://github.com/yschimke/compose-ai-tools/commit/db09322e7b7409fe1eeebf059263b41d1e4c9fe9))
+* **render:** add an `auto` mode to the rewritten-SlotTable opt-in ([#4099](https://github.com/yschimke/compose-ai-tools/issues/4099)) ([4baeea0](https://github.com/yschimke/compose-ai-tools/commit/4baeea00e15d92818b09b5e259ea735b488c1847))
+
+
+### Bug Fixes
+
+* **design-artifacts:** import bundleModulePath in the catalog generator ([#4103](https://github.com/yschimke/compose-ai-tools/issues/4103)) ([9ca91f7](https://github.com/yschimke/compose-ai-tools/commit/9ca91f765082c80bb46cb502a9df133fe915cfdb))
+* **render:** degrade the composer opt-in only for a real version floor ([#4104](https://github.com/yschimke/compose-ai-tools/issues/4104)) ([6b9ae9e](https://github.com/yschimke/compose-ai-tools/commit/6b9ae9e3e65036966a475acab2ca562387e63651))
+* **renderer:** share the pressed-ripple settle with focus GIFs ([#4100](https://github.com/yschimke/compose-ai-tools/issues/4100)) ([b365017](https://github.com/yschimke/compose-ai-tools/commit/b36501708b852ae614f844b2a123b5b57e1839c1))
+
 ## [1.11.1](https://github.com/yschimke/compose-ai-tools/compare/v1.11.0...v1.11.1) (2026-08-17)
 
 
