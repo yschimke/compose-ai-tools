@@ -30,7 +30,7 @@ runs:
         echo "::warning::a11y-report is deprecated; call ./.github/actions/apply with only=a11y + a11y-module=<module> instead. See apply/action.yml for the input mapping."
 
     # This public action intentionally follows its own release tag; release-please updates it atomically.
-    - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.14.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+    - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.14.1 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
         mode: ${{ inputs.mode }}
         only: 'a11y'
