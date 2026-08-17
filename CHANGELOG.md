@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.14.1](https://github.com/yschimke/compose-ai-tools/compare/v1.14.0...v1.14.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **ci:** retry harness repository throttling ([#4131](https://github.com/yschimke/compose-ai-tools/issues/4131)) ([e6dd6e7](https://github.com/yschimke/compose-ai-tools/commit/e6dd6e7eb266c93a64fe59e885d9c15a9351ad4e))
+* **ci:** stabilize preview edit e2e saves ([#4128](https://github.com/yschimke/compose-ai-tools/issues/4128)) ([2fc6f42](https://github.com/yschimke/compose-ai-tools/commit/2fc6f4221b7477637d4ca45f2a1288e6caca0e0b))
+* **serve:** rotate optimizer lanes so a large catalog cannot be starved ([#4143](https://github.com/yschimke/compose-ai-tools/issues/4143)) ([0a020f7](https://github.com/yschimke/compose-ai-tools/commit/0a020f7a0c5474acd1ceba4d4214ed3152b0b9c7))
+
 ## [1.14.0](https://github.com/yschimke/compose-ai-tools/compare/v1.13.0...v1.14.0) (2026-08-17)
 
 
