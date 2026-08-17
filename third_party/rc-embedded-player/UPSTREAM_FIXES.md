@@ -9,7 +9,7 @@ our local deltas are still bugs upstream** and should be sent back.
 | corner | what it is |
 | --- | --- |
 | `pinned` | upstream at the vendor pin — `c8e7d738d7c76df3a87281ba8c3b880622df6282`, path `compose/remote/integration-tests/player-compose-embedded/src/main/java/androidx/compose/remote/player/compose/embedded` |
-| `upstream` | upstream at `androidx-main` HEAD, path `compose/remote/remote-player-compose/src/main/java/androidx/compose/remote/player/compose/embedded` |
+| `upstream` | `androidx-main` **as of 2026-08-17** — a mutable ref, see the caveat below — path `compose/remote/remote-player-compose/src/main/java/androidx/compose/remote/player/compose/embedded` |
 | `vendored` | `third_party/rc-embedded-player/src/main/kotlin/…/embedded` in this repo |
 
 Fetched over `raw.githubusercontent.com/androidx/androidx`, one file per vendored path, plus the
@@ -17,8 +17,14 @@ Fetched over `raw.githubusercontent.com/androidx/androidx`, one file per vendore
 (`diff -w`) — the vendored copy is reformatted to this repo's 2-space ktfmt profile, so a raw diff is
 almost entirely indentation.
 
-Everything asserted below was read out of upstream source at HEAD, with the file and line given. No
-claim here rests on the pinned snapshot or on `PROVENANCE.md`.
+Everything asserted below was read out of upstream source at that revision, with the file and line
+given. No claim here rests on the pinned snapshot or on `PROVENANCE.md`.
+
+> **The upstream side is a date, not a SHA.** `androidx-main` moves, and every `file:line` below is
+> only valid against the revision that was current on 2026-08-17 — which the review environment
+> could not capture, because every host that serves revision metadata was blocked by the egress
+> proxy. Resolve and pin the SHA before re-running anything here; **[Reproducing
+> this](#reproducing-this)** has the command and explains the constraint.
 
 ---
 
@@ -70,8 +76,22 @@ behaviour* but not the *ordering* fix or the DP-scaling rule — see **B6** and 
 
 ## B. Fixes to send upstream
 
-Ranked by how visible the wrong output is. Each names the upstream site, the mechanism, and where
-this repo's version and its test live.
+Ranked by how visible the wrong output is. Each names the upstream site and the mechanism.
+
+**Not all of them are fixed here, and the ones that are are not all covered by a test.** That
+distinction matters when turning an entry into an upstream report — it is the difference between
+"we ship a fix and a regression test" and "we read the source and think this is wrong" — so each
+entry ends with an explicit **Here:** line, one of:
+
+| marker | meaning |
+| --- | --- |
+| file + **Test:** | fixed in this snapshot, with a named test pinning the behaviour |
+| file, no **Test:** | fixed in this snapshot, but nothing here would catch a regression |
+| **Not fixed here** | an observation read out of upstream source; no local implementation, no test |
+
+At a glance: **B1–B5**, **B7**, **B8** and **B10** are fixed with tests; **B6** and **B11** are fixed
+without one; **B9** and **B12** are observations only. **B13** is a data point on an issue upstream
+already tracks.
 
 ### B1 — `paintTheme` is never set, so every themed document renders dark
 
@@ -224,7 +244,11 @@ caller already has (`drawContentProcessed`).
 Worth stating for whoever takes this: no document in a 164-document catalog sweep exercises the
 hoist branch. It is kept because the wire format permits it, not because anything observed needs it.
 
-**Here:** `modifier/ClipModifier.kt:85`, `RcPlayerModifiers.kt:100`. Test: `modifier/ClipModifierTest`.
+**Here:** `modifier/ClipModifier.kt:85`, `RcPlayerModifiers.kt:100`. **No test** — `ClipModifierTest`
+covers the radius arithmetic (B7), not the modifier ordering. The evidence for this one is the
+catalog sweep and the rendered thumb, so a regression would show up in the `rc-compare` lane rather
+than in `check`. Worth closing with a test that asserts the clip lands after `padding` in the built
+`Modifier` chain.
 
 ### B7 — `ClipCorner.literal` skips DP scaling for variable-backed radii, diverging from remote-core
 
@@ -266,7 +290,11 @@ component-size expression not having settled, which **B5** may have made unneces
 will drop it here too. The two changes should be reconciled together rather than each side keeping
 half.
 
-**Here:** `modifier/ClipModifier.kt` (`resolveRadius`).
+**Here:** `modifier/ClipModifier.kt` (`resolveRadius`). Tests:
+`ClipModifierTest.resolvedCornerMatchesRemoteCoreDensityBehavior` checks the three
+`DENSITY_BEHAVIOR_*` arms against the core's rule, and
+`ClipModifierTest.shapeAppliesDpBehaviorAfterReactiveResolution` checks that DP scaling is applied
+*after* the reactive resolution rather than to the authored value.
 
 ### B8 — `initializeContext(context)` eagerly decodes every bitmap, contradicting the comment below it
 
@@ -306,7 +334,10 @@ In-tree this is a small `applyDataOperations(context, skipBitmaps)` overload, or
 `applyOperations` are private on `CoreDocument` — which is itself an argument for the overload.
 
 **Here:** `CoreDataAccessors.kt` (`applyDataOperationsWithoutBitmaps`,
-`applyOperationsWithoutBitmaps`), called from `RcPlayer.kt:179`. Test: `RcPlayerBitmapFailureTest`.
+`applyOperationsWithoutBitmaps`), called from `RcPlayer.kt:179`. Test:
+`RcPlayerBitmapFailureTest.nestedRelativeUriIsSkippedDuringSetupTraversal` runs the traversal over a
+container holding a `BitmapData` and asserts the setup pass leaves the image slot empty — i.e. that
+setup did not decode.
 
 ### B9 — the canvas text ops ignore `LocalTypefaceResolver`, including the new `GmsFontTypefaceResolver`
 
@@ -334,6 +365,12 @@ cache on the instance, so routing it through this path as-is would re-request on
 `RemoteContext`, and `RcPlayer.kt:495` provides it to the composition local) and resolve through it
 rather than constructing a new default. Hold the instance rather than building one per op.
 
+**Here: not fixed.** This snapshot predates upstream's `typefaceResolver` parameter entirely (see
+section C), so there is no local implementation and no test — this is an observation read out of
+upstream source. Our canvas text ops route through `RcPlayerTextPlatform.kt`, which projects the
+paint state into a `TextPaintSpec` but resolves the typeface the same hard-coded way, so the fix
+lands here too once section C is pulled in.
+
 ### B10 — a URL/file-encoded image reference fails the whole document parse
 
 **Upstream:** the `CapturedDocument` overload of `RcPlayer` parses straight into `CoreDocument`
@@ -346,8 +383,11 @@ reference to a missing image rather than a parse failure. The failure mode is di
 cause: one unresolvable image should not cost the document.
 
 **Here:** `RemoteImageSupport.kt` (`enableEncodedImageReferences`), called at `RcPlayer.kt:505`.
-Note `RemoteDocument(bytes)` parses in its own constructor, so that route needs the caller to enable
-it — a second reason to fix this inside the parse rather than at each call site.
+Test: `RcJvmUrlBitmapParseTest` (in the jvm module) pins the failure itself — it flips
+`Limits.ENABLE_IMAGE_URLS` off and asserts the parse of a URL-bitmap document fails, which is what
+makes the flag's necessity a checked fact rather than a remembered one. Note `RemoteDocument(bytes)`
+parses in its own constructor, so that route needs the caller to enable it — a second reason to fix
+this inside the parse rather than at each call site.
 
 ### B11 — `TEXT_ALIGN_JUSTIFY` in the `textAlign` field is honoured here and ignored by the View player
 
@@ -378,7 +418,10 @@ justification to `justificationMode`. This is the lowest-confidence item in sect
 player's `default:` arm is the bug and the embedded player is right, then the fix belongs in
 `AndroidPaintContext` instead. Either way the two players should not disagree.
 
-**Here:** `RcPlayerTextLayout.kt:141,245`.
+**Here:** `RcPlayerTextLayout.kt:141,245`. **No test** — the mapping is pinned only by the
+`rc-compare` render lane, not by `check`. Given the open question above about which side is wrong, a
+test here would pin the answer before it has been agreed, so this one is better left until upstream
+rules on it.
 
 ### B12 — the published module has no consumer-reachable entry point, and `remote-core` is `implementation`
 
@@ -396,6 +439,11 @@ Two packaging observations now that the module is a `PUBLISHED_LIBRARY`:
   usual answer for a type in a public signature. The same applies to `RemoteContext` on
   `LocalRemoteContext`.
 
+**Here: not fixed, and not fixable here.** Both are properties of upstream's module metadata, not of
+any source file we vendor — there is nothing local to implement and nothing to test. Read out of
+`compose/remote/remote-player-compose/build.gradle` and the `@RestrictTo` annotations on the
+declarations named above.
+
 ### B13 — `GraphContext` extends `AndroidRemoteContext` for behaviour it does not use
 
 Already tracked upstream (the class comment cites issue #12), so this is a data point rather than a
@@ -410,6 +458,12 @@ This repo carries `StoreBackedRemoteContext.kt`, a neutral `RemoteContext` porte
 `AndroidRemoteContext` at the pinned commit method for method, minus that one method; `GraphContext`
 extends it instead. If it is useful for the issue-12 work, it is a worked example of the base class
 the split produces.
+
+**Here:** `StoreBackedRemoteContext.kt`, `GraphContext.kt`. Tests: `PlatformNeutralSourcesTest` keeps
+the decoupled files free of Android imports, and `DesktopRemoteContextTest` (jvm module) exercises
+the neutral context off Android — including that a store read registers with Compose's snapshot
+system, without which `GraphContext`'s `derivedStateOf` design would silently degrade to "never
+invalidates". Neither is a test *of this finding*; they are what stops the decoupling regressing.
 
 ---
 
@@ -473,20 +527,75 @@ Recorded so the list above is not read as "everything that differs".
 
 ## Reproducing this
 
+### Pin the upstream revision first
+
+**This report was taken against `androidx-main` as it stood on 2026-08-17, and that ref is
+mutable.** Every `file:line` above is only valid against that revision; once the branch advances the
+lines drift and a re-run compares something else.
+
+The exact SHA is **not recorded here, because the review environment could not obtain it**:
+`github.com`, `api.github.com`, `codeload.github.com` and `android.googlesource.com` were all refused
+by the egress proxy, and `raw.githubusercontent.com` — the one reachable host — serves file contents
+without any revision metadata. So the honest statement is "androidx-main, 2026-08-17", not a SHA.
+
+**Resolve and substitute the SHA before re-running**, so the comparison is against a fixed revision:
+
 ```sh
-BASE=https://raw.githubusercontent.com/androidx/androidx
+HEAD_SHA=$(git ls-remote https://github.com/androidx/androidx refs/heads/androidx-main | cut -f1)
+echo "$HEAD_SHA"   # record this next to any finding you re-verify
+```
+
+If you re-verify the findings against a *newer* revision, note both SHAs — "confirmed still present
+at `<sha>`" is the useful outcome, and it is a different claim from what this document makes.
+
+### The comparison
+
+Use a sparse checkout rather than per-file fetches. It enumerates the upstream directories, which is
+what makes **upstream-only** files (`GmsFontTypefaceResolver.kt` — the one this report cites — and
+anything added since) show up as `Only in …` rather than silently missing:
+
+```sh
+set -euo pipefail
+
 PIN=c8e7d738d7c76df3a87281ba8c3b880622df6282
+HEAD_SHA=${HEAD_SHA:?run the git ls-remote above first}
 OLD=compose/remote/integration-tests/player-compose-embedded/src/main/java/androidx/compose/remote/player/compose/embedded
 NEW=compose/remote/remote-player-compose/src/main/java/androidx/compose/remote/player/compose/embedded
 
-cd third_party/rc-embedded-player/src/main/kotlin/androidx/compose/remote/player/compose/embedded
-find . -type f | sed 's|^\./||' | while read -r f; do
-  mkdir -p "/tmp/pinned/$(dirname "$f")" "/tmp/head/$(dirname "$f")"
-  curl -fsS "$BASE/$PIN/$OLD/$f"        -o "/tmp/pinned/$f" || true   # 404 => local-only file
-  curl -fsS "$BASE/androidx-main/$NEW/$f" -o "/tmp/head/$f"  || true
-done
-diff -rw /tmp/head .          # our deltas vs upstream HEAD
-diff -rw /tmp/pinned /tmp/head  # what upstream changed since the pin
+work=$(mktemp -d)
+git clone --filter=blob:none --no-checkout https://github.com/androidx/androidx "$work/androidx"
+git -C "$work/androidx" sparse-checkout set --no-cone "/$OLD" "/$NEW"
+
+git -C "$work/androidx" checkout --detach "$PIN"      && cp -r "$work/androidx/$OLD" "$work/pinned"
+git -C "$work/androidx" checkout --detach "$HEAD_SHA" && cp -r "$work/androidx/$NEW" "$work/head"
+
+vendored=third_party/rc-embedded-player/src/main/kotlin/androidx/compose/remote/player/compose/embedded
+diff -rw "$work/head"   "$vendored"    # our deltas vs upstream (section B), plus local-only files
+diff -rw "$work/pinned" "$work/head"   # what upstream changed since the pin (section A and C)
 ```
 
-`diff -w` is not optional — without it the reformat drowns every real change.
+Two things about reading the output:
+
+- **`diff -w` is not optional** — without it the 2-space reformat drowns every real change (see the
+  last entry of section D).
+- **`Only in` lines are signal, not noise.** Against `head` they are our seams (section D); against
+  `pinned` they are upstream additions worth reviewing.
+
+**If you must use `raw.githubusercontent.com`** — as this review had to — remember it cannot list a
+directory, so the file set has to be seeded from somewhere and upstream-only additions will be
+invisible unless you already know their names. This report found `GmsFontTypefaceResolver.kt` only by
+noticing that `HasFontCerts` was referenced with no import and no definition in the fetched set, then
+probing candidate filenames. Treat that as a warning about the method rather than a technique to
+copy. If you do go that route, do **not** swallow failures with `|| true`: `curl -f` fails on every
+HTTP error, so rate limiting, an auth failure, a 5xx or a wrong base path would all be
+indistinguishable from the expected 404 and the diffs would still run on incomplete input. Branch on
+the status explicitly:
+
+```sh
+code=$(curl -sS -o "$out" -w '%{http_code}' "$url")
+case "$code" in
+  200) ;;                                  # fetched
+  404) rm -f "$out" ;;                     # genuinely absent at this ref — expected for local-only files
+  *)   echo "fetch failed ($code): $url" >&2; exit 1 ;;
+esac
+```
