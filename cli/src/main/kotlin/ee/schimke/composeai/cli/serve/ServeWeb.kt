@@ -9449,18 +9449,73 @@ $rows
               motionLabels[0].detail.ifBlank { motionLabels[0].title }
           else "Play this preview's recorded interactions (${motionCaptures.size})"
         "<button type=\"button\" id=\"cp-motion-chip\" class=\"cp-spec-chip cp-motion-chip\" " +
-          "aria-pressed=\"false\" aria-controls=\"cp-motion-img\" " +
+          // Both, because which one carries the capture depends on whether the browser could
+          // decode its frames: the player when it could, the plain image when it could not.
+          "aria-pressed=\"false\" aria-controls=\"cp-motion-player cp-motion-img\" " +
           "data-motion-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">Motion</button>"
       }
-    // The stage image the Motion lane paints into: a sibling of the snapshot `<img>`, left `hidden`
-    // and src-less until the lane is entered — the same treatment [specImg] gets, and here it is
-    // what keeps an unopened capture from being fetched *and* from playing.
+    // The stage image the Motion lane FALLS BACK to: a sibling of the snapshot `<img>`, left
+    // `hidden` and src-less until the lane is entered — the same treatment [specImg] gets, and here
+    // it is what keeps an unopened capture from being fetched *and* from playing.
+    //
+    // No longer the primary path. An `<img>` plays a capture the way the file says to and offers
+    // the reader nothing: our APNGs are written with `loopCount = 0`, so a recording that toggles a
+    // switch on and then off runs on → off → on → off with no seam and the reader cannot tell a
+    // transition from its own reverse; there is no pausing it, no slowing it, and no sitting on the
+    // two frames either side of the moment being documented. The canvas below is what the lane
+    // actually uses. This stays for the browser that cannot decode frames for us (see `loadMotion`
+    // in `viewer.ts`), where a looping capture beats no capture.
     val motionImg =
       if (motionCaptures.isEmpty()) ""
       else
         "<img id=\"cp-motion-img\" class=\"cp-motion-img\" hidden alt=\"" +
           "${WebEscaping.htmlEscape("$displayName \u2014 recorded interaction")}\">"
+    // The player: the capture on a canvas, with its transport under it.
+    //
+    // A canvas because every one of the four things this lane is asked for \u2014 play once, show
+    // where
+    // playback is, scrub to a frame, change speed \u2014 needs the frames addressable one at a
+    // time, and
+    // an animated `<img>` exposes none of them. `viewer.ts` decodes the capture with `ImageDecoder`
+    // and paints frame N here; nothing is fetched or decoded until the lane is entered, exactly as
+    // before.
+    //
+    // The transport is `hidden` in the markup and revealed only once a decode has actually
+    // succeeded, because a row of dead controls over a looping fallback would promise scrubbing the
+    // page cannot do.
+    val motionPlayer =
+      if (motionCaptures.isEmpty()) ""
+      else {
+        val rateOptions =
+          listOf("0.25" to "0.25\u00d7", "0.5" to "0.5\u00d7", "1" to "1\u00d7", "2" to "2\u00d7")
+            .joinToString("") { (value, label) ->
+              "<option value=\"$value\"${if (value == "1") " selected" else ""}>$label</option>"
+            }
+        "<div class=\"cp-motion-player\" id=\"cp-motion-player\" hidden>" +
+          "<canvas id=\"cp-motion-canvas\" class=\"cp-motion-canvas\" role=\"img\" " +
+          "aria-label=\"${WebEscaping.htmlEscape("$displayName \u2014 recorded interaction")}\">" +
+          "</canvas>" +
+          "<div class=\"cp-motion-transport\" id=\"cp-motion-transport\" hidden>" +
+          "<button type=\"button\" id=\"cp-motion-play\" class=\"cp-motion-transport-btn\" " +
+          "aria-pressed=\"false\" title=\"Play\" aria-label=\"Play\">\u25b6</button>" +
+          "<button type=\"button\" id=\"cp-motion-replay\" class=\"cp-motion-transport-btn\" " +
+          "title=\"Play again from the start\" aria-label=\"Play again from the start\">" +
+          "\u21ba</button>" +
+          // A range input, not a bar drawn by hand: it is the one control here a reader drags, and
+          // the platform's own brings \u2190 / \u2192 frame stepping, Home / End, a focus ring and
+          // a screen
+          // reader that announces which frame of how many \u2014 all of which a `<div>` with a
+          // pointer
+          // handler would have to reimplement, and would get subtly wrong.
+          "<input type=\"range\" id=\"cp-motion-scrub\" class=\"cp-motion-scrub\" " +
+          "min=\"0\" max=\"0\" value=\"0\" step=\"1\" " +
+          "title=\"Scrub to a frame\" aria-label=\"Frame\">" +
+          "<span class=\"cp-motion-time\" id=\"cp-motion-time\"></span>" +
+          "<select id=\"cp-motion-rate\" class=\"cp-motion-rate\" " +
+          "title=\"Playback speed\" aria-label=\"Playback speed\">$rateOptions</select>" +
+          "</div></div>"
+      }
     // The lane's hidden mode radio. Motion is not a renderer either, but joining the same radio
     // group buys it every mechanism the other lanes get for free: `?mode=motion` in the URL,
     // restore on load, and Back/Forward through the lane. Without it `currentMode()` would keep
@@ -10312,7 +10367,7 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
