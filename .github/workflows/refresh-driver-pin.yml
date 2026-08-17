@@ -1,0 +1,311 @@
+name: Refresh driver pin
+
+# Open the "move the export-driver pin to the release we just cut" PR, instead of
+# waiting for a consumer's CI to go red and someone to write it by hand.
+#
+# WHY THIS EXISTS
+# ---------------
+# `design-artifacts-reusable.yml` is called by other repos and executes
+# compose-ai-tools' export driver, so for external callers that driver is pinned
+# to an immutable commit (see the DRIVER_PIN_* env block there for the trust
+# argument).
+# The cost of that pin is a standing manual step: until it moves, every external
+# consumer keeps running the driver from an older release, including any bug this
+# repo has already fixed. #4079, #4084, #4085 and #4106 are four hand-written pin
+# bumps, each authored only after the breakage surfaced downstream — #4106 landed
+# a driver fix that had been on `main` since #4103 and was failing three delivery
+# branches plus m3-catalog in the meantime. Issue #4107 is that loop.
+#
+# release-please cannot do this from `extra-files`: the pin has to name the
+# release COMMIT, which is the squash of the release PR itself and does not exist
+# until after that PR merges. Post-release is the earliest anything can know it.
+#
+# The pin lives in `.github/design-artifacts-driver-pin.txt` rather than in the
+# workflow that reads it because `GITHUB_TOKEN` cannot push changes under
+# `.github/workflows/` — the App token needs a `workflows` permission that is not
+# one of the scopes a `permissions:` block can request, so this job's push would
+# be rejected outright. See the pin file's header for why that costs nothing in
+# trust.
+#
+# WHAT THIS DOES NOT FIX
+# ----------------------
+# compose-ai-tools' OWN renders no longer depend on the pin at all — the driver
+# revision resolves to the caller commit for this repository — so a stale pin now
+# only ever delays external consumers, and only for as long as this PR sits
+# unmerged.
+#
+# NOTE: chained on `workflow_run` for the same reason post-release-design-artifacts.yml
+# is — the release chain runs on the default GITHUB_TOKEN, whose events do not
+# start new workflow runs, and `workflow_run` is the one trigger that fires from
+# such a run's completion. Like every `workflow_run` workflow it only fires for
+# the copy on the DEFAULT branch, so changes here take effect once merged and
+# cannot be exercised from a PR branch.
+
+on:
+  workflow_run:
+    workflows: ["Release PR"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to pin to (e.g. v1.12.0). Empty ⇒ the newest published release.'
+        required: false
+        type: string
+        default: ''
+
+permissions: {}
+
+# NOTE: no workflow-level `concurrency`. GitHub keeps only ONE pending run per
+# group and cancels the older pending one — `cancel-in-progress: false` protects
+# the RUNNING run, not the queue. Since "Release PR" completes on every push to
+# `main`, a genuine release refresh sitting pending could be evicted by a
+# no-op run behind it, and the release would silently never get its pin bump
+# (a `workflow_run` fires once; there is no retry). The gate is therefore
+# unserialised — it is a few API calls — and only `refresh`, which pushes the
+# branch, carries a concurrency group.
+
+jobs:
+  # Cheap, unserialised, no checkout: decide whether this run corresponds to a
+  # published release, and to which tag.
+  gate:
+    # "Release PR" completes on every push to main, so most of these runs have
+    # nothing to do; the API gate in `resolve` is what decides, and it costs a few
+    # seconds.
+    #
+    # Deliberately NOT gated on `workflow_run.conclusion == 'success'`, which is
+    # what post-release-design-artifacts.yml uses. In release-please.yml
+    # `finalize-release` publishes the release BEFORE `verify-maven-readiness` and
+    # `reconcile-release-pr` run, so either of those failing marks the whole run a
+    # failure while a perfectly valid release exists. Skipping here on that basis
+    # would strand external callers on the old driver with no second trigger
+    # coming — a `workflow_run` fires once. The API gate is strictly stronger
+    # anyway: it requires the newest PUBLISHED release to point at exactly the
+    # commit this run built, which a draft or a half-finished release cannot
+    # satisfy. Cancelled runs are NOT excluded either: an operator can cancel the
+    # release run after `finalize-release` already published — while the Maven
+    # readiness job is still polling, say — and `workflow_run.head_sha` is still
+    # populated for a cancelled run, so the gate can prove the published release
+    # points at it. Excluding them would strand that release's pin with no second
+    # event coming. Let everything reach the gate and let the gate decide.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      proceed: ${{ steps.resolve.outputs.proceed }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      # Resolve the tag to pin to, and the commit it points at.
+      #
+      # On workflow_run this doubles as the release gate, in the same shape
+      # post-release-design-artifacts.yml uses: the newest PUBLISHED release must
+      # point at exactly the commit that run built. A draft release — what a
+      # missing-asset failure leaves behind — is invisible to `releases/latest`,
+      # so this fails closed rather than pinning to a half-published release.
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          proceed=false
+          sha=""
+          tag="${INPUT_TAG}"
+
+          # Every lookup here distinguishes "the API answered, and the answer is
+          # no" from "the API did not answer". Swallowing both with `|| true` made
+          # a transient 5xx / rate-limit / auth blip look exactly like "no release
+          # exists", and the job then SUCCEEDED having done nothing — with no
+          # second chance, because a `workflow_run` fires once per run. Failing on
+          # an API error instead leaves a red job that can simply be re-run.
+          api() {
+            local path="$1" jq="$2" out status
+            set +e
+            out="$(gh api "${path}" --jq "${jq}" 2>/tmp/gh-err)"
+            status=$?
+            set -e
+            if [ "${status}" -ne 0 ]; then
+              if grep -qi 'HTTP 404' /tmp/gh-err; then
+                printf ''
+                return 0
+              fi
+              echo "::error::GitHub API call failed for ${path} — re-run this job." >&2
+              cat /tmp/gh-err >&2
+              exit 1
+            fi
+            printf '%s' "${out}"
+          }
+
+          if [ -z "${tag}" ]; then
+            tag="$(api "repos/${GH_REPO}/releases/latest" '.tag_name')"
+          fi
+
+          if [ -z "${tag}" ]; then
+            echo "no published release — nothing to pin to."
+          else
+            # `git/ref/tags/<tag>` answers with the ref object on an exact match and
+            # an ARRAY of near-misses otherwise; --jq over the array yields nothing,
+            # which lands in the "does not resolve" branch below. Fails closed.
+            ref_pair="$(api "repos/${GH_REPO}/git/ref/tags/${tag}" '.object.sha + " " + .object.type')"
+            sha="${ref_pair%% *}"
+            type="${ref_pair##* }"
+            # release-please's fallback step writes a lightweight ref; an annotated
+            # tag points at a tag object and needs dereferencing to the commit.
+            if [ "${type}" = "tag" ] && [ -n "${sha}" ]; then
+              sha="$(api "repos/${GH_REPO}/git/tags/${sha}" '.object.sha')"
+            fi
+
+            if [ -z "${sha}" ]; then
+              echo "::warning::${tag} does not resolve to a commit — not touching the pin."
+            elif [ "${EVENT}" = "workflow_dispatch" ]; then
+              proceed=true
+            elif [ "${sha}" = "${HEAD_SHA}" ]; then
+              proceed=true
+            else
+              echo "latest release ${tag} points at ${sha}, not ${HEAD_SHA} — not a release run."
+            fi
+          fi
+
+          {
+            echo "proceed=${proceed}"
+            echo "tag=${tag}"
+            echo "sha=${sha:-}"
+          } >> "$GITHUB_OUTPUT"
+
+  # Everything that touches the branch. Serialised, so two releases in quick
+  # succession cannot race for the same branch — and separate from the gate, so a
+  # queued no-op run can never evict a pending release refresh.
+  refresh:
+    needs: gate
+    if: ${{ needs.gate.outputs.proceed == 'true' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: refresh-driver-pin
+      cancel-in-progress: false
+    permissions:
+      contents: write # push the pin-bump branch
+      pull-requests: write # open the PR for it
+    env:
+      TAG: ${{ needs.gate.outputs.tag }}
+      SHA: ${{ needs.gate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A workflow_run run already checks out the default branch; be explicit
+          # so a dispatch from a side branch still bumps the pin on main.
+          ref: main
+          persist-credentials: false
+
+      - name: Rewrite the pin
+        id: rewrite
+        run: |
+          set -euo pipefail
+          before=$(.github/scripts/refresh-driver-pin.sh --print)
+          .github/scripts/refresh-driver-pin.sh --tag "${TAG}" --sha "${SHA}"
+          # --check re-reads the file: a rewrite that produced a malformed pin, or
+          # left sha and tag disagreeing, must not become a PR.
+          .github/scripts/refresh-driver-pin.sh --check
+
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Pin already at ${SHA} (${TAG}) — nothing to open." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "changed=true"
+              echo "before=${before}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open the pin-bump PR
+        if: ${{ steps.rewrite.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BEFORE: ${{ steps.rewrite.outputs.before }}
+        run: |
+          set -euo pipefail
+
+          # github-actions[bot] only ever authors branch commits, never the
+          # squash-authored main — the house rule in CLAUDE.md.
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # checkout deliberately does not persist its token; wire gh's credential
+          # helper up so the push below uses this job's contents-write token.
+          gh auth setup-git
+
+          # ONE branch for all time, not one per tag. A tag-specific branch let a
+          # second release cut before the first bump merged open a SECOND PR from
+          # the same old pin — both editing the same three lines to different
+          # values, so merging either wedged the other in conflict and left the
+          # newest release needing exactly the manual repair this workflow exists
+          # to delete. A single branch means the newest release always supersedes
+          # the pending one, in place.
+          branch="agent/refresh-driver-pin"
+
+          # Rebuilt from the CURRENT main every run, so a superseded bump never
+          # stacks its predecessor's commit underneath.
+          git checkout -b "${branch}"
+          # Only the pin file. `GITHUB_TOKEN` may not push anything under
+          # `.github/workflows/`, so a stray staged workflow edit would fail the
+          # push rather than being quietly dropped.
+          git add .github/design-artifacts-driver-pin.txt
+          git commit -m "chore(ci): refresh the design-artifacts driver pin to ${TAG}"
+
+          # The branch usually already exists — from a superseded bump, or from a
+          # run that pushed and then failed in `gh pr create`. checkout fetched
+          # only `main`, so there is no remote-tracking ref for it and a bare
+          # --force-with-lease would be refused as "stale info", turning a
+          # recoverable retry into a permanent failure. Fetch it and lease against
+          # what is actually there, so a concurrent writer still wins the race
+          # rather than being clobbered.
+          if git fetch --no-tags origin "${branch}" 2>/dev/null; then
+            lease="$(git rev-parse FETCH_HEAD)"
+            echo "Branch ${branch} exists at ${lease} — superseding it with ${TAG}."
+            git push --force-with-lease="${branch}:${lease}" origin "HEAD:${branch}"
+          else
+            git push origin "HEAD:${branch}"
+          fi
+
+          # The PR body lives in a template file rather than a heredoc: a
+          # heredoc terminator must start at column 0, which cannot happen inside
+          # a YAML block scalar. Placeholders are replaced with `sed`, and the
+          # values are hex SHAs / a vX.Y.Z tag, so no delimiter escaping is needed.
+          sed -e "s|@BEFORE@|${BEFORE}|g" \
+              -e "s|@SHA@|${SHA}|g" \
+              -e "s|@TAG@|${TAG}|g" \
+              .github/scripts/driver-pin-pr-body.md > /tmp/pr-body.md
+
+          # `chore(ci):`, NOT `fix(ci):`. A squash merge uses the PR title as the
+          # commit headline, and release-please cuts a patch release for `fix:`
+          # (docs/RELEASING.md), so a `fix:`-titled bump would make every release
+          # propose another release, whose publish opens another bump. The
+          # hand-written bumps this replaces were all titled `fix(ci):` — #4106 and
+          # friends each cut a release of their own. `chore:` is in the
+          # non-releasing set and still passes the pr-title gate.
+          title="chore(ci): refresh the design-artifacts driver pin to ${TAG}"
+
+          # Force-pushing the branch already updated any open PR's diff; retitle
+          # and rewrite its body so it describes the release it now carries rather
+          # than the superseded one.
+          # `--head` filters by branch NAME and does not accept `owner:branch`, so a
+          # fork PR from an identically-named branch can match. Editing that PR
+          # would also mean skipping `gh pr create`, leaving the branch we just
+          # pushed with no PR at all and consumers on the stale driver. Require a
+          # same-repo head, the way release-pr-heal.yml does.
+          existing="$(gh pr list --head "${branch}" --state open \
+            --json number,isCrossRepository \
+            --jq 'map(select(.isCrossRepository == false)) | .[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            echo "Updating open PR #${existing} to ${TAG}."
+            gh pr edit "${existing}" --title "${title}" --body-file /tmp/pr-body.md
+          else
+            gh pr create \
+              --base main \
+              --head "${branch}" \
+              --title "${title}" \
+              --body-file /tmp/pr-body.md
+          fi

@@ -95,6 +95,7 @@
     "actions_tests": [
       ".github/actions/**",
       ".github/ci/**",
+      ".github/design-artifacts-driver-pin.txt",
       ".github/scripts/**",
       ".github/workflows/**",
       "scripts/design-artifacts/**",

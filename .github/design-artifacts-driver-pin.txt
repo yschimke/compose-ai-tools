@@ -1,0 +1,39 @@
+# Which commit of compose-ai-tools' export driver (scripts/design-artifacts/)
+# external callers of design-artifacts-reusable.yml execute.
+#
+# WHY THIS IS A DATA FILE AND NOT A LINE IN THE WORKFLOW
+# -----------------------------------------------------
+# It has to be machine-writable after a release, and `GITHUB_TOKEN` cannot push
+# changes to anything under `.github/workflows/`: the App token needs a
+# `workflows` permission that is not one of the scopes a `permissions:` block can
+# request, so the push is rejected outright. Keeping the pin here is what lets
+# `refresh-driver-pin.yml` open the bump PR at all.
+#
+# What the pin still buys, unchanged: the privileged workflow executes an
+# immutable, release-blessed commit rather than a caller-selected `refs/pull/*`
+# revision that can carry fork code. That is the boundary it exists for.
+#
+# What moving it here costs: the workflow reads this file from `main`, so a
+# caller that pinned the WORKFLOW to a tag or SHA now tracks the newest pin
+# rather than the one frozen at their revision. While the pin was a literal in
+# the workflow, such a caller was fully reproducible. For the documented `@main`
+# usage (see the top of design-artifacts-reusable.yml and
+# docs/design/DESIGN_CATALOGS.md) nothing changes at all — the same people who
+# could already change the workflow under that caller are the ones who can
+# change this file.
+#
+# That gap is not currently closable: a reusable workflow cannot learn its own
+# revision from the `github` context, and the claim that does name it
+# (`job_workflow_sha`) exists only in an OIDC token, which every caller would
+# have to grant `id-token: write` to reach. The `driver` job carries the full
+# reasoning and the escape hatch if a pinned caller ever needs one.
+#
+# compose-ai-tools' own runs never read this: for that caller the workflow uses
+# the commit the run is on, so a driver fix merged to `main` applies immediately.
+#
+# Maintained by .github/scripts/refresh-driver-pin.sh, which is run for you by
+# .github/workflows/refresh-driver-pin.yml after each release. `--check` (run by
+# ci.yml) enforces the shape below, so keep the three keys and their spelling.
+sha=c9903031d28b7a3d6e5f53f159ec1d3155f2ff59
+tag=v1.12.0
+date=2026-08-17
