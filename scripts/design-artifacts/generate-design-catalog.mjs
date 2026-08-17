@@ -143,6 +143,7 @@ import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.
 import { completenessFailure } from "./completeness-gate.mjs";
 import {
   additionalBundleLiveConflict,
+  bundleModulePath,
   claimedComponentIds,
   claimedPreviewFunctions,
   combinedBundleMap,
