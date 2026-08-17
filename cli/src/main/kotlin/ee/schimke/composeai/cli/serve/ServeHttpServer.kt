@@ -6137,12 +6137,26 @@ class ServeHttpServer(
       return
     }
     val motionId = name.removeSuffix(extension)
-    val bytes =
+    val outcome =
       withLeasedSessionOrNull(selectedSessionId(sessionInPath)) { host ->
-        host.motionBytes(motionId, extension)
-      }
+        host.motionRead(motionId, extension)
+      } ?: BranchFetch.NotFound
+    val bytes = outcome.bytesOrNull
     if (bytes == null) {
-      call.respondText("", status = HttpStatusCode.NotFound)
+      // A capture the catalog never published is a 404 and always was. A capture the delivery
+      // branch is currently refusing us is NOT — answering 404 there tells the reader the recording
+      // does not exist, which is what "The recorded interaction could not be loaded" meant for both
+      // cases and what made diagnosing this lane a manual exercise. 503 with `Retry-After` says the
+      // true thing to a browser, a monitor and a person reading a log alike.
+      if (outcome.isTransient) {
+        call.response.headers.append(
+          HttpHeaders.RetryAfter,
+          motionRetryAfterSeconds(outcome).toString(),
+        )
+        call.respondText(outcome.summary, status = HttpStatusCode.ServiceUnavailable)
+      } else {
+        call.respondText("", status = HttpStatusCode.NotFound)
+      }
       return
     }
     // Revalidated, NOT `immutable` — and the distinction is the whole point of this block.
@@ -6167,6 +6181,24 @@ class ServeHttpServer(
       return
     }
     call.respondBytes(bytes, ContentType.parse(MOTION_CONTENT_TYPES.getValue(extension)))
+  }
+
+  /**
+   * The `Retry-After` a refused capture advertises: what the branch host itself asked for when it
+   * said so, else a short default. Clamped to the same ceiling the fetch policy honours, so the
+   * header can never promise a wait longer than the server would itself wait.
+   */
+  private fun motionRetryAfterSeconds(outcome: BranchFetch): Long {
+    val asked =
+      when (outcome) {
+        is BranchFetch.Throttled -> outcome.retryAfterSeconds
+        is BranchFetch.Unavailable -> outcome.retryAfterSeconds
+        else -> null
+      }
+    return (asked ?: MOTION_DEFAULT_RETRY_AFTER_SECONDS).coerceIn(
+      1L,
+      BranchFetch.MAX_RETRY_AFTER_SECONDS,
+    )
   }
 
   private suspend fun RoutingContext.rejectHeadProbe(): Boolean {
@@ -6933,6 +6965,9 @@ class ServeHttpServer(
      * unlike the hashed lanes these live at well-known paths whose bytes change across a deploy.
      */
     private const val SITE_ICON_CACHE_CONTROL = "public, max-age=86400"
+
+    /** `Retry-After` for a refused capture whose branch host named no interval of its own. */
+    private const val MOTION_DEFAULT_RETRY_AFTER_SECONDS = 5L
 
     /**
      * Caching for the prebaked image lanes: `/hero/` and `?thumb=` on the render lane.

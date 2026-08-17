@@ -74,7 +74,9 @@ class ServeTopLevelSiteTest {
       title = label,
       declaredBaked = listOf(previewId),
       declaredMotion = listOf(motionId),
-      fetchMotion = { id -> if (id == motionId) captureMarker.toByteArray() else null },
+      fetchMotion = { id ->
+        if (id == motionId) BranchFetch.Ok(captureMarker.toByteArray()) else BranchFetch.NotFound
+      },
       motionBranchPaths = mapOf(motionId to "motion/switch-on/ideal__default__light.apng"),
     )
   }

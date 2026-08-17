@@ -175,8 +175,8 @@ class ServeCatalogLiveHost(
   // fell to `ServeHost.motionBytes`'s null default because this composite never forwarded them.
   // A static catalog is pinned and served by the bundle host directly, which is why the fixtures —
   // all of them pinned — never met the shape that breaks.
-  override fun motionBytes(motionId: String, extension: String): ByteArray? =
-    baked.motionBytes(motionId, extension)
+  override fun motionRead(motionId: String, extension: String): BranchFetch =
+    baked.motionRead(motionId, extension)
 
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)

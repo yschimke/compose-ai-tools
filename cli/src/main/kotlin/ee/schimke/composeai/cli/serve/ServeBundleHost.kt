@@ -135,7 +135,15 @@ class ServeBundleHost(
    * Same seam as [fetchBakedPng], for the same reason: the store owns URL assembly, the SSRF gate,
    * the size cap and the test seam, and this host only names an id it was told about.
    */
-  private val fetchMotion: ((String) -> ByteArray?)? = null,
+  /**
+   * Fetches one declared capture off the delivery branch, reporting **why** a failure failed.
+   *
+   * Outcome-shaped rather than `ByteArray?` for the reason the transport seam is: a second seam
+   * beside a bytes-shaped one is a lane waiting to be forgotten. The reason travels because the
+   * route needs it — a throttled capture is a `503` the reader can retry, and a `404` says the
+   * catalog never published it.
+   */
+  private val fetchMotion: ((String) -> BranchFetch)? = null,
   /** Each declared capture's branch path, so a pinned (`?at=<sha>`) request can resolve one. */
   private val motionBranchPaths: Map<String, String> = emptyMap(),
   /**
@@ -862,33 +870,46 @@ class ServeBundleHost(
    * the part that is merely mechanical. Folding them together would mean threading a suffix through
    * the fill path, which is how a capture ends up written under a still's name.
    */
-  private fun motionFile(motionId: String, extension: String): okio.Path? {
-    if (motionId !in declaredMotionIds) return null
-    if (extension !in MOTION_EXTENSIONS) return null
+  private fun motionFile(motionId: String, extension: String): BranchFetch {
+    if (motionId !in declaredMotionIds) return BranchFetch.NotFound
+    if (extension !in MOTION_EXTENSIONS) return BranchFetch.NotFound
     // The requested suffix must be the one THIS capture was published as, not merely a format the
     // lane supports. Checking only the allowlist would let `<id>.gif` serve an APNG's bytes typed
     // as
     // a GIF: the same bytes, a content type the requester chose, and a browser that renders one
     // frame and stops. The declared branch path is the authority on which it is.
-    if (motionBranchPaths[motionId]?.endsWith(extension) != true) return null
-    val path = previewFile(motionId, extension)?.toOkioPath() ?: return null
-    if (fileSystem.exists(path)) return path
-    val fetch = fetchMotion ?: return null
+    if (motionBranchPaths[motionId]?.endsWith(extension) != true) return BranchFetch.NotFound
+    val path = previewFile(motionId, extension)?.toOkioPath() ?: return BranchFetch.NotFound
+    if (fileSystem.exists(path)) return readStagedMotion(path)
+    val fetch = fetchMotion ?: return BranchFetch.NotFound
     // Keyed distinctly from the baked lane: a capture and its sibling still share an id, so one
     // lock namespace would have a cold capture fetch block a warm sticker read on the same card.
     synchronized(fillLocks.computeIfAbsent("$MOTION_LOCK_PREFIX$motionId") { Any() }) {
-      if (fileSystem.exists(path)) return path
-      val bytes = runCatching { fetch(motionId) }.getOrNull() ?: return null
-      return runCatching {
+      if (fileSystem.exists(path)) return readStagedMotion(path)
+      val outcome = runCatching {
+        fetch(motionId)
+      }
+        .getOrElse { BranchFetch.Transport(it::class.simpleName ?: "error") }
+      // A failure is returned AS ITSELF rather than flattened: a throttle here is what makes the
+      // route answer 503 instead of telling the reader the capture was never published.
+      val bytes = outcome.bytesOrNull ?: return outcome
+      // Staging failing is not the branch's fault and not a missing asset either — the bytes are in
+      // hand, so serve them and let the next request try the disk again.
+      runCatching {
         path.parent?.let(fileSystem::createDirectories)
         val partial = path.parent!!.resolve(path.name + PARTIAL_SUFFIX)
         fileSystem.write(partial) { write(bytes) }
         fileSystem.atomicMove(partial, path)
-        path
       }
-        .getOrNull()
+      return BranchFetch.Ok(bytes)
     }
   }
+
+  /** A staged capture read back off disk; an unreadable stage is transient, not a missing asset. */
+  private fun readStagedMotion(path: okio.Path): BranchFetch = runCatching {
+    BranchFetch.Ok(fileSystem.read(path) { readByteArray() })
+  }
+    .getOrElse { BranchFetch.Transport(it::class.simpleName ?: "error") }
 
   /**
    * The bytes of one published capture, or null when this host can't serve it.
@@ -897,10 +918,8 @@ class ServeBundleHost(
    * manifest, and gets bytes or nothing. Both are checked against what the catalog declared, so a
    * request can neither invent an id nor choose the suffix its response is typed with.
    */
-  override fun motionBytes(motionId: String, extension: String): ByteArray? =
-    motionFile(motionId, extension)?.takeIf(fileSystem::exists)?.let {
-      runCatching { fileSystem.read(it) { readByteArray() } }.getOrNull()
-    }
+  override fun motionRead(motionId: String, extension: String): BranchFetch =
+    motionFile(motionId, extension)
 
   /** The branch path of a declared capture, for a pinned request. */
   fun motionBranchPath(motionId: String): String? = motionBranchPaths[motionId]

@@ -234,7 +234,15 @@ interface ServeHost : AutoCloseable {
    * because the two formats aren't interchangeable to a browser, and it is validated against what
    * the catalog declared rather than trusted, so a request can't choose its own content type.
    */
-  fun motionBytes(motionId: String, extension: String): ByteArray? = null
+  /**
+   * One published capture, with the reason a failure failed.
+   *
+   * The reason is the point: a host that cannot distinguish a capture the catalog never published
+   * from one the delivery branch is currently refusing to serve leaves the route with nothing to
+   * say but 404, and the reader with "could not be loaded" for both. Defaults to
+   * [BranchFetch.NotFound] — a host with no branch behind it publishes no captures.
+   */
+  fun motionRead(motionId: String, extension: String): BranchFetch = BranchFetch.NotFound
 
   /**
    * A visitor is present on this session's pages right now (see `POST /api/presence`) — get its
@@ -610,3 +618,16 @@ interface ServeHost : AutoCloseable {
   /** Count of live upstream streams (0 for hosts without a live lane). */
   fun activeStreamCount(): Int
 }
+
+/**
+ * [ServeHost.motionRead]'s bytes, for callers that only care whether there are any.
+ *
+ * An **extension**, deliberately, rather than a second interface member: with both on the interface
+ * an implementor could override this one, see its override silently ignored (every caller goes
+ * through [ServeHost.motionRead]), and ship a host that serves no captures — which is the shape of
+ * the bug that made the Motion lane 404 in the first place, where `ServeCatalogLiveHost`
+ * implemented a pair and missed a member of it. An extension cannot be overridden, so there is one
+ * place to implement and no way to implement the wrong one.
+ */
+fun ServeHost.motionBytes(motionId: String, extension: String): ByteArray? =
+  motionRead(motionId, extension).bytesOrNull

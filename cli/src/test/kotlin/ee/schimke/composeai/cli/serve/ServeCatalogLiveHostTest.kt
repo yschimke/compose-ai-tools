@@ -53,8 +53,8 @@ class ServeCatalogLiveHostTest {
     /** Published captures this host can serve, keyed `<motionId><extension>`. */
     private val motion: Map<String, ByteArray> = emptyMap(),
   ) : ServeHost {
-    override fun motionBytes(motionId: String, extension: String): ByteArray? =
-      motion["$motionId$extension"]
+    override fun motionRead(motionId: String, extension: String): BranchFetch =
+      motion["$motionId$extension"]?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
 
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
