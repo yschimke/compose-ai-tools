@@ -30,6 +30,16 @@ private class FlagsClassLoader(private val fieldName: String = LinkBufferCompose
     defined.getDeclaredField(fieldName).also { it.isAccessible = true }.getBoolean(null)
 }
 
+/**
+ * A runtime that *has* the flag holder but cannot produce it — the half-resolved Compose classpath
+ * shape. Distinct from `ClassLoader(null)`, which reports honest absence.
+ */
+private class BrokenFlagsClassLoader : ClassLoader(null) {
+  override fun loadClass(name: String, resolve: Boolean): Class<*> =
+    if (name == LinkBufferComposer.FLAGS_CLASS) throw LinkageError("half-resolved runtime")
+    else super.loadClass(name, resolve)
+}
+
 class LinkBufferComposerTest {
 
   @Test
@@ -128,6 +138,26 @@ class LinkBufferComposerTest {
       LinkBufferComposer.applyIfRequested(loader, LinkBufferComposer.AUTO),
     )
     assertTrue(loader.flagValue())
+  }
+
+  /**
+   * `auto` degrades for a version floor, not for anything that happens to throw. A runtime that has
+   * the flag but cannot hand it over may well be able to *set* it, so absorbing that would render
+   * the old composer under a notice blaming the Compose version and throw the real cause away.
+   */
+  @Test
+  fun autoStillFailsWhenTheFlagCannotBeReadRatherThanIsAbsent() {
+    for (raw in listOf(LinkBufferComposer.AUTO, "true")) {
+      val failure = runCatching {
+        LinkBufferComposer.applyIfRequested(BrokenFlagsClassLoader(), raw)
+      }
+        .exceptionOrNull()
+
+      assertTrue("$raw should fail, not degrade", failure is IllegalStateException)
+      // Names the real cause instead of asserting a version floor that was never established.
+      assertTrue(failure!!.message!!.contains("LinkageError"))
+      assertTrue(failure.cause is LinkageError)
+    }
   }
 
   @Test

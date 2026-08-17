@@ -157,7 +157,9 @@ object LinkBufferComposer {
    *   such flag — an older Compose, or a future one that has finished the migration and removed it.
    *   Failing loudly is the point: a silently-ignored opt-in would produce a full set of renders
    *   that "tested" the new composer without ever enabling it. `auto` returns [Outcome.Unavailable]
-   *   there instead, which the lanes announce rather than swallow.
+   *   there instead, which the lanes announce rather than swallow. Also thrown on **either**
+   *   setting when the flag exists but cannot be read — see [isFlagAbsence] for why `auto` does not
+   *   absorb that case.
    * @throws IllegalArgumentException when the property is set to something other than `true` /
    *   `false` / [AUTO] (see [request]).
    */
@@ -174,6 +176,17 @@ object LinkBufferComposer {
     }
       .mapCatching { it.getDeclaredField(FLAG_FIELD) }
       .getOrElse { failure ->
+        if (!isFlagAbsence(failure)) {
+          throw IllegalStateException(
+            "compose-preview: -D$PROPERTY=${request.name.lowercase()} was requested, and " +
+              "$FLAGS_CLASS.$FLAG_FIELD could not be read on this render's Compose runtime — " +
+              "${failure::class.java.name}. That is not the version floor $AUTO degrades for, so " +
+              "it fails the render on either setting: a half-resolved Compose classpath or a " +
+              "reflection policy blocking the assignment would otherwise be reported as 'this " +
+              "runtime is too old' and quietly rendered on the old composer.",
+            failure,
+          )
+        }
         if (request == Request.Preferred) return Outcome.Unavailable
         throw IllegalStateException(
           "compose-preview: -D$PROPERTY=true was requested, but this render's Compose runtime " +
@@ -189,6 +202,25 @@ object LinkBufferComposer {
     field.setBoolean(/* obj= */ null, true)
     return Outcome.Enabled
   }
+
+  /**
+   * Whether [failure] means "this runtime does not have the flag" — the one thing [AUTO] is allowed
+   * to degrade for.
+   *
+   * Exactly two signals qualify: the class is not on this render's classpath
+   * ([ClassNotFoundException], a Compose below 1.11.0) or it is there without the field
+   * ([NoSuchFieldException], the 1.9.5 / 1.10.x shape, and the shape a post-migration Compose that
+   * dropped the flag will have again). Both describe a version, which is what the degrade notice
+   * tells the reader.
+   *
+   * Everything else is a different problem wearing the same clothes: a [LinkageError] or a failing
+   * static initializer from a half-resolved Compose classpath, or a `SecurityException` from a
+   * reflection policy. Those runtimes may well *have* the flag, so degrading on them would render
+   * the old composer under a message blaming the Compose version, drop the real cause, and leave an
+   * A/B run quietly answering a question nobody asked. They fail the render on `auto` too.
+   */
+  private fun isFlagAbsence(failure: Throwable): Boolean =
+    failure is ClassNotFoundException || failure is NoSuchFieldException
 
   private val announced = java.util.concurrent.atomic.AtomicBoolean(false)
 
