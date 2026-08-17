@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.11.1](https://github.com/yschimke/compose-ai-tools/compare/v1.11.0...v1.11.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **catalog:** stop the Wear pressed specimen depending on the shard layout ([#4095](https://github.com/yschimke/compose-ai-tools/issues/4095)) ([ba309d9](https://github.com/yschimke/compose-ai-tools/commit/ba309d9da71090aed2ba4de270c2f4dbd275f27f))
+* **ci:** repair the three red workflows on main ([#4092](https://github.com/yschimke/compose-ai-tools/issues/4092)) ([02b540f](https://github.com/yschimke/compose-ai-tools/commit/02b540ffcdd7d908b673fa25ae2eac4eed4080de))
+* **renderer:** settle the pressed ripple independently of sandbox age ([#4096](https://github.com/yschimke/compose-ai-tools/issues/4096)) ([f23e128](https://github.com/yschimke/compose-ai-tools/commit/f23e1287467804994f447f19910b32b3ddaf35c4))
+* **serve:** enable the daemon's a11y extension before fetching the overlay ([#4090](https://github.com/yschimke/compose-ai-tools/issues/4090)) ([a2cf3e7](https://github.com/yschimke/compose-ai-tools/commit/a2cf3e7deacf1fd146fdb01f74c651f9c0567dd2))
+* **serve:** open Catalog mode on the baked snapshot ([#4093](https://github.com/yschimke/compose-ai-tools/issues/4093)) ([d2ccc99](https://github.com/yschimke/compose-ai-tools/commit/d2ccc99204a6f99e9eb766f39ae6b2a23137695a))
+* **serve:** stop scoring a render the imported spec cannot describe ([#4088](https://github.com/yschimke/compose-ai-tools/issues/4088)) ([e09ecc5](https://github.com/yschimke/compose-ai-tools/commit/e09ecc5bd65ce992f416ba3e6c17a074d0d5d912))
+* **serve:** stop the render-server badge painting as a bar in Catalog mode ([#4091](https://github.com/yschimke/compose-ai-tools/issues/4091)) ([7532357](https://github.com/yschimke/compose-ai-tools/commit/7532357976dbf0805230b1485c706a6d22d4981b))
+
 ## [1.11.0](https://github.com/yschimke/compose-ai-tools/compare/v1.10.1...v1.11.0) (2026-08-16)
 
 

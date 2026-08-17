@@ -581,25 +581,23 @@ applyThemeChoice();
       // The badge lives INSIDE the header's Status link (see ServeWeb.siteHeader) — the count and
       // that link answer the same question, so they are one control: the number is the summary and
       // the link is where the detail is. It is server-rendered and hidden, so filling it never
-      // moves the brand or the nav. The create-and-append fallback is only for a surface that
-      // predates the slot.
+      // moves the brand or the nav.
+      //
+      // That slot is also the feature switch. Catalog mode's header carries no nav, so it has
+      // neither the Status link nor the slot, and a catalog visitor has no `/status` page to read a
+      // count against — a number with nothing to link to is not a summary of anything. This used to
+      // create the span and append it to `<header>` when the slot was missing, which made it a third
+      // item in that two-column grid: it landed in an implicit second row, stretched across the
+      // `1fr` track, and painted the count as a full-width bar under the brand. So absence of the
+      // slot now disables the badge outright rather than inventing somewhere to put it — which also
+      // stops Catalog mode polling every 20s for an answer it does not display.
       var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
-      var daemonBadge = null;
-      function daemonBadgeEl() {
-        if (daemonBadge) return daemonBadge;
-        daemonBadge = document.getElementById("cp-daemon-status");
-        if (!daemonBadge) {
-          daemonBadge = document.createElement("span");
-          daemonBadge.id = "cp-daemon-status";
-          daemonBadge.className = "cp-daemon-status";
-          daemonBadge.setAttribute("aria-hidden", "true");
-          var host = document.getElementById("cp-status-link") || document.querySelector("header");
-          (host || document.body).appendChild(daemonBadge);
-        }
-        return daemonBadge;
-      }
+      // Read synchronously rather than on first paint: this script is emitted deep in the body, long
+      // after the header, so the slot either exists now or is not on this page at all.
+      var daemonBadge = document.getElementById("cp-daemon-status");
       function paintDaemonStatus(state) {
-        var el = daemonBadgeEl();
+        var el = daemonBadge;
+        if (!el) return;
         if (!state) { el.hidden = true; return; }
         el.hidden = false;
         // "not running" is a normal resting state, not a fault — a catalog nobody has rendered on
@@ -628,7 +626,7 @@ applyThemeChoice();
           "\nOverall server: " + overallDetail;
       }
       function pollDaemons() {
-        if (!daemonUrl || document.visibilityState !== "visible") return;
+        if (!daemonUrl || !daemonBadge || document.visibilityState !== "visible") return;
         fetch(daemonUrl, { credentials: "same-origin" })
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(paintDaemonStatus)
