@@ -1579,9 +1579,9 @@ const FIXTURE_STATES = [
     apply: closeLandingMenus,
   },
   {
-    // …and that bar's `⋮` OPEN. The phone bar is one row because the navigation — Catalogs,
-    // Status, GitHub, the page's own action, Settings — collapses behind that button, so the
-    // menu is where all of it went: if it stopped opening, or opened empty, the bar would
+    // …and that bar's `⋮` OPEN. The phone bar is one row because the navigation — Status, the
+    // page's own action, Settings — collapses behind that button, so the menu is where all of
+    // it went: if it stopped opening, or opened empty, the bar would
     // still look right in every other shot. Only the initial closed state is script-set
     // (`ServeWeb.siteMenuCollapseScript`); the toggle itself is a bare `<details>`, and
     // clicking the summary is what a visitor does.

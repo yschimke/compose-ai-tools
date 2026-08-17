@@ -5087,8 +5087,35 @@ class ServeWebFixtureTest {
       "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
     )
     assertTrue(
-      landing.contains("class=\"cp-site-header\"") && landing.contains(">Catalogs</a>"),
-      "all pages carry the shared catalog/status navigation",
+      landing.contains("class=\"cp-site-header\"") && landing.contains("id=\"cp-status-link\""),
+      "all pages carry the shared site navigation",
+    )
+  }
+
+  @Test
+  fun `the header drops the home and repo links the brand and footer already carry`() {
+    val landing = ServeWeb.landingPage(moduleLabel, previews, token, version = version)
+    val header =
+      landing.substringAfter("<header class=\"cp-site-header\">").substringBefore("</header>")
+    // "Catalogs" pointed at `/` — where the brand link beside it already goes. One destination, one
+    // entry.
+    assertFalse(header.contains(">Catalogs</a>"), "no second link to the home page")
+    assertTrue(
+      header.contains("class=\"cp-site-brand\" href=\"/?token=$token\""),
+      "the brand is the way home",
+    )
+    // The repo link is a fact about the software, so it sits with the build number in the footer.
+    assertFalse(header.contains("github.com/"), "the repo link has left the header")
+    val footer = landing.substringAfter("<footer class=\"cp-site-footer\">")
+    assertTrue(
+      footer.contains("<a href=\"https://github.com/yschimke/compose-ai-tools\">") &&
+        footer.contains(" GitHub</a>"),
+      "…and lands in the footer, beside /version and the build",
+    )
+    // Status and Settings stay put: both are about this server's own pages.
+    assertTrue(
+      header.contains("id=\"cp-status-link\"") && header.contains("class=\"cp-settings\""),
+      "the page-scoped nav entries are untouched",
     )
   }
 
