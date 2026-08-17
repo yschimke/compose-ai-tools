@@ -1546,14 +1546,29 @@ function wasmInitialSrc() {
     var patch = wasmOverridePatch();
     return patch ? base + "#" + patch : base;
 }
+/**
+ * Whether the stage's <img> is showing an actual decoded render, rather than merely occupying a
+ * box.
+ *
+ * A src-less (or failed) <img> still HAS a box — browsers give it a small alt-text placeholder,
+ * ~104×20 — so `getBoundingClientRect()` alone cannot tell "the snapshot is on the stage" from
+ * "nothing has landed yet". An overlay sized to that placeholder is what a blank Catalog preview
+ * looked like: a 104×20 Wasm iframe pinned mid-stage, with the app inside it correctly
+ * contain-fitting a component into 104×20.
+ */
+function snapshotPainted(): boolean {
+    return img.naturalWidth > 0 && img.naturalHeight > 0;
+}
 // Pixel parity: lay an absolute overlay ([el] — the Wasm iframe or the live canvas) exactly
 // over the snapshot's rendered box, so switching to it shouldn't move anything. Both the Wasm
 // app (contain-fitting the same sticker geometry the snapshot baked) and the daemon (the same
 // preview re-rendered) fill this box, so the three transports share one geometry.
+// Falls back to the stage's content box whenever there is no painted snapshot to mirror — a
+// render that 404'd, or one that has not landed yet.
 function positionOverlay(el: HTMLElement) {
     var sr = stage.getBoundingClientRect();
     var r = img.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) {
+    if (snapshotPainted() && r.width > 0 && r.height > 0) {
         // Offsets are relative to the stage's padding box — subtract its border (clientLeft/Top).
         el.style.left = r.left - sr.left - stage.clientLeft + "px";
         el.style.top = r.top - sr.top - stage.clientTop + "px";
