@@ -210,8 +210,17 @@ export function variantSeeds(preview) {
   //
   // The CELL wins a key collision. Both describe the same render, but the cell's value is what the
   // renderer actually seeded, and the fold's is the default it seeded over.
+  //
+  // Its kit AXIS survives that, though. The axis is a fact about the knob — what the kit calls the
+  // thing being turned — and the collision only changes which way it is turned, so dropping the
+  // fold's seed wholesale would lose the one name a resolver cannot work out for itself, silently.
+  // The fold's `kitValue` does not survive: it described the value the cell has just replaced.
+  const foldAxes = new Map(fold.filter((s) => s.kitAxis).map((s) => [s.key, s.kitAxis]));
+  const merged = cell.map((s) =>
+    !s.kitAxis && foldAxes.has(s.key) ? { ...s, kitAxis: foldAxes.get(s.key) } : s,
+  );
   const seeded = new Set(cell.map((s) => s.key));
-  return [...fold.filter((s) => !seeded.has(s.key)), ...cell];
+  return [...fold.filter((s) => !seeded.has(s.key)), ...merged];
 }
 
 /** The name a variant render goes by, for a report and for the design-map `state` slot. */

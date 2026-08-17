@@ -516,3 +516,25 @@ test("an interaction-only cell's declaration lands on the state seed it does hav
     { key: "state", raw: "pressed", kitAxis: "State", kitValue: "Presssed" },
   ]);
 });
+
+test("a cell overriding the fold's own knob keeps the fold's kit axis, not its value", () => {
+  // The cell wins the value; the AXIS is a fact about the knob and survives it. Losing it here
+  // would strand the one name a resolver cannot work out for itself — and silently, since the
+  // declaration was placed perfectly well before the merge dropped its seed.
+  const preview = {
+    id: "com.example.CatalogKt.ProgressWave_Light_VARIANT_error",
+    functionName: "ProgressWave",
+    sourceFile: "Catalog.kt",
+    catalog: {
+      role: "VARIANT",
+      componentId: "Progress/Circular",
+      props: [{ key: "state", value: "disabled" }],
+      kitAxis: "Interaction state",
+      kitValue: "Disabled",
+    },
+    overrides: { name: "error", seeds: [{ key: "state", raw: "error" }] },
+  };
+  assert.deepEqual(variantSeeds(preview), [
+    { key: "state", raw: "error", kitAxis: "Interaction state" },
+  ]);
+});
