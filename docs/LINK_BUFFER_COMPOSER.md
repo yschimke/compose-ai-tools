@@ -69,6 +69,13 @@ What `auto` drops is the build failure, not the report. Reach for `true` when th
 the *point* of the run — an A/B, or a bisect — and a module quietly sitting it out would invalidate
 the answer.
 
+`auto` degrades for a **version floor and nothing else**: the flag's class missing from the render
+classpath, or present without the field. A runtime that *has* the flag but cannot hand it over — a
+half-resolved Compose classpath throwing `LinkageError`, a reflection policy throwing
+`SecurityException` — fails the render on `auto` too, naming the real cause. Absorbing those would
+render the old composer under a notice blaming the Compose version, which is a misdiagnosis rather
+than a fallback.
+
 | Where | Form | Note |
 | --- | --- | --- |
 | One run, command line | `-PcomposePreview.linkBufferComposer=true\|auto\|false` | **In this repo pass `false`** for the old composer — `auto` is already the default |
