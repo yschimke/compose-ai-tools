@@ -24,6 +24,11 @@ Checked items are the recommended defaults. Unchecked items remain available in 
 - [ ] Show keyboard-command onboarding
 - [ ] Show authentication or administrative controls
 - [ ] Show build version and technical footer information
+- [ ] Show the render-server badge
+  The instance count is a summary *of* the header's Status link, and Catalog mode has neither that
+  link nor the `/status` page behind it. The presence heartbeat still runs — it is what warms the
+  daemon for the catalog being read — but nothing paints, and nothing polls. See
+  [the evidence for the bar this used to draw](evidence/serve-catalog-daemon-badge/README.md).
 
 ## Catalog browser
 

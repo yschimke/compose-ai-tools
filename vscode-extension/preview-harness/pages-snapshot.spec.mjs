@@ -2103,6 +2103,55 @@ const FIXTURE_STATES = [
     viewport: PHONE_VIEWPORT,
     apply: async () => {},
   },
+  {
+    // Catalog mode with a render server UP — the case the Dev landing's `daemon-connected` shot
+    // cannot cover. Catalog mode's header carries no nav, so there is no Status link and no badge
+    // slot; the poller used to manufacture a span and append it to `<header>`, where that
+    // two-column grid dropped it into an implicit second row and stretched it across the `1fr`
+    // track, painting the instance count as a full-width bar under the brand.
+    //
+    // So this baseline's claim is a NEGATIVE one: a live daemon must move nothing in the Catalog
+    // header. Negatives are exactly what a screenshot holds and an assertion does not — the fix is
+    // one early return, and any future edit that re-teaches the poller to place itself will show up
+    // here as pixels rather than as a silently passing suite.
+    fixture: "serve-component-browser-component",
+    suffix: "daemon-connected",
+    apply: async (page) => {
+      await page.route("**/api/daemons*", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            running: true,
+            instances: 1,
+            pooled: 1,
+            poolCapacity: 8,
+            activeStreams: 0,
+            overallRunning: 1,
+            overallActiveStreams: 0,
+          }),
+        }),
+      );
+      // The heartbeat is the wait signal, not the daemon poll. Both fire on `visibilitychange`,
+      // but Catalog mode deliberately skips the poll when there is no slot to fill — so awaiting
+      // the daemon request would hang forever on exactly the builds this baseline is meant to
+      // pass. Awaiting a ping the page always sends proves the event was processed, and the
+      // settle then covers the poll-and-paint a regressed build would still be doing.
+      let pinged;
+      const heartbeat = new Promise((r) => {
+        pinged = r;
+      });
+      await page.route("**/api/presence*", (route) => {
+        pinged();
+        return route.fulfill({ status: 204, body: "" });
+      });
+      await page.evaluate(() =>
+        document.dispatchEvent(new Event("visibilitychange")),
+      );
+      await heartbeat;
+      await page.waitForTimeout(300);
+    },
+  },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */

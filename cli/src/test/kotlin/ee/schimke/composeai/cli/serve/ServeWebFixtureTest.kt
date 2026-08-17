@@ -2320,6 +2320,12 @@ class ServeWebFixtureTest {
         canRenderOverrides = true,
         usageHref = "/compose-m3/usage/button-filled-pressed",
         hasSvgExport = true,
+        // Carries the presence heartbeat — and with it the render-server poller — because Catalog
+        // mode is where the badge has no header slot to land in. The Dev landing already captures
+        // the badge's connected/idle states (`serve-landing-declared-themes`); this is the page
+        // where the answer must be that NOTHING paints, and the harness can only hold that honest
+        // if the poller is actually on the page it shoots.
+        presenceUrl = "/compose-m3/api/presence",
         componentBrowser = true,
       )
     // A viewer whose sibling list spans several components each with many baked variants (a

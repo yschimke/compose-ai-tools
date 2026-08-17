@@ -220,6 +220,45 @@ class ServeComponentBrowserTest {
   }
 
   @Test
+  fun `catalog mode paints no render-server badge`() {
+    // The badge is a count ON the header's Status link, and Catalog mode carries neither the nav
+    // that holds it nor a `/status` page to read the detail from. It used to be created anyway and
+    // appended to `<header>`, where the header's two-column grid pushed it into an implicit second
+    // row and stretched it across the `1fr` track — the count painted as a full-width bar under the
+    // brand. Both halves are asserted: no slot in Catalog mode, and no code path that manufactures
+    // one when the slot is missing.
+    val catalog =
+      ServeWeb.viewerPage(
+        preview = ServePreview("button-filled", "Filled button", componentId = "Button/Filled"),
+        token = token,
+        catalogTitle = "Material 3",
+        presenceUrl = "/api/presence/compose-m3",
+        componentBrowser = true,
+      )
+
+    // The heartbeat stays — it is what warms the daemon for the catalog being read. Only the badge
+    // goes. Asserted on the slot's markup rather than the bare class name, which the (now inert)
+    // poller still mentions in its `getElementById` lookup.
+    assertTrue(catalog.contains("/api/presence/compose-m3"))
+    assertFalse(catalog.contains("id=\"cp-daemon-status\""))
+    assertFalse(catalog.contains("document.querySelector(\"header\")"))
+    assertFalse(catalog.contains("daemonBadge.id ="))
+
+    // Dev mode is unchanged: the server renders the slot inside the Status link, hidden until the
+    // first poll answers, so filling it never moves the brand or the nav.
+    val dev =
+      ServeWeb.viewerPage(
+        preview = ServePreview("button-filled", "Filled button", componentId = "Button/Filled"),
+        token = token,
+        catalogTitle = "Material 3",
+        presenceUrl = "/api/presence/compose-m3",
+      )
+
+    assertTrue(dev.contains("id=\"cp-status-link\""))
+    assertTrue(dev.contains("class=\"cp-daemon-status\" id=\"cp-daemon-status\""))
+  }
+
+  @Test
   fun `sticky browser controls reserve the global header height`() {
     val css =
       checkNotNull(javaClass.getResource("/ee/schimke/composeai/cli/serve/assets/serve.css"))
