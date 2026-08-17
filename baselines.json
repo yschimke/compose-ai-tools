@@ -1396,7 +1396,7 @@
     "functionName": "SharedElementFilmstripPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
-    "sha256": "c124ee766ce6c53c6341db906c623283f9c5b8563986e7d06c6e6d9cee7567df",
+    "sha256": "91d9b3a233da801fddee71a7beb57fd1c4b8bcb29a254da664b42d6d3f120119",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
