@@ -766,6 +766,46 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `the motion lane resumes a known session but never forks an unknown one`() {
+    // Leasing falls through to the session factory for an unknown id, which in project mode with
+    // `--revisions` checks out a ref and runs a Gradle build. A revision host publishes no
+    // captures, so such a request can only 404 — after paying for the build. The lane must resume
+    // what is already registered and refuse everything else.
+    val forked = mutableListOf<String>()
+    val factoryRegistry =
+      ServeSessionRegistry(
+        open = { null },
+        factory =
+          ServeSessionFactory { id ->
+            forked += id
+            null
+          },
+      )
+    factoryRegistry.register("default-mod", host = bundle("default-mod"), pinned = true)
+    val factoryServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = factoryRegistry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+        )
+        .also { it.start() }
+    try {
+      val req =
+        Request.Builder()
+          .url("http://127.0.0.1:${factoryServer.port}/some-unknown-ref/motion/anything.apng")
+          .build()
+      client.newCall(req).execute().use { r -> assertEquals(404, r.code) }
+      assertTrue(forked.isEmpty(), "the lane must not fork a session to answer 404: $forked")
+    } finally {
+      factoryServer.stop()
+      factoryRegistry.close()
+    }
+  }
+
+  @Test
   fun `a failed optional catalog does not block readiness`() {
     val partialRegistry = ServeSessionRegistry(open = { null })
     partialRegistry.register("default-mod", host = bundle("partial-default"), pinned = true)
