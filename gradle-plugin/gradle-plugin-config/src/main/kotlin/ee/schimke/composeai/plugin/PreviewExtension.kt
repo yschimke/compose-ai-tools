@@ -97,13 +97,21 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * so this selects a composer for the whole render, which is also how the runtime team frames it
    * ("set the flag before you compose any content").
    *
-   * Requesting it against a Compose runtime that has no such flag — an older one, or a future one
-   * that has completed the migration and removed it — fails the render with a message naming the
-   * flag, rather than quietly rendering the old composer and reporting a clean run that tested
-   * nothing.
+   * `true` here means **required**: against a Compose runtime with no such flag — an older one, or
+   * a future one that has completed the migration and removed it — the render fails with a message
+   * naming the flag, rather than quietly rendering the old composer and reporting a clean run that
+   * tested nothing. That is the right strictness for a per-module value, where the author knows
+   * which Compose the module resolves.
    *
-   * Override for a single run with `-PcomposePreview.linkBufferComposer=true` (or
-   * `-Dcomposeai.render.linkBufferComposer=true`), which takes precedence over this value.
+   * A *build-wide* setting spanning modules on different Compose versions wants the other
+   * strictness, and only the property form can express it:
+   * `-PcomposePreview.linkBufferComposer=auto` enables the new composer wherever the runtime has
+   * the flag and renders on the old one — saying so in the render log — where it doesn't. There is
+   * deliberately no `auto` in this DSL: a module-scoped opt-in has one Compose version to be true
+   * of, so it should say which behaviour it wants outright.
+   *
+   * Override for a single run with `-PcomposePreview.linkBufferComposer=true|auto|false` (or
+   * `-Dcomposeai.render.linkBufferComposer=…`), which takes precedence over this value.
    */
   val linkBufferComposer: Property<Boolean> = objects.property(Boolean::class.java)
 

@@ -88,22 +88,14 @@ afterEvaluate {
     }
   }
 
-  // This module renders against `compose-bom-compat` (Compose 1.9.x — see `dependencies` below),
-  // which predates `ComposeRuntimeFlags.isLinkBufferComposerEnabled`. The repo-wide
-  // `composePreview.linkBufferComposer=true` in the root `gradle.properties` would ask the render
-  // JVM to flip a flag this Compose runtime does not have, and `applyIfRequested` in
-  // `LinkBufferComposer` fails the render loudly rather than silently ignoring the opt-in. Every
-  // `:samples:sdk-matrix:composePreviewRender` died on it — the `preview-baselines` compose
-  // pipeline and every `sdk-matrix.yml` cell alike.
-  //
-  // Pinned on the Test task rather than through `composePreview { linkBufferComposer = false }`:
-  // the plugin resolves that DSL value only *after* the `-P` / `gradle.properties` form (see
-  // `composeAiLinkBufferComposer`), which is exactly the form the repo-wide default arrives in, so
-  // the DSL can never turn it back off. Configured from `afterEvaluate` so this runs after the
-  // plugin's own `systemProperty` for the same key.
-  tasks.withType(Test::class.java).configureEach {
-    systemProperty("composeai.render.linkBufferComposer", "false")
-  }
+  // NOTE: this module renders against `compose-bom-compat` (Compose 1.9.x — see `dependencies`
+  // below), which predates `ComposeRuntimeFlags.isLinkBufferComposerEnabled`. It needs no opt-out
+  // for that: the repo-wide default in the root `gradle.properties` is
+  // `composePreview.linkBufferComposer=auto`, which enables the rewritten SlotTable where the
+  // runtime has it and renders on the old composer — announcing that it did — where it doesn't.
+  // It used to be `true`, which means "fail a render whose runtime lacks the flag", and this
+  // module then had to pin `composeai.render.linkBufferComposer=false` onto its own Test tasks to
+  // survive the repo default. See `docs/LINK_BUFFER_COMPOSER.md`.
 }
 
 android {
