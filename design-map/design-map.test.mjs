@@ -344,3 +344,197 @@ test("a folded component's DARK cell is still ignored, like every other dark cap
   ]);
   assert.equal(byComponent.size, 0);
 });
+
+test("variantSeeds carries a cell's declared kit axis and value onto its seed", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("DatePicker", "range", {
+        seeds: [{ key: "type", raw: "range" }],
+        kitAxis: "Type",
+        kitValue: "Full-screen (range)",
+      }),
+    ),
+    [{ key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" }],
+  );
+});
+
+test("variantSeeds carries a CatalogVariant's declaration onto its prop", () => {
+  assert.deepEqual(
+    variantSeeds(
+      catalogVariant("DatePickerRange", "DatePicker", {
+        props: [{ key: "type", value: "range" }],
+        kitAxis: "Type",
+        kitValue: "Full-screen (range)",
+      }),
+    ),
+    [{ key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" }],
+  );
+});
+
+test("either kit name stands alone — an axis without a value, a value without an axis", () => {
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("ListItem", "avatar", {
+        seeds: [{ key: "content", raw: "avatar" }],
+        kitAxis: "Show avatar",
+      }),
+    ),
+    [{ key: "content", raw: "avatar", kitAxis: "Show avatar" }],
+  );
+  assert.deepEqual(
+    variantSeeds(
+      overrideVariant("Carousel", "hero", {
+        seeds: [{ key: "layout", raw: "hero" }],
+        kitValue: "Center-aligned hero",
+      }),
+    ),
+    [{ key: "layout", raw: "hero", kitValue: "Center-aligned hero" }],
+  );
+});
+
+test("a component's kitAxis is a default its cells inherit, and each cell can override", () => {
+  const previews = [
+    component("ListItem", { reference: ref("1:2"), kitAxis: "Show avatar" }),
+    overrideVariant("ListItem", "avatar", { seeds: [{ key: "content", raw: "avatar" }] }),
+    overrideVariant("ListItem", "icon", {
+      seeds: [{ key: "content", raw: "icon" }],
+      kitAxis: "Show icon",
+    }),
+  ];
+  // A cell render is `base.copy(id = …, overrides = spec)`, so it carries the SAME catalog entry
+  // as its component — which is how a component-level default reaches a cell at all.
+  for (const preview of previews.slice(1)) preview.catalog.kitAxis = "Show avatar";
+  const { variants } = projectDesignMap(previews);
+  assert.deepEqual(
+    variants.components[0].renders.map((r) => r.seeds[0].kitAxis),
+    ["Show avatar", "Show icon"],
+  );
+});
+
+test("a declaration with more than one knob to sit on is reported, not guessed at", () => {
+  // Which of the two knobs does `Type` name? The annotation carries one pair per cell and cannot
+  // say, and picking one would pin the wrong axis — a confident reference to the wrong node.
+  const { variants, diagnostics } = projectDesignMap([
+    component("DatePicker", { reference: ref("1:2") }),
+    overrideVariant("DatePicker", "range-input", {
+      seeds: [
+        { key: "type", raw: "range" },
+        { key: "mode", raw: "input" },
+      ],
+      kitAxis: "Type",
+    }),
+  ]);
+  assert.deepEqual(diagnostics.unplacedDeclarations, [
+    {
+      previewId: "com.example.CatalogKt.DatePicker_Light_VARIANT_range-input",
+      kitAxis: "Type",
+      kitValue: undefined,
+      seeds: ["type", "mode"],
+    },
+  ]);
+  // The seeds still resolve on their own spelling; only the declaration is dropped.
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "type", raw: "range" },
+    { key: "mode", raw: "input" },
+  ]);
+});
+
+test("a component default that cannot be placed is silent — a default need not cover everything", () => {
+  const { diagnostics } = projectDesignMap([
+    component("DatePicker", { reference: ref("1:2"), kitAxis: "Type" }),
+    overrideVariant("DatePicker", "range-input", {
+      seeds: [
+        { key: "type", raw: "range" },
+        { key: "mode", raw: "input" },
+      ],
+    }),
+  ]);
+  assert.deepEqual(diagnostics.unplacedDeclarations, []);
+});
+
+test("declared kit names reach the sidecar, which is the only reader that matters", () => {
+  const { variants } = projectDesignMap([
+    component("DatePicker", { reference: ref("1:2") }),
+    overrideVariant("DatePicker", "range", {
+      seeds: [{ key: "type", raw: "range" }],
+      kitAxis: "Type",
+      kitValue: "Full-screen (range)",
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "type", raw: "range", kitAxis: "Type", kitValue: "Full-screen (range)" },
+  ]);
+});
+
+test("a cell that names only its exceptional value inherits the component's axis", () => {
+  // The documented shape of the component-level default: the component names the kit property
+  // once, and a cell only has to say which of its values it sits at.
+  const previews = [
+    component("ListItem", { reference: ref("1:2"), kitAxis: "Show avatar" }),
+    overrideVariant("ListItem", "avatar", {
+      seeds: [{ key: "content", raw: "avatar" }],
+      kitValue: "True",
+    }),
+  ];
+  previews[1].catalog.kitAxis = "Show avatar";
+  const { variants } = projectDesignMap(previews);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "content", raw: "avatar", kitAxis: "Show avatar", kitValue: "True" },
+  ]);
+});
+
+test("a driven interaction does not make a one-knob cell's declaration ambiguous", () => {
+  // The `state` seed comes from the harness, not from the annotation, so it is not one of the
+  // knobs the declaration might be naming. Counting it would report a cell whose annotation is
+  // perfectly clear about its single seeded knob as unplaceable.
+  const { variants, diagnostics } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    overrideVariant("Button", "l-pressed", {
+      seeds: [{ key: "size", raw: "l" }],
+      interaction: "Pressed",
+      kitAxis: "Size",
+      kitValue: "Large",
+    }),
+  ]);
+  assert.deepEqual(diagnostics.unplacedDeclarations, []);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "size", raw: "l", kitAxis: "Size", kitValue: "Large" },
+    { key: "state", raw: "pressed" },
+  ]);
+});
+
+test("an interaction-only cell's declaration lands on the state seed it does have", () => {
+  const { variants } = projectDesignMap([
+    component("Button", { reference: ref("1:2") }),
+    overrideVariant("Button", "pressed", {
+      interaction: "Pressed",
+      kitAxis: "State",
+      kitValue: "Presssed",
+    }),
+  ]);
+  assert.deepEqual(variants.components[0].renders[0].seeds, [
+    { key: "state", raw: "pressed", kitAxis: "State", kitValue: "Presssed" },
+  ]);
+});
+
+test("a cell overriding the fold's own knob keeps the fold's kit axis, not its value", () => {
+  // The cell wins the value; the AXIS is a fact about the knob and survives it. Losing it here
+  // would strand the one name a resolver cannot work out for itself — and silently, since the
+  // declaration was placed perfectly well before the merge dropped its seed.
+  const preview = {
+    id: "com.example.CatalogKt.ProgressWave_Light_VARIANT_error",
+    functionName: "ProgressWave",
+    sourceFile: "Catalog.kt",
+    catalog: {
+      role: "VARIANT",
+      componentId: "Progress/Circular",
+      props: [{ key: "state", value: "disabled" }],
+      kitAxis: "Interaction state",
+      kitValue: "Disabled",
+    },
+    overrides: { name: "error", seeds: [{ key: "state", raw: "error" }] },
+  };
+  assert.deepEqual(variantSeeds(preview), [
+    { key: "state", raw: "error", kitAxis: "Interaction state" },
+  ]);
+});

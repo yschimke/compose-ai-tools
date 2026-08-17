@@ -26,7 +26,7 @@ Every field the projection reads is defined in this repository:
 | Field on `previews.json` | Declared by |
 | --- | --- |
 | `catalog.reference`, `referenceSet`, `noReference`, `referenceContentsOnly`, `kitAxis` | [`@CatalogComponent`](https://github.com/yschimke/compose-ai-tools/blob/main/api/preview-annotations/src/commonMain/kotlin/ee/schimke/composeai/preview/CatalogComponent.kt) |
-| `catalog.props`, `catalog.state` | `@CatalogVariant` |
+| `catalog.props`, `catalog.state`, `catalog.kitValue` | `@CatalogVariant` |
 | `overrides.seeds`, `overrides.props` | `@OverrideVariant` / `@PreviewAxis` |
 | `overrides.kitAxis`, `overrides.kitValue` | `@OverrideVariant` |
 
@@ -66,6 +66,29 @@ this repo can answer:
 Figma concern, it needs a Figma credential to derive, and it differs per kit — none of which this
 repo has any business holding. So the variant renders come out as **declarations** and a resolver
 that owns a kit index turns them into node ids.
+
+### When the catalog knows the kit's word for it
+
+Some values no translation table reaches: the Material 3 kit files one date-picker variant as
+`Type=Full-screen (range)`, and `type=range` finds nothing against it. `kitAxis` / `kitValue` are
+how a variant names both sides — the Compose word in `props`/`strings`, the kit's word beside it —
+and this projection carries them onto the seed so the resolver can prefer them over its own tables:
+
+```kotlin
+@CatalogVariant(of = "DatePicker/Modal", props = ["type=range"],
+                kitAxis = "Type", kitValue = "Full-screen (range)")
+```
+
+```jsonc
+{ "seeds": [{ "key": "type", "raw": "range",
+              "kitAxis": "Type", "kitValue": "Full-screen (range)" }] }
+```
+
+Projecting is not translating: nothing here checks a declaration against a kit, because there is no
+kit here to check against. The one thing it does judge is whether the declaration can be *placed* —
+the annotation carries one pair per variant, so a cell seeding two knobs gives no way to say which
+one the axis names. Those are reported and dropped rather than guessed at, since guessing pins the
+wrong axis and resolves, confidently, to the wrong node.
 
 The two halves are separable because the first is useful alone: a repo with no kit index still gets
 a valid map of base references, which is most of the value at none of the cost.

@@ -978,8 +978,20 @@ data class CatalogEntry(
    * behaviour.
    */
   val perBreakpoint: Boolean = false,
-  /** COMPONENT only: default design-kit variant property for override-variant cells. */
+  /**
+   * The design-kit variant property this entry's knobs turn, when the kit's name for it differs
+   * from the code's. Both roles use it, for the same reason at different scopes: on a COMPONENT it
+   * is the DEFAULT for the function's `@OverrideVariant` cells ("every variant of this one turns
+   * the same kit property"), on a VARIANT it names the axis that variant's single [props] entry
+   * means.
+   */
   val kitAxis: String? = null,
+  /**
+   * VARIANT only: the design-kit value this variant maps to, when the kit spells it differently
+   * from the code — `type=range` against the kit's `Type=Full-screen (range)`. Absent on a
+   * COMPONENT, whose [kitAxis] is a default across cells that each carry their own value.
+   */
+  val kitValue: String? = null,
 )
 
 /** Kind of a seeded `previewOverride*` value — mirrors `PreviewOverrideValue`'s subtypes. */

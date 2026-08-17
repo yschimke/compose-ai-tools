@@ -34,6 +34,13 @@
  * [`@design-parity/kit-index`](https://github.com/yschimke/design-parity/tree/main/packages/kit-index)
  * does hold.
  *
+ * What it does carry across is the catalog's own statement about the kit, when it makes one:
+ * `@OverrideVariant(kitAxis = "Show avatar", kitValue = "True")` names the kit's spelling directly,
+ * and those names ride on the seed into the sidecar for a resolver to prefer over its alias tables.
+ * Projecting them is not translating them — this module never checks a declaration against a kit,
+ * because it has no kit to check against; it only puts the author's words where the resolver can
+ * read them. They were dead metadata until it did (compose-ai-tools#4086).
+ *
  * So the variant renders come out as **declarations**, in a sidecar
  * ({@link DESIGN_MAP_VARIANTS_SCHEMA}): "this preview is the same component with these knobs
  * turned". A resolver that owns a kit index turns each into a tagged `ref`/`previewId` pair beside
@@ -98,6 +105,35 @@ export function sourceForRef(ref) {
  * its non-default seeds is missing the axes it happens to sit at, and a kit that spells its default
  * size explicitly in a combination cell then has nothing to match against.
  */
+/**
+ * Attach a kit-side declaration to the one seed it can belong to.
+ *
+ * `kitAxis` / `kitValue` name the design kit's own spelling for *a* knob — `content=avatar` is the
+ * kit's `Show avatar=True` — and the annotation carries one pair per variant, so a variant that
+ * turns two knobs gives no way to say which of them the axis names. It attaches to a lone seed;
+ * with several, the declaration is reported and dropped rather than guessed at, since guessing
+ * would pin the wrong axis and resolve to a confidently wrong node.
+ *
+ * A `null` declaration (neither field) leaves the seeds exactly as they were, which is every
+ * variant written before these fields existed.
+ */
+function declareKitNames(seeds, kitAxis, kitValue) {
+  if (!kitAxis && !kitValue) return { seeds, unattached: [] };
+  if (seeds.length !== 1) {
+    return { seeds, unattached: [{ kitAxis, kitValue, seeds: seeds.map((s) => s.key) }] };
+  }
+  return {
+    seeds: [
+      {
+        ...seeds[0],
+        ...(kitAxis ? { kitAxis } : {}),
+        ...(kitValue ? { kitValue } : {}),
+      },
+    ],
+    unattached: [],
+  };
+}
+
 function foldSeeds(catalog) {
   // `props` names the axis; `state` is the annotation's shorthand for the one axis common enough
   // to have its own parameter. Either is a declaration, so neither is inferred —
@@ -107,11 +143,15 @@ function foldSeeds(catalog) {
   if (catalog.state && !props.some((p) => p.key === "state")) {
     props.push({ key: "state", value: catalog.state });
   }
-  return props.map((p) => ({ key: p.key, raw: p.value }));
+  return declareKitNames(
+    props.map((p) => ({ key: p.key, raw: p.value })),
+    catalog.kitAxis,
+    catalog.kitValue,
+  );
 }
 
-function cellSeeds(overrides) {
-  if (!overrides) return [];
+function cellSeeds(overrides, catalog) {
+  if (!overrides) return { seeds: [], unattached: [] };
 
   const seeds = overrides.props?.length
     ? overrides.props.map((p) => ({ key: p.key, raw: p.value }))
@@ -124,16 +164,42 @@ function cellSeeds(overrides) {
   // that knob already has. Without this the variant declares nothing: `seeds` is empty, an empty
   // vector matches every sibling, and the render is dropped as "names no axis".
   const interaction = overrides.interaction;
-  if (interaction && interaction !== "None" && !seeds.some((s) => s.key === "state")) {
-    seeds.push({ key: "state", raw: String(interaction).toLowerCase() });
-  }
-  return seeds;
+  const drivenState =
+    interaction && interaction !== "None" && !seeds.some((s) => s.key === "state")
+      ? { key: "state", raw: String(interaction).toLowerCase() }
+      : undefined;
+
+  // A COMPONENT's own `kitAxis` is a DEFAULT for its cells — "every variant of this one turns the
+  // same kit property" — so a cell that names its own axis wins, and a cell that names only its
+  // exceptional VALUE still inherits the axis, which is the case the default exists for. A default
+  // that cannot be placed is silent, where the explicit form is reported: one is a blanket that
+  // need not cover everything, the other is an assertion about this cell that could not be
+  // honoured.
+  const componentDefault = catalog?.role === "COMPONENT" ? catalog.kitAxis : undefined;
+  const axis = overrides.kitAxis ?? componentDefault;
+  const explicit = Boolean(overrides.kitAxis || overrides.kitValue);
+
+  // The interaction axis is not a knob anybody seeded — the harness drives it — so it does not
+  // count towards "which knob does this declaration name". A cell seeding `size=l` and pressing
+  // the component still names one knob, and its declaration belongs to that one. Only an
+  // interaction-only cell has the state seed as its subject.
+  const declarable = seeds.length ? seeds : drivenState ? [drivenState] : [];
+  const declared = explicit
+    ? declareKitNames(declarable, axis, overrides.kitValue)
+    : axis && declarable.length === 1
+      ? declareKitNames(declarable, axis, undefined)
+      : { seeds: declarable, unattached: [] };
+
+  return {
+    seeds: seeds.length && drivenState ? [...declared.seeds, drivenState] : declared.seeds,
+    unattached: declared.unattached,
+  };
 }
 
 export function variantSeeds(preview) {
   const catalog = preview.catalog;
-  const fold = catalog?.role === "VARIANT" ? foldSeeds(catalog) : [];
-  const cell = cellSeeds(preview.overrides);
+  const { seeds: fold } = catalog?.role === "VARIANT" ? foldSeeds(catalog) : { seeds: [] };
+  const { seeds: cell } = cellSeeds(preview.overrides, catalog);
   if (!fold.length) return cell;
   if (!cell.length) return fold;
 
@@ -144,8 +210,17 @@ export function variantSeeds(preview) {
   //
   // The CELL wins a key collision. Both describe the same render, but the cell's value is what the
   // renderer actually seeded, and the fold's is the default it seeded over.
+  //
+  // Its kit AXIS survives that, though. The axis is a fact about the knob — what the kit calls the
+  // thing being turned — and the collision only changes which way it is turned, so dropping the
+  // fold's seed wholesale would lose the one name a resolver cannot work out for itself, silently.
+  // The fold's `kitValue` does not survive: it described the value the cell has just replaced.
+  const foldAxes = new Map(fold.filter((s) => s.kitAxis).map((s) => [s.key, s.kitAxis]));
+  const merged = cell.map((s) =>
+    !s.kitAxis && foldAxes.has(s.key) ? { ...s, kitAxis: foldAxes.get(s.key) } : s,
+  );
   const seeded = new Set(cell.map((s) => s.key));
-  return [...fold.filter((s) => !seeded.has(s.key)), ...cell];
+  return [...fold.filter((s) => !seeded.has(s.key)), ...merged];
 }
 
 /** The name a variant render goes by, for a report and for the design-map `state` slot. */
@@ -156,10 +231,29 @@ function variantName(preview, seeds) {
     // Named for the FOLD's own axis, not for the merged vector — `wave`, not `wave-1.0` — so a
     // folded component's cells read as `wave-full` / `wave-quarter` under it, the same shape a
     // top-level component's cells have.
-    const fold = catalog.state ?? foldSeeds(catalog).map((s) => s.raw).join("-");
+    const fold =
+      catalog.state ??
+      foldSeeds(catalog)
+        .seeds.map((s) => s.raw)
+        .join("-");
     return cell ? `${fold}-${cell}` : fold;
   }
   return cell ?? seeds.map((s) => `${s.key}=${s.raw}`).join(", ");
+}
+
+/**
+ * Declarations this render could not place on a seed, one entry per variant that names a kit axis
+ * or value it has more than one knob to hang it on.
+ *
+ * Reported rather than silently dropped: somebody took the trouble to spell the kit's own name,
+ * and silence would leave them believing the render compares against a node it never reached —
+ * the exact failure `kitAxis` exists to remove.
+ */
+export function declarationMisses(preview) {
+  const catalog = preview.catalog;
+  const fold = catalog?.role === "VARIANT" ? foldSeeds(catalog).unattached : [];
+  const cell = cellSeeds(preview.overrides, catalog).unattached;
+  return [...fold, ...cell].map((miss) => ({ previewId: preview.id, ...miss }));
 }
 
 /**
@@ -275,12 +369,23 @@ export function projectDesignMap(previews, opts = {}) {
   unmapped.sort();
   statedAbsent.sort((a, b) => a.componentId.localeCompare(b.componentId));
 
+  // Only the captures that participate: a variant declares once, and reporting its dark capture
+  // beside its light one would double every line of a list that exists to be acted on.
+  const unplacedDeclarations = previews
+    .filter(
+      (preview) =>
+        preview.catalog &&
+        (LIGHT_CAPTURE.test(preview.id) || LIGHT_VARIANT_CAPTURE.test(preview.id)),
+    )
+    .flatMap(declarationMisses);
+
   return {
     map: { components },
     variants: { schema: DESIGN_MAP_VARIANTS_SCHEMA, components: declarations },
     diagnostics: {
       unmapped,
       statedAbsent,
+      unplacedDeclarations,
       variantRenders: declarations.reduce((n, d) => n + d.renders.length, 0),
       withSet: components.filter((c) => c.refSet).length,
     },

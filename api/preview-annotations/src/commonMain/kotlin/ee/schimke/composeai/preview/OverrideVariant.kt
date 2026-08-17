@@ -93,9 +93,14 @@ package ee.schimke.composeai.preview
  * ## Design-kit correspondence
  *
  * [kitAxis] names the design-kit variant property that the seeded knob represents when its name is
- * different or ambiguous. [kitValue] optionally names this cell's kit-side value too. Both are
- * metadata only: they do not change the preview override seed. A component whose cells all use the
- * same property can declare the default once with [CatalogComponent.kitAxis].
+ * different or ambiguous. [kitValue] optionally names this cell's kit-side value too. Neither
+ * changes the preview override seed — the render is identical with or without them; what they
+ * change is the *join*. They travel through discovery into the design-map variant sidecar, where a
+ * resolver prefers them over its own alias tables, which is how a cell reaches a kit spelling no
+ * table has: `type=range` finds nothing against the Material 3 kit's `Type=Full-screen (range)`,
+ * and declaring the kit's words is the alternative to writing them into the seed itself. A
+ * component whose cells all use the same property can declare the default once with
+ * [CatalogComponent.kitAxis].
  *
  * ```
  * @OverrideVariant(
@@ -105,6 +110,12 @@ package ee.schimke.composeai.preview
  *   kitValue = "True",
  * )
  * ```
+ *
+ * A declaration is **authoritative** downstream: a resolver that honours it stops guessing for that
+ * knob, so a misspelt axis resolves to nothing rather than falling back to a translation that would
+ * make the typo indistinguishable from a correct declaration. It applies to a cell seeding exactly
+ * ONE knob — with several there is nothing to say which of them the axis names, and the design-map
+ * projection reports the declaration rather than picking one.
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)

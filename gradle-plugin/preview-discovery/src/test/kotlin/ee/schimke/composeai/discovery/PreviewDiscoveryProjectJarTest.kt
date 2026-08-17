@@ -120,6 +120,35 @@ class PreviewDiscoveryProjectJarTest {
     assertThat(variant.overrides?.kitValue).isEqualTo("True")
   }
 
+  @Test
+  fun `a CatalogVariant's design kit correspondence is discovered`() {
+    // The other half of the same idea: a folded component names the kit's spelling for the axis
+    // its one prop turns, so `type=range` can stay the Compose word while the join uses the kit's
+    // `Type=Full-screen (range)`. Read off the annotation table, like the component form above.
+    val jar = File(tempDir.root, "variant-kit-names-classes.jar")
+    writeVariantKitNamesClassJar(jar)
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = emptyList(),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":catalog",
+          variantName = "debug",
+          projectDirectory = tempDir.root,
+          failOnEmpty = true,
+          projectClassJars = listOf(jar),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    val catalog = outcome.manifest.previews.single().catalog
+    assertThat(catalog?.role).isEqualTo(CatalogRole.VARIANT)
+    assertThat(catalog?.componentId).isEqualTo("DatePicker/Modal")
+    assertThat(catalog?.kitAxis).isEqualTo("Type")
+    assertThat(catalog?.kitValue).isEqualTo("Full-screen (range)")
+  }
+
   /**
    * Writes a JAR containing a single class with one parameterless `public static` method annotated
    * with `androidx.compose.ui.tooling.preview.Preview`. The annotation is emitted as a
@@ -148,6 +177,44 @@ class PreviewDiscoveryProjectJarTest {
     cw.visitEnd()
 
     jar.parentFile.mkdirs()
+    JarOutputStream(jar.outputStream()).use { jos ->
+      jos.putNextEntry(JarEntry("$internalName.class"))
+      jos.write(cw.toByteArray())
+      jos.closeEntry()
+    }
+  }
+
+  /** Writes a `@CatalogVariant` that names both its Compose prop and the kit's own spelling. */
+  private fun writeVariantKitNamesClassJar(jar: File) {
+    val internalName = "test/VariantKitNamesPreviewKt"
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    val mv =
+      cw.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "DatePickerRange", "()V", null, null)
+    mv.visitAnnotation("Landroidx/compose/ui/tooling/preview/Preview;", false).visitEnd()
+    mv.visitAnnotation("Lee/schimke/composeai/preview/CatalogVariant;", false).apply {
+      visit("of", "DatePicker/Modal")
+      visit("kitAxis", "Type")
+      visit("kitValue", "Full-screen (range)")
+      visitArray("props").apply {
+        visit(null, "type=range")
+        visitEnd()
+      }
+      visitEnd()
+    }
+    mv.visitCode()
+    mv.visitInsn(Opcodes.RETURN)
+    mv.visitMaxs(0, 0)
+    mv.visitEnd()
+    cw.visitEnd()
+
     JarOutputStream(jar.outputStream()).use { jos ->
       jos.putNextEntry(JarEntry("$internalName.class"))
       jos.write(cw.toByteArray())

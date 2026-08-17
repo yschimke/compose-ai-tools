@@ -144,6 +144,24 @@ if (diagnostics.statedAbsent.length) {
   }
 }
 
+if (diagnostics.unplacedDeclarations?.length) {
+  console.log(
+    `\n${diagnostics.unplacedDeclarations.length} variant(s) name a kit axis or value that could ` +
+      `not be placed: the annotation carries one kitAxis/kitValue and the variant turns more than ` +
+      `one knob, so which knob the axis names is undeclared. Split the cell, or drop the kit ` +
+      `names and let the resolver match on the knob's own spelling:`,
+  );
+  for (const miss of diagnostics.unplacedDeclarations) {
+    const named = [
+      miss.kitAxis ? `kitAxis = "${miss.kitAxis}"` : null,
+      miss.kitValue ? `kitValue = "${miss.kitValue}"` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    console.log(`  - ${miss.previewId} — ${named} against ${miss.seeds.join(", ")}`);
+  }
+}
+
 if (diagnostics.unmapped.length) {
   console.log(
     `\n${diagnostics.unmapped.length} component(s) carry neither ` +
