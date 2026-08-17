@@ -1366,16 +1366,31 @@ class ServeHttpServer(
    * callers distinguish. [block] runs on [Dispatchers.IO]: reading a published asset can miss the
    * staged copy and go to the delivery branch, and that is a network round trip which must not run
    * on a request thread.
+   *
+   * **Resumes, but never creates.** [ServeSessionRegistry.lease] falls through to the session
+   * factory for an id it doesn't know, which in project mode with `--revisions` means checking out
+   * a ref and running a Gradle build. That is the right behaviour for a render — the whole point of
+   * a revision session — and exactly wrong here, where a revision host has no published captures
+   * and the request can only end in 404 anyway. Gating on [isKnownSession] keeps what the fix is
+   * for (an already-registered catalog that went idle) without turning a published-asset lane into
+   * a way to make a stranger's server build arbitrary refs.
    */
   private suspend fun <T> RoutingContext.withLeasedSessionOrNull(
     sessionId: String,
     block: (ServeHost) -> T?,
   ): T? {
+    if (!sessions.isKnownSession(sessionId)) return null
     val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) } ?: return null
     return try {
       withContext(Dispatchers.IO) { block(lease.host) }
     } finally {
-      withContext(Dispatchers.IO) { lease.close() }
+      // Called directly, NOT through `withContext`. `Lease.close` is a non-suspending
+      // compare-and-set, and a `withContext` in a `finally` is skipped outright once the job is
+      // cancelled — which is precisely when this matters, since a client that disconnects during
+      // the branch fetch cancels here. A skipped release leaves the lease count permanently
+      // elevated, and a session with an open lease is never suspended: one aborted request would
+      // pin that catalog's daemon resident for the life of the process.
+      lease.close()
     }
   }
 
