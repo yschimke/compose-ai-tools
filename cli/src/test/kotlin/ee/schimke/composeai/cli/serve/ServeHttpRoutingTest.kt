@@ -715,7 +715,9 @@ class ServeHttpRoutingTest {
         title = "Suspended Catalog",
         declaredBaked = listOf("switch-on"),
         declaredMotion = listOf(motionId),
-        fetchMotion = { id -> if (id == motionId) "capture".toByteArray() else null },
+        fetchMotion = { id ->
+          if (id == motionId) BranchFetch.Ok("capture".toByteArray()) else BranchFetch.NotFound
+        },
         motionBranchPaths = mapOf(motionId to "motion/switch-on/ideal__default__light.apng"),
       )
     // The production shape, and the reason a bare bundle host would not have exercised the bug: a
@@ -762,6 +764,76 @@ class ServeHttpRoutingTest {
     } finally {
       suspendedServer.stop()
       suspendedRegistry.close()
+    }
+  }
+
+  @Test
+  fun `a capture the branch is refusing is a 503, not a 404`() {
+    // The whole point of BranchFetch reaching this route. 404 says "the catalog never published
+    // this recording", which is what the reader was told for a throttle too — so a rate-limited
+    // capture looked exactly like one that does not exist, in the viewer and in any log.
+    val motionId = "switch-on__ideal__default__light"
+    val dir = Files.createTempDirectory("routing-motion-503").toFile().also { it.deleteOnExit() }
+    File(dir, "previews").apply { mkdirs() }
+    File(dir, "previews/switch-on.png").writeBytes(png())
+
+    var answer: BranchFetch = BranchFetch.Throttled(retryAfterSeconds = 7)
+    val motionRegistry = ServeSessionRegistry(open = { null })
+    motionRegistry.register("default-mod", host = bundle("default-mod"), pinned = true)
+    motionRegistry.register(
+      "throttled-cat",
+      host =
+        ServeBundleHost(
+          dir,
+          label = "throttled-cat",
+          title = "Throttled Catalog",
+          declaredBaked = listOf("switch-on"),
+          declaredMotion = listOf(motionId),
+          fetchMotion = { answer },
+          motionBranchPaths = mapOf(motionId to "motion/switch-on/ideal__default__light.apng"),
+        ),
+      pinned = true,
+    )
+    val motionServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = motionRegistry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          catalogSessions = listOf("throttled-cat"),
+        )
+        .also { it.start() }
+    fun fetchMotion(): Pair<Int, String?> {
+      val req =
+        Request.Builder()
+          .url("http://127.0.0.1:${motionServer.port}/throttled-cat/motion/$motionId.apng")
+          .build()
+      client.newCall(req).execute().use { r ->
+        return r.code to r.header("Retry-After")
+      }
+    }
+    try {
+      // Throttled: 503, and the branch host's own interval is passed straight through.
+      assertEquals(503 to "7", fetchMotion())
+
+      // An outage that names no interval still gets a usable one rather than none.
+      answer = BranchFetch.Unavailable(503)
+      val (code, retryAfter) = fetchMotion()
+      assertEquals(503, code)
+      assertNotEquals(null, retryAfter, "a 503 without Retry-After tells the client nothing")
+
+      // A capture the catalog genuinely never published stays a 404 — this is not a blanket 503.
+      answer = BranchFetch.NotFound
+      assertEquals(404 to null, fetchMotion())
+
+      // …and once the branch serves it, it serves.
+      answer = BranchFetch.Ok("capture".toByteArray())
+      assertEquals(200 to null, fetchMotion())
+    } finally {
+      motionServer.stop()
+      motionRegistry.close()
     }
   }
 

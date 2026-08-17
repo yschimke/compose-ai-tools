@@ -782,7 +782,8 @@ class ServeCatalogStore(
           // a reader actually asks to watch something.
           declaredMotion = motionPathById.keys.toList(),
           fetchMotion = { id ->
-            motionPathById[id]?.let { path -> fetchCatalogAsset(base + path) }
+            motionPathById[id]?.let { path -> fetchCatalogAssetOutcome(base + path) }
+              ?: BranchFetch.NotFound
           },
           motionBranchPaths = motionPathById.toMap(),
           // The branch path of every baked render, so a pinned (`?at=<sha>`) request can be
