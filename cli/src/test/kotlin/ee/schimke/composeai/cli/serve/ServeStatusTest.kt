@@ -611,4 +611,41 @@ class ServeStatusTest {
     val field = Json.parseToJsonElement(body).jsonObject["branchFetch"]
     assertTrue(field == null || field is kotlinx.serialization.json.JsonNull, "got $field in $body")
   }
+
+  @Test
+  fun `status reports optimizer admission so a slow box explains itself`() {
+    // The per-catalog themeOptimization rows cannot answer this: a box where 15 catalogs all report
+    // "running" and nothing progresses looks, catalog by catalog, exactly like a healthy one. What
+    // distinguishes them is how many passes are INSIDE the door versus parked at it.
+    val bg =
+      ServeBackgroundWork(
+        maxConcurrentRenders = 8,
+        clock = { 5_000L },
+        maxConcurrentOptimizers = 2,
+      )
+    bg.pauseOptimizers(millis = 60_000, reason = "traffic spike")
+
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          themeOptimizerStats = { bg.optimizerAdmissionSnapshot() },
+        )
+        .also { it.start() }
+
+    val (code, body) = get("/status.json")
+    assertEquals(200, code)
+    val opt =
+      Json.parseToJsonElement(body).jsonObject["themeOptimizer"]?.jsonObject
+        ?: error("status.json carries no themeOptimizer: $body")
+    assertEquals(2, opt["lanes"]?.jsonPrimitive?.int)
+    assertEquals(0, opt["running"]?.jsonPrimitive?.int)
+    assertEquals(true, opt["paused"]?.jsonPrimitive?.content?.toBoolean())
+    assertEquals(65_000L, opt["pausedUntilEpochMillis"]?.jsonPrimitive?.long)
+    assertTrue(body.contains("traffic spike"), "the pause reason should reach the page: $body")
+  }
 }
