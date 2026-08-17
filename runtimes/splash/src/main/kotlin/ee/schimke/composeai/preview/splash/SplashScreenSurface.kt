@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -79,12 +80,40 @@ fun SplashScreenSurface(
   brandingImage: Painter? = null,
   modifier: Modifier = Modifier,
 ) {
+  SplashSurfaceLayout(
+    icon = icon,
+    background = background,
+    iconBackground = iconBackground,
+    brandingImage = brandingImage,
+    modifier = modifier,
+    iconScale = null,
+  )
+}
+
+/**
+ * Shared layout behind [SplashScreenSurface] and [AnimatedSplashScreenSurface].
+ *
+ * [iconScale] is the one axis the two entry points disagree on. `null` means "no scale at all" —
+ * not "scale of 1f" — and the distinction is load-bearing: a `graphicsLayer` promotes the icon into
+ * its own render layer, which can shift anti-aliasing on the masked circle by a pixel. Passing
+ * `null` skips the modifier entirely so the static previews that existed before animation support
+ * keep rendering byte-identical PNGs and don't light up the visual-diff bot.
+ */
+@Composable
+internal fun SplashSurfaceLayout(
+  icon: Painter,
+  background: Color,
+  iconBackground: Color?,
+  brandingImage: Painter?,
+  modifier: Modifier,
+  iconScale: (() -> Float)?,
+) {
   Box(
     modifier =
       modifier.fillMaxSize().background(background).semantics { testTag = SPLASH_SURFACE_TEST_TAG },
     contentAlignment = Alignment.Center,
   ) {
-    SplashIcon(icon = icon, iconBackground = iconBackground)
+    SplashIcon(icon = icon, iconBackground = iconBackground, iconScale = iconScale)
     if (brandingImage != null) {
       SplashBranding(brandingImage)
     }
@@ -98,9 +127,20 @@ fun SplashScreenSurface(
  * Both the icon and the backdrop are sized in `dp` against a notional 320dp canvas (the
  * SplashScreen spec's icon canvas). Inside a phone-shaped `@Preview` (360×800dp) the icon ends up
  * at ~192dp visible, with a ~256dp backdrop — the same ~75% / 80% ratio the platform applies.
+ *
+ * [iconScale] scales only the icon, never the backdrop ring — on-device the AVD the platform runs
+ * for `windowSplashScreenAnimatedIcon` animates the icon's own vector groups, while
+ * `windowSplashScreenIconBackgroundColor` paints a static circle underneath it. Scaling both would
+ * read as the whole badge breathing, which is not what a launch looks like. The scale is read
+ * inside the `graphicsLayer` lambda so a per-frame change re-runs the layer block rather than
+ * recomposing the icon.
  */
 @Composable
-private fun BoxScope.SplashIcon(icon: Painter, iconBackground: Color?) {
+private fun BoxScope.SplashIcon(
+  icon: Painter,
+  iconBackground: Color?,
+  iconScale: (() -> Float)?,
+) {
   val backdropDiameter = 256.dp
   val iconDiameter = 192.dp
   if (iconBackground != null) {
@@ -111,11 +151,21 @@ private fun BoxScope.SplashIcon(icon: Painter, iconBackground: Color?) {
         }
     )
   }
+  val scaleModifier =
+    if (iconScale == null) {
+      Modifier
+    } else {
+      Modifier.graphicsLayer {
+        val scale = iconScale()
+        scaleX = scale
+        scaleY = scale
+      }
+    }
   Image(
     painter = icon,
     contentDescription = null,
     modifier =
-      Modifier.size(iconDiameter).clip(CircleShape).semantics {
+      Modifier.size(iconDiameter).then(scaleModifier).clip(CircleShape).semantics {
         testTag = SPLASH_ICON_TEST_TAG
         contentDescription = "Splash icon"
       },

@@ -40,6 +40,10 @@ dependencies {
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.ui)
   compileOnly(libs.compose.foundation)
+  // `AnimatedSplashScreenSurface`'s icon pulse (rememberInfiniteTransition / animateFloat).
+  // Declared explicitly rather than leaned on as a foundation transitive; the version comes
+  // from the BOM above, same as the unversioned test deps below.
+  compileOnly("androidx.compose.animation:animation-core")
 
   // Robolectric-based test for `SplashScreenSurface`. Compose UI test deps are
   // `testImplementation` only — they don't leak into the published AAR. We use the same
@@ -51,6 +55,7 @@ dependencies {
   testImplementation(libs.compose.ui)
   testImplementation(libs.compose.foundation)
   testImplementation(libs.compose.runtime)
+  testImplementation("androidx.compose.animation:animation-core")
   testImplementation(libs.activity.compose)
   testImplementation("androidx.compose.ui:ui-test-junit4")
   testImplementation("androidx.compose.ui:ui-test-manifest")
