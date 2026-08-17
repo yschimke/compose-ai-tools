@@ -1359,6 +1359,27 @@ class ServeHttpServer(
   }
 
   /**
+   * [withLeasedSession] for a lane that reads a **value** off the host rather than responding from
+   * inside the lease — so the caller decides the status code once, with the lease already released.
+   *
+   * Null covers both "no such session" and "the host had nothing", which is all this route's two
+   * callers distinguish. [block] runs on [Dispatchers.IO]: reading a published asset can miss the
+   * staged copy and go to the delivery branch, and that is a network round trip which must not run
+   * on a request thread.
+   */
+  private suspend fun <T> RoutingContext.withLeasedSessionOrNull(
+    sessionId: String,
+    block: (ServeHost) -> T?,
+  ): T? {
+    val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) } ?: return null
+    return try {
+      withContext(Dispatchers.IO) { block(lease.host) }
+    } finally {
+      withContext(Dispatchers.IO) { lease.close() }
+    }
+  }
+
+  /**
    * A styled HTML 404 for the browser-facing page routes (landing, viewer) — see
    * [ServeWeb.notFoundPage]. Asset/API lanes keep their bare `text/plain` 404.
    */
@@ -6077,8 +6098,22 @@ class ServeHttpServer(
    * — an unknown suffix, an id the catalog never declared — is a flat 404: this route reaches bytes
    * fetched from a delivery branch, so it must never be able to serve them under a type the
    * requester chose.
+   *
+   * Leased, NOT peeked. [ServeSessionRegistry.peekHost] never resumes a suspended session, so
+   * peeking here answered 404 for every catalog the idle timer had put to sleep — which on a
+   * long-running server is most of them, most of the time. The fixtures never caught it because a
+   * test registers its catalog `pinned = true` and a pinned session is never suspended; the failure
+   * only exists once an idle clock does. The lease is the same one `/render` takes for the sibling
+   * still, and it costs no render seat: a capture is read off the staged branch asset, so what
+   * resuming buys is the host that owns the bytes, not a daemon.
    */
   private suspend fun RoutingContext.handleMotion(sessionInPath: Boolean) {
+    // Token-gated like every sibling asset lane. `/render` has always opened with this and the
+    // motion lane never did — harmless-looking while the route was only reachable at
+    // `/{system}/motion/…`, and not harmless at all: on a token-gated box that spelling was already
+    // servable to an unauthenticated caller, and rooting the segment for site hosts would have
+    // widened it to a second URL rather than introducing it.
+    if (rejectBadToken()) return
     if (rejectHeadProbe()) return
     val name = call.parameters["name"].orEmpty()
     val extension = MOTION_CONTENT_TYPES.keys.firstOrNull { name.endsWith(it) }
@@ -6087,8 +6122,10 @@ class ServeHttpServer(
       return
     }
     val motionId = name.removeSuffix(extension)
-    val host = sessions.peekHost(selectedSessionId(sessionInPath))
-    val bytes = host?.motionBytes(motionId, extension)
+    val bytes =
+      withLeasedSessionOrNull(selectedSessionId(sessionInPath)) { host ->
+        host.motionBytes(motionId, extension)
+      }
     if (bytes == null) {
       call.respondText("", status = HttpStatusCode.NotFound)
       return

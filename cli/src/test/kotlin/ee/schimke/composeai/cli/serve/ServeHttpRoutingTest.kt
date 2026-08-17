@@ -696,6 +696,76 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a suspended catalog still serves its published captures`() {
+    // The motion lane read its host with `peekHost`, which answers "resident right now" and goes
+    // null for any session the idle timer has suspended — so on a long-running server every
+    // capture 404'd for every catalog nobody had touched recently, which is most of them most of
+    // the time. Nothing caught it because a fixture registers `pinned = true` and a pinned session
+    // is never suspended; the bug only exists once an idle clock does. Modelled here the way the
+    // registry models it: an entry that is known and resumable but has no live host.
+    val motionId = "switch-on__ideal__default__light"
+    val dir =
+      Files.createTempDirectory("routing-suspended-motion").toFile().also { it.deleteOnExit() }
+    File(dir, "previews").apply { mkdirs() }
+    File(dir, "previews/switch-on.png").writeBytes(png())
+    val bakedHost =
+      ServeBundleHost(
+        dir,
+        label = "suspended-cat",
+        title = "Suspended Catalog",
+        declaredBaked = listOf("switch-on"),
+        declaredMotion = listOf(motionId),
+        fetchMotion = { id -> if (id == motionId) "capture".toByteArray() else null },
+        motionBranchPaths = mapOf(motionId to "motion/switch-on/ideal__default__light.apng"),
+      )
+    // The production shape, and the reason a bare bundle host would not have exercised the bug: a
+    // trusted catalog resumes as a ServeCatalogLiveHost fronting its baked host, and the captures
+    // live on the baked half. A catalog served by a bundle host directly is pinned, so it is
+    // exactly the sessions that CAN suspend that reach the lane through this composite.
+    val resumed = ServeCatalogLiveHost(emptyMap(), bundle("suspended-live"), bakedHost)
+    val suspendedRegistry = ServeSessionRegistry(open = { resumed })
+    suspendedRegistry.register("default-mod", host = bundle("default-mod"), pinned = true)
+    suspendedRegistry.register(
+      "suspended-cat",
+      state =
+        ServeSessionState(
+          descriptor = File("daemon-launch.json"),
+          workspaceRoot = File("."),
+          workspaceName = "w",
+          previews = emptyList(),
+          label = "suspended-cat",
+        ),
+    )
+    // The precondition the bug lived on: nothing is resident, so a peek finds nothing to serve.
+    assertEquals(null, suspendedRegistry.peekHost("suspended-cat"))
+
+    val suspendedServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = suspendedRegistry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          catalogSessions = listOf("suspended-cat"),
+        )
+        .also { it.start() }
+    try {
+      val req =
+        Request.Builder()
+          .url("http://127.0.0.1:${suspendedServer.port}/suspended-cat/motion/$motionId.apng")
+          .build()
+      client.newCall(req).execute().use { r ->
+        assertEquals(200, r.code, "a suspended catalog must resume to serve its capture")
+        assertEquals("capture", r.body?.string())
+      }
+    } finally {
+      suspendedServer.stop()
+      suspendedRegistry.close()
+    }
+  }
+
+  @Test
   fun `a failed optional catalog does not block readiness`() {
     val partialRegistry = ServeSessionRegistry(open = { null })
     partialRegistry.register("default-mod", host = bundle("partial-default"), pinned = true)
