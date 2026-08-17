@@ -85,7 +85,7 @@ jobs:
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run harness scenarios (desktop, fake)
-        run: ./gradlew :daemon:harness:test
+        run: .github/scripts/retry-gradle-repository.sh ./gradlew :daemon:harness:test
       - name: Upload harness test results (desktop, fake)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -127,7 +127,7 @@ jobs:
       #       sudo apt-get install -y libfreetype6 libfontconfig1
       #
       - name: Run harness scenarios (desktop, real)
-        run: ./gradlew :daemon:harness:test -Pharness.host=real
+        run: .github/scripts/retry-gradle-repository.sh ./gradlew :daemon:harness:test -Pharness.host=real
       - name: Upload harness test results (desktop, real)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -167,7 +167,7 @@ jobs:
       # missing native libs (libfontconfig, libfreetype), install them
       # here.
       - name: Run harness scenarios (android, real)
-        run: ./gradlew :daemon:harness:test -Pharness.host=real -Pharness.target=android
+        run: .github/scripts/retry-gradle-repository.sh ./gradlew :daemon:harness:test -Pharness.host=real -Pharness.target=android
       - name: Upload harness test results (android, real)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
