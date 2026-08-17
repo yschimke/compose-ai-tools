@@ -4,9 +4,6 @@ _Auto-generated from `compose-preview/a11y/main`. 338 preview(s) across 20 modul
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
-> [!WARNING]
-> ATF data unavailable for this run — the daemon did not return accessibility findings. The renders below are **not** accessibility-checked.
-
 ## android
 
 ### `ActionsPreview`
@@ -596,7 +593,7 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "Aurora ridge" is identical to that of 4 other item(s). |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "Aurora ridge" is identical to that of 5 other item(s). |
 
 ### `SoftKeyboardAnimatedPreview`
 
@@ -1980,7 +1977,7 @@ _No findings._
 
 ### `SdkMatrixPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/sdk-matrix/SdkMatrixPreview_SdkMatrixPreview-79bf257a.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/sdk-matrix/SdkMatrixPreview_SdkMatrixPreview-79bf257a.a11y.png" width="400" />
 
 _No findings._
 

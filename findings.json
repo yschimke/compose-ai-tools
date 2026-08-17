@@ -1388,7 +1388,7 @@
         {
           "boundsInScreen": "179,132,383,185",
           "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 4 other item(s).",
+          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 5 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
           "viewDescription": "android.widget.TextView"
         }
@@ -3988,7 +3988,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.a11y.png",
       "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.png",
       "findings": [],
       "functionName": "SdkMatrixPreview",
@@ -4548,6 +4548,5 @@
       "sourceFile": "com/example/sample/Previews.kt",
       "variant": ""
     }
-  ],
-  "status": "atf-unavailable"
+  ]
 }
