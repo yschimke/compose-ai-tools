@@ -1195,6 +1195,102 @@ class ServeCatalogLiveHostTest {
   }
 
   /**
+   * A pass gives its lane back on a preview boundary and re-queues for another.
+   *
+   * Without this, fair admission is not enough to un-starve anything. A pass on an idle box runs
+   * until its catalog is fully optimized — measured on the deployed box, `reply` took a lane and
+   * held it through all 354 of its entries — so a 10,120-target catalog would hold a lane for ~28
+   * hours and the queue behind it would be fair and immovable at the same time.
+   */
+  @Test
+  fun `a long pass yields its lane between previews instead of holding it to the end`() {
+    val backgroundWork = ServeBackgroundWork(maxConcurrentRenders = 4, maxConcurrentOptimizers = 1)
+    val previews = (1..4).map { ServePreview("$daemonId-$it", "$daemonId-$it") }
+    fun host(sliceMillis: Long) =
+      ServeCatalogLiveHost(
+        alias = previews.associate { "cat-${it.id}" to it.id },
+        live =
+          RecordingHost(previews = previews, tag = "live", declaredThemes = listOf(brandTheme)),
+        baked =
+          RecordingHost(previews.map { ServePreview("cat-${it.id}", "cat-${it.id}") }, "baked"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+        optimizerSliceMillis = sliceMillis,
+        backgroundWork = backgroundWork,
+      )
+
+    // A slice that is already spent hands the lane back after every preview, so the four previews
+    // cost four admissions rather than one.
+    val sliced = host(sliceMillis = 0)
+    sliced.prewarm()
+    val slicedSnapshot = awaitOptimization(sliced)
+
+    assertTrue(slicedSnapshot.fullyOptimized, "yielding the lane must not lose the work")
+    assertEquals(4, slicedSnapshot.cached)
+    assertEquals(
+      4,
+      backgroundWork.optimizerAdmissionSnapshot().admissions,
+      "one admission per preview — the lane goes back to the queue between them",
+    )
+
+    // The control: a slice longer than the pass never fires, and the whole catalog is one
+    // admission. Without it, "4 admissions" would also be satisfied by a pass that re-queues for
+    // reasons having nothing to do with the slice.
+    val whole = ServeBackgroundWork(maxConcurrentRenders = 4, maxConcurrentOptimizers = 1)
+    val unsliced =
+      ServeCatalogLiveHost(
+        alias = previews.associate { "cat-${it.id}" to it.id },
+        live =
+          RecordingHost(previews = previews, tag = "live", declaredThemes = listOf(brandTheme)),
+        baked =
+          RecordingHost(previews.map { ServePreview("cat-${it.id}", "cat-${it.id}") }, "baked"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+        optimizerSliceMillis = 10 * 60_000,
+        backgroundWork = whole,
+      )
+    unsliced.prewarm()
+    assertTrue(awaitOptimization(unsliced).fullyOptimized)
+    assertEquals(1, whole.optimizerAdmissionSnapshot().admissions)
+  }
+
+  /**
+   * A slice yields at least one preview however short it is.
+   *
+   * The failure this closes is a livelock: check the deadline before doing any work and a slice
+   * shorter than the admission round-trip re-queues forever, rendering nothing while looking busy.
+   */
+  @Test
+  fun `an already-spent slice still renders one preview before giving the lane back`() {
+    val backgroundWork = ServeBackgroundWork(maxConcurrentRenders = 4, maxConcurrentOptimizers = 1)
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+        optimizerSliceMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(1, live.renderCalls)
+    assertEquals(1, backgroundWork.optimizerAdmissionSnapshot().admissions)
+  }
+
+  /**
    * The shared lane bounds the optimizers — it no longer serialises them.
    *
    * This asserted a peak of exactly 1 while the background cap was 1. That cap was measured on the
