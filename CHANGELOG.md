@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.14.0](https://github.com/yschimke/compose-ai-tools/compare/v1.13.0...v1.14.0) (2026-08-17)
+
+
+### Features
+
+* **serve:** cap concurrent theme-optimizer passes, and let an admin pause them ([#4124](https://github.com/yschimke/compose-ai-tools/issues/4124)) ([5d6b0df](https://github.com/yschimke/compose-ai-tools/commit/5d6b0dfba6663e1ec8976fc83c5ccdf3bc9258ae))
+* **serve:** drive the Motion lane's playback, with a transport under it ([#4126](https://github.com/yschimke/compose-ai-tools/issues/4126)) ([6cf8a0e](https://github.com/yschimke/compose-ai-tools/commit/6cf8a0e2d65a4bec6dedde09011cbc6c1f40b06d))
+* **serve:** drop the header's duplicate home and repo links ([#4121](https://github.com/yschimke/compose-ai-tools/issues/4121)) ([d40ff91](https://github.com/yschimke/compose-ai-tools/commit/d40ff917f424fb24a3f0b6c765d3beea05885b49))
+* **serve:** make the Motion capture picker a menu with a detail line ([#4123](https://github.com/yschimke/compose-ai-tools/issues/4123)) ([de7b61b](https://github.com/yschimke/compose-ai-tools/commit/de7b61b09245d1faeb1a0cccc02f92cde0d0da24))
+
+
+### Bug Fixes
+
+* **serve:** restore the per-preview issue report on the viewer ([#4125](https://github.com/yschimke/compose-ai-tools/issues/4125)) ([afae301](https://github.com/yschimke/compose-ai-tools/commit/afae301310a1647b9e6b494ca6e226a92abeba93))
+* **vscode:** render a @Preview added to the file already on screen ([#4120](https://github.com/yschimke/compose-ai-tools/issues/4120)) ([839eca5](https://github.com/yschimke/compose-ai-tools/commit/839eca56f04d8771b0829aa11c85eaf2ebd87c3a))
+
 ## [1.13.0](https://github.com/yschimke/compose-ai-tools/compare/v1.12.0...v1.13.0) (2026-08-17)
 
 
