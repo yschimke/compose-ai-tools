@@ -163,9 +163,12 @@ class ServeComponentBrowserTest {
     assertTrue(html.contains("id=\"cp-wasm\""))
     assertTrue(html.contains("id=\"cp-wasm-toggle\""))
     assertTrue(html.contains("data-wasm-src=\"/wasm/compose-m3/\""))
-    assertTrue(
-      html.contains("if(w&amp;&amp;!requested)wasm()") || html.contains("if(w&&!requested)wasm()")
-    )
+    // The Wasm lane is available but NOT entered on load: Catalog mode opens on the same baked
+    // snapshot Dev mode does. Auto-enabling it bypassed viewer.js's "wait for the snapshot to
+    // land" gate, which cancelled the in-flight render and left the iframe sized to a src-less
+    // <img>'s placeholder box — a blank stage on every component page (#4091).
+    assertTrue(html.contains("data-mode=\"snapshot\""))
+    assertFalse(html.contains("getElementById(\"cp-wasm-toggle\")"))
     assertTrue(html.contains("id=\"cp-localeTag\""))
     assertTrue(html.contains("id=\"cp-fontScale\""))
     assertTrue(html.contains("class=\"cp-browser-siblings\""))

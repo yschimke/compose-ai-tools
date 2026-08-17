@@ -9332,11 +9332,27 @@ $rows
       else
         "<button type=\"button\" id=\"cp-browser-preview-tab\" " +
           "class=\"cp-spec-chip cp-browser-tab\" role=\"tab\" aria-selected=\"true\">Preview</button>"
+    // Catalog mode shows the **baked snapshot**, exactly like Dev mode does, and this script only
+    // keeps the Preview / Source tab pair in sync with the source panel's own toggle.
+    //
+    // It used to force the in-browser Wasm app on every component page (`w.checked = true` at
+    // parse time, plus on every return from Source), so that "interactive by default" was the
+    // Catalog reading of a component browser. That was wrong twice over. It made the *snapshot*
+    // — the thing the catalog publishes, and the artifact every other surface here compares
+    // against — the one rendering Catalog mode never showed; and because entering an interactive
+    // lane CANCELS the in-flight snapshot (viewer.js gates the bookmarked `?mode=` on the
+    // snapshot having landed for exactly this reason, but a direct tick bypasses that gate), the
+    // stage's <img> never got a src at all. The Wasm iframe is sized to that <img>'s box, so it
+    // came up at the browser's ~104×20 alt-text placeholder and every Catalog preview looked
+    // blank — with the still it was supposed to fall back to never having loaded (#4091).
+    //
+    // The lane is still reachable: `?mode=wasm` pins it, and Dev mode carries the renderer combo
+    // and the Live chip.
     val browserTabsScript =
       if (!componentBrowser) ""
       else
         """
-        <script>(function(){var p=document.getElementById("cp-browser-preview-tab"),s=document.getElementById("cp-source-chip"),r=document.getElementById("cp-source-toggle"),w=document.getElementById("cp-wasm-toggle");function wasm(){if(!w)return;w.checked=true;w.dispatchEvent(new Event("change",{bubbles:true}));}function sync(){if(!p||!s||!r)return;var source=!!r.checked;p.setAttribute("aria-selected",source?"false":"true");s.setAttribute("aria-selected",source?"true":"false");}if(p&&s&&r){p.addEventListener("click",function(){if(r.checked)s.click();setTimeout(function(){if(!r.checked)wasm();sync();},0);});s.addEventListener("click",function(){setTimeout(function(){if(!r.checked)wasm();sync();},0);});window.addEventListener("popstate",function(){setTimeout(sync,0);});}var requested=new URLSearchParams(location.search).get("mode");if(w&&!requested)wasm();setTimeout(sync,0);})();</script>
+        <script>(function(){var p=document.getElementById("cp-browser-preview-tab"),s=document.getElementById("cp-source-chip"),r=document.getElementById("cp-source-toggle");function sync(){if(!p||!s||!r)return;var source=!!r.checked;p.setAttribute("aria-selected",source?"false":"true");s.setAttribute("aria-selected",source?"true":"false");}if(p&&s&&r){p.addEventListener("click",function(){if(r.checked)s.click();setTimeout(sync,0);});s.addEventListener("click",function(){setTimeout(sync,0);});window.addEventListener("popstate",function(){setTimeout(sync,0);});}setTimeout(sync,0);})();</script>
         """
           .trimIndent()
     // ---- The Motion lane -------------------------------------------------------------------

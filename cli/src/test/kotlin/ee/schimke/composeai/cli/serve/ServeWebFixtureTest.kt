@@ -4606,8 +4606,18 @@ class ServeWebFixtureTest {
     // it was briefly half-propagated: `canServerRender` used it while the theme select and the
     // Remote Compose knobs still gated on a spec-only flag, so overrides stayed live over a
     // recording while the code read as though the lane were gated.
+    //
+    // #4088 lifted the expression into `onFixedFrameLane()` so `syncServerControls` and
+    // `activeThemeChoice` share one definition (and so it is callable during module init, before
+    // the lane's own elements exist). The property under test is unchanged — one predicate, both
+    // lanes, no spec-only flag beside it — so it is asserted against the helper and its use rather
+    // than the inline expression that used to spell it.
     assertTrue(
-      viewerSource().contains("var onFixedFrame = specActive() || motionActive();") &&
+      viewerSourceFlat().contains("""return mode === "spec" || mode === "motion";"""),
+      "the fixed-frame predicate still covers both the spec and the motion lane",
+    )
+    assertTrue(
+      viewerSource().contains("var onFixedFrame = onFixedFrameLane();") &&
         !viewerSource().contains("var onSpec = specActive();"),
       "one fixed-frame predicate gates the override families, not a spec-only flag beside it",
     )
