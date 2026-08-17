@@ -353,4 +353,68 @@ class ServeBundleHostTest {
     val empty = java.nio.file.Files.createTempDirectory("empty").toFile().also { it.deleteOnExit() }
     assertFalse(ServeBundleHost.looksLikeBundle(empty))
   }
+
+  @Test
+  fun `a throttled pinned read is not remembered as a missing file`() {
+    // `pinnedMisses` is deliberately permanent: `(commit, path)` is immutable, so "that revision
+    // has no such file" can never stop being true. That reasoning only holds for a real 404. A
+    // throttle says nothing about the revision, and memoising one turned a blip into a hole that
+    // outlived it — the accepted cost of a fetch layer that could not tell them apart.
+    val commit = "1".repeat(40)
+    val previewId = "button-filled__ideal__default__dark"
+    val dir = java.nio.file.Files.createTempDirectory("pinned-throttle").toFile()
+    dir.deleteOnExit()
+    File(dir, "previews").mkdirs()
+
+    val answers =
+      ArrayDeque(listOf<BranchFetch>(BranchFetch.Throttled(1), BranchFetch.Ok(byteArrayOf(7))))
+    var calls = 0
+    val host =
+      ServeBundleHost(
+        dir,
+        label = "compose-m3",
+        title = "Compose Material 3",
+        bakedBranchPaths = mapOf(previewId to "images/button-filled/ideal__default__dark.png"),
+        fetchPinnedAssetOutcome = { _, _ ->
+          calls++
+          answers.removeFirstOrNull() ?: BranchFetch.NotFound
+        },
+      )
+
+    // First read is throttled, so the caller gets nothing…
+    assertTrue(host.pinnedRender(commit, previewId) is ServeBundleHost.PinnedOutcome.Missing)
+    assertEquals(1, calls)
+    // …and asking again actually asks again, rather than being refused from memory.
+    val second = host.pinnedRender(commit, previewId)
+    assertTrue(second is ServeBundleHost.PinnedOutcome.Ok, "a throttle must not poison the cache")
+    assertEquals(2, calls)
+  }
+
+  @Test
+  fun `a genuinely missing pinned asset is still only asked for once`() {
+    // The other half of the same property: the permanent negative cache is worth keeping, and this
+    // is the case it was built for.
+    val commit = "2".repeat(40)
+    val previewId = "button-filled__ideal__default__dark"
+    val dir = java.nio.file.Files.createTempDirectory("pinned-missing").toFile()
+    dir.deleteOnExit()
+    File(dir, "previews").mkdirs()
+
+    var calls = 0
+    val host =
+      ServeBundleHost(
+        dir,
+        label = "compose-m3",
+        title = "Compose Material 3",
+        bakedBranchPaths = mapOf(previewId to "images/button-filled/ideal__default__dark.png"),
+        fetchPinnedAssetOutcome = { _, _ ->
+          calls++
+          BranchFetch.NotFound
+        },
+      )
+
+    assertTrue(host.pinnedRender(commit, previewId) is ServeBundleHost.PinnedOutcome.Missing)
+    assertTrue(host.pinnedRender(commit, previewId) is ServeBundleHost.PinnedOutcome.Missing)
+    assertEquals(1, calls, "a known-absent asset is refused from memory")
+  }
 }

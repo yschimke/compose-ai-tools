@@ -1289,13 +1289,15 @@ class ServeCatalogStoreTest {
       """
         .trimIndent()
     val requestedLimits = linkedMapOf<String, Long>()
-    val networkFetch: (String, Long) -> ByteArray? = { url, maxBytes ->
+    // Outcome-shaped like the seam it stands in for: one transport, so no lane can reach the
+    // network around an injected one.
+    val networkFetch: (String, Long) -> BranchFetch = { url, maxBytes ->
       requestedLimits[url] = maxBytes
       when {
-        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
-        url.endsWith("bundle/bundle.png") -> byteArrayOf(1, 2, 3)
-        url.endsWith(".png") -> png()
-        else -> null
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> BranchFetch.Ok(catalog.toByteArray())
+        url.endsWith("bundle/bundle.png") -> BranchFetch.Ok(byteArrayOf(1, 2, 3))
+        url.endsWith(".png") -> BranchFetch.Ok(png())
+        else -> BranchFetch.NotFound
       }
     }
     val trust =
