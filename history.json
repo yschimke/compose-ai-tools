@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
+    "generatedFrom": "4b6a460d9ddfaf903c668ff8addcc0b35efc790e",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2658,6 +2658,13 @@
             "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
             "versions": [
                 {
+                    "blob": "9be81a9d9900db7b2540f2b41333b99659e6d25f",
+                    "commit": "4b6a460d9ddfaf903c668ff8addcc0b35efc790e",
+                    "date": "2026-08-17T08:47:20Z",
+                    "sourceSha": "f23e1287",
+                    "commits": 1
+                },
+                {
                     "blob": "3493cd7f3eea7596cb6a607efd4cc8a37db67386",
                     "commit": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
                     "date": "2026-08-17T08:17:58Z",
@@ -2853,7 +2860,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 45,
+            "observations": 46,
             "unstable": true,
             "flapCount": 20
         },
@@ -6962,6 +6969,13 @@
             "path": "renders/samples:design-catalog-wear-m3/ButtonPressed-2ae1b0cc.png",
             "versions": [
                 {
+                    "blob": "7076b56b8ae939b7fb78d3b4341fd798cd4740a0",
+                    "commit": "4b6a460d9ddfaf903c668ff8addcc0b35efc790e",
+                    "date": "2026-08-17T08:47:20Z",
+                    "sourceSha": "f23e1287",
+                    "commits": 1
+                },
+                {
                     "blob": "265e04d42ed373ed12710899d329f801ff599b3a",
                     "commit": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
                     "date": "2026-08-17T08:17:58Z",
@@ -6976,7 +6990,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
