@@ -3988,7 +3988,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.a11y.png",
       "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview-79bf257a.png",
       "findings": [],
       "functionName": "SdkMatrixPreview",
@@ -4548,6 +4548,5 @@
       "sourceFile": "com/example/sample/Previews.kt",
       "variant": ""
     }
-  ],
-  "status": "atf-unavailable"
+  ]
 }
