@@ -1594,9 +1594,26 @@ abstract class RobolectricRenderTestBase(
               // pressed focus captures so ordinary renders keep their existing
               // deterministic timing; the Android clock and Compose's `mainClock` are
               // independent, so this advances only platform animations.
+              //
+              // [FocusController.SETTLE_MS] is NOT the right window for it, which is the
+              // bug this replaced. That constant sizes a Compose-side settle; the platform
+              // ripple needs far more looper time, and how much more depends on how long
+              // the sandbox has already been running — so a 250ms window silently
+              // under-settles the ripple in proportion to the number of previews rendered
+              // before this one. Measured on `:samples:design-catalog-wear-m3`'s
+              // `ButtonPressed` at `shards = 1`, the pressed container faded from #C2B5DB
+              // (3 preview rows ahead of it) through #D5C8EC (11 rows) to #D4C8EC (the
+              // full 59-row catalog) — the last of those pixel-identical to the
+              // focus-only capture, i.e. a "pressed" specimen showing no press. Because
+              // `shards` auto-sizes off a `previews.json` a cold CI checkout does not
+              // have, the same commit rendered pressed pixels in one job and focus-only
+              // in another. [PRESS_SETTLE_MS] is sized for the settled end state instead,
+              // and stepping keeps the `Choreographer` delivering a callback per frame
+              // across it rather than one for the whole jump.
               if (focus.pressed) {
-                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
-                  .idleFor(java.time.Duration.ofMillis(FocusController.SETTLE_MS))
+                val looper = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                val step = java.time.Duration.ofMillis(PRESS_SETTLE_FRAME_MS)
+                repeat((PRESS_SETTLE_MS / PRESS_SETTLE_FRAME_MS).toInt()) { looper.idleFor(step) }
               }
             }
 
@@ -2192,6 +2209,32 @@ abstract class RobolectricRenderTestBase(
      * translation.
      */
     private const val CAPTURE_ADVANCE_MS = 32L
+
+    /**
+     * Virtual looper time a `@FocusedPreview(pressed = true)` capture idles so the platform
+     * `RippleDrawable` behind Material's pressed state reaches its end state, in milliseconds.
+     *
+     * Deliberately an order of magnitude past the ~75ms the ripple's own enter animation nominally
+     * runs for, and not shared with [FocusController.SETTLE_MS]. The two settle different clocks
+     * and want different sizes: the ripple's effective progress per unit of idled time falls off
+     * the longer the Robolectric sandbox has been reused, so a window sized to the animation is
+     * only enough for the first previews of a shard. Sized to the *settled* pixels instead —
+     * `:samples:design-catalog-wear-m3`'s `ButtonPressed` renders the same #C2B5DB container at
+     * `shards = 1` behind the full 59-row catalog as it does rendered on its own, which is the
+     * property that makes a pressed specimen independent of shard layout.
+     *
+     * It is virtual time, so the cost is running the callbacks that come due, not wall clock.
+     */
+    private const val PRESS_SETTLE_MS = 5_000L
+
+    /**
+     * Slice size for the [PRESS_SETTLE_MS] settle, in milliseconds. ~1 Choreographer frame at 60Hz.
+     *
+     * `idleFor` runs the callbacks that came due, not one per frame — so idling the whole window in
+     * one jump yields a single `Choreographer` callback and a single animation step. Stepping keeps
+     * the frame cadence the animation expects across the window.
+     */
+    private const val PRESS_SETTLE_FRAME_MS = 16L
 
     /**
      * Virtual time advanced after flipping [reduceMotionState] around a LONG capture — enough

@@ -198,9 +198,9 @@ const PANEL_UPDATE_BUDGET_MS = 3 * 60_000;
  * backstop that keeps the diagnostic, so the only thing this costs is how long
  * a genuinely stuck render takes to report.
  *
- * Not for scenario B: its wait looked like this shape and is not — see the
- * comment on its `waitFor`. A budget only helps a wait that is *slow*; B's is
- * *silent*, and a short budget reports that sooner.
+ * Sizing a budget is not a cure for a wedge — scenario B sits behind one and
+ * still fails at 480s. It only stops a *healthy* slow render being reported as
+ * a failure, which is the failure mode worth eliminating first.
  */
 const RENDER_ROUND_TRIP_BUDGET_MS = 8 * 60_000;
 
@@ -826,16 +826,21 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 // that names the missing file. That is the trade this budget
                 // (plus `describeState` below) buys back.
                 //
-                // Kept at the panel-repaint budget on purpose, even though the
-                // wait spans a render. Raising it to a render round trip was
-                // tried (run 32005009908) on the theory that a cold recompile →
-                // discover → render simply outran 180s; it did not. The refresh
-                // resolves, `composePreviewDiscover` runs, and then the
-                // extension issues no further Gradle command at all — the full
-                // 480s expired in silence, the same shape as the scenario-E
-                // wedge that {@link REFRESH_BUDGET_MS} documents. A wedge is
-                // what this budget exists to report quickly, so leave it short.
-                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
+                // Sized as a render round trip, not a panel repaint: the PNG
+                // being waited on is written after a recompile → discover →
+                // render chain, and scenario A's own cold render measures
+                // 195–347s on CI — so the repaint budget can cut a healthy run
+                // short, which is a false failure and worse than a slow report.
+                //
+                // Sizing it up does not by itself fix scenario B, and the
+                // comment should not imply it does: at 480s on run 32005009908
+                // it failed again, and the transcript shows why. The refresh
+                // resolves, `composePreviewDiscover` runs, and the extension
+                // then issues no further Gradle command for the remaining 6m40s
+                // — the scenario-E wedge {@link REFRESH_BUDGET_MS} documents,
+                // not slowness. This budget bounds the honest case; the wedge is
+                // a separate defect and is tracked as one.
+                budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
