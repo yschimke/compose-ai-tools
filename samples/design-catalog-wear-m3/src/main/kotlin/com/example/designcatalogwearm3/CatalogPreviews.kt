@@ -1,8 +1,6 @@
 package com.example.designcatalogwearm3
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,11 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -648,13 +643,31 @@ fun TextMaxLinesTruncated() = WearSticker {
 // traversal and flips `LocalInputModeManager` to Keyboard mode — which Robolectric
 // needs, since its host environment is permanently Touch and `Modifier.clickable`
 // registers its focusable as `Focusability.SystemDefined` (refused while in touch
-// mode). Wear M3's `combinedClickable` does not expose a reliable synthetic input
-// path under Robolectric, so the pressed specimen seeds its interaction source
-// directly while the focused specimen continues to use real focus traversal.
-// `indices = [0]` is the single Button in the focused sticker; a single-capture
+// mode). `indices = [0]` is the single Button in either sticker; a single-capture
 // `@FocusedPreview` keeps the plain
 // `renders/<id>.png` filename (see `emitStaticCross` in PreviewDiscovery.kt), so
 // the design-artifacts fold by function name is untouched.
+//
+// The pressed sticker adds `pressed = true` and does NOT seed its own
+// `MutableInteractionSource`. Seeding one is what it used to do, and the capture
+// it produced was pixel-identical to the resting `FilledButton` — the reason is
+// the renderer, not the emission: Wear M3's only press affordance is
+// `material-ripple`, which on Android is a platform `RippleDrawable` animated on
+// the Choreographer rather than Compose's `mainClock`, and `RobolectricRenderTest`
+// idles the main looper so that drawable settles ONLY for a `focus.pressed`
+// capture. A hand-seeded press never gets that settle, so it never reaches the
+// PNG. `@FocusedPreview(pressed = true)` takes the path that does, and is also
+// what a real Wear press looks like: focus arrives first over rotary / D-pad,
+// then the press lands on the focused component.
+//
+// That settle had to be resized to make this specimen trustworthy — see
+// `PRESS_SETTLE_MS` in `RobolectricRenderTest`. It used to reuse the Compose-side
+// `FocusController.SETTLE_MS` (250ms), which under-settles the ripple in
+// proportion to how long the Robolectric sandbox has already been running, so
+// this capture rendered a full press when it happened to be early in its shard
+// and no press at all behind the whole catalog. `WearFocusedPressPixelTest` pins
+// the result — the pressed capture must differ from BOTH the focused and the
+// resting one — and it now holds at any shard count.
 //
 // The function names `ButtonPressed` / `ButtonFocused` and the `@CatalogVariant`
 // ids are the join into `catalog.spec.json` — do not rename either.
@@ -663,22 +676,15 @@ fun TextMaxLinesTruncated() = WearSticker {
 @CatalogVariant(
   of = "Button/Filled",
   state = "pressed",
-  caption = "Held PressInteraction → pressed state layer.",
+  caption = "Real D-pad press on the focused button → pressed state layer.",
 )
 @CatalogWearModes
+@FocusedPreview(indices = [0], pressed = true)
 @Composable
 fun ButtonPressed() = WearSticker {
   val (label, onClick) =
     wearCounted(previewOverrideString("label", stringResource(R.string.label_pressed)))
-  Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
-}
-
-/** Seeds a held press because Robolectric cannot drive Wear M3's focused key path reliably. */
-@Composable
-private fun pressedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
-  return source
+  Button(onClick = onClick) { Text(label) }
 }
 
 @CatalogVariant(
