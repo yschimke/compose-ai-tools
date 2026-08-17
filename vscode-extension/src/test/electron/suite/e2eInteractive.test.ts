@@ -787,82 +787,65 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         let editPhaseError: Error | null = null;
         try {
             api.resetMessages();
-            assertRefreshRendered(
-                api,
-                await api.triggerRefresh(cmpFile, true, "full"),
-                ":samples:cmp render",
-            );
-            // Wait for the SETTLED state, not the first message that names the
-            // new preview. Discovery announces the id as soon as it has scanned
-            // the recompiled classes, which is before the renderer has written
-            // that preview's PNG — so a wait that stops at "the id is present"
-            // races the render and fails on a slow runner (issue: `B. edit a
-            // @Preview source` flaking with "capture … not on disk").
+            // Drive the same save queue as production. The file-system watcher
+            // observes the write above too; calling triggerRefresh here used to
+            // start a second, uncoordinated Gradle render beside that queued
+            // save. Whichever path reached Gradle second cancelled the other's
+            // compile, making this scenario fail even though either path alone
+            // was healthy. triggerSave joins the watcher in RefreshQueue, where
+            // duplicate events are serialized and save bursts are collapsed.
+            api.triggerSave(cmpFile);
+            // Wait for both halves of the daemon panel protocol: discovery
+            // reshapes the cards through setPreviews, then renderFinished paints
+            // the card through updateImage. The manifest capture path belongs to
+            // the batch renderer; daemon renders intentionally use their own
+            // preview-id path, so requiring the former to appear on disk rejects
+            // a successfully painted card.
             //
-            // This does NOT weaken invariant B1 below. The bug B1 exists to
-            // catch is a *permanent* placeholder — the panel advertising a
-            // preview whose PNG never arrives — and that still fails, as a
-            // `waitFor` timeout naming the same file. What it stops failing on
-            // is the transient moment between the two, which no user could see
-            // as anything but a card that fills in a second later.
-            const capturesOnDisk = (p: PreviewRecord, moduleDir: string) => {
-                const captures = p.captures ?? [];
-                return (
-                    captures.length > 0 &&
-                    captures.every((c) =>
-                        fs.existsSync(
-                            fullRenderPath(repoRoot, moduleDir, c.renderOutput),
-                        ),
-                    )
-                );
-            };
+            // This keeps B1's user-visible invariant strong: an id-only
+            // setPreviews still times out unless actual image bytes are posted
+            // for that same preview. It merely observes those bytes at the
+            // boundary the webview consumes instead of at an unrelated batch
+            // output path.
             const afterAdd = await waitFor(
-                `setPreviews after adding ${tag}, with its capture on disk`,
-                // Bounded, NOT `this.timeout()`. Waiting on the settled state
-                // means a preview whose PNG never arrives no longer trips the
-                // B1 assertion immediately — so an unbounded wait would burn
-                // the whole Mocha ceiling and report a bare
-                // `Timeout of 1800000ms exceeded`, losing the one diagnostic
-                // that names the missing file. That is the trade this budget
-                // (plus `describeState` below) buys back.
+                `setPreviews and updateImage after adding ${tag}`,
+                // Bounded, NOT `this.timeout()`. An id whose image update never
+                // arrives no longer trips B1 immediately, so an unbounded wait
+                // would burn the whole Mocha ceiling and report a bare
+                // `Timeout of 1800000ms exceeded`, losing the diagnostic that
+                // distinguishes missing discovery from missing image bytes.
                 //
                 // Sized as a render round trip, not a panel repaint: the PNG
                 // being waited on is written after a recompile → discover →
                 // render chain, and scenario A's own cold render measures
                 // 195–347s on CI — so the repaint budget can cut a healthy run
                 // short, which is a false failure and worse than a slow report.
-                //
-                // Sizing it up does not by itself fix scenario B, and the
-                // comment should not imply it does: at 480s on run 32005009908
-                // it failed again, and the transcript shows why. The refresh
-                // resolves, `composePreviewDiscover` runs, and the extension
-                // then issues no further Gradle command for the remaining 6m40s
-                // — the scenario-E wedge {@link REFRESH_BUDGET_MS} documents,
-                // not slowness. This budget bounds the honest case; the wedge is
-                // a separate defect and is tracked as one.
                 budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
-                    return latestSetPreviewsMatching(msgs, (m) => {
+                    const discovered = latestSetPreviewsMatching(msgs, (m) => {
                         if (m.previews.length === 0) return false;
                         if (!m.moduleDir.includes(cmpNeedle)) return false;
-                        const matching = m.previews.filter((p) =>
-                            p.id.endsWith(tag),
-                        );
-                        if (matching.length === 0) return false;
-                        return matching.every((p) =>
-                            capturesOnDisk(p, m.moduleDir),
+                        return m.previews.some((p) => p.id.endsWith(tag));
+                    });
+                    if (!discovered) return undefined;
+                    const painted = msgs.some((raw) => {
+                        const m = raw as PostedMessage;
+                        return (
+                            m.command === "updateImage" &&
+                            typeof m.previewId === "string" &&
+                            m.previewId.endsWith(tag) &&
+                            typeof m.imageData === "string" &&
+                            m.imageData.length > 0
                         );
                     });
+                    return painted ? discovered : undefined;
                 },
-                // What the old immediate assertion used to say, now said by the
-                // wait that replaced it: which preview arrived, and which of its
-                // captures is not on disk. A regression here reports the same
-                // path it always did.
                 () => {
+                    const msgs = api.getPostedMessages();
                     const latest = latestSetPreviewsMatching(
-                        api.getPostedMessages(),
+                        msgs,
                         (m) =>
                             m.moduleDir.includes(cmpNeedle) &&
                             m.previews.some((p) => p.id.endsWith(tag)),
@@ -870,31 +853,27 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     if (!latest) {
                         return `no setPreviews for ${cmpNeedle} ever named ${tag}`;
                     }
-                    const matching = latest.previews.filter((p) =>
-                        p.id.endsWith(tag),
-                    );
-                    return matching
-                        .map((p) => {
-                            const captures = p.captures ?? [];
-                            if (captures.length === 0) {
-                                return `preview ${p.id} arrived with 0 captures`;
-                            }
-                            const missing = captures
-                                .map((c) =>
-                                    fullRenderPath(
-                                        repoRoot,
-                                        latest.moduleDir,
-                                        c.renderOutput,
-                                    ),
-                                )
-                                .filter((resolved) => !fs.existsSync(resolved));
-                            return missing.length === 0
-                                ? `preview ${p.id} has every capture on disk`
-                                : `preview ${p.id} capture(s) not on disk: ${missing.join(", ")}`;
-                        })
-                        .join("; ");
+                    const imageUpdates = msgs.filter((raw) => {
+                        const m = raw as PostedMessage;
+                        return (
+                            m.command === "updateImage" &&
+                            typeof m.previewId === "string" &&
+                            m.previewId.endsWith(tag)
+                        );
+                    });
+                    return `setPreviews named ${tag}; matching updateImage messages=${imageUpdates.length}`;
                 },
             );
+            const matchingImageUpdates = api
+                .getPostedMessages()
+                .filter((raw) => {
+                    const m = raw as PostedMessage;
+                    return (
+                        m.command === "updateImage" &&
+                        typeof m.previewId === "string" &&
+                        m.previewId.endsWith(tag)
+                    );
+                });
             const matched = afterAdd.previews.filter((p) => p.id.endsWith(tag));
             observations.afterAdd = {
                 previewCount: afterAdd.previews.length,
@@ -903,12 +882,13 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     captureCount: (p.captures ?? []).length,
                     firstRenderOutput: p.captures?.[0]?.renderOutput,
                 })),
+                matchingImageUpdates: matchingImageUpdates.length,
                 idsSorted: afterAdd.previews.map((p) => p.id).sort(),
             };
 
-            // Invariant B1: new id appears with at least one capture pointing
-            // to an on-disk PNG. This is the heart of "edits not updating" —
-            // if the panel says the preview exists but the PNG isn't there,
+            // Invariant B1: the new id has a capture slot and the daemon posts
+            // image bytes for it. This is the heart of "edits not updating" —
+            // if the panel says the preview exists but no updateImage arrives,
             // the user sees a placeholder card forever.
             for (const m of matched) {
                 const captures = m.captures ?? [];
@@ -916,18 +896,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     captures.length > 0,
                     `preview ${m.id} arrived with 0 captures`,
                 );
-                for (const c of captures) {
-                    const resolved = fullRenderPath(
-                        repoRoot,
-                        afterAdd.moduleDir,
-                        c.renderOutput,
-                    );
-                    assert.ok(
-                        fs.existsSync(resolved),
-                        `preview ${m.id} capture ${c.renderOutput} not on disk at ${resolved}`,
-                    );
-                }
             }
+            assert.ok(
+                matchingImageUpdates.length > 0,
+                `preview ${tag} never received an updateImage`,
+            );
         } catch (err) {
             editPhaseError = err as Error;
         } finally {
@@ -936,11 +909,10 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         if (editPhaseError) throw editPhaseError;
 
         api.resetMessages();
-        assertRefreshRendered(
-            api,
-            await api.triggerRefresh(cmpFile, true, "full"),
-            ":samples:cmp render",
-        );
+        // Revert through the production save pipeline as well. Mixing a forced
+        // refresh here with the watcher event from writeFileSync recreates the
+        // same compile-cancellation race on cleanup.
+        api.triggerSave(cmpFile);
         const afterRevert = await waitFor(
             `setPreviews after reverting ${tag}`,
             this.timeout(),
