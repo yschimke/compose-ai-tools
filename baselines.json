@@ -1396,7 +1396,7 @@
     "functionName": "SharedElementFilmstripPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
-    "sha256": "3a621e30b4e99df85ee9590de7f9fe9659e0a26d84cf146c52b83ea96e6f147c",
+    "sha256": "f56875055c838620116769457fa20bd677187acce2eec07d9104c3eca257b5d0",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
@@ -3500,7 +3500,7 @@
     "functionName": "ButtonPressed",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ButtonPressed-2ae1b0cc.png",
-    "sha256": "b4c6ee40a0d705bbc144c63079c3cdce5a865a053e7684c84b47650a2bc60ed0",
+    "sha256": "2641819d84f4750cdc5da7e3b2160e4fd370ecb98d5330841c39ebfa0327ec65",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker": {
