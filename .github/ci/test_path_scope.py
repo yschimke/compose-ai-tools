@@ -69,6 +69,18 @@ class RepositoryConfigsTest(unittest.TestCase):
         )
         self.assertFalse(any(result.values()))
 
+    def test_driver_pin_bump_runs_only_the_actions_validator(self):
+        # The export-driver pin bump is opened unattended after every release and
+        # is three lines of a data file. It matched no group and no ignore rule
+        # when it was introduced, which put it on the unknown-path fail-open route
+        # and ran the entire build suite on a routine release bump.
+        result = mod.decide(
+            [".github/design-artifacts-driver-pin.txt"], self.load("ci-paths.json")
+        )
+        self.assertEqual(
+            [group for group, on in result.items() if on], ["actions_tests"]
+        )
+
     def test_cli_change_selects_cli_and_affected_module_tests(self):
         result = mod.decide(
             ["cli/src/main/kotlin/ee/schimke/composeai/cli/Commands.kt"],

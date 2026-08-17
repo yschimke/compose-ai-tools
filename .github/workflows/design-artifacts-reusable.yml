@@ -98,7 +98,7 @@ on:
       # Same CodeQL "privileged checkout" note as `ref` above — the default is a
       # literal and no caller in this repo overrides it.
       driver-ref:
-        description: 'Deprecated compatibility input. The privileged export driver is commit-pinned by this workflow and caller-supplied refs are ignored.'
+        description: 'Deprecated compatibility input. The privileged export driver revision is decided by this workflow — the immutable release commit in .github/design-artifacts-driver-pin.txt for external callers, the caller commit for compose-ai-tools itself — and caller-supplied refs are ignored.'
         required: false
         type: string
         default: 'main'
@@ -345,7 +345,126 @@ env:
   SOURCE_REPOSITORY: ${{ github.repository }}
   SOURCE_REF_NAME: ${{ github.ref_name }}
 
+  # Which revision of compose-ai-tools' `scripts/design-artifacts/` this privileged
+  # workflow executes is resolved per-run by the "Resolve the export-driver
+  # revision" step before each driver checkout. Two answers, because the callers
+  # are in two different trust positions and were being served the wrong one:
+  #
+  #  * EXTERNAL callers get the immutable release commit recorded in
+  #    `.github/design-artifacts-driver-pin.txt`. A caller repo must not be able to
+  #    steer this workflow at a `refs/pull/*` revision of ours, which can carry
+  #    fork code. That constraint is what the pin is for and it is unchanged.
+  #
+  #  * compose-ai-tools ITSELF gets the commit the caller run is on. Its own
+  #    catalogs are supposed to publish HEAD's output — `cli-source: build` exists
+  #    precisely to render against HEAD's renderer — but the driver beside that CLI
+  #    came from the pin, so HEAD's renderer was being driven by a release-old
+  #    driver. A fix merged to `main` therefore did NOT reach our own delivery
+  #    branches until a release cut AND someone hand-bumped the pin: #4103 fixed a
+  #    missing import, and the very push that landed it still failed in `generate`
+  #    (run 32018634738) until #4106 moved the pin. That round trip is the friction
+  #    issue #4107 is about, and this is the half of it that should never have
+  #    existed. `github.repository` is the CALLER's repo and is not caller-settable,
+  #    so an external repo cannot opt into this branch; design-artifacts.yml (the
+  #    only in-repo caller) runs on schedule / dispatch / push-to-main /
+  #    workflow_call-from-release — no `pull_request` anywhere in the chain, so
+  #    `github.sha` is always a revision a repo writer put there.
+  DRIVER_PIN_REPO: yschimke/compose-ai-tools
+  DRIVER_PIN_PATH: .github/design-artifacts-driver-pin.txt
+
 jobs:
+  # Resolve, ONCE PER RUN, which compose-ai-tools commit this run's export driver
+  # comes from. Every job that checks the driver out reads this job's output, so a
+  # sharded run cannot straddle two drivers.
+  #
+  # That is the whole reason this is a job and not a step. While the revision was a
+  # literal in this file it was automatically consistent — GitHub resolves a
+  # reusable workflow once per run. Reading the pin at runtime reintroduced a
+  # window: `render-shard` reads it before rendering and `generate` would read it
+  # again after every shard finished, ~20 minutes later, so a pin bump landing in
+  # between would merge shard bundles written by the OLD driver with a NEW driver's
+  # merge/verify/export scripts. Automating the bump makes that window likelier to
+  # be hit, not less. Resolving once closes it.
+  #
+  # See the DRIVER_PIN_* env above for the trust argument. In short: an external
+  # caller gets the immutable release commit recorded in the pin file, this repo's
+  # own runs get the commit the run is on, and `github.repository` is the CALLER's
+  # repo and is not settable by a caller, so nobody can opt into the second branch.
+  #
+  # The pin is READ from the pin file rather than written into this workflow
+  # because `GITHUB_TOKEN` cannot push changes under `.github/workflows/` — there
+  # is no `workflows` scope a `permissions:` block can request — so a pin living
+  # here could not be refreshed by the release automation at all. It is read from
+  # `main`, which is exactly what the documented `@main` usage wants and is a
+  # known limitation for a caller that pinned this workflow to a tag — see the
+  # `driver` job for why that cannot currently be closed. Nothing from the pin
+  # file is executed; it names a commit, and the commit is what gets checked out.
+  driver:
+    name: ${{ inputs.system }} · driver
+    # The caller's runner, like every other job here. Hardcoding ubuntu-latest
+    # would queue forever (or be rejected) for a caller on self-hosted labels —
+    # and because every checkout job now needs this one, it would take the whole
+    # pipeline down with it rather than just itself.
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      ref: ${{ steps.driver.outputs.ref }}
+    steps:
+      - id: driver
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLER: ${{ github.repository }}
+          CALLER_SHA: ${{ github.sha }}
+          PIN_REF: main
+        run: |
+          set -euo pipefail
+          if [ "${CALLER}" = "${DRIVER_PIN_REPO}" ]; then
+            ref="${CALLER_SHA}"
+            echo "caller is ${DRIVER_PIN_REPO}; driving with the run's own commit ${ref}"
+          else
+            # KNOWN LIMITATION, and it is deliberate rather than overlooked: the
+            # pin is read from `main`, so a caller that pinned THIS WORKFLOW to a
+            # tag or SHA still tracks the newest pin instead of the one frozen at
+            # their revision. Before the pin became a data file it was a literal
+            # in this file and such a caller was fully reproducible, so this is a
+            # real (if narrow) regression for them.
+            #
+            # There is no supported way to close it. A reusable workflow cannot
+            # learn its OWN revision from the `github` context: `workflow_sha` and
+            # `workflow_ref` describe the ENTRY-POINT workflow — the caller's file
+            # in the caller's repo — and `job_workflow_sha`, which does name this
+            # file, exists only as an OIDC token claim. Reaching it would mean
+            # requesting an id-token, which every caller would have to grant
+            # `id-token: write` for; widening the permissions contract of a
+            # workflow other repos call, to serve callers who are not using it
+            # that way, is the worse trade. (An earlier revision of this PR read
+            # `github.job_workflow_sha` from the context directly — it silently
+            # evaluates to the empty string, so it always fell back here anyway.)
+            #
+            # The documented usage is `@main` (see the block at the top of this
+            # file and docs/design/DESIGN_CATALOGS.md), which this serves exactly.
+            # If a pinned caller ever needs frozen driver semantics, the way to
+            # give it to them is a `v*`-tag-constrained input naming the ref to
+            # read the pin from — constrained so a caller still cannot point it at
+            # a refs/pull/* revision.
+            ref=$(curl -fsSL \
+                    -H "Authorization: Bearer ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github.raw" \
+                    "${GITHUB_API_URL}/repos/${DRIVER_PIN_REPO}/contents/${DRIVER_PIN_PATH}?ref=${PIN_REF}" \
+                  | sed -nE 's/^sha=([0-9a-f]{40})$/\1/p' | head -n1)
+            echo "external caller; pin read at ${PIN_REF}; driving with ${ref:-<none>}"
+          fi
+          # Fail closed: an empty or malformed value must never reach `checkout`,
+          # where it would silently resolve to the default branch.
+          printf '%s' "${ref}" | grep -qE '^[0-9a-f]{40}$' || {
+            echo "::error::could not resolve a 40-hex export-driver commit (got '${ref}')"
+            exit 1
+          }
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "Export driver: \`${ref}\`" >> "$GITHUB_STEP_SUMMARY"
+
   # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
   # Two jobs that do not exist at all in the default single-shard pipeline. `shard-matrix` only
   # turns the count into a matrix (Actions has no range expression); `render-shard` is the render,
@@ -405,7 +524,13 @@ jobs:
         if: ${{ inputs.cli-source == 'released' }}
         # Security boundary: this privileged reusable workflow must not execute
         # a movable action ref. Dependabot/manual upgrades should update this SHA.
-        uses: yschimke/compose-ai-tools/.github/actions/install@c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0 at 2026-08-17
+        # This is an ORDINARY action pin, in the same category as the
+        # `actions/checkout` SHAs — it deliberately does NOT track releases. It
+        # used to be bumped in lockstep with the export-driver pin, which is what
+        # made a driver fix look like a five-line change; the driver revision is
+        # now resolved separately (see DRIVER_PIN_* at the top of this file) and
+        # this ref only needs to move when the install action itself changes.
+        uses: yschimke/compose-ai-tools/.github/actions/install@c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -442,7 +567,7 @@ jobs:
   render-shard:
     name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
     if: ${{ inputs.render-shards > 1 && inputs.module != '' && inputs.modules != 'all' }}
-    needs: [shard-matrix]
+    needs: [driver, shard-matrix]
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -477,7 +602,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same trust boundary as the non-sharded install above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0 at 2026-08-17
+        uses: yschimke/compose-ai-tools/.github/actions/install@c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -487,10 +612,10 @@ jobs:
       - name: Check out compose-ai-tools (export driver)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: yschimke/compose-ai-tools
-          # Do not honor a caller-controlled ref here: refs/pull/* in this repo
-          # can contain fork code, and this privileged workflow executes the driver.
-          ref: c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0 at 2026-08-17
+          repository: ${{ env.DRIVER_PIN_REPO }}
+          # Never a caller-supplied ref: resolved by the step above, which admits
+          # only a 40-hex commit.
+          ref: ${{ needs.driver.outputs.ref }}
           path: compose-ai-tools
           persist-credentials: false
 
@@ -678,7 +803,7 @@ jobs:
     # Skipped needs are the single-shard path, not a failure: with render-shards at its default the
     # two jobs above never run, and this job must still start. `!cancelled()` plus an explicit
     # failure check is the pattern that distinguishes "skipped" from "broke".
-    needs: [shard-matrix, render-shard]
+    needs: [driver, shard-matrix, render-shard]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
@@ -713,7 +838,7 @@ jobs:
       - name: Install compose-preview CLI
         if: ${{ inputs.cli-source == 'released' }}
         # Same immutable trust boundary as the other install steps above.
-        uses: yschimke/compose-ai-tools/.github/actions/install@c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0 at 2026-08-17
+        uses: yschimke/compose-ai-tools/.github/actions/install@c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0
         with:
           version: ${{ inputs.cli-version }}
           catalog-key: ${{ inputs.catalog-key }}
@@ -725,10 +850,10 @@ jobs:
       - name: Check out compose-ai-tools (export driver)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: yschimke/compose-ai-tools
-          # Never execute a caller-selected refs/pull/* revision in this
-          # privileged workflow. Update this alongside the other driver pin.
-          ref: c9903031d28b7a3d6e5f53f159ec1d3155f2ff59 # v1.12.0 at 2026-08-17
+          repository: ${{ env.DRIVER_PIN_REPO }}
+          # Never a caller-supplied ref: resolved by the step above, which admits
+          # only a 40-hex commit.
+          ref: ${{ needs.driver.outputs.ref }}
           path: compose-ai-tools
           persist-credentials: false
 
