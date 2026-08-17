@@ -22,6 +22,14 @@ There is **no published artifact** for this player. Upstream declares the module
 `SoftwareType.TEST_APPLICATION` — an integration-test app — so the player ships only as sources
 inside it. Vendoring is the only way to depend on it.
 
+> **Stale as of 2026-08-17.** The player has since moved to
+> `compose/remote/remote-player-compose`, which is a `PUBLISHED_LIBRARY`, so the path above is the
+> pin's path and not where a refresh reads from. It is not yet *shipped* — alpha17's sources jar
+> carries no `embedded` package — and every entry point is `@RestrictTo(LIBRARY_GROUP)`, so
+> vendoring is still required. See [UPSTREAM_FIXES.md](UPSTREAM_FIXES.md) for the full three-way
+> review: what upstream has changed since this pin, which local deltas upstream has already taken,
+> and which are still live bugs to report.
+
 ## What is vendored
 
 The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 upstream files,
