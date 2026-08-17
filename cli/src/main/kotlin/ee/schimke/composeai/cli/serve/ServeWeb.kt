@@ -572,9 +572,15 @@ object ServeWeb {
   }
 
   /**
-   * The minimal site footer — source, `/version`, "report a bug", and the running build — rendered
+   * The minimal site footer — GitHub, `/version`, "report a bug", and the running build — rendered
    * by [document] at the bottom of **every** browser-facing page, below the body. [version]
    * null/blank just drops the build span; the other entries stay, so the footer is never empty.
+   *
+   * The **GitHub** entry — the repo that ships this server — is the site's only link to it; the
+   * header used to carry a second copy (see [siteHeader]). It reads "GitHub" rather than the
+   * "source" it once did, because it opens the repo's front page, and the label "source" is already
+   * spoken for by [sourceLinkHtml], the per-preview link that opens the *file* a preview is
+   * declared in. Two links a click apart, both saying "source", went to different kinds of place.
    *
    * [note] is the page's own footer block, rendered *above* the links row: on a catalog landing
    * that's the provenance disclosure ([provenanceSection]), which belongs with the build/source
@@ -601,7 +607,7 @@ object ServeWeb {
     return """
       <footer class="cp-site-footer">
 $noteBlock        <div class="cp-site-footer-links">
-          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·$report
+          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON GitHub</a> ·$report
           <a href="/version">/version</a>$ver
         </div>
       </footer>
@@ -665,6 +671,13 @@ $noteBlock        <div class="cp-site-footer-links">
    * bar is where a visitor already looks for navigation. It used to be the first line of the page
    * BODY, which spent a whole row — plus its margin — restating the header's own job and pushed the
    * thing the page exists to show (the render) further below the fold on every viewer.
+   *
+   * The nav panel carries only what is *about this server's pages*: **Status**, the GitHub session
+   * control ([action]), and **Settings**. Two entries used to sit alongside them and no longer do.
+   * A "Catalogs" link, because it went to `/` — exactly where the brand beside it already goes, so
+   * the bar offered the same destination twice. And a "GitHub" link to the repo that ships the
+   * server, which is a fact *about the software*, not a way around the site: it belongs with the
+   * build number and the bug report, so it lives in [siteFooter] instead.
    */
   private fun siteHeader(
     navSuffix: String,
@@ -730,10 +743,8 @@ $noteBlock        <div class="cp-site-footer-links">
               aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
           </details>
           <div class="cp-site-menu-panel" id="cp-site-menu-panel">
-            <a href="/$navSuffix">Catalogs</a>
             <a class="cp-site-status-link" id="cp-status-link" href="/status$navSuffix">Status<span
-              class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
-            <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
+              class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>$actionHtml
             ${settingsMenuHtml().prependIndent("            ").trimStart()}
           </div>
         </nav>
