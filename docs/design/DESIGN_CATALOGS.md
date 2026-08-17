@@ -477,18 +477,27 @@ as a hairline; driven, it draws the full ring.
 - **Android** sends an *indirect* pointer event (`sendIndirectPointerEvent`) —
   the XR-Glasses channel, which routes to the focused composable. If no
   indirect-pointer modifier consumes the event, the renderer falls back to a
-  focused `DPAD_CENTER` key-down. Wear M3 attempts that path: its `Button` is built
+  focused `DPAD_CENTER` key-down. Wear M3 takes that path: its `Button` is built
   from `combinedClickable`, which owns focused key input but has no
-  indirect-pointer handler. Robolectric does not reliably deliver that focused
-  key path to Wear M3, so the catalog specimen retains a held interaction-source
-  fallback instead of publishing a focus-only image as pressed.
+  indirect-pointer handler.
 - **CMP/desktop** has no indirect-pointer channel, so the renderer dispatches an
   ordinary pointer down onto the focused element's bounds. Hit-tested like a
   real click, so the pressed state can only appear if the component itself
   consumed it.
-- **Wear M3** keeps a narrowly scoped held `MutableInteractionSource` for its
-  `ButtonPressed` catalog specimen. A pixel guard ensures the pressed capture
-  differs from focus-only across the button container.
+
+Seeding a held `PressInteraction` onto a hand-made `MutableInteractionSource` is
+not an alternative to any of that, and on Android it is not even a *visible*
+one. Wear M3's sole press affordance is `material-ripple`, which on Android is a
+platform `RippleDrawable` animated on the Choreographer rather than on Compose's
+`mainClock` — and `RobolectricRenderTest` idles the main looper to settle that
+drawable only for a `focus.pressed` capture. `:samples:design-catalog-wear-m3`'s
+`ButtonPressed` carried such a seeded source until it was found to be rendering
+pixel-identical to the resting `FilledButton`; it now uses
+`@FocusedPreview(indices = [0], pressed = true)` like every other pressed
+specimen. `WearFocusedPressPixelTest` is the guard — the pressed capture must
+differ from *both* the focused and the resting one across the button container,
+so a specimen that quietly stops pressing fails rather than publishing a
+resting image as pressed.
 
 Note `pressed = true` necessarily focuses *and* presses, so a pressed capture may
 carry a focus indicator alongside the pressed state layer; Material's state layer

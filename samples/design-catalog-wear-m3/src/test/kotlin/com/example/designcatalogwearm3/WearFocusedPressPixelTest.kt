@@ -19,9 +19,12 @@ class WearFocusedPressPixelTest {
     val focusedImage = ImageIO.read(focused)
     val restingImage = ImageIO.read(resting)
 
-    // This point is inside the rounded container and outside both labels. A synthetic focused key
-    // press does not reliably reach Wear M3's combinedClickable under Robolectric, producing the
-    // same #D4C8EC pixel in both captures. The catalog's seeded press must keep them distinct.
+    // This point is inside the rounded container of all three captures and outside every label, so
+    // it reads the container fill rather than glyph pixels. The three states must land on three
+    // different fills: resting #E9DDFF, focused #D4C8EC (Compose draws the focus state layer
+    // itself), pressed #C2B5DB (Wear M3's only press affordance is `material-ripple`, a platform
+    // `RippleDrawable` the renderer settles only on a `@FocusedPreview(pressed = true)` capture —
+    // a hand-seeded `PressInteraction` renders as #E9DDFF, i.e. as no press at all).
     val x = 30
     val y = 68
     assertThat(pressedImage.getRGB(x, y)).isNotEqualTo(focusedImage.getRGB(x, y))
