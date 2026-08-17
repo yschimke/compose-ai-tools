@@ -112,10 +112,16 @@ The focused Storybook-like component viewing experience.
 - [x] Fit-width/full-size toggle
 - [x] Theme selector
 - [x] Background selector: light, dark, and transparent
-- [x] Interactive preview automatically when a CMP Wasm renderer is available
+- [ ] Interactive preview automatically when a CMP Wasm renderer is available
+  Withdrawn: the page opens on the catalog's baked snapshot, the same rendering Dev mode shows.
+  Auto-entering the in-browser app made the published artifact the one thing the browser never
+  displayed, and it bypassed the viewer's "wait for the snapshot to land" gate — which cancelled
+  the in-flight render and left every component page blank (#4091). `?mode=wasm` still pins the
+  lane, and Dev mode carries the renderer combo.
 - [x] Authored component controls such as text, boolean, enum, and numeric properties
 - [x] Motion tab or control when the component publishes a motion sample
-- [x] Automatically start CMP Wasm live mode, with the baked snapshot as its loading/error fallback
+- [ ] Automatically start CMP Wasm live mode, with the baked snapshot as its loading/error fallback
+  Withdrawn with the item above: the snapshot is the default rendering, not the fallback.
 - [ ] Automatically start recorded animations
 - [ ] Renderer/backend selector
 - [ ] Backend status badge
