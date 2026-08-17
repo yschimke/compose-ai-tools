@@ -34,6 +34,6 @@
 # Maintained by .github/scripts/refresh-driver-pin.sh, which is run for you by
 # .github/workflows/refresh-driver-pin.yml after each release. `--check` (run by
 # ci.yml) enforces the shape below, so keep the three keys and their spelling.
-sha=863c83485a9eb69e7a128cc5549d0236e154138c
-tag=v1.13.0
+sha=7b5cb91e5ccd45702cb680cfedaceb287e88f6f0
+tag=v1.14.0
 date=2026-08-17
