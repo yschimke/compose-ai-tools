@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
+    "generatedFrom": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2658,6 +2658,15 @@
             "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
             "versions": [
                 {
+                    "blob": "3493cd7f3eea7596cb6a607efd4cc8a37db67386",
+                    "commit": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
+                    "date": "2026-08-17T08:17:58Z",
+                    "sourceSha": "ba309d9d",
+                    "sinceCommit": "bfd1e1b6c76d66634d7d411a9f6f92cde6c4afc1",
+                    "commits": 2,
+                    "occurrences": 2
+                },
+                {
                     "blob": "6d5a576bfdbbc10950fc71227316a55aaee6e480",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -2823,13 +2832,6 @@
                     "commits": 1
                 },
                 {
-                    "blob": "3493cd7f3eea7596cb6a607efd4cc8a37db67386",
-                    "commit": "bfd1e1b6c76d66634d7d411a9f6f92cde6c4afc1",
-                    "date": "2026-08-16T09:15:11Z",
-                    "sourceSha": "7b9c6afb",
-                    "commits": 1
-                },
-                {
                     "blob": "5b6825748d4925e008c1fec34a7b430038bed802",
                     "commit": "1bea1b0ed3c1b9d5a4e33f6296a67b1b064425fa",
                     "date": "2026-08-16T08:54:33Z",
@@ -2851,9 +2853,9 @@
                     "commits": 1
                 }
             ],
-            "observations": 44,
+            "observations": 45,
             "unstable": true,
-            "flapCount": 19
+            "flapCount": 20
         },
         "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
             "path": "renders/samples:android/ContainerTransformAnimatedPreview_Container_Transform-7b9dc97b.gif",
@@ -6960,6 +6962,13 @@
             "path": "renders/samples:design-catalog-wear-m3/ButtonPressed-2ae1b0cc.png",
             "versions": [
                 {
+                    "blob": "265e04d42ed373ed12710899d329f801ff599b3a",
+                    "commit": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
+                    "date": "2026-08-17T08:17:58Z",
+                    "sourceSha": "ba309d9d",
+                    "commits": 1
+                },
+                {
                     "blob": "25f9ce6c93c78170b8f578d955e493ab68d8bb43",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -6967,7 +6976,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
