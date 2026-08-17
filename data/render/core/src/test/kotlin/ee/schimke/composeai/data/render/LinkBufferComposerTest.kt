@@ -37,6 +37,7 @@ class LinkBufferComposerTest {
     assertFalse(LinkBufferComposer.requested(null))
     assertFalse(LinkBufferComposer.requested(""))
     assertFalse(LinkBufferComposer.requested("   "))
+    assertEquals(LinkBufferComposer.Request.Off, LinkBufferComposer.request(null))
   }
 
   @Test
@@ -44,6 +45,14 @@ class LinkBufferComposerTest {
     assertTrue(LinkBufferComposer.requested("true"))
     assertTrue(LinkBufferComposer.requested(" TRUE "))
     assertFalse(LinkBufferComposer.requested("false"))
+    assertEquals(LinkBufferComposer.Request.Required, LinkBufferComposer.request("true"))
+    assertEquals(LinkBufferComposer.Request.Off, LinkBufferComposer.request("false"))
+  }
+
+  @Test
+  fun autoIsRequestedButNotRequired() {
+    assertTrue(LinkBufferComposer.requested(LinkBufferComposer.AUTO))
+    assertEquals(LinkBufferComposer.Request.Preferred, LinkBufferComposer.request(" AUTO "))
   }
 
   @Test
@@ -52,6 +61,8 @@ class LinkBufferComposerTest {
       runCatching { LinkBufferComposer.requested("ture") }.exceptionOrNull()
         as? IllegalArgumentException
     assertTrue(failure!!.message!!.contains(LinkBufferComposer.PROPERTY))
+    // Names the third value too, or `auto` is undiscoverable from the one message that lists them.
+    assertTrue(failure.message!!.contains(LinkBufferComposer.AUTO))
   }
 
   @Test
@@ -109,6 +120,34 @@ class LinkBufferComposerTest {
   }
 
   @Test
+  fun autoEnablesTheFlagWhereTheRuntimeHasIt() {
+    val loader = FlagsClassLoader()
+
+    assertEquals(
+      LinkBufferComposer.Outcome.Enabled,
+      LinkBufferComposer.applyIfRequested(loader, LinkBufferComposer.AUTO),
+    )
+    assertTrue(loader.flagValue())
+  }
+
+  @Test
+  fun autoRendersOnWhateverComposerARuntimeWithoutTheFlagHas() {
+    // The module this exists for: `:samples:sdk-matrix` pins the `compose-bom-compat` floor on
+    // purpose, so a repo-wide opt-in has to survive it rather than fail the whole render.
+    assertEquals(
+      LinkBufferComposer.Outcome.Unavailable,
+      LinkBufferComposer.applyIfRequested(object : ClassLoader(null) {}, LinkBufferComposer.AUTO),
+    )
+    assertEquals(
+      LinkBufferComposer.Outcome.Unavailable,
+      LinkBufferComposer.applyIfRequested(
+        FlagsClassLoader("isSomethingElse"),
+        LinkBufferComposer.AUTO,
+      ),
+    )
+  }
+
+  @Test
   fun describeIsSilentUnlessTheOptInIsOn() {
     val previous = System.getProperty(LinkBufferComposer.PROPERTY)
     try {
@@ -121,6 +160,30 @@ class LinkBufferComposerTest {
 
       // A lane that renders many previews per JVM says it once, not once per capture.
       assertNull(LinkBufferComposer.applyAndDescribe(FlagsClassLoader()))
+    } finally {
+      if (previous == null) System.clearProperty(LinkBufferComposer.PROPERTY)
+      else System.setProperty(LinkBufferComposer.PROPERTY, previous)
+    }
+  }
+
+  /**
+   * The degrade is announced, not swallowed. `auto` trades the build failure for a render on the
+   * old composer — if it also traded away the notice, a module could drift below the Compose floor
+   * and go on reporting renders that never exercised the composer the run asked for, which is the
+   * one outcome this whole class is built to prevent.
+   */
+  @Test
+  fun describeSaysSoWhenAutoFoundNoFlagToSet() {
+    val previous = System.getProperty(LinkBufferComposer.PROPERTY)
+    try {
+      System.setProperty(LinkBufferComposer.PROPERTY, LinkBufferComposer.AUTO)
+      val flagless = object : ClassLoader(null) {}
+
+      val notice = LinkBufferComposer.applyAndDescribe(flagless)
+      assertTrue(notice!!.contains(LinkBufferComposer.FLAG_FIELD))
+
+      // Once per JVM, like the opt-in's own notice.
+      assertNull(LinkBufferComposer.applyAndDescribe(flagless))
     } finally {
       if (previous == null) System.clearProperty(LinkBufferComposer.PROPERTY)
       else System.setProperty(LinkBufferComposer.PROPERTY, previous)

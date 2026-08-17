@@ -147,4 +147,51 @@ abstract class RobolectricRenderTask : Test() {
 internal fun configureRenderTaskReporting(task: org.gradle.api.tasks.testing.Test) {
   task.defaultCharacterEncoding = "UTF-8"
   task.reports.html.required.set(false)
+  task.addTestOutputListener(ComposerNoticeListener())
+}
+
+/**
+ * The marker every `LinkBufferComposer` notice carries — the runtime flag's own field name. Matched
+ * as a literal rather than referencing `LinkBufferComposer.FLAG_FIELD`: the plugin does not depend
+ * on `:data-render-core` (it forwards `composeai.render.*` by name, see
+ * [AndroidPreviewClasspath.buildSystemProperties]), and this keeps that direction of the dependency
+ * graph unchanged for one string.
+ */
+private const val COMPOSER_NOTICE_MARKER = "isLinkBufferComposerEnabled"
+
+/**
+ * Promotes the render JVM's "which composer drew this?" notice onto the build log.
+ *
+ * Needed because of an asymmetry between the lanes. The desktop renderer is a forked process whose
+ * stderr passes straight through, so its notice lands in the build output. This lane renders inside
+ * a Gradle `Test` worker, and Gradle *captures* a passing test's streams into the JUnit XML rather
+ * than printing them — so the notice reached `build/test-results/…` and nowhere a person looks.
+ *
+ * That is fine for chatter, and wrong for this line specifically.
+ * `composeai.render.linkBufferComposer=auto` trades the hard failure for a render on whatever
+ * composer the runtime has, and the *only* thing keeping that from being the silently-ignored
+ * opt-in `LinkBufferComposer` refuses to be is the notice being visible. A degrade nobody sees is
+ * the failure mode, not the fallback.
+ *
+ * Forwards just the matching lines rather than setting `testLogging.showStandardStreams`, which
+ * would carry every Robolectric warning in the batch along with them, and de-duplicates: the
+ * announcement is once per Robolectric sandbox, so a sharded module would otherwise repeat one
+ * identical line per shard.
+ */
+private class ComposerNoticeListener : org.gradle.api.tasks.testing.TestOutputListener {
+
+  private val seen = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+  override fun onOutput(
+    descriptor: org.gradle.api.tasks.testing.TestDescriptor,
+    event: org.gradle.api.tasks.testing.TestOutputEvent,
+  ) {
+    for (line in event.message.lineSequence()) {
+      val trimmed = line.trim()
+      if (!trimmed.contains(COMPOSER_NOTICE_MARKER)) continue
+      if (seen.add(trimmed)) {
+        org.gradle.api.logging.Logging.getLogger("compose-preview").lifecycle(trimmed)
+      }
+    }
+  }
 }

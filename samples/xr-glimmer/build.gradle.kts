@@ -58,9 +58,11 @@ dependencies {
   // Glimmer's alpha line drags Compose forward and conflict resolution takes the higher version.
   // A stale version in a comment is worse than none — it was read as evidence that this module
   // sits below the Compose 1.11.0 floor where `ComposeRuntimeFlags.isLinkBufferComposerEnabled`
-  // does not exist, and therefore that the repo-wide `composePreview.linkBufferComposer=true`
+  // does not exist, and therefore that the repo-wide `composePreview.linkBufferComposer`
   // (gradle.properties, see docs/LINK_BUFFER_COMPOSER.md) would abort this module's renders.
-  // It does not: `./gradlew :samples:xr-glimmer:composePreviewRenderAll` renders clean.
+  // It does not — and since that default is now `auto`, a module below the floor degrades to the
+  // old composer with a notice rather than aborting anyway:
+  // `./gradlew :samples:xr-glimmer:composePreviewRenderAll` renders clean.
   // Check the resolved graph, not this comment:
   //   ./gradlew :samples:xr-glimmer:dependencies --configuration debugRuntimeClasspath
   implementation(platform(libs.compose.bom.stable))

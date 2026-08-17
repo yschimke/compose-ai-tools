@@ -262,6 +262,19 @@ class AndroidPreviewClasspathTest {
         )
       )
       .containsEntry("composeai.render.linkBufferComposer", "true")
+    // `auto` has to survive the trip verbatim rather than being coerced to a boolean on the way:
+    // it is the repo's own default, and the whole difference between it and `true` is what the
+    // render JVM does when the runtime has no such flag.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          linkBufferComposer = "auto",
+        )
+      )
+      .containsEntry("composeai.render.linkBufferComposer", "auto")
     // An opt-in stays opt-in: nothing asked for, the runtime keeps its own default.
     assertThat(
         AndroidPreviewClasspath.buildSystemProperties(

@@ -18,24 +18,62 @@ Gradle invocation.
 
 **On for this repo's own renders, off for consumers of the published plugin.** The plugin's default
 is off — nothing renders differently in a downstream project until it asks — while this repo sets
-`composePreview.linkBufferComposer=true` in [gradle.properties](../gradle.properties), so every
-catalog we render goes through the new composer. Same shape as the neighbouring
-`composePreview.classpathDuplicates=fail`: we hold our own renders to the stricter setting.
+`composePreview.linkBufferComposer=auto` in [gradle.properties](../gradle.properties), so every
+catalog whose Compose runtime exposes the flag goes through the new composer. Same shape as the
+neighbouring `composePreview.classpathDuplicates=fail`: we hold our own renders to the stricter
+setting.
+
+The qualifier is load-bearing, not hedging: the modules pinned below the flag's version floor —
+`:samples:sdk-matrix`, deliberately, see below — render on the old composer and are **not** part of
+the A/B, so a repo-wide render is not by itself complete coverage of it. Each such module says so in
+the build log; `-PcomposePreview.linkBufferComposer=true` is how you make the build refuse to render
+one at all.
 
 That asymmetry is not timidity, it is a version floor. `isLinkBufferComposerEnabled` **only exists
 from Compose 1.11.0** — 1.9.5 and 1.10.x ship the `ComposeRuntimeFlags` class *without* the field —
 and the published renderer's compat floor is `compose-bom-compat`. Since an opt-in the runtime
 cannot honour is a hard render failure by design, a consumer-facing default-on would break every
-project below 1.11. Flipping it for consumers therefore needs a semantics change first: an
-*implicit* default that degrades silently on an old runtime, while an *explicit* `-P` / `-D` request
-keeps failing loudly. We are on runtime 1.11.4 (Android) / 1.11.2 (desktop), so both of our lanes
+project below 1.11. We are on runtime 1.11.4 (Android) / 1.11.2 (desktop), so both of our lanes
 have it.
+
+### `true`, `auto`, `false`
+
+The three values differ only in what happens on a runtime with no such flag:
+
+| Value | Runtime has the flag | Runtime does not |
+| --- | --- | --- |
+| `true` | enables it | **fails the render**, naming the flag |
+| `auto` | enables it | renders on the old composer, and says so once per render JVM |
+| `false` (plugin default) | leaves the runtime's own default | same |
+
+`auto` is what a **repo-wide** value wants, and it is what [gradle.properties](../gradle.properties)
+sets. One property spans every module, and this repo deliberately keeps
+[`:samples:sdk-matrix`](../samples/sdk-matrix/build.gradle.kts) on the `compose-bom-compat` floor to
+keep the renderer's compat claims exercised. Under a repo-wide `true` that module — doing exactly
+its job — failed every `composePreviewRender`, taking the `preview-baselines` compose pipeline and
+every `sdk-matrix.yml` cell with it, and had to pin `composeai.render.linkBufferComposer=false` onto
+its own `Test` tasks to survive the default meant for everyone else.
+
+`auto` is **not** the silently-ignored opt-in the strictness exists to prevent. The degrade is
+announced on stderr, once per render JVM, in the same place and on the same terms as the opt-in's
+own notice:
+
+```
+compose-preview: -Dcomposeai.render.linkBufferComposer=auto, but this render's Compose runtime has
+no androidx.compose.runtime.ComposeRuntimeFlags.isLinkBufferComposerEnabled (it needs Compose 1.11.x
+or newer) — rendering on the composer this runtime ships with. Pass
+-Dcomposeai.render.linkBufferComposer=true to make that a failure instead.
+```
+
+What `auto` drops is the build failure, not the report. Reach for `true` when the new composer is
+the *point* of the run — an A/B, or a bisect — and a module quietly sitting it out would invalidate
+the answer.
 
 | Where | Form | Note |
 | --- | --- | --- |
-| One run, command line | `-PcomposePreview.linkBufferComposer=<bool>` | **In this repo pass `false`** — `true` is already the default |
-| One run, render JVM directly | `-Dcomposeai.render.linkBufferComposer=<bool>` | Highest precedence |
-| Durable, per module | `composePreview { linkBufferComposer = true }` | How a *consumer* project turns it on |
+| One run, command line | `-PcomposePreview.linkBufferComposer=true\|auto\|false` | **In this repo pass `false`** for the old composer — `auto` is already the default |
+| One run, render JVM directly | `-Dcomposeai.render.linkBufferComposer=true\|auto\|false` | Highest precedence |
+| Durable, per module | `composePreview { linkBufferComposer = true }` | How a *consumer* project turns it on. Boolean only: `true` here is the strict one, since a module-scoped opt-in has a single Compose version to be true of |
 
 Precedence is the usual one: system property, then Gradle property, then the DSL value — the same
 chain `hostTheme` and `fixedTime` use, resolved by `composeAiLinkBufferComposer`.
