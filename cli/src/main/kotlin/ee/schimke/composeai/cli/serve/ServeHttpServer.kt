@@ -272,6 +272,14 @@ class ServeHttpServer(
    * null for a server with no catalog store, whose branch-read count is not zero but undefined.
    */
   private val branchFetchStats: (() -> BranchFetchSnapshot?)? = null,
+  /** Cross-catalog optimizer admission for `/status.json`, read from the shared background-work. */
+  private val themeOptimizerStats: (() -> ThemeOptimizerAdmissionSnapshot?)? = null,
+  /**
+   * The shared background-work handle, for the admin pause/resume routes. Separate from
+   * [themeOptimizerStats] because reading counters is safe on any server while standing the
+   * optimizer down is an operator action and wants the admin token.
+   */
+  private val themeOptimizerAdmin: ServeBackgroundWork? = null,
   /**
    * Per-caller budget on the compile lane (issue #3214), or null to leave it unmetered. Every other
    * playground bound is a whole-host one, so without this two callers issuing back-to-back compiles
@@ -850,6 +858,48 @@ class ServeHttpServer(
         // on a running box, and every mutation is written back to `catalogs.json` so it survives a
         // restart. Registered ONLY when both an admin implementation and an `--admin-token` are
         // present, so a server that didn't opt in has no admin surface to find.
+        if (themeOptimizerAdmin != null && !adminToken.isNullOrBlank()) {
+          val optimizer = themeOptimizerAdmin
+          // Stand the optimizer down for a while, without a restart.
+          //
+          // Restarting was the only lever before, and it is the worst one available while a box is
+          // struggling: it throws away every warm daemon and re-runs every catalog load, which is
+          // precisely the work that made the box slow. `minutes` is bounded so a fat-fingered pause
+          // cannot silently disable the cache for a week.
+          post("/admin/theme-optimization/pause") {
+            if (rejectBadAdminToken()) return@post
+            val minutes =
+              call.request.queryParameters["minutes"]?.toLongOrNull()
+                ?: DEFAULT_OPTIMIZER_PAUSE_MINUTES
+            if (minutes <= 0 || minutes > MAX_OPTIMIZER_PAUSE_MINUTES) {
+              call.respondText(
+                "minutes must be 1..$MAX_OPTIMIZER_PAUSE_MINUTES",
+                status = HttpStatusCode.BadRequest,
+              )
+              return@post
+            }
+            val reason = call.request.queryParameters["reason"].orEmpty().ifBlank { "admin" }
+            val until = optimizer.pauseOptimizers(minutes * 60_000L, reason)
+            call.respondText(
+              Json.encodeToString(
+                OptimizerPauseDto.serializer(),
+                OptimizerPauseDto(paused = true, pausedUntilEpochMillis = until, reason = reason),
+              ),
+              ContentType.Application.Json,
+            )
+          }
+          post("/admin/theme-optimization/resume") {
+            if (rejectBadAdminToken()) return@post
+            optimizer.resumeOptimizers()
+            call.respondText(
+              Json.encodeToString(
+                OptimizerPauseDto.serializer(),
+                OptimizerPauseDto(paused = false, pausedUntilEpochMillis = null, reason = null),
+              ),
+              ContentType.Application.Json,
+            )
+          }
+        }
         if (adminEnabled) {
           val admin = catalogAdmin!!
           get("/admin/catalogs") {
@@ -4229,6 +4279,9 @@ class ServeHttpServer(
         // would both fire a site's monitor on a neighbour's throttle and disclose that the
         // neighbour exists, which is the one thing a top-level site is for.
         branchFetch = if (onlySystem == null) branchFetchStats?.invoke() else null,
+        // Box-wide and unattributed per system, so scoped out on a site host for the same reason
+        // the branch counters are.
+        themeOptimizer = if (onlySystem == null) themeOptimizerStats?.invoke() else null,
         renderStats =
           RenderPerfSnapshot.aggregate(
             // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something
@@ -6981,6 +7034,16 @@ class ServeHttpServer(
     /** `Retry-After` for a refused capture whose branch host named no interval of its own. */
     private const val MOTION_DEFAULT_RETRY_AFTER_SECONDS = 5L
 
+    /** Pause length when the caller names none. Long enough to ride out a burst of traffic. */
+    private const val DEFAULT_OPTIMIZER_PAUSE_MINUTES = 30L
+
+    /**
+     * Longest pause the route will take. A pause is a *deferral*, not a disable — turning the cache
+     * off for good is `--no-theme-optimization`, which survives a restart and is visible in the
+     * config rather than as an unexplained quiet server days later.
+     */
+    private const val MAX_OPTIMIZER_PAUSE_MINUTES = 24L * 60L
+
     /**
      * Caching for the prebaked image lanes: `/hero/` and `?thumb=` on the render lane.
      *
@@ -7129,6 +7192,14 @@ private data class StatusResponse(
    * revision never published.
    */
   val branchFetch: BranchFetchSnapshot? = null,
+  /**
+   * Cross-catalog optimizer admission ([ThemeOptimizerAdmissionSnapshot]).
+   *
+   * Sits beside the per-catalog `catalogList[].themeOptimization` rows and answers what those
+   * cannot: how many passes are *inside* the door versus parked at it. A box where every catalog
+   * reports "running" and nothing progresses looks identical, per catalog, to a box doing fine.
+   */
+  val themeOptimizer: ThemeOptimizerAdmissionSnapshot? = null,
   /**
    * Server-wide render-latency roll-up across the running live daemons (see
    * [RenderPerfSnapshot.aggregate] — counts sum, `firstRenderMs` is the worst first render,
@@ -7700,4 +7771,12 @@ private data class BundleAcceptedResponse(
    * this tells the uploader whether the server would treat the bundle as trusted.
    */
   val trust: String,
+)
+
+/** Reply from the optimizer pause/resume admin routes. */
+@Serializable
+private data class OptimizerPauseDto(
+  val paused: Boolean,
+  val pausedUntilEpochMillis: Long? = null,
+  val reason: String? = null,
 )

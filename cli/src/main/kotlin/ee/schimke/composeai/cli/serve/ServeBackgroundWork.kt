@@ -1,9 +1,12 @@
 package ee.schimke.composeai.cli.serve
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.serialization.Serializable
 
 /**
  * Server-wide admission for **background, best-effort catalog work** — today the catalog
@@ -36,11 +39,37 @@ class ServeBackgroundWork(
    */
   maxConcurrentRenders: Int = CONSERVATIVE_MAX_CONCURRENT_RENDERS,
   private val clock: () -> Long = System::currentTimeMillis,
+  /**
+   * How many catalogs may be **inside an optimizer pass** at once, server-wide.
+   *
+   * [withRenderPermit] bounds the renders; nothing bounded the *passes*, and those are not the same
+   * thing. A pass that holds no render permit is still holding a turn, a warm daemon and a live
+   * seat, and is still queueing — so on the deployed box every loaded catalog entered its pass
+   * within half a second of the gate opening (measured: 11 catalogs inside 464 ms) and then 15 of
+   * them contended for 8 render permits. The result was 64% of all optimizer time spent waiting on
+   * that permit and 43.5% of what remained spent *re-warming* daemons that got yielded before they
+   * rendered anything: 10,120 entries with 8 cached after half an hour, an ETA of 21 days.
+   *
+   * Capping the passes fixes what capping the renders cannot. Two at a time still saturates an
+   * 8-permit render lane (each pass batches up to five wide), while leaving the rest parked cheaply
+   * instead of parked expensively.
+   */
+  maxConcurrentOptimizers: Int = DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
 ) {
   private val loadsInFlight = AtomicInteger()
   private val initialLoadPending = AtomicBoolean(false)
   private val renderPermits = Semaphore(maxConcurrentRenders.coerceAtLeast(1))
   private val lastCatalogLoadFinishedAt = AtomicLong(Long.MIN_VALUE)
+
+  private val optimizerLanes = maxConcurrentOptimizers.coerceAtLeast(1)
+  private val optimizerPermits = Semaphore(optimizerLanes, true)
+  private val optimizerRunning = ConcurrentHashMap.newKeySet<String>()
+  private val optimizerWaiting = AtomicInteger()
+  private val optimizerAdmissions = AtomicLong()
+  private val optimizerRefusals = AtomicLong()
+  private val optimizerAdmissionWaitMillis = AtomicLong()
+  private val optimizerPausedUntil = AtomicLong(Long.MIN_VALUE)
+  private val optimizerPauseReason = ConcurrentHashMap<String, String>()
 
   /**
    * True while the server is bringing catalogs up: the startup pass hasn't finished, or a refresh /
@@ -102,6 +131,100 @@ class ServeBackgroundWork(
    * Run one background render under the server-wide permit. Returns null — and leaves the thread
    * interrupted — when the wait was interrupted (shutdown), which the caller treats as "stop".
    */
+  /**
+   * Hold one of the [maxConcurrentOptimizers] pass slots for [system] while [block] runs, or return
+   * null when none came free within [waitMillis] (or the optimizer is paused, or the thread was
+   * interrupted).
+   *
+   * Refusal is the *point*, not a failure: a catalog that cannot get a slot parks and tries again
+   * on the next pass instead of joining a queue with a warm daemon in hand. The wait is bounded so
+   * a parked catalog re-checks the idle gate rather than sleeping through the quiet window it was
+   * waiting for.
+   */
+  fun <T : Any> withOptimizerSlot(system: String, waitMillis: Long, block: () -> T): T? {
+    if (optimizersPaused()) {
+      optimizerRefusals.incrementAndGet()
+      return null
+    }
+    val waitedFrom = clock()
+    optimizerWaiting.incrementAndGet()
+    val acquired =
+      try {
+        optimizerPermits.tryAcquire(waitMillis.coerceAtLeast(0), TimeUnit.MILLISECONDS)
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        false
+      } finally {
+        optimizerWaiting.decrementAndGet()
+      }
+    optimizerAdmissionWaitMillis.addAndGet((clock() - waitedFrom).coerceAtLeast(0))
+    if (!acquired) {
+      optimizerRefusals.incrementAndGet()
+      return null
+    }
+    // Re-checked under the permit: a pause can land while this catalog was queueing, and admitting
+    // it then would let one pass slip past an operator who just asked for quiet.
+    if (optimizersPaused()) {
+      optimizerPermits.release()
+      optimizerRefusals.incrementAndGet()
+      return null
+    }
+    optimizerAdmissions.incrementAndGet()
+    optimizerRunning.add(system)
+    return try {
+      block()
+    } finally {
+      optimizerRunning.remove(system)
+      optimizerPermits.release()
+    }
+  }
+
+  /**
+   * Stop admitting optimizer passes for [millis], and ask the ones already running to stop at their
+   * next check ([optimizersPaused]).
+   *
+   * The operational hole this fills: the optimizer is the largest consumer of a busy box and there
+   * was no way to stand it down. Restarting the server did it, at the cost of every warm daemon and
+   * every catalog's load — so the lever people actually had was the one they least wanted to pull
+   * while the box was already struggling. [reason] is recorded for `/status.json` so a quiet server
+   * explains itself rather than looking broken.
+   *
+   * Returns the epoch instant the pause lifts.
+   */
+  fun pauseOptimizers(millis: Long, reason: String): Long {
+    val until = clock() + millis.coerceAtLeast(0)
+    optimizerPausedUntil.set(until)
+    optimizerPauseReason["reason"] = reason.take(MAX_PAUSE_REASON_CHARS)
+    return until
+  }
+
+  /** Lift a pause early. */
+  fun resumeOptimizers() {
+    optimizerPausedUntil.set(Long.MIN_VALUE)
+    optimizerPauseReason.clear()
+  }
+
+  /** Whether optimizer passes are currently stood down. Cheap enough for a per-batch check. */
+  fun optimizersPaused(): Boolean = clock() < optimizerPausedUntil.get()
+
+  /** Counters for `/status.json`; see [ThemeOptimizerAdmissionSnapshot]. */
+  fun optimizerAdmissionSnapshot(): ThemeOptimizerAdmissionSnapshot {
+    val until = optimizerPausedUntil.get()
+    val paused = clock() < until
+    return ThemeOptimizerAdmissionSnapshot(
+      lanes = optimizerLanes,
+      running = optimizerRunning.size,
+      runningSystems = optimizerRunning.toSortedSet().toList(),
+      waiting = optimizerWaiting.get(),
+      admissions = optimizerAdmissions.get(),
+      refusals = optimizerRefusals.get(),
+      admissionWaitMillis = optimizerAdmissionWaitMillis.get(),
+      paused = paused,
+      pausedUntilEpochMillis = if (paused) until else null,
+      pauseReason = if (paused) optimizerPauseReason["reason"] else null,
+    )
+  }
+
   fun <T : Any> withRenderPermit(block: () -> T): T? {
     try {
       renderPermits.acquire()
@@ -122,6 +245,17 @@ class ServeBackgroundWork(
      * else bounds daemon count — see [renderLaneFor].
      */
     const val CONSERVATIVE_MAX_CONCURRENT_RENDERS: Int = 1
+
+    /**
+     * Catalogs allowed inside an optimizer pass at once. Two, not one: a single lane would leave
+     * the 8-permit render lane idle whenever the one admitted catalog is warming a daemon, and
+     * warming is where a pass spends most of its time. Two overlaps one catalog's warm with
+     * another's renders without recreating the free-for-all.
+     */
+    const val DEFAULT_MAX_CONCURRENT_OPTIMIZERS: Int = 2
+
+    /** Pause reasons are bounded before they reach a status page. */
+    const val MAX_PAUSE_REASON_CHARS: Int = 200
 
     /** Widest lane [renderLaneFor] will derive on its own. Beyond this, ask for it explicitly. */
     const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
@@ -169,3 +303,24 @@ class ServeBackgroundWork(
     }
   }
 }
+
+/**
+ * Cross-catalog optimizer admission on `/status.json` (`themeOptimizer`).
+ *
+ * The number that matters when the box feels slow is [running] against [lanes], and [waiting]
+ * beside it: passes parked at the door are cheap, passes inside the door are not. [refusals]
+ * climbing while [admissions] holds steady is the cap doing its job.
+ */
+@Serializable
+data class ThemeOptimizerAdmissionSnapshot(
+  val lanes: Int,
+  val running: Int,
+  val runningSystems: List<String>,
+  val waiting: Int,
+  val admissions: Long,
+  val refusals: Long,
+  val admissionWaitMillis: Long,
+  val paused: Boolean,
+  val pausedUntilEpochMillis: Long? = null,
+  val pauseReason: String? = null,
+)

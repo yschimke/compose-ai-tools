@@ -448,6 +448,36 @@ class ServeCatalogLiveHost(
     optimizationActive.set(true)
     optimizationExecutor.execute {
       try {
+        // No stagger before the door, deliberately. Every catalog does become runnable the instant
+        // the idle gate opens — measured on the deployed box as 11 catalogs entering inside 464 ms
+        // — but with the cap in place a simultaneous arrival is harmless: two are admitted and the
+        // rest are refused in microseconds and park. Sleeping them first would delay the two that
+        // are going to win anyway, which costs cache throughput on an idle box to solve a problem
+        // the cap already solved. The fair semaphore hands the lanes on in arrival order.
+        //
+        // ONE pass slot for the whole pass, held across warms and batches alike. Taking it per
+        // batch would let a catalog pay a cold warm and then lose the slot before rendering
+        // anything, which is the waste this cap exists to remove, not to reproduce.
+        val admitted =
+          backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
+            runOptimizerPass(jobs)
+            true
+          }
+        if (admitted == null) {
+          // Parked, not failed: `keepLiveWarm` re-enters on the next presence heartbeat, and
+          // `optimizationStarted` is reset below so it can.
+          catalogThemeCache.markPaused()
+        }
+      } finally {
+        optimizationActive.set(false)
+        optimizationStarted.set(false)
+      }
+    }
+  }
+
+  private fun runOptimizerPass(jobs: List<ThemeOptimizationJob>) {
+    run {
+      try {
         // Render in BATCHES through the replica pool rather than one at a time through the
         // monolithic daemon. The pool is already five wide — it is what a visitor gets when they
         // pick a theme — and the prefetcher was queueing behind a single daemon lock right next to
@@ -462,12 +492,12 @@ class ServeCatalogLiveHost(
           // Re-checked per preview as well as at entry: a breaker can trip mid-pass (that is the
           // rate trip's whole job), and the pass must stop feeding the renderer the moment it does
           // rather than grinding through the remaining thousands of items.
-          if (renderBreakerStopsBackgroundWork()) return@execute
+          if (renderBreakerStopsBackgroundWork()) return
           // Gate BEFORE the warm, not just before the renders. `daemonWarmOrScheduling` starts a
           // cold daemon, which is the single most expensive thing this pass can do to a box that is
           // still loading catalogs or serving traffic — exactly what the idle gate exists to
           // prevent. Warming ahead of it let every catalog host kick off a cold start at prewarm.
-          if (!awaitOptimizerTurn()) return@execute
+          if (!awaitOptimizerTurn()) return
           val previewDaemonId = alias[previewId]
           // Await a cold warm ONCE per preview rather than letting each theme rediscover it. The
           // old per-job loop spent retry budget on this; here it is a precondition of the batch.
@@ -481,7 +511,7 @@ class ServeCatalogLiveHost(
               warmingInFlight.contains(previewDaemonId) && !awaitWarmCompletion(previewDaemonId)
             ) {
               catalogThemeCache.recordWarm(clock() - warmFrom)
-              return@execute
+              return
             }
             catalogThemeCache.recordWarm(clock() - warmFrom)
           }
@@ -490,7 +520,7 @@ class ServeCatalogLiveHost(
             // Checked per batch, and a batch is bounded by ONE render — so a visitor arriving mid
             // batch still waits at most a render, which is the guarantee the old per-render permit
             // was expressing.
-            if (!awaitOptimizerTurn()) return@execute
+            if (!awaitOptimizerTurn()) return
             val batch =
               previewJobs.subList(index, minOf(index + optimizerBatchWidth(), previewJobs.size))
             index += batch.size
@@ -529,7 +559,7 @@ class ServeCatalogLiveHost(
                     elapsed - cold,
                   )
                 }
-              } ?: return@execute
+              } ?: return
             // Only a FRESH daemon render is optimizer production. The batch is filtered for cache
             // misses when it is built, but a foreground request can fill a target while this
             // catalog queues for the render permit — `renderLeased` then short-circuits through
@@ -642,6 +672,14 @@ class ServeCatalogLiveHost(
    * instead of one entry a minute.
    */
   private fun awaitOptimizerTurn(): Boolean {
+    // An operator standing the optimizer down means the pass in flight too, not just the next one
+    // admitted — checked here because this is the one call every warm and every batch already goes
+    // through, so a pause takes effect within a render rather than at the end of a catalog.
+    if (backgroundWork.optimizersPaused()) {
+      optimizerHasTurn.set(false)
+      catalogThemeCache.markPaused()
+      return false
+    }
     if (!optimizerHasTurn.get()) {
       val waitedFrom = clock()
       val granted = awaitServerIdle()
@@ -1341,6 +1379,16 @@ class ServeCatalogLiveHost(
      * Short: the point is to step aside for a live visitor within one render, not to re-earn the
      * whole entry window after every request.
      */
+    /**
+     * How long a parked catalog waits at the admission door before giving up for this pass.
+     *
+     * Bounded, and deliberately shorter than the idle window: a catalog that sleeps at the door
+     * through the whole quiet period has converted "wait your turn" into "miss your turn", which is
+     * the starvation the cap is meant to prevent, not cause. `keepLiveWarm` re-enters it on the
+     * next presence heartbeat.
+     */
+    internal const val OPTIMIZER_ADMISSION_WAIT_MILLIS = 20_000L
+
     internal const val OPTIMIZER_YIELD_MILLIS = 1_500L
 
     /**
