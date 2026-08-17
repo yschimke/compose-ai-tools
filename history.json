@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "03538c3534ac62b75f9771ab43b5d9713c009d9a",
+    "generatedFrom": "1ace03e90b964bb3b3973388115d804c05d51d38",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2658,6 +2658,13 @@
             "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
             "versions": [
                 {
+                    "blob": "fe7c297a7f4a31325c7716198aa9f9039c7214be",
+                    "commit": "1ace03e90b964bb3b3973388115d804c05d51d38",
+                    "date": "2026-08-17T19:35:26Z",
+                    "sourceSha": "9edb6719",
+                    "commits": 1
+                },
+                {
                     "blob": "6484c799aa2032c7269e39b853e51db38bb8bc7e",
                     "commit": "03538c3534ac62b75f9771ab43b5d9713c009d9a",
                     "date": "2026-08-17T19:12:36Z",
@@ -2880,7 +2887,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 56,
+            "observations": 57,
             "unstable": true,
             "flapCount": 28
         },
@@ -2974,6 +2981,51 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SplashAnimatedGalleryKt.SplashAnimatedDarkThemePreview_Splash animated — dark theme with branding": {
+            "path": "renders/samples:android/SplashAnimatedDarkThemePreview_Splash_animated_dark_theme_with_branding-e9f66d89.gif",
+            "versions": [
+                {
+                    "blob": "e2f4c3148072c104ec5e2dc1b45543511c7a661f",
+                    "commit": "1ace03e90b964bb3b3973388115d804c05d51d38",
+                    "date": "2026-08-17T19:35:26Z",
+                    "sourceSha": "9edb6719",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SplashAnimatedGalleryKt.SplashAnimatedIconOnlyPreview_Splash animated — icon only": {
+            "path": "renders/samples:android/SplashAnimatedIconOnlyPreview_Splash_animated_icon_only-44444fb8.gif",
+            "versions": [
+                {
+                    "blob": "4c4ab8b172eb0f28a13aaa5326e4ee1e938f86c4",
+                    "commit": "1ace03e90b964bb3b3973388115d804c05d51d38",
+                    "date": "2026-08-17T19:35:26Z",
+                    "sourceSha": "9edb6719",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SplashAnimatedGalleryKt.SplashAnimatedWithBackgroundPreview_Splash animated — icon with background ring": {
+            "path": "renders/samples:android/SplashAnimatedWithBackgroundPreview_Splash_animated_icon_with_background_ring-bd3d2194.gif",
+            "versions": [
+                {
+                    "blob": "ff99a898afc735c3e381d23b84b11cf7ead61897",
+                    "commit": "1ace03e90b964bb3b3973388115d804c05d51d38",
+                    "date": "2026-08-17T19:35:26Z",
+                    "sourceSha": "9edb6719",
                     "commits": 1
                 }
             ],
