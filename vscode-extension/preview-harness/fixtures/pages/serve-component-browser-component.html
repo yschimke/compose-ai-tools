@@ -263,6 +263,90 @@
            filter. Renders nothing; `serve.css` hides the tag. -->
       <cp-viewer-drawers></cp-viewer-drawers>
 
+      <script>(function () {
+
+        var presenceUrl = "/compose-m3/api/presence";
+        function ping() {
+          if (document.visibilityState !== "visible") return;
+          fetch(presenceUrl, { method: "POST", credentials: "same-origin", keepalive: true })
+            .catch(function () {});
+        }
+        setInterval(ping, 240 * 1000);
+        document.addEventListener("visibilitychange", ping);
+        // Fired on arrival, not only every interval. Catalogs are no longer warmed at boot (see
+        // ServeCatalogLiveHost.eagerWarmOnOpen), so this ping is what gets a daemon ready for the
+        // catalog the visitor actually opened — while they read the grid, rather than when they
+        // first click a theme and wait out a cold start.
+        ping();
+
+        // Render-server badge. Catalogs open their daemon on first real use, so whether one is up is
+        // now a genuine question with a visible answer — a theme switch is instant against a warm
+        // daemon and pays a cold start against none. Same URL family as the presence ping, and the
+        // endpoint reads through `peekHost`, so polling it never wakes what it is reporting on.
+        // The badge lives INSIDE the header's Status link (see ServeWeb.siteHeader) — the count and
+        // that link answer the same question, so they are one control: the number is the summary and
+        // the link is where the detail is. It is server-rendered and hidden, so filling it never
+        // moves the brand or the nav.
+        //
+        // That slot is also the feature switch. Catalog mode's header carries no nav, so it has
+        // neither the Status link nor the slot, and a catalog visitor has no `/status` page to read a
+        // count against — a number with nothing to link to is not a summary of anything. This used to
+        // create the span and append it to `<header>` when the slot was missing, which made it a third
+        // item in that two-column grid: it landed in an implicit second row, stretched across the
+        // `1fr` track, and painted the count as a full-width bar under the brand. So absence of the
+        // slot now disables the badge outright rather than inventing somewhere to put it — which also
+        // stops Catalog mode polling every 20s for an answer it does not display.
+        var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
+        // Read synchronously rather than on first paint: this script is emitted deep in the body, long
+        // after the header, so the slot either exists now or is not on this page at all.
+        var daemonBadge = document.getElementById("cp-daemon-status");
+        function paintDaemonStatus(state) {
+          var el = daemonBadge;
+          if (!el) return;
+          if (!state) { el.hidden = true; return; }
+          el.hidden = false;
+          // "not running" is a normal resting state, not a fault — a catalog nobody has rendered on
+          // simply has no process yet. Word it so it doesn't read as an error.
+          var count = state.instances || 0;
+          var catalogDetail = state.running
+            ? count + (count === 1 ? " instance" : " instances") +
+              ", " + (state.activeStreams || 0) + " live"
+            : "not running (starts on demand)";
+          if (state.poolCapacity > 0)
+            catalogDetail += ", pool " + state.pooled + "/" + state.poolCapacity;
+          var overallDetail = (state.overallRunning || 0) + " catalogs running, " +
+            (state.overallActiveStreams || 0) + " live streams";
+          if (state.liveSeatsTotal > 0)
+            overallDetail += ", " + (state.liveSeatsTotal - state.liveSeatsAvailable) + "/" +
+              state.liveSeatsTotal + " seats used";
+          el.innerHTML = '<span class="cp-daemon-dot" aria-hidden="true"></span>' + count;
+          el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
+          // The badge itself is decoration on a link, so it says nothing to a screen reader: an
+          // `aria-label` here would be appended to the LINK's accessible name, renaming "Status" to
+          // a sentence about instance counts — and renaming it again on every poll. The name stays
+          // "Status"; the detail rides on the link's own title (and behind it, the page it opens),
+          // which is the same place a sighted visitor reads it from.
+          var host = el.closest("a") || el;
+          host.title = "Render servers — this catalog: " + catalogDetail +
+            "\nOverall server: " + overallDetail;
+        }
+        function pollDaemons() {
+          if (!daemonUrl || !daemonBadge || document.visibilityState !== "visible") return;
+          fetch(daemonUrl, { credentials: "same-origin" })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(paintDaemonStatus)
+            .catch(function () {});
+        }
+        setInterval(pollDaemons, 20000);
+        document.addEventListener("visibilitychange", pollDaemons);
+        pollDaemons();
+        // A theme switch is exactly when the daemon comes up, so refresh the badge shortly after one.
+        document.addEventListener("click", function (e) {
+          if (e.target && e.target.closest && e.target.closest(".cp-theme-btn")) {
+            setTimeout(pollDaemons, 1500);
+          }
+        });
+      })();</script>
       <script src="/assets/serve/fixture/codemirror.js"></script>
       <script src="/assets/serve/fixture/viewer.js"></script><script>(function(){var p=document.getElementById("cp-browser-preview-tab"),s=document.getElementById("cp-source-chip"),r=document.getElementById("cp-source-toggle");function sync(){if(!p||!s||!r)return;var source=!!r.checked;p.setAttribute("aria-selected",source?"false":"true");s.setAttribute("aria-selected",source?"true":"false");}if(p&&s&&r){p.addEventListener("click",function(){if(r.checked)s.click();setTimeout(sync,0);});s.addEventListener("click",function(){setTimeout(sync,0);});window.addEventListener("popstate",function(){setTimeout(sync,0);});}setTimeout(sync,0);})();</script>
         </main>
