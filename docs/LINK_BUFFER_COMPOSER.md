@@ -19,8 +19,15 @@ Gradle invocation.
 **On for this repo's own renders, off for consumers of the published plugin.** The plugin's default
 is off — nothing renders differently in a downstream project until it asks — while this repo sets
 `composePreview.linkBufferComposer=auto` in [gradle.properties](../gradle.properties), so every
-catalog we render goes through the new composer. Same shape as the neighbouring
-`composePreview.classpathDuplicates=fail`: we hold our own renders to the stricter setting.
+catalog whose Compose runtime exposes the flag goes through the new composer. Same shape as the
+neighbouring `composePreview.classpathDuplicates=fail`: we hold our own renders to the stricter
+setting.
+
+The qualifier is load-bearing, not hedging: the modules pinned below the flag's version floor —
+`:samples:sdk-matrix`, deliberately, see below — render on the old composer and are **not** part of
+the A/B, so a repo-wide render is not by itself complete coverage of it. Each such module says so in
+the build log; `-PcomposePreview.linkBufferComposer=true` is how you make the build refuse to render
+one at all.
 
 That asymmetry is not timidity, it is a version floor. `isLinkBufferComposerEnabled` **only exists
 from Compose 1.11.0** — 1.9.5 and 1.10.x ship the `ComposeRuntimeFlags` class *without* the field —
