@@ -1396,7 +1396,7 @@
     "functionName": "SharedElementFilmstripPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
-    "sha256": "15f100ac6e06338ecbd8b683975ceaadd93014f40c05772c91be520a3f67bee2",
+    "sha256": "c124ee766ce6c53c6341db906c623283f9c5b8563986e7d06c6e6d9cee7567df",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
@@ -1446,6 +1446,30 @@
     "renderBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up-b4a9f9a4.png",
     "sha256": "453afd2b9ed4abc4c5f5e3c9bb32726583c1cf8d44baaae8eb830e069bf0ed05",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt"
+  },
+  "samples:android/com.example.sampleandroid.SplashAnimatedGalleryKt.SplashAnimatedDarkThemePreview_Splash animated \u2014 dark theme with branding": {
+    "captureLabel": "",
+    "functionName": "SplashAnimatedDarkThemePreview",
+    "module": "samples:android",
+    "renderBasename": "SplashAnimatedDarkThemePreview_Splash_animated_dark_theme_with_branding-e9f66d89.gif",
+    "sha256": "36dd72a94ece4c2d0c41d0e4bf8632be2f803b71b352f86ccd8c4249506f5414",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashAnimatedGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.SplashAnimatedGalleryKt.SplashAnimatedIconOnlyPreview_Splash animated \u2014 icon only": {
+    "captureLabel": "",
+    "functionName": "SplashAnimatedIconOnlyPreview",
+    "module": "samples:android",
+    "renderBasename": "SplashAnimatedIconOnlyPreview_Splash_animated_icon_only-44444fb8.gif",
+    "sha256": "c0be4cdc0e1820cc4d08610746998aa10c7e3363521c785107b4cb2801e34d53",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashAnimatedGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.SplashAnimatedGalleryKt.SplashAnimatedWithBackgroundPreview_Splash animated \u2014 icon with background ring": {
+    "captureLabel": "",
+    "functionName": "SplashAnimatedWithBackgroundPreview",
+    "module": "samples:android",
+    "renderBasename": "SplashAnimatedWithBackgroundPreview_Splash_animated_icon_with_background_ring-bd3d2194.gif",
+    "sha256": "9d66351b34cf40288ff09348f59671d2b64992438a982180f1645ad055038f11",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashAnimatedGallery.kt"
   },
   "samples:android/com.example.sampleandroid.SplashScreenGalleryKt.SplashDarkThemePreview_Splash \u2014 dark theme": {
     "captureLabel": "",
