@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.13.0](https://github.com/yschimke/compose-ai-tools/compare/v1.12.0...v1.13.0) (2026-08-17)
+
+
+### Features
+
+* **serve:** answer 503 for a capture the branch is refusing ([#4116](https://github.com/yschimke/compose-ai-tools/issues/4116)) ([6c947ac](https://github.com/yschimke/compose-ai-tools/commit/6c947ac71fb1e20323d3a61291a10587e1bcb3d3))
+* **serve:** report delivery-branch read counters on /status.json ([#4118](https://github.com/yschimke/compose-ai-tools/issues/4118)) ([b23711d](https://github.com/yschimke/compose-ai-tools/commit/b23711d6718f9a467eeb8def79df184137780c02))
+* **serve:** tell a throttled branch read apart from a missing one ([#4113](https://github.com/yschimke/compose-ai-tools/issues/4113)) ([9edb671](https://github.com/yschimke/compose-ai-tools/commit/9edb6719d7dac1f04008078121da0e4cae1e782a))
+* **splash:** capture the splash window in motion, not just the icon ([#4114](https://github.com/yschimke/compose-ai-tools/issues/4114)) ([03c51f2](https://github.com/yschimke/compose-ai-tools/commit/03c51f27cac42972359262089493f20ffbcbcc1e))
+
+
+### Bug Fixes
+
+* **ci:** refresh the design-artifacts driver pin to v1.12.0 ([#4106](https://github.com/yschimke/compose-ai-tools/issues/4106)) ([0568bcc](https://github.com/yschimke/compose-ai-tools/commit/0568bcc99fc5b895179b62d421eb69b11e9df151))
+* **ci:** stop the export-driver pin needing a hand-written PR ([#4112](https://github.com/yschimke/compose-ai-tools/issues/4112)) ([25872ee](https://github.com/yschimke/compose-ai-tools/commit/25872ee42bcf523049428d2acf1fbf4a2b2d1e47))
+* **design-artifacts:** union the tag index when folding a catalog section ([#4115](https://github.com/yschimke/compose-ai-tools/issues/4115)) ([3573e08](https://github.com/yschimke/compose-ai-tools/commit/3573e0804562818ffef53288339151b730de83b6))
+* **serve:** keep the motion lease safe under cancellation and unknown ids ([#4111](https://github.com/yschimke/compose-ai-tools/issues/4111)) ([bdb3b56](https://github.com/yschimke/compose-ai-tools/commit/bdb3b56cd6fe1caf49bd3ea1fe0e0a31e6516abc))
+* **serve:** make published motion captures reachable again ([#4110](https://github.com/yschimke/compose-ai-tools/issues/4110)) ([8714b36](https://github.com/yschimke/compose-ai-tools/commit/8714b369712e4454d16e2410f8ea1a08bdf128e8))
+
 ## [1.12.0](https://github.com/yschimke/compose-ai-tools/compare/v1.11.1...v1.12.0) (2026-08-17)
 
 
