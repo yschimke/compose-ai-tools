@@ -1779,27 +1779,30 @@ cp-history-menu { display: contents; }
    above would otherwise win over the attribute's UA `display: none`. */
 .cp-motion-lane { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-motion-lane[hidden] { display: none; }
-/* Which recording, when a preview published more than one. The same segmented group the spec
-   comparison views use, for the same reason: one mutually-exclusive choice about one component
-   reads as one control, not as N loose chips. Hidden — not omitted — for the single-capture case,
-   because that button is still where the lane reads its source from. */
-.cp-motion-views { display: inline-flex; align-items: stretch;
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
-.cp-motion-views[hidden] { display: none; }
-.cp-motion-view { font: inherit; min-height: 32px; padding: 5px 12px; border: 0;
-  border-left: 1px solid var(--md-sys-color-outline-variant);
+/* Which recording, when a preview published more than one. A menu rather than the segmented group
+   the spec comparison views use, because these labels are the annotation's own words: a segment is
+   as wide as its label, so N captions sat across the bar at once and the row outgrew the render it
+   introduces. Closed, the menu is one brief title at one width however many captures there are.
+   Same outlined-field shape as the renderer combo, so the two read as peers on the row. Hidden —
+   not omitted — for the single-capture case, because that option is still where the lane reads its
+   source from. */
+.cp-motion-select { min-height: 40px; font: inherit;
   font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 12px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline);
   background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
-  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-motion-view:first-child { border-left: 0; }
-.cp-motion-view:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-motion-view[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container); }
-/* What the recording is showing ("Pressed \2192 checked"). A capture without its caption tells the
-   reader only that *something* moved, so the annotation's own words ride beside the frames. */
-.cp-motion-caption { font-size: 0.72rem; color: var(--cp-fg-muted); }
+  max-width: 260px; }
+.cp-motion-select:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-motion-select[hidden] { display: none; }
+/* What the recording is showing, in the annotation's full words — the detail the menu title is the
+   opening clause of. A capture without its caption tells the reader only that *something* moved, so
+   these words ride beside the frames; only the picked capture's are on screen at a time, which is
+   what makes spending a full line on them affordable. Wraps rather than truncating (a caption cut
+   in both places would say nothing anywhere), and is measured so a long one breaks over two lines
+   instead of stretching the control row. */
+.cp-motion-caption { font-size: 0.72rem; color: var(--cp-fg-muted);
+  max-width: 68ch; line-height: 1.4; }
 /* The inspection layers describe the SNAPSHOT — every box is placed from that image's natural size
    and offset (see inspect.js `place()`), and nothing re-places them when a lane takes the snapshot
    out of flow. Left alone they would keep their last geometry and hang over the recording,
@@ -2477,6 +2480,10 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   /* The hint is prose, not a chip: left to wrap inside a nowrap row it would size to its own
      max-content and push everything after it off the row's scrollable width for no gain. */
   .cp-preview-primary .cp-mode-hint { white-space: nowrap; }
+  /* The picked capture's caption is prose too, but unlike the hint it is what the lane is FOR, so
+     it wraps inside a bounded width rather than running the row's scroll length out to a whole
+     sentence the reader has to swipe through. */
+  .cp-preview-primary .cp-motion-caption { max-width: 60vw; }
   .cp-viewer { gap: 16px; }
   /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
      selects/inputs) shrink below their content's intrinsic width instead of overflowing. */

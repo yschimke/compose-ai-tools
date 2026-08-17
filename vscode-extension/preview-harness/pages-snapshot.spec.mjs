@@ -1275,6 +1275,37 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The OTHER capture picked, from the state above (states run in order against the same
+    // page, so the lane is already open and the `motion/` route already stubbed).
+    //
+    // This is the half of the picker the lane-open shot cannot show. Closed, the menu is one
+    // title; what makes that affordable is the detail line beside it, which swaps to the
+    // picked capture's caption in full. Nothing in the committed HTML holds either — the
+    // readout is server-rendered EMPTY and filled by `playMotion()` — so without this shot a
+    // picker that stopped switching, or a readout that kept describing the previous
+    // recording, would move no baseline at all.
+    fixture: "serve-viewer-motion",
+    suffix: "motion-second-capture",
+    apply: async (page) => {
+      const first = await page.textContent("#cp-motion-caption");
+      await page.selectOption(
+        "#cp-motion-select",
+        "switch-on__ideal__default__light__anim",
+      );
+      // The readout is what proves the pick landed — the stage's frames are the same stub
+      // either way, so waiting on the image would pass even if nothing had switched.
+      await page.waitForFunction(
+        (before) => {
+          const el = document.getElementById("cp-motion-caption");
+          return el && el.textContent && el.textContent !== before;
+        },
+        first,
+        { timeout: 5_000 },
+      );
+      await page.waitForTimeout(1500);
+    },
+  },
+  {
     // The Source panel open: the usage code on the stage, with its note, Copy button and the
     // links onward to the playground and the whole sticker. The committed HTML cannot hold any
     // of it — the panel is server-rendered EMPTY on purpose, and filled only once the chip is
