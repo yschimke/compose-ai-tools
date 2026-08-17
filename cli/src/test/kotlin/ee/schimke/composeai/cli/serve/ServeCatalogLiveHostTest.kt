@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -49,7 +50,12 @@ class ServeCatalogLiveHostTest {
      * `NotFound` for them, exactly as the real baked host does.
      */
     override val liveOnlyPreviewIds: Set<String> = emptySet(),
+    /** Published captures this host can serve, keyed `<motionId><extension>`. */
+    private val motion: Map<String, ByteArray> = emptyMap(),
   ) : ServeHost {
+    override fun motionBytes(motionId: String, extension: String): ByteArray? =
+      motion["$motionId$extension"]
+
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
     var lastRenderId: String? = null
@@ -162,6 +168,30 @@ class ServeCatalogLiveHostTest {
   /** A knob-bearing override — the sole case the baked PNG can't satisfy. */
   private fun knobOverride() =
     PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
+
+  @Test
+  fun `a published capture is read off the baked host`() {
+    // The composite merges `previews` FROM the baked host, so a catalog's captures are listed —
+    // and the viewer offers a Motion chip for them — through this host. Without the delegation the
+    // bytes behind that chip fell to `ServeHost.motionBytes`'s null default, so the lane opened on
+    // an error for every live-fronted catalog in production while every (pinned, bundle-hosted)
+    // fixture stayed green. A daemon has no notion of a recording; the branch is the only source.
+    val motionId = "switch-on__ideal__default__light"
+    val capture = byteArrayOf(9, 8, 7)
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId)),
+        tag = "baked",
+        motion = mapOf("$motionId.apng" to capture),
+      )
+    val live = RecordingHost(previews = listOf(ServePreview(daemonId, daemonId)), tag = "live")
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertContentEquals(capture, composite.motionBytes(motionId, ".apng"))
+    // The guards the baked host applies still decide — the composite forwards, it does not widen.
+    assertNull(composite.motionBytes(motionId, ".gif"))
+    assertNull(composite.motionBytes("never-published", ".apng"))
+  }
 
   @Test
   fun `executable bundle download maps catalog id to daemon id`() {

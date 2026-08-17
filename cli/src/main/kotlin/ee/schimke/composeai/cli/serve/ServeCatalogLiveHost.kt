@@ -167,6 +167,17 @@ class ServeCatalogLiveHost(
   override fun designReferencesFor(previewId: String): List<DesignReference> =
     baked.designReferencesFor(previewId)
 
+  // A capture is a published artifact of the delivery branch, like every other delegation here —
+  // the daemon has no notion of one, and nothing about fronting this session with a live lane makes
+  // the branch's recordings stop existing. Missing this override is what made the Motion lane 404
+  // in production while passing every test: `previews` above is merged FROM `baked`, so the viewer
+  // read the captures off the baked host and offered the chip, and then the bytes behind that chip
+  // fell to `ServeHost.motionBytes`'s null default because this composite never forwarded them.
+  // A static catalog is pinned and served by the bundle host directly, which is why the fixtures —
+  // all of them pinned — never met the shape that breaks.
+  override fun motionBytes(motionId: String, extension: String): ByteArray? =
+    baked.motionBytes(motionId, extension)
+
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 

@@ -708,7 +708,7 @@ class ServeHttpRoutingTest {
       Files.createTempDirectory("routing-suspended-motion").toFile().also { it.deleteOnExit() }
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/switch-on.png").writeBytes(png())
-    val resumed =
+    val bakedHost =
       ServeBundleHost(
         dir,
         label = "suspended-cat",
@@ -718,6 +718,11 @@ class ServeHttpRoutingTest {
         fetchMotion = { id -> if (id == motionId) "capture".toByteArray() else null },
         motionBranchPaths = mapOf(motionId to "motion/switch-on/ideal__default__light.apng"),
       )
+    // The production shape, and the reason a bare bundle host would not have exercised the bug: a
+    // trusted catalog resumes as a ServeCatalogLiveHost fronting its baked host, and the captures
+    // live on the baked half. A catalog served by a bundle host directly is pinned, so it is
+    // exactly the sessions that CAN suspend that reach the lane through this composite.
+    val resumed = ServeCatalogLiveHost(emptyMap(), bundle("suspended-live"), bakedHost)
     val suspendedRegistry = ServeSessionRegistry(open = { resumed })
     suspendedRegistry.register("default-mod", host = bundle("default-mod"), pinned = true)
     suspendedRegistry.register(

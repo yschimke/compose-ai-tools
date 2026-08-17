@@ -6108,6 +6108,12 @@ class ServeHttpServer(
    * resuming buys is the host that owns the bytes, not a daemon.
    */
   private suspend fun RoutingContext.handleMotion(sessionInPath: Boolean) {
+    // Token-gated like every sibling asset lane. `/render` has always opened with this and the
+    // motion lane never did — harmless-looking while the route was only reachable at
+    // `/{system}/motion/…`, and not harmless at all: on a token-gated box that spelling was already
+    // servable to an unauthenticated caller, and rooting the segment for site hosts would have
+    // widened it to a second URL rather than introducing it.
+    if (rejectBadToken()) return
     if (rejectHeadProbe()) return
     val name = call.parameters["name"].orEmpty()
     val extension = MOTION_CONTENT_TYPES.keys.firstOrNull { name.endsWith(it) }

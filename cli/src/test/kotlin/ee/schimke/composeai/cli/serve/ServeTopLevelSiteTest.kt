@@ -438,6 +438,46 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `a capture is behind the token gate on a private server`() {
+    // Rooting `motion` means the site interceptor stops refusing it, and the interceptor's refusal
+    // was never the security boundary anyway — `/{system}/motion/…` was servable unauthenticated on
+    // a token-gated box before this. `handleMotion` now opens with `rejectBadToken` like every
+    // sibling asset lane, so both spellings are gated rather than one of them accidentally being.
+    val motionId = "switch-on__ideal__default__light"
+    val secret = "s3cret-token"
+    registry.register(
+      "compose-m3",
+      host = motionBundle("compose-m3", "switch-on", motionId),
+      pinned = true,
+    )
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = secret,
+          sessions = registry,
+          defaultSessionId = "",
+          isPublic = false,
+          catalogSessions = listOf("compose-m3"),
+          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+        )
+        .also { it.start() }
+
+    // 404 rather than 401 throughout: the gate deliberately declines to confirm the server to a
+    // scanner. The property under test is the body, not the code — a refusal that still carried the
+    // bytes would be a 404 too.
+    for (path in listOf("/motion/$motionId.apng", "/compose-m3/motion/$motionId.apng")) {
+      val host = if (path.startsWith("/motion")) siteHost else null
+      val (code, body, _) = get(path, host = host)
+      assertEquals(404, code, "'$path' must not serve capture bytes unauthenticated")
+      assertFalse(body.contains(captureMarker), "'$path' leaked the capture: $body")
+    }
+    // With the token both spellings serve.
+    assertEquals(200, get("/motion/$motionId.apng?token=$secret", host = siteHost).first)
+    assertEquals(200, get("/compose-m3/motion/$motionId.apng?token=$secret").first)
+  }
+
+  @Test
   fun `an unauthenticated refusal never carries the access token`() {
     // The interceptor runs BEFORE the routes' own token gate, and the styled 404 threads the access
     // token through its links — so on a token-gated box a made-up path would have handed the secret
