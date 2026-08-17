@@ -84,6 +84,28 @@ class ServeBranchFetchTest {
   }
 
   @Test
+  fun `a 503 that says when to come back is believed too`() {
+    // `Retry-After` is defined on 503 as much as on 429 (RFC 9110 10.2.3). Dropping it there meant
+    // a host asking for ten seconds got 250ms and 500ms instead — both retries spent inside the
+    // outage, and the asset then reported as missing, which is the confusion this type exists
+    // to end.
+    val outage = BranchFetch.ofStatus(503, retryAfterSeconds = 10)
+    assertEquals(BranchFetch.Unavailable(503, 10), outage)
+    assertEquals(10_000L, BranchFetch.retryDelayMillis(outage, 1))
+
+    // Same cap as a throttle: a header is advice, not a licence to hold a request thread.
+    assertEquals(
+      BranchFetch.MAX_RETRY_AFTER_SECONDS * 1000L,
+      BranchFetch.retryDelayMillis(BranchFetch.ofStatus(503, 9_999), 1),
+    )
+    // And with no header it is still the plain exponential schedule.
+    assertEquals(
+      BranchFetch.BASE_BACKOFF_MILLIS,
+      BranchFetch.retryDelayMillis(BranchFetch.ofStatus(503), 1),
+    )
+  }
+
+  @Test
   fun `Retry-After parses only what it can trust`() {
     assertEquals(7L, BranchFetch.parseRetryAfter("7"))
     assertEquals(7L, BranchFetch.parseRetryAfter("  7 "))

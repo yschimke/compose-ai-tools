@@ -68,7 +68,14 @@ class ServeCatalogStore(
     Executors.newSingleThreadExecutor { r ->
       Thread(r, "serve-catalog-figma").apply { isDaemon = true }
     },
-  private val networkFetch: (url: String, maxBytes: Long) -> ByteArray? = ::httpFetch,
+  /**
+   * The branch transport. Outcome-shaped rather than `ByteArray?` so that **every** lane reaches
+   * the network through the same injected seam: the pinned lane needs to know *why* a read failed,
+   * and a parallel outcome-only seam beside a bytes-only one is how one of them ends up bypassed —
+   * a store given an authenticated, proxied or recorded transport would have issued a direct
+   * request to GitHub for pins alone. One seam, one answer shape, nothing to forget to wire.
+   */
+  private val networkFetch: (url: String, maxBytes: Long) -> BranchFetch = ::httpFetchOutcome,
   private val networkProbe: (url: String) -> Boolean = ::httpExists,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
@@ -2587,7 +2594,9 @@ class ServeCatalogStore(
   private fun fetchRevisions(repo: String, branch: String): List<ServeCatalogRevision.Revision> =
     runCatching {
       val url = ServeCatalogRevision.commitsFeedUrl(repo, branch)
-      val body = if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FEED_FETCH_BYTES)
+      val body =
+        if (fetch != null) fetch.invoke(url)
+        else networkFetch(url, MAX_FEED_FETCH_BYTES).bytesOrNull
       body?.toString(Charsets.UTF_8)?.let { ServeCatalogRevision.parseCommitsFeed(it) }
     }
     .getOrNull()
@@ -2595,7 +2604,7 @@ class ServeCatalogStore(
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
-    if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES)
+    if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES).bytesOrNull
 
   /**
    * [fetchCatalogAsset], keeping the reason a failure failed.
@@ -2609,7 +2618,7 @@ class ServeCatalogStore(
     if (fetch != null) {
       fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
     } else {
-      httpFetchOutcome(url, MAX_FETCH_BYTES)
+      networkFetch(url, MAX_FETCH_BYTES)
     }
 
   /**
@@ -2704,5 +2713,6 @@ class ServeCatalogStore(
    * and callers that provide their own transport.
    */
   private fun fetchExecutableBundle(url: String): ByteArray? =
-    if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_LIVE_BUNDLE_FETCH_BYTES)
+    if (fetch != null) fetch.invoke(url)
+    else networkFetch(url, MAX_LIVE_BUNDLE_FETCH_BYTES).bytesOrNull
 }

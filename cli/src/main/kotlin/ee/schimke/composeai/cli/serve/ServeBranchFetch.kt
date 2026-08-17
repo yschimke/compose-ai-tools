@@ -47,8 +47,16 @@ sealed interface BranchFetch {
    */
   data class Throttled(val retryAfterSeconds: Long?) : BranchFetch
 
-  /** The branch host is unwell — any `5xx`, or a `4xx` that is neither missing nor throttled. */
-  data class Unavailable(val status: Int) : BranchFetch
+  /**
+   * The branch host is unwell — any `5xx`, or a `4xx` that is neither missing nor throttled.
+   *
+   * Carries [retryAfterSeconds] for the same reason [Throttled] does: `Retry-After` is defined on
+   * `503` as much as on `429` (RFC 9110 §10.2.3), and a host that tells you when it will be back is
+   * giving you a better number than any schedule you'd invent. Dropping it here meant a `503`
+   * asking for ten seconds got 250 ms and 500 ms instead, spending both retries inside the outage
+   * and then reporting the asset as missing — the exact confusion this type exists to end.
+   */
+  data class Unavailable(val status: Int, val retryAfterSeconds: Long? = null) : BranchFetch
 
   /** Never got an answer: connect/read timeout, DNS, TLS, reset. */
   data class Transport(val detail: String) : BranchFetch
@@ -71,7 +79,8 @@ sealed interface BranchFetch {
         is Ok -> "ok"
         is NotFound -> "not found"
         is Throttled -> "throttled" + (retryAfterSeconds?.let { " (retry after ${it}s)" } ?: "")
-        is Unavailable -> "unavailable ($status)"
+        is Unavailable ->
+          "unavailable ($status)" + (retryAfterSeconds?.let { " (retry after ${it}s)" } ?: "")
         is Transport -> "transport: $detail"
       }
 
@@ -95,7 +104,7 @@ sealed interface BranchFetch {
       when {
         status == 404 || status == 410 -> NotFound
         status == 429 || status == 403 -> Throttled(retryAfterSeconds?.coerceAtLeast(0))
-        else -> Unavailable(status)
+        else -> Unavailable(status, retryAfterSeconds?.coerceAtLeast(0))
       }
 
     /**
@@ -111,11 +120,13 @@ sealed interface BranchFetch {
       if (!outcome.isTransient) return null
       if (attempt < 1 || attempt > MAX_RETRIES) return null
       val backoff = BASE_BACKOFF_MILLIS shl (attempt - 1)
-      val requested =
-        (outcome as? Throttled)
-          ?.retryAfterSeconds
-          ?.coerceAtMost(MAX_RETRY_AFTER_SECONDS)
-          ?.times(1000L)
+      val asked =
+        when (outcome) {
+          is Throttled -> outcome.retryAfterSeconds
+          is Unavailable -> outcome.retryAfterSeconds
+          else -> null
+        }
+      val requested = asked?.coerceAtMost(MAX_RETRY_AFTER_SECONDS)?.times(1000L)
       return maxOf(backoff, requested ?: 0L)
     }
 
