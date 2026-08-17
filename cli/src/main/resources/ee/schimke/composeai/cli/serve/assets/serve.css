@@ -1803,6 +1803,65 @@ cp-history-menu { display: contents; }
    instead of stretching the control row. */
 .cp-motion-caption { font-size: 0.72rem; color: var(--cp-fg-muted);
   max-width: 68ch; line-height: 1.4; }
+/* The player: the capture, and the transport under it.
+
+   A column, and centred, so the bar is the width of the recording it belongs to rather than of the
+   stage — a transport floating out either side of a narrow component would read as page furniture
+   instead of as that capture's controls. */
+.cp-motion-player { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  max-width: 100%; min-width: 0; }
+.cp-motion-player[hidden] { display: none; }
+/* The frames land here. `viewer.js` sizes the element to the capture's own pixels and the zoom lane
+   writes the same `max-height` onto it that the render and the spec raster get, so a tall recording
+   obeys Fit screen exactly as a still does. */
+.cp-motion-canvas { max-width: 100%; height: auto; display: block; }
+/* Play / replay · the timeline · where it is up to · how fast. One surface at the stage's corner
+   radius rather than four loose controls, because they are one instrument. */
+.cp-motion-transport { display: flex; align-items: center; gap: 10px;
+  width: 100%; box-sizing: border-box; padding: 6px 12px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high); }
+.cp-motion-transport[hidden] { display: none; }
+.cp-motion-transport-btn { flex: none; width: 32px; height: 32px; padding: 0; border: 0;
+  border-radius: 50%; font: inherit; font-size: 0.8rem; line-height: 1;
+  background: transparent; color: var(--md-sys-color-on-surface); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-motion-transport-btn:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent); }
+.cp-motion-transport-btn[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
+/* The timeline. The track's fill IS the progress readout — `--cp-motion-progress` is written by the
+   viewer on every tick — so the bar cannot disagree with the thumb about where playback is, which a
+   separate progress element eventually would. Cross-engine because the track is styled per engine
+   and an unstyled fallback would show progress in one browser and not another. */
+.cp-motion-scrub { flex: 1 1 auto; min-width: 60px; height: 20px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+/* `--cp-motion-progress` is written by `viewer.js` on every tick, so it is read with a fallback
+   like `--cp-sticky-tools` is: an empty track before the first paint, not an invalid gradient. */
+.cp-motion-scrub::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+  background: linear-gradient(to right,
+    var(--md-sys-color-primary) 0 var(--cp-motion-progress, 0%),
+    var(--md-sys-color-outline-variant) var(--cp-motion-progress, 0%) 100%); }
+.cp-motion-scrub::-moz-range-track { height: 4px; border-radius: 2px;
+  background: var(--md-sys-color-outline-variant); }
+.cp-motion-scrub::-moz-range-progress { height: 4px; border-radius: 2px;
+  background: var(--md-sys-color-primary); }
+.cp-motion-scrub::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+  width: 12px; height: 12px; margin-top: -4px; border: 0; border-radius: 50%;
+  background: var(--md-sys-color-primary); }
+.cp-motion-scrub::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%;
+  background: var(--md-sys-color-primary); }
+.cp-motion-scrub:focus-visible { outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px; border-radius: 4px; }
+/* "0.4s / 2.4s · frame 24/147". Tabular figures because this changes sixty times a second and
+   proportional ones would jitter the whole row's width as the digits changed. */
+.cp-motion-time { flex: none; font-size: 0.72rem; color: var(--cp-fg-muted);
+  white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Playback speed. Deliberately small and unadorned — it is the control a reader reaches for least
+   often of the four, and dressing it as a peer of the timeline would say otherwise. */
+.cp-motion-rate { flex: none; font: inherit; font-size: 0.72rem; padding: 2px 4px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer; }
 /* The inspection layers describe the SNAPSHOT — every box is placed from that image's natural size
    and offset (see inspect.js `place()`), and nothing re-places them when a lane takes the snapshot
    out of flow. Left alone they would keep their last geometry and hang over the recording,

@@ -9,6 +9,7 @@
 export * from "./fit.js";
 export * from "./keyInput.js";
 export * from "./laneState.js";
+export * from "./motionPlayback.js";
 export * from "./ownedParams.js";
 export * from "./renderQuery.js";
 export * from "./specBaseline.js";

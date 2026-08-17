@@ -1263,15 +1263,69 @@ const FIXTURE_STATES = [
       await page.click("#cp-motion-chip");
       // The capture has to have DECODED before the shot, not merely been requested — a
       // screenshot taken between the two catches an empty stage and bakes it into a baseline
-      // that then reads as "the lane shows nothing".
+      // that then reads as "the lane shows nothing". The transport appearing is the signal that
+      // says it: the viewer reveals it only once `ImageDecoder` has handed back a frame.
       await page.waitForFunction(() => {
-        const el = document.getElementById("cp-motion-img");
-        return el && !el.hidden && el.complete && el.naturalWidth > 0;
+        const canvas = document.getElementById("cp-motion-canvas");
+        const transport = document.getElementById("cp-motion-transport");
+        return canvas && canvas.width > 0 && transport && !transport.hidden;
       });
-      // …and then PLAYED OUT. The stub runs 14 frames at 40ms and stops on the last one (see
-      // motionPlaceholder), so this waits past its 560ms total with a wide margin rather than
-      // racing it — a margin is cheaper than a baseline that disagrees with itself run to run.
-      await page.waitForTimeout(1500);
+      // …and then PLAYED OUT, which is now a fact rather than a timing margin: playback stops on
+      // the last frame instead of looping, so the ended state — full timeline, playhead at the
+      // end, play button offering the pass again — is deterministic and is what gets shot.
+      await page.waitForFunction(() => {
+        const scrub = document.getElementById("cp-motion-scrub");
+        const play = document.getElementById("cp-motion-play");
+        return (
+          scrub &&
+          play &&
+          scrub.max !== "0" &&
+          scrub.value === scrub.max &&
+          play.getAttribute("aria-pressed") === "false"
+        );
+      });
+    },
+  },
+  {
+    // Paused mid-capture, on a frame the reader chose.
+    //
+    // The state the lane exists for and the one no still can stand in for: a half-filled
+    // timeline, the frame counter partway through, and the frames themselves stopped where they
+    // were put. It also covers the two halves of the transport a played-out shot cannot — that
+    // scrubbing PAUSES (an ended capture is already paused, so only a scrub from mid-pass proves
+    // it) and that the timeline's fill tracks the playhead rather than being painted once.
+    fixture: "serve-viewer-motion",
+    suffix: "motion-scrubbed",
+    // The click on ↻ is a means, not the subject: left where it landed, the pointer bakes that
+    // button's hover ring into a baseline about the timeline.
+    parkPointer: true,
+    apply: async (page) => {
+      // Replay first, so the scrub happens against a running capture rather than the ended one
+      // the previous state left behind.
+      await page.click("#cp-motion-replay");
+      const middle = await page.evaluate(() => {
+        const scrub = document.getElementById("cp-motion-scrub");
+        return String(Math.floor(Number(scrub.max) / 2));
+      });
+      await page.evaluate((frame) => {
+        const scrub = document.getElementById("cp-motion-scrub");
+        scrub.value = frame;
+        scrub.dispatchEvent(new Event("input", { bubbles: true }));
+      }, middle);
+      await page.waitForFunction(
+        (frame) => {
+          const scrub = document.getElementById("cp-motion-scrub");
+          const play = document.getElementById("cp-motion-play");
+          return (
+            scrub &&
+            play &&
+            scrub.value === frame &&
+            play.getAttribute("aria-pressed") === "false"
+          );
+        },
+        middle,
+        { timeout: 5_000 },
+      );
     },
   },
   {
@@ -1302,7 +1356,19 @@ const FIXTURE_STATES = [
         first,
         { timeout: 5_000 },
       );
-      await page.waitForTimeout(1500);
+      // Played out, on the same terms as the lane-open state: the pick restarts the capture, and
+      // the end of that pass is a state the page reports rather than a timeout to guess at.
+      await page.waitForFunction(() => {
+        const scrub = document.getElementById("cp-motion-scrub");
+        const play = document.getElementById("cp-motion-play");
+        return (
+          scrub &&
+          play &&
+          scrub.max !== "0" &&
+          scrub.value === scrub.max &&
+          play.getAttribute("aria-pressed") === "false"
+        );
+      });
     },
   },
   {

@@ -4331,6 +4331,39 @@ class ServeWebFixtureTest {
       "the capture is neither shown nor SRC-ed at page load — assigning src is what starts playback",
     )
 
+    // The player: a canvas the decoded frames are painted on, and the transport that drives them.
+    // Both start hidden — the bytes are still fetched on first entry and never at page load.
+    assertTrue(
+      Regex("<div class=\"cp-motion-player\" id=\"cp-motion-player\" hidden>")
+        .containsMatchIn(view),
+      "the player is rendered but withheld until the lane is entered",
+    )
+    assertTrue(view.contains("id=\"cp-motion-canvas\""), "the frames have a canvas to land on")
+    // Hidden *separately* from the player, and that is load-bearing: the transport is revealed only
+    // once a decode has actually succeeded, so a browser that falls back to the looping <img> is
+    // never shown scrub and speed controls that cannot work.
+    assertTrue(
+      Regex("<div class=\"cp-motion-transport\" id=\"cp-motion-transport\" hidden>")
+        .containsMatchIn(view),
+      "the transport waits for a decode rather than promising control the page may not have",
+    )
+    assertTrue(
+      view.contains("id=\"cp-motion-play\"") && view.contains("id=\"cp-motion-replay\""),
+      "play/pause and play-again are both offered — a capture plays once, so replay is the way back",
+    )
+    assertTrue(
+      Regex("<input type=\"range\" id=\"cp-motion-scrub\"[^>]*step=\"1\"").containsMatchIn(view),
+      "the timeline is a real range input, so frame stepping and Home/End come from the platform",
+    )
+    assertTrue(
+      view.contains("id=\"cp-motion-rate\"") && view.contains(">0.25×</option>"),
+      "playback speed goes down to a quarter, which is where a 300ms spring becomes readable",
+    )
+    assertTrue(
+      Regex("<option value=\"1\" selected>1×</option>").containsMatchIn(view),
+      "…and opens at the rate the capture was recorded at",
+    )
+
     // Each capture keeps its own extension end to end. An APNG served as a GIF renders one frame
     // and stops, so a picker that assumed one format would silently turn a recording into a still.
     assertTrue(

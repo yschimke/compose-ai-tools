@@ -195,6 +195,12 @@ function applyZoom(rawMode: string | null) {
     // exactly as the spec image is: applyZoom("fit") runs before the lane's own declarations.
     var motionZoomImg = may<HTMLImageElement>("cp-motion-img");
     if (motionZoomImg) motionZoomImg.style.maxHeight = maxHeight;
+    // …and the canvas the decoded frames are painted on, which is the path a capture actually
+    // takes. The cap goes on the canvas rather than on its wrapper because the transport under it
+    // is not part of what "fit the render to the screen" is capping — a bar whose height came out
+    // of the picture's budget would shrink the picture by its own size.
+    var motionZoomCanvas = may<HTMLCanvasElement>("cp-motion-canvas");
+    if (motionZoomCanvas) motionZoomCanvas.style.maxHeight = maxHeight;
     root.setAttribute("data-zoom", mode);
     if (zoomToggle)
         zoomToggle.setAttribute(
@@ -1821,6 +1827,295 @@ function pickMotion(id: string) {
 function motionActive() {
     return !!(motionToggle && motionToggle.checked);
 }
+// ---- The Motion transport ---------------------------------------------------------------------
+// Play once, show where playback is, scrub to a frame, change speed.
+//
+// None of that is possible while the browser owns playback. An animated `<img>` plays what the file
+// says to play: our captures are written with an infinite loop count, so a recording that toggles a
+// switch on and then off runs on → off → on → off with no seam — the reader cannot tell a
+// transition from its own reverse, cannot stop on the frame they care about, and cannot slow a
+// 300ms spring down enough to see its overshoot.
+//
+// So the viewer decodes the capture itself, with `ImageDecoder` (WebCodecs), and paints frame N
+// onto a canvas on its own clock. `viewer/motionPlayback.ts` holds every decision about where the
+// playhead is and what the controls do to it — this is the part that talks to the decoder, the
+// canvas and the DOM.
+//
+// The `<img>` stays as the fallback for a browser without `ImageDecoder`, or a capture it declines
+// to decode: a looping capture with no transport beats no capture at all. Which path a page took is
+// visible rather than silent — the transport row only appears when the frames are genuinely
+// addressable.
+interface MotionVideoFrame {
+    duration: number | null;
+    displayWidth: number;
+    displayHeight: number;
+    close(): void;
+}
+interface MotionDecoder {
+    tracks: {
+        ready: Promise<void>;
+        selectedTrack: { frameCount: number; animated: boolean } | null;
+    };
+    completed: Promise<void>;
+    decode(options: {
+        frameIndex: number;
+        completeFramesOnly?: boolean;
+    }): Promise<{ image: MotionVideoFrame }>;
+    close(): void;
+}
+type MotionDecoderCtor = new (init: {
+    data: ArrayBuffer;
+    type: string;
+    preferAnimation?: boolean;
+}) => MotionDecoder;
+const motionPlayerBox = may<HTMLElement>("cp-motion-player");
+const motionCanvas = may<HTMLCanvasElement>("cp-motion-canvas");
+const motionTransport = may<HTMLElement>("cp-motion-transport");
+const motionPlayBtn = may<HTMLButtonElement>("cp-motion-play");
+const motionReplayBtn = may<HTMLButtonElement>("cp-motion-replay");
+const motionScrub = may<HTMLInputElement>("cp-motion-scrub");
+const motionTime = may<HTMLElement>("cp-motion-time");
+const motionRateSelect = may<HTMLSelectElement>("cp-motion-rate");
+var motionDecoder: MotionDecoder | null = null;
+var motionTimeline: rules.MotionTimeline = {
+    frameCount: 1,
+    frameDurationMs: 16,
+};
+var motionPlayback: rules.PlaybackState = {
+    positionMs: 0,
+    playing: false,
+    rate: rules.DEFAULT_RATE,
+};
+// Which capture the in-flight load is for. A reader who picks a second recording while the first is
+// still arriving must not have the first one paint over it when it lands, and the decoded bytes of
+// an abandoned load must not become the timeline of the one now on screen.
+var motionLoadToken = 0;
+var motionRaf = 0;
+var motionLastTs = 0;
+var motionDrawnFrame = -1;
+// One decode in flight at a time. The clock ticks at the display's rate and a capture at 0.25× can
+// hold one frame across a dozen of those ticks; queueing a decode per tick would pile up work whose
+// result is stale before it resolves.
+var motionDecodeBusy = false;
+function motionDecoderCtor(): MotionDecoderCtor | null {
+    var ctor = (window as unknown as { ImageDecoder?: unknown }).ImageDecoder;
+    return typeof ctor === "function" ? (ctor as MotionDecoderCtor) : null;
+}
+/** A reader who asked for less motion gets the capture ready to play, not playing. */
+function motionPrefersStill() {
+    return (
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+}
+function stopMotionClock() {
+    if (motionRaf) window.cancelAnimationFrame(motionRaf);
+    motionRaf = 0;
+    motionLastTs = 0;
+}
+function startMotionClock() {
+    if (motionRaf) return;
+    motionLastTs = 0;
+    motionRaf = window.requestAnimationFrame(motionClockTick);
+}
+function motionClockTick(ts: number) {
+    motionRaf = 0;
+    var elapsed = motionLastTs ? ts - motionLastTs : 0;
+    motionLastTs = ts;
+    motionPlayback = rules.tick(motionPlayback, motionTimeline, elapsed);
+    paintMotion();
+    if (motionPlayback.playing)
+        motionRaf = window.requestAnimationFrame(motionClockTick);
+    else motionLastTs = 0;
+}
+/** Draw whichever frame the playhead is on, and put the transport in step with it. */
+function paintMotion() {
+    drawMotionFrame(rules.frameAt(motionTimeline, motionPlayback.positionMs));
+    syncMotionTransport();
+}
+function drawMotionFrame(index: number) {
+    if (!motionDecoder || !motionCanvas) return;
+    if (index === motionDrawnFrame || motionDecodeBusy) return;
+    var decoder = motionDecoder;
+    var token = motionLoadToken;
+    motionDecodeBusy = true;
+    decoder
+        .decode({ frameIndex: index, completeFramesOnly: true })
+        .then(function (result) {
+            motionDecodeBusy = false;
+            // The load this decode belongs to may have been abandoned while it was in flight —
+            // another capture picked, or the lane left. Painting it now would put one recording's
+            // frames on another's timeline.
+            if (token !== motionLoadToken || decoder !== motionDecoder) {
+                result.image.close();
+                return;
+            }
+            var ctx = motionCanvas!.getContext("2d");
+            if (ctx) {
+                ctx.clearRect(0, 0, motionCanvas!.width, motionCanvas!.height);
+                ctx.drawImage(
+                    result.image as unknown as CanvasImageSource,
+                    0,
+                    0,
+                );
+            }
+            // Closing is not optional: a `VideoFrame` holds a decoded surface until it is released,
+            // and a capture is hundreds of them.
+            result.image.close();
+            motionDrawnFrame = index;
+        })
+        .catch(function () {
+            motionDecodeBusy = false;
+        });
+}
+function syncMotionTransport() {
+    var playing = motionPlayback.playing;
+    if (motionPlayBtn) {
+        motionPlayBtn.textContent = playing ? "❚❚" : "▶";
+        var label = playing
+            ? "Pause"
+            : rules.atEnd(motionTimeline, motionPlayback.positionMs)
+              ? "Play again from the start"
+              : "Play";
+        motionPlayBtn.setAttribute("aria-label", label);
+        motionPlayBtn.title = label;
+        motionPlayBtn.setAttribute("aria-pressed", playing ? "true" : "false");
+    }
+    var frame = rules.frameAt(motionTimeline, motionPlayback.positionMs);
+    if (motionScrub) {
+        motionScrub.max = String(Math.max(0, motionTimeline.frameCount - 1));
+        // Only when it differs: writing `value` while the reader is dragging the thumb fights them
+        // for it, and the clock is paused during a scrub anyway.
+        if (motionScrub.value !== String(frame))
+            motionScrub.value = String(frame);
+        motionScrub.setAttribute("aria-valuetext", motionReadout());
+        // The filled part of the track. A CSS variable rather than a second element, so the fill
+        // and the thumb cannot disagree about where playback is.
+        motionScrub.style.setProperty(
+            "--cp-motion-progress",
+            `${Math.round(rules.progress(motionTimeline, motionPlayback.positionMs) * 100)}%`,
+        );
+    }
+    if (motionTime) motionTime.textContent = motionReadout();
+}
+function motionReadout() {
+    return rules.readout(motionTimeline, motionPlayback.positionMs);
+}
+/** Hand the capture back to the browser: looping, uncontrollable, and better than nothing. */
+function motionFallbackToImage(src: string) {
+    if (!motionImg) return;
+    if (motionPlayerBox) motionPlayerBox.hidden = true;
+    if (motionTransport) motionTransport.hidden = true;
+    motionImg.hidden = false;
+    if (motionImg.getAttribute("src") !== src) motionImg.src = src;
+}
+/**
+ * Fetch and decode the picked capture, then play it once.
+ *
+ * The bytes are requested here and nowhere else — entering the lane is still what costs the
+ * network, exactly as it was when this assigned an `<img>` src. What changed is that the response
+ * goes to a decoder we drive rather than to an element that plays it at us.
+ */
+function loadMotion(src: string) {
+    var token = ++motionLoadToken;
+    releaseMotionDecoder();
+    var ctor = motionDecoderCtor();
+    if (!ctor || !motionCanvas || !motionPlayerBox) {
+        motionFallbackToImage(src);
+        return;
+    }
+    motionPlayerBox.hidden = false;
+    if (motionImg) motionImg.hidden = true;
+    fetch(src, { credentials: "same-origin" })
+        .then(function (response) {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            var type = response.headers.get("content-type") || "image/apng";
+            return response.arrayBuffer().then(function (data) {
+                return { data: data, type: type };
+            });
+        })
+        .then(function (body) {
+            if (token !== motionLoadToken) return;
+            var decoder = new ctor!({
+                data: body.data,
+                type: body.type,
+                preferAnimation: true,
+            });
+            // `completed`, not just `tracks.ready`: the frame count of a track is only final once
+            // the whole buffer has been read, and a timeline built from a partial count would put
+            // the end of the capture in the middle of the bar.
+            return Promise.all([decoder.tracks.ready, decoder.completed]).then(
+                function () {
+                    return decoder
+                        .decode({
+                            frameIndex: 0,
+                            completeFramesOnly: true,
+                        })
+                        .then(function (first) {
+                            return { decoder: decoder, first: first.image };
+                        });
+                },
+            );
+        })
+        .then(function (loaded) {
+            if (!loaded) return;
+            if (token !== motionLoadToken) {
+                loaded.first.close();
+                loaded.decoder.close();
+                return;
+            }
+            var track = loaded.decoder.tracks.selectedTrack;
+            var frameCount = Math.max(1, (track && track.frameCount) || 1);
+            // Microseconds on the frame, milliseconds on the timeline. A capture published by this
+            // project holds every frame for the same interval (both encoders write one delay onto
+            // all of them), so frame 0's duration is the whole cadence; a decoder that reports
+            // none — or a still typed as an animation — falls back to 60fps rather than to a
+            // timeline of length zero, which would divide by nothing on the very first tick.
+            var durationMs = loaded.first.duration
+                ? loaded.first.duration / 1000
+                : 16;
+            motionCanvas!.width = loaded.first.displayWidth;
+            motionCanvas!.height = loaded.first.displayHeight;
+            loaded.first.close();
+            motionDecoder = loaded.decoder;
+            motionTimeline = {
+                frameCount: frameCount,
+                frameDurationMs: Math.max(1, durationMs),
+            };
+            motionDrawnFrame = -1;
+            // A single-frame capture is a still with a transport bolted on. Play it, show it, and
+            // keep the controls: the reader learns it is one frame from the readout rather than
+            // from a control row that silently differs from every other capture's.
+            motionPlayback = {
+                positionMs: 0,
+                playing: !motionPrefersStill() && frameCount > 1,
+                rate: rules.normaliseRate(
+                    motionRateSelect ? motionRateSelect.value : null,
+                ),
+            };
+            if (motionTransport) motionTransport.hidden = false;
+            applyZoom(root.getAttribute("data-zoom"));
+            paintMotion();
+            if (motionPlayback.playing) startMotionClock();
+        })
+        .catch(function () {
+            if (token !== motionLoadToken) return;
+            // Decoding is the better path, not the only one. A browser without `ImageDecoder`, a
+            // format it declines, or a capture that 404s all land here; the first two still have a
+            // capture to show, and the third raises the lane's existing error through the `<img>`.
+            motionFallbackToImage(src);
+        });
+}
+/** Stop the clock and let the decoded frames go. Called on every route out of the lane. */
+function releaseMotionDecoder() {
+    stopMotionClock();
+    motionDecodeBusy = false;
+    motionDrawnFrame = -1;
+    if (motionDecoder) {
+        motionDecoder.close();
+        motionDecoder = null;
+    }
+}
 function playMotion() {
     var option = motionPicked();
     var src = motionSrcOf(option);
@@ -1847,10 +2142,11 @@ function playMotion() {
         motionCaption.textContent =
             detail || (motionOptions.length > 1 || !option ? "" : option.text);
     }
-    // A property write of an origin-checked URL, like every other image lane here. Guarded so
-    // re-entering the lane on the capture already loaded does not re-request it; closeMotion()
-    // drops the attribute on the way out, so the guard never sees a stale match.
-    if (motionImg!.getAttribute("src") !== src) motionImg!.src = src;
+    // Every entry, and every pick, starts the capture from the top. `loadMotion` re-fetches rather
+    // than resuming, which is what "play it again" has to mean when the reader has just chosen a
+    // different recording — and re-entering the lane on the same one is a request to watch it, not
+    // to be handed the last frame they left it on.
+    loadMotion(src);
 }
 function openMotion() {
     if (!motionAvailable()) return;
@@ -1859,7 +2155,6 @@ function openMotion() {
     // capture instead of reserving the still's box underneath it.
     img.style.display = "none";
     canvas.hidden = true;
-    motionImg!.hidden = false;
     if (motionLane) motionLane.hidden = false;
     if (!motionErrorBound) {
         motionErrorBound = true;
@@ -1879,8 +2174,15 @@ function closeMotion() {
         root.setAttribute("data-mode", "snapshot");
     motionImg.hidden = true;
     if (motionLane) motionLane.hidden = true;
-    // Dropping the src STOPS the animation and releases its frames. Left assigned, a hidden capture
-    // would keep looping for the rest of the visit — invisible, and still decoding.
+    if (motionPlayerBox) motionPlayerBox.hidden = true;
+    if (motionTransport) motionTransport.hidden = true;
+    // Both halves of "stop": the clock and the decoder for the canvas path, the `src` for the
+    // fallback. Left as they were, a hidden capture would keep playing for the rest of the visit —
+    // invisible, and still decoding — which is exactly what the `<img>` did before it was dropped.
+    // The in-flight load is abandoned too: bumping the token is what stops a fetch that is already
+    // out from painting into a lane nobody is looking at.
+    motionLoadToken++;
+    releaseMotionDecoder();
     motionImg.removeAttribute("src");
     img.style.removeProperty("display");
     img.hidden = false;
@@ -3272,6 +3574,49 @@ if (motionSelect) {
             // Back entry per pick. `urlPush` is left false, which is exactly what replace means here.
             syncUrl();
         } else setMode("motion");
+    });
+}
+// The transport. Every button hands the current playhead to `viewer/motionPlayback.ts` and paints
+// whatever comes back — the decisions (play from the end restarts, scrubbing pauses, the clock
+// stops on the last frame) live there with tests, and this file only starts and stops the clock.
+if (motionPlayBtn) {
+    motionPlayBtn.addEventListener("click", function () {
+        motionPlayback = rules.toggle(motionPlayback, motionTimeline);
+        paintMotion();
+        if (motionPlayback.playing) startMotionClock();
+        else stopMotionClock();
+    });
+}
+if (motionReplayBtn) {
+    motionReplayBtn.addEventListener("click", function () {
+        motionPlayback = rules.replay(motionPlayback);
+        paintMotion();
+        startMotionClock();
+    });
+}
+if (motionScrub) {
+    // `input`, not `change`: the frames have to follow the thumb while it is being dragged, which
+    // is the entire point of scrubbing a recording rather than typing a frame number at it.
+    motionScrub.addEventListener("input", function () {
+        stopMotionClock();
+        motionPlayback = rules.seek(
+            motionPlayback,
+            motionTimeline,
+            parseInt(motionScrub!.value, 10) || 0,
+        );
+        paintMotion();
+    });
+}
+if (motionRateSelect) {
+    motionRateSelect.addEventListener("change", function () {
+        // Rate only. Changing speed mid-pass must not move the playhead or restart anything — the
+        // reader is asking to watch the SAME moment more slowly, and losing their place would be
+        // the opposite of that.
+        motionPlayback = {
+            ...motionPlayback,
+            rate: rules.normaliseRate(motionRateSelect!.value),
+        };
+        syncMotionTransport();
     });
 }
 // ---- The renderer combo box ------------------------------------------------------------------
