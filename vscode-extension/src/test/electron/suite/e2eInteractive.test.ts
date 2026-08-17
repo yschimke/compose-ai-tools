@@ -787,11 +787,14 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         let editPhaseError: Error | null = null;
         try {
             api.resetMessages();
-            assertRefreshRendered(
-                api,
-                await api.triggerRefresh(cmpFile, true, "full"),
-                ":samples:cmp render",
-            );
+            // Drive the same save queue as production. The file-system watcher
+            // observes the write above too; calling triggerRefresh here used to
+            // start a second, uncoordinated Gradle render beside that queued
+            // save. Whichever path reached Gradle second cancelled the other's
+            // compile, making this scenario fail even though either path alone
+            // was healthy. triggerSave joins the watcher in RefreshQueue, where
+            // duplicate events are serialized and save bursts are collapsed.
+            api.triggerSave(cmpFile);
             // Wait for the SETTLED state, not the first message that names the
             // new preview. Discovery announces the id as soon as it has scanned
             // the recompiled classes, which is before the renderer has written
@@ -936,11 +939,10 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         if (editPhaseError) throw editPhaseError;
 
         api.resetMessages();
-        assertRefreshRendered(
-            api,
-            await api.triggerRefresh(cmpFile, true, "full"),
-            ":samples:cmp render",
-        );
+        // Revert through the production save pipeline as well. Mixing a forced
+        // refresh here with the watcher event from writeFileSync recreates the
+        // same compile-cancellation race on cleanup.
+        api.triggerSave(cmpFile);
         const afterRevert = await waitFor(
             `setPreviews after reverting ${tag}`,
             this.timeout(),
