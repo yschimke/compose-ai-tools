@@ -106,6 +106,13 @@ class ServeBugReportRouteTest {
       body,
     )
     assertTrue(body.contains("Report a bug in the preview server"), body)
+    assertTrue(
+      body.contains("type=\"text\" name=\"title\" required") &&
+        body.contains("placeholder=\"Briefly describe the problem\""),
+      body,
+    )
+    assertTrue(body.contains("name=\"labels\" value=\"ui-report,bug,daemon\""), body)
+    assertFalse(body.contains("type=\"hidden\" name=\"title\""), body)
   }
 
   @Test

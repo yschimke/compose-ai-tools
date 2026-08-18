@@ -74,7 +74,11 @@
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="https://github.com/yschimke/compose-ai-tools/issues/new">
-        <input type="hidden" name="title" value="Preview server issue: compose-m3">
+        <label class="cp-bug-summary">Summary
+          <input class="cp-bug-summary-input" type="text" name="title" required
+            autocomplete="off" placeholder="Briefly describe the problem">
+        </label>
+        <input type="hidden" name="labels" value="ui-report,bug,daemon">
         <input type="hidden" name="body" id="cp-bug-body" value="### What went wrong
 
 &lt;!-- What were you doing, what did you expect, and what happened instead? --&gt;
@@ -84,7 +88,7 @@
 
 ![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
 
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. A pasted screenshot of the page stays put — GitHub hosts those pixels itself. --&gt;
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. GitHub displays it through Camo, but Camo proxies the source URL; it does not make a versioned snapshot. A pasted screenshot of the page stays put because GitHub hosts those pixels itself. --&gt;
 
 
 ### Server
@@ -130,7 +134,7 @@
 
 ![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
 
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. A pasted screenshot of the page stays put — GitHub hosts those pixels itself. --&gt;
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. GitHub displays it through Camo, but Camo proxies the source URL; it does not make a versioned snapshot. A pasted screenshot of the page stays put because GitHub hosts those pixels itself. --&gt;
 
 
 ### Server
@@ -233,7 +237,7 @@
 
 ![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
 
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. A pasted screenshot of the page stays put — GitHub hosts those pixels itself. --&gt;
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. GitHub displays it through Camo, but Camo proxies the source URL; it does not make a versioned snapshot. A pasted screenshot of the page stays put because GitHub hosts those pixels itself. --&gt;
 
 
 ### Server

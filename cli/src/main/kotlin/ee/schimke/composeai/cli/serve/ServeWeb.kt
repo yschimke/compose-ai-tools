@@ -6086,7 +6086,11 @@ $noteBlock        <div class="cp-site-footer-links">
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="${esc(report.action)}">
-        <input type="hidden" name="title" value="${esc(report.title)}">
+        <label class="cp-bug-summary">Summary
+          <input class="cp-bug-summary-input" type="text" name="title" required
+            autocomplete="off" placeholder="Briefly describe the problem">
+        </label>
+        <input type="hidden" name="labels" value="${esc(ServeBugReport.LABELS)}">
         <input type="hidden" name="body" id="cp-bug-body" value="${esc(report.body)}"
           data-report-template="${esc(report.bodyTemplate)}">
         <button type="submit" class="cp-doc-btn cp-bug-submit">$GITHUB_ICON

@@ -134,6 +134,8 @@ class ServeIssueReportTest {
     assertFalse(body.contains("[PNG at these settings]"), body)
     // The embed is honest about what it is: a live render that moves when the catalog does.
     assertTrue(body.contains("LIVE render"), body)
+    assertTrue(body.contains("Camo proxies the source URL"), body)
+    assertTrue(body.contains("does not make a versioned snapshot"), body)
     assertTrue(body.contains("Copy PNG"), "the durable paste path is still offered")
   }
 

@@ -180,9 +180,10 @@ internal object ServeIssueReport {
         append("![${altText(ctx)}]($render)\n\n")
         append(
           "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
-            "stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer's " +
-            "\"Export & direct links\" panel and paste it here — GitHub then hosts the pixels " +
-            "itself. -->\n\n\n"
+            "stop showing what you saw. GitHub displays it through Camo, but Camo proxies the " +
+            "source URL; it does not make a versioned snapshot. For a copy that stays put, use " +
+            "Copy PNG in the viewer's \"Export & direct links\" panel and paste it here — " +
+            "GitHub then hosts the pixels itself. -->\n\n\n"
         )
       } else {
         append(
