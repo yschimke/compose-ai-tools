@@ -19,10 +19,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.ComposeViewport
-import ee.schimke.composeai.rcplayer.compose.RcBundledTypefaceLoader
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
-import ee.schimke.composeai.rcplayer.compose.RcFontFace
-import ee.schimke.composeai.rcplayer.compose.RcFontFaces
+import ee.schimke.composeai.rcplayer.compose.RcManifestTypefaceLoader
 import ee.schimke.composeai.rcplayer.compose.RcPlayerTheme
 import ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader
 import ee.schimke.composeai.rcplayer.compose.composeSupportReport
@@ -113,7 +111,7 @@ public fun main() {
               // Async work stays in construction: the manifest is fetched and decoded here, and the
               // player is handed a loader that only looks things up. `RcTypefaceLoader.typeface` is
               // called during composition and draw and cannot suspend.
-              val typefaces = RcBundledTypefaceLoader(withTimeout(8_000) { loadHostFontFamilies() })
+              val typefaces = withTimeout(8_000) { loadHostTypefaces() }
               document
                 .composeSupportReport(
                   RcOperationProfiles.CMP_WASM_ALPHA16,
@@ -197,133 +195,33 @@ private suspend fun fetchBytes(url: String): ByteArray =
       }
   }
 
-private data class ManifestFont(
-  val role: String,
-  val family: String,
-  val file: String,
-  val weight: Int,
-  val italic: Boolean,
-)
-
 /**
- * The host's font families, keyed by lowercase family name.
+ * The host's typefaces, from the `fonts.json` manifest under `?fontsBase=` (default `./fonts/`).
  *
- * Every role in the manifest is loaded, `default` included. A `default`-role family is a real,
- * nameable family — the catalog's own text face — and a document is free to name it the way it
- * names any other (`google:Roboto Flex`). Loading it only as "the fallback" left that name
- * unresolvable: `RcComposeSupport` checks a named family against exactly this set, so a document
- * naming the default face failed to load rather than rendering in it.
+ * Everything this used to do — fetch the manifest, parse it, group faces by family, lowercase the
+ * keys, register the `default`-role family under the literal `"default"` a document asks for when
+ * it names none, and cache the lot per base — now lives in [RcManifestTypefaceLoader], in shared
+ * code. All that is left here is the fetch, which really is the browser's business. Those rules are
+ * protocol facts, and keeping them in this file is what made them unavailable to the iOS host and
+ * cost the remote-m3 catalog its body face there (#4061).
  *
- * Faces are kept as [RcFontFace] — bytes, not a built `FontFamily` — so a document that also names
- * font-variation axes can be given the instance it asked for. See [RcFontFaces].
+ * The instance is held for the life of the page, which is what keeps its cache useful: a swapped-in
+ * document (`window.rcPlayerLoad`) reuses the faces the first load fetched rather than paying for a
+ * whole catalog's fonts again.
  */
-private suspend fun loadHostFontFamilies(): Map<String, RcFontFaces> {
-  val rawBase = queryParameter("fontsBase") ?: "./fonts/"
+private val manifestTypefaces = RcManifestTypefaceLoader(::fetchBytes)
+
+private suspend fun loadHostTypefaces(): RcTypefaceLoader {
+  val rawBase = queryParameter("fontsBase") ?: DEFAULT_FONTS_BASE
+  // A page-supplied parameter, so the scheme check stays here rather than moving into shared code:
+  // it is about what this *page* may be pointed at, not about how a manifest is shaped.
   val base =
-    (if (rawBase.endsWith('/')) rawBase else "$rawBase/").takeIf {
-      !it.contains(':') || it.startsWith("http:") || it.startsWith("https:")
-    } ?: "./fonts/"
-  // The manifest and its faces belong to the *host*, not to the document, so a swapped-in document
-  // (see `window.rcPlayerLoad`) reuses what the first load already fetched and decoded rather than
-  // paying for the whole catalog's fonts again. `fontsBase` is fixed for the life of the page, but
-  // it is kept in the key so the cache cannot answer for a base it was not filled from.
-  cachedFontFamilies?.let { (cachedBase, families) -> if (cachedBase == base) return families }
-  val entries = parseFontsManifest(fetchText(base + "fonts.json"))
-  suspend fun load(entry: ManifestFont): RcFontFace =
-    RcFontFace(
-      identity = entry.file,
-      data = fetchBytes(base + entry.file),
-      weight = entry.weight,
-      italic = entry.italic,
-    )
-  val families = buildMap {
-    entries
-      .groupBy { it.family }
-      .forEach { (family, faces) ->
-        runCatching { RcFontFaces(faces.map { load(it) }) }
-          .onSuccess { put(family.lowercase(), it) }
-      }
-    // `role` names what a family *is for*, and the default-role family answers to two keys: its own
-    // name, registered above so `google:Roboto Flex` resolves, and the literal "default" a document
-    // asks for when it names no family at all — which is what every CoreText in the remote-m3
-    // catalog does. Keying by name alone left "default" unresolvable, so all of that text silently
-    // fell through to Compose's built-in face instead of the manifest's.
-    entries
-      .filter { it.role == "default" }
-      .groupBy { it.family }
-      .forEach { (family, faces) ->
-        if (!containsKey("default")) {
-          (get(family.lowercase())
-              ?: runCatching { RcFontFaces(faces.map { load(it) }) }.getOrNull())
-            ?.let { put("default", it) }
-        }
-      }
-  }
-  cachedFontFamilies = base to families
-  return families
+    rawBase.takeIf { !it.contains(':') || it.startsWith("http:") || it.startsWith("https:") }
+      ?: DEFAULT_FONTS_BASE
+  return manifestTypefaces.load(base)
 }
 
-/**
- * The host faces from the last successful [loadHostFontFamilies], keyed by the base they came from.
- */
-private var cachedFontFamilies: Pair<String, Map<String, RcFontFaces>>? = null
-
-private fun parseFontsManifest(json: String): List<ManifestFont> {
-  val flat = flattenFontsManifest(json)?.toString().orEmpty()
-  if (flat.isEmpty()) return emptyList()
-  return flat.split('\u0001').mapNotNull { row ->
-    val fields = row.split('\u0000')
-    if (fields.size != 5) return@mapNotNull null
-    val file =
-      fields[2].takeIf { it.isNotEmpty() && ".." !in it.split('/') && !it.contains(':') }
-        ?: return@mapNotNull null
-    ManifestFont(
-      role = fields[0],
-      family = fields[1],
-      file = file,
-      weight = fields[3].toIntOrNull()?.coerceIn(1, 1000) ?: 400,
-      italic = fields[4] == "italic",
-    )
-  }
-}
-
-private fun flattenFontsManifest(json: String): JsString? =
-  js(
-    """(function () {
-      try {
-        var manifest = JSON.parse(json), rows = [];
-        (manifest.families || []).forEach(function (family) {
-          (family.fonts || []).forEach(function (font) {
-            rows.push([family.role || 'default', family.name || '', String(font.file || ''),
-              String(font.weight || 400), String(font.style || 'normal')].join('\u0000'));
-          });
-        });
-        return rows.join('\u0001');
-      } catch (error) { return null; }
-    })()"""
-  )
-
-private fun fetchTextPromise(url: String): Promise<JsString> =
-  js(
-    """fetch(url).then(function (response) {
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      return response.text();
-    })"""
-  )
-
-private suspend fun fetchText(url: String): String = suspendCancellableCoroutine { continuation ->
-  fetchTextPromise(url)
-    .then { value ->
-      if (continuation.isActive) continuation.resume(value.toString())
-      null
-    }
-    .catch { failure ->
-      if (continuation.isActive) {
-        continuation.resumeWithException(IllegalStateException(failure.toString()))
-      }
-      null
-    }
-}
+private const val DEFAULT_FONTS_BASE = "./fonts/"
 
 /** The default cold-start tail. Every render pays it, so a host that cannot flash should not. */
 private const val DEFAULT_HANDOFF_DELAY_MS = 1_500L
