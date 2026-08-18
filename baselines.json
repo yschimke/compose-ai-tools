@@ -229,6 +229,18 @@
       "sha256": "bc90a72de68e71a2195c0574d102ec5dfac0c23264a7da8154f91c2537ec9924",
       "size": 81743
     },
+    "serve-component-browser-remote-compose.dark.png": {
+      "fixture": "serve-component-browser-remote-compose",
+      "theme": "dark",
+      "sha256": "dba2a2ae59bef1bce0842e00dbcfb1d08835c26bd911f01c35f6294e930efe72",
+      "size": 61071
+    },
+    "serve-component-browser-remote-compose.light.png": {
+      "fixture": "serve-component-browser-remote-compose",
+      "theme": "light",
+      "sha256": "f124572ef1d228791628e5e3ae9701bdf9789e572369510458aaff7355b68bca",
+      "size": 59580
+    },
     "serve-design-page-design-lane.dark.png": {
       "fixture": "serve-design-page-design-lane",
       "theme": "dark",
@@ -880,14 +892,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "34acf31cbf8925058c3d363ca087e1cd8981e98f5be3abe01d1c5c52a4a96766",
-      "size": 80151
+      "sha256": "9318444377ef7a6393783456389bea0f82a27987b7cc45c83576c4d74f5455b6",
+      "size": 80883
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "a19c785aee613f3ba01bf71b8ba1886f323a7448295d2f07af424f98e5ed04e6",
-      "size": 75196
+      "sha256": "50b4e8b3685cfd993ab49d13b2e8a051c7eb29b4cbae1c246d07c883de7d8d1e",
+      "size": 79630
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1462,8 +1474,8 @@
     "serve-viewer-path-spec-typography.light.png": {
       "fixture": "serve-viewer-path-spec-typography",
       "theme": "light",
-      "sha256": "59d9c74c81e9d213bcd17356e57c0128d985cecd2efc7e1f292cd288aa4d1950",
-      "size": 83395
+      "sha256": "b1e5f5eb849f9c9f18ed8a455276ce81bb0cf5c748ab646bd9220b39dc18ee48",
+      "size": 82414
     },
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",

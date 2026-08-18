@@ -137,6 +137,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-component-browser-home/dark](renders/serve-component-browser-home.dark.png) |
 | `light` | ![serve-component-browser-home/light](renders/serve-component-browser-home.light.png) |
 
+## serve-component-browser-remote-compose
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-component-browser-remote-compose/dark](renders/serve-component-browser-remote-compose.dark.png) |
+| `light` | ![serve-component-browser-remote-compose/light](renders/serve-component-browser-remote-compose.light.png) |
+
 ## serve-design-page
 
 | Theme | Capture |
