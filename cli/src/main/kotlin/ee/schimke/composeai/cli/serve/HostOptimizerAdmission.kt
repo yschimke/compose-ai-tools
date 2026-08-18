@@ -114,8 +114,21 @@ class OptimizerPressureGate(
     "%.0f%%".format(java.util.Locale.ROOT, value * 100.0)
 }
 
-/** Reads Linux host load, CPU time and available memory through the proc filesystem. */
-class LinuxHostResourceSampler(private val procRoot: File = File("/proc")) {
+/**
+ * Reads Linux load, CPU time and available memory through the proc filesystem — and, when this
+ * process is inside a memory-limited cgroup, through that cgroup as well.
+ *
+ * **Why the cgroup half exists.** `/proc/meminfo` inside a container reports the HOST's memory, not
+ * the container's limit. The deployed profiles cap preview at 3 GiB (`deploy/vps`) and 6 GiB
+ * (`deploy/oracle`) on hosts with far more than that, so a replica sitting a hair under its own OOM
+ * limit still saw plenty of "available" memory host-wide — and the admission gate kept letting
+ * optimizer work in at precisely the moment it needed to stop. The reported fraction is the SMALLER
+ * of the two headrooms, so whichever ceiling is nearer is the one that governs.
+ */
+class LinuxHostResourceSampler(
+  private val procRoot: File = File("/proc"),
+  private val cgroupRoot: File = File("/sys/fs/cgroup"),
+) {
   private val previousCpu = AtomicReference<CpuTimes?>()
 
   fun sample(): HostResourceSample? {
@@ -145,10 +158,81 @@ class LinuxHostResourceSampler(private val procRoot: File = File("/proc")) {
       values["MemAvailable"]?.toDouble()?.div(total)
     }
       .getOrNull()
-      ?.let { it }
-    if (load == null && cpu == null && memory == null) return null
-    return HostResourceSample(load, cpu, memory)
+    // Whichever ceiling is nearer governs. An unlimited or unreadable cgroup contributes nothing,
+    // which is what keeps a bare-metal host reading exactly as it did before.
+    val constrained = listOfNotNull(memory, cgroupMemoryAvailableFraction()).minOrNull()
+    if (load == null && cpu == null && constrained == null) return null
+    return HostResourceSample(load, cpu, constrained)
   }
+
+  /**
+   * The fraction of this process's cgroup memory allowance still available, or null when there is
+   * no limit to speak of.
+   *
+   * Both cgroup generations are read because the deployment targets do not agree: v2 exposes
+   * `memory.max`/`memory.current` at the root, v1 the `memory/memory.limit_in_bytes` pair. A v1
+   * limit is reported as a huge sentinel rather than a word, so anything at or above the host's own
+   * `MemTotal` is treated as "no limit" rather than compared against.
+   *
+   * `inactive_file` is subtracted from usage because it is page cache the kernel reclaims under
+   * pressure rather than memory this process cannot give back. Counting it would make a container
+   * that has merely read a lot of files look permanently full, and the gate would then refuse
+   * optimizer work forever — the opposite failure, and a quieter one.
+   */
+  private fun cgroupMemoryAvailableFraction(): Double? = runCatching {
+    readCgroupV2Memory() ?: readCgroupV1Memory()
+  }
+    .getOrNull()
+
+  private fun readCgroupV2Memory(): Double? {
+    val limit =
+      File(cgroupRoot, "memory.max").takeIf { it.isFile }?.readText()?.trim() ?: return null
+    if (limit == "max") return null
+    val max = limit.toLongOrNull()?.takeIf { it > 0 } ?: return null
+    val current =
+      File(cgroupRoot, "memory.current").takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
+        ?: return null
+    val reclaimable = cgroupStatValue(File(cgroupRoot, "memory.stat"), "inactive_file")
+    return availableFraction(max, current, reclaimable)
+  }
+
+  private fun readCgroupV1Memory(): Double? {
+    val directory = File(cgroupRoot, "memory")
+    val max =
+      File(directory, "memory.limit_in_bytes")
+        .takeIf { it.isFile }
+        ?.readText()
+        ?.trim()
+        ?.toLongOrNull()
+        ?.takeIf { it > 0 } ?: return null
+    // v1 spells "unlimited" as a sentinel near Long.MAX_VALUE rather than a word.
+    if (max >= UNLIMITED_CGROUP_V1_LIMIT) return null
+    val current =
+      File(directory, "memory.usage_in_bytes")
+        .takeIf { it.isFile }
+        ?.readText()
+        ?.trim()
+        ?.toLongOrNull() ?: return null
+    val reclaimable = cgroupStatValue(File(directory, "memory.stat"), "total_inactive_file")
+    return availableFraction(max, current, reclaimable)
+  }
+
+  private fun availableFraction(max: Long, current: Long, reclaimable: Long): Double {
+    val used = (current - reclaimable).coerceAtLeast(0L)
+    return ((max - used).toDouble() / max).coerceIn(0.0, 1.0)
+  }
+
+  private fun cgroupStatValue(file: File, key: String): Long =
+    runCatching {
+      file
+        .useLines { lines ->
+          lines.firstOrNull { it.startsWith("$key ") }?.substringAfter(' ')?.trim()?.toLongOrNull()
+        }
+        .orZero()
+    }
+      .getOrNull() ?: 0L
+
+  private fun Long?.orZero(): Long = this ?: 0L
 
   private fun cpuUtilization(line: String): Double? {
     val values = line.trim().split(Regex("\\s+")).drop(1).mapNotNull(String::toLongOrNull)
@@ -163,6 +247,12 @@ class LinuxHostResourceSampler(private val procRoot: File = File("/proc")) {
   }
 
   private data class CpuTimes(val total: Long, val idle: Long)
+
+  private companion object {
+    // cgroup v1 writes `PAGE_COUNTER_MAX * PAGE_SIZE` when there is no limit; on 64-bit that is a
+    // number in the exabytes. Anything at or above this is "unlimited", not a ceiling to measure.
+    const val UNLIMITED_CGROUP_V1_LIMIT = 0x7FFFFFFFFFFFF000L
+  }
 }
 
 /** A host-wide optimizer lease. Closing it releases both the catalog and lane locks. */
