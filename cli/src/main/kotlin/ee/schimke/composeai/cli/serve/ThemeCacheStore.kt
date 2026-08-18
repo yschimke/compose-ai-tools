@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli.serve
 
 import java.io.File
 import java.io.IOException
+import java.io.RandomAccessFile
+import java.nio.channels.OverlappingFileLockException
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -336,6 +338,11 @@ class ThemeCacheStore(
       // keys
       // the read path would serve it again the moment the fresh copy fell out of memory.
       if (name in present && !(replaceExisting && name in adopted)) return
+      // Optimizer admission prevents duplicate warming, but foreground renders can still complete
+      // on two zero-downtime replicas at once. Serialize writes for the whole generation across
+      // processes. This is try-lock rather than lock: persistence is best-effort and a visitor must
+      // never wait for another replica's disk write.
+      val generationWriteLock = tryGenerationWriteLock() ?: return
       val target = File(dir, "$name$PNG_SUFFIX")
       // Writer-unique, because the zero-downtime rollout puts two processes on this volume at once.
       // A temp path shared by cache key lets one replica rename the inode while the other is still
@@ -363,6 +370,8 @@ class ThemeCacheStore(
       } catch (e: IOException) {
         runCatching { temp.delete() }
         recordFailure(system, e.message ?: e::class.simpleName ?: "write failed")
+      } finally {
+        generationWriteLock.close()
       }
     }
 
@@ -375,26 +384,61 @@ class ThemeCacheStore(
      * the same broken identity that just proved untrustworthy.
      */
     fun discard(): Boolean {
-      present.clear()
-      adopted.clear()
-      // Measured before the delete and subtracted, or the census would carry the discarded
-      // generation's bytes plus its rebuilt replacement until the next sweep — making the one
-      // number an operator uses to judge occupancy roughly twice the truth.
-      knownBytes.addAndGet(-dir.sizeOnDisk())
-      return runCatching {
-          // The PNGs go; the DIRECTORY stays. This generation object remains attached to a live
-          // CatalogThemeCache, and deleting the directory under it would make every later `put`
-          // fail its temp write, catch the IOException and persist nothing — so the optimizer would
-          // re-render the whole catalog into memory alone and lose it all again at restart. The
-          // point of discarding is to stop trusting these bytes, not to stop writing new ones.
-          // EVERY child must go. A partial discard leaves stale PNGs under a fingerprint this
-          // process has already decided it cannot trust, and the next restart adopts them again —
-          // reproducing the exact mismatch that triggered the discard, indefinitely.
-          val cleared = dir.listFiles()?.all { it.deleteRecursively() } ?: true
-          if (!cleared) recordFailure(system, "could not fully discard ${dir.name}")
-          cleared && (dir.isDirectory || dir.mkdirs())
+      val generationWriteLock = tryGenerationWriteLock() ?: return false
+      try {
+        present.clear()
+        adopted.clear()
+        // Measured before the delete and subtracted, or the census would carry the discarded
+        // generation's bytes plus its rebuilt replacement until the next sweep — making the one
+        // number an operator uses to judge occupancy roughly twice the truth.
+        knownBytes.addAndGet(-dir.sizeOnDisk())
+        return runCatching {
+            // The PNGs go; the DIRECTORY stays. This generation object remains attached to a live
+            // CatalogThemeCache, and deleting the directory under it would make every later `put`
+            // fail its temp write, catch the IOException and persist nothing — so the optimizer
+            // would
+            // re-render the whole catalog into memory alone and lose it all again at restart. The
+            // point of discarding is to stop trusting these bytes, not to stop writing new ones.
+            // EVERY child must go. A partial discard leaves stale PNGs under a fingerprint this
+            // process has already decided it cannot trust, and the next restart adopts them again —
+            // reproducing the exact mismatch that triggered the discard, indefinitely.
+            val cleared =
+              dir
+                .listFiles()
+                ?.filterNot { it.name == GENERATION_WRITE_LOCK }
+                ?.all { it.deleteRecursively() } ?: true
+            if (!cleared) recordFailure(system, "could not fully discard ${dir.name}")
+            cleared && (dir.isDirectory || dir.mkdirs())
+          }
+          .getOrDefault(false)
+      } finally {
+        generationWriteLock.close()
+      }
+    }
+
+    private fun tryGenerationWriteLock(): AutoCloseable? {
+      val randomAccess =
+        runCatching { RandomAccessFile(File(dir, GENERATION_WRITE_LOCK), "rw") }.getOrNull()
+          ?: return null
+      val channel = randomAccess.channel
+      val lock =
+        try {
+          channel.tryLock()
+        } catch (_: OverlappingFileLockException) {
+          null
+        } catch (_: IOException) {
+          null
         }
-        .getOrDefault(false)
+      if (lock == null) {
+        runCatching { channel.close() }
+        runCatching { randomAccess.close() }
+        return null
+      }
+      return AutoCloseable {
+        runCatching { lock.release() }
+        runCatching { channel.close() }
+        runCatching { randomAccess.close() }
+      }
     }
 
     /**
@@ -437,6 +481,7 @@ class ThemeCacheStore(
     const val MAX_REASON_CHARS: Int = 200
     private const val PNG_SUFFIX = ".png"
     private const val TEMP_SUFFIX = ".png.tmp"
+    private const val GENERATION_WRITE_LOCK = ".write.lock"
 
     /**
      * Names that may become a directory under the store root.

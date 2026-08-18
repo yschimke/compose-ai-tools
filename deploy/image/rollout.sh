@@ -25,8 +25,39 @@ INTERVAL="${ROLLOUT_INTERVAL:-1200}"
 # that, so give it room before rollout would wrongly declare the new replica
 # unhealthy and roll back.
 HEALTH_TIMEOUT="${ROLLOUT_HEALTH_TIMEOUT:-300}"
+LOCK_NAME="${ROLLOUT_LOCK_NAME:-compose-preview-rollout-lock}"
+# The lock is a tiny Docker container because the polling and webhook runners are separate
+# containers and their only already-shared coordination primitive is the Docker daemon. Docker
+# reserves container names atomically. A crashed caller leaves the marker running only until this
+# TTL; the next attempt then removes the exited marker and can proceed.
+# A rollout can legitimately take several health-timeout windows while replicas start and drain.
+# Keep the crash-recovery TTL comfortably above that so a slow rollout cannot lose exclusivity.
+LOCK_TTL="${ROLLOUT_LOCK_TTL:-$((HEALTH_TIMEOUT * 4 + 600))}"
 
 log() { echo "rollout: $*"; }
+
+release_rollout_lock() {
+  docker rm -f "$LOCK_NAME" >/dev/null 2>&1 || true
+}
+
+acquire_rollout_lock() {
+  if docker run -d --name "$LOCK_NAME" --entrypoint sleep docker:29-cli "$LOCK_TTL" \
+    >/dev/null 2>&1; then
+    trap release_rollout_lock EXIT INT TERM
+    return 0
+  fi
+  state="$(docker inspect --format '{{.State.Status}}' "$LOCK_NAME" 2>/dev/null || true)"
+  if [ "$state" = "exited" ] || [ "$state" = "dead" ]; then
+    docker rm -f "$LOCK_NAME" >/dev/null 2>&1 || true
+    if docker run -d --name "$LOCK_NAME" --entrypoint sleep docker:29-cli "$LOCK_TTL" \
+      >/dev/null 2>&1; then
+      trap release_rollout_lock EXIT INT TERM
+      return 0
+    fi
+  fi
+  log "another rollout is active — skipping"
+  return 1
+}
 
 # The `rollout` service runs on docker:*-cli, which bundles the compose plugin on
 # current images; fall back to installing it (Alpine) if a slimmer base is used.
@@ -57,15 +88,25 @@ pulled_image_id() {
 
 roll_once() {
   ensure_compose
+  # The hook and poller can notice the same image seconds apart. Without one host-wide lock both
+  # call docker-rollout, each treats the other's new replica as an old replica, and the steady-state
+  # count doubles. A skipped contender is success: the lock holder is already deploying that image.
+  if ! acquire_rollout_lock; then
+    return 0
+  fi
   docker compose pull "$SERVICE" >/dev/null 2>&1 || log "pull failed (using cached image)"
   before="$(running_image_id)"
   after="$(pulled_image_id)"
   if [ -z "$after" ]; then
     log "could not resolve pulled image for '$SERVICE' — skipping"
+    release_rollout_lock
+    trap - EXIT INT TERM
     return 0
   fi
   if [ -n "$before" ] && [ "$before" = "$after" ]; then
     log "'$SERVICE' already up to date"
+    release_rollout_lock
+    trap - EXIT INT TERM
     return 0
   fi
   if [ -z "$before" ]; then
@@ -80,10 +121,14 @@ roll_once() {
   # rollout as rolled. Inside the `else`, `$?` still holds the rollout exit code.
   if docker rollout --timeout "$HEALTH_TIMEOUT" "$SERVICE"; then
     log "'$SERVICE' rolled"
+    release_rollout_lock
+    trap - EXIT INT TERM
     return 0
   else
     rc=$?
     log "docker rollout failed (exit $rc)"
+    release_rollout_lock
+    trap - EXIT INT TERM
     return "$rc"
   fi
 }
