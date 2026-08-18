@@ -349,6 +349,15 @@ public data class RcPaintData(val words: List<Int>) : RcOperation {
   override val opcode: Int = RcOpcodes.PAINT_VALUES
 }
 
+/**
+ * The `Theme` operation a document records, carrying the wire constants below.
+ *
+ * **This is what comes *out* of a document, not what a host passes *in*.** A host asking the player
+ * to render a document light or dark wants `RcPlayerTheme` in `ee.schimke.composeai:
+ * rc-player-compose` — a three-case enum with no wire values in it. The two names are similar and
+ * both artifacts are consumable, so: if you are holding an `RcDocument` and inspecting what it
+ * asked for, this is the type; if you are calling `RcComposePlayer`, it is not.
+ */
 public data class RcTheme(val theme: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.THEME
 

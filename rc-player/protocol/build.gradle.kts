@@ -1,6 +1,7 @@
 plugins {
   id("composeai.base-conventions")
   id("org.jetbrains.kotlin.multiplatform")
+  id("composeai.maven-publishing")
 }
 
 abstract class GenerateRcOperationManifest : org.gradle.api.DefaultTask() {
@@ -105,7 +106,11 @@ kotlin {
   // task is `:rc-player-<module>:jvmTest`; nothing in `ci.yml` named the old paths (it runs
   // `allTests`), so the rename is contained to this repo's source layout. See #4063.
   jvm()
-  iosX64()
+  // No `iosX64()`. `:rc-player-compose` cannot declare one — CMP 1.11 dropped the Intel iOS
+  // simulator variant (see that module's build comment) — and these three are published as one
+  // stack with it. Keeping `iosX64` here would publish a stack that resolves three of its four
+  // artifacts on that target and fails on the fourth, which is the worst of the options #4066
+  // lists. Intel Macs are out; device and the Apple-silicon simulator are what remain.
   iosArm64()
   iosSimulatorArm64()
 
@@ -113,7 +118,19 @@ kotlin {
 
   sourceSets {
     commonMain {
-      kotlin.srcDir(layout.buildDirectory.dir("generated/rcOperations/commonMain"))
+      // `.builtBy(...)`, not a bare directory. The generated opcode table is read by more tasks
+      // than the compilers — publishing (#4064) added the per-target sources jars, and the
+      // metadata compile has its own name — and Gradle rejects any of them that reads the
+      // directory without a declared producer ("uses this output of task
+      // ':generateRcOperationManifest' without declaring an explicit or implicit dependency").
+      // Attaching the producer to the source directory itself covers every consumer, present and
+      // future, instead of a task-name pattern that has already needed widening twice. It is right
+      // to be strict here: the quiet failure is a sources jar with a hole where
+      // `RcOperationInventory` should be.
+      kotlin.srcDir(
+        files(layout.buildDirectory.dir("generated/rcOperations/commonMain"))
+          .builtBy(generateRcOperationManifest)
+      )
       // `api`, not `implementation`: the tracing seam is the base of the player's dependency graph
       // (`trace <- protocol <- runtime <- compose <- wasm host`), and every module above opens
       // spans
@@ -124,10 +141,15 @@ kotlin {
   }
 }
 
-tasks
-  .matching { it.name.startsWith("compileKotlin") }
-  .configureEach { dependsOn(generateRcOperationManifest) }
-
 // `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin, so an unrecorded surface
 // change would pass CI silently. Wire it explicitly — the gate is only worth having if it runs.
 tasks.named("check") { dependsOn("checkKotlinAbi") }
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "rc-player-protocol",
+    displayName = "Remote Compose Player — Protocol",
+    description =
+      "The .rc wire codec and operation model for Remote Compose documents: reader, writer, immutable operation IR and the AndroidX operation inventory. Consumable without any Compose dependency.",
+  )
+}

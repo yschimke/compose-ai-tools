@@ -16,6 +16,11 @@ import platform.UIKit.UIViewController
  * always resolved to — `rcResolveSystemTheme` answers both from `isSystemInDarkTheme()`.
  * `RcPlayerThemeRenderTest` asserts the three spellings resolve identically inside a real
  * composition rather than trusting that reading.
+ *
+ * **Reaching this from Swift needs an XCFramework, which is not published yet — see #4068.** This
+ * entry point ships inside `ee.schimke.composeai:rc-player-compose`'s iOS klibs, so a Kotlin
+ * Multiplatform consumer can call it today; a Swift-only project cannot until the framework is
+ * packaged and distributed.
  */
 public fun RcComposeViewController(
   bytes: ByteArray,
