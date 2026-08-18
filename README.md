@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 338 preview(s) across 20 module(s) · 72 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/pr`. 338 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -589,7 +589,7 @@ _No findings._
 
 ### `SharedElementFilmstripPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.a11y.png" width="400" />
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
@@ -1320,8 +1320,6 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
-| 3 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `CardRemote` · `spec:width=320dp,height=240dp,dpi=320`
 
@@ -1627,7 +1625,6 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `TruncatedTextRemote` · `spec:width=320dp,height=240dp,dpi=320`
 
