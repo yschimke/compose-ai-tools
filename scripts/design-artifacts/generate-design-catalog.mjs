@@ -142,6 +142,10 @@ import { selectComponentImages, selectOf } from "./catalog-select.mjs";
 import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.mjs";
 import { completenessFailure } from "./completeness-gate.mjs";
 import {
+  exemptSemanticsPatterns,
+  partitionExemptSemantics,
+} from "./completeness-exemptions.mjs";
+import {
   additionalBundleLiveConflict,
   bundleModulePath,
   claimedComponentIds,
@@ -1174,9 +1178,36 @@ if (noSticker.length > 0) {
       noSticker.join(", "),
   );
 }
-if (withoutSemantics.length > 0) {
+// Semantics-less renders a catalog declared as expected (issue #4117): repository-wide discovery
+// sweeps in synthetic Activity renders that capture no semantics by their nature, and there is no
+// `components[]` line to withhold for an entry discovery invented. The exempt ids keep their place
+// in the catalog — their pixels are fine — and are counted separately, so the gate stays strict over
+// everything else instead of being switched off wholesale with `--allow-incomplete`.
+const {
+  counted: countedWithoutSemantics,
+  exempt: exemptWithoutSemantics,
+  unusedPatterns: unusedExemptions,
+} = partitionExemptSemantics(withoutSemantics, exemptSemanticsPatterns(spec));
+if (countedWithoutSemantics.length > 0) {
   console.warn(
-    `[${spec.system}] no semantics for: ${withoutSemantics.join(", ")}`,
+    `[${spec.system}] no semantics for: ${countedWithoutSemantics.join(", ")}`,
+  );
+}
+if (exemptWithoutSemantics.length > 0) {
+  console.log(
+    `[${spec.system}] ${exemptWithoutSemantics.length} render(s) exempt from the semantics gate ` +
+      `(completeness.exemptSemantics): ${exemptWithoutSemantics.join(", ")} — kept in ` +
+      `catalog.json, not counted against the completeness gate`,
+  );
+}
+// A pattern matching nothing is named rather than tolerated: an exemption left behind by a renamed
+// or deleted preview would otherwise sit there silently, ready to excuse a render it was never
+// written for.
+if (unusedExemptions.length > 0) {
+  console.warn(
+    `[${spec.system}] completeness.exemptSemantics pattern(s) matched no semantics-less render: ` +
+      `${unusedExemptions.join(", ")} — every render they name either captured semantics or is no ` +
+      `longer in the catalog, so the exemption can be dropped`,
   );
 }
 if (deferred.length > 0) {
@@ -1197,7 +1228,7 @@ const completenessFailureReason = completenessFailure({
   allowIncomplete: values["allow-incomplete"],
   resolvedCount: catalog.components.length,
   missingCount: missing.length,
-  withoutSemanticsCount: withoutSemantics.length,
+  withoutSemanticsCount: countedWithoutSemantics.length,
 });
 if (completenessFailureReason === "empty") {
   console.error(
@@ -1211,6 +1242,16 @@ if (completenessFailureReason === "incomplete") {
     `[${spec.system}] incomplete render — refusing to publish. ` +
       `Re-run the render, or pass --allow-incomplete to override.`,
   );
+  // Point at the per-entry escape hatch before the wholesale one: a render that captures no
+  // semantics *by its nature* (a synthetic Activity frame with no data and no network) is declarable,
+  // and declaring it keeps the gate strict over everything else.
+  if (countedWithoutSemantics.length > 0) {
+    console.error(
+      `[${spec.system}] a render that legitimately captures no semantics (a synthetic Activity ` +
+        `frame, …) can be named in the spec's \`completeness.exemptSemantics\` — it then stays in ` +
+        `the catalog and is reported separately instead of failing this gate.`,
+    );
+  }
   process.exit(1);
 }
 

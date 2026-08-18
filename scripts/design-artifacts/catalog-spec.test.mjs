@@ -886,6 +886,47 @@ test("validateSpec accepts modePriority on a cover-sheet spec with no groups", (
   assert.deepEqual(errors, []);
 });
 
+test("validateSpec accepts completeness.exemptSemantics, including on a cover-sheet spec", () => {
+  assert.deepEqual(
+    validateSpec(
+      prioritySpec([{ componentId: "A", preview: "Alpha" }], {
+        completeness: { exemptSemantics: ["*Activity", "app/getting-started"] },
+      }),
+    ).errors,
+    [],
+  );
+  // The repository-wide shape this exists for: inventory from annotations, cover sheet only here.
+  assert.deepEqual(
+    validateSpec({
+      system: "demo",
+      title: "Demo",
+      completeness: { exemptSemantics: ["*Activity"] },
+    }).errors,
+    [],
+  );
+});
+
+test("validateSpec rejects a malformed completeness block", () => {
+  // A consumer ignores what it can't read, so a typo would surface as the gate failing on the very
+  // entry the exemption was written to excuse.
+  assert.match(
+    validateSpec(prioritySpec([], { completeness: ["*Activity"] })).errors[0],
+    /`completeness` must be an object/,
+  );
+  assert.match(
+    validateSpec(prioritySpec([], { completeness: { exemptSemantics: "*Activity" } })).errors[0],
+    /`completeness.exemptSemantics` must be an array/,
+  );
+  assert.match(
+    validateSpec(prioritySpec([], { completeness: { exemptSemantics: ["", 3] } })).errors[0],
+    /completeness\.exemptSemantics\[0\] must be a non-empty componentId pattern/,
+  );
+  assert.match(
+    validateSpec(prioritySpec([], { completeness: { exemptMissing: ["*"] } })).errors[0],
+    /completeness\.exemptMissing is not a known field/,
+  );
+});
+
 // --- select: one breakpoint of a multipreview, without splitting the function ---
 
 const wearSpecWith = (components) => ({
