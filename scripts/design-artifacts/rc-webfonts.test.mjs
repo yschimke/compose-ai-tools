@@ -65,18 +65,28 @@ before(async () => {
       res.writeHead(200, { "content-type": "text/html" });
       res.end("<!doctype html><html><head></head><body></body></html>");
     } else if (route === "/css2") {
-      stylesheetQueries.push(req.url.slice(route.length));
+      const query = req.url.slice(route.length);
+      stylesheetQueries.push(query);
       res.writeHead(200, { "content-type": "text/css", "access-control-allow-origin": "*" });
+      // The real API answers the two request forms with two different *kinds* of face, and the
+      // difference is the whole reason the axis request exists: an enumerated weight list gets one
+      // pinned instance per weight, a range gets a single face declaring that range. The fake has to
+      // model that, or a bug about "we already have a variable face" cannot be written down here.
+      const ranged = /:[a-zA-Z,]+@[\d.]+\.\./.test(query);
       res.end(
-        [400, 700]
-          .map(
-            (w) =>
-              `@font-face{font-family:'${FIXTURE_FAMILY}';font-style:normal;font-weight:${w};` +
-              `font-display:block;src:url(${origin}/font-${w}.ttf) format('truetype');}`,
-          )
-          .join(""),
+        ranged
+          ? `@font-face{font-family:'${FIXTURE_FAMILY}';font-style:normal;font-weight:100 1000;` +
+              `font-stretch:25% 151%;font-display:block;` +
+              `src:url(${origin}/font-variable.ttf) format('truetype');}`
+          : [400, 700]
+              .map(
+                (w) =>
+                  `@font-face{font-family:'${FIXTURE_FAMILY}';font-style:normal;font-weight:${w};` +
+                  `font-display:block;src:url(${origin}/font-${w}.ttf) format('truetype');}`,
+              )
+              .join(""),
       );
-    } else if (route === "/font-400.ttf" || route === "/font-700.ttf") {
+    } else if (route === "/font-400.ttf" || route === "/font-700.ttf" || route === "/font-variable.ttf") {
       fetched.push(route);
       res.writeHead(200, { "content-type": "font/ttf", "access-control-allow-origin": "*" });
       res.end(font);
@@ -408,6 +418,40 @@ test("axes that arrive after the family still reach the request", async (t) => {
   assert.ok(
     stylesheetQueries.some((q) => q.includes("wdth@25..151")),
     `expected the span requested after the axes arrived, saw: ${JSON.stringify(stylesheetQueries)}`,
+  );
+});
+
+test("a second document's axis is requested even though the family is already variable", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  stylesheetQueries.length = 0;
+  await page.evaluate(
+    async ({ base, family }) => {
+      RC.resetWebFonts();
+      RC.configureWebFonts({ baseUrl: base });
+      // One page, two documents — which is how the `rc-compare` harness renders a whole catalog.
+      // The first varies `wght`; by the end of it the page carries a variable face for the family.
+      for (const value of [100, 1000]) {
+        await RC.ensureWebFont(family, 400, false, undefined, [{ tag: "wght", value }]);
+      }
+      await RC.webFontsReady();
+      // The second varies `wdth` — an axis the face declared above pins at one value.
+      for (const value of [25, 151]) {
+        await RC.ensureWebFont(family, 400, false, undefined, [{ tag: "wdth", value }]);
+      }
+      await RC.webFontsReady();
+    },
+    { base: `${origin}/css2`, family: FIXTURE_FAMILY },
+  );
+
+  // The bug this pins: "the page already carries a variable face" was read as "the axes can be
+  // applied", so the second document's request was skipped and its `wdth` ramp drew three identical
+  // lines. Document *order* decided it — alone, the width specimen was fine — which is why it
+  // survived a per-document test and showed up only in the catalog run (compose-ai-tools#4177).
+  // Both axes ride in one request because the recorded spans accumulate per family.
+  assert.ok(
+    stylesheetQueries.some((q) => q.includes("wdth,wght@25..151,100..1000")),
+    `expected the second axis to be requested, saw: ${JSON.stringify(stylesheetQueries)}`,
   );
 });
 

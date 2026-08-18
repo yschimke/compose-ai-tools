@@ -290,8 +290,15 @@ export class RcdPlayer {
      * families) and the frame it keeps. Interactive players get the same effect from the repaint the
      * player schedules when a face lands.
      */
-    fontsReady(): Promise<void> {
-        return webFontsReady();
+    async fontsReady(): Promise<void> {
+        await webFontsReady();
+        // Every measurement taken before those faces landed was taken in the fallback, and the
+        // caller's next call is the repaint whose frame it keeps. Painting into a stale box is not
+        // a smaller error than painting in the wrong face: a `wdth 151` line measured at `wdth 100`
+        // renders wider than the box and is clipped mid-word. `onFontLoaded` invalidates for the
+        // faces that arrive through it, but a variant already marked done notifies no one, so this
+        // is the guarantee the single-shot contract actually needs.
+        this.document?.invalidateMeasure();
     }
 
     resize(newWidth: number, newHeight: number): void {
