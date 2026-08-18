@@ -690,7 +690,7 @@ runs:
     - name: Install CLI from source
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v1.14.1 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v1.15.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
 
     # `cli-version: 'none'` is the third install state — install is skipped
     # entirely. Compose / resources pipelines must then run with
@@ -700,7 +700,7 @@ runs:
       id: install-release
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install@v1.14.1 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install@v1.15.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
         version: ${{ steps.clivers.outputs.version }}
         catalog-path: ${{ inputs.catalog-path }}
