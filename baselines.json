@@ -784,8 +784,8 @@
     "serve-landing-sections-filter-focus.dark.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "dark",
-      "sha256": "82b776737c5cbdd06a72c97fcd5f3835695984a038b44c2553adfcb92fc57faa",
-      "size": 60790
+      "sha256": "3b1c6f9e2c6fe00aab893401ea58739afbabb3a43515049d249366561966221c",
+      "size": 62604
     },
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
@@ -880,14 +880,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "97af043c7caf211a76bba719accd0e30ec9f27a349e4246736c9333cee136e41",
-      "size": 83858
+      "sha256": "9b2a7d5511972edcd27e78dcc64cfdcbbec79d11021dc0a8891add2b7d568826",
+      "size": 83827
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "629f80f627f163dc808ee7b47fcf69223c38d25bc5b450193ff941d3af72f5d5",
-      "size": 82699
+      "sha256": "cc130284954a7ba4af953b667b51f372b323e6c19caaa83c8aae1ccc9fca569d",
+      "size": 82592
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1120,14 +1120,14 @@
     "serve-status.dark.png": {
       "fixture": "serve-status",
       "theme": "dark",
-      "sha256": "cdc6217cc3acb3ef9757e75e9e82d59b6d0e1db21ba37a3b259d28394f79f5b0",
-      "size": 176974
+      "sha256": "f50b9b1bbe726ed1ef1ee7e6bda0cd79bdf73d56c49e8b0a5c029490bf556433",
+      "size": 206294
     },
     "serve-status.light.png": {
       "fixture": "serve-status",
       "theme": "light",
-      "sha256": "57f5063c2d5e4775d8d1ed84f673ce494f49ef4df2625c146ff100e03f7e8154",
-      "size": 172952
+      "sha256": "69c80af4bd0eaa64c4ebe528f4980e8105ffc5b939d04b9a309acf425a2b30f2",
+      "size": 201812
     },
     "serve-viewer-axes-folded-disclosures-open.dark.png": {
       "fixture": "serve-viewer-axes-folded-disclosures-open",
