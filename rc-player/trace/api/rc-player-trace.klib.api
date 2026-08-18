@@ -1,11 +1,11 @@
 // Klib ABI Dump
-// Targets: [iosArm64, iosSimulatorArm64, iosX64, wasmJs]
+// Targets: [iosArm64, iosSimulatorArm64, wasmJs]
 // Rendering settings:
 // - Signature version: 2
 // - Show manifest properties: true
 // - Show declarations: true
 
-// Library unique name: <compose-ai-tools:rc-player-trace>
+// Library unique name: <ee.schimke.composeai:rc-player-trace>
 final class ee.schimke.composeai.rcplayer.trace/RcTraceEvent { // ee.schimke.composeai.rcplayer.trace/RcTraceEvent|null[0]
     constructor <init>(kotlin/String, kotlin/String, kotlin/Long, kotlin/Long) // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.<init>|<init>(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long){}[0]
 

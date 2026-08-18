@@ -391,11 +391,12 @@ jobs:
           sudo xcode-select --switch "$xcode/Contents/Developer"
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphonesimulator
-      # `:rc-player-compose` has no `iosX64` compile task: it is the only `:rc-player-*` module that
-      # depends on Compose Multiplatform, and CMP 1.11 dropped the Intel-iOS-simulator variant (see
-      # that module's build.gradle.kts). Its non-Compose siblings still declare `iosX64()`, so they
-      # keep their entries below. Naming a task that no longer exists fails the whole invocation
-      # ("Cannot locate tasks that match ..."), not just that one target.
+      # No `iosX64` anywhere in this list. `:rc-player-compose` never had one — CMP 1.11 dropped
+      # the Intel-iOS-simulator variant (see that module's build.gradle.kts) — and its three
+      # siblings dropped theirs when the stack became publishable, because publishing a stack that
+      # resolves three of four artifacts on one target is worse than not offering it (#4066).
+      # Naming a task that no longer exists fails the whole invocation ("Cannot locate tasks that
+      # match ..."), not just that one target.
       # `checkKotlinAbi` diffs each library module's real public ABI against the dumps committed
       # under `rc-player/*/api/` (see #4062). It runs here rather than anywhere else because the
       # klib dump covers the iOS targets, and those klibs only build on macOS — this is the repo's
@@ -417,10 +418,8 @@ jobs:
             :rc-player-wasm:wasmPlayerTestDist \
             :rc-player-protocol:compileTestKotlinIosArm64 \
             :rc-player-protocol:compileTestKotlinIosSimulatorArm64 \
-            :rc-player-protocol:compileTestKotlinIosX64 \
             :rc-player-runtime:compileTestKotlinIosArm64 \
             :rc-player-runtime:compileTestKotlinIosSimulatorArm64 \
-            :rc-player-runtime:compileTestKotlinIosX64 \
             :rc-player-compose:compileTestKotlinIosArm64 \
             :rc-player-compose:compileTestKotlinIosSimulatorArm64
           ./gradlew :cli:test --tests ee.schimke.composeai.cli.serve.ServeWebTest

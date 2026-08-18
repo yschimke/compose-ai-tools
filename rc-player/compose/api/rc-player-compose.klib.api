@@ -6,7 +6,7 @@
 // - Show manifest properties: true
 // - Show declarations: true
 
-// Library unique name: <compose-ai-tools:rc-player-compose>
+// Library unique name: <ee.schimke.composeai:rc-player-compose>
 final enum class ee.schimke.composeai.rcplayer.compose/RcPlayerTheme : kotlin/Enum<ee.schimke.composeai.rcplayer.compose/RcPlayerTheme> { // ee.schimke.composeai.rcplayer.compose/RcPlayerTheme|null[0]
     enum entry Dark // ee.schimke.composeai.rcplayer.compose/RcPlayerTheme.Dark|null[0]
     enum entry Light // ee.schimke.composeai.rcplayer.compose/RcPlayerTheme.Light|null[0]

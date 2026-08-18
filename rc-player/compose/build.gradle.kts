@@ -1,6 +1,7 @@
 plugins {
   id("composeai.base-conventions")
   id("org.jetbrains.kotlin.multiplatform")
+  id("composeai.maven-publishing")
   alias(libs.plugins.compose.multiplatform)
   id("org.jetbrains.kotlin.plugin.compose")
 }
@@ -52,9 +53,16 @@ kotlin {
   sourceSets {
     commonMain.dependencies {
       api(project(":rc-player-runtime"))
-      @Suppress("DEPRECATION") implementation(compose.runtime)
+      // `api`, not `implementation`, for the two that appear in this module's public surface —
+      // the ABI dump names `androidx.compose.runtime` (`Composer`, `SnapshotStateMap`) and
+      // `androidx.compose.ui` (`Modifier`, `Color`, `FontFamily`, `FontVariation.Settings`) in
+      // `RcComposePlayer`'s signature. A consumer needs both on its *compile* classpath to call it,
+      // and a published POM that records them as runtime-scope would compile fine for a Compose app
+      // that happens to depend on them anyway and fail for one that does not. `compose.foundation`
+      // is genuinely internal — nothing from it reaches the surface — so it stays `implementation`.
+      @Suppress("DEPRECATION") api(compose.runtime)
+      @Suppress("DEPRECATION") api(compose.ui)
       @Suppress("DEPRECATION") implementation(compose.foundation)
-      @Suppress("DEPRECATION") implementation(compose.ui)
     }
     commonTest.dependencies {
       implementation(kotlin("test"))
@@ -73,3 +81,12 @@ kotlin {
 // `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin, so an unrecorded surface
 // change would pass CI silently. Wire it explicitly — the gate is only worth having if it runs.
 tasks.named("check") { dependsOn("checkKotlinAbi") }
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "rc-player-compose",
+    displayName = "Remote Compose Player — Compose Multiplatform",
+    description =
+      "RcComposePlayer, a Compose Multiplatform renderer for Remote Compose (.rc) documents on JVM, wasmJs and iOS.",
+  )
+}

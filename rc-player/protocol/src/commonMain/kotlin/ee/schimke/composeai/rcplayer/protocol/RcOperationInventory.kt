@@ -23,6 +23,18 @@ public data class RcOperationProfile(val name: String, val opcodes: Set<Int>) {
   public fun supports(opcode: Int): Boolean = opcode in opcodes
 }
 
+/**
+ * The operation sets each player can execute, as published API.
+ *
+ * **The `ALPHA16` in these names is a capture, not a version.** Each profile records which
+ * operations a given player understood as of the AndroidX Remote Compose alpha16 registry — the
+ * release this stack's inventory was built against. A newer AndroidX release adds a *sibling*
+ * constant rather than changing what one of these means, so a consumer that pinned
+ * `CMP_WASM_ALPHA16` keeps getting the set it tested against. Deciding that before the first
+ * release rather than after was #4064's question; the alternative — making them internal — would
+ * leave a host no way to ask `composeSupportReport` which player it is targeting, which is the one
+ * thing these exist for.
+ */
 public object RcOperationProfiles {
   private val cmpImplementedOpcodes: Set<Int> =
     RcOperationInventory.entries

@@ -87,6 +87,29 @@ Create original code outside `third_party`:
   installs an androidx.tracing driver and profiles four reference documents headlessly
 ```
 
+### Published coordinates
+
+The four library modules publish to Maven Central under `ee.schimke.composeai`, through the same
+`composeai.maven-publishing` convention and the same release chain as every other artifact here —
+the root-level `publishAndReleaseToMavenCentral` fans out to whatever applies the plugin, so there
+is no list to keep in step.
+
+| module | artifact | targets |
+|---|---|---|
+| `:rc-player-trace` | `rc-player-trace` | `jvm`, `wasmJs`, `iosArm64`, `iosSimulatorArm64` |
+| `:rc-player-protocol` | `rc-player-protocol` | same |
+| `:rc-player-runtime` | `rc-player-runtime` | same |
+| `:rc-player-compose` | `rc-player-compose` | same |
+
+`:rc-player-wasm` (an executable), `:rc-player-profile` (an application), `:rc-player-metrics` and
+`:rc-player-compat-tests` (fixture generators) are not published. The Wasm *distribution* is a
+different problem and is tracked in #4067; the iOS framework in #4068.
+
+One target set across all four, deliberately: `iosX64` is gone everywhere rather than present on the
+three non-Compose modules, because CMP 1.11 dropped the Intel iOS simulator and a stack that
+resolves three of its four artifacts on one target is worse than one that offers none. See
+[RENDERER_COMPATIBILITY.md](../RENDERER_COMPATIBILITY.md) for what the published POMs pin.
+
 Tracing and profiling are written up separately in
 [RC_PLAYER_PROFILING.md](RC_PLAYER_PROFILING.md) — what each span covers, why the tracing seam is an
 `expect`/`actual` facade (androidx.tracing 2.x ships no wasmJs or Apple klib), and the current

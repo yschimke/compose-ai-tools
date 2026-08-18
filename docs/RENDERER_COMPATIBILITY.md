@@ -100,6 +100,37 @@ JVM/desktop consumer classpaths — a pure-Android KMP fallback
 exists, and that classpath can't feed the JVM renderer anyway). Covered by
 `DesktopRendererGraphAlignmentFunctionalTest`.
 
+### The published Remote Compose player pins its Compose Multiplatform version in its POM
+
+`ee.schimke.composeai:rc-player-compose` is the one published artifact in this repo that depends on
+Compose Multiplatform, so its POM is a compatibility surface in its own right. As of the first
+release it records:
+
+| dependency | scope | version |
+|---|---|---|
+| `org.jetbrains.compose.runtime:runtime` | compile (`api`) | 1.11.1 |
+| `org.jetbrains.compose.ui:ui` | compile (`api`) | 1.11.1 |
+| `org.jetbrains.compose.foundation:foundation` | runtime | 1.11.1 |
+
+The first two are `api` because they appear in `RcComposePlayer`'s signature — `Modifier`, `Color`,
+`FontFamily`, `Composer`, `SnapshotStateMap` — and a consumer needs them on its *compile* classpath
+to call it. `foundation` does not reach the surface and stays `implementation`.
+
+What a consumer has to know:
+
+- **Compose Multiplatform and the Compose compiler plugin are a matched pair**, and the pairing is
+  the consumer's to satisfy, not this artifact's. Gradle will conflict-resolve the CMP versions to
+  one coherent graph, as it does for the desktop renderer above; a consumer whose CMP is *newer* is
+  fine for the same additive reason.
+- **A consumer on an older CMP than 1.11.1 is not supported.** Not a policy so much as a fact about
+  the target set: 1.11 is the release that replaced the `uikitX64`/`uikitArm64`/`uikitSimArm64`
+  triple with `iosArm64` + `iosSimulatorArm64`, and this artifact declares the latter.
+- **There is no `iosX64` variant, anywhere in the stack.** CMP 1.11 stopped publishing the Intel
+  iOS simulator, so `:rc-player-compose` cannot have one; its three siblings dropped theirs rather
+  than publish a stack that resolves three of four artifacts on that target. Intel Macs are out.
+  Device (`iosArm64`) and the Apple-silicon simulator are what the stack offers, alongside `jvm`
+  and `wasmJs`.
+
 ### The serve host is a version FLOOR for every catalog it renders live
 
 The graph-alignment mitigation above works because Gradle resolves one graph and

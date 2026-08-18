@@ -1,6 +1,7 @@
 plugins {
   id("composeai.base-conventions")
   id("org.jetbrains.kotlin.multiplatform")
+  id("composeai.maven-publishing")
 }
 
 // `:rc-player-trace` — the tracing seam the whole CMP Remote Compose player stack writes through.
@@ -54,7 +55,11 @@ kotlin {
   // task is `:rc-player-<module>:jvmTest`; nothing in `ci.yml` named the old paths (it runs
   // `allTests`), so the rename is contained to this repo's source layout. See #4063.
   jvm()
-  iosX64()
+  // No `iosX64()`. `:rc-player-compose` cannot declare one — CMP 1.11 dropped the Intel iOS
+  // simulator variant (see that module's build comment) — and these three are published as one
+  // stack with it. Keeping `iosX64` here would publish a stack that resolves three of its four
+  // artifacts on that target and fails on the fourth, which is the worst of the options #4066
+  // lists. Intel Macs are out; device and the Apple-silicon simulator are what remain.
   iosArm64()
   iosSimulatorArm64()
 
@@ -69,3 +74,12 @@ kotlin {
 // `checkKotlinAbi` is not wired into `check` by the Kotlin Gradle plugin, so an unrecorded surface
 // change would pass CI silently. Wire it explicitly — the gate is only worth having if it runs.
 tasks.named("check") { dependsOn("checkKotlinAbi") }
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "rc-player-trace",
+    displayName = "Remote Compose Player — Tracing",
+    description =
+      "Multiplatform tracing facade for the Compose Multiplatform Remote Compose player: opens spans on androidx.tracing on the JVM, the browser's User Timing API on wasmJs, and nothing on Apple targets.",
+  )
+}
