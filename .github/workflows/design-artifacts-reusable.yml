@@ -1561,6 +1561,15 @@ jobs:
           PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
 
+          # The shared machine-local Google Fonts cache, laid out exactly as `composeAiFontsCacheDir`
+          # in the Gradle plugin computes it — the catalog's own render, earlier in this job, has
+          # already warmed it. Both embedded lanes need it to resolve a document's `google:` family:
+          # neither has a font provider (no GMS on a runner, no CSS API off the browser), so without
+          # it every branded face renders in the platform default and the row shows two lanes in
+          # Roboto next to three showing Orbitron (compose-ai-tools#4170). Not offline: a cold cache
+          # then fetches, the same way the browser lane fetches the same families from the CSS API.
+          FONTS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/composeai/fonts"
+
           if [ "$INPUT_RC_CMP_WASM_LANE" = "true" ]; then
             mkdir -p "$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors"
             wasm_build_log="$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors/distribution-build.log"
@@ -1619,7 +1628,8 @@ jobs:
             # hit it, but `runs-on` is an input, so self-hosted callers would.
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
-                  -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT") \
+                  -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT" \
+                  -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
                && [ -n "$(find "$RC_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded "$RC_OUT")
             else
@@ -1656,7 +1666,8 @@ jobs:
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
                 xvfb-run -a -s "-screen 0 2000x1400x24" \
                   ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun --quiet \
-                    -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT") \
+                    -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT" \
+                    -Pcomposeai.fonts.cacheDir="$FONTS_CACHE") \
                && [ -n "$(find "$RC_JVM_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded-jvm "$RC_JVM_OUT")
             else
