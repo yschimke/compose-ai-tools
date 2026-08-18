@@ -1,6 +1,6 @@
 public final class ee/schimke/composeai/rcplayer/compose/RcComposePlayerKt {
-	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;ILjava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
-	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;ILjava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
 }
 
 public final class ee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue {
@@ -56,7 +56,12 @@ public final class ee/schimke/composeai/rcplayer/compose/RcFontFaces {
 	public static synthetic fun family$default (Lee/schimke/composeai/rcplayer/compose/RcFontFaces;Landroidx/compose/ui/text/font/FontVariation$Settings;ILjava/lang/Object;)Landroidx/compose/ui/text/font/FontFamily;
 }
 
-public final class ee/schimke/composeai/rcplayer/compose/RcSystemThemeKt {
-	public static final fun rcResolveSystemTheme (ILandroidx/compose/runtime/Composer;I)I
+public final class ee/schimke/composeai/rcplayer/compose/RcPlayerTheme : java/lang/Enum {
+	public static final field Dark Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
+	public static final field Light Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
+	public static final field System Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
+	public static fun values ()[Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
 }
 
