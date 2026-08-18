@@ -94,4 +94,54 @@ class RcNamedValueLifecycleTest {
     assertFailsWith<IllegalArgumentException> { state.clearNamedValue("USER:nothing") }
     assertFailsWith<IllegalArgumentException> { state.namedValue("USER:nothing") }
   }
+
+  /**
+   * `RcNamedVariable` defines `IMAGE_TYPE` and `FLOAT_ARRAY_TYPE` as valid types that no
+   * `RcNamedValue` case models. Capturing the document's recorded value for *every* declared
+   * variable therefore threw during construction, so a document that merely *declared* one — with
+   * no host override anywhere in sight — stopped rendering entirely. It used to load fine.
+   */
+  @Test
+  fun aDocumentDeclaringATypeWithNoHostValueStillConstructs() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(0, 1, 0)),
+        listOf(
+          RcFloatConstant(9, RcFloatWord.literal(21.5f)),
+          RcNamedVariable(9, RcNamedVariable.FLOAT_TYPE, "USER:temperature"),
+          RcNamedVariable(12, RcNamedVariable.IMAGE_TYPE, "USER:avatar"),
+          RcNamedVariable(13, RcNamedVariable.FLOAT_ARRAY_TYPE, "USER:series"),
+        ),
+      )
+
+    val state = RcPlayerState(document)
+
+    // The representable variable beside them is unaffected, including its clear-to-document path.
+    state.setNamedValue("USER:temperature", RcNamedValue.FloatValue(-4f))
+    state.clearNamedValue("USER:temperature")
+    assertEquals(RcNamedValue.FloatValue(21.5f), state.namedValue("USER:temperature"))
+
+    // Reading or overriding one of the unrepresentable variables is still a loud error — the host
+    // API genuinely cannot speak about them. Only *loading* the document had to stop failing.
+    assertFailsWith<IllegalArgumentException> { state.namedValue("USER:avatar") }
+    assertFailsWith<IllegalArgumentException> {
+      state.setNamedValue("USER:series", RcNamedValue.FloatValue(1f))
+    }
+    // Clearing is a no-op rather than a throw: nothing was ever captured to restore.
+    state.clearNamedValue("USER:avatar")
+  }
+
+  /** A host override supplied at construction for an unrepresentable type is still rejected. */
+  @Test
+  fun seedingAnUnrepresentableTypeAtConstructionFailsLoudly() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(0, 1, 0)),
+        listOf(RcNamedVariable(12, RcNamedVariable.IMAGE_TYPE, "USER:avatar")),
+      )
+
+    assertFailsWith<IllegalArgumentException> {
+      RcPlayerState(document, mapOf("USER:avatar" to RcNamedValue.Integer(1)))
+    }
+  }
 }

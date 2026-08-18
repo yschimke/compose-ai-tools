@@ -74,6 +74,9 @@ public class RcBundledTypefaceLoader(faces: Map<String, RcFontFaces>) : RcTypefa
 
   override fun typeface(family: String, settings: FontVariation.Settings?): FontFamily? =
     faces[family]?.family(settings)
+
+  /** Test-only; see [RcFontFaces.identities] for why the identities need to be observable. */
+  internal fun facesFor(family: String): RcFontFaces? = faces[family.lowercase()]
 }
 
 /**

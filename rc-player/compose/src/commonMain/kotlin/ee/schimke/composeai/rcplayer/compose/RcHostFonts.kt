@@ -38,6 +38,17 @@ public class RcFontFaces(private val faces: List<RcFontFace>) {
 
   public constructor(face: RcFontFace) : this(listOf(face))
 
+  /**
+   * The identities of the underlying faces, in registration order.
+   *
+   * Test-only. Compose's font cache keys on the identity, so "these two faces are distinct as far
+   * as the cache is concerned" is a real property with no other observable: the resolved
+   * [FontFamily] does not expose it, and two colliding identities differ only in which bytes get
+   * drawn.
+   */
+  internal val identities: List<String>
+    get() = faces.map { it.identity }
+
   private fun instanceSuffix(axes: List<Pair<String, Float>>): String =
     axes.joinToString(separator = ",", prefix = "#") { (tag, value) -> "$tag=$value" }
 
