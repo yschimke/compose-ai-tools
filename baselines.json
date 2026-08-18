@@ -784,8 +784,8 @@
     "serve-landing-sections-filter-focus.dark.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "dark",
-      "sha256": "3b1c6f9e2c6fe00aab893401ea58739afbabb3a43515049d249366561966221c",
-      "size": 62604
+      "sha256": "82b776737c5cbdd06a72c97fcd5f3835695984a038b44c2553adfcb92fc57faa",
+      "size": 60790
     },
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
@@ -826,8 +826,8 @@
     "serve-landing-sections-section-open.light.png": {
       "fixture": "serve-landing-sections-section-open",
       "theme": "light",
-      "sha256": "424d6dd2915ced26aed9ae1814a02ffe2b125fe301c7c2284e459a755dba0206",
-      "size": 51287
+      "sha256": "b5ac180f76ec325b985a31bf1be3c3ca589cc0df5a2dde80bcb0ece0f1265b55",
+      "size": 70138
     },
     "serve-landing-sections.dark.png": {
       "fixture": "serve-landing-sections",
@@ -1096,14 +1096,14 @@
     "serve-report-bug.dark.png": {
       "fixture": "serve-report-bug",
       "theme": "dark",
-      "sha256": "9748b64719645f863ca115718590252b04c44d72cf91830afad6e3e5a9febd6b",
-      "size": 182209
+      "sha256": "3264cf339bdffc1a30e87cc9fbc7436ffedc1893c6aaab2935b98d733aac0e60",
+      "size": 187258
     },
     "serve-report-bug.light.png": {
       "fixture": "serve-report-bug",
       "theme": "light",
-      "sha256": "199d10ba0a9ddb9e28a114646cfd13b7a1f9a80eb11f83503c4e2ae8a9b25091",
-      "size": 178276
+      "sha256": "f572db56c5ac1ecc3140615747466f7af389d036b193246fe485090aa0a0ecea",
+      "size": 183382
     },
     "serve-social-card.dark.png": {
       "fixture": "serve-social-card",
@@ -1456,8 +1456,8 @@
     "serve-viewer-path-spec-typography.dark.png": {
       "fixture": "serve-viewer-path-spec-typography",
       "theme": "dark",
-      "sha256": "c6dc9bd7ae1ab90e349abd13f5a60102171bd2614e73f6e958e679b5978f6a53",
-      "size": 84324
+      "sha256": "c34ffc600d40ad34e5e851d42caca5284304b5bbeb216deb441ee989b76e9bea",
+      "size": 85291
     },
     "serve-viewer-path-spec-typography.light.png": {
       "fixture": "serve-viewer-path-spec-typography",
