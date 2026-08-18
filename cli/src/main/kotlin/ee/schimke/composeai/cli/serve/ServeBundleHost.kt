@@ -680,14 +680,19 @@ class ServeBundleHost(
    *
    * Null for an id this revision didn't publish either, and null when its catalog can't be read:
    * inventing a page for an id nothing confirms would be worse than admitting we don't have it.
-   * Deliberately minimal — an id and whatever name that revision gave it. Everything else the
-   * viewer draws (axes, siblings, references, knobs) describes the *current* catalog, and a pinned
-   * page has all of those lanes off anyway.
+   * Deliberately minimal — an id and whatever component identity that revision gave it. Everything
+   * else the viewer draws (axes, siblings, references, knobs) describes the *current* catalog, and
+   * a pinned page has all of those lanes off anyway.
    */
   fun pinnedPreview(commit: String, previewId: String): ServePreview? {
     val paths = pinnedManifest?.forCommit(commit) ?: return null
     if (!paths.catalogRead || previewId !in paths.renders) return null
-    return ServePreview(id = previewId, label = paths.labels[previewId] ?: previewId)
+    return ServePreview(
+      id = previewId,
+      label = previewId,
+      componentId = paths.labels[previewId],
+      theme = paths.themes[previewId],
+    )
   }
 
   /**

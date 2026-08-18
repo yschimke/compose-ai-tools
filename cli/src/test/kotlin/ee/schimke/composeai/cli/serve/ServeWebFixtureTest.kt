@@ -5980,9 +5980,13 @@ class ServeWebFixtureTest {
     )
     // …by writing an INPUT VALUE, never an href. The affordance is a GET form whose action is a
     // server-rendered literal, so no page-derived string can reach a navigation sink.
+    val refreshReportLinkSource =
+      viewerSource()
+        .substringAfter("function refreshReportLink()")
+        .substringBefore("function stripToken(")
     assertTrue(
-      viewerSource().contains("body.value = tpl.replace(") &&
-        !viewerSource().contains("link.href = "),
+      refreshReportLinkSource.contains("body.value = tpl.replace(") &&
+        !refreshReportLinkSource.contains(".href = "),
       "the report prefill goes into a form input, not a navigation sink",
     )
     // The URL is copied by a plainly-named button rather than by clicking a field whose only clue
@@ -6008,6 +6012,11 @@ class ServeWebFixtureTest {
       viewerSource().contains("function refreshLinks(") &&
         viewerSource().contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
+    )
+    assertTrue(
+      viewerSource().contains(".cp-revision, .cp-pinned-current") &&
+        viewerSource().contains("destination.searchParams.set(name, value)"),
+      "revision links follow a theme selected after the page was rendered",
     )
     // A plain static bundle can't export SVG, so it shows the PNG row but not the SVG one.
     assertTrue(staticKnobs.contains("id=\"cp-url-png\""), "PNG URL row shows on any viewer")

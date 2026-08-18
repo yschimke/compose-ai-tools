@@ -76,17 +76,11 @@
         <h1 class="cp-head cp-preview-title">App Card</h1>
         <code class="cp-preview-id" title="appcard__ideal__default__compact">appcard__ideal__default__compact</code>
 
-        <div class="cp-head-toggles"><details class="cp-theme-menu">
-  <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
-    <span class="cp-toggle-label">Theme</span>
-    <span class="cp-toggle-value" id="cp-theme-toggle-value">Light</span>
-    <span class="cp-theme-caret" aria-hidden="true">▾</span>
-  </summary>
-  <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-    <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
-    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
-  </span></div>
-</details><details class="cp-revisions">
+        <div class="cp-head-toggles"><span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" disabled aria-describedby="cp-pinned-controls-note"
+  title="Pinned revision — theme overrides are not applied to published pixels">
+  <span class="cp-toggle-label">Theme</span>
+  <span class="cp-toggle-value" id="cp-theme-toggle-value">Light</span>
+</button></span><details class="cp-revisions">
   <summary class="cp-revisions-btn">
     <span class="cp-revisions-key">Revision</span>
     <span class="cp-revision-date">2026-08-13 07:10 UTC</span>
@@ -118,8 +112,11 @@
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
+<span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" disabled aria-describedby="cp-pinned-controls-note" title="Pinned revision — SVG is generated from the current catalog">SVG</button></span>
+<span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" id="cp-explode-toggle" class="cp-fmt-toggle" aria-pressed="false" disabled aria-describedby="cp-pinned-controls-note" title="Pinned revision — 3D is generated from the current catalog">3D</button></span>
 <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
 <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
+        <span class="cp-pinned-controls-note" id="cp-pinned-controls-note" role="note">Pinned revision: Theme overrides are not applied; Source, SVG, and 3D use the current catalog and are unavailable.</span>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>

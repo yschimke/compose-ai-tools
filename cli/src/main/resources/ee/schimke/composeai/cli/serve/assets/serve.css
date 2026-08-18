@@ -1417,6 +1417,9 @@ cp-history-menu { display: contents; }
    heading rather than a selection. Shrunk to its label it reads as the chip it replaced. */
 .cp-axes-tree .cp-tree-variant { display: inline-block; }
 .cp-preview-primary { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cp-disabled-control { display: inline-flex; border-radius: var(--md-sys-shape-corner-full); }
+.cp-disabled-control:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.cp-pinned-controls-note { flex-basis: 100%; font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 /* The stage is the viewer's hero surface — an M3 elevated card at the large corner. */
 .cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 0;

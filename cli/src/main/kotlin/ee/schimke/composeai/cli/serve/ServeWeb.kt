@@ -1198,13 +1198,17 @@ $noteBlock        <div class="cp-site-footer-links">
   private fun bgTheme(id: String, darkFirst: Boolean): String? =
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
-  /** The preview's baked theme, preferring its actual discovery-time uiMode over id heuristics. */
+  /**
+   * The preview's baked theme, preferring explicit catalog metadata, then its discovery-time
+   * uiMode, over id heuristics.
+   */
   private fun previewTheme(preview: ServePreview, darkFirst: Boolean): String? =
-    when (preview.uiMode and UI_MODE_NIGHT_MASK) {
-      UI_MODE_NIGHT_YES -> "dark"
-      UI_MODE_NIGHT_NO -> "light"
-      else -> bgTheme(preview.id, darkFirst)
-    }
+    preview.theme
+      ?: when (preview.uiMode and UI_MODE_NIGHT_MASK) {
+        UI_MODE_NIGHT_YES -> "dark"
+        UI_MODE_NIGHT_NO -> "light"
+        else -> bgTheme(preview.id, darkFirst)
+      }
 
   /** Stable, catalog-specific persistence key shared by that catalog's landing and viewer pages. */
   private fun themeStorageKey(sessionId: String?, basePath: String): String {
@@ -9005,6 +9009,12 @@ $rows
      */
     revisions: CatalogRevisions = CatalogRevisions.NONE,
     /**
+     * Render overrides already present on the viewer URL, without a leading `?`. Revision links
+     * carry these between publishes so choosing a revision does not silently reset the selected
+     * theme (or any other explicit render state). The pin itself is added separately.
+     */
+    revisionQuery: String = "",
+    /**
      * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
      * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
      * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
@@ -9051,6 +9061,10 @@ $rows
     // holds by construction: there is no path through this function where a pinned page reads the
     // un-pinned flag.
     val pinned = revisions.pinned
+    // Remember capabilities before the pin suppresses their current-code implementations. A
+    // pinned toolbar keeps these controls visible but disabled, explaining why the same component
+    // has the feature at Current and cannot run it against historical bytes.
+    val currentHasSvgExport = hasSvgExport
     @Suppress("NAME_SHADOWING") val canApplyOverrides = canApplyOverrides && pinned == null
     @Suppress("NAME_SHADOWING") val canRenderOverrides = canRenderOverrides && pinned == null
     @Suppress("NAME_SHADOWING")
@@ -9139,21 +9153,40 @@ $rows
     // render. Offered only when the session can export SVG ([hasSvgExport]), the same gate as the
     // SVG direct-link row.
     val svgFmtToggle =
-      if (hasSvgExport && !componentBrowser)
-        "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
-          "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
-      else ""
+      if (currentHasSvgExport && !componentBrowser) {
+        val availability =
+          if (pinned == null) " title=\"Show the vector (SVG) render\""
+          else
+            " disabled aria-describedby=\"cp-pinned-controls-note\"" +
+              " title=\"Pinned revision — SVG is generated from the current catalog\""
+        val button =
+          "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
+            "aria-pressed=\"false\"$availability>SVG</button>"
+        if (pinned == null) button
+        else
+          "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
+            "aria-describedby=\"cp-pinned-controls-note\">$button</span>"
+      } else ""
     // The exploded 3D toggle — the layered figma-svg tilted back and pulled apart into one sheet
     // per visible drawing level ([ExplodedSvg]). It sits beside the SVG toggle because it is
     // a view *of* that export rather than a separate renderer lane, and is gated on the same
     // per-preview [hasSvgExport]: with no layered export there is nothing to pull apart, so the
     // control is omitted rather than offered dead.
     val explodeToggle =
-      if (hasSvgExport && !componentBrowser)
-        "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
-          "aria-pressed=\"false\" title=\"Show how the visible drawing layers are " +
-          "composed\">3D</button>"
-      else ""
+      if (currentHasSvgExport && !componentBrowser) {
+        val availability =
+          if (pinned == null) " title=\"Show how the visible drawing layers are composed\""
+          else
+            " disabled aria-describedby=\"cp-pinned-controls-note\"" +
+              " title=\"Pinned revision — 3D is generated from the current catalog\""
+        val button =
+          "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
+            "aria-pressed=\"false\"$availability>3D</button>"
+        if (pinned == null) button
+        else
+          "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
+            "aria-describedby=\"cp-pinned-controls-note\">$button</span>"
+      } else ""
     val svgMatch =
       if (hasSvgExport && !componentBrowser) {
         val compareQuery =
@@ -9384,7 +9417,8 @@ $rows
           "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\"$staleTipAttr " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
       }
-    val usageAvailable = !usageHref.isNullOrBlank()
+    val sourceKnown = !usageHref.isNullOrBlank()
+    val usageAvailable = sourceKnown && pinned == null
     // The **Source chip** — the usage code behind this card, on the same row and for the same
     // reason the design-spec chip is there rather than inside the renderer combo: that combo is
     // headed "Switch renderer", and source is not a renderer. It answers a third question again,
@@ -9396,16 +9430,27 @@ $rows
     // every host that can browse one, and most of the public deployment's catalogs cannot be
     // compiled here.
     val sourceChipHtml =
-      if (!usageAvailable) ""
+      if (!sourceKnown) ""
       else {
-        val tip = "Show the plain Compose that produces this render"
+        val tip =
+          if (pinned == null) "Show the plain Compose that produces this render"
+          else "Pinned revision — source is only available from the current catalog"
         val tabClass = if (componentBrowser) " cp-browser-tab" else ""
         val tabAttrs = if (componentBrowser) " role=\"tab\" aria-selected=\"false\"" else ""
-        "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
-          "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
-          "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
-          "data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\" " +
-          "title=\"${WebEscaping.htmlEscape(tip)}\">Source</button>"
+        val disabled =
+          if (pinned == null) "" else " disabled aria-describedby=\"cp-pinned-controls-note\""
+        val usageSrc =
+          if (pinned == null) " data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\""
+          else ""
+        val button =
+          "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
+            "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
+            "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\"$usageSrc " +
+            "title=\"${WebEscaping.htmlEscape(tip)}\"$disabled>Source</button>"
+        if (pinned == null) button
+        else
+          "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
+            "aria-describedby=\"cp-pinned-controls-note\">$button</span>"
       }
     val browserPreviewTab =
       if (!componentBrowser || !usageAvailable) ""
@@ -9989,7 +10034,17 @@ $rows
     // — the theme is picked without a page load, so a server-rendered label alone would go stale on
     // the first click.
     val themeToggle =
-      """
+      if (pinned != null)
+        """
+        <span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" disabled aria-describedby="cp-pinned-controls-note"
+          title="Pinned revision — theme overrides are not applied to published pixels">
+          <span class="cp-toggle-label">Theme</span>
+          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Dark" else "Light"}</span>
+        </button></span>
+        """
+          .trimIndent()
+      else
+        """
       <details class="cp-theme-menu">
         <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
           <span class="cp-toggle-label">Theme</span>
@@ -9999,7 +10054,7 @@ $rows
         <div class="cp-theme-menu-panel">$themeBarHtml</div>
       </details>
       """
-        .trimIndent()
+          .trimIndent()
     // Inspection layers (see `<cp-inspect-layers>`): what the frame is MADE OF, drawn over the
     // pixels the server already sent — the accessibility focus map, the resolved typography, the
     // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
@@ -10317,6 +10372,12 @@ $rows
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
+    val pinnedControlsNote =
+      if (pinned == null) ""
+      else
+        "<span class=\"cp-pinned-controls-note\" id=\"cp-pinned-controls-note\" role=\"note\">" +
+          "Pinned revision: Theme overrides are not applied; Source, SVG, and 3D use the " +
+          "current catalog and are unavailable.</span>"
     // Both or neither: a timeline the visitor cannot click through to an old render is worse than
     // no timeline, so a missing repo suppresses the whole feature rather than half of it.
     val historyAttrs =
@@ -10335,7 +10396,13 @@ $rows
     // The revision control, and the attribute that makes the pin reach the pixels: `viewer.js`
     // appends `at=<sha>` to every render request it builds, so the stage, the export links and the
     // Copy PNG button all read the same publish the banner names.
-    val revisionHref: (String?) -> String = { pin -> withPin("$basePath/p/$idSeg$q", pin) }
+    val revisionBaseQuery =
+      listOf(linkQuery(token, linkSessionId, basePath, isPublic), revisionQuery)
+        .filter { it.isNotBlank() }
+        .joinToString("&")
+    val revisionHref: (String?) -> String = { pin ->
+      withPin("$basePath/p/$idSeg${querySuffix(revisionBaseQuery)}", pin)
+    }
     val revisionMenu = revisionsHtml(revisions, includeBanner = false, hrefFor = revisionHref)
     val revisionBanner = revisionBannerHtml(revisions, revisionHref)
     val pinnedAttr =
@@ -10441,7 +10508,7 @@ $rows
       </div>${if (browserVariant.isBlank()) "" else "\n      $browserVariant"}
       $revisionBanner${degradeBanner(degradations)}$issueRows
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      $primaryControls
+      $primaryControls${if (pinnedControlsNote.isBlank()) "" else "\n        $pinnedControlsNote"}
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       $modeInputs

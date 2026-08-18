@@ -1346,6 +1346,19 @@ class ServeHttpServer(
   private fun RoutingContext.requestQuerySuffix(): String =
     call.request.queryString().let { if (it.isEmpty()) "" else "?$it" }
 
+  /** A pinned render accepts routing state and the pin itself, never viewer render overrides. */
+  private fun RoutingContext.pinnedRenderQuerySuffix(): String =
+    call.request.queryParameters
+      .entries()
+      .filter { (key, _) ->
+        key == "token" || key == "session" || key == ServeCatalogRevision.PARAM
+      }
+      .flatMap { (key, values) -> values.map { key to it } }
+      .joinToString("&") { (key, value) ->
+        "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
+      }
+      .let { if (it.isEmpty()) "" else "?$it" }
+
   /**
    * The global presentation selected in the sticky header. The command chooses the initial mode
    * (`browse` → Catalog, `serve` → Dev); the visitor's own choice, remembered in the
@@ -5247,6 +5260,7 @@ class ServeHttpServer(
       // for distinct shas hold Ktor's request threads through several round trips each.
       val preview = previewId?.let { id ->
         val host = catalogBundleHost(renderHost)
+        val currentPreview = renderHost.previews.firstOrNull { it.id == id }
         val pinnedPreview =
           revisions.pinned?.let { pin ->
             withContext(Dispatchers.IO) { host?.pinnedPreview(pin, id) }
@@ -5259,8 +5273,21 @@ class ServeHttpServer(
           revisions.pinned?.let { pin ->
             withContext(Dispatchers.IO) { host?.pinnedCatalogIsAuthoritative(pin) }
           } == true
-        pinnedPreview
-          ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
+        when {
+          // The revision still owns the route. While the id survives, enrich its historical
+          // component identity with the tip's state/props/source metadata; those fields are not in
+          // catalog.json, and dropping them is what made the same variant lose half its label and
+          // toolbar. Keep the revision's componentId when it had one, so a genuine historical move
+          // between components is still represented. A retired id has no current record and uses
+          // the historical placeholder on its own.
+          pinnedPreview != null ->
+            currentPreview?.copy(
+              componentId = pinnedPreview.componentId ?: currentPreview.componentId,
+              theme = pinnedPreview.theme ?: currentPreview.theme,
+            ) ?: pinnedPreview
+          revisionAnswers -> null
+          else -> currentPreview
+        }
       }
       if (preview == null) {
         if (revisions.pinned != null && previewId != null) {
@@ -5307,8 +5334,10 @@ class ServeHttpServer(
       val wasmSameOrigin =
         catalogBundleHost(renderHost)?.let { it.trust is BundleVerifier.Verdict.Trusted } ?: false
       val origin = externalOrigin()
+      val imageQuerySuffix =
+        if (revisions.pinned == null) requestQuerySuffix() else pinnedRenderQuerySuffix()
       val imageUrl =
-        "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
+        "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$imageQuerySuffix"
       // PNG-header read, so the unfurl card carries the render's real size rather than making the
       // fetcher download it to measure. Also what stops a 300×210 component from claiming a
       // large-image card it can't fill (see [ServeWeb.twitterCard]).
@@ -5328,14 +5357,17 @@ class ServeHttpServer(
       // module of the Kotlin — NOT the delivery branch) joined with the preview's module-relative
       // sourceFile. Null when the session has no catalog source or the preview recorded no path.
       val sourceHref =
-        bundleHost?.catalogSource?.let { src ->
-          ServeUrls.githubBlobUrl(
-            src.repo,
-            src.ref,
-            preview.sourceModule ?: src.module,
-            preview.sourceFile,
-          )
-        }
+        bundleHost
+          ?.catalogSource
+          ?.takeIf { revisions.pinned == null }
+          ?.let { src ->
+            ServeUrls.githubBlobUrl(
+              src.repo,
+              src.ref,
+              preview.sourceModule ?: src.module,
+              preview.sourceFile,
+            )
+          }
       // The prefilled "report an issue" report for the preview on screen, filed against the repo
       // that owns its Kotlin.
       //
@@ -5512,7 +5544,10 @@ class ServeHttpServer(
           // "open in playground" — offered only when this host has the lane AND this preview
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.
-          playgroundHref = playgroundLinkFor(renderHost, sessionId, preview.id, preview.sourceFile),
+          playgroundHref =
+            if (revisions.pinned == null)
+              playgroundLinkFor(renderHost, sessionId, preview.id, preview.sourceFile)
+            else null,
           usageHref = usageLinkFor(sessionId, preview.id, preview.sourceFile, basePath),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
@@ -5535,6 +5570,13 @@ class ServeHttpServer(
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
           revisions = revisions,
+          revisionQuery =
+            requestOverrideParams(sessionId)
+              .filterKeys { it == "themeProvider" || it == "uiMode" }
+              .entries
+              .joinToString("&") { (key, value) ->
+                "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
+              },
           parityIssues =
             renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
               preview.id in issue.previewIds ||

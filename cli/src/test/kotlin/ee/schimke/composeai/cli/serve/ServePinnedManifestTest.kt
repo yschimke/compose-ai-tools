@@ -18,8 +18,8 @@ class ServePinnedManifestTest {
         """
         {"schema":"design-parity-catalog/v1","components":[
           {"componentId":"Button/Filled","images":[
-            {"path":"images/button-filled/ideal__default__dark.png"},
-            {"path":"images/button-filled/ideal__default__light.png"}]},
+            {"path":"images/button-filled/ideal__default__dark.png","theme":"light"},
+            {"path":"images/button-filled/ideal__default__light.png","theme":"dark"}]},
           {"componentId":"Card","images":[{"path":"images/card/ideal.png"}]}]}
         """
           .trimIndent()
@@ -39,6 +39,9 @@ class ServePinnedManifestTest {
     // live catalog no longer lists.
     assertEquals("Button/Filled", entries.labels["button-filled__ideal__default__dark"])
     assertEquals("Card", entries.labels["card__ideal"])
+    // Theme is catalog metadata, not something inferred from a path whose naming is unconstrained.
+    assertEquals("light", entries.themes["button-filled__ideal__default__dark"])
+    assertEquals("dark", entries.themes["button-filled__ideal__default__light"])
   }
 
   @Test

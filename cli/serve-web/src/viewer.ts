@@ -4049,6 +4049,18 @@ function syncUrl() {
     new URLSearchParams(query()).forEach(function (value, name) {
         if (ownsUrlParam(name)) values[name] = value;
     });
+    // A pinned frame cannot apply a theme override, but the page still carries the selection that
+    // led into revision history. Keep that descriptive state in the address bar while query()
+    // deliberately omits it from /render (which must request only the published PNG). Without
+    // this, the first unrelated URL sync stripped themeProvider and made revision scrubbing forget
+    // the visitor's theme even though the disabled Theme control plainly explains it is unapplied.
+    if (pinnedAt) {
+        var pinnedParams = new URLSearchParams(location.search);
+        ["themeProvider", "uiMode"].forEach(function (name) {
+            var value = pinnedParams.get(name);
+            if (value) values[name] = value;
+        });
+    }
     if (scrollLong && scrollLong.checked) values.scroll = "long";
     // The exploded view and its knobs, written from the same helper the render URL uses so the
     // page's own address, the copied link and the fetched bytes can never disagree about the
@@ -4079,6 +4091,20 @@ function syncUrl() {
             values.motion = pickedMotion;
     }
     window.cpUrlState.sync(values, ownsUrlParam, !push);
+    // Revision destinations are server-rendered, but the visitor can choose a theme without a
+    // navigation. Keep every revision/current link aligned with that live URL state so entering or
+    // leaving a pin never drops the selection the Theme chip describes.
+    document
+        .querySelectorAll<HTMLAnchorElement>(".cp-revision, .cp-pinned-current")
+        .forEach(function (link) {
+            var destination = new URL(link.href, location.href);
+            ["themeProvider", "uiMode"].forEach(function (name) {
+                var value = values[name];
+                if (value) destination.searchParams.set(name, value);
+                else destination.searchParams.delete(name);
+            });
+            link.href = destination.href;
+        });
 }
 // What the controls hold when the URL names nothing — captured after the server markup and the
 // sticky-theme script have had their say, so Back out of a choice restores the page as it first
