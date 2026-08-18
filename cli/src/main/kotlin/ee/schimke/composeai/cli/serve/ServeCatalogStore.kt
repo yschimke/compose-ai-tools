@@ -732,6 +732,20 @@ class ServeCatalogStore(
     // below, which front this host with a daemon that can actually render them. The terminal
     // baked-only registration passes none, so a session with no live lane simply doesn't list them
     // (and says why, via a `deferred-not-served` degradation) instead of showing broken cards.
+    // The catalog-id → daemon-preview-id bridge: a live daemon knows previews by their
+    // function-based
+    // descriptor id (`FilledButton_Dark`), but the published links/routes use the catalog id
+    // (`button-filled__ideal__default__dark`). The exporter records each image's source daemon id
+    // in
+    // `previewId`; map it against the route-safe catalog id so a live host can answer the published
+    // URLs (and unmapped ids — the Android-only variants — fall back to baked PNGs).
+    //
+    // Read before the hosts are built because it also decides whether the published-comparison lane
+    // runs at all ([ServeRcCompare.stagesFor]), which the host has to know to tell "the lane has
+    // not
+    // landed yet" apart from "there is no lane".
+    val alias = previewAliasFor(catalog)
+
     val bakedFallback: (List<ServeDegradation>, List<String>) -> ServeBundleHost =
       { degradations, liveOnly ->
         ServeBundleHost(
@@ -775,6 +789,9 @@ class ServeCatalogStore(
               ?.let { ServeWeb.CatalogSource(it.repo, it.ref, it.module) },
           degradations = degradations,
           liveOnly = liveOnly,
+          // Kept in step with [scheduleRcCompareFetch]'s own guard through the shared helper: a
+          // host that claims a lane which never runs stays "pending" forever and never caches.
+          stagesRcCompare = ServeRcCompare.stagesFor(alias),
           // Every id the catalog bakes, so the grid is complete the moment `catalog.json` lands…
           declaredBaked = bakedPathById.keys.toList() + failedIds,
           // …and the pixels follow on first use. The store keeps ownership of the network here: the
@@ -821,15 +838,6 @@ class ServeCatalogStore(
             ),
         )
       }
-
-    // The catalog-id → daemon-preview-id bridge: a live daemon knows previews by their
-    // function-based
-    // descriptor id (`FilledButton_Dark`), but the published links/routes use the catalog id
-    // (`button-filled__ideal__default__dark`). The exporter records each image's source daemon id
-    // in
-    // `previewId`; map it against the route-safe catalog id so a live host can answer the published
-    // URLs (and unmapped ids — the Android-only variants — fall back to baked PNGs).
-    val alias = previewAliasFor(catalog)
 
     // The published Remote Compose player comparison (`rc-compare-summary.json` + the lane PNGs),
     // re-keyed through the same alias. Background, like the vectors: it is an enrichment the
@@ -1686,7 +1694,7 @@ class ServeCatalogStore(
     base: String,
     dir: File,
   ) {
-    if (alias.isEmpty()) return
+    if (!ServeRcCompare.stagesFor(alias)) return
     figmaExecutor.execute {
       if (generations[system] != generation) return@execute
       runCatching { fetchRcCompare(alias, base, dir) { generations[system] == generation } }
