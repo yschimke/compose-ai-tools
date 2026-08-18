@@ -337,6 +337,18 @@ sealed interface RenderOutcome {
     DAEMON_CACHE("daemon-cache"),
     /** Produced by a daemon render during this request. */
     DAEMON("daemon"),
+    /**
+     * A **player's published render**, read off the catalog's `rc-compare` staging — the offline
+     * parity pipeline already drew every `ir/<id>.rc` document with every player, so a bare
+     * `?rcPlayer=<wire>` browse is answerable from published bytes exactly as an override-free
+     * browse is answerable from the baked PNG.
+     *
+     * Its own generation rather than [BAKED] because the two make different claims: BAKED means "no
+     * renderer was involved and the request's overrides are NOT reflected", which is what turns an
+     * override-bearing request into a refusal. These bytes *are* the requested player's output, so
+     * reporting them as baked would refuse the very request they answer.
+     */
+    RC_PUBLISHED("rc-published"),
   }
 
   /** No such preview id in this session's module. */

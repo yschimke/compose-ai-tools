@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -93,6 +94,99 @@ class ServeHttpRoutingTest {
       override val previews = listOf(ServePreview(previewId, previewId))
       override val label = "live-down"
       override val canRenderOverrides = true
+
+      override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+        RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
+
+      override fun subscribeStream(
+        previewId: String,
+        overrides: PreviewOverrides,
+        codec: StreamCodec?,
+        maxFps: Int?,
+        onUnavailable: ((String) -> Unit)?,
+        onFrame: (StreamFrameParams) -> Unit,
+      ): StreamHandle? = null
+
+      override fun activeStreamCount(): Int = 0
+
+      override fun close() {}
+    }
+
+  /**
+   * [liveDownHost]'s Remote Compose twin: the same "live lane exists but can't serve right now"
+   * state, on a preview that carries a captured `ir/<id>.rc` document and is therefore **replayed**
+   * rather than recomposed.
+   *
+   * This is the shape the refusal used to get wrong. Being replayed was read as "no retry can ever
+   * help", so every transient baked fallback here answered `409` + "the override can never apply" —
+   * about a daemon that returns `200` the moment it is warm. The viewer treats `409` as final, so a
+   * cold start permanently disabled the lane. Terminality belongs to the *axis*, and only the
+   * handful in [CatalogLiveRouting.irReplayDroppedOverrideNames] have it.
+   */
+  private val liveDownRcHost =
+    object : ServeHost {
+      override val previews = listOf(ServePreview(previewId, previewId))
+      override val label = "live-down-rc"
+      override val canRenderOverrides = true
+
+      override fun remoteComposeDoc(previewId: String): ByteArray? = rcDocBytes
+
+      override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+        RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
+
+      override fun subscribeStream(
+        previewId: String,
+        overrides: PreviewOverrides,
+        codec: StreamCodec?,
+        maxFps: Int?,
+        onUnavailable: ((String) -> Unit)?,
+        onFrame: (StreamFrameParams) -> Unit,
+      ): StreamHandle? = null
+
+      override fun activeStreamCount(): Int = 0
+
+      override fun close() {}
+    }
+
+  /** Distinct bytes so a test can tell a published player raster from the baked snapshot. */
+  private fun publishedPng(): ByteArray =
+    ByteArrayOutputStream()
+      .also { ImageIO.write(BufferedImage(3, 3, BufferedImage.TYPE_INT_RGB), "png", it) }
+      .toByteArray()
+
+  /**
+   * [liveDownRcHost] plus the catalog's published `rc-compare` staging — the offline parity run
+   * having already drawn this document with every player.
+   *
+   * The daemon here is permanently unavailable (every render falls back to baked), which is what
+   * makes the assertions unambiguous: anything this host answers with published bytes it answered
+   * WITHOUT a renderer.
+   */
+  private val rcPublishedHost =
+    object : ServeHost {
+      override val previews = listOf(ServePreview(previewId, previewId))
+      override val label = "rc-published"
+      override val canRenderOverrides = true
+
+      override fun remoteComposeDoc(previewId: String): ByteArray? = rcDocBytes
+
+      override fun rcCompare(): RcCompareManifest =
+        RcCompareManifest(
+          lanes = listOf(RcCompareLane("embedded", "AndroidX Embedded", "emb")),
+          rows =
+            listOf(
+              RcCompareRow(
+                previewId = previewId,
+                width = 3,
+                height = 3,
+                lanes =
+                  mapOf("embedded" to RcCompareCell(rendered = true, render = "embedded/0.png")),
+              )
+            ),
+        )
+
+      override fun rcCompareImage(name: String): ByteArray? =
+        if (name == "embedded/0.png") publishedPng() else null
 
       override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
         RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
@@ -314,6 +408,8 @@ class ServeHttpRoutingTest {
     )
     registry.register("burst", host = burstHost, pinned = true)
     registry.register("live-down", host = liveDownHost, pinned = true)
+    registry.register("live-down-rc", host = liveDownRcHost, pinned = true)
+    registry.register("rc-published", host = rcPublishedHost, pinned = true)
     registry.register("svg-catalog", host = svgBundle("svg-catalog"), pinned = true)
     ServeHttpServer(
         host = "127.0.0.1",
@@ -358,6 +454,14 @@ class ServeHttpRoutingTest {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
     client.newCall(req).execute().use { r ->
       return Triple(r.code, r.body?.string() ?: "", r.headers)
+    }
+  }
+
+  /** [getFull] for a binary body — the published-raster lane is compared byte for byte. */
+  private fun getFullBytes(path: String): Triple<Int, ByteArray, okhttp3.Headers> {
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
+    client.newCall(req).execute().use { r ->
+      return Triple(r.code, r.body?.bytes() ?: ByteArray(0), r.headers)
     }
   }
 
@@ -648,6 +752,127 @@ class ServeHttpRoutingTest {
     assertEquals("2", headers["Retry-After"])
     assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
     assertTrue(body.contains("retry shortly"), "body offers a retry: $body")
+  }
+
+  /**
+   * A replayed preview whose daemon is merely cold gets the same `503` a recomposing one does.
+   *
+   * `rcPlayer` is the sharpest case: it selects which player replays the captured document, so it
+   * is precisely what the replay path reads — never a recomposition-only axis. It used to answer
+   * `409` + "this preview is replayed … so the override can never apply", which is false about a
+   * lane that serves the identical URL as `200` once warm, and final to a viewer that reads `409`
+   * as "stop asking".
+   */
+  @Test
+  fun `a cold replayed preview is 503, not a terminal refusal — the axis decides`() {
+    for (query in listOf("rcPlayer=java", "rcPlayer=cmp-android", "fontScale=2.0", "uiMode=dark")) {
+      val (code, body, headers) = getFull("/live-down-rc/render/$previewId.png?$query")
+      assertEquals(503, code, "$query is retryable on a replayed preview")
+      assertEquals("2", headers["Retry-After"], "$query offers a retry")
+      assertTrue(body.contains("retry shortly"), "$query body offers a retry: $body")
+      assertEquals(
+        query.substringBefore('='),
+        headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER],
+        "$query is still named as un-applied",
+      )
+    }
+  }
+
+  /**
+   * The other half: an axis a replay genuinely cannot honour stays a terminal `409`, whatever the
+   * daemon's state. `localeTag` resolved to a literal at capture and `RemoteContext` exposes no
+   * locale, so no amount of warming will apply it.
+   */
+  @Test
+  fun `an axis no replay can honour stays a terminal 409 on the same host`() {
+    val (code, body, headers) = getFull("/live-down-rc/render/$previewId.png?localeTag=ar")
+    assertEquals(409, code)
+    assertEquals(null, headers["Retry-After"], "a terminal refusal offers no retry")
+    assertEquals("localeTag", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("can never apply"), "body explains the finality: $body")
+  }
+
+  /**
+   * Mixed: one terminal axis decides the status, because the request as written can never be
+   * satisfied in full and `Retry-After` would invite a loop that never converges. The *message*
+   * names only the hopeless axis, so the reason given is about the one that is actually hopeless,
+   * while the header keeps naming everything that went un-applied.
+   */
+  @Test
+  fun `one terminal axis makes the whole refusal terminal, and names itself`() {
+    val (code, body, headers) =
+      getFull("/live-down-rc/render/$previewId.png?localeTag=ar&rcPlayer=java")
+    assertEquals(409, code)
+    assertEquals("localeTag,rcPlayer", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("override not applied: localeTag —"), "names the hopeless axis: $body")
+    assertFalse(body.contains("rcPlayer"), "does not blame the retryable axis: $body")
+  }
+
+  /** The opt-in still works on the replay lane, and still marks the pixels as a fallback. */
+  @Test
+  fun `fallback=baked works on a replayed preview too`() {
+    val (code, _, headers) =
+      getFull("/live-down-rc/render/$previewId.png?rcPlayer=java&fallback=baked")
+    assertEquals(200, code)
+    assertEquals(ServeHttpServer.RENDER_BAKED_FALLBACK, headers[ServeHttpServer.RENDER_HEADER])
+    assertEquals("rcPlayer", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+  }
+
+  /**
+   * The commonest Remote Compose page view — a viewer opening on its default player with nothing
+   * else selected — is answered from the catalog's published parity staging, with no renderer.
+   *
+   * This host's daemon never serves (every render falls back to baked), so a `200` carrying the
+   * published bytes can only have come from the staging. Before this lane existed the same request
+   * went to the daemon: ~0.75s warm on the public box, and on a cold one a baked fallback that then
+   * refused. The baked PNG cannot stand in for it — that is the *Java* player's capture, which is
+   * why the reference lane on the compare page is labelled "AndroidX Java".
+   */
+  @Test
+  fun `a bare player selection is served from the published parity staging`() {
+    val published = publishedPng()
+    for (query in listOf("rcPlayer=cmp-android", "rcPlayer=embedded")) {
+      val (code, body, headers) = getFullBytes("/rc-published/render/$previewId.png?$query")
+      assertEquals(200, code, "$query is answered")
+      assertContentEquals(published, body, "$query serves the published raster")
+      assertEquals("rc-published", headers[ServeHttpServer.GENERATION_HEADER])
+      assertEquals(
+        null,
+        headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER],
+        "the player WAS applied, so nothing is reported dropped",
+      )
+    }
+  }
+
+  /**
+   * The safety condition. A request carrying anything beyond the player selection asks for pixels
+   * the parity run never drew, so it must route to the renderer exactly as before — and on this
+   * host that means the un-served daemon, hence the refusal rather than a wrong `200`.
+   */
+  @Test
+  fun `a player selection with any other override does not take the published lane`() {
+    for (query in
+      listOf(
+        "rcPlayer=cmp-android&fontScale=2.0",
+        "rcPlayer=cmp-android&knob.label=Hi",
+        "rcPlayer=cmp-android&localeTag=ar",
+      )) {
+      val (code, _, headers) = getFull("/rc-published/render/$previewId.png?$query")
+      assertNotEquals(200, code, "$query must not be answered from published bytes")
+      assertNotEquals(
+        "rc-published",
+        headers[ServeHttpServer.GENERATION_HEADER],
+        "$query did not take the published lane",
+      )
+    }
+  }
+
+  /** A lane the parity run staged nothing for falls through to the renderer, not to a 404. */
+  @Test
+  fun `an unstaged player falls through to the ordinary render path`() {
+    val (code, _, headers) = getFull("/rc-published/render/$previewId.png?rcPlayer=java")
+    assertNotEquals("rc-published", headers[ServeHttpServer.GENERATION_HEADER])
+    assertTrue(code == 503 || code == 409, "routed to the renderer, which cannot serve: $code")
   }
 
   @Test

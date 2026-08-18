@@ -2260,7 +2260,7 @@ class ServeHttpServer(
           // chips are the union — one recomposing preview is enough to publish all of them — and a
           // replayed card mapped for only some would light up chips that 409 it.
           irReplayFor = { id ->
-            droppedOverridesAreTerminal(renderHost, id) && !everyThemeApplies(renderHost, id)
+            isReplayedPreview(renderHost, id) && !everyThemeApplies(renderHost, id)
           },
           // Long-press a card to open a live daemon session inside it. Same two conditions the
           // viewer's Live toggle answers to — the session offers the stream lane, and this preview
@@ -4861,7 +4861,7 @@ class ServeHttpServer(
         // pixels here would read as "this arg changes nothing".
         val dropped = droppedOverridesFor(renderHost, outcome.generation, previewId, overrides)
         if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
-          refuseDroppedOverrides(renderHost, previewId, dropped)
+          refuseDroppedOverrides(renderHost, previewId, dropped, overrides)
         } else {
           markDroppedOverrides(dropped)
           call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
@@ -4908,7 +4908,7 @@ class ServeHttpServer(
       is SvgOutcome.Ok -> {
         val dropped = droppedOverridesFor(renderHost, outcome.generation, previewId, overrides)
         if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
-          refuseDroppedOverrides(renderHost, previewId, dropped)
+          refuseDroppedOverrides(renderHost, previewId, dropped, overrides)
         } else {
           markDroppedOverrides(dropped)
           call.respondText(
@@ -5342,7 +5342,7 @@ class ServeHttpServer(
           // the viewer greys the controls [droppedOverridesFor] would answer with a 409. Same host
           // question that predicate asks, deliberately read here rather than derived from
           // `hasRemoteComposeDoc` on the client — the two must not drift apart.
-          irReplay = droppedOverridesAreTerminal(renderHost, preview.id),
+          irReplay = isReplayedPreview(renderHost, preview.id),
           // …but a replayed preview can still take a declared theme when the session publishes its
           // colours, so the viewer greys the recomposition-only controls without greying this one.
           replayThemes = applicableThemes(renderHost, preview.id).isNotEmpty(),
@@ -5729,6 +5729,7 @@ class ServeHttpServer(
             else
               renderHost.cachedRender(previewId, overrides)
                 ?: renderHost.bakedRender(previewId, overrides)
+                ?: publishedRcPlayerRender(renderHost, previewId, overrides)
           // A "pure declared-theme render" — the classification the burst lease admits on. Read
           // from the request rather than the parsed overrides, because an expanded provider is no
           // longer in them: `themeSeeding.provider` is what the expansion consumed, and the request
@@ -5828,6 +5829,7 @@ class ServeHttpServer(
                   renderHost,
                   previewId,
                   dropped,
+                  overrides,
                   outcome.png,
                   ContentType.Image.PNG,
                   outcome.generation,
@@ -5864,6 +5866,42 @@ class ServeHttpServer(
    * renderer was involved in this request). Every other generation is a real render keyed by these
    * overrides, cache hit or not.
    */
+  /**
+   * [previewId]'s published render by the player a **bare** `?rcPlayer=` names, as a
+   * [RenderOutcome] for the pre-admission `cached` chain — or null when this request is not that.
+   *
+   * The catalog's offline parity run already drew every `ir/<id>.rc` document with every player, so
+   * the commonest Remote Compose page view there is — a viewer opening on its default player, with
+   * nothing else selected — is answerable from published bytes. Before this it went to the daemon:
+   * `?rcPlayer=cmp-android` measured ~0.75s warm on a warm public box, and on a cold one it fell
+   * back to baked pixels and refused. Note the catalog's ordinary baked PNG cannot stand in,
+   * because it is the **Java** player's capture — the reference the other lanes are scored against.
+   *
+   * "Bare" is the whole safety condition. Any other override — a font scale, a device, a knob, a
+   * theme — asks for pixels the parity run never drew, so the player selection is stripped and what
+   * remains must be something the baked snapshot would itself satisfy
+   * ([CatalogLiveRouting.overridesAffectRender]). Otherwise this returns null and the request
+   * routes to the renderer exactly as before.
+   */
+  private fun publishedRcPlayerRender(
+    renderHost: ServeHost,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): RenderOutcome.Ok? {
+    val rc = overrides.remoteCompose ?: return null
+    val player = rc.player ?: return null
+    val backend = RcPlayerBackend.entries.firstOrNull { it.playerKind == player } ?: return null
+    // Everything the request asks for beyond "draw it with this player".
+    val withoutPlayer =
+      overrides.copy(
+        remoteCompose =
+          rc.copy(player = null).takeIf { it.profile != null || it.namedValues.isNotEmpty() }
+      )
+    if (CatalogLiveRouting.overridesAffectRender(previewId, withoutPlayer)) return null
+    val bytes = renderHost.publishedRcPlayerRender(previewId, backend) ?: return null
+    return RenderOutcome.Ok(bytes, RenderOutcome.Generation.RC_PUBLISHED)
+  }
+
   private fun droppedOverridesFor(
     renderHost: ServeHost,
     generation: RenderOutcome.Generation,
@@ -5883,12 +5921,33 @@ class ServeHttpServer(
     }
 
   /**
-   * Whether a refusal for [previewId] is **terminal** — retrying can never apply the override. True
-   * for an IR-replayed preview: there is no composition to re-run, today or in a minute, so the
-   * 503-with-`Retry-After` a live-lane-exists preview gets would be a lie the viewer turns into
-   * "retry shortly". [refuseDroppedOverrides] answers 409 instead, which the viewer already treats
-   * as final.
+   * The dropped overrides a refusal for [previewId] must call **terminal** — the axes retrying can
+   * never apply, because a replay has no composition to re-run, today or in a minute. Exactly
+   * [CatalogLiveRouting.irReplayDroppedOverrideNames], and empty for a preview that recomposes.
+   *
+   * Terminality is a property of the **axis**, not of the preview, and conflating the two is the
+   * bug this replaced. The old predicate was "does this preview carry a captured document?", which
+   * is true of *every* Remote Compose preview — including the ones whose daemon twin renders the
+   * axis perfectly well. So a transient baked fallback (a cold daemon, a busy one, no free seat) on
+   * e.g. `?rcPlayer=java` was answered `409` + "the override can never apply", when the same URL
+   * against the warm daemon is a `200`. The viewer treats `409` as final, so it gave up on a lane
+   * that was seconds from working, and the message told the visitor something false about it.
+   *
+   * `rcPlayer` is the sharpest case: choosing which player replays the document is precisely what
+   * the replay path reads, so it is never terminal — `IrReplayDroppedOverridesTest` has asserted
+   * that about the predicate all along; only this caller disagreed.
    */
+  private fun terminalDroppedOverrides(
+    renderHost: ServeHost,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): List<String> =
+    if (isReplayedPreview(renderHost, previewId)) {
+      CatalogLiveRouting.irReplayDroppedOverrideNames(previewId, overrides)
+    } else {
+      emptyList()
+    }
+
   /**
    * The declared themes [previewId] can actually be rendered under: all of them when it recomposes,
    * else only those with a published replay mapping.
@@ -5898,7 +5957,7 @@ class ServeHttpServer(
    * catalog advertised.
    */
   private fun applicableThemes(renderHost: ServeHost, previewId: String): List<ServeTheme> =
-    if (droppedOverridesAreTerminal(renderHost, previewId)) renderHost.replayableThemes()
+    if (isReplayedPreview(renderHost, previewId)) renderHost.replayableThemes()
     else renderHost.declaredThemes
 
   /**
@@ -5912,7 +5971,7 @@ class ServeHttpServer(
    * the whole offered set is gated out of the control entirely rather than into an error.
    */
   private fun applicableThemes(renderHost: ServeHost): List<ServeTheme> =
-    if (renderHost.previews.any { !droppedOverridesAreTerminal(renderHost, it.id) }) {
+    if (renderHost.previews.any { !isReplayedPreview(renderHost, it.id) }) {
       renderHost.declaredThemes
     } else {
       renderHost.replayableThemes()
@@ -5924,7 +5983,12 @@ class ServeHttpServer(
       .map { it.providerFqn }
       .containsAll(applicableThemes(renderHost).map { it.providerFqn })
 
-  private fun droppedOverridesAreTerminal(renderHost: ServeHost, previewId: String): Boolean =
+  /**
+   * Whether [previewId] is redrawn by **replaying** its captured document rather than by
+   * recomposing. A per-preview fact about the lane, and the axis the theme controls narrow on — not
+   * a statement that a refusal is final, which is [terminalDroppedOverrides]' job.
+   */
+  private fun isReplayedPreview(renderHost: ServeHost, previewId: String): Boolean =
     ServeThemeReplay.isReplayed(renderHost, previewId)
 
   /**
@@ -5957,14 +6021,18 @@ class ServeHttpServer(
    *   when it would rather show published pixels than a broken image). 200, plus
    *   `X-Compose-Preview-Render: baked-fallback`, since the bytes carry no signal of their own.
    * - the preview HAS a live lane, just not right now (daemon down, cold, no free seat) — 503 +
-   *   `Retry-After`, matching what a pure `themeProvider` request already returned in this state.
+   *   `Retry-After`, matching what a pure `themeProvider` request already returned in this state. A
+   *   replayed preview reaches this branch too, for every axis its document can answer: being
+   *   replayed is not by itself a reason retrying won't help (see [refuseDroppedOverrides]).
    * - the preview has NO live lane at all (a static/untrusted catalog, an unmapped Android-only
-   *   variant) — 409: retrying can't help, and the viewer already treats 409 as terminal.
+   *   variant), or the request names an axis no replay can ever honour — 409: retrying can't help,
+   *   and the viewer already treats 409 as terminal.
    */
   private suspend fun RoutingContext.respondDroppedOverrides(
     renderHost: ServeHost,
     previewId: String,
     dropped: List<String>,
+    overrides: PreviewOverrides,
     bytes: ByteArray,
     contentType: ContentType,
     generation: RenderOutcome.Generation,
@@ -5975,7 +6043,7 @@ class ServeHttpServer(
       call.respondBytes(bytes, contentType)
       return
     }
-    refuseDroppedOverrides(renderHost, previewId, dropped)
+    refuseDroppedOverrides(renderHost, previewId, dropped, overrides)
   }
 
   /** Whether the caller passed `?fallback=baked` — an explicit "serve the snapshot anyway". */
@@ -5995,22 +6063,34 @@ class ServeHttpServer(
   }
 
   /**
-   * The refusal half of [respondDroppedOverrides]: 503 when a live lane exists, else 409. An
-   * IR-replayed preview takes the 409 branch even though it *has* a live lane
-   * ([droppedOverridesAreTerminal]) — the lane works, it just can't recompose, so "retry shortly"
-   * would send the viewer round a loop that never converges.
+   * The refusal half of [respondDroppedOverrides]: 409 when at least one dropped axis is
+   * **terminal**, else 503 when a live lane exists, else 409 because there is no lane at all.
+   *
+   * The terminal test is per-axis ([terminalDroppedOverrides]), not per-preview. It used to be the
+   * latter — "this preview replays a captured document" — which is true of every Remote Compose
+   * preview and so swallowed the 503 branch entirely for them: a cold or busy daemon fell back to
+   * baked pixels, and the visitor was told the override "can never apply" about a lane that answers
+   * `200` once warm. A 409 is final to the viewer, so it stopped retrying a lane that was about to
+   * work.
+   *
+   * One terminal axis decides the whole response even when retryable ones ride along: the request
+   * as written can never be satisfied in full, so `Retry-After` would be an invitation to loop. The
+   * message names the terminal subset rather than everything dropped, so the reason given is about
+   * the axis that is actually hopeless.
    */
   private suspend fun RoutingContext.refuseDroppedOverrides(
     renderHost: ServeHost,
     previewId: String,
     dropped: List<String>,
+    overrides: PreviewOverrides,
   ) {
     call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
     val params = dropped.joinToString(", ")
-    if (droppedOverridesAreTerminal(renderHost, previewId)) {
+    val terminal = terminalDroppedOverrides(renderHost, previewId, overrides)
+    if (terminal.isNotEmpty()) {
       call.respondText(
-        "override not applied: $params — this preview is replayed from its captured document, " +
-          "which cannot be recomposed, so the override can never apply; add " +
+        "override not applied: ${terminal.joinToString(", ")} — this preview is replayed from its " +
+          "captured document, which cannot be recomposed, so the override can never apply; add " +
           "&$FALLBACK_PARAM=$FALLBACK_BAKED to accept the published snapshot (which ignores it)",
         status = HttpStatusCode.Conflict,
       )
@@ -6447,6 +6527,7 @@ class ServeHttpServer(
             renderHost,
             previewId,
             dropped,
+            overrides,
             svg,
             contentType,
             outcome.generation,
