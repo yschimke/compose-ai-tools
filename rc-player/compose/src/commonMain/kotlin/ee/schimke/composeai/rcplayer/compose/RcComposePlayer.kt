@@ -279,11 +279,11 @@ public fun RcComposePlayer(
   theme: RcPlayerTheme = RcPlayerTheme.System,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
-  fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  typefaces: RcTypefaceLoader = RcTypefaceLoader.Default,
   systemColors: (name: String) -> Color? = { null },
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
-  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies, systemColors)
+  RcComposePlayer(document, modifier, theme, namedValues, onEvent, typefaces, systemColors)
 }
 
 @Composable
@@ -293,7 +293,7 @@ public fun RcComposePlayer(
   theme: RcPlayerTheme = RcPlayerTheme.System,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
-  fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  typefaces: RcTypefaceLoader = RcTypefaceLoader.Default,
   systemColors: (name: String) -> Color? = { null },
 ) {
   // Resolve once, at the only place that can: `RcPlayerTheme.System` is a question for the host,
@@ -306,7 +306,7 @@ public fun RcComposePlayer(
     theme.resolve(),
     namedValues,
     onEvent,
-    fontFamilies,
+    typefaces,
     systemColors,
   )
 }
@@ -318,7 +318,7 @@ private fun RcComposePlayerResolved(
   theme: Int,
   namedValues: Map<String, RcNamedValue>,
   onEvent: (RcPlayerEvent) -> Unit,
-  fontFamilies: Map<String, RcFontFaces>,
+  typefaces: RcTypefaceLoader,
   systemColors: (name: String) -> Color?,
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
@@ -442,7 +442,7 @@ private fun RcComposePlayerResolved(
         LocalRcLookaheadScope provides this,
         LocalRcLayoutVersion provides invalidationVersion,
         LocalRcFonts provides fonts,
-        LocalRcNamedFonts provides fontFamilies,
+        LocalRcTypefaces provides typefaces,
       ) {
         RenderLayoutNode(
           node = layout,
@@ -501,7 +501,7 @@ private fun RenderLayoutNode(
   val layoutVersion = LocalRcLayoutVersion.current
   val lookaheadScope = LocalRcLookaheadScope.current
   val fontFamilies = LocalRcFonts.current
-  val namedFontFamilies = LocalRcNamedFonts.current
+  val typefaces = LocalRcTypefaces.current
   val visibility =
     if (forceGone) {
       0
@@ -956,8 +956,7 @@ private fun RenderLayoutNode(
             fontSize = (state.resolve(operation.fontSize) / density.density).sp,
             fontWeight = FontWeight(boldWeight),
             fontStyle = if (operation.fontStyle and 2 != 0) FontStyle.Italic else FontStyle.Normal,
-            fontFamily =
-              resolveFontFamily(operation.fontFamilyId, state, fontFamilies, namedFontFamilies),
+            fontFamily = resolveFontFamily(operation.fontFamilyId, state, fontFamilies, typefaces),
             textAlign = operation.composeTextAlign(),
           ),
         overflow = operation.composeTextOverflow(),
@@ -1025,7 +1024,7 @@ private fun RenderLayoutNode(
                 properties.intProperty(8, -1),
                 state,
                 fontFamilies,
-                namedFontFamilies,
+                typefaces,
                 withWeightAxis(variationSettings, boldWeight),
               ),
             textAlign =
@@ -1133,7 +1132,7 @@ private data class RcAnimatedVisibility(val shouldRender: Boolean, val modifier:
 private val LocalRcLookaheadScope = compositionLocalOf<LookaheadScope?> { null }
 private val LocalRcLayoutVersion = compositionLocalOf { 0 }
 private val LocalRcFonts = compositionLocalOf<Map<Int, FontFamily>> { emptyMap() }
-private val LocalRcNamedFonts = compositionLocalOf<Map<String, RcFontFaces>> { emptyMap() }
+private val LocalRcTypefaces = compositionLocalOf<RcTypefaceLoader> { RcTypefaceLoader.Empty }
 
 private val DefaultRcAnimationSpec =
   RcAnimationSpec(
@@ -3194,25 +3193,18 @@ private fun decodeInlineFontsUncounted(document: RcDocument): Map<Int, FontFamil
  * `FontData` resolves to a `FontFamily` whose faces are already built, so for those the axes are
  * dropped rather than approximated. That is a substitution the render shows honestly; approximating
  * `wdth` by scaling would not be.
+ *
+ * The naming rules themselves live in [rcResolveTypeface], which is shared so every host gets them
+ * rather than reimplementing them. All this adds is reading the recorded name out of player state.
  */
 private fun resolveFontFamily(
   fontFamilyId: Int,
   state: RcPlayerState,
   embeddedFonts: Map<Int, FontFamily>,
-  namedFonts: Map<String, RcFontFaces>,
+  typefaces: RcTypefaceLoader,
   settings: FontVariation.Settings? = null,
-): FontFamily {
-  fun host(name: String): FontFamily? = namedFonts[name]?.family(settings)
-  return when (val family = state.text(fontFamilyId)?.lowercase()) {
-    null,
-    "default" -> host("default") ?: FontFamily.Default
-    "sans-serif" -> host(family) ?: FontFamily.SansSerif
-    "serif" -> host(family) ?: FontFamily.Serif
-    "monospace" -> host(family) ?: FontFamily.Monospace
-    else ->
-      embeddedFonts[fontFamilyId] ?: host(family.removePrefix("google:")) ?: FontFamily.Default
-  }
-}
+): FontFamily =
+  rcResolveTypeface(state.text(fontFamilyId), fontFamilyId, embeddedFonts, typefaces, settings)
 
 /**
  * The font-variation axes a `CoreText` style declares: property 20 is a list of *text ids* naming

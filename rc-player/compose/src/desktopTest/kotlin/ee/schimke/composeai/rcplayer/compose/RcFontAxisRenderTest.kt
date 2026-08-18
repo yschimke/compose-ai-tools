@@ -87,7 +87,7 @@ class RcFontAxisRenderTest {
   private fun inkWidth(document: RcDocument, fonts: Map<String, RcFontFaces>): Int {
     val scene =
       ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
-        RcComposePlayer(document, fontFamilies = fonts)
+        RcComposePlayer(document, typefaces = RcBundledTypefaceLoader(fonts))
       }
     try {
       val bitmap = Bitmap().apply { allocN32Pixels(WIDTH, HEIGHT) }

@@ -21,7 +21,7 @@ public fun RcComposeViewController(
   bytes: ByteArray,
   theme: RcPlayerTheme = RcPlayerTheme.System,
   onEvent: (RcPlayerEvent) -> Unit = {},
-  fontFamilies: Map<String, RcFontFaces> = emptyMap(),
+  typefaces: RcTypefaceLoader = RcTypefaceLoader.Default,
   onError: (String) -> Unit = {},
 ): UIViewController {
   val document = runCatching {
@@ -29,7 +29,7 @@ public fun RcComposeViewController(
       it
         .composeSupportReport(
           RcOperationProfiles.CMP_IOS_ALPHA16,
-          availableFontFamilies = fontFamilies.keys,
+          availableFontFamilies = typefaces.families,
         )
         .requireFullyRenderable()
     }
@@ -44,7 +44,7 @@ public fun RcComposeViewController(
       Modifier.fillMaxSize(),
       theme,
       onEvent = { event -> forwardIosPlayerEvent(onEvent, event) },
-      fontFamilies = fontFamilies,
+      typefaces = typefaces,
     )
   }
 }
