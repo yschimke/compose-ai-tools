@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "What this repo's own design catalogs use as scaffolding, so the preview server's Source panel",
+    "(and the playground handoff) can reduce a sticker to the plain Compose that produced the",
+    "render. Read by `PlaygroundSeedResolver` from the repo root at the same `ref` a catalog was",
+    "published from; see `cli/src/main/kotlin/ee/schimke/composeai/cli/serve/UsageRules.kt`.",
+    "",
+    "CatalogSticker is UNWRAPped rather than expanded into a stock MaterialTheme: it is the render",
+    "frame (a transparent Surface and 16dp of padding around a component silhouette), so keeping it",
+    "would put a 200-character theme expression in front of the one line the reader came for. The",
+    "full-screen template wrapper keeps its theme, because a screen example without one is not the",
+    "thing it is showing.",
+    "",
+    "The m3 sticker sheet is a *delegating* catalog: every preview is a one-line",
+    "`Sticker(\"<slug>\")` over the shared component set in :samples:design-catalog-m3-shared, so",
+    "without `scaffoldSources` + EXPAND the Source panel showed the wrapper and no component at",
+    "all (issue #4169). The wear and remote catalogs compose their components inline and need",
+    "nothing here beyond the generic rules they already inherit."
+  ],
+  "scaffoldAnnotationPackages": [
+    "com.example.designcatalogm3"
+  ],
+  "scaffoldAnnotationNames": [
+    "CatalogModes",
+    "CatalogTemplate"
+  ],
+  "scaffoldSources": [
+    "samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogStickers.kt",
+    "samples/design-catalog-m3/src/main/kotlin/com/example/designcatalogm3/CatalogTheme.kt",
+    "samples/design-catalog-m3-shared/src/commonMain/kotlin/com/example/designcatalogm3/shared/CatalogComponents.kt"
+  ],
+  "scaffolds": {
+    "Sticker": { "kind": "EXPAND" },
+    "CatalogComponent": { "kind": "EXPAND" },
+    "CatalogSticker": { "kind": "UNWRAP" },
+    "PreviewSlot": { "kind": "UNWRAP" },
+    "FullScreenM3": {
+      "kind": "RENAME",
+      "renameTo": "MaterialTheme",
+      "special": "MATERIAL3_SYSTEM_THEME"
+    },
+    "counted": { "kind": "SUBSTITUTE", "plain": "$0 to {}", "params": ["base"] },
+    "catalogOverrideString": {
+      "kind": "SUBSTITUTE",
+      "plain": "$1",
+      "params": ["key", "default", "index"]
+    },
+    "catalogOverrideInt": {
+      "kind": "SUBSTITUTE",
+      "plain": "$1",
+      "params": ["key", "default", "index"]
+    },
+    "catalogOverrideFloat": {
+      "kind": "SUBSTITUTE",
+      "plain": "$1",
+      "params": ["key", "default", "index"]
+    },
+    "catalogOverrideBoolean": {
+      "kind": "SUBSTITUTE",
+      "plain": "$1",
+      "params": ["key", "default", "index"]
+    },
+    "catalogOverrideColor": {
+      "kind": "SUBSTITUTE",
+      "plain": "$1",
+      "params": ["key", "default", "index"]
+    }
+  },
+  "stringsPath": "/samples/design-catalog-m3-shared/src/commonMain/composeResources/values/strings.xml",
+  "previewAnnotation": "androidx.compose.ui.tooling.preview.Preview"
+}

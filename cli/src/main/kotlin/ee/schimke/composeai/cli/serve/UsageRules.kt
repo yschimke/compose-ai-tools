@@ -53,6 +53,43 @@ data class UsageRules(
   val scaffoldAnnotationPackages: List<String> = emptyList(),
 
   /**
+   * Catalog annotations by **bare simple name**, for the ones an import can never resolve: an
+   * annotation a catalog declares in the *same package* as the previews that stack it
+   * (`@CatalogModes`) is referenced with no import line at all, so [scaffoldAnnotationPackages] —
+   * which resolves a simple name through the file's own imports — structurally cannot see it. That
+   * is not a corner case: it is where a catalog's own multipreview normally lives, and it is why
+   * the m3 sticker sheet's snippets kept showing `@CatalogModes` above a `@Preview` that had just
+   * been stamped to replace it.
+   *
+   * Matched on the name alone, so it is the blunter of the two and the catalog opts into it by
+   * naming each annotation exactly. Prefer [scaffoldAnnotationPackages] whenever the annotation is
+   * imported.
+   */
+  @SerialName("scaffoldAnnotationNames") val scaffoldAnnotationNames: List<String> = emptyList(),
+
+  /**
+   * **Repo-root-relative** Kotlin files whose declarations the cleaner may read — the catalog's own
+   * scaffolding sources, so a sticker that *delegates* can be followed to what it delegates to.
+   *
+   * The cleaner's closure pass only ever reached declarations in the preview's **own file**, which
+   * is the right default and is exactly wrong for a catalog whose component bodies deliberately
+   * live in one shared place. `fun FilledButton() = Sticker("button-filled")` is the whole of the
+   * m3 sticker sheet's `Button/Filled`, and the honest reduction of it — `Button(onClick = {}) {
+   * Text("Filled") }` — is two files away. Without these the Source panel showed the wrapper and
+   * nothing else: a snippet with no component in it (issue #4169).
+   *
+   * Repo-root-relative rather than module-relative because the point is to cross a module boundary:
+   * the m3 catalog's stickers are in `:samples:design-catalog-m3` and their bodies are in
+   * `:samples:design-catalog-m3-shared`. Read at the same `ref` as the preview's own source, so a
+   * helper and the sticker citing it are never from different revisions.
+   *
+   * A name declared by more than one of these files is **ambiguous and dropped**, not first-wins —
+   * a repo publishing several catalogs lists every catalog's scaffolding here, and silently picking
+   * one repo-mate's `counted` for another's would rewrite a snippet into something that never ran.
+   */
+  @SerialName("scaffoldSources") val scaffoldSources: List<String> = emptyList(),
+
+  /**
    * Packages the [scaffolds] themselves live in, so a **package-qualified** call
    * (`ee.schimke.composeai.overrides.previewOverrideString(…)`) is recognised as the same call.
    *
@@ -193,6 +230,24 @@ data class UsageRules(
      * on a named argument.
      */
     SUBSTITUTE,
+
+    /**
+     * The helper **delegates**: replace the call with the helper's own body, its parameters bound
+     * to the call's arguments, and let every other pass run over what that produced.
+     *
+     * This is the one kind that reads a file other than the preview's — the declaration is looked
+     * up in [UsageRules.scaffoldSources] — and it exists because a catalog is allowed to keep its
+     * component bodies in one place. `Sticker("button-filled")` says nothing about a button; it
+     * says "the shared component set's `button-filled`", and the reader wants what that is.
+     *
+     * **String-keyed dispatch is part of the kind, not a second one.** A shared component set is
+     * normally a single `when (id)` over a few hundred branches, so expanding it verbatim would
+     * substitute the entire catalog for the one component asked about. When the body is a lone
+     * `when` over a parameter the call bound to a **string literal**, only the matching branch
+     * survives. Anything less certain — a computed key, a `when` this cannot read, an argument that
+     * is not a literal — is left exactly as the catalog wrote it and reported as residue.
+     */
+    EXPAND,
 
     /**
      * A kind this build does not know — a rule kind that has since been retired, or one a newer
@@ -342,6 +397,8 @@ data class UsageRules(
       copy(
         scaffoldAnnotationPackages =
           (scaffoldAnnotationPackages + GENERIC.scaffoldAnnotationPackages).distinct(),
+        scaffoldAnnotationNames =
+          (scaffoldAnnotationNames + GENERIC.scaffoldAnnotationNames).distinct(),
         scaffoldPackages = (scaffoldPackages + GENERIC.scaffoldPackages).distinct(),
         scaffolds = GENERIC.scaffolds + scaffolds,
       )

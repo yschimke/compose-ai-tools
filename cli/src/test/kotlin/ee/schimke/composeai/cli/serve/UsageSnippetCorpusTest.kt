@@ -151,6 +151,21 @@ class UsageSnippetCorpusTest {
       }
   }
 
+  /**
+   * The catalog's declared scaffold sources, read repo-root-relative out of the checkout — what the
+   * server fetches from GitHub for the same rules file. Without them a delegating catalog's samples
+   * would be cleaned differently here than in production, which is the one thing this corpus must
+   * not do.
+   */
+  private fun helperSourcesFor(root: File, rules: UsageRules): List<String> =
+    rules.scaffoldSources
+      .map { it.trim().removePrefix("/") }
+      .filter { it.isNotEmpty() }
+      .take(PlaygroundSeedResolver.MAX_SCAFFOLD_SOURCES)
+      .mapNotNull { path ->
+        File(root, path).takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
+      }
+
   /** Annotation-first (m3-catalog): the samples come from the annotations themselves. */
   private fun annotationSamples(system: String, root: File, perKind: Int): List<Sample> {
     val out = mutableListOf<Sample>()
@@ -280,6 +295,7 @@ class UsageSnippetCorpusTest {
       val files = sources(root)
       val (rules, declared) = rulesFor(root)
       val strings = stringsFor(root, rules)
+      val helperSources = helperSourcesFor(root, rules)
       // Which sampler by the catalog's *shape*, not its name — keying on the name would silently
       // mis-sample the next catalog somebody points this at. Annotations first, spec as the
       // fallback, rather than branching on the spec file's presence: m3-catalog ships **both**, so
@@ -300,7 +316,13 @@ class UsageSnippetCorpusTest {
         }
         val (file, anchor) = found
         val cleaned = runCatching {
-          PlaygroundSourceCleaner.clean(file.readText(), anchor, rules, strings)
+          PlaygroundSourceCleaner.clean(
+            source = file.readText(),
+            bodyLine = anchor,
+            rules = rules,
+            strings = strings,
+            helperSources = helperSources,
+          )
         }
           .getOrElse { e ->
             report.appendLine("- ${sample.kind}/${sample.function}: THREW ${e::class.simpleName}")

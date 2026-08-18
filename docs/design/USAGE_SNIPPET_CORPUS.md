@@ -105,6 +105,58 @@ So for a catalog like meshcore the Source panel shows *the preview, sliced and i
 usage code, and the panel already says so when a catalog has declared no rules. That is the correct
 outcome, and worth knowing before anyone tries to fix it with rules.
 
+### A third shape: the catalog that *delegates*
+
+This repo's own `:samples:design-catalog-m3` is neither of the two above. Every preview in it is a
+one-line wrapper —
+
+```kotlin
+@CatalogComponent(id = "Button/Filled", …)
+@CatalogModes
+@Composable
+fun FilledButton() = Sticker("button-filled")
+```
+
+— over a shared component set in `:samples:design-catalog-m3-shared`, which is a single `when (id)`
+over every component the sheet publishes. That is a deliberate design (one id, one composable, every
+lane) and it broke the Source panel completely: the cleaner's closure pass only ever reached
+declarations in the preview's **own file**, so the honest reduction of that preview was the wrapper
+and nothing else. A visitor opening `Button/Filled` got a snippet with no button in it — [issue
+#4169](https://github.com/yschimke/compose-ai-tools/issues/4169).
+
+Two pieces of vocabulary close it, both declared in [`compose-usage.json`](../../compose-usage.json)
+at the repo root:
+
+- **`scaffoldSources`** — repo-root-relative Kotlin files the cleaner may read, fetched at the same
+  `ref` as the preview's own source. This is what lets it cross a module boundary at all.
+- **`EXPAND`** — a rule kind meaning *the helper delegates*: replace the call with the helper's body,
+  parameters bound to the call's arguments. When that body is a lone `when` over a parameter the
+  call bound to a **string literal**, only the matching branch survives — otherwise expanding the
+  shared component set would substitute the whole catalog for the one component asked about.
+
+Chained, `Sticker("button-filled")` → `CatalogSticker { CatalogComponent("button-filled") }` → the
+`button-filled` branch, which the ordinary passes then reduce the rest of the way:
+
+```kotlin
+@Preview
+@Composable
+fun FilledButton() {
+  val (label, onClick) = "Filled" to {}
+  Button(onClick = onClick, enabled = true) { Text(label) }
+}
+```
+
+Whatever the expanded body still calls that a scaffold source declares (`StatefulCheckbox`,
+`CardContentSlot`) is closed over from those files too, capped — unlike the same-file closure, which
+is unbounded because a preview file is all about the preview. 30 of the sheet's 36 previews come out
+with empty residue; the remainder are the `stringResource` gap below and this repo's own
+`LocalSlotMode`, both reported rather than hidden.
+
+[`CatalogUsageRulesTest`](../../cli/src/test/kotlin/ee/schimke/composeai/cli/serve/CatalogUsageRulesTest.kt)
+runs the real rules file over the real catalog source on every build, because the two are edited by
+different hands and the cleaner's contract is to degrade quietly — a renamed helper or a moved file
+puts the wrapper back with nothing to say it regressed.
+
 ### Known gap: an override *variant* still shows the author's default
 
 Substituting `previewOverride*(key, default, …)` with `default` is right for the default render and
