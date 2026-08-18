@@ -2,8 +2,10 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class RenderPerfStatsTest {
 
@@ -74,6 +76,20 @@ class RenderPerfStatsTest {
     assertEquals(RenderPerfStats.FAILURE_WINDOW_SIZE, failures.size)
     assertEquals("failure 11", failures.first().reason)
     assertEquals("failure 2", failures.last().reason)
+  }
+
+  @Test
+  fun successfulRenderClearsCurrentFailureButPreservesDiagnostics() {
+    val stats = RenderPerfStats()
+    stats.recordFailed(500, timeout = false, reason = "transient failure")
+
+    assertTrue(stats.snapshot().lastRenderFailed)
+
+    stats.recordOk(100, cold = false)
+    val recovered = stats.snapshot()
+    assertFalse(recovered.lastRenderFailed)
+    assertEquals("transient failure", recovered.lastFailureReason)
+    assertEquals("transient failure", recovered.recentFailures.single().reason)
   }
 
   @Test

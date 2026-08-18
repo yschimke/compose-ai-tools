@@ -1051,8 +1051,8 @@ cp-parity-scores { display: contents; }
   font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line); }
 /* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
-.cp-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 10px; margin: 0 0 22px; max-width: 860px; }
+.cp-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px; margin: 0 0 22px; width: 100%; max-width: 860px; }
 /* Stat tiles are M3 filled cards at the medium corner: tonal fill, no keyline. */
 .cp-stat { border: 0; border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low); padding: 14px 16px; }
@@ -1061,6 +1061,28 @@ cp-parity-scores { display: contents; }
   letter-spacing: 0.06em; font-weight: 500; color: var(--cp-fg-faint); }
 .cp-stat-val { margin-top: 4px; font-size: var(--md-sys-typescale-title-large-size);
   line-height: var(--md-sys-typescale-title-large-line); font-weight: 400; color: var(--cp-fg); }
+.cp-meter { display: flex; overflow: hidden; height: 8px; margin-top: 12px;
+  border-radius: 999px; background: var(--md-sys-color-surface-container-highest); }
+.cp-meter-segment { display: block; min-width: 0; }
+.cp-meter-segment--primary, .cp-inline-meter-fill--primary {
+  background: var(--md-sys-color-primary); }
+.cp-meter-segment--secondary, .cp-inline-meter-fill--secondary {
+  background: var(--md-sys-color-secondary); }
+.cp-meter-segment--warning, .cp-inline-meter-fill--warning {
+  background: var(--md-sys-color-error); }
+.cp-meter-segment--muted, .cp-inline-meter-fill--muted {
+  background: var(--md-sys-color-outline); }
+.cp-inline-meter { display: block; overflow: hidden; width: min(220px, 100%); height: 5px;
+  margin-top: 5px; border-radius: 999px;
+  background: var(--md-sys-color-surface-container-highest); }
+.cp-inline-meter-fill { display: block; height: 100%; border-radius: inherit; }
+.cp-status-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 24px; width: 100%; max-width: 860px; margin: 0 0 22px; }
+.cp-status-config-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.cp-status-config dt { color: var(--cp-fg-muted); }
+.cp-status-config dd { margin: 0; color: var(--cp-fg); font-variant-numeric: tabular-nums;
+  text-align: right; }
 .cp-status-sec { margin: 26px 0 12px; font-size: var(--md-sys-typescale-title-medium-size);
   line-height: var(--md-sys-typescale-title-medium-line);
   letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }

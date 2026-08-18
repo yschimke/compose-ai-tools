@@ -4,8 +4,6 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -5664,8 +5662,14 @@ $noteBlock        <div class="cp-site-footer-links">
    */
   private val JSON_COMPACT = Json { encodeDefaults = true }
 
-  /** A labelled figure (a stat tile / config row) on the [statusPage]. */
-  data class Stat(val key: String, val value: String)
+  /** One coloured part of a [Meter]. */
+  data class MeterSegment(val label: String, val value: Long, val tone: String)
+
+  /** Part-of-whole data rendered underneath a status stat's human-readable value. */
+  data class Meter(val total: Long, val segments: List<MeterSegment>)
+
+  /** A labelled figure on the [statusPage], optionally backed by a capacity/progress meter. */
+  data class Stat(val key: String, val value: String, val meter: Meter? = null)
 
   /** One published catalog's row on the [statusPage] — its trust, size, liveness, provenance. */
   data class StatusCatalog(
@@ -5739,8 +5743,11 @@ $noteBlock        <div class="cp-site-footer-links">
     val public: Boolean,
     /** Wall-clock instant used to turn recent catalog generation times into relative labels. */
     val nowMillis: Long,
-    /** No catalog load or recent daemon startup failures (drives the header badge). */
+    /** No catalog-load, daemon-startup, or recent live-render failures. */
     val overallOk: Boolean,
+    /** Human explanation for a degraded badge, with an in-page diagnostic target. */
+    val healthReason: String? = null,
+    val healthHref: String? = null,
     val summary: List<Stat>,
     val config: List<Stat>,
     val catalogs: List<StatusCatalog>,
@@ -5782,16 +5789,50 @@ $noteBlock        <div class="cp-site-footer-links">
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
     val suffix = if (view.public) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
-    fun stat(s: Stat) =
-      "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(s.key)}</div>" +
-        "<div class=\"cp-stat-val\">${esc(s.value)}</div></div>"
+    fun stat(s: Stat): String {
+      val meter =
+        s.meter?.let { meter ->
+          val total = meter.total.coerceAtLeast(0)
+          val segments =
+            meter.segments.joinToString("") { segment ->
+              val width =
+                if (total == 0L) 0.0
+                else segment.value.coerceIn(0, total).toDouble() * 100.0 / total
+              "<span class=\"cp-meter-segment cp-meter-segment--${esc(segment.tone)}\" " +
+                "style=\"width:${"%.3f".format(Locale.ROOT, width)}%\" " +
+                "title=\"${esc(segment.label)}: ${segment.value}\"></span>"
+            }
+          "<div class=\"cp-meter\" role=\"img\" aria-label=\"${esc(s.value)}\">$segments</div>"
+        } ?: ""
+      return "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(s.key)}</div>" +
+        "<div class=\"cp-stat-val\">${esc(s.value)}</div>$meter</div>"
+    }
+
+    fun inlineMeter(label: String, value: Long, total: Long, tone: String): String {
+      val percent = if (total <= 0L) 0.0 else value.coerceIn(0, total).toDouble() * 100.0 / total
+      return "<span class=\"cp-inline-meter\" role=\"img\" aria-label=\"${esc(label)}\">" +
+        "<span class=\"cp-inline-meter-fill cp-inline-meter-fill--${esc(tone)}\" " +
+        "style=\"width:${"%.3f".format(Locale.ROOT, percent)}%\"></span></span>"
+    }
 
     val healthBadge =
       if (view.overallOk) " <span class=\"cp-badge cp-badge--trusted\">✓ healthy</span>"
-      else " <span class=\"cp-badge cp-badge--unverified\">⚠ degraded</span>"
+      else {
+        val reason = view.healthReason?.takeIf { it.isNotBlank() }
+        val title = reason?.let { " title=\"${esc(it)}\"" } ?: ""
+        val label = "⚠ degraded" + reason?.let { ": ${esc(it)}" }.orEmpty()
+        view.healthHref
+          ?.takeIf { it.isNotBlank() }
+          ?.let { href ->
+            " <a class=\"cp-badge cp-badge--unverified\" href=\"${esc(href)}\"$title>$label</a>"
+          } ?: " <span class=\"cp-badge cp-badge--unverified\"$title>$label</span>"
+      }
 
     val summaryGrid = view.summary.joinToString("\n") { stat(it) }
-    val configGrid = view.config.joinToString("\n") { stat(it) }
+    val configGrid =
+      view.config.joinToString("\n") {
+        "<div class=\"cp-status-config-row\"><dt>${esc(it.key)}</dt><dd>${esc(it.value)}</dd></div>"
+      }
 
     val catalogRows =
       if (view.catalogs.isEmpty())
@@ -5850,7 +5891,13 @@ $noteBlock        <div class="cp-site-footer-links">
                     "${optimization.cached}/${optimization.total} cached" +
                     if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
                 }
-              "<div class=\"cp-muted\">${esc(detail)}</div>"
+              "<div class=\"cp-muted\">${esc(detail)}</div>" +
+                inlineMeter(
+                  detail,
+                  optimization.cached.toLong(),
+                  optimization.total.toLong(),
+                  if (optimization.failed > 0) "warning" else "primary",
+                )
             } ?: ""
           val renderCache =
             c.renderCache?.let { cache ->
@@ -5858,7 +5905,8 @@ $noteBlock        <div class="cp-site-footer-links">
                 "preview cache ${cache.entries} entries · " +
                   "${humanBytes(cache.bytes)} / ${humanBytes(cache.maxBytes)}" +
                   if (cache.evictions > 0) " · ${cache.evictions} evicted" else ""
-              "<div class=\"cp-muted\">${esc(detail)}</div>"
+              "<div class=\"cp-muted\">${esc(detail)}</div>" +
+                inlineMeter(detail, cache.bytes, cache.maxBytes, "secondary")
             } ?: ""
           // An idle catalog's facts are last-known, not live — say so next to the badge rather than
           // leaving the cell blank, which would read as untrusted.
@@ -5889,8 +5937,9 @@ $noteBlock        <div class="cp-site-footer-links">
           "start on demand and suspend when idle.</td></tr>"
       else
         view.servers.joinToString("\n") { s ->
+          val id = if (s.id == s.label) "" else "<div class=\"cp-muted\">${esc(s.id)}</div>"
           "<tr>" +
-            "<td>${esc(s.label)}<div class=\"cp-muted\">${esc(s.id)}</div></td>" +
+            "<td>${esc(s.label)}$id</td>" +
             "<td><code>${esc(s.backend)}</code></td>" +
             "<td>${s.activeStreams}</td>" +
             "<td>${esc(s.upForText)}</td>" +
@@ -5945,7 +5994,7 @@ $noteBlock        <div class="cp-site-footer-links">
       $summaryGrid
       </div>
 
-      <p class="cp-status-sec">Catalogs</p>
+      <p class="cp-status-sec" id="catalogs">Catalogs</p>
       <div class="cp-status-scroll"><table class="cp-table">
         <thead><tr><th>Catalog</th><th>Trust</th><th>Previews</th><th>State</th></tr></thead>
         <tbody>
@@ -5962,14 +6011,14 @@ $noteBlock        <div class="cp-site-footer-links">
       </table></div>
 
       <p class="cp-status-sec">Configuration</p>
-      <div class="cp-status-grid">
+      <dl class="cp-status-config">
       $configGrid
-      </div>
+      </dl>
 
-      <p class="cp-status-sec">Recent daemon startup failures</p>
+      <p class="cp-status-sec" id="recent-daemon-failures">Recent daemon startup failures</p>
       $failureSection
 
-      <p class="cp-status-sec">Recent render failures</p>
+      <p class="cp-status-sec" id="recent-render-failures">Recent live render failures</p>
       $renderFailureSection
       """
         .trimIndent()
@@ -6139,28 +6188,37 @@ $noteBlock        <div class="cp-site-footer-links">
   /** One titled group of `key → value` diagnostics on [bugReportPage]. */
   data class BugReportSection(val title: String, val rows: List<Pair<String, String>>)
 
-  /** Recent generation times read naturally; older builds use a compact, unambiguous UTC date. */
+  /** Generation times use one relative format; the exact ISO instant remains in the title. */
   private fun friendlyGeneratedAt(iso: String, nowMillis: Long): String {
     val generated = runCatching { Instant.parse(iso) }.getOrNull() ?: return prettyDate(iso)
-    val ageSeconds = (nowMillis - generated.toEpochMilli()) / 1000
-    if (ageSeconds >= 0 && ageSeconds < 86_400) {
+    val ageMillis = nowMillis - generated.toEpochMilli()
+    if (ageMillis < 0) {
+      val futureSeconds = (-ageMillis + 999) / 1000
       return when {
-        ageSeconds < 60 -> "just now"
-        ageSeconds < 3_600 -> {
-          val minutes = ageSeconds / 60
-          "$minutes ${if (minutes == 1L) "minute" else "minutes"} ago"
-        }
-        else -> {
-          val hours = ageSeconds / 3_600
-          "$hours ${if (hours == 1L) "hour" else "hours"} ago"
-        }
+        futureSeconds < 60 -> "in less than a minute"
+        futureSeconds < 3_600 -> relativeTime(futureSeconds / 60, "minute", future = true)
+        futureSeconds < 86_400 -> relativeTime(futureSeconds / 3_600, "hour", future = true)
+        futureSeconds < 2_592_000 -> relativeTime(futureSeconds / 86_400, "day", future = true)
+        futureSeconds < 31_536_000 ->
+          relativeTime(futureSeconds / 2_592_000, "month", future = true)
+        else -> relativeTime(futureSeconds / 31_536_000, "year", future = true)
       }
     }
-    return STATUS_DATE_FORMAT.format(generated)
+    val ageSeconds = ageMillis / 1000
+    return when {
+      ageSeconds < 60 -> "just now"
+      ageSeconds < 3_600 -> relativeTime(ageSeconds / 60, "minute")
+      ageSeconds < 86_400 -> relativeTime(ageSeconds / 3_600, "hour")
+      ageSeconds < 2_592_000 -> relativeTime(ageSeconds / 86_400, "day")
+      ageSeconds < 31_536_000 -> relativeTime(ageSeconds / 2_592_000, "month")
+      else -> relativeTime(ageSeconds / 31_536_000, "year")
+    }
   }
 
-  private val STATUS_DATE_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm 'UTC'", Locale.ENGLISH).withZone(ZoneOffset.UTC)
+  private fun relativeTime(amount: Long, unit: String, future: Boolean = false): String {
+    val duration = "$amount $unit${if (amount == 1L) "" else "s"}"
+    return if (future) "in $duration" else "$duration ago"
+  }
 
   /**
    * Per-system **display policy** — the single source of truth for what background surface each

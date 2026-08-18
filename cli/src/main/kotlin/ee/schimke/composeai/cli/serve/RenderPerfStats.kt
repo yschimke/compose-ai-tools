@@ -33,6 +33,7 @@ class RenderPerfStats {
   private var maxMs = 0L
   private var totalMs = 0L
   private var lastMs: Long? = null
+  private var lastRenderFailed = false
   private var lastFailureReason: String? = null
   private var lastFailureAtEpochMillis: Long? = null
   private val recentFailures = ArrayDeque<RenderFailureSample>()
@@ -65,6 +66,7 @@ class RenderPerfStats {
     synchronized(lock) {
       renders++
       failed++
+      lastRenderFailed = true
       if (timeout) timedOut++
       lastMs = durationMs
       if (reason != null) {
@@ -91,6 +93,7 @@ class RenderPerfStats {
     synchronized(lock) {
       renders++
       ok++
+      lastRenderFailed = false
       if (cold) {
         coldOk++
         if (firstRenderMs == null) firstRenderMs = durationMs
@@ -128,6 +131,7 @@ class RenderPerfStats {
         p50Ms = pct(0.5),
         p95Ms = pct(0.95),
         windowSize = windowCount,
+        lastRenderFailed = lastRenderFailed,
         lastFailureReason = lastFailureReason,
         lastFailureAtEpochMillis = lastFailureAtEpochMillis,
         recentFailures = recentFailures.toList().asReversed(),
@@ -193,6 +197,8 @@ data class RenderPerfSnapshot(
   val p50Ms: Long? = null,
   val p95Ms: Long? = null,
   val windowSize: Int = 0,
+  /** Current lane signal: true only when the most recently completed daemon render failed. */
+  val lastRenderFailed: Boolean = false,
   /**
    * The most recent failure's reason text (truncated) + when it happened — the "why" behind a
    * non-zero [failed] counter, so a catalog whose live lane silently falls back to baked is
@@ -235,6 +241,7 @@ data class RenderPerfSnapshot(
         p50Ms = null,
         p95Ms = null,
         windowSize = snapshots.sumOf { it.windowSize },
+        lastRenderFailed = snapshots.any { it.lastRenderFailed },
         // Most recent failure across daemons (by timestamp) so the roll-up carries a "why" too.
         lastFailureReason =
           snapshots
