@@ -4195,17 +4195,23 @@ class ServeHttpServer(
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
+    val recentLiveRenderFailureCount: Int = liveDaemons.sumOf {
+      it.renderStats?.recentFailures?.size ?: 0
+    }
+    val catalogLoadFailureCount: Int = catalogs.count { it.loadError != null }
+    val overallOk: Boolean =
+      failures.isEmpty() && catalogLoadFailureCount == 0 && recentLiveRenderFailureCount == 0
 
     private fun backendOf(weight: Int): String = if (weight >= 2) "android" else "desktop"
+
+    private fun countLabel(count: Int, singular: String): String =
+      "$count $singular${if (count == 1) "" else "s"}"
 
     fun toResponse(): StatusResponse =
       StatusResponse(
         version = BUNDLE_VERSION,
         public = isPublic,
-        status =
-          if (failures.isEmpty() && catalogs.none { it.loadError != null || it.failedRenders > 0 })
-            "ok"
-          else "degraded",
+        status = if (overallOk) "ok" else "degraded",
         uptimeSeconds = uptimeSeconds,
         catalogs =
           CatalogSummaryDto(
@@ -4388,34 +4394,83 @@ class ServeHttpServer(
             .filter { it.renders + it.cacheHits + it.busy > 0 }
         )
       val summary = buildList {
-        add(ServeWeb.Stat("Catalogs", "${catalogs.count { it.available }}/${catalogs.size} loaded"))
+        val loadedCatalogs = catalogs.count { it.available }
+        add(
+          ServeWeb.Stat(
+            "Catalogs",
+            "$loadedCatalogs/${catalogs.size} loaded",
+            ServeWeb.Meter(
+              catalogs.size.toLong(),
+              listOf(
+                ServeWeb.MeterSegment("loaded", loadedCatalogs.toLong(), "primary"),
+                ServeWeb.MeterSegment(
+                  "unavailable",
+                  (catalogs.size - loadedCatalogs).toLong(),
+                  "warning",
+                ),
+              ),
+            ),
+          )
+        )
         val published = catalogs.sumOf { it.previews ?: 0 }
         val publishedFailures = catalogs.sumOf { it.failedRenders }
         val publishedDeferred = catalogs.sumOf { it.deferredPreviews }
+        val publishedRendered = (published - publishedFailures - publishedDeferred).coerceAtLeast(0)
         add(
           ServeWeb.Stat(
-            "Catalog renders",
-            "${(published - publishedFailures - publishedDeferred).coerceAtLeast(0)} rendered · " +
+            "Published catalog renders",
+            "$publishedRendered rendered · " +
               "$publishedFailures failed · $publishedDeferred deferred",
+            ServeWeb.Meter(
+              published.toLong(),
+              listOf(
+                ServeWeb.MeterSegment("rendered", publishedRendered.toLong(), "primary"),
+                ServeWeb.MeterSegment("failed", publishedFailures.toLong(), "warning"),
+                ServeWeb.MeterSegment("deferred", publishedDeferred.toLong(), "muted"),
+              ),
+            ),
           )
         )
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
-        add(ServeWeb.Stat("Live seats", seatsText))
+        add(
+          ServeWeb.Stat(
+            "Live seats",
+            seatsText,
+            if (liveSeats.unbounded) null
+            else {
+              val free = liveSeats.availablePermits().toLong()
+              val total = liveSeats.totalPermits.toLong()
+              ServeWeb.Meter(
+                total,
+                listOf(
+                  ServeWeb.MeterSegment("in use", (total - free).coerceAtLeast(0), "secondary"),
+                  ServeWeb.MeterSegment("free", free, "primary"),
+                ),
+              )
+            },
+          )
+        )
         add(ServeWeb.Stat("Known sessions", knownSessions.toString()))
         add(ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)))
         if (renderAgg != null) {
-          // One-line human roll-up; full per-daemon detail (cold counts, p50/p95, first-render
-          // latency) is on /status.json → runningServers[].renderStats.
-          val avg = renderAgg.avgMs?.let { " · avg ${it}ms" } ?: ""
-          val worstFirst = renderAgg.firstRenderMs?.let { " · worst first ${it}ms" } ?: ""
           add(
             ServeWeb.Stat(
               "Live renders",
               "${renderAgg.ok} ok · ${renderAgg.failed} failed · " +
-                "${renderAgg.cacheHits} cached$avg$worstFirst",
+                "${renderAgg.cacheHits} cached",
+              ServeWeb.Meter(
+                renderAgg.ok + renderAgg.failed + renderAgg.cacheHits,
+                listOf(
+                  ServeWeb.MeterSegment("ok", renderAgg.ok, "primary"),
+                  ServeWeb.MeterSegment("failed", renderAgg.failed, "warning"),
+                  ServeWeb.MeterSegment("cached", renderAgg.cacheHits, "secondary"),
+                ),
+              ),
             )
           )
+          renderAgg.avgMs?.let { add(ServeWeb.Stat("Average render latency", "${it}ms")) }
+          renderAgg.firstRenderMs?.let { add(ServeWeb.Stat("Worst first render", "${it}ms")) }
         }
       }
       val config =
@@ -4444,8 +4499,24 @@ class ServeHttpServer(
         version = BUNDLE_VERSION,
         public = isPublic,
         nowMillis = nowMillis,
-        overallOk =
-          failures.isEmpty() && catalogs.none { it.loadError != null || it.failedRenders > 0 },
+        overallOk = overallOk,
+        healthReason =
+          buildList {
+              if (catalogLoadFailureCount > 0)
+                add(countLabel(catalogLoadFailureCount, "catalog load failure"))
+              if (failures.isNotEmpty()) add(countLabel(failures.size, "daemon startup failure"))
+              if (recentLiveRenderFailureCount > 0)
+                add(countLabel(recentLiveRenderFailureCount, "recent live render failure"))
+            }
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString(" · "),
+        healthHref =
+          when {
+            catalogLoadFailureCount > 0 -> "#catalogs"
+            failures.isNotEmpty() -> "#recent-daemon-failures"
+            recentLiveRenderFailureCount > 0 -> "#recent-render-failures"
+            else -> null
+          },
         summary = summary,
         config = config,
         catalogs =

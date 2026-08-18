@@ -66,7 +66,7 @@
   </nav>
 </header>
         <main class="cp-main">
-              <h1 class="cp-head">Server status <span class="cp-badge cp-badge--unverified">⚠ degraded</span></h1>
+              <h1 class="cp-head">Server status <a class="cp-badge cp-badge--unverified" href="#recent-daemon-failures" title="1 daemon startup failure · 1 recent live render failure">⚠ degraded: 1 daemon startup failure · 1 recent live render failure</a></h1>
       <p class="cp-sub">compose-preview serve · public (open) <span class="cp-about-ver">v0.0.0-fixture</span></p>
       <details class="cp-about cp-disclosure">
         <summary>
@@ -85,22 +85,26 @@
       </details>
 
       <div class="cp-status-grid">
-      <div class="cp-stat"><div class="cp-stat-key">Catalogs</div><div class="cp-stat-val">4</div></div>
+      <div class="cp-stat"><div class="cp-stat-key">Catalogs</div><div class="cp-stat-val">4/4 loaded</div><div class="cp-meter" role="img" aria-label="4/4 loaded"><span class="cp-meter-segment cp-meter-segment--primary" style="width:100.000%" title="loaded: 4"></span></div></div>
+<div class="cp-stat"><div class="cp-stat-key">Published catalog renders</div><div class="cp-stat-val">76 rendered · 1 failed · 0 deferred</div><div class="cp-meter" role="img" aria-label="76 rendered · 1 failed · 0 deferred"><span class="cp-meter-segment cp-meter-segment--primary" style="width:98.701%" title="rendered: 76"></span><span class="cp-meter-segment cp-meter-segment--warning" style="width:1.299%" title="failed: 1"></span></div></div>
 <div class="cp-stat"><div class="cp-stat-key">Live daemons running</div><div class="cp-stat-val">1</div></div>
 <div class="cp-stat"><div class="cp-stat-key">Active streams</div><div class="cp-stat-val">2</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Live seats</div><div class="cp-stat-val">3 free / 5</div></div>
+<div class="cp-stat"><div class="cp-stat-key">Live seats</div><div class="cp-stat-val">3 free / 5</div><div class="cp-meter" role="img" aria-label="3 free / 5"><span class="cp-meter-segment cp-meter-segment--secondary" style="width:40.000%" title="in use: 2"></span><span class="cp-meter-segment cp-meter-segment--primary" style="width:60.000%" title="free: 3"></span></div></div>
 <div class="cp-stat"><div class="cp-stat-key">Known sessions</div><div class="cp-stat-val">4</div></div>
 <div class="cp-stat"><div class="cp-stat-key">Uptime</div><div class="cp-stat-val">3d 4h</div></div>
+<div class="cp-stat"><div class="cp-stat-key">Live renders</div><div class="cp-stat-val">1630 ok · 1 failed · 42 cached</div><div class="cp-meter" role="img" aria-label="1630 ok · 1 failed · 42 cached"><span class="cp-meter-segment cp-meter-segment--primary" style="width:97.430%" title="ok: 1630"></span><span class="cp-meter-segment cp-meter-segment--warning" style="width:0.060%" title="failed: 1"></span><span class="cp-meter-segment cp-meter-segment--secondary" style="width:2.510%" title="cached: 42"></span></div></div>
+<div class="cp-stat"><div class="cp-stat-key">Average render latency</div><div class="cp-stat-val">741ms</div></div>
+<div class="cp-stat"><div class="cp-stat-key">Worst first render</div><div class="cp-stat-val">13679ms</div></div>
       </div>
 
-      <p class="cp-status-sec">Catalogs</p>
+      <p class="cp-status-sec" id="catalogs">Catalogs</p>
       <div class="cp-status-scroll"><table class="cp-table">
         <thead><tr><th>Catalog</th><th>Trust</th><th>Previews</th><th>State</th></tr></thead>
         <tbody>
-        <tr><td><a href="/compose-m3/">Compose Material 3</a><div class="cp-muted">compose-m3</div><div class="cp-muted"><a href="https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3">yschimke/compose-ai-tools@design-artifacts/compose-m3</a> · <span title="2026-07-17T09:30:00.000Z">2 hours ago</span></div><div class="cp-muted">compose-ai-tools <code>0.16.54</code> · design-parity <code>0.1.25</code></div></td><td><span class="cp-muted">—</span></td><td>42</td><td><span class="cp-ok">live · running</span><div class="cp-muted">themes optimized 168/168</div></td></tr>
-<tr><td><a href="/remote-m3/">Remote Compose Material 3</a><div class="cp-muted">remote-m3</div><div class="cp-muted"><a href="https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/remote-m3">yschimke/compose-ai-tools@design-artifacts/remote-m3</a> · <span title="2026-07-15T08:05:00.000Z">15 Jul 2026, 08:05 UTC</span></div><div class="cp-muted">compose-ai-tools <code>0.16.54</code> · design-parity <code>0.1.25</code></div></td><td><span class="cp-muted">—</span></td><td>6</td><td><span class="cp-muted">baked PNG</span><div class="cp-muted">this delivery branch publishes no live bundle this server can run</div></td></tr>
+        <tr><td><a href="/compose-m3/">Compose Material 3</a><div class="cp-muted">compose-m3</div><div class="cp-muted"><a href="https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3">yschimke/compose-ai-tools@design-artifacts/compose-m3</a> · <span title="2026-07-17T09:30:00.000Z">2 hours ago</span></div><div class="cp-muted">compose-ai-tools <code>0.16.54</code> · design-parity <code>0.1.25</code></div></td><td><span class="cp-muted">—</span></td><td>42</td><td><span class="cp-ok">live · running</span><div class="cp-muted">themes optimized 168/168</div><span class="cp-inline-meter" role="img" aria-label="themes optimized 168/168"><span class="cp-inline-meter-fill cp-inline-meter-fill--primary" style="width:100.000%"></span></span><div class="cp-muted">preview cache 1448 entries · 13 MiB / 128 MiB</div><span class="cp-inline-meter" role="img" aria-label="preview cache 1448 entries · 13 MiB / 128 MiB"><span class="cp-inline-meter-fill cp-inline-meter-fill--secondary" style="width:10.156%"></span></span></td></tr>
+<tr><td><a href="/remote-m3/">Remote Compose Material 3</a><div class="cp-muted">remote-m3</div><div class="cp-muted"><a href="https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/remote-m3">yschimke/compose-ai-tools@design-artifacts/remote-m3</a> · <span title="2026-07-15T08:05:00.000Z">2 days ago</span></div><div class="cp-muted">compose-ai-tools <code>0.16.54</code> · design-parity <code>0.1.25</code></div></td><td><span class="cp-muted">—</span></td><td>6</td><td><span class="cp-muted">baked PNG</span><div class="cp-muted">this delivery branch publishes no live bundle this server can run</div></td></tr>
 <tr><td><a href="/confetti-wear/">Confetti Wear</a><div class="cp-muted">confetti-wear</div><div class="cp-muted"><a href="https://github.com/joreilly/Confetti/tree/design-artifacts/confetti-wear">joreilly/Confetti@design-artifacts/confetti-wear</a> · <span title="2026-07-17T09:30:00.000Z">2 hours ago</span></div><div class="cp-muted">compose-ai-tools <code>0.16.54</code> · design-parity <code>0.1.25</code></div></td><td><span class="cp-muted">—</span><div class="cp-muted">last known</div></td><td>18</td><td>live · idle</td></tr>
-<tr><td><a href="/cadence/">Cadence</a> <span class="cp-muted">(unlisted)</span><div class="cp-muted">cadence</div></td><td> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ untrusted</span></td><td>11</td><td>live · idle</td></tr>
+<tr><td><a href="/cadence/">Cadence</a> <span class="cp-muted">(unlisted)</span><div class="cp-muted">cadence</div></td><td> <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ untrusted</span></td><td>11 total<div class="cp-muted">10 rendered · 1 failed · 0 deferred</div></td><td>live · idle</td></tr>
         </tbody>
       </table></div>
 
@@ -113,21 +117,21 @@
       </table></div>
 
       <p class="cp-status-sec">Configuration</p>
-      <div class="cp-status-grid">
-      <div class="cp-stat"><div class="cp-stat-key">Access</div><div class="cp-stat-val">public (open)</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Bind</div><div class="cp-stat-val">0.0.0.0:8080</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Trusted re-render</div><div class="cp-stat-val">on</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Trust store</div><div class="cp-stat-val">configured</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Catalog refresh</div><div class="cp-stat-val">600s</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Live seats</div><div class="cp-stat-val">5</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Render slots</div><div class="cp-stat-val">4</div></div>
-<div class="cp-stat"><div class="cp-stat-key">Accept uploads</div><div class="cp-stat-val">off</div></div>
-      </div>
+      <dl class="cp-status-config">
+      <div class="cp-status-config-row"><dt>Access</dt><dd>public (open)</dd></div>
+<div class="cp-status-config-row"><dt>Bind</dt><dd>0.0.0.0:8080</dd></div>
+<div class="cp-status-config-row"><dt>Trusted re-render</dt><dd>on</dd></div>
+<div class="cp-status-config-row"><dt>Trust store</dt><dd>configured</dd></div>
+<div class="cp-status-config-row"><dt>Catalog refresh</dt><dd>600s</dd></div>
+<div class="cp-status-config-row"><dt>Live seats</dt><dd>5</dd></div>
+<div class="cp-status-config-row"><dt>Render slots</dt><dd>4</dd></div>
+<div class="cp-status-config-row"><dt>Accept uploads</dt><dd>off</dd></div>
+      </dl>
 
-      <p class="cp-status-sec">Recent daemon startup failures</p>
+      <p class="cp-status-sec" id="recent-daemon-failures">Recent daemon startup failures</p>
       <div class="cp-status-scroll"><table class="cp-table"><thead><tr><th>When</th><th>Session</th><th>Reason</th></tr></thead><tbody><tr><td>2026-07-17 09:41 UTC</td><td>wear-m3</td><td>daemon launch timed out after 300s</td></tr></tbody></table></div>
 
-      <p class="cp-status-sec">Recent render failures</p>
+      <p class="cp-status-sec" id="recent-render-failures">Recent live render failures</p>
       <div class="cp-status-scroll"><table class="cp-table"><thead><tr><th>When</th><th>Session</th><th>Duration</th><th>Reason</th></tr></thead><tbody><tr><td>2026-07-17 09:43 UTC</td><td>compose-m3 (live bundle)</td><td>120000ms (timeout)</td><td>timed out waiting for renderFinished</td></tr></tbody></table></div>
         </main>
         <footer class="cp-site-footer">

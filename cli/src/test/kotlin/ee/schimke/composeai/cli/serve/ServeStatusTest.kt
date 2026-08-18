@@ -74,6 +74,7 @@ class ServeStatusTest {
     catalogLoads: CatalogLoadTracker? = null,
     failedCatalogPreviews: List<String> = emptyList(),
     deferredCatalogPreviews: List<String> = emptyList(),
+    recordDaemonFailure: Boolean = true,
     playgroundHealth: (() -> PlaygroundHealth)? = null,
   ): ServeHttpServer {
     registry.register(
@@ -107,7 +108,7 @@ class ServeStatusTest {
       pinned = true,
     )
     // A recorded startup failure, so the status shows the degraded state + failure row.
-    daemonLog.record("wear-m3", "daemon launch timed out")
+    if (recordDaemonFailure) daemonLog.record("wear-m3", "daemon launch timed out")
     return ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -343,7 +344,62 @@ class ServeStatusTest {
     assertTrue(body.contains("design-parity <code>0.1.25</code>"), body)
     // The recent failure surfaces the degraded badge + row.
     assertTrue(body.contains("degraded"), body)
+    assertTrue(body.contains("href=\"#recent-daemon-failures\""), body)
+    assertTrue(body.contains("1 daemon startup failure"), body)
     assertTrue(body.contains("daemon launch timed out"), body)
+  }
+
+  @Test
+  fun `status uses relative catalog times and omits a repeated server id`() {
+    val now = Instant.parse("2026-08-18T12:00:00Z")
+    val html =
+      ServeWeb.statusPage(
+        token = "unused",
+        view =
+          ServeWeb.StatusView(
+            version = "test",
+            public = true,
+            nowMillis = now.toEpochMilli(),
+            overallOk = true,
+            summary = emptyList(),
+            config = emptyList(),
+            catalogs =
+              listOf(
+                ServeWeb.StatusCatalog(
+                  id = "old-catalog",
+                  title = "Old catalog",
+                  listed = true,
+                  trust = "unverified",
+                  previews = 1,
+                  live = false,
+                  running = false,
+                  degradation = null,
+                  provenance =
+                    ServeWeb.CatalogProvenance(
+                      repo = "example/catalog",
+                      branch = "published",
+                      generatedAt = now.minusSeconds(2 * 86_400).toString(),
+                    ),
+                )
+              ),
+            servers =
+              listOf(
+                ServeWeb.StatusServer(
+                  id = "same-session-x",
+                  label = "same-session-x",
+                  backend = "desktop",
+                  activeStreams = 0,
+                  upForText = "1m",
+                )
+              ),
+            failures = emptyList(),
+          ),
+      )
+
+    assertTrue(html.contains(">2 days ago</span>"), html)
+    assertTrue(html.contains("title=\"2026-08-16T12:00:00Z\""), html)
+    assertTrue(html.contains("<td>same-session-x</td>"), html)
+    assertFalse(html.contains("<div class=\"cp-muted\">same-session-x</div>"), html)
   }
 
   @Test
@@ -354,15 +410,19 @@ class ServeStatusTest {
         token = "unused",
         failedCatalogPreviews = listOf("render-failed--button-filled"),
         deferredCatalogPreviews = listOf("live-only-one", "live-only-two"),
+        recordDaemonFailure = false,
       )
     val (_, json) = get("/status.json")
     assertTrue(json.contains("\"failedRenders\":1"), json)
     assertTrue(json.contains("\"deferredPreviews\":2"), json)
-    assertTrue(json.contains("\"status\":\"degraded\""), json)
+    assertTrue(json.contains("\"status\":\"ok\""), json)
 
     val (_, html) = get("/status")
     assertTrue(html.contains("2 rendered · 1 failed · 2 deferred"), html)
-    assertTrue(html.contains("Catalog renders"), html)
+    assertTrue(html.contains("Published catalog renders"), html)
+    assertTrue(html.contains("✓ healthy"), html)
+    assertTrue(html.contains("No recent render failures."), html)
+    assertTrue(html.contains("cp-meter-segment--warning"), html)
   }
 
   @Test

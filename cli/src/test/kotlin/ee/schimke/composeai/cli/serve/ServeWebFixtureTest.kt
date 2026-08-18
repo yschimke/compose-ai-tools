@@ -2533,14 +2533,61 @@ class ServeWebFixtureTest {
             // Exactly two hours after the fixed catalog generation time.
             nowMillis = 1_784_287_800_000,
             overallOk = false,
+            healthReason = "1 daemon startup failure · 1 recent live render failure",
+            healthHref = "#recent-daemon-failures",
             summary =
               listOf(
-                ServeWeb.Stat("Catalogs", "4"),
+                ServeWeb.Stat(
+                  "Catalogs",
+                  "4/4 loaded",
+                  ServeWeb.Meter(
+                    total = 4,
+                    segments = listOf(ServeWeb.MeterSegment("loaded", 4, "primary")),
+                  ),
+                ),
+                ServeWeb.Stat(
+                  "Published catalog renders",
+                  "76 rendered · 1 failed · 0 deferred",
+                  ServeWeb.Meter(
+                    total = 77,
+                    segments =
+                      listOf(
+                        ServeWeb.MeterSegment("rendered", 76, "primary"),
+                        ServeWeb.MeterSegment("failed", 1, "warning"),
+                      ),
+                  ),
+                ),
                 ServeWeb.Stat("Live daemons running", "1"),
                 ServeWeb.Stat("Active streams", "2"),
-                ServeWeb.Stat("Live seats", "3 free / 5"),
+                ServeWeb.Stat(
+                  "Live seats",
+                  "3 free / 5",
+                  ServeWeb.Meter(
+                    total = 5,
+                    segments =
+                      listOf(
+                        ServeWeb.MeterSegment("in use", 2, "secondary"),
+                        ServeWeb.MeterSegment("free", 3, "primary"),
+                      ),
+                  ),
+                ),
                 ServeWeb.Stat("Known sessions", "4"),
                 ServeWeb.Stat("Uptime", "3d 4h"),
+                ServeWeb.Stat(
+                  "Live renders",
+                  "1630 ok · 1 failed · 42 cached",
+                  ServeWeb.Meter(
+                    total = 1673,
+                    segments =
+                      listOf(
+                        ServeWeb.MeterSegment("ok", 1630, "primary"),
+                        ServeWeb.MeterSegment("failed", 1, "warning"),
+                        ServeWeb.MeterSegment("cached", 42, "secondary"),
+                      ),
+                  ),
+                ),
+                ServeWeb.Stat("Average render latency", "741ms"),
+                ServeWeb.Stat("Worst first render", "13679ms"),
               ),
             config =
               listOf(
@@ -2576,6 +2623,13 @@ class ServeWebFixtureTest {
                       fullyOptimized = true,
                       startedAtEpochMillis = 1_721_209_800_000,
                       completedAtEpochMillis = 1_721_209_920_000,
+                    ),
+                  renderCache =
+                    CatalogRenderCacheSnapshot(
+                      entries = 1448,
+                      bytes = 13L * 1024 * 1024,
+                      maxBytes = 128L * 1024 * 1024,
+                      evictions = 0,
                     ),
                 ),
                 ServeWeb.StatusCatalog(
@@ -2618,6 +2672,7 @@ class ServeWebFixtureTest {
                   listed = false,
                   trust = "unverified",
                   previews = 11,
+                  failedRenders = 1,
                   live = true,
                   running = false,
                   degradation = null,
@@ -3433,7 +3488,7 @@ class ServeWebFixtureTest {
         "href=\"https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3\""
       ) &&
         serveStatus.contains("2 hours ago") &&
-        serveStatus.contains("15 Jul 2026, 08:05 UTC") &&
+        serveStatus.contains("2 days ago") &&
         serveStatus.contains("compose-ai-tools <code>0.16.54</code>") &&
         serveStatus.contains("design-parity <code>0.1.25</code>"),
       "catalog status links its delivery branch and shows friendly build provenance",
