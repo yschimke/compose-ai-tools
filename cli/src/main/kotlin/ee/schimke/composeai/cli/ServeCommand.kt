@@ -762,7 +762,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * no durable location, the honest configuration is no disk tier at all.
    */
   private val themeCacheStore: ThemeCacheStore? by lazy {
-    val explicit = args.flagValue("--theme-cache-dir")?.takeIf { it.isNotBlank() }?.let(::File)
+    val requested = args.flagValue("--theme-cache-dir")?.takeIf { it.isNotBlank() }
+    // `none` disables persistence outright, matching --trust-store's convention in this command.
+    // A sentinel is needed because *unset* cannot mean "off": the derived default lands beside
+    // --catalogs-file, which on the prebuilt image is the durable `preview_config` volume — so an
+    // untouched deployment would quietly fill its configuration volume with an 8 GB render cache.
+    if (requested == "none") return@lazy null
+    val explicit = requested?.let(::File)
     val preferred =
       explicit
         ?: catalogsFile?.displayPath?.let(::File)?.absoluteFile?.parentFile?.resolve("theme-cache")
@@ -4156,10 +4162,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         --catalog-feed-cache <dir>
                           Durable shallow-Git + generated-XML cache for catalog feeds. Defaults to a
                           catalog-feeds directory beside --catalogs-file, or a temp dir in local mode.
-        --theme-cache-dir <dir>
+        --theme-cache-dir <dir>|none
                           Durable store for warmed theme renders, so background warming survives a
-                          restart and a catalog refresh. Defaults to a theme-cache directory beside
-                          --catalogs-file; with no durable location the cache stays in memory only
+                          restart and a catalog refresh. `none` disables it. Defaults to a
+                          theme-cache directory beside --catalogs-file — note that on the prebuilt
+                          image that is the persistent config volume, so pass `none` to keep it off;
+                          with no durable location the cache stays in memory only
                           (there is deliberately no temp-dir fallback — it would be thrown away with
                           the process). Entries are keyed by a fingerprint of the render classpath,
                           daemon variant, tool version and render config, so a new catalog revision
