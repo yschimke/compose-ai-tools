@@ -104,3 +104,23 @@ tasks.register<Sync>("wasmPlayerTestDist") {
   from(project(":rc-player-compat-tests").layout.buildDirectory.file("fixtures/androidx-scroll.rc"))
   into(layout.buildDirectory.dir("wasmTestDist"))
 }
+
+// npm package staging (#4067).
+//
+// `wasmPlayerDist` produces the browser bundle; this lays it out the way npm expects — package
+// metadata and README at the root, the bundle under `dist/` — into a directory the release workflow
+// runs `npm publish` from. **No Node in the Gradle build**, deliberately: the CLI vendors a
+// prebuilt JS player for exactly that reason (docs/design/RC_CMP_WASM_PLAYER.md), and a Sync task
+// is all this needs. `npm` only ever runs in CI, on a directory that is already assembled.
+//
+// The committed `version` is the `0.0.0` placeholder the `design-map` package uses; the release job
+// sets it from the tag. The package *major* tracks the embed contract's version, which is a
+// different number and lives in `Main.kt` — see docs/design/RC_PLAYER_EMBED.md.
+tasks.register<Sync>("rcPlayerNpmPackage") {
+  description = "Stage the Wasm player bundle as an npm package directory."
+  group = "distribution"
+  dependsOn("wasmPlayerDist")
+  from(layout.projectDirectory.dir("npm"))
+  from(layout.buildDirectory.dir("wasmDist")) { into("dist") }
+  into(layout.buildDirectory.dir("npmPackage"))
+}

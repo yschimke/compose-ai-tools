@@ -1,0 +1,36 @@
+{
+  "name": "@yschimke/remote-compose-player-cmp",
+  "version": "0.0.0",
+  "description": "The Compose Multiplatform / Wasm Remote Compose player, as a drop-in browser bundle. Renders .rc documents in an iframe driven by query parameters and window.rcPlayerLoad.",
+  "keywords": [
+    "remote-compose",
+    "compose-multiplatform",
+    "wasm",
+    "player",
+    "androidx"
+  ],
+  "license": "Apache-2.0",
+  "author": "Yuri Schimke",
+  "homepage": "https://github.com/yschimke/compose-ai-tools/blob/main/docs/design/RC_PLAYER_EMBED.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yschimke/compose-ai-tools.git",
+    "directory": "rc-player/wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/yschimke/compose-ai-tools/issues"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    "./index.html": "./dist/index.html",
+    "./dist/*": "./dist/*"
+  },
+  "sideEffects": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}
