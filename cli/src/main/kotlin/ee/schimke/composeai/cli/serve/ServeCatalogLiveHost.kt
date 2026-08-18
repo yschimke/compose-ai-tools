@@ -312,17 +312,18 @@ class ServeCatalogLiveHost(
    * Wait, briefly, for the background warm [daemonWarmOrScheduling] just scheduled for [daemonId],
    * so a cold-id request can render instead of failing. Returns whether the daemon came up warm.
    *
-   * Only for a **pure theme** request ([themeCacheKey] non-null): those have no useful fallback —
-   * serving baked pixels for a requested theme would show the wrong colours under a successful
-   * status — whereas an ordinary override request drops to baked and loses nothing by not waiting.
+   * Used for every foreground override request. Serving baked pixels cannot satisfy any override:
+   * the HTTP layer deliberately rejects that fallback as "override not applied", so returning it
+   * makes the first knob edit on each cold preview fail with a 503 even while this warm succeeds in
+   * the background (issue #4149).
    *
    * Bounded by [FOREGROUND_WARM_AWAIT_MILLIS] rather than the full cold-start time: the caller is
    * holding one of the server's render slots while it waits, so an unbounded wait would let a burst
    * of cold ids consume every slot. Past the bound the caller still gets Busy — the same answer as
    * before, just after actually trying.
    */
-  private fun awaitForegroundWarm(daemonId: String, themeCacheKey: String?): Boolean {
-    if (themeCacheKey == null || !warmInBackground) return false
+  private fun awaitForegroundWarm(daemonId: String): Boolean {
+    if (!warmInBackground) return false
     val deadline = clock() + FOREGROUND_WARM_AWAIT_MILLIS
     while (clock() < deadline) {
       if (warmDaemonIds.contains(daemonId)) return true
@@ -1155,26 +1156,22 @@ class ServeCatalogLiveHost(
       }
       // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
       // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
-      // server. Ordinary override requests may fall back to baked pixels while warming. A pure
-      // theme request must instead report Busy: returning baked pixels as a successful 200 would
-      // make the grid believe the requested theme had loaded and it would never retry.
+      // server. Override requests cannot fall back to baked pixels: those pixels ignore the
+      // requested value and the HTTP layer refuses them rather than returning a dishonest 200.
       // A leased batch is an explicit request to pay for parallel live pixels now. Let its shared
       // replicas cold-start on the request path if necessary; otherwise the per-id warm guard would
       // return Busy for every card and the pool would never grow. Ordinary renders retain the
       // baked-first/background-warm behaviour.
-      // A pure theme request on a cold id used to schedule a warm and then abandon its own render
-      // — returning Busy despite already holding a render slot it was prepared to wait 30s on. That
-      // made the theme cache load-bearing for correctness rather than an optimization: a cache miss
-      // was an error, so a restart (which empties the cache) broke the whole grid until the
-      // background pass refilled it, which on a busy box takes hours.
+      // A foreground override on a cold id used to schedule a warm and then abandon its own render
+      // — returning Busy (themes) or baked pixels that become a 503 (knobs) despite already holding
+      // a render slot it was prepared to wait on. For themes that made the cache load-bearing for
+      // correctness; for knobs it made the first edit on every cold preview fail (#4149).
       //
       // A warm render is sub-second (p50 ~0.25-1.1s on the public box), so the honest answer is to
       // render. The gate exists for the one case where that isn't true — a COLD daemon, 34-68s —
       // so wait for the warm this request just scheduled, bounded, and only give up if the cold
       // start really is going to outlast the request.
-      if (
-        leased || daemonWarmOrScheduling(daemonId) || awaitForegroundWarm(daemonId, themeCacheKey)
-      ) {
+      if (leased || daemonWarmOrScheduling(daemonId) || awaitForegroundWarm(daemonId)) {
         val live = renderDaemon(daemonId, overrides, leased, background)
         // Count a real render failure against this theme key so a permanently broken preview stops
         // being re-attempted (see [CatalogThemeCache.recordRenderFailure]). Busy / NotFound are not
