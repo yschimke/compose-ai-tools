@@ -10,7 +10,7 @@
 2. **Shared documents** — with `--accept-docs`, anyone can drop a **generated document** (a Remote
    Compose `.rc`, a Lottie JSON) at `/docs` and get back an **expiring permalink** that plays it in
    the browser. See [Sharing a document](#sharing-a-document---accept-docs).
-3. **The design systems we publish** — `--catalogs compose-m3,wear-m3,remote-m3` fetches each
+3. **The design systems we publish** — `--catalogs remote-m3,m3-catalog,…` fetches each
    published `design-artifacts/<system>` catalog and serves it read-only at its canonical path
    `/<system>/` (the legacy `?session=<system>` form still works). Browsing that branch and opening a
    live, customisable render are then two ends of one workflow (the branch's README + `catalog.json`
@@ -2065,13 +2065,16 @@ compose-preview serve \
   --module :samples:design-catalog-m3 \   # a base module (used only for ?session=/legacy; `/` is the index)
   --public \                              # open every route (no token)
   --catalogs \                            # listed on the front-page index; app systems may come from their own repo
-      compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
-  --catalogs-unlisted cadence@yschimke/cadence \  # served at /cadence/ but NOT on the front page
+      remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose \
+  --catalogs-unlisted cadence@yschimke/cadence,compose-m3,wear-m3 \  # served at /<system>/ but NOT on the front page
   --trust-store trust/producers.json \    # who we trust (must list every catalog's branch/repo)
   --host 0.0.0.0 --port 8080
 
-# The listed systems open at https://preview.coo.ee/compose-m3/ (and /meshcore-mobile/, etc.);
-# cadence is served unlisted at https://preview.coo.ee/cadence/ (not on the front page, but shareable).
+# The listed systems open at https://preview.coo.ee/remote-m3/ (and /meshcore-mobile/, etc.);
+# cadence, compose-m3 and wear-m3 are served unlisted (reachable at /<system>/, off the front page).
+# compose-m3 and wear-m3 are compose-ai-tools' own harness catalogs — they exercise the preview
+# pipeline's features rather than being design-system references (m3-catalog is that) — so they
+# stay reachable as a live smoke target without presenting as design systems on the index.
 ```
 
 - **`--public`** drops the token gate (the deployed server is meant to be open). It is **safe by

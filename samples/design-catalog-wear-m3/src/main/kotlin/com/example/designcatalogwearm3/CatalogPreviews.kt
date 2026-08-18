@@ -28,7 +28,6 @@ import androidx.wear.compose.material3.AppCard
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonGroup
 import androidx.wear.compose.material3.Card
-import androidx.wear.compose.material3.CheckboxButton
 import androidx.wear.compose.material3.ChildButton
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CompactButton
@@ -247,74 +246,17 @@ fun ScalingListSticker() = FullScreenWear {
 }
 
 // ---------------------------------------------------------------------------
-// Layout templates — a blank skeleton of the common Wear list screen at every
-// breakpoint: empty ListHeader + TitleCard slots and an empty EdgeButton, no
-// content. Apps adopt the responsive structure (screen margins, slot sizing,
-// edge-button placement) at each size; the export's redlines annotate the slot
-// bounds/padding so the layout reads as a real spec, not just a picture.
-// ---------------------------------------------------------------------------
-
-// @ScrollingPreview(END): like EdgeButtonSticker, the ScreenScaffold edge button
-// is collapsed at the resting top and only reveals once the list settles at the
-// bottom — so the skeleton scrolls to the end (the renderer settles the reveal)
-// to actually show the edge-button slot. The slot count overflows the viewport on
-// every breakpoint so the button lands at its resting size.
-@CatalogComponent(
-  id = "Layout/List",
-  group = "Layouts",
-  caption =
-    "Blank list-screen skeleton at each breakpoint — adopt the responsive structure (margins, " +
-      "slots, edge button).",
-  perBreakpoint = true,
-)
-@CatalogWearBreakpoints
-@ScrollingPreview(modes = [ScrollMode.END])
-@Composable
-// The one sheet whose handlers stay literal `{}` on purpose. Every slot here is deliberately empty
-// — the whole point is the blank skeleton — so there is no label for a click tally to land in, and
-// wiring one would print a stray "(1)" into a slot whose emptiness is the specification.
-fun BlankListLayout() = FullScreenWear {
-  val listState = rememberTransformingLazyColumnState()
-  val spec = rememberTransformationSpec()
-  ScreenScaffold(
-    scrollState = listState,
-    edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
-  ) { contentPadding ->
-    TransformingLazyColumn(
-      state = listState,
-      contentPadding = contentPadding,
-      modifier = Modifier.fillMaxSize(),
-    ) {
-      item {
-        ListHeader(
-          modifier = Modifier.transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {
-          Text("")
-        }
-      }
-      items(10) {
-        TitleCard(
-          onClick = {},
-          title = { Text("") },
-          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {}
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
 // whole, captured at every breakpoint. Like every other full-screen capture they
 // carry the curved TimeText status strip, supplied once by [WearScaffoldTemplate]
 // (an alias of [FullScreenWear]) and frozen at "10:10" so the weekly
 // design-artifacts bundle doesn't churn on the live system time.
 //
-// The three variants mirror the Wear status-strip archetypes: the base list
-// screen, a horizontal pager with a page indicator, and a screen anchored by an
-// edge-hugging button.
+// Two variants mirror the Wear status-strip archetypes: the base list screen and
+// a horizontal pager with a page indicator. A third, `Template/EdgeButton`, was
+// dropped in the feature-scoping pass — it was a second full-screen
+// `@ScrollingPreview(END)` × breakpoint capture, which `EdgeButtonSticker`
+// already carries, and one of the two most expensive renders on the sheet.
 // ---------------------------------------------------------------------------
 
 private val templateListItems =
@@ -397,58 +339,6 @@ fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
   }
 }
 
-// Edge-button template: a list screen anchored by the screen-hugging EdgeButton.
-// Like [EdgeButtonSticker], the ScreenScaffold reveals the edge button only once
-// the (overflowing) list settles at the bottom, so the template scrolls to the
-// end via @ScrollingPreview(END) to capture the button at its resting size — here
-// paired with the TimeText status strip the full template carries.
-@CatalogComponent(
-  id = "Template/EdgeButton",
-  group = "Scaffold templates",
-  caption = "List scaffold anchored by the screen-hugging EdgeButton, TimeText strip on top.",
-  perBreakpoint = true,
-)
-@CatalogWearBreakpoints
-@ScrollingPreview(modes = [ScrollMode.END])
-@Composable
-fun EdgeButtonScaffoldTemplate() = WearScaffoldTemplate {
-  val listState = rememberTransformingLazyColumnState()
-  val spec = rememberTransformationSpec()
-  val (edgeLabel, onEdgeClick) =
-    wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
-  ScreenScaffold(
-    scrollState = listState,
-    edgeButton = {
-      EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
-    },
-  ) { contentPadding ->
-    TransformingLazyColumn(
-      state = listState,
-      contentPadding = contentPadding,
-      modifier = Modifier.fillMaxSize(),
-    ) {
-      item {
-        ListHeader(
-          modifier = Modifier.transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        ) {
-          Text(previewOverrideString("header", stringResource(R.string.header_workout)))
-        }
-      }
-      items(edgeButtonHistory) { (titleRes, subtitle) ->
-        val (title, onClick) = wearCounted(stringResource(titleRes))
-        TitleCard(
-          onClick = onClick,
-          title = { Text(title) },
-          subtitle = { Text(subtitle) },
-          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        )
-      }
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Selection controls.
 // ---------------------------------------------------------------------------
@@ -473,28 +363,8 @@ fun SwitchButtonOn() = WearSticker {
   )
 }
 
-// The unchecked state rides this function via `@OverrideVariant` (seeding `checked = false`)
-// instead
-// of a duplicated `CheckboxButtonUnchecked`.
-@CatalogComponent(
-  id = "CheckboxButton/Checked",
-  group = "Selection",
-  caption = "Checked state; the unchecked state folds in as an @OverrideVariant (checked = false).",
-)
-@CatalogWearModes
-@OverrideVariant(name = "unchecked", booleans = ["checked=false"])
-@Composable
-fun CheckboxButtonChecked() = WearSticker {
-  val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
-  CheckboxButton(
-    checked = checked,
-    onCheckedChange = onCheckedChange,
-    label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
-  )
-}
-
 // ---------------------------------------------------------------------------
-// Containment + headers.
+// Containment.
 // ---------------------------------------------------------------------------
 
 // The card content regions are wrapped in `PreviewSlot(name)` markers: a no-op in a normal render
@@ -545,16 +415,6 @@ fun TitleCardSticker() = WearSticker {
       Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
     }
   }
-}
-
-// No slot marker on the ListHeader: its content is horizontally centred, so a `fillMaxWidth` slot
-// box would left-shift the label in the baked render, and a header isn't a drop target the
-// structured-screen builder fills. The label stays an editable override knob.
-@CatalogComponent(id = "ListHeader", group = "Containment")
-@CatalogWearModes
-@Composable
-fun ListHeaderSticker() = WearSticker {
-  ListHeader { Text(previewOverrideString("label", stringResource(R.string.header_today))) }
 }
 
 // ---------------------------------------------------------------------------
@@ -703,6 +563,24 @@ fun ButtonFocused() = WearSticker {
 
 // (`ButtonDisabled`, `SwitchButtonOff`, `CheckboxButtonUnchecked` removed — those states now ride
 // their primary function via `@OverrideVariant`, seeding the `enabled` / `checked` knob.)
+
+// --- What this sheet deliberately does NOT carry -----------------------------
+//
+// This catalog is compose-ai-tools' Wear harness, not an exhaustive Wear Material 3 inventory —
+// that is what the wear-m3-catalog project will be. So the sheet is scoped to preview-pipeline
+// FEATURES, with one or two carriers each: `@CatalogWearModes`, `perBreakpoint` fan-out,
+// `@ScrollingPreview`, `@AnimatedPreview`, `@FocusedPreview` (pressed + focused), the
+// `@OverrideVariant` knob fold, `PreviewSlot`, `@ThemeCatalog` + `themeProvider`, and the
+// `TlcScalingHost` scaling captures in `CardScalingPreview.kt`.
+//
+// `Layout/List`, `Template/EdgeButton`, `CheckboxButton/Checked` and `ListHeader` were dropped on
+// exactly that test. The by-component redundancy that LOOKS cuttable — the four other button
+// emphasis levels, `IconButton`, `CompactButton`, `ButtonGroup`, `AppCard`, `TitleCard`,
+// `Card/Outlined`, `Icon`, `Typography`, `ColorScheme` — is load-bearing elsewhere and stays:
+// `samples/design-catalog-remote-m3` declares `compareWith: "wear-m3"` and authors a `parallel`
+// into each of those ids, so deleting one silently unpairs a row on the published remote-m3
+// cross-system compare page. Cut them when remote-m3's `compareWith` moves to the new
+// wear-m3-catalog, not before.
 
 // ---------------------------------------------------------------------------
 // Parallels of the Remote Compose Material 3 catalog. These mirror the extra

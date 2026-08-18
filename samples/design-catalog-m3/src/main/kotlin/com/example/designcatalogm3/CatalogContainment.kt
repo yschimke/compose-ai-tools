@@ -7,26 +7,16 @@ import ee.schimke.composeai.preview.CatalogComponent
 import ee.schimke.composeai.preview.CatalogVariant
 import ee.schimke.composeai.preview.slots.LocalSlotMode
 
-// --- Containment — cards and the FAB. ---
+// --- Containment — one card, and it is the slotted one. ---
+//
+// The three plain cards (elevated / outlined / filled) and the FAB differed from each other only in
+// Material's own surface treatment, which is m3-catalog's job. This card is here for a pipeline
+// feature none of them touched: `PreviewSlot` regions, the slot map a structured-screen builder
+// fills. It also carries the real-Arabic locale variant in `CatalogI18n.kt`, because it is the one
+// sticker with both a leading region and a text column, so a mirror is unmistakable.
 
-@CatalogComponent(id = "Card/Elevated", group = "Containment")
-@CatalogModes
-@Composable
-fun ElevatedCardSticker() = Sticker("card-elevated")
-
-@CatalogComponent(id = "Card/Outlined", group = "Containment")
-@CatalogModes
-@Composable
-fun OutlinedCardSticker() = Sticker("card-outlined")
-
-@CatalogComponent(id = "Card/Filled", group = "Containment")
-@CatalogModes
-@Composable
-fun FilledCardSticker() = Sticker("card-filled")
-
-// A slotted card: its regions are `PreviewSlot` markers. The plain sticker renders normally (the
-// markers are no-ops); `SlottedCardSlots` provides `LocalSlotMode = true` so each marker draws its
-// labelled placeholder — the slot map a structured-screen builder fills. Same body, two modes.
+// The plain sticker renders normally (the markers are no-ops); `SlottedCardSlots` provides
+// `LocalSlotMode = true` so each marker draws its labelled placeholder. Same body, two modes.
 @CatalogComponent(
   id = "Card/Slots",
   group = "Containment",
@@ -46,8 +36,3 @@ fun SlottedCardSticker() = Sticker("card-slots")
 fun SlottedCardSlotsSticker() = CatalogSticker {
   CompositionLocalProvider(LocalSlotMode provides true) { CatalogComponent("card-slots") }
 }
-
-@CatalogComponent(id = "FAB", group = "Containment")
-@CatalogModes
-@Composable
-fun FabSticker() = Sticker("fab")

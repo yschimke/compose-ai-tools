@@ -532,11 +532,9 @@ bespoke affordance — it reads the same across all three sheets, and it compose
 over a label that is itself bound (remote-m3's named-value button counts on top
 of its override rather than replacing it).
 
-Four kinds of exception, all deliberate:
+Three kinds of exception, all deliberate:
 
 - **Disabled** stickers stay inert — unresponsiveness is the state they document.
-- Wear's `Layout/List` skeleton has empty slots by design, so there is nowhere
-  to put a count.
 - The **icon buttons** carry no label at all. They read as a favourite toggle
   instead: Wear tints the glyph, remote-m3 tweens the container colour.
 - `Card/Slots` stays inert on both lanes because it is a slot **host**: the
@@ -583,6 +581,10 @@ resolved token:
 ![Rendered preview vs semantics wireframe vs layout-inspector wireframe, for
 SegmentedButton and AssistChip](layout-wireframe-evidence.png)
 
+(That evidence capture predates the feature-scoping pass below — `SegmentedButton`
+and `AssistChip` are no longer in the `compose-m3` inventory. It is kept because
+what it illustrates is the wireframe *tiers*, not those two components.)
+
 ## Scaffold templates
 
 Beyond the per-component stickers, each catalog ships a **Scaffold templates**
@@ -605,11 +607,46 @@ their own full-screen frame rather than the centred component sticker:
   isn't the screen an app copies, since the strip reserves the curved top margin
   the content lays out around. (`ScreenScaffold` still hides the strip once a list
   is scrolled away from the top, so a `@ScrollingPreview(END)` capture legitimately
-  shows no clock.) Three template variants cover the status-strip archetypes:
-  `Template/TimeText` (base list screen),
-  `Template/PageIndicator` (horizontal pager + `HorizontalPageIndicator`), and
-  `Template/EdgeButton` (list anchored by the screen-hugging `EdgeButton`), each
-  captured at every round breakpoint.
+  shows no clock.) Two template variants cover the status-strip archetypes:
+  `Template/TimeText` (base list screen) and `Template/PageIndicator` (horizontal
+  pager + `HorizontalPageIndicator`), each captured at every round breakpoint. A
+  third, `Template/EdgeButton`, was dropped in the feature-scoping pass below — the
+  `EdgeButton` sticker already carries the same `@ScrollingPreview(END)` ×
+  breakpoint capture.
+
+## What belongs in an in-repo catalog
+
+Two of the catalogs above — `design-catalog-m3` (`compose-m3`) and
+`design-catalog-wear-m3` (`wear-m3`) — are **compose-ai-tools' own harness**, not
+design-system references. The reference catalogs live in their own repos:
+[`m3-catalog`](https://github.com/yschimke/m3-catalog) is the exhaustive Material 3
+one, and `wear-m3-catalog` will be the Wear one. Both harness catalogs are
+`listed: false` on preview.coo.ee for that reason (see
+[`deploy/preview.coo.ee/catalogs.json`](../../deploy/preview.coo.ee/catalogs.json)) —
+still reachable at `/compose-m3/` and `/wear-m3/` as a live smoke target, off the
+front-page index.
+
+So the inventory bar for these two is **exhaustive by feature, not by component**:
+
+- Every capability the preview pipeline offers gets **one or two carriers** — slots,
+  each `previewOverride*` knob *type*, `@FocusedPreview` (focus + press),
+  `@InteractionPreview`, `@AnimatedPreview`, `@ScrollingPreview`, `@OverrideVariant`,
+  `perBreakpoint` fan-out, the theme-catalog annotations, generic + named font
+  resolution, the i18n and a11y `@Preview` axes, full-screen device capture.
+- A component that only re-proves a capability another sticker already carries does
+  **not** earn a slot. Five button emphasis levels, three plain cards and four
+  boolean selection controls each collapse to one.
+- New pipeline features should arrive with a carrier here. New *components* should
+  not, unless they are the cheapest way to exercise something new.
+
+One standing exception, and it is load-bearing:
+`samples/design-catalog-remote-m3` declares `compareWith: "wear-m3"` and authors a
+`parallel` into ~19 `wear-m3` component ids. A `parallel` naming no sibling
+component still builds — it just renders an unpaired row (a `console.warn`, see
+`generate-design-catalog.mjs`) — so deleting one of those wear stickers silently
+degrades a *published* page. The by-component redundancy on the Wear sheet
+(`Button/Tonal`, `IconButton`, `CompactButton`, `AppCard`, `TitleCard`, …) therefore
+stays until `remote-m3`'s `compareWith` moves to the new `wear-m3-catalog`.
 
 ## Authoring & validating the spec
 
@@ -759,11 +796,11 @@ that keeps its inventory in code doesn't have to reintroduce `groups` to get a c
 per breakpoint:
 
 ```kotlin
-@CatalogComponent(id = "Layout/List", perBreakpoint = true)
-@CatalogWearBreakpoints @Composable fun ListLayout() = FullScreenWear { … }
+@CatalogComponent(id = "EdgeButton", perBreakpoint = true)
+@CatalogWearBreakpoints @Composable fun EdgeButtonSticker() = FullScreenWear { … }
 ```
 
-That yields `Layout/List/smallRound`, `Layout/List/largeRound`, … — one per breakpoint
+That yields `EdgeButton/smallRound`, `EdgeButton/largeRound`, … — one per breakpoint
 **the function actually rendered at**, each carrying the `select` the export already
 understands, so one annotation produces exactly what the hand-written spec entries
 would.

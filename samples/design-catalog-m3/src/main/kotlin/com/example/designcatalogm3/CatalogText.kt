@@ -5,6 +5,10 @@ import com.example.designcatalogm3.shared.CatalogComponent
 import ee.schimke.composeai.preview.CatalogComponent
 
 // --- Text options — maxLines + ellipsis overflow, generic-family specimens. ---
+//
+// Both generic specimens stay: `CatalogGenericFonts` declares exactly two families and each is a
+// distinct substitution the Wasm tier can silently get wrong, so this is one feature with two
+// carriers rather than by-component duplication.
 
 @CatalogComponent(
   id = "Text/MaxLines-Truncated",
