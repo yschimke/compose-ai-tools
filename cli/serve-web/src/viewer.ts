@@ -4025,6 +4025,20 @@ function syncUrl() {
             values.motion = pickedMotion;
     }
     window.cpUrlState.sync(values, ownsUrlParam, !push);
+    // Revision destinations are server-rendered, but the visitor can choose a theme without a
+    // navigation. Keep every revision/current link aligned with that live URL state so entering or
+    // leaving a pin never drops the selection the Theme chip describes.
+    document
+        .querySelectorAll<HTMLAnchorElement>(".cp-revision, .cp-pinned-current")
+        .forEach(function (link) {
+            var destination = new URL(link.href, location.href);
+            ["themeProvider", "uiMode"].forEach(function (name) {
+                var value = values[name];
+                if (value) destination.searchParams.set(name, value);
+                else destination.searchParams.delete(name);
+            });
+            link.href = destination.href;
+        });
 }
 // What the controls hold when the URL names nothing — captured after the server markup and the
 // sticky-theme script have had their say, so Back out of a choice restores the page as it first

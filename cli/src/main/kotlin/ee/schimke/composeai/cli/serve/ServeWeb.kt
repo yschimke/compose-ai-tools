@@ -9083,9 +9083,16 @@ $rows
       if (currentHasSvgExport && !componentBrowser) {
         val availability =
           if (pinned == null) " title=\"Show the vector (SVG) render\""
-          else " disabled title=\"Pinned revision — SVG is generated from the current catalog\""
-        "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
+          else
+            " disabled aria-describedby=\"cp-pinned-controls-note\"" +
+              " title=\"Pinned revision — SVG is generated from the current catalog\""
+        val button =
+          "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\"$availability>SVG</button>"
+        if (pinned == null) button
+        else
+          "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
+            "aria-describedby=\"cp-pinned-controls-note\">$button</span>"
       } else ""
     // The exploded 3D toggle — the layered figma-svg tilted back and pulled apart into one sheet
     // per visible drawing level ([ExplodedSvg]). It sits beside the SVG toggle because it is
@@ -9096,9 +9103,16 @@ $rows
       if (currentHasSvgExport && !componentBrowser) {
         val availability =
           if (pinned == null) " title=\"Show how the visible drawing layers are composed\""
-          else " disabled title=\"Pinned revision — 3D is generated from the current catalog\""
-        "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
+          else
+            " disabled aria-describedby=\"cp-pinned-controls-note\"" +
+              " title=\"Pinned revision — 3D is generated from the current catalog\""
+        val button =
+          "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\"$availability>3D</button>"
+        if (pinned == null) button
+        else
+          "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
+            "aria-describedby=\"cp-pinned-controls-note\">$button</span>"
       } else ""
     val svgMatch =
       if (hasSvgExport && !componentBrowser) {
@@ -9350,12 +9364,22 @@ $rows
           else "Pinned revision — source is only available from the current catalog"
         val tabClass = if (componentBrowser) " cp-browser-tab" else ""
         val tabAttrs = if (componentBrowser) " role=\"tab\" aria-selected=\"false\"" else ""
-        val disabled = if (pinned == null) "" else " disabled"
-        "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
+        val disabled =
+          if (pinned == null) ""
+          else " disabled aria-describedby=\"cp-pinned-controls-note\""
+        val usageSrc =
+          if (pinned == null)
+            " data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\""
+          else ""
+        val button =
+          "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
           "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
           "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
-          "data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\" " +
-          "title=\"${WebEscaping.htmlEscape(tip)}\"$disabled>Source</button>"
+          "title=\"${WebEscaping.htmlEscape(tip)}\"$usageSrc$disabled>Source</button>"
+        if (pinned == null) button
+        else
+          "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
+            "aria-describedby=\"cp-pinned-controls-note\">$button</span>"
       }
     val browserPreviewTab =
       if (!componentBrowser || !usageAvailable) ""
@@ -9927,11 +9951,11 @@ $rows
     val themeToggle =
       if (pinned != null)
         """
-        <button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" disabled
+        <span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" disabled aria-describedby="cp-pinned-controls-note"
           title="Pinned revision — theme overrides are not applied to published pixels">
           <span class="cp-toggle-label">Theme</span>
           <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Night" else "Day"}</span>
-        </button>
+        </button></span>
         """
           .trimIndent()
       else
@@ -10263,6 +10287,12 @@ $rows
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
+    val pinnedControlsNote =
+      if (pinned == null) ""
+      else
+        "<span class=\"cp-pinned-controls-note\" id=\"cp-pinned-controls-note\" role=\"note\">" +
+          "Pinned revision: Theme overrides are not applied; Source, SVG, and 3D use the " +
+          "current catalog and are unavailable.</span>"
     // Both or neither: a timeline the visitor cannot click through to an old render is worse than
     // no timeline, so a missing repo suppresses the whole feature rather than half of it.
     val historyAttrs =
@@ -10394,6 +10424,7 @@ $rows
       $revisionBanner${degradeBanner(degradations)}$issueRows
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
+        $pinnedControlsNote
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       $modeInputs

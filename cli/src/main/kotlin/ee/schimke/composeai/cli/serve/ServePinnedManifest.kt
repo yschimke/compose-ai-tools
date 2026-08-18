@@ -59,6 +59,8 @@ class ServePinnedManifest(
      * nothing to say about an id it no longer contains.
      */
     val labels: Map<String, String> = emptyMap(),
+    /** Preview id → the baked light/dark theme recorded by that revision's image entry. */
+    val themes: Map<String, String> = emptyMap(),
     /** Whether `catalog.json` was fetched and parsed at this commit. */
     val catalogRead: Boolean = false,
     /** Whether `references/index.json` was fetched and parsed at this commit. */
@@ -101,6 +103,7 @@ class ServePinnedManifest(
           renders = catalog?.paths.orEmpty(),
           references = references.orEmpty(),
           labels = catalog?.labels.orEmpty(),
+          themes = catalog?.themes.orEmpty(),
           catalogRead = catalog != null,
           referencesRead = references != null,
         )
@@ -155,6 +158,8 @@ class ServePinnedManifest(
       val paths: Map<String, String>,
       /** Preview id → the component that declared it, where the catalog names one. */
       val labels: Map<String, String>,
+      /** Preview id → the explicit baked theme on the winning image entry. */
+      val themes: Map<String, String>,
     )
 
     fun parseCatalog(json: String): CatalogEntries? {
@@ -163,6 +168,7 @@ class ServePinnedManifest(
           .getOrNull() ?: return null
       val paths = LinkedHashMap<String, String>()
       val labels = LinkedHashMap<String, String>()
+      val themes = LinkedHashMap<String, String>()
       for (component in components) {
         val obj = runCatching { component.jsonObject }.getOrNull() ?: continue
         val componentId = runCatching {
@@ -193,9 +199,14 @@ class ServePinnedManifest(
           // component behind, and the page attributes one component's render to another. Whichever
           // declaration owns the pixels owns the name, even when that name is nothing.
           if (componentId != null) labels[id] = componentId else labels.remove(id)
+          val theme =
+            runCatching { image.jsonObject["theme"]?.jsonPrimitive?.content }
+              .getOrNull()
+              ?.takeIf { it == "light" || it == "dark" }
+          if (theme != null) themes[id] = theme else themes.remove(id)
         }
       }
-      return CatalogEntries(paths, labels)
+      return CatalogEntries(paths, labels, themes)
     }
 
     /** `references/index.json` → reference id → the canonical raster's path on the branch. */

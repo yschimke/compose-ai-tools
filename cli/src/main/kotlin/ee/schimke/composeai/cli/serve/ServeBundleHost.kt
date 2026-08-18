@@ -691,6 +691,7 @@ class ServeBundleHost(
       id = previewId,
       label = previewId,
       componentId = paths.labels[previewId],
+      theme = paths.themes[previewId],
     )
   }
 

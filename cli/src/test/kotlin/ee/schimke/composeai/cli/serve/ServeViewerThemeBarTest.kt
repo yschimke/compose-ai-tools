@@ -155,6 +155,9 @@ class ServeViewerThemeBarTest {
     assertTrue(html.contains("Pinned revision — SVG is generated"), html)
     assertTrue(html.contains("id=\"cp-explode-toggle\"") && html.contains(">3D</button>"), html)
     assertTrue(html.contains("Pinned revision — 3D is generated"), html)
+    assertTrue(html.contains("id=\"cp-pinned-controls-note\" role=\"note\""), html)
+    assertTrue(html.contains("tabindex=\"0\" aria-describedby=\"cp-pinned-controls-note\""), html)
+    assertFalse(html.contains("data-usage-src=\"/usage/plain.Button\""), html)
     assertFalse(html.contains("id=\"cp-source-panel\""), html)
   }
 

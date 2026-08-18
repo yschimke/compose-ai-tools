@@ -5936,6 +5936,11 @@ class ServeWebFixtureTest {
         viewerSource().contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
     )
+    assertTrue(
+      viewerSource().contains(".cp-revision, .cp-pinned-current") &&
+        viewerSource().contains("destination.searchParams.set(name, value)"),
+      "revision links follow a theme selected after the page was rendered",
+    )
     // A plain static bundle can't export SVG, so it shows the PNG row but not the SVG one.
     assertTrue(staticKnobs.contains("id=\"cp-url-png\""), "PNG URL row shows on any viewer")
     assertFalse(
