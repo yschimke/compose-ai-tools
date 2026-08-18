@@ -2609,10 +2609,23 @@ Two things make it safe to state that narrowly:
   baked snapshot would itself satisfy. A font scale, a device, a knob or a theme asks for pixels the
   parity run never drew, so it routes to the renderer exactly as before. A player the run staged
   nothing for falls through the same way rather than 404ing.
+- **It is consulted before the baked snapshot, not after.** `bakedRender` answers from the preview's
+  published PNG without reading the overrides at all, so ordering the staging second would make the
+  whole lane unreachable on any host that has baked pixels — which is every real bundle and catalog
+  host. `cmp-jvm` is caught earlier still, ahead of the subprocess short-circuit, which returns
+  before the override parse.
 
 It is its own generation (`rc-published`) rather than `baked` because the two make opposite claims:
 `baked` means "no renderer ran and your overrides are NOT reflected", which is what turns an
 override-bearing request into a refusal, while these bytes *are* the requested player's output.
+
+**A `503` here is acted on, not just printed.** The viewer used to say "retry shortly" and then do
+nothing, so a deep link — or the viewer's own default player lane — sat on the error until the
+visitor touched a control or reloaded. It now retries on the server's own `Retry-After`, backing off
+over at most four attempts before it stops and says so. Bounded on purpose: a page that retried
+forever would hammer a box that is already struggling, and a lane still down after that is better
+reported than silently re-asked. Any control change starts a fresh render and resets the count, and
+a queued retry that has been overtaken is dropped rather than painting over the newer request.
 
 **Which of the two `409`s applies is a property of the axis, not of the preview.** A Remote Compose
 preview is redrawn by replaying its captured document, and for a while that fact alone decided the

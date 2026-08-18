@@ -5626,6 +5626,26 @@ class ServeHttpServer(
         }
         return@withLeasedSession
       }
+      // A **bare** cmp-jvm raster the parity run already staged, answered before the subprocess is
+      // considered at all. This lane has to be caught here rather than in the `cached` chain below,
+      // because the short-circuit under it returns before the override parse the chain reads — and
+      // spawning a one-shot desktop JVM (measured at ~4.3s) to redraw a document that was already
+      // drawn and published is the same waste the daemon lanes were paying, minus the daemon.
+      //
+      // "Bare" is read straight off the query here, since the parsed overrides do not exist yet: no
+      // override param other than `rcPlayer` may be present. `.svg` is excluded because the staged
+      // artifact is a raster and the structural export is a different product.
+      if (!wantSvg && !wantSlots && !wantA11y && !wantAnnotations && bareRcPlayerRequest()) {
+        val staged =
+          renderHost.publishedRcPlayerRender(previewId, RcPlayerBackend.CMP_JVM).takeIf {
+            call.request.queryParameters["rcPlayer"]?.lowercase() == RcPlayerBackend.CMP_JVM.wire
+          }
+        if (staged != null) {
+          markGeneration(RenderOutcome.Generation.RC_PUBLISHED.wire, DYNAMIC_RESOURCE_CACHE_CONTROL)
+          call.respondBytes(staged, ContentType.Image.PNG)
+          return@withLeasedSession
+        }
+      }
       // The cmp-jvm lane renders the captured document server-side with the embedded desktop player
       // (an isolated subprocess), not through the daemon. It supports both the pixel `.png` and the
       // structural `.svg` product; slots remain a host/daemon product and continue below.
@@ -5728,8 +5748,15 @@ class ServeHttpServer(
             if (scroll) null
             else
               renderHost.cachedRender(previewId, overrides)
-                ?: renderHost.bakedRender(previewId, overrides)
+                // BEFORE the baked snapshot, not after. `bakedRender` answers from the preview's
+                // published PNG without consulting the overrides at all, so a host that has both
+                // local baked pixels and staged rc-compare rasters would return the baked bytes for
+                // a bare `?rcPlayer=…` and never reach this lane — and those bytes are the *Java*
+                // player's capture, so the request would then be refused for dropping `rcPlayer`
+                // while the very raster it asked for sat unread. A player selection is the more
+                // specific answer, so it wins; everything else falls through to baked as before.
                 ?: publishedRcPlayerRender(renderHost, previewId, overrides)
+                ?: renderHost.bakedRender(previewId, overrides)
           // A "pure declared-theme render" — the classification the burst lease admits on. Read
           // from the request rather than the parsed overrides, because an expanded provider is no
           // longer in them: `themeSeeding.provider` is what the expansion consumed, and the request
@@ -6045,6 +6072,18 @@ class ServeHttpServer(
     }
     refuseDroppedOverrides(renderHost, previewId, dropped, overrides)
   }
+
+  /**
+   * Whether this request selects a Remote Compose player and asks for **nothing else** — read off
+   * the raw query, for the one caller that runs before [ServeOverrides.parse].
+   *
+   * The same condition the parsed-override path applies: anything beyond the player selection wants
+   * pixels the offline parity run never drew, so it must reach the renderer.
+   */
+  private fun RoutingContext.bareRcPlayerRequest(): Boolean =
+    call.request.queryParameters.entries().none { (key, _) ->
+      ServeOverrides.isOverrideParam(key) && key != "rcPlayer"
+    }
 
   /** Whether the caller passed `?fallback=baked` — an explicit "serve the snapshot anyway". */
   private fun RoutingContext.acceptsBakedFallback(): Boolean =

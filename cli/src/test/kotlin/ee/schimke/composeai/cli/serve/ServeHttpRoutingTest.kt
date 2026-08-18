@@ -172,7 +172,11 @@ class ServeHttpRoutingTest {
 
       override fun rcCompare(): RcCompareManifest =
         RcCompareManifest(
-          lanes = listOf(RcCompareLane("embedded", "AndroidX Embedded", "emb")),
+          lanes =
+            listOf(
+              RcCompareLane("embedded", "AndroidX Embedded", "emb"),
+              RcCompareLane("cmp-jvm", "RC · cmp-jvm player", "jvm"),
+            ),
           rows =
             listOf(
               RcCompareRow(
@@ -180,15 +184,30 @@ class ServeHttpRoutingTest {
                 width = 3,
                 height = 3,
                 lanes =
-                  mapOf("embedded" to RcCompareCell(rendered = true, render = "embedded/0.png")),
+                  mapOf(
+                    "embedded" to RcCompareCell(rendered = true, render = "embedded/0.png"),
+                    "cmp-jvm" to RcCompareCell(rendered = true, render = "cmp-jvm/0.png"),
+                  ),
               )
             ),
         )
 
       override fun rcCompareImage(name: String): ByteArray? =
-        if (name == "embedded/0.png") publishedPng() else null
+        if (name == "embedded/0.png" || name == "cmp-jvm/0.png") publishedPng() else null
 
       override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+        RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
+
+      /**
+       * Local baked pixels, exactly as a real bundle host has — and, like the real one, answered
+       * WITHOUT consulting the overrides.
+       *
+       * This is what makes the ordering load-bearing rather than incidental. The published lane was
+       * first written after this call, so on any host that actually implements it the lane was dead
+       * code: the bare `?rcPlayer=` request got the baked PNG (the *Java* capture) and was then
+       * refused for dropping `rcPlayer`, with the staged raster it asked for sitting unread.
+       */
+      override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
         RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
 
       override fun subscribeStream(
@@ -865,6 +884,48 @@ class ServeHttpRoutingTest {
         "$query did not take the published lane",
       )
     }
+  }
+
+  /**
+   * The published lane must be consulted **before** the baked snapshot, because `bakedRender` does
+   * not look at the overrides — it answers with the preview's published PNG whenever the file is
+   * local. Ordering it second made the whole lane dead code on any host that has baked pixels,
+   * which is every real bundle and catalog host.
+   */
+  @Test
+  fun `the published lane wins over baked pixels, which ignore the overrides`() {
+    val baked = getFullBytes("/rc-published/render/$previewId.png")
+    assertEquals(200, baked.first)
+    assertEquals("baked", baked.third[ServeHttpServer.GENERATION_HEADER])
+
+    val (code, body, headers) =
+      getFullBytes("/rc-published/render/$previewId.png?rcPlayer=cmp-android")
+    assertEquals(200, code)
+    assertEquals("rc-published", headers[ServeHttpServer.GENERATION_HEADER])
+    assertContentEquals(publishedPng(), body, "the requested player's raster, not the baked PNG")
+    assertFalse(
+      body.contentEquals(baked.second),
+      "the two lanes are distinguishable, so this asserts something",
+    )
+  }
+
+  /**
+   * cmp-jvm reaches the published lane too. Its short-circuit returns before the override parse the
+   * `cached` chain reads, so it needs catching there or a bare request spawns a one-shot desktop
+   * JVM (~4.3s) to redraw a document the parity run already drew.
+   */
+  @Test
+  fun `a bare cmp-jvm selection is served from the staging, not the subprocess`() {
+    val (code, body, headers) = getFullBytes("/rc-published/render/$previewId.png?rcPlayer=cmp-jvm")
+    assertEquals(200, code)
+    assertEquals("rc-published", headers[ServeHttpServer.GENERATION_HEADER])
+    assertContentEquals(publishedPng(), body)
+
+    // …and only when bare: anything more asks for pixels the parity run never drew.
+    val (mixedCode, _, mixedHeaders) =
+      getFull("/rc-published/render/$previewId.png?rcPlayer=cmp-jvm&fontScale=2.0")
+    assertNotEquals("rc-published", mixedHeaders[ServeHttpServer.GENERATION_HEADER])
+    assertNotEquals(200, mixedCode)
   }
 
   /** A lane the parity run staged nothing for falls through to the renderer, not to a 404. */
