@@ -2304,10 +2304,15 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   transition: box-shadow var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
 .cp-doc-btn:hover, .cp-bug-submit:hover { background: var(--md-sys-color-primary);
   box-shadow: var(--md-sys-elevation-level1); }
-/* The bug-report page. The submit row keeps the button and its "nothing is sent from here" caveat
-   on one line, because the caveat is the answer to the question the button raises. */
+/* The bug-report page. The required summary prevents a queue of indistinguishable generic titles;
+   the remaining controls wrap naturally below it on narrow screens. */
 .cp-report-bug-form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
   margin: 0 0 8px; }
+.cp-bug-summary { flex: 1 0 100%; display: grid; gap: 6px; font-weight: 500; }
+.cp-bug-summary-input { width: min(100%, 720px); min-height: 44px; box-sizing: border-box;
+  padding: 10px 14px; font: inherit; border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: inherit; }
 .cp-bug-submit { display: inline-flex; align-items: center; gap: 8px; }
 /* The facts table is a two-column key/value sheet rather than the status page's headed grid: it has
    no column meanings to declare, so the row headers carry the whole structure. */
