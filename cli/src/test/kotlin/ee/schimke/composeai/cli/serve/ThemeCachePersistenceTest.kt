@@ -478,6 +478,72 @@ class ThemeCachePersistenceTest {
     assertNull(store.open("m3/catalog", fp, inputs(fp)))
   }
 
+  @Test
+  fun `verification cannot be satisfied by renders this process just made`() {
+    // On a partly warmed restart, foreground traffic persists missing keys before the idle
+    // verification task runs. Sampling those would let five fresh renders "verify" a generation
+    // whose adopted bytes were never looked at — the cache vouching for itself.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("adopted", byteArrayOf(1))
+
+    val cache = CatalogThemeCache(persistence = store(root).open("m3-catalog", fp, inputs(fp))!!)
+    cache.configurePersistable(listOf("adopted", "fresh-a", "fresh-b"))
+    cache.put("fresh-a", byteArrayOf(2))
+    cache.put("fresh-b", byteArrayOf(3))
+
+    // A renderer that answers only for this process's own keys establishes nothing.
+    val outcome = cache.verifySample { key -> if (key == "adopted") null else byteArrayOf(9) }
+    assertEquals(CatalogThemeCache.VerifyOutcome.NO_EVIDENCE, outcome)
+    assertNull(cache.get("adopted"), "the adopted entry stays quarantined")
+  }
+
+  @Test
+  fun `a fresh render replaces the quarantined copy on disk`() {
+    // While quarantined a foreground request misses the adopted copy and renders fresh bytes. If
+    // the
+    // stale PNG stayed on disk, verification passing on OTHER keys would expose it again the moment
+    // the fresh copy fell out of the memory tier.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(1))
+
+    val cache = CatalogThemeCache(persistence = store(root).open("m3-catalog", fp, inputs(fp))!!)
+    cache.configurePersistable(listOf("one"))
+    cache.put("one", byteArrayOf(42))
+
+    // The durable copy is the fresh one, as seen by a later process.
+    assertContentEquals(
+      byteArrayOf(42),
+      store(root).open("m3-catalog", fp, inputs(fp))!!.get("one"),
+    )
+  }
+
+  @Test
+  fun `a discard that cannot delete everything reports failure`() {
+    // A partial discard leaves stale PNGs under a fingerprint this process has already decided it
+    // cannot trust, and the next restart adopts them again — reproducing the mismatch indefinitely.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
+    generation.put("one", byteArrayOf(1))
+    val dir = File(File(root, "m3-catalog"), fp)
+
+    assertTrue(generation.discard(), "an ordinary discard succeeds")
+
+    // Now make the directory unwritable so the next discard cannot remove its contents. Skipped
+    // where the filesystem does not enforce it — running as root, as CI containers do, deletes
+    // happily from a read-only directory and the assertion would test nothing.
+    generation.put("two", byteArrayOf(2))
+    val enforced =
+      dir.setWritable(false) &&
+        !File(dir, "probe").let { it.createNewFile().also { _ -> it.delete() } }
+    if (enforced) {
+      assertFalse(generation.discard(), "an incomplete discard must not report success")
+    }
+    dir.setWritable(true)
+  }
+
   // ---- two-tier cache -------------------------------------------------------------------------
 
   @Test
@@ -511,11 +577,15 @@ class ThemeCachePersistenceTest {
     // the same identity that just proved untrustworthy.
     val root = tempDir()
     val fp = "a".repeat(64)
+    // Written by one process...
+    store(root).open("m3-catalog", fp, inputs(fp))!!.also {
+      it.put("one", byteArrayOf(1))
+      it.put("two", byteArrayOf(2))
+    }
+    // ...and adopted by the next, which is the only case verification speaks to.
     val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one", "two"))
-    cache.put("one", byteArrayOf(1))
-    cache.put("two", byteArrayOf(2))
 
     val outcome = cache.verifySample { byteArrayOf(99) }
 
@@ -528,10 +598,10 @@ class ThemeCachePersistenceTest {
   fun `verification keeps a generation whose renders still match`() {
     val root = tempDir()
     val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(7))
     val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one"))
-    cache.put("one", byteArrayOf(7))
 
     assertEquals(CatalogThemeCache.VerifyOutcome.VERIFIED, cache.verifySample { byteArrayOf(7) })
     assertEquals(1, cache.snapshot().cached)
@@ -544,10 +614,10 @@ class ThemeCachePersistenceTest {
     // whole change exists to prevent.
     val root = tempDir()
     val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(7))
     val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one"))
-    cache.put("one", byteArrayOf(7))
 
     assertEquals(
       CatalogThemeCache.VerifyOutcome.NO_EVIDENCE,
@@ -607,10 +677,10 @@ class ThemeCachePersistenceTest {
     // silently and the catalog would re-render into memory alone, losing it all again at restart.
     val root = tempDir()
     val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(1))
     val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one"))
-    cache.put("one", byteArrayOf(1))
 
     assertEquals(CatalogThemeCache.VerifyOutcome.MISMATCH, cache.verifySample { byteArrayOf(99) })
 

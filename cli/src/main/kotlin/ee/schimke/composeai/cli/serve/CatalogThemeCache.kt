@@ -271,7 +271,10 @@ class CatalogThemeCache(
     // distinct keys indefinitely, and since a live generation is never evicted to honour
     // `--theme-cache-max-bytes`, that fills the volume. Ad-hoc override renders stay in the bounded
     // memory tier, exactly as they did before persistence existed.
-    if (key in persistableKeys) persistence?.put(key, png)
+    // While quarantined, a fresh render REPLACES the adopted copy rather than being dropped because
+    // a file already sits at that key — see [ThemeCacheStore.Generation.put].
+    if (key in persistableKeys)
+      persistence?.put(key, png, replaceExisting = !persistenceTrusted.get())
     remember(key, png)
     failedKeys.remove(key)
     failureCounts.remove(key)
@@ -325,7 +328,11 @@ class CatalogThemeCache(
     render: (String) -> ByteArray?,
   ): VerifyOutcome {
     val store = persistence ?: return VerifyOutcome.NOTHING_TO_VERIFY
-    val candidates = persistableKeys.filter(store::contains).sorted().take(sampleSize)
+    // Only entries ADOPTED FROM THE PREVIOUS PROCESS can answer the question. On a partly warmed
+    // restart, foreground traffic persists missing keys before the idle verification task runs, and
+    // sampling those would let five renders this process just made "verify" a generation whose old
+    // bytes were never looked at — trusting the cache on the strength of checking itself.
+    val candidates = persistableKeys.filter(store::wasAdopted).sorted().take(sampleSize)
     if (candidates.isEmpty()) {
       // Nothing was adopted, so nothing can be stale: everything from here is this renderer's own.
       persistenceTrusted.set(true)

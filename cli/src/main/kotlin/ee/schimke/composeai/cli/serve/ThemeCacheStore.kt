@@ -258,7 +258,10 @@ class ThemeCacheStore(
      * Snapshotted because [present] grows as this process writes, and a render this process just
      * produced needs no verification: it came from this renderer.
      */
-    private val adopted: Set<String> = present.toSet()
+    private val adopted: MutableSet<String> =
+      java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>()).apply {
+        addAll(present)
+      }
 
     /** Whether [cacheKey] came from a previous process rather than from this one. */
     fun wasAdopted(cacheKey: String): Boolean = fileName(cacheKey) in adopted
@@ -291,15 +294,21 @@ class ThemeCacheStore(
      * Written to a temp file and renamed, so a crash or a full disk leaves no half-PNG that a later
      * process would read as a valid cached render.
      */
-    fun put(cacheKey: String, png: ByteArray) {
+    fun put(cacheKey: String, png: ByteArray, replaceExisting: Boolean = false) {
       val name = fileName(cacheKey)
-      if (name in present) return
+      // Presence alone is not proof that no write is needed. While a generation is quarantined a
+      // foreground request deliberately misses the adopted copy and renders fresh bytes; returning
+      // here would leave the suspect PNG on disk, and once verification passed on OTHER sampled
+      // keys
+      // the read path would serve it again the moment the fresh copy fell out of memory.
+      if (name in present && !(replaceExisting && name in adopted)) return
       val target = File(dir, "$name$PNG_SUFFIX")
       // Writer-unique, because the zero-downtime rollout puts two processes on this volume at once.
       // A temp path shared by cache key lets one replica rename the inode while the other is still
       // writing it, publishing a half-PNG under a name that claims to be complete — and a reader
       // then promotes those bytes as a valid render.
       val temp = File(dir, "$name.${writerId}-${tempSequence.incrementAndGet()}$TEMP_SUFFIX")
+      val existingSize = target.length()
       try {
         temp.writeBytes(png)
         if (!temp.renameTo(target)) {
@@ -307,9 +316,15 @@ class ThemeCacheStore(
           recordFailure(system, "rename failed for $name")
           return
         }
+        // The size DELTA, not the payload size: two hosts for the same fingerprint can race to
+        // publish the same key during a catalog replacement and both rename over the target, but
+        // only one file ends up occupying the volume.
+        val previousSize = if (name in present) existingSize else 0L
         present += name
+        // Replaced by this process, so it is no longer a candidate for verifying the previous one.
+        adopted -= name
         writes.incrementAndGet()
-        knownBytes.addAndGet(png.size.toLong())
+        knownBytes.addAndGet(png.size.toLong() - previousSize)
       } catch (e: IOException) {
         runCatching { temp.delete() }
         recordFailure(system, e.message ?: e::class.simpleName ?: "write failed")
@@ -326,6 +341,7 @@ class ThemeCacheStore(
      */
     fun discard(): Boolean {
       present.clear()
+      adopted.clear()
       // Measured before the delete and subtracted, or the census would carry the discarded
       // generation's bytes plus its rebuilt replacement until the next sweep — making the one
       // number an operator uses to judge occupancy roughly twice the truth.
@@ -336,8 +352,12 @@ class ThemeCacheStore(
           // fail its temp write, catch the IOException and persist nothing — so the optimizer would
           // re-render the whole catalog into memory alone and lose it all again at restart. The
           // point of discarding is to stop trusting these bytes, not to stop writing new ones.
-          dir.listFiles()?.forEach { it.deleteRecursively() }
-          dir.isDirectory || dir.mkdirs()
+          // EVERY child must go. A partial discard leaves stale PNGs under a fingerprint this
+          // process has already decided it cannot trust, and the next restart adopts them again —
+          // reproducing the exact mismatch that triggered the discard, indefinitely.
+          val cleared = dir.listFiles()?.all { it.deleteRecursively() } ?: true
+          if (!cleared) recordFailure(system, "could not fully discard ${dir.name}")
+          cleared && (dir.isDirectory || dir.mkdirs())
         }
         .getOrDefault(false)
     }
