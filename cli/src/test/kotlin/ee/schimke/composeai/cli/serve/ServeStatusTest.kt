@@ -380,7 +380,23 @@ class ServeStatusTest {
                       branch = "published",
                       generatedAt = now.minusSeconds(2 * 86_400).toString(),
                     ),
-                )
+                ),
+                ServeWeb.StatusCatalog(
+                  id = "future-catalog",
+                  title = "Future catalog",
+                  listed = true,
+                  trust = "unverified",
+                  previews = 1,
+                  live = false,
+                  running = false,
+                  degradation = null,
+                  provenance =
+                    ServeWeb.CatalogProvenance(
+                      repo = "example/future-catalog",
+                      branch = "published",
+                      generatedAt = now.plusSeconds(2 * 86_400).toString(),
+                    ),
+                ),
               ),
             servers =
               listOf(
@@ -398,6 +414,8 @@ class ServeStatusTest {
 
     assertTrue(html.contains(">2 days ago</span>"), html)
     assertTrue(html.contains("title=\"2026-08-16T12:00:00Z\""), html)
+    assertTrue(html.contains(">in 2 days</span>"), html)
+    assertTrue(html.contains("title=\"2026-08-20T12:00:00Z\""), html)
     assertTrue(html.contains("<td>same-session-x</td>"), html)
     assertFalse(html.contains("<div class=\"cp-muted\">same-session-x</div>"), html)
   }

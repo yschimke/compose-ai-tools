@@ -6187,7 +6187,20 @@ $noteBlock        <div class="cp-site-footer-links">
   /** Generation times use one relative format; the exact ISO instant remains in the title. */
   private fun friendlyGeneratedAt(iso: String, nowMillis: Long): String {
     val generated = runCatching { Instant.parse(iso) }.getOrNull() ?: return prettyDate(iso)
-    val ageSeconds = ((nowMillis - generated.toEpochMilli()) / 1000).coerceAtLeast(0)
+    val ageMillis = nowMillis - generated.toEpochMilli()
+    if (ageMillis < 0) {
+      val futureSeconds = (-ageMillis + 999) / 1000
+      return when {
+        futureSeconds < 60 -> "in less than a minute"
+        futureSeconds < 3_600 -> relativeTime(futureSeconds / 60, "minute", future = true)
+        futureSeconds < 86_400 -> relativeTime(futureSeconds / 3_600, "hour", future = true)
+        futureSeconds < 2_592_000 -> relativeTime(futureSeconds / 86_400, "day", future = true)
+        futureSeconds < 31_536_000 ->
+          relativeTime(futureSeconds / 2_592_000, "month", future = true)
+        else -> relativeTime(futureSeconds / 31_536_000, "year", future = true)
+      }
+    }
+    val ageSeconds = ageMillis / 1000
     return when {
       ageSeconds < 60 -> "just now"
       ageSeconds < 3_600 -> relativeTime(ageSeconds / 60, "minute")
@@ -6198,8 +6211,10 @@ $noteBlock        <div class="cp-site-footer-links">
     }
   }
 
-  private fun relativeTime(amount: Long, unit: String): String =
-    "$amount $unit${if (amount == 1L) "" else "s"} ago"
+  private fun relativeTime(amount: Long, unit: String, future: Boolean = false): String {
+    val duration = "$amount $unit${if (amount == 1L) "" else "s"}"
+    return if (future) "in $duration" else "$duration ago"
+  }
 
   /**
    * Per-system **display policy** — the single source of truth for what background surface each
