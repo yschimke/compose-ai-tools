@@ -4,8 +4,12 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
@@ -134,6 +138,10 @@ class ServeCatalogLiveHost(
   private val optimizerSliceMillis: Long =
     System.getProperty("composeai.serve.themeOptimizerSliceMillis")?.toLongOrNull()
       ?: DEFAULT_OPTIMIZER_SLICE_MILLIS,
+  /** Bounds the override render that follows a successful cold-id warm. */
+  private val foregroundOverrideTimeoutMillis: Long = FOREGROUND_WARM_AWAIT_MILLIS,
+  /** Injectable so admission retry behavior can be covered without a 20-second test. */
+  private val optimizerAdmissionWaitMillis: Long = OPTIMIZER_ADMISSION_WAIT_MILLIS,
   /**
    * Route snapshot renders to the shared monolithic daemon rather than the per-preview pool — see
    * [renderHostFor]. `-Dcomposeai.serve.sharedDaemonRenders=false` restores per-preview routing for
@@ -240,6 +248,10 @@ class ServeCatalogLiveHost(
   // When the optimizer last checked for activity. Any activity newer than this happened while it
   // was rendering, and must cost it the turn even if the server looks quiet again by now.
   private val optimizerSampledAt = java.util.concurrent.atomic.AtomicLong(0)
+  /**
+   * Next preview position for a new optimizer slice; prevents an evicted prefix monopolising it.
+   */
+  private val optimizerPreviewCursor = AtomicInteger()
   private val warmDaemonIds = ConcurrentHashMap.newKeySet<String>()
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
 
@@ -264,6 +276,12 @@ class ServeCatalogLiveHost(
       Thread(r, "serve-catalog-warm").apply { isDaemon = true }
     }
   }
+  private val foregroundRenderExecutorDelegate = lazy {
+    Executors.newCachedThreadPool { r ->
+      Thread(r, "serve-catalog-foreground-render").apply { isDaemon = true }
+    }
+  }
+  private val foregroundRenderExecutor by foregroundRenderExecutorDelegate
   private val optimizationExecutorDelegate = lazy {
     Executors.newSingleThreadExecutor { r ->
       Thread(r, "serve-catalog-theme-optimize").apply { isDaemon = true }
@@ -508,7 +526,7 @@ class ServeCatalogLiveHost(
         // to them and this catalog resumes once they have had theirs.
         while (true) {
           val outcome =
-            backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
+            backgroundWork.withOptimizerSlot(label, optimizerAdmissionWaitMillis) {
               // Inside the lane and behind the idle gate, so the sample's renders are admitted on
               // exactly the terms every other background render is. Cheap and once per host: a
               // no-op when nothing was adopted from disk.
@@ -517,10 +535,12 @@ class ServeCatalogLiveHost(
               else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
             }
           if (outcome == null) {
-            // Parked, not failed: `keepLiveWarm` re-enters on the next presence heartbeat, and
-            // `optimizationStarted` is reset below so it can.
+            // Stay in the admission queue without needing a visitor heartbeat to resurrect this
+            // catalog. The bounded wait keeps the task cheap; a pause or shutdown still stops it.
             catalogThemeCache.markPaused()
-            return@execute
+            if (backgroundWork.optimizersPaused() || Thread.currentThread().isInterrupted)
+              return@execute
+            continue
           }
           // Anything other than a spent slice is the pass deciding it is done for now — finished,
           // gated, paused or breakered — and re-queueing on those would spin.
@@ -627,8 +647,14 @@ class ServeCatalogLiveHost(
       // partly warmed catalog — only for the 128 MB memory window to evict most of them again
       // before the next slice repeats the whole thing.
       jobs.filterNot { catalogThemeCache.contains(it.cacheKey) }.groupBy { it.previewId }
+    if (byPreview.isEmpty()) return PassOutcome.FINISHED
+    val allPreviewIds = jobs.map { it.previewId }.distinct()
+    val start = Math.floorMod(optimizerPreviewCursor.get(), allPreviewIds.size)
+    val previewOrder =
+      (allPreviewIds.drop(start) + allPreviewIds.take(start)).filter(byPreview::containsKey)
     var previewsDone = 0
-    for ((previewId, previewJobs) in byPreview) {
+    for (previewId in previewOrder) {
+      val previewJobs = byPreview.getValue(previewId)
       // The slice is checked HERE and nowhere finer, on the preview boundary. A preview is the
       // unit a daemon warms for, so giving the lane back between previews never abandons a warm
       // that has just been paid for — whereas cutting mid-preview would throw away the most
@@ -644,6 +670,7 @@ class ServeCatalogLiveHost(
         return PassOutcome.SLICE_SPENT
       }
       previewsDone++
+      optimizerPreviewCursor.set((allPreviewIds.indexOf(previewId) + 1) % allPreviewIds.size)
       // Re-checked per preview as well as at entry: a breaker can trip mid-pass (that is the
       // rate trip's whole job), and the pass must stop feeding the renderer the moment it does
       // rather than grinding through the remaining thousands of items.
@@ -887,6 +914,7 @@ class ServeCatalogLiveHost(
     val pollMillis = quietMillis.coerceAtMost(1_000L).coerceAtLeast(50L) / 2
     while (true) {
       if (Thread.currentThread().isInterrupted) return false
+      if (backgroundWork.optimizersPaused()) return false
       val idleMillis = serverIdleMillis()
       if (idleMillis != null && idleMillis >= quietMillis) return true
       catalogThemeCache.markPaused()
@@ -1171,8 +1199,10 @@ class ServeCatalogLiveHost(
       // render. The gate exists for the one case where that isn't true — a COLD daemon, 34-68s —
       // so wait for the warm this request just scheduled, bounded, and only give up if the cold
       // start really is going to outlast the request.
+      var liveNotFound = false
       if (leased || daemonWarmOrScheduling(daemonId) || awaitForegroundWarm(daemonId)) {
-        val live = renderDaemon(daemonId, overrides, leased, background)
+        val live = renderForegroundBounded(daemonId, overrides, leased, background)
+        liveNotFound = live is RenderOutcome.NotFound
         // Count a real render failure against this theme key so a permanently broken preview stops
         // being re-attempted (see [CatalogThemeCache.recordRenderFailure]). Busy / NotFound are not
         // failures of the render — they are "ask again" and "wrong lane" — and must not latch.
@@ -1190,9 +1220,40 @@ class ServeCatalogLiveHost(
           return cacheCatalogRender(catalogCacheKey, live)
       }
       if (themeCacheKey != null) return RenderOutcome.Busy
+      // Every remaining request here carries a routed override. Baked pixels cannot satisfy it,
+      // so a cold warm that missed the foreground bound is retryable Busy, never a dishonest baked
+      // response that the HTTP correctness guard converts into a late 503.
+      if (overrides != PreviewOverrides() && !liveNotFound) return RenderOutcome.Busy
       return baked.render(previewId, overrides)
     } finally {
       if (themeCacheKey != null) themeRendersInFlight.remove(themeCacheKey)
+    }
+  }
+
+  private fun renderForegroundBounded(
+    daemonId: String,
+    overrides: PreviewOverrides,
+    leased: Boolean,
+    background: Boolean,
+  ): RenderOutcome {
+    if (!warmInBackground || leased || background || foregroundOverrideTimeoutMillis <= 0)
+      return renderDaemon(daemonId, overrides, leased, background)
+    val task =
+      foregroundRenderExecutor.submit<RenderOutcome> {
+        renderDaemon(daemonId, overrides, leased, background)
+      }
+    return try {
+      task.get(foregroundOverrideTimeoutMillis, TimeUnit.MILLISECONDS)
+    } catch (_: TimeoutException) {
+      task.cancel(true)
+      RenderOutcome.Busy
+    } catch (_: InterruptedException) {
+      task.cancel(true)
+      Thread.currentThread().interrupt()
+      RenderOutcome.Busy
+    } catch (e: ExecutionException) {
+      task.cancel(true)
+      RenderOutcome.Failed(e.cause?.message ?: "foreground render failed")
     }
   }
 
@@ -1504,6 +1565,13 @@ class ServeCatalogLiveHost(
         warmExecutor.shutdownNow()
       } catch (_: Throwable) {
         // ignore — best-effort shutdown of the daemon-thread warm pool
+      }
+    }
+    if (foregroundRenderExecutorDelegate.isInitialized()) {
+      try {
+        foregroundRenderExecutor.shutdownNow()
+      } catch (_: Throwable) {
+        // ignore — best-effort shutdown of bounded foreground render workers
       }
     }
     try {

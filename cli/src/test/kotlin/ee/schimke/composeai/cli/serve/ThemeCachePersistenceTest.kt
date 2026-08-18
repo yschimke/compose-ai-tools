@@ -179,6 +179,27 @@ class ThemeCachePersistenceTest {
   }
 
   @Test
+  fun `font cache contents are fingerprinted without hashing their staging path`() {
+    val dir = tempDir()
+    val framework = jar(dir, "compose-runtime.jar", "DEPS")
+    val fonts = File(dir, "fonts").apply { mkdirs() }
+    jar(fonts, "Roboto.woff2", "revision-1")
+
+    fun fingerprintNow() =
+      fingerprint(
+        ThemeCacheFingerprint.renderedClasspath(
+          classpath = listOf(framework.absolutePath),
+          systemProperties = mapOf("composeai.fonts.cacheDir" to fonts.absolutePath),
+        )
+      )
+
+    val before = fingerprintNow()
+    jar(fonts, "Roboto.woff2", "revision-2")
+
+    assertNotEquals(before, fingerprintNow(), "different glyph bytes must be a new generation")
+  }
+
+  @Test
   fun `declared themes persist even when the eager optimizer pass is switched off`() {
     // With `-Dcomposeai.serve.themeOptimization=false` the pass never declares its targets, so
     // gating persistence on the target set refused every render a visitor actually asked for and

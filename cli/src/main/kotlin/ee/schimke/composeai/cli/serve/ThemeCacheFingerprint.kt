@@ -132,6 +132,9 @@ object ThemeCacheFingerprint {
       // produce the scene, so a bundle that regenerates a capture without touching a single class
       // renders differently — and would otherwise carry the previous generation's name.
       (PAYLOAD_PROPERTIES.mapNotNull { key -> systemProperties[key]?.takeIf { it.isNotBlank() } } +
+          CONTENT_PATH_PROPERTIES.mapNotNull { key ->
+            systemProperties[key]?.takeIf { it.isNotBlank() }
+          } +
           extraPayloads.filter { it.isNotBlank() })
         .distinct()
         .map(::File)
@@ -154,7 +157,7 @@ object ThemeCacheFingerprint {
    * err.
    */
   fun renderConfig(systemProperties: Map<String, String>, jvmArgs: List<String>): String {
-    val covered = PAYLOAD_PROPERTIES.toSet() + USER_CLASS_DIRS_PROPERTY
+    val covered = PAYLOAD_PROPERTIES.toSet() + CONTENT_PATH_PROPERTIES + USER_CLASS_DIRS_PROPERTY
     val settings =
       systemProperties
         .filterKeys { it !in covered }
@@ -210,6 +213,9 @@ object ThemeCacheFingerprint {
       // preview happens to be one of the five.
       "composeai.daemon.previewsJsonPath",
     )
+
+  /** Path-valued launch settings whose directory contents directly affect rendered pixels. */
+  val CONTENT_PATH_PROPERTIES: Set<String> = setOf("composeai.fonts.cacheDir")
 
   /**
    * Fold several module fingerprints into one.

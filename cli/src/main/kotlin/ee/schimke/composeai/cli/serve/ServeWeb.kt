@@ -10905,8 +10905,8 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
       themeStorageKey
         .takeIf { it.isNotBlank() }
         ?.let {
-          "||(/(?:^|__)(?:light|dark)(?:__|$)/.test(" +
-            "decodeURIComponent(location.pathname).split('/').pop()||\"\")?\"\":" +
+          "||(((decodeURIComponent(location.pathname).split('/').pop()||\"\")" +
+            ".match(/(?:^|__)(light|dark)(?:__|$)/)||[])[1]||" +
             "localStorage.getItem(${WebEscaping.jsString(it)}))"
         } ?: ""
     val modeEntries = declaredThemes.mapNotNull { theme ->

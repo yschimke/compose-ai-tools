@@ -1944,6 +1944,10 @@ var motionDrawnFrame = -1;
 // hold one frame across a dozen of those ticks; queueing a decode per tick would pile up work whose
 // result is stale before it resolves.
 var motionDecodeBusy = false;
+// The latest frame requested while a decode is in flight. Scrubbing stops the animation clock, so
+// dropping that request would otherwise leave the canvas on the old frame indefinitely.
+var motionPendingFrame = -1;
+var motionActiveSrc = "";
 function motionDecoderCtor(): MotionDecoderCtor | null {
     var ctor = (window as unknown as { ImageDecoder?: unknown }).ImageDecoder;
     return typeof ctor === "function" ? (ctor as MotionDecoderCtor) : null;
@@ -1982,7 +1986,11 @@ function paintMotion() {
 }
 function drawMotionFrame(index: number) {
     if (!motionDecoder || !motionCanvas) return;
-    if (index === motionDrawnFrame || motionDecodeBusy) return;
+    if (index === motionDrawnFrame) return;
+    if (motionDecodeBusy) {
+        motionPendingFrame = index;
+        return;
+    }
     var decoder = motionDecoder;
     var token = motionLoadToken;
     motionDecodeBusy = true;
@@ -2010,9 +2018,18 @@ function drawMotionFrame(index: number) {
             // and a capture is hundreds of them.
             result.image.close();
             motionDrawnFrame = index;
+            var pending = motionPendingFrame;
+            motionPendingFrame = -1;
+            if (pending >= 0 && pending !== motionDrawnFrame)
+                drawMotionFrame(pending);
         })
         .catch(function () {
             motionDecodeBusy = false;
+            if (token !== motionLoadToken || decoder !== motionDecoder) return;
+            // Frame zero proved the capture loadable, but a damaged or unsupported later frame is
+            // still a decoder failure. Hand the same capture back to the browser's image decoder
+            // instead of leaving a stale canvas under a readout for a frame that never painted.
+            motionFallbackToImage(motionActiveSrc);
         });
 }
 function syncMotionTransport() {
@@ -2051,6 +2068,7 @@ function motionReadout() {
 /** Hand the capture back to the browser: looping, uncontrollable, and better than nothing. */
 function motionFallbackToImage(src: string) {
     if (!motionImg) return;
+    releaseMotionDecoder();
     if (motionPlayerBox) motionPlayerBox.hidden = true;
     if (motionTransport) motionTransport.hidden = true;
     motionImg.hidden = false;
@@ -2065,6 +2083,7 @@ function motionFallbackToImage(src: string) {
  */
 function loadMotion(src: string) {
     var token = ++motionLoadToken;
+    motionActiveSrc = src;
     releaseMotionDecoder();
     var ctor = motionDecoderCtor();
     if (!ctor || !motionCanvas || !motionPlayerBox) {
@@ -2157,6 +2176,7 @@ function loadMotion(src: string) {
 function releaseMotionDecoder() {
     stopMotionClock();
     motionDecodeBusy = false;
+    motionPendingFrame = -1;
     motionDrawnFrame = -1;
     if (motionDecoder) {
         motionDecoder.close();

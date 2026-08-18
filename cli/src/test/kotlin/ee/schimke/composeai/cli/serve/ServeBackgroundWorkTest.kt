@@ -121,6 +121,32 @@ class ServeBackgroundWorkTest {
     }
   }
 
+  @Test
+  fun `overlapping generations of one system are both counted as running`() {
+    val work = ServeBackgroundWork(maxConcurrentOptimizers = 2)
+    val entered = CountDownLatch(2)
+    val release = CountDownLatch(1)
+    val pool = Executors.newFixedThreadPool(2)
+    try {
+      repeat(2) {
+        pool.execute {
+          work.withOptimizerSlot("catalog", 5_000) {
+            entered.countDown()
+            release.await()
+          }
+        }
+      }
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+
+      val snapshot = work.optimizerAdmissionSnapshot()
+      assertEquals(2, snapshot.running)
+      assertEquals(listOf("catalog"), snapshot.runningSystems)
+    } finally {
+      release.countDown()
+      pool.shutdownNow()
+    }
+  }
+
   /**
    * Codex review on #3399. Widening the lane is only safe because the seat budget refuses the
    * daemons it licenses: a lane of 3, each catalog submitting up to five parallel renders, is up to

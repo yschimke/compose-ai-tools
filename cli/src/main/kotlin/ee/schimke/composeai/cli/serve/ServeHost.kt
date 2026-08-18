@@ -534,7 +534,12 @@ interface ServeHost : AutoCloseable {
         if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
         // …and every player the parity run already drew. Those need no renderer at all, so a host
         // that carries the staging can offer them however little else it can do.
-        addAll(stagedRcPlayers(previewId).filterNot { it in this })
+        // cmp-wasm is an interactive iframe lane, not a staged-raster lane. Advertising it from
+        // parity output alone makes the viewer open /rc-wasm/ even when no Wasm distribution is
+        // installed; the published raster remains available to the comparison surface.
+        addAll(
+          stagedRcPlayers(previewId).filterNot { it == RcPlayerBackend.CMP_WASM || it in this }
+        )
       }
         .sortedBy { RcPlayerBackend.UNIVERSE.indexOf(it) }
     } else {

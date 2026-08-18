@@ -880,9 +880,18 @@ class ServeHttpServer(
           // cannot silently disable the cache for a week.
           post("/admin/theme-optimization/pause") {
             if (rejectBadAdminToken()) return@post
+            val minutesText = call.request.queryParameters["minutes"]
             val minutes =
-              call.request.queryParameters["minutes"]?.toLongOrNull()
-                ?: DEFAULT_OPTIMIZER_PAUSE_MINUTES
+              if (minutesText == null) DEFAULT_OPTIMIZER_PAUSE_MINUTES
+              else
+                minutesText.toLongOrNull()
+                  ?: run {
+                    call.respondText(
+                      "minutes must be an integer in 1..$MAX_OPTIMIZER_PAUSE_MINUTES",
+                      status = HttpStatusCode.BadRequest,
+                    )
+                    return@post
+                  }
             if (minutes <= 0 || minutes > MAX_OPTIMIZER_PAUSE_MINUTES) {
               call.respondText(
                 "minutes must be 1..$MAX_OPTIMIZER_PAUSE_MINUTES",
@@ -1494,6 +1503,7 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
     val skin = siteSkin()
+    markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.notFoundPage(
         message,
@@ -3540,6 +3550,7 @@ class ServeHttpServer(
         ContentType.Application.Json,
       )
     } else {
+      markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.statusPage(
           data.toView(),
@@ -4322,7 +4333,7 @@ class ServeHttpServer(
             )
           },
         runningServers =
-          liveDaemons.map { d ->
+          running.map { d ->
             RunningServerDto(
               id = d.id,
               label = d.label,
@@ -4349,9 +4360,7 @@ class ServeHttpServer(
           RenderPerfSnapshot.aggregate(
             // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something
             // has actually rendered so a quiet server doesn't advertise a block of zeros.
-            liveDaemons
-              .mapNotNull { it.renderStats }
-              .filter { it.renders + it.cacheHits + it.busy > 0 }
+            running.mapNotNull { it.renderStats }.filter { it.renders + it.cacheHits + it.busy > 0 }
           ),
         playground =
           playgroundHealth?.invoke()?.let { h ->
@@ -4429,9 +4438,7 @@ class ServeHttpServer(
         else "${liveSeats.availablePermits()} free / ${liveSeats.totalPermits}"
       val renderAgg =
         RenderPerfSnapshot.aggregate(
-          liveDaemons
-            .mapNotNull { it.renderStats }
-            .filter { it.renders + it.cacheHits + it.busy > 0 }
+          running.mapNotNull { it.renderStats }.filter { it.renders + it.cacheHits + it.busy > 0 }
         )
       val summary = buildList {
         val loadedCatalogs = catalogs.count { it.available }
@@ -4584,7 +4591,7 @@ class ServeHttpServer(
             )
           },
         servers =
-          liveDaemons.map { d ->
+          running.map { d ->
             ServeWeb.StatusServer(
               id = d.id,
               label = d.label,
@@ -4604,7 +4611,7 @@ class ServeHttpServer(
             )
           },
         renderFailures =
-          liveDaemons
+          running
             .flatMap { daemon ->
               daemon.renderStats?.recentFailures.orEmpty().map { failure -> daemon to failure }
             }
@@ -5436,6 +5443,7 @@ class ServeHttpServer(
           githubAuthConfigured = githubAuth != null,
           isPublic = isPublic,
           signedIn = requestIsSignedIn(),
+          stagedCapabilitiesPending = renderHost.rcComparePending(),
         ),
       )
       call.respondText(
@@ -7240,7 +7248,10 @@ class ServeHttpServer(
       githubAuthConfigured: Boolean,
       isPublic: Boolean,
       signedIn: Boolean = true,
-    ): String = pageCacheControl(githubAuthConfigured, isPublic, signedIn)
+      stagedCapabilitiesPending: Boolean = false,
+    ): String =
+      if (stagedCapabilitiesPending) DYNAMIC_RESOURCE_CACHE_CONTROL
+      else pageCacheControl(githubAuthConfigured, isPublic, signedIn)
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"

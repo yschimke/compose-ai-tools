@@ -36,8 +36,12 @@ while (( attempt <= max_attempts )); do
     exit 0
   fi
 
+  # Gradle normally prints the failed request and its HTTP status on different lines. `grep`
+  # matches one line at a time, so requiring both fragments in one expression silently disabled
+  # the retry for the ordinary repository-error shape this wrapper exists for.
   if (( attempt == max_attempts )) ||
-    ! grep -Eiq "Could not (GET|HEAD) 'https?://[^']+'.*Received status code (403|429|5[0-9][0-9])" "$log_file"; then
+    ! grep -Eiq "Could not (GET|HEAD) 'https?://[^']+'" "$log_file" ||
+    ! grep -Eiq "Received status code (403|429|5[0-9][0-9])" "$log_file"; then
     rm -f "$log_file"
     exit "$status"
   fi

@@ -106,7 +106,8 @@ internal object MotionCaptureLabels {
       val ends = i + 1 >= text.length || text[i + 1] == ' '
       val boundary =
         when {
-          c == '.' || c == '!' || c == '?' || c == ';' || c == ':' -> ends
+          c == '.' -> ends && !abbreviationPeriod(text, i)
+          c == '!' || c == '?' || c == ';' || c == ':' -> ends
           c == '—' || c == '–' || c == '-' -> ends && i > 0 && text[i - 1] == ' '
           else -> false
         }
@@ -116,6 +117,14 @@ internal object MotionCaptureLabels {
       }
     }
     return text.substring(0, cut).trim().trimEnd('.', ',')
+  }
+
+  /** Periods in common prose abbreviations do not end the instruction clause. */
+  private fun abbreviationPeriod(text: String, index: Int): Boolean {
+    val prefix = text.substring(0, index + 1).lowercase()
+    return ABBREVIATIONS.any(prefix::endsWith) ||
+      // Initialisms such as "U.S." and "a.m." consist of repeated letter-period pairs.
+      Regex("(?:[a-z]\\.){2,}$").containsMatchIn(prefix)
   }
 
   /** Cut long, on a word boundary, with the ellipsis that says the rest is in the detail line. */
@@ -135,4 +144,7 @@ internal object MotionCaptureLabels {
    * controls, so a newline in the middle of one is markup noise rather than meaning.
    */
   private fun normalise(text: String?): String = text?.replace(Regex("\\s+"), " ")?.trim().orEmpty()
+
+  private val ABBREVIATIONS =
+    setOf("e.g.", "i.e.", "etc.", "vs.", "mr.", "mrs.", "ms.", "dr.", "prof.")
 }

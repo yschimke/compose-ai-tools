@@ -182,6 +182,15 @@ class ServeAuthTest {
       "no-store",
       ServeHttpServer.viewerCacheControl(githubAuthConfigured = false, isPublic = false),
     )
+    assertEquals(
+      "no-store",
+      ServeHttpServer.viewerCacheControl(
+        githubAuthConfigured = false,
+        isPublic = true,
+        stagedCapabilitiesPending = true,
+      ),
+      "a viewer assembled before staged RC discovery completes must not be cached",
+    )
   }
 
   @Test

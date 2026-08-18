@@ -868,6 +868,40 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `interrupting a bounded render quarantines its late daemon event`() {
+    val firstSubmitted = CountDownLatch(1)
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        renderHook = { call, emit ->
+          if (call == 1) firstSubmitted.countDown()
+          if (call == 2) {
+            emit("STALE".toByteArray())
+            emit("FRESH".toByteArray())
+          }
+        },
+      )
+    ServeRenderHost(
+        session = session,
+        previews = listOf(ServePreview(previewId, "Red")),
+        renderTimeoutSeconds = 60,
+      )
+      .use { h ->
+        var first: RenderOutcome? = null
+        val thread = Thread { first = h.render(previewId, PreviewOverrides(uiMode = UiMode.LIGHT)) }
+        thread.start()
+        assertTrue(firstSubmitted.await(5, TimeUnit.SECONDS))
+        thread.interrupt()
+        thread.join(5_000)
+        assertEquals(RenderOutcome.Busy, first)
+
+        val second = h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+        assertTrue(second is RenderOutcome.Ok, "second render should succeed, got $second")
+        assertEquals("FRESH", second.png.decodeToString())
+      }
+  }
+
+  @Test
   fun `a rejected render surfaces as Failed`() {
     val session = FakeRenderSession(newRenderRoot(), rejectAll = true)
     host(session).use { h ->

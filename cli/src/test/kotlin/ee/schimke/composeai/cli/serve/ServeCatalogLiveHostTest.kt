@@ -42,6 +42,7 @@ class ServeCatalogLiveHostTest {
     /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
     private val svgNotFound: Boolean = false,
     private val forcedRenderOutcome: RenderOutcome? = null,
+    private val renderDelayMillis: Long = 0,
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
     override val hasA11yOverlay: Boolean = false,
@@ -64,12 +65,15 @@ class ServeCatalogLiveHostTest {
     var lastStreamId: String? = null
     var lastA11yId: String? = null
     var renderCalls = 0
+    val renderedIds = Collections.synchronizedList(mutableListOf<String>())
     var closed = false
 
     override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
       renderCalls++
+      renderedIds += previewId
       lastRenderId = previewId
       lastRenderOverrides = overrides
+      if (renderDelayMillis > 0) Thread.sleep(renderDelayMillis)
       forcedRenderOutcome?.let {
         return it
       }
@@ -1194,6 +1198,36 @@ class ServeCatalogLiveHostTest {
     assertEquals(1, live.renderCalls)
   }
 
+  @Test
+  fun `a pause arriving during the quiet wait prevents new optimizer work`() {
+    val idleMillis = AtomicLong(0)
+    val backgroundWork = ServeBackgroundWork()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = idleMillis::get,
+        themeOptimizationIdleMillis = 100,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    awaitOk(5_000) { backgroundWork.optimizerAdmissionSnapshot().takeIf { it.running == 1 } }
+    backgroundWork.pauseOptimizers(60_000, "deploy")
+    idleMillis.set(Long.MAX_VALUE)
+    Thread.sleep(150)
+
+    assertEquals(0, live.renderCalls, "the completed quiet wait must recheck the pause")
+    composite.close()
+  }
+
   /**
    * A pass gives its lane back on a preview boundary and re-queues for another.
    *
@@ -1288,6 +1322,73 @@ class ServeCatalogLiveHostTest {
     assertTrue(awaitOptimization(composite).fullyOptimized)
     assertEquals(1, live.renderCalls)
     assertEquals(1, backgroundWork.optimizerAdmissionSnapshot().admissions)
+  }
+
+  @Test
+  fun `an optimizer refused at startup retries without a visitor heartbeat`() {
+    val backgroundWork = ServeBackgroundWork(maxConcurrentRenders = 1, maxConcurrentOptimizers = 1)
+    val held = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val holder = Thread {
+      backgroundWork.withOptimizerSlot("holder", 0) {
+        held.countDown()
+        release.await()
+      }
+    }
+    holder.start()
+    assertTrue(held.await(5, TimeUnit.SECONDS))
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+        optimizerAdmissionWaitMillis = 5,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    awaitOk(5_000) { backgroundWork.optimizerAdmissionSnapshot().takeIf { it.refusals > 0 } }
+    release.countDown()
+
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    holder.join(5_000)
+  }
+
+  @Test
+  fun `optimizer slices rotate past an evicted prefix`() {
+    val previews = (1..4).map { ServePreview("$daemonId-$it", "$daemonId-$it") }
+    val live = RecordingHost(previews = previews, tag = "live", declaredThemes = listOf(brandTheme))
+    // Only roughly one tiny test render fits. Once preview 2 evicts preview 1, restarting each
+    // slice at the first miss would ping-pong between them forever and never attempt 3 or 4.
+    val cache = CatalogThemeCache(maxBytes = 40)
+    val composite =
+      ServeCatalogLiveHost(
+        alias = previews.associate { "cat-${it.id}" to it.id },
+        live = live,
+        baked =
+          RecordingHost(previews.map { ServePreview("cat-${it.id}", "cat-${it.id}") }, "baked"),
+        catalogThemeCache = cache,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+        optimizerSliceMillis = 0,
+      )
+
+    composite.prewarm()
+    awaitOk(5_000) {
+      synchronized(live.renderedIds) {
+        live.renderedIds.toSet().takeIf { seen -> previews.all { it.id in seen } }
+      }
+    }
+
+    composite.close()
   }
 
   /**
@@ -1897,6 +1998,61 @@ class ServeCatalogLiveHostTest {
       elapsedMs < ServeCatalogLiveHost.FOREGROUND_WARM_AWAIT_MILLIS,
       "it must not burn the whole warm budget on a failing warm (took ${elapsedMs}ms)",
     )
+  }
+
+  @Test
+  fun `a knob render never falls back to baked pixels when its cold warm fails`() {
+    val baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        forcedRenderOutcome = RenderOutcome.Busy,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+      )
+
+    val outcome =
+      composite.render(
+        catalogId,
+        PreviewOverrides(
+          namedOverrides = mapOf("color" to PreviewOverrideValue.StringValue("outlined"))
+        ),
+      )
+
+    assertEquals(RenderOutcome.Busy, outcome)
+    assertEquals(0, baked.renderCalls, "baked pixels cannot claim to contain a knob override")
+  }
+
+  @Test
+  fun `the first override render after warming is bounded too`() {
+    val baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        renderDelayMillis = 30,
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+        foregroundOverrideTimeoutMillis = 5,
+      )
+
+    val outcome = composite.render(catalogId, themeOverride())
+
+    assertEquals(RenderOutcome.Busy, outcome)
+    assertEquals(0, baked.renderCalls)
+    composite.close()
   }
 
   /**

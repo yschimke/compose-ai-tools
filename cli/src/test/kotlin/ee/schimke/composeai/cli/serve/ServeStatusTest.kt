@@ -167,8 +167,12 @@ class ServeStatusTest {
     // Config is surfaced for a monitor.
     assertTrue(body.contains("\"allowRenderTrusted\":true"), body)
     assertTrue(body.contains("\"catalogRefreshSeconds\":600"), body)
-    // Static bundle catalogs run no daemon, so no live servers.
-    assertTrue(body.contains("\"runningServers\":[]"), "static catalogs run no daemon: $body")
+    // A resident static host consumes no live seat, but it still belongs in the diagnostic list.
+    assertTrue(
+      body.contains("\"runningServers\":[") &&
+        body.contains("\"id\":\"compose-m3\",\"label\":\"compose-m3\""),
+      "resident static hosts remain diagnosable: $body",
+    )
   }
 
   @Test
@@ -430,11 +434,14 @@ class ServeStatusTest {
     val (jsonCode, json) = get("/status.json")
     assertEquals(200, jsonCode)
     assertTrue(json.contains("\"status\":\"degraded\""), json)
+    assertTrue(json.contains("\"runningServers\":[{\"id\":\"broken\""), json)
+    assertTrue(json.contains("\"breaker\":{\"open\":true"), json)
 
     val (htmlCode, html) = get("/status")
     assertEquals(200, htmlCode)
     assertTrue(html.contains("1 open live render breaker"), html)
     assertTrue(html.contains("href=\"#recent-render-failures\""), html)
+    assertTrue(html.contains(">broken<"), html)
   }
 
   @Test
