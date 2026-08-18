@@ -316,6 +316,67 @@ class ThemeCachePersistenceTest {
   }
 
   @Test
+  fun `adopted renders are withheld from reads until verification settles`() {
+    // Verification is asynchronous — it needs a lane and a warm daemon — so between adopting a
+    // generation and checking it there is a window where the fingerprint might be wrong. Serving
+    // those bytes in that window is the one thing the safety check exists to prevent, and traffic
+    // can hold the window open by keeping the box non-idle.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.also { it.put("one", byteArrayOf(1)) }
+
+    // A NEW process adopts that generation.
+    val adopted = store(root).open("m3-catalog", fp, inputs(fp))!!
+    val cache = CatalogThemeCache(persistence = adopted)
+    cache.configurePersistable(listOf("one"))
+
+    assertNull(cache.get("one"), "an unverified adopted render must not be served")
+    // But it still counts as warm, so the optimizer does not re-render what is already on disk.
+    assertTrue(cache.contains("one"))
+
+    assertEquals(CatalogThemeCache.VerifyOutcome.VERIFIED, cache.verifySample { byteArrayOf(1) })
+    assertContentEquals(byteArrayOf(1), cache.get("one"))
+  }
+
+  @Test
+  fun `a cache that adopted nothing serves its own renders immediately`() {
+    // The quarantine must not cost anything on a cold generation: there is nothing to distrust when
+    // every entry was rendered by this process.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val cache = CatalogThemeCache(persistence = store(root).open("m3-catalog", fp, inputs(fp))!!)
+    cache.configurePersistable(listOf("one"))
+
+    cache.put("one", byteArrayOf(7))
+
+    assertContentEquals(byteArrayOf(7), cache.get("one"))
+  }
+
+  @Test
+  fun `concurrent writers do not share a temporary file`() {
+    // The zero-downtime rollout puts two processes on this volume at once. A temp path shared by
+    // cache key lets one replica rename the inode while the other is still writing it, publishing a
+    // half-PNG under a name that claims to be complete.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val one = store(root).open("m3-catalog", fp, inputs(fp))!!
+    val two = store(root).open("m3-catalog", fp, inputs(fp))!!
+    val payload = ByteArray(64) { 5 }
+
+    val threads =
+      listOf(one, two).map { generation ->
+        Thread { repeat(20) { generation.put("shared-key", payload) } }.also(Thread::start)
+      }
+    threads.forEach { it.join(10_000) }
+
+    assertContentEquals(payload, store(root).open("m3-catalog", fp, inputs(fp))!!.get("shared-key"))
+    // No temp files left behind under either writer's name.
+    val leftovers =
+      File(File(root, "m3-catalog"), fp).listFiles()?.filter { it.name.endsWith(".tmp") }.orEmpty()
+    assertEquals(emptyList(), leftovers)
+  }
+
+  @Test
   fun `a different generation cannot read the previous one's renders`() {
     val root = tempDir()
     val old = "a".repeat(64)

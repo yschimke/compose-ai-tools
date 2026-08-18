@@ -119,6 +119,7 @@ object ThemeCacheFingerprint {
   fun renderedClasspath(
     classpath: List<String>,
     systemProperties: Map<String, String>,
+    extraPayloads: List<String> = emptyList(),
   ): List<File> =
     classpath.map(::File) +
       (systemProperties[USER_CLASS_DIRS_PROPERTY]
@@ -130,7 +131,9 @@ object ThemeCacheFingerprint {
       // Compose documents and the bundle manifest. `BundleIrReplayStore` reads these bytes to
       // produce the scene, so a bundle that regenerates a capture without touching a single class
       // renders differently — and would otherwise carry the previous generation's name.
-      PAYLOAD_PROPERTIES.mapNotNull { key -> systemProperties[key]?.takeIf { it.isNotBlank() } }
+      (PAYLOAD_PROPERTIES.mapNotNull { key -> systemProperties[key]?.takeIf { it.isNotBlank() } } +
+          extraPayloads.filter { it.isNotBlank() })
+        .distinct()
         .map(::File)
 
   /** Stable digest of a catalog-id to daemon-id map, for [of]'s `routing`. */
@@ -154,7 +157,16 @@ object ThemeCacheFingerprint {
    * two genuinely different generations agree on a name.
    */
   val PAYLOAD_PROPERTIES: List<String> =
-    listOf("composeai.daemon.irDir", "composeai.daemon.bundleManifestPath")
+    listOf(
+      "composeai.daemon.irDir",
+      "composeai.daemon.bundleManifestPath",
+      // The preview manifest carries each preview's discovery-time render spec — dimensions,
+      // density, device, declared themes. A repacked catalog can change any of those while keeping
+      // an identical classpath and identical alias routing, and the cache key is theme-only, so the
+      // new host would adopt the old pixels. The five-entry sample only catches it if the changed
+      // preview happens to be one of the five.
+      "composeai.daemon.previewsJsonPath",
+    )
 
   /**
    * Fold several module fingerprints into one.

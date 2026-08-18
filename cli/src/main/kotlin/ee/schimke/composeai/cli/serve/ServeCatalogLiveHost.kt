@@ -621,7 +621,11 @@ class ServeCatalogLiveHost(
     // list is already ordered by: every theme of one preview renders together, so one warm is
     // amortised across all of them and the pass never interleaves two previews' daemon opens.
     val byPreview =
-      jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
+      // `contains`, not `get`: planning only needs to know WHETHER a target is warm. Reading it
+      // pulls every already-persisted PNG off disk on every slice — hundreds of megabytes for a
+      // partly warmed catalog — only for the 128 MB memory window to evict most of them again
+      // before the next slice repeats the whole thing.
+      jobs.filterNot { catalogThemeCache.contains(it.cacheKey) }.groupBy { it.previewId }
     var previewsDone = 0
     for ((previewId, previewJobs) in byPreview) {
       // The slice is checked HERE and nowhere finer, on the preview boundary. A preview is the

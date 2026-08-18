@@ -128,6 +128,11 @@ class CatalogThemeCache(
   // The bounded set the DISK tier accepts — see [configurePersistable] for why it is not
   // targetKeys.
   private val persistableKeys = ConcurrentHashMap.newKeySet<String>()
+  // False while renders ADOPTED FROM A PREVIOUS PROCESS are still unverified — see [get]. Only
+  // those
+  // are in question: anything this process rendered came from this renderer and needs no checking,
+  // which is why the quarantine is keyed on `wasAdopted` rather than on having a disk tier at all.
+  private val persistenceTrusted = java.util.concurrent.atomic.AtomicBoolean(false)
   private val failedKeys = ConcurrentHashMap.newKeySet<String>()
   // Consecutive live-render failures per key, and the last reason seen. Both are cleared by a
   // successful [put], so a key only stays latched while it keeps failing.
@@ -234,7 +239,17 @@ class CatalogThemeCache(
       ?.let {
         return it
       }
-    val fromDisk = persistence?.get(key) ?: return null
+    // Adopted-but-unverified bytes are NOT served. Verification is asynchronous — it needs a lane
+    // and a warm daemon — and until it settles these renders are exactly the thing the fingerprint
+    // might have got wrong. Serving them meanwhile hands out stale pixels precisely in the window
+    // the safety check exists to cover, and traffic can hold that window open for a long time by
+    // keeping the box non-idle. A miss here costs a fresh render; a hit here could cost the truth.
+    //
+    // Only the READ path is withheld. [contains] still reports them, so the optimizer does not
+    // re-render what is already on disk while the question is open.
+    val store = persistence ?: return null
+    if (!persistenceTrusted.get() && store.wasAdopted(key)) return null
+    val fromDisk = store.get(key) ?: return null
     // Promoted through the ordinary write path so it takes part in the LRU and the byte accounting
     // like any other entry — but NOT written back to disk, which is where it just came from.
     remember(key, fromDisk)
@@ -311,7 +326,11 @@ class CatalogThemeCache(
   ): VerifyOutcome {
     val store = persistence ?: return VerifyOutcome.NOTHING_TO_VERIFY
     val candidates = persistableKeys.filter(store::contains).sorted().take(sampleSize)
-    if (candidates.isEmpty()) return VerifyOutcome.NOTHING_TO_VERIFY
+    if (candidates.isEmpty()) {
+      // Nothing was adopted, so nothing can be stale: everything from here is this renderer's own.
+      persistenceTrusted.set(true)
+      return VerifyOutcome.NOTHING_TO_VERIFY
+    }
     var compared = 0
     for (key in candidates) {
       val cached = store.get(key) ?: continue
@@ -325,6 +344,8 @@ class CatalogThemeCache(
         }
         state.set("paused")
         completedAt.set(0)
+        // The suspect bytes are gone, so what the cache holds from here is this renderer's own.
+        persistenceTrusted.set(true)
         return VerifyOutcome.MISMATCH
       }
     }
@@ -332,6 +353,7 @@ class CatalogThemeCache(
     // served from a cache during a cold start, and treating that as "verified" would latch the
     // check permanently on the one occasion it was never actually performed — leaving a stale
     // generation to serve wrong pixels for the life of the process. The caller retries instead.
+    if (compared > 0) persistenceTrusted.set(true)
     return if (compared > 0) VerifyOutcome.VERIFIED else VerifyOutcome.NO_EVIDENCE
   }
 

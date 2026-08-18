@@ -868,6 +868,9 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
               ThemeCacheFingerprint.renderedClasspath(
                 launch.classpath,
                 launch.systemProperties,
+                // Same preview manifest, reachable by a second route on descriptors that name it
+                // here rather than in a system property.
+                extraPayloads = listOfNotNull(launch.manifestPath),
               ),
             variant = launch.variant,
             toolVersion = BUNDLE_VERSION,

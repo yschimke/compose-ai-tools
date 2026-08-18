@@ -73,6 +73,10 @@ class ThemeCacheStore(
   private val knownBytes = AtomicLong()
   private val knownGenerations = java.util.concurrent.atomic.AtomicInteger()
   private val lastFailure = ConcurrentHashMap<String, String>()
+  private val tempSequence = AtomicLong()
+  /** Distinguishes this process's in-flight writes from a concurrently deployed replica's. */
+  private val writerId: String =
+    ProcessHandle.current().pid().toString(36) + "-" + System.identityHashCode(this).toString(36)
 
   /**
    * Open (creating if needed) the generation for [system] at [fingerprint], or null when the store
@@ -136,17 +140,13 @@ class ThemeCacheStore(
       }
       for (generationDir in generationDirs) {
         val size = generationDir.sizeOnDisk()
-        // Live here, young enough to be live in ANOTHER PROCESS, or undeletable — all three are
-        // survivors, and each for its own reason:
+        // Three kinds of survivor, each for its own reason:
         //  - ours: obviously;
         //  - young: the image deployment rolls out zero-downtime, so a new replica boots beside the
-        //    old one on the same volume and sees the old one's generations as unreferenced.
-        // Sweeping
-        //    them would delete a possibly 28-hour cache belonging to a replica that is still
-        // serving
-        //    production — and still the one serving it if the new replica fails its readiness
-        // check;
-        //  - undeletable: the bytes are still on the volume whatever the filesystem said, and a
+        //    running one on the same volume and sees its generations as unreferenced. Reclaiming
+        //    them deletes a possibly 28-hour cache from the replica still serving production — and
+        //    still serving it if the new replica fails readiness;
+        //  - undeletable: the bytes remain on the volume whatever the filesystem reported, and a
         //    census that omits them can report the store under a cap it is actually over.
         if (generationDir in liveDirs || createdAt(generationDir) > youngerThan) {
           survivingBytes += size
@@ -244,6 +244,18 @@ class ThemeCacheStore(
     /** How many renders were already on disk when this generation was opened. */
     val loadedEntries: Int = present.size
 
+    /**
+     * Exactly the renders that were on disk when this generation was opened — the ones written by
+     * some *other* process, and therefore the only ones whose trustworthiness is in question.
+     *
+     * Snapshotted because [present] grows as this process writes, and a render this process just
+     * produced needs no verification: it came from this renderer.
+     */
+    private val adopted: Set<String> = present.toSet()
+
+    /** Whether [cacheKey] came from a previous process rather than from this one. */
+    fun wasAdopted(cacheKey: String): Boolean = fileName(cacheKey) in adopted
+
     fun contains(cacheKey: String): Boolean = fileName(cacheKey) in present
 
     fun get(cacheKey: String): ByteArray? {
@@ -276,7 +288,11 @@ class ThemeCacheStore(
       val name = fileName(cacheKey)
       if (name in present) return
       val target = File(dir, "$name$PNG_SUFFIX")
-      val temp = File(dir, "$name$TEMP_SUFFIX")
+      // Writer-unique, because the zero-downtime rollout puts two processes on this volume at once.
+      // A temp path shared by cache key lets one replica rename the inode while the other is still
+      // writing it, publishing a half-PNG under a name that claims to be complete — and a reader
+      // then promotes those bytes as a valid render.
+      val temp = File(dir, "$name.${writerId}-${tempSequence.incrementAndGet()}$TEMP_SUFFIX")
       try {
         temp.writeBytes(png)
         if (!temp.renameTo(target)) {
