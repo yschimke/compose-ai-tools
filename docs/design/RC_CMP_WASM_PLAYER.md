@@ -103,7 +103,8 @@ is no list to keep in step.
 
 `:rc-player-wasm` (an executable), `:rc-player-profile` (an application), `:rc-player-metrics` and
 `:rc-player-compat-tests` (fixture generators) are not published. The Wasm *distribution* is a
-different problem and is tracked in #4067; the iOS framework in #4068.
+different problem and is tracked in #4067. The iOS framework is packaged as an XCFramework and
+distributed through Swift Package Manager — see [RC_PLAYER_SWIFT.md](RC_PLAYER_SWIFT.md).
 
 One target set across all four, deliberately: `iosX64` is gone everywhere rather than present on the
 three non-Compose modules, because CMP 1.11 dropped the Intel iOS simulator and a stack that
