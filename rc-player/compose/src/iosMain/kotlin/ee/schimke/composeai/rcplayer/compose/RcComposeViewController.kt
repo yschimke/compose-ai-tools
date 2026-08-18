@@ -14,8 +14,8 @@ import platform.UIKit.UIViewController
  * The default was the wire constant `RcTheme.UNSPECIFIED` while the Compose entry point defaulted
  * to `RcTheme.SYSTEM`; both now spell the same thing as [RcPlayerTheme.System], which is what they
  * always resolved to — `rcResolveSystemTheme` answers both from `isSystemInDarkTheme()`.
- * `RcSystemThemeCollapseTest` renders the two and asserts the pixels match rather than trusting
- * that reading.
+ * `RcPlayerThemeRenderTest` asserts the three spellings resolve identically inside a real
+ * composition rather than trusting that reading.
  */
 public fun RcComposeViewController(
   bytes: ByteArray,
