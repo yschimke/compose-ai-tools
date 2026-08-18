@@ -1636,13 +1636,23 @@ class ServeHttpRoutingTest {
     }
 
     val viewerReq =
-      Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/p/$previewId").build()
+      Request.Builder().url("http://127.0.0.1:${server.port}/rc-published/p/$previewId").build()
     client.newCall(viewerReq).execute().use { response ->
       assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
       assertTrue(
         response.header("Cache-Control")?.startsWith("public, max-age=60") == true,
         "viewer ${response.code} cache-control was ${response.header("Cache-Control")}",
       )
+    }
+
+    // compose-m3 carries an RC document without a published comparison manifest. Its viewer can
+    // gain capabilities asynchronously, so serving it from a cache while staging is pending would
+    // preserve an incomplete page after those capabilities arrive.
+    val pendingViewerReq =
+      Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/p/$previewId").build()
+    client.newCall(pendingViewerReq).execute().use { response ->
+      assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertEquals("no-store", response.header("Cache-Control"))
     }
 
     val missingViewerReq =
