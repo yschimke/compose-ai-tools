@@ -53,6 +53,12 @@
       "group": "design-systems"
     },
     {
+      "system": "wear-m3-catalog",
+      "repo": "yschimke/wear-m3-catalog",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
       "system": "meshcore-mobile",
       "repo": "yschimke/meshcore-mobile",
       "listed": true
