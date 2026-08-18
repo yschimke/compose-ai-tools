@@ -809,6 +809,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-motion-motion-lane/dark](renders/serve-viewer-motion-motion-lane.dark.png) |
 | `light` | ![serve-viewer-motion-motion-lane/light](renders/serve-viewer-motion-motion-lane.light.png) |
 
+## serve-viewer-motion-motion-scrubbed
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-motion-motion-scrubbed/dark](renders/serve-viewer-motion-motion-scrubbed.dark.png) |
+| `light` | ![serve-viewer-motion-motion-scrubbed/light](renders/serve-viewer-motion-motion-scrubbed.light.png) |
+
+## serve-viewer-motion-motion-second-capture
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-motion-motion-second-capture/dark](renders/serve-viewer-motion-motion-second-capture.dark.png) |
+| `light` | ![serve-viewer-motion-motion-second-capture/light](renders/serve-viewer-motion-motion-second-capture.light.png) |
+
 ## serve-viewer-nav-collapsed
 
 | Theme | Capture |
