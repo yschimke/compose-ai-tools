@@ -17,14 +17,50 @@ Implements #4068.
 import RcComposePlayer
 import UIKit
 
-let controller = RcComposeViewController(
-  bytes: KotlinByteArray.from(documentData),
+let controller = RcComposeViewControllerKt.RcComposeViewController(
+  bytes: KotlinByteArray(bytes: documentData),
   theme: .system,
   onEvent: { event in handle(event) },
   typefaces: RcTypefaceLoaderCompanion.shared.Default,
   onError: { message in show(message) }
 )
 ```
+
+Three things in that call are not what a Swift author would write from scratch, and all three are
+properties of Kotlin/Native's Objective-C export rather than choices made here. They are spelled
+out because the generated header is the only other place they are written down, and it ships inside
+the zip.
+
+**`RcComposeViewControllerKt.` is not a typo.** `RcComposeViewController` is a *top-level* Kotlin
+function, and Kotlin/Native exports top-level declarations as static members of a class named after
+their file — so the entry point lands on `RcComposeViewControllerKt`, not in the global namespace.
+Read out of the generated header, the selector is
+`RcComposeViewController(bytes:theme:onEvent:typefaces:onError:)`, retaining Kotlin's capital `R`.
+
+**Every argument is required.** The Kotlin declaration defaults `theme`, `onEvent`, `typefaces`, and
+`onError`; Objective-C has no default arguments, so the exported selector takes all five. Passing
+`.system` and `RcTypefaceLoaderCompanion.shared.Default` reproduces the Kotlin defaults.
+
+**`Data` does not bridge to `ByteArray`.** `KotlinByteArray` exports only `init(size:)`,
+`get(index:)`, and `set(index:value:)` — there is no `Data` initializer, and none is generated.
+The copy has to be written on the Swift side; this extension is what the sample above calls, and the
+sign reinterpretation matters because Kotlin's `Byte` is signed while Swift's `UInt8` is not:
+
+```swift
+extension KotlinByteArray {
+  convenience init(bytes: Data) {
+    self.init(size: Int32(bytes.count))
+    for (offset, byte) in bytes.enumerated() {
+      set(index: Int32(offset), value: Int8(bitPattern: byte))
+    }
+  }
+}
+```
+
+These are ergonomics gaps rather than defects — the call works exactly as written — and closing
+them means adding a Swift wrapper target beside the binary target, which
+[#4068](https://github.com/yschimke/compose-ai-tools/issues/4068) leaves for after the first
+published framework.
 
 **Device and Apple-silicon simulator only.** There is no Intel-simulator slice anywhere in this
 stack: Compose Multiplatform 1.11 stopped publishing the variant, so `:rc-player-compose` cannot
@@ -40,14 +76,27 @@ Intel Macs cannot build against this. Stated here rather than discovered at link
 | combined into `RcComposePlayer.xcframework` | `assembleRcComposePlayerReleaseXCFramework` (registered by `XCFrameworkConfig`) |
 | zipped reproducibly + SHA-256 | `:rc-player-compose:rcPlayerXcframeworkChecksum` |
 | attached to the GitHub Release | `release.yml` → `publish-xcframework` |
-| `Package.swift` pointed at it, `swift/<version>` tagged | same job, via `scripts/update-package-swift.sh` |
+| `Package.swift` pointed at it, bare `<version>` tagged | same job, via `scripts/update-package-swift.sh` |
 
-**Why a `swift/<version>` tag rather than the `v<version>` release tag.** SPM's `binaryTarget`
+**Why a separate Swift tag rather than the `v<version>` release tag.** SPM's `binaryTarget`
 addresses a zip by URL and pins it by checksum, verified at resolve time. Both values can only be
 written *after* the asset exists — so `Package.swift` at `v<version>` necessarily still describes the
 *previous* release, and a consumer resolving that tag would download the wrong binary. The Swift tag
 points at the commit made after the upload, which is the first commit where the file and the asset
 agree.
+
+**Why the Swift tag is bare `1.16.0` and not `swift/1.16.0`.** SwiftPM reads a ref as a semantic
+version only when the *entire* ref is `X.Y.Z` or `vX.Y.Z`; a leading `v` is the only decoration
+it strips. A `swift/1.16.0` ref is therefore not a version at all: `.package(..., from: "1.16.0")`
+reports that no versions match the requirement, and the only consumption syntax this document
+advertises resolves nothing. A bare tag is a version SwiftPM accepts, does not collide with the
+`v<version>` release tag, and does not re-enter `release.yml`, whose push trigger is `v*`.
+
+**And the binary is built from `v<version>`, not from `main`.** `main` can advance between the tag
+being cut and `publish-xcframework` starting; building from the branch would attach a framework of
+newer source to the older release, disagreeing with the Maven artifacts and source release that
+`publish-gradle-plugin` builds from the tag. Only the `Package.swift` commit touches `main`, on a
+fresh checkout taken after the upload.
 
 **The zip is built reproducibly** (`isPreserveFileTimestamps = false`, `isReproducibleFileOrder =
 true`) because the checksum has to match the bytes a consumer downloads. Without it, a re-run of the
