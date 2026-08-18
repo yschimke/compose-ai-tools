@@ -2465,8 +2465,8 @@ $noteBlock        <div class="cp-site-footer-links">
    * ([viewerThemePickerHtml]) so one control appears on both pages instead of two that drift.
    *
    * [builtIns] are the `(choice value, label)` pairs the page offers before any app-declared theme
-   * — the landing's baked `light`/`dark` swap (or its lone `default`), the viewer's Day/Night
-   * uiMode pair (or Night alone on a dark-first system). [declared] follows as one
+   * — the landing's baked `light`/`dark` swap (or its lone `default`), the viewer's Light/Dark
+   * uiMode pair (or Dark alone on a dark-first system). [declared] follows as one
    * `theme:<providerFqn>` chip each, qualified with its group when its bare name would collide with
    * a built-in label or with another declared theme.
    */
@@ -2983,6 +2983,7 @@ $noteBlock        <div class="cp-site-footer-links">
           var lbl = c.getAttribute("data-" + k + "-label");
           if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+          c.setAttribute("aria-label", lbl);
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
           if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
           c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");

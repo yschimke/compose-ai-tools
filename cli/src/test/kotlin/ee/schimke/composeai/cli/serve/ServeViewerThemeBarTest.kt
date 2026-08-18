@@ -51,17 +51,16 @@ class ServeViewerThemeBarTest {
       ),
       html,
     )
-    // The built-in uiMode pair keeps the labels the select used, so nothing is renamed under the
-    // visitor — only re-shaped.
+    // The built-in uiMode pair uses the same plain Light/Dark wording as the rest of the UI.
     assertTrue(
       html.contains(
-        """<button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>"""
+        """<button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>"""
       ),
       html,
     )
     assertTrue(
       html.contains(
-        """<button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>"""
+        """<button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>"""
       ),
       html,
     )
@@ -95,13 +94,13 @@ class ServeViewerThemeBarTest {
   }
 
   @Test
-  fun `a dark-first system offers Night alone, exactly as its select did`() {
+  fun `a dark-first system offers Dark alone`() {
     val html =
       viewer(ServePreview("wear.Chip", "Chip"), basePath = "/wear-m3", themes = emptyList())
-    assertTrue(html.contains("""data-theme-choice="dark">Night</button>"""), html)
+    assertTrue(html.contains("""data-theme-choice="dark">Dark</button>"""), html)
     assertFalse(
       html.contains("""data-theme-choice="light""""),
-      "Wear has no day/night axis, so the bar must not sprout one",
+      "Wear has no light/dark axis, so the bar must sprout no light choice",
     )
   }
 

@@ -156,6 +156,10 @@ class ServePageThemeTest {
       viewer().contains("if (window.cpPageTheme) window.cpPageTheme.follow(el.value);"),
       "the viewer's Theme select must hand the choice to page-theme.js",
     )
+    assertTrue(
+      landing().contains("c.setAttribute(\"aria-label\", lbl);"),
+      "a swapped card's accessible name must follow its visible theme variant",
+    )
     // The comparison page's Theme control moved to `<cp-compare-wall>` with the port, and is tested
     // there as behaviour: `compareWallElement.test.ts` clicks the control against a stubbed
     // `cpPageTheme` and asserts the choice is handed over.

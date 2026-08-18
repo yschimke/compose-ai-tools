@@ -233,6 +233,7 @@ function applyVariant(c, k, withSrc) {
   var lbl = c.getAttribute("data-" + k + "-label");
   if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+  c.setAttribute("aria-label", lbl);
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");

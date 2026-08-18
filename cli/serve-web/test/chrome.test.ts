@@ -173,6 +173,28 @@ describe("window.cpPageTheme", () => {
         );
     });
 
+    it("matches a baked viewer theme instead of a stale remembered catalog theme", () => {
+        stubStorage();
+        document.documentElement.setAttribute(
+            "data-cp-theme-key",
+            "cp-theme:m3",
+        );
+        localStorage.setItem("cp-theme:m3", "dark");
+        document.body.innerHTML = `
+          <div class="cp-viewer" data-preview-id="button__ideal__default__light"
+               data-bg-theme="light"></div>`;
+
+        follow();
+
+        assert.ok(
+            document.documentElement.classList.contains("cp-scheme-light"),
+            "Match the preview theme follows the clean baked URL",
+        );
+        assert.ok(
+            !document.documentElement.classList.contains("cp-scheme-dark"),
+        );
+    });
+
     it("hands the chrome back to the OS when set to system", () => {
         stubStorage();
         follow("dark");
