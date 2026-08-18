@@ -531,18 +531,32 @@ class ThemeCachePersistenceTest {
 
     assertTrue(generation.discard(), "an ordinary discard succeeds")
 
-    // Now make the directory unwritable so the next discard cannot remove its contents. Skipped
-    // where the filesystem does not enforce it — running as root, as CI containers do, deletes
-    // happily from a read-only directory and the assertion would test nothing.
+    // Now make the directory unwritable so the next discard cannot remove its contents.
     generation.put("two", byteArrayOf(2))
-    val enforced =
-      dir.setWritable(false) &&
-        !File(dir, "probe").let { it.createNewFile().also { _ -> it.delete() } }
-    if (enforced) {
+    if (!dir.setWritable(false)) return
+    try {
+      // Skipped where the filesystem does not actually enforce it: as root — which is how this
+      // container runs, though CI does not — a read-only directory still accepts deletes, and the
+      // assertion would pass without testing anything.
+      if (writable(dir)) return
       assertFalse(generation.discard(), "an incomplete discard must not report success")
+    } finally {
+      dir.setWritable(true)
     }
-    dir.setWritable(true)
   }
+
+  /**
+   * Whether [dir] genuinely accepts new files.
+   *
+   * `createNewFile` **throws** in a read-only directory rather than returning false, which is
+   * exactly how the first version of this test passed locally (as root, where the throw never
+   * happened) and failed on CI.
+   */
+  private fun writable(dir: File): Boolean = runCatching {
+    val probe = File(dir, "probe")
+    probe.createNewFile().also { created -> if (created) probe.delete() }
+  }
+    .getOrDefault(false)
 
   // ---- two-tier cache -------------------------------------------------------------------------
 
