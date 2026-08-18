@@ -4195,12 +4195,12 @@ class ServeHttpServer(
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
-    val recentLiveRenderFailureCount: Int = liveDaemons.sumOf {
-      it.renderStats?.recentFailures?.size ?: 0
+    val currentLiveRenderFailureCount: Int = liveDaemons.count {
+      it.renderStats?.lastRenderFailed == true
     }
     val catalogLoadFailureCount: Int = catalogs.count { it.loadError != null }
     val overallOk: Boolean =
-      failures.isEmpty() && catalogLoadFailureCount == 0 && recentLiveRenderFailureCount == 0
+      failures.isEmpty() && catalogLoadFailureCount == 0 && currentLiveRenderFailureCount == 0
 
     private fun backendOf(weight: Int): String = if (weight >= 2) "android" else "desktop"
 
@@ -4505,8 +4505,8 @@ class ServeHttpServer(
               if (catalogLoadFailureCount > 0)
                 add(countLabel(catalogLoadFailureCount, "catalog load failure"))
               if (failures.isNotEmpty()) add(countLabel(failures.size, "daemon startup failure"))
-              if (recentLiveRenderFailureCount > 0)
-                add(countLabel(recentLiveRenderFailureCount, "recent live render failure"))
+              if (currentLiveRenderFailureCount > 0)
+                add(countLabel(currentLiveRenderFailureCount, "current live render failure"))
             }
             .takeIf { it.isNotEmpty() }
             ?.joinToString(" · "),
@@ -4514,7 +4514,7 @@ class ServeHttpServer(
           when {
             catalogLoadFailureCount > 0 -> "#catalogs"
             failures.isNotEmpty() -> "#recent-daemon-failures"
-            recentLiveRenderFailureCount > 0 -> "#recent-render-failures"
+            currentLiveRenderFailureCount > 0 -> "#recent-render-failures"
             else -> null
           },
         summary = summary,

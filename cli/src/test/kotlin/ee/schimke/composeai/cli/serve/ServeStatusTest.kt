@@ -324,6 +324,61 @@ class ServeStatusTest {
   }
 
   @Test
+  fun `status health recovers after a successful live render while retaining failure history`() {
+    val stats = RenderPerfStats()
+    val live =
+      object : ServeHost {
+        override val previews: List<ServePreview> = listOf(ServePreview("a", "A"))
+        override val label: String = "live"
+        override val hasLiveStream: Boolean = true
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Ok(png())
+
+        override fun activeStreamCount(): Int = 1
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun renderPerfStats(): RenderPerfSnapshot = stats.snapshot()
+
+        override fun close() {}
+      }
+    registry.register("live", host = live)
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "live",
+          isPublic = true,
+        )
+        .also { it.start() }
+
+    stats.recordFailed(500, timeout = false, reason = "transient render failure")
+    val (_, failedJson) = get("/status.json")
+    assertTrue(failedJson.contains("\"status\":\"degraded\""), failedJson)
+    assertTrue(failedJson.contains("\"lastRenderFailed\":true"), failedJson)
+
+    stats.recordOk(100, cold = false)
+    val (_, recoveredJson) = get("/status.json")
+    assertTrue(recoveredJson.contains("\"status\":\"ok\""), recoveredJson)
+    assertTrue(recoveredJson.contains("\"lastRenderFailed\":false"), recoveredJson)
+    assertTrue(recoveredJson.contains("transient render failure"), recoveredJson)
+
+    val (_, recoveredHtml) = get("/status")
+    assertTrue(recoveredHtml.contains("✓ healthy"), recoveredHtml)
+    assertTrue(recoveredHtml.contains("transient render failure"), recoveredHtml)
+  }
+
+  @Test
   fun `status serves a styled html page`() {
     server = newServer(public = true, token = "unused")
     val (code, body) = get("/status")
