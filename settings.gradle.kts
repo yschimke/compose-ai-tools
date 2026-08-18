@@ -27,6 +27,10 @@ pluginManagement {
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
+// androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from. See the
+// repository declaration below; bump this one line to move all three groups to a newer snapshot.
+val androidxSnapshotBuildId = "16113093"
+
 dependencyResolutionManagement {
   // Kotlin's wasmJs toolchain resolves Node.js from an Ivy repository that the Kotlin Gradle
   // plugin adds to the root project while kotlinWasmNodeJsSetup is realized. Rejecting or ignoring
@@ -39,6 +43,28 @@ dependencyResolutionManagement {
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
+    // Remote Compose (`androidx.compose.remote`), the Wear widget layer built on it
+    // (`androidx.wear.compose.remote`) and Glance Wear (`androidx.glance.wear`) resolve from an
+    // androidx-main post-submit snapshot rather than Google Maven. The three have to agree on a
+    // single `remote-creation*` version — the catalog comment above `compose-remote` records what
+    // a skewed pair costs (`NoClassDefFoundError` inside `RemoteButtonImpl` at render time, and a
+    // wear pin that briefly didn't exist at all) — and taking all three from one build makes that
+    // structural instead of a manual cross-check against each POM. Pinned to a build id rather
+    // than `snapshots/latest` so the build stays reproducible: a new snapshot lands only when
+    // `androidxSnapshotBuildId` changes. Scoped by group regex (which also picks up
+    // `androidx.compose.remote.foundation`, a module that exists only on the snapshot line) and
+    // `snapshotsOnly()`, so nothing else can drift onto an unreviewed snapshot and every release
+    // coordinate keeps resolving from google(). Build ids age out of androidx.dev after a few
+    // weeks — if these 404, pick a fresh one from https://androidx.dev/snapshots/builds.
+    maven("https://androidx.dev/snapshots/builds/$androidxSnapshotBuildId/artifacts/repository") {
+      name = "androidxSnapshots"
+      content {
+        includeGroupByRegex("androidx\\.compose\\.remote.*")
+        includeGroupByRegex("androidx\\.wear\\.compose\\.remote.*")
+        includeGroupByRegex("androidx\\.glance\\.wear.*")
+      }
+      mavenContent { snapshotsOnly() }
+    }
     if (matrixRobolectricVersion?.endsWith("-SNAPSHOT") == true) {
       maven("https://central.sonatype.com/repository/maven-snapshots/") {
         name = "robolectric-snapshots-central"
