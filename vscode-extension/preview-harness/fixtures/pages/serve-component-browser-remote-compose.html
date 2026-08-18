@@ -13,7 +13,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(/(?:^|__)(?:light|dark)(?:__|$)/.test(decodeURIComponent(location.pathname).split('/').pop()||"")?"":localStorage.getItem("cp-theme:compose-m3")));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body class="cp-component-browser">
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
@@ -40,19 +40,19 @@
         <div class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><details class="cp-theme-menu">
   <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
     <span class="cp-toggle-label">Theme</span>
-    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
+    <span class="cp-toggle-value" id="cp-theme-toggle-value">Light</span>
     <span class="cp-theme-caret" aria-hidden="true">▾</span>
   </summary>
   <div class="cp-theme-menu-panel"><span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
-    <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
-    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
   </span></div>
 </details><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="false" aria-controls="cp-controls">⚙ Controls</button></div>
       </div>
       <p class="cp-browser-variant">Pressed · label Continue</p>
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="rc:cmp-android" data-rc-default="cmp-android"><option value="" selected>Switch renderer…</option><option value="rc:js">JS</option><option value="rc:cmp-wasm">CMP Wasm</option><option value="rc:java">Java</option><option value="rc:cmp-android">CMP Android</option><option value="rc:cmp-jvm">CMP JVM</option></select>
+      <select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="rc:cmp-android" data-rc-default="cmp-android" data-lane-state="1"><option value="" selected>Switch renderer…</option><option value="rc:js">JS</option><option value="rc:cmp-wasm">CMP Wasm</option><option value="rc:java">Java</option><option value="rc:cmp-android">CMP Android</option><option value="rc:cmp-jvm">CMP JVM</option></select>
 <a class="cp-format-link cp-compare-players" href="/compose-m3/compare?format=rc&preview=button-filled-pressed" title="See every Remote Compose player's render of this screen side by side">compare players →</a>
 <cp-bg-toggle label="Show the transparent checkerboard behind the preview"></cp-bg-toggle>
 <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
@@ -101,8 +101,8 @@
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           <span class="cp-modes-inputs" aria-hidden="true">
   <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1">
-    <option value="light" selected>Day (Default)</option>
-    <option value="dark">Night (Default)</option>
+    <option value="light" selected>Light (Default)</option>
+    <option value="dark">Dark (Default)</option>
   </select>
 </span>
 
@@ -182,9 +182,8 @@
       <script>(function () {
   var el = document.getElementById("cp-theme");
   if (!el) return;
-  // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
-  // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
-  // catalog's Theme choice is the active override the visitor asked to keep while navigating.
+  // Runs before viewer.js' initial render. A clean explicit __light/__dark URL is reproducible:
+  // remembered choices never override the path. An explicit query parameter still wins below.
   var root = document.querySelector(".cp-viewer");
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
@@ -207,7 +206,7 @@
     var declared = stored && stored.indexOf("theme:") === 0;
     var option = null;
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-    if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+    if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
       el.value = stored;
       el.setAttribute("data-theme-active", "1");
     }

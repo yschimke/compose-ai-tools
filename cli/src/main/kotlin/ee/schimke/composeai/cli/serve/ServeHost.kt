@@ -452,6 +452,27 @@ interface ServeHost : AutoCloseable {
    * knob or a theme is asking for pixels the parity run never drew, and the caller must route it to
    * the renderer as before — see [ServeHttpServer]'s use, which checks that before calling.
    */
+  /**
+   * The backends [previewId] has a **published** render for — the parity run's staging, in
+   * [RcPlayerBackend.UNIVERSE] order.
+   *
+   * Folded into [enabledRcPlayersFor] so the picker offers exactly what the host can produce.
+   * Without it the capability list and the render lane disagreed: a static bundle carrying staged
+   * rasters would answer a hand-typed `?rcPlayer=cmp-android` perfectly well while showing that
+   * option greyed, and Catalog mode would open on JS because its preferred embedded default was not
+   * in the enabled set.
+   *
+   * Reads the manifest, not the images: this runs per preview while building a page, and whether a
+   * lane was staged is a field on the row.
+   */
+  fun stagedRcPlayers(previewId: String): List<RcPlayerBackend> {
+    val row = rcCompare()?.rows?.firstOrNull { it.previewId == previewId } ?: return emptyList()
+    return RcPlayerBackend.UNIVERSE.filter { backend ->
+      val cell = backend.rcCompareLane?.let { row.lanes[it] }
+      cell != null && cell.rendered && cell.render.isNotEmpty()
+    }
+  }
+
   fun publishedRcPlayerRender(previewId: String, backend: RcPlayerBackend): ByteArray? {
     val lane = backend.rcCompareLane ?: return null
     val cell = rcCompare()?.rows?.firstOrNull { it.previewId == previewId }?.lanes?.get(lane)
@@ -511,7 +532,11 @@ interface ServeHost : AutoCloseable {
         // The desktop embedded player renders the same `.rc` server-side via an isolated
         // subprocess; enable it wherever the sidecar player is installed and a render spec exists.
         if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
+        // …and every player the parity run already drew. Those need no renderer at all, so a host
+        // that carries the staging can offer them however little else it can do.
+        addAll(stagedRcPlayers(previewId).filterNot { it in this })
       }
+        .sortedBy { RcPlayerBackend.UNIVERSE.indexOf(it) }
     } else {
       emptyList()
     }

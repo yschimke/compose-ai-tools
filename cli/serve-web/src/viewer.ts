@@ -3678,8 +3678,27 @@ if (laneSelect) {
     // the state — so reconciling it means returning it to its placeholder. Doing that here rather
     // than in the change handler covers every route out of a lane (the Live toggle, an SVG swap,
     // Back/Forward), not just a pick.
+    //
+    // …except where there is no chip. Catalog mode drops it along with the Live control, which
+    // makes this menu the only thing on the page that could report the renderer in use, so there it
+    // holds the selection instead. `data-lane-state` is set by the server precisely when the chip
+    // was omitted, so the two can't disagree about which of the two shapes this control is in.
+    var laneHoldsState = laneSelect.getAttribute("data-lane-state") === "1";
     syncLaneSelect = function () {
-        laneSelect.value = "";
+        if (!laneHoldsState) {
+            laneSelect.value = "";
+            return;
+        }
+        // Only a lane the menu actually offers: a value it has no option for would blank the
+        // control, which is worse than the placeholder it replaced.
+        var lane = currentLaneValue();
+        var offered = Array.prototype.some.call(
+            laneSelect.options,
+            function (o: HTMLOptionElement) {
+                return o.value === lane;
+            },
+        );
+        laneSelect.value = offered ? lane : "";
     };
     function pickLane(value: string) {
         if (!value) return; // the placeholder; nothing was chosen

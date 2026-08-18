@@ -928,6 +928,33 @@ class ServeHttpRoutingTest {
     assertNotEquals(200, mixedCode)
   }
 
+  /**
+   * A host that can answer a player from published bytes must also **offer** it. The capability
+   * list and the render lane disagreed: this host answers a bare `cmp-android` request perfectly
+   * well, but advertised only `js`, so the viewer greyed the option out and Catalog mode fell back
+   * to the JS canvas instead of its preferred embedded default — leaving a working lane reachable
+   * only by hand-typing a URL.
+   */
+  @Test
+  fun `a staged player is advertised as enabled, not just answerable`() {
+    val (code, body) = get("/rc-published/p/$previewId")
+    assertEquals(200, code)
+    for (wire in listOf("cmp-android", "cmp-jvm")) {
+      assertTrue(
+        body.contains("<option value=\"rc:$wire\">"),
+        "$wire is offered without a disabled attribute",
+      )
+      assertFalse(
+        body.contains("<option value=\"rc:$wire\" disabled>"),
+        "$wire is not greyed out",
+      )
+    }
+    // …and the page opens on the embedded player rather than demoting to the JS canvas.
+    assertTrue(body.contains("data-rc-default=\"cmp-android\""), "embedded is the default lane")
+    // A player nothing staged, and which no renderer here can produce, stays honestly unavailable.
+    assertTrue(body.contains("<option value=\"rc:java\" disabled>"), "unstaged java stays greyed")
+  }
+
   /** A lane the parity run staged nothing for falls through to the renderer, not to a 404. */
   @Test
   fun `an unstaged player falls through to the ordinary render path`() {
