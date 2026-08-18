@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "af01596ad228e75453c3b574b665bed8c95d1007",
+    "generatedFrom": "17a7f03201f3fe940565602bf8c7124d92ec43a5",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2658,6 +2658,15 @@
             "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
             "versions": [
                 {
+                    "blob": "fe7c297a7f4a31325c7716198aa9f9039c7214be",
+                    "commit": "17a7f03201f3fe940565602bf8c7124d92ec43a5",
+                    "date": "2026-08-18T08:00:10Z",
+                    "sourceSha": "4c0c7a6a",
+                    "sinceCommit": "1ace03e90b964bb3b3973388115d804c05d51d38",
+                    "commits": 2,
+                    "occurrences": 2
+                },
+                {
                     "blob": "3231fee0b8be9801b5c26873dae399ac92df3ae4",
                     "commit": "af01596ad228e75453c3b574b665bed8c95d1007",
                     "date": "2026-08-18T06:36:08Z",
@@ -2756,13 +2765,6 @@
                     "sinceCommit": "99cf8a3c5b48b5e3c1a6b39a51ce21f071716e86",
                     "commits": 2,
                     "occurrences": 2
-                },
-                {
-                    "blob": "fe7c297a7f4a31325c7716198aa9f9039c7214be",
-                    "commit": "1ace03e90b964bb3b3973388115d804c05d51d38",
-                    "date": "2026-08-17T19:35:26Z",
-                    "sourceSha": "9edb6719",
-                    "commits": 1
                 },
                 {
                     "blob": "6484c799aa2032c7269e39b853e51db38bb8bc7e",
@@ -2919,9 +2921,9 @@
                     "commits": 1
                 }
             ],
-            "observations": 69,
+            "observations": 70,
             "unstable": true,
-            "flapCount": 36
+            "flapCount": 37
         },
         "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
             "path": "renders/samples:android/ContainerTransformAnimatedPreview_Container_Transform-7b9dc97b.gif",
