@@ -37,7 +37,7 @@ public final class ee/schimke/composeai/rcplayer/trace/RcTraceKt {
 	public static final fun rcTrace (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 }
 
-public final class ee/schimke/composeai/rcplayer/trace/RcTracePlatform_desktopKt {
+public final class ee/schimke/composeai/rcplayer/trace/RcTracePlatform_jvmKt {
 	public static final fun setRcPlatformTracingEnabled (Z)V
 }
 
