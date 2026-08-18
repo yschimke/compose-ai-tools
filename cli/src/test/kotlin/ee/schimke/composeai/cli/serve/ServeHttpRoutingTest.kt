@@ -1639,7 +1639,19 @@ class ServeHttpRoutingTest {
       Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/p/$previewId").build()
     client.newCall(viewerReq).execute().use { response ->
       assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
-      assertTrue(response.header("Cache-Control")?.startsWith("public, max-age=60") == true)
+      assertTrue(
+        response.header("Cache-Control")?.startsWith("public, max-age=60") == true,
+        "viewer ${response.code} cache-control was ${response.header("Cache-Control")}",
+      )
+    }
+
+    val missingViewerReq =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/p/not-published-yet")
+        .build()
+    client.newCall(missingViewerReq).execute().use { response ->
+      assertEquals(404, response.code)
+      assertEquals("no-store", response.header("Cache-Control"))
     }
 
     val renderReq =

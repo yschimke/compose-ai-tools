@@ -964,7 +964,10 @@ internal constructor(
             // A caller may impose a tighter foreground bound than this host's cold-render budget.
             // The daemon still owes a terminal event, so quarantine it exactly like a timeout
             // before releasing the render lock; otherwise it can complete the next same-id render.
-            staleRenders.merge(previewId, 1, Int::plus)
+            // CountDownLatch checks interruption before its completed state. If the terminal event
+            // won that race it has already been consumed, so recording it as outstanding would
+            // discard the next legitimate same-preview event instead.
+            if (latch.count > 0) staleRenders.merge(previewId, 1, Int::plus)
             Thread.currentThread().interrupt()
             perfStats.recordBusy()
             return RenderOutcome.Busy

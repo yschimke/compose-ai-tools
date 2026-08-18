@@ -1986,11 +1986,14 @@ function paintMotion() {
 }
 function drawMotionFrame(index: number) {
     if (!motionDecoder || !motionCanvas) return;
-    if (index === motionDrawnFrame) return;
     if (motionDecodeBusy) {
+        // Latest intent wins even when it returns to the frame still on the canvas. The in-flight
+        // decode will replace that canvas, so keeping an older pending frame would leave the
+        // picture out of step with the scrubber once both decodes complete.
         motionPendingFrame = index;
         return;
     }
+    if (index === motionDrawnFrame) return;
     var decoder = motionDecoder;
     var token = motionLoadToken;
     motionDecodeBusy = true;

@@ -1199,7 +1199,7 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
-  fun `a pause arriving during the quiet wait prevents new optimizer work`() {
+  fun `a pause arriving during the quiet wait parks work until resume`() {
     val idleMillis = AtomicLong(0)
     val backgroundWork = ServeBackgroundWork()
     val live =
@@ -1225,6 +1225,9 @@ class ServeCatalogLiveHostTest {
     Thread.sleep(150)
 
     assertEquals(0, live.renderCalls, "the completed quiet wait must recheck the pause")
+    backgroundWork.resumeOptimizers()
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(1, live.renderCalls, "resume must restart work without a visitor heartbeat")
     composite.close()
   }
 

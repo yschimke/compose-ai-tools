@@ -173,6 +173,24 @@ class ServeStatusTest {
         body.contains("\"id\":\"compose-m3\",\"label\":\"compose-m3\""),
       "resident static hosts remain diagnosable: $body",
     )
+    assertTrue(
+      body.contains(
+        "\"id\":\"compose-m3\",\"label\":\"compose-m3\",\"backend\":\"static\",\"seatWeight\":0"
+      ),
+      "static hosts must not claim a daemon backend or live seat: $body",
+    )
+  }
+
+  @Test
+  fun `live status responses are not cacheable`() {
+    server = newServer(public = true, token = "unused")
+    for (path in listOf("/status", "/status.json", "/status?format=json")) {
+      val request = Request.Builder().url("http://127.0.0.1:${server!!.port}$path").build()
+      client.newCall(request).execute().use { response ->
+        assertEquals(200, response.code)
+        assertEquals("no-store", response.header("Cache-Control"))
+      }
+    }
   }
 
   @Test

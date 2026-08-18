@@ -902,6 +902,34 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `interrupt after terminal event does not quarantine the next render`() {
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        renderHook = { call, emit ->
+          emit(if (call == 1) "FIRST".toByteArray() else "SECOND".toByteArray())
+          if (call == 1) Thread.currentThread().interrupt()
+        },
+      )
+    ServeRenderHost(
+        session = session,
+        previews = listOf(ServePreview(previewId, "Red")),
+        renderTimeoutSeconds = 1,
+      )
+      .use { h ->
+        var first: RenderOutcome? = null
+        val thread = Thread { first = h.render(previewId, PreviewOverrides(uiMode = UiMode.LIGHT)) }
+        thread.start()
+        thread.join(5_000)
+        assertEquals(RenderOutcome.Busy, first)
+
+        val second = h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+        assertTrue(second is RenderOutcome.Ok, "the next terminal event must not be discarded")
+        assertEquals("SECOND", second.png.decodeToString())
+      }
+  }
+
+  @Test
   fun `a rejected render surfaces as Failed`() {
     val session = FakeRenderSession(newRenderRoot(), rejectAll = true)
     host(session).use { h ->

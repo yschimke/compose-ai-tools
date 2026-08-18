@@ -536,10 +536,11 @@ class ServeCatalogLiveHost(
             }
           if (outcome == null) {
             // Stay in the admission queue without needing a visitor heartbeat to resurrect this
-            // catalog. The bounded wait keeps the task cheap; a pause or shutdown still stops it.
+            // catalog. A global pause parks this worker too: expiry/resume does not emit a visitor
+            // heartbeat, so exiting here would strand every unfinished host until someone opened
+            // its page again.
             catalogThemeCache.markPaused()
-            if (backgroundWork.optimizersPaused() || Thread.currentThread().isInterrupted)
-              return@execute
+            if (!awaitOptimizerResume()) return@execute
             continue
           }
           // Anything other than a spent slice is the pass deciding it is done for now — finished,
@@ -851,7 +852,7 @@ class ServeCatalogLiveHost(
     // An operator standing the optimizer down means the pass in flight too, not just the next one
     // admitted — checked here because this is the one call every warm and every batch already goes
     // through, so a pause takes effect within a render rather than at the end of a catalog.
-    if (backgroundWork.optimizersPaused()) {
+    if (!awaitOptimizerResume()) {
       optimizerHasTurn.set(false)
       catalogThemeCache.markPaused()
       return false
@@ -913,13 +914,21 @@ class ServeCatalogLiveHost(
   private fun awaitQuiet(quietMillis: Long): Boolean {
     val pollMillis = quietMillis.coerceAtMost(1_000L).coerceAtLeast(50L) / 2
     while (true) {
-      if (Thread.currentThread().isInterrupted) return false
-      if (backgroundWork.optimizersPaused()) return false
+      if (!awaitOptimizerResume()) return false
       val idleMillis = serverIdleMillis()
       if (idleMillis != null && idleMillis >= quietMillis) return true
       catalogThemeCache.markPaused()
       if (!pauseOptimization(pollMillis)) return false
     }
+  }
+
+  /** Park an unfinished optimizer through a timed/manual pause, stopping only for shutdown. */
+  private fun awaitOptimizerResume(): Boolean {
+    while (backgroundWork.optimizersPaused()) {
+      catalogThemeCache.markPaused()
+      if (!pauseOptimization(OPTIMIZER_PAUSE_POLL_MILLIS)) return false
+    }
+    return !Thread.currentThread().isInterrupted
   }
 
   private fun awaitWarmCompletion(daemonId: String): Boolean {
@@ -1612,6 +1621,8 @@ class ServeCatalogLiveHost(
     internal const val DEFAULT_OPTIMIZER_SLICE_MILLIS = 5 * 60_000L
 
     internal const val OPTIMIZER_YIELD_MILLIS = 1_500L
+
+    private const val OPTIMIZER_PAUSE_POLL_MILLIS = 100L
 
     /**
      * Quiet window required to RESUME after yielding, as opposed to the cold-entry window. Short on
