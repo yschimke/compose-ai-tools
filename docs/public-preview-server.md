@@ -678,8 +678,29 @@ SERVE_THEME_CACHE_DIR=/theme-cache
 
 A named volume is what survives the container recreation the rolling update performs — replicas
 overlap during that rollout and share the volume, which is why the sweeper spares generations young
-enough to belong to the outgoing replica. `/status.json` reports the tier as `themeCache` —
-generation count, bytes, hits and writes.
+enough to belong to the outgoing replica.
+
+#### Telling a working cache from write amplification
+
+A disk cache that is earning its keep and one that is doing I/O for nothing fill the volume at the
+same rate. `/status.json` publishes the counters that separate them, in two places.
+
+Store-wide, as `themeCache`: `generations`, `bytes`, `writes`, `hits`, `misses`, and
+`generationsBySystem`. That last one is the churn detector — a catalog the box has only ever served
+one way should have **one** generation on disk, and a count that climbs with every restart means
+some input the fingerprint reads is unstable, so each process writes a fresh generation that nobody
+will ever adopt.
+
+Per catalog, on the `renderCache` row:
+
+| field | what a bad value means |
+| --- | --- |
+| `hitRate`, `memoryHits`, `diskHits`, `misses` | hits over reads. A `hitRate` near zero with writes climbing is a cache nothing reads. |
+| `withheld` | reads refused because the generation was adopted but not yet verified. Excluded from `misses` and from `hitRate`, so a cold start's low numbers are explainable rather than alarming. |
+| `persisted.fingerprint` | the generation directory this catalog reads and writes. If it differs across two restarts that changed nothing, the **key** moved. |
+| `persisted.adopted` | renders already on disk when this process opened the generation — the only evidence anything survived the restart. `0` after a restart that should have found a warm generation is the failure. |
+| `persisted.writes` | renders written this process. Climbing while `adopted` stays `0` on every restart *is* the write-amplification case, stated in two numbers. |
+| `persistenceOff` | this catalog has no disk tier and why (`launch descriptor unreadable`, `fingerprint unavailable …`). Absent when the server simply was not given a cache directory. |
 
 The cache can also be filled **ahead of the first visitor** — an idle pass that walks each catalog's
 `previews × declaredThemes` set and renders the missing entries — but that pass is **off by

@@ -852,11 +852,17 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     alias: Map<String, String>,
     vararg descriptors: File,
   ): CatalogThemeCache {
+    // Every bailout below names itself. A catalog that silently falls back to memory-only looks
+    // exactly like one on a server with no cache directory, and the difference — the cache is
+    // configured and this catalog alone is not using it — is the one an operator needs, because it
+    // is permanent for the life of the host and nothing else reports it.
     val store = themeCacheStore ?: return CatalogThemeCache()
     val launches = descriptors.map {
-      ServeBundleDaemon.readLaunchDescriptor(it) ?: return CatalogThemeCache()
+      ServeBundleDaemon.readLaunchDescriptor(it)
+        ?: return CatalogThemeCache(persistenceOffReason = "launch descriptor unreadable")
     }
-    if (launches.isEmpty()) return CatalogThemeCache()
+    if (launches.isEmpty())
+      return CatalogThemeCache(persistenceOffReason = "catalog has no launch descriptor")
     // The JVM the render runs in is part of what produced the pixels; the descriptor's system
     // properties are deliberately NOT, because they are dominated by absolute paths that a fresh
     // staging directory changes on every load — hashing those would make every load a new
@@ -886,9 +892,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             renderConfig =
               ThemeCacheFingerprint.renderConfig(launch.systemProperties, launch.jvmArgs),
             routing = routing,
-          ) ?: return CatalogThemeCache()
+          )
+            ?: return CatalogThemeCache(
+              persistenceOffReason = "fingerprint unavailable (a classpath entry could not be read)"
+            )
         }
-      ) ?: return CatalogThemeCache()
+      ) ?: return CatalogThemeCache(persistenceOffReason = "fingerprint unavailable")
     val inputs =
       GenerationInputs(
         system = system,
@@ -897,7 +906,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         variant = variant,
         renderConfig = "$renderConfig routing=$routing",
       )
-    val generation = store.open(system, fingerprint, inputs) ?: return CatalogThemeCache()
+    val generation =
+      store.open(system, fingerprint, inputs)
+        ?: return CatalogThemeCache(
+          persistenceOffReason = "generation directory could not be opened"
+        )
     // The map is updated here, but the SWEEP is not run here. This is called while a replacement
     // host is still being staged: `openHost` or publication can still fail and leave the previous
     // host serving from the registry — and reclaiming its generation at this point would delete a

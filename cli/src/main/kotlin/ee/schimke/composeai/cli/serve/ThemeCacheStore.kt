@@ -5,6 +5,7 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -72,6 +73,18 @@ class ThemeCacheStore(
   // from the filesystem on the request path.
   private val knownBytes = AtomicLong()
   private val knownGenerations = java.util.concurrent.atomic.AtomicInteger()
+  /**
+   * Generation directories per system, as of the last [sweep].
+   *
+   * The single number that says whether the *key* is working. A system whose fingerprint is stable
+   * has one generation on disk; one whose fingerprint churns — because some input the digest reads
+   * changes on every load, a staging path that slipped into the render config, a jar rebuilt each
+   * boot — accumulates a directory per restart, each adopted by nobody. Both look identical in
+   * [writes] and in [hits], which is exactly the confusion this exists to remove: writes climbing
+   * while a system's generation count climbs beside them means the cache is buying disk I/O and
+   * nothing else.
+   */
+  private val knownGenerationsBySystem = AtomicReference<Map<String, Int>>(emptyMap())
   private val lastFailure = ConcurrentHashMap<String, String>()
   private val tempSequence = AtomicLong()
   /** Distinguishes this process's in-flight writes from a concurrently deployed replica's. */
@@ -95,6 +108,7 @@ class ThemeCacheStore(
     }
     writeManifest(dir, inputs)
     knownGenerations.incrementAndGet()
+    knownGenerationsBySystem.getAndUpdate { it + (system to (it[system] ?: 0) + 1) }
     knownBytes.addAndGet(dir.sizeOnDisk())
     return Generation(dir, system)
   }
@@ -128,6 +142,7 @@ class ThemeCacheStore(
     var reclaimed = 0L
     var survivingBytes = 0L
     var survivingGenerations = 0
+    val survivingBySystem = mutableMapOf<String, Int>()
 
     for (systemDir in root.listFiles()?.filter { it.isDirectory }.orEmpty()) {
       val generationDirs = systemDir.listFiles()?.filter { it.isDirectory }.orEmpty()
@@ -137,6 +152,7 @@ class ThemeCacheStore(
       if (onlySystems != null && systemDir.name !in onlySystems) {
         survivingBytes += systemDir.sizeOnDisk()
         survivingGenerations += generationDirs.size
+        if (generationDirs.isNotEmpty()) survivingBySystem[systemDir.name] = generationDirs.size
         continue
       }
       for (generationDir in generationDirs) {
@@ -152,6 +168,7 @@ class ThemeCacheStore(
         if (generationDir in liveDirs || createdAt(generationDir) > youngerThan) {
           survivingBytes += size
           survivingGenerations++
+          survivingBySystem.merge(systemDir.name, 1, Int::plus)
           continue
         }
         if (generationDir.deleteRecursively()) {
@@ -160,6 +177,7 @@ class ThemeCacheStore(
         } else {
           survivingBytes += size
           survivingGenerations++
+          survivingBySystem.merge(systemDir.name, 1, Int::plus)
           recordFailure(systemDir.name, "could not reclaim ${generationDir.name}")
         }
       }
@@ -176,6 +194,7 @@ class ThemeCacheStore(
     // until the next sweep, which is exactly when an over-cap volume most needs to be visible.
     knownBytes.getAndUpdate { current -> total + (current - beforeScan).coerceAtLeast(0) }
     knownGenerations.set(survivingGenerations)
+    knownGenerationsBySystem.set(survivingBySystem.toMap())
     return SweepResult(
       deletedGenerations = deleted,
       reclaimedBytes = reclaimed,
@@ -202,6 +221,7 @@ class ThemeCacheStore(
     ThemeCacheStoreSnapshot(
       root = root.path,
       generations = knownGenerations.get(),
+      generationsBySystem = knownGenerationsBySystem.get(),
       bytes = knownBytes.get(),
       maxBytes = maxBytes,
       writes = writes.get(),
@@ -251,6 +271,17 @@ class ThemeCacheStore(
     /** How many renders were already on disk when this generation was opened. */
     val loadedEntries: Int = present.size
 
+    /** This generation's directory name — the fingerprint it was opened under. */
+    val fingerprint: String = dir.name
+
+    // Per-generation counters. The store-wide ones next to them answer "is the volume being used";
+    // these answer "is THIS catalog's cache working", which is the question an operator actually
+    // has — a box serving fifteen catalogs where one has an unstable fingerprint reports healthy
+    // store-wide totals while that one catalog re-renders from scratch every restart.
+    private val generationHits = AtomicLong()
+    private val generationMisses = AtomicLong()
+    private val generationWrites = AtomicLong()
+
     /**
      * Exactly the renders that were on disk when this generation was opened — the ones written by
      * some *other* process, and therefore the only ones whose trustworthiness is in question.
@@ -272,6 +303,7 @@ class ThemeCacheStore(
       val name = fileName(cacheKey)
       if (name !in present) {
         misses.incrementAndGet()
+        generationMisses.incrementAndGet()
         return null
       }
       val bytes = runCatching { File(dir, "$name$PNG_SUFFIX").readBytes() }.getOrNull()
@@ -281,9 +313,11 @@ class ThemeCacheStore(
         // cached-but-broken.
         present.remove(name)
         misses.incrementAndGet()
+        generationMisses.incrementAndGet()
         return null
       }
       hits.incrementAndGet()
+      generationHits.incrementAndGet()
       return bytes
     }
 
@@ -324,6 +358,7 @@ class ThemeCacheStore(
         // Replaced by this process, so it is no longer a candidate for verifying the previous one.
         adopted -= name
         writes.incrementAndGet()
+        generationWrites.incrementAndGet()
         knownBytes.addAndGet(png.size.toLong() - previousSize)
       } catch (e: IOException) {
         runCatching { temp.delete() }
@@ -361,6 +396,22 @@ class ThemeCacheStore(
         }
         .getOrDefault(false)
     }
+
+    /**
+     * What this generation has actually done, for `/status`.
+     *
+     * [ThemeCacheGenerationSnapshot.adopted] is the load-bearing number: it is the only evidence
+     * that persistence carried anything across a process boundary at all.
+     */
+    fun stats(): ThemeCacheGenerationSnapshot =
+      ThemeCacheGenerationSnapshot(
+        fingerprint = fingerprint,
+        adopted = loadedEntries,
+        entries = present.size,
+        hits = generationHits.get(),
+        misses = generationMisses.get(),
+        writes = generationWrites.get(),
+      )
 
     private fun fileName(cacheKey: String): String =
       MessageDigest.getInstance("SHA-256").digest(cacheKey.toByteArray()).joinToString("") {
@@ -432,11 +483,49 @@ data class SweepResult(
   val overCap: Boolean,
 )
 
+/**
+ * What one catalog generation's disk tier has done this process, for `/status.json`.
+ *
+ * The point of publishing this per catalog rather than only store-wide: a disk cache that is
+ * working and one that is pure write amplification produce the same store-wide `writes`, and the
+ * difference between them is visible only here. Read it in this order:
+ * - [adopted] `0` after a restart that should have found a warm generation ⇒ the **key** moved.
+ *   Compare [fingerprint] with the previous process's; if it changed while nothing about the
+ *   catalog or the server did, some input the digest reads is unstable, and every write this
+ *   process makes is being left for a sweep to reclaim.
+ * - [adopted] high but [hits] `0` ⇒ the entries are there and nothing is reading them: either
+ *   nothing asked for those keys, or the generation is still quarantined pending verification.
+ * - [writes] climbing with [adopted] `0` on every restart is the "disk I/O for nothing" case,
+ *   stated in two numbers.
+ */
+@Serializable
+data class ThemeCacheGenerationSnapshot(
+  /** The generation directory this catalog is reading and writing — its cache key. */
+  val fingerprint: String,
+  /** Renders already on disk when this process opened the generation. */
+  val adopted: Int,
+  /** Renders on disk now, adopted plus written since. */
+  val entries: Int,
+  /** Reads this process served from disk. */
+  val hits: Long,
+  /** Reads that went to disk and found nothing. */
+  val misses: Long,
+  /** Renders this process wrote to disk. */
+  val writes: Long,
+)
+
 /** Disk-tier counters for `/status.json` (`themeCache`). */
 @Serializable
 data class ThemeCacheStoreSnapshot(
   val root: String,
   val generations: Int,
+  /**
+   * Generation directories per system, as of the last sweep.
+   *
+   * More than one for a system that has only ever been served one way is fingerprint churn, and
+   * churn is the failure mode that reports itself as success everywhere else.
+   */
+  val generationsBySystem: Map<String, Int> = emptyMap(),
   val bytes: Long,
   val maxBytes: Long,
   val writes: Long,

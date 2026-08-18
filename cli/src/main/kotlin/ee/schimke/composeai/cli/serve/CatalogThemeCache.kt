@@ -84,13 +84,58 @@ data class ThemeOptimizationSnapshot(
   val maxBatchWidth: Int = 0,
 )
 
-/** Memory occupancy of one catalog generation's rendered-preview cache. */
+/**
+ * One catalog generation's rendered-preview cache: memory occupancy, what the reads did, and the
+ * disk tier behind it.
+ *
+ * [entries]/[bytes]/[maxBytes]/[evictions] describe the memory window. Everything after them exists
+ * to answer a question occupancy cannot: whether the cache is *being used*. A cache that is filling
+ * and a cache that is filling and never read look the same from the outside, and with a disk tier
+ * the second one costs I/O on every render for nothing.
+ */
 @Serializable
 data class CatalogRenderCacheSnapshot(
   val entries: Int,
   val bytes: Long,
   val maxBytes: Long,
   val evictions: Long,
+  /** Reads served from the memory window. */
+  val memoryHits: Long = 0,
+  /** Reads the memory window missed and the disk tier answered. */
+  val diskHits: Long = 0,
+  /** Reads neither tier could answer, so a render had to happen. */
+  val misses: Long = 0,
+  /**
+   * Reads deliberately refused because the generation was adopted from a previous process and had
+   * not yet been verified.
+   *
+   * Kept out of [misses] so it cannot be read as the cache failing: these are entries the cache
+   * holds and is choosing not to serve, and during a cold start they can outnumber real misses.
+   * Counted so a hit rate that looks terrible for the first few minutes of a process is explainable
+   * rather than alarming.
+   */
+  val withheld: Long = 0,
+  /**
+   * Hits over reads — `(memoryHits + diskHits) / (memoryHits + diskHits + misses)` — or null before
+   * anything has been read.
+   *
+   * Published rather than left to the reader because the counters are cumulative over the process
+   * and a cumulative pair read once tells you nothing about whether the cache is currently earning
+   * its keep. [withheld] is excluded from the denominator for the reason given above.
+   */
+  val hitRate: Double? = null,
+  /** The disk tier's own counters, or null when this catalog has none — see [persistenceOff]. */
+  val persisted: ThemeCacheGenerationSnapshot? = null,
+  /**
+   * Why this catalog has no disk tier, when it has none.
+   *
+   * Every reason a catalog falls back to memory-only used to be indistinguishable from "the server
+   * was started without a cache directory" — an unreadable launch descriptor, a classpath entry the
+   * fingerprint could not digest, a generation directory that could not be created. Those are
+   * exactly the failures worth knowing about, because they are silent and permanent for the life of
+   * the host, so they are named here.
+   */
+  val persistenceOff: String? = null,
 )
 
 /**
@@ -119,6 +164,11 @@ class CatalogThemeCache(
    * alone would have started evicting.
    */
   private val persistence: ThemeCacheStore.Generation? = null,
+  /**
+   * Why there is no disk tier, when [persistence] is null — surfaced as
+   * [CatalogRenderCacheSnapshot.persistenceOff].
+   */
+  private val persistenceOffReason: String? = null,
 ) {
   val maxBytes: Long = maxBytes.coerceAtLeast(0)
   private val renderLock = Any()
@@ -143,6 +193,13 @@ class CatalogThemeCache(
   private val busyCounts = ConcurrentHashMap<String, Int>()
   private val byteCount = AtomicLong(0)
   private val evictionCount = AtomicLong(0)
+  // Read outcomes, so `/status` can say whether this cache is answering anything at all. Split by
+  // tier because the two have different costs and different fixes: a memory hit is free, a disk hit
+  // is the persistence tier earning its I/O, and a miss is a render.
+  private val memoryHits = AtomicLong(0)
+  private val diskHits = AtomicLong(0)
+  private val readMisses = AtomicLong(0)
+  private val withheldReads = AtomicLong(0)
   private val state = AtomicReference("waiting")
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
@@ -237,6 +294,7 @@ class CatalogThemeCache(
   fun get(key: String): ByteArray? {
     synchronized(renderLock) { renders[key] }
       ?.let {
+        memoryHits.incrementAndGet()
         return it
       }
     // Adopted-but-unverified bytes are NOT served. Verification is asynchronous — it needs a lane
@@ -247,9 +305,23 @@ class CatalogThemeCache(
     //
     // Only the READ path is withheld. [contains] still reports them, so the optimizer does not
     // re-render what is already on disk while the question is open.
-    val store = persistence ?: return null
-    if (!persistenceTrusted.get() && store.wasAdopted(key)) return null
-    val fromDisk = store.get(key) ?: return null
+    val store =
+      persistence
+        ?: run {
+          readMisses.incrementAndGet()
+          return null
+        }
+    if (!persistenceTrusted.get() && store.wasAdopted(key)) {
+      withheldReads.incrementAndGet()
+      return null
+    }
+    val fromDisk =
+      store.get(key)
+        ?: run {
+          readMisses.incrementAndGet()
+          return null
+        }
+    diskHits.incrementAndGet()
     // Promoted through the ordinary write path so it takes part in the LRU and the byte accounting
     // like any other entry — but NOT written back to disk, which is where it just came from.
     remember(key, fromDisk)
@@ -520,15 +592,29 @@ class CatalogThemeCache(
     )
   }
 
-  fun renderCacheSnapshot(): CatalogRenderCacheSnapshot =
-    synchronized(renderLock) {
+  fun renderCacheSnapshot(): CatalogRenderCacheSnapshot {
+    // Read once and derive, for the reason [snapshot] gives: a rate computed from counters read
+    // separately can publish a hit rate that does not match the counts printed beside it.
+    val memory = memoryHits.get()
+    val disk = diskHits.get()
+    val missed = readMisses.get()
+    val reads = memory + disk + missed
+    return synchronized(renderLock) {
       CatalogRenderCacheSnapshot(
         entries = renders.size,
         bytes = byteCount.get(),
         maxBytes = maxBytes,
         evictions = evictionCount.get(),
+        memoryHits = memory,
+        diskHits = disk,
+        misses = missed,
+        withheld = withheldReads.get(),
+        hitRate = if (reads > 0) (memory + disk).toDouble() / reads else null,
+        persisted = persistence?.stats(),
+        persistenceOff = if (persistence == null) persistenceOffReason else null,
       )
     }
+  }
 
   /** [activeMillis] is passed in so the rate divides by the same numbers the snapshot publishes. */
   private fun ratePerMinute(activeMillis: Long): Double? {

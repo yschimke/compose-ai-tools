@@ -763,6 +763,119 @@ class ThemeCachePersistenceTest {
     )
     assertEquals(1, cache.snapshot().cached)
   }
+
+  @Test
+  fun `read counters separate a cache that is used from one that is only filled`() {
+    // A cache that fills and a cache that fills and is never read report identical occupancy, and
+    // with a disk tier the second costs I/O on every render to buy nothing. These are the counters
+    // that tell them apart.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("warm", byteArrayOf(1))
+
+    val cache = CatalogThemeCache(persistence = store(root).open("m3-catalog", fp, inputs(fp))!!)
+    cache.configurePersistable(listOf("warm", "fresh"))
+    // Settle the quarantine so the adopted entry is readable — see the withheld test below for the
+    // window before this happens.
+    cache.verifySample { byteArrayOf(1) }
+
+    assertNull(cache.get("cold"), "never rendered, in neither tier")
+    assertContentEquals(byteArrayOf(1), cache.get("warm")) // disk, then promoted to memory
+    assertContentEquals(byteArrayOf(1), cache.get("warm")) // memory
+
+    val snapshot = cache.renderCacheSnapshot()
+    assertEquals(1, snapshot.diskHits)
+    assertEquals(1, snapshot.memoryHits)
+    assertEquals(1, snapshot.misses)
+    assertEquals(2.0 / 3, snapshot.hitRate)
+  }
+
+  @Test
+  fun `a read withheld by the quarantine is not counted as a miss`() {
+    // Withheld reads can outnumber real misses during a cold start, and folding them into `misses`
+    // would report the cache as failing at exactly the moment it is being deliberately careful.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.put("one", byteArrayOf(1))
+
+    val cache = CatalogThemeCache(persistence = store(root).open("m3-catalog", fp, inputs(fp))!!)
+    cache.configurePersistable(listOf("one"))
+
+    assertNull(cache.get("one"))
+
+    val snapshot = cache.renderCacheSnapshot()
+    assertEquals(1, snapshot.withheld)
+    assertEquals(0, snapshot.misses)
+    assertNull(snapshot.hitRate, "no read has been answered either way yet")
+  }
+
+  @Test
+  fun `the disk tier reports what it adopted, so a key that moved is visible`() {
+    // `adopted` is the only evidence that persistence carried anything across a process boundary.
+    // A restart onto a fingerprint that moved adopts nothing and writes everything again, which is
+    // indistinguishable from a working cache in every other counter.
+    val root = tempDir()
+    val stable = "a".repeat(64)
+    val moved = "b".repeat(64)
+
+    val first =
+      CatalogThemeCache(persistence = store(root).open("m3-catalog", stable, inputs(stable))!!)
+    first.configurePersistable(listOf("one"))
+    first.put("one", byteArrayOf(1))
+    assertEquals(0, first.renderCacheSnapshot().persisted?.adopted)
+    assertEquals(1, first.renderCacheSnapshot().persisted?.writes)
+
+    val restarted =
+      CatalogThemeCache(persistence = store(root).open("m3-catalog", stable, inputs(stable))!!)
+    assertEquals(1, restarted.renderCacheSnapshot().persisted?.adopted)
+    assertEquals(stable, restarted.renderCacheSnapshot().persisted?.fingerprint)
+
+    val churned =
+      CatalogThemeCache(persistence = store(root).open("m3-catalog", moved, inputs(moved))!!)
+    assertEquals(
+      0,
+      churned.renderCacheSnapshot().persisted?.adopted,
+      "a fingerprint that moved adopts nothing — the case worth being able to see",
+    )
+  }
+
+  @Test
+  fun `a catalog that fell back to memory-only says why`() {
+    // Every reason a catalog loses its disk tier used to look identical to running the server
+    // without one, and all of them are permanent for the life of the host.
+    val silent = CatalogThemeCache()
+    assertNull(silent.renderCacheSnapshot().persistenceOff)
+
+    val explained = CatalogThemeCache(persistenceOffReason = "launch descriptor unreadable")
+    assertEquals("launch descriptor unreadable", explained.renderCacheSnapshot().persistenceOff)
+  }
+
+  @Test
+  fun `the census counts generations per system, so fingerprint churn is visible`() {
+    // Three generations for one catalog on a box that has only ever served it one way is churn, and
+    // churn reports itself as success in every other counter: writes climb, the volume fills, and
+    // nothing is ever adopted.
+    val root = tempDir()
+    var now = 1_000_000L
+    val churning = ThemeCacheStore(root, graceMillis = 60 * 60_000, clock = { now })
+    for (fp in listOf("a", "b", "c")) {
+      churning.open("m3-catalog", fp.repeat(64), inputs(fp.repeat(64)))!!.put("k", ByteArray(8))
+    }
+    churning.open("meshcore", "d".repeat(64), inputs("d".repeat(64)))!!.put("k", ByteArray(8))
+
+    churning.sweep(
+      setOf(ThemeCacheStore.GenerationId("m3-catalog", "c".repeat(64))),
+      onlySystems = setOf("m3-catalog", "meshcore"),
+    )
+
+    val census = churning.snapshot().generationsBySystem
+    assertEquals(
+      3,
+      census["m3-catalog"],
+      "all three spared by the grace window, and all three real",
+    )
+    assertEquals(1, census["meshcore"])
+  }
 }
 
 private fun assertContentEquals(expected: ByteArray, actual: ByteArray?) {
