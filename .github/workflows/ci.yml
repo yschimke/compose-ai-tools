@@ -422,6 +422,13 @@ jobs:
             :rc-player-runtime:compileTestKotlinIosSimulatorArm64 \
             :rc-player-compose:compileTestKotlinIosArm64 \
             :rc-player-compose:compileTestKotlinIosSimulatorArm64
+          # Link and package the XCFramework the Swift distribution ships (#4068). This is the only
+          # place CI *links* a release framework — every other iOS entry above stops at compiling —
+          # and `release.yml` runs the same task, so a linker failure surfaces on the PR rather than
+          # mid-release. Separate invocation because the two release links are the heaviest thing in
+          # this job and running them alongside the test compiles has died on memory before (see the
+          # note at the top of this job).
+          ./gradlew :rc-player-compose:rcPlayerXcframeworkChecksum
           ./gradlew :cli:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
           ./gradlew ktfmtCheck
       - name: Upload player test reports on failure
@@ -1182,6 +1189,11 @@ jobs:
       # fail silently in production (a delivery branch just stops regenerating).
       - name: Run design-artifacts scope-step tests
         run: scripts/design-artifacts/test-scope-step.sh
+      # Rewrites the two values in `Package.swift` that SPM verifies. A release that silently
+      # left the placeholder checksum in place would publish a package no consumer can resolve,
+      # and the failure would land on them rather than on us.
+      - name: Run Package.swift rewriter tests
+        run: scripts/update-package-swift.sh --self-test
       # The reusable catalog workflow and preview-host images share this installer. It must keep
       # the pre-Noto generic families while supplying broad missing-glyph coverage.
       - name: Run Linux font-fallback installer tests

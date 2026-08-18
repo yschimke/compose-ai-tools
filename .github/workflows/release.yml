@@ -118,6 +118,73 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
             publishAndReleaseToMavenCentral
+  # Ship the iOS player as an XCFramework a Swift project can consume (#4068).
+  #
+  # Two artifacts, and the order between them is load-bearing. SPM's `binaryTarget` addresses a zip
+  # by URL and pins it by SHA-256, so `Package.swift` can only be written *after* the asset it
+  # describes exists. This job therefore: assembles and zips, uploads the zip to the Release, then
+  # rewrites `Package.swift` on `main` with that Release's URL and the checksum of the exact bytes
+  # uploaded, and tags that commit `swift/<version>`.
+  #
+  # The Swift tag is why this works at all. `Package.swift` at the `v<version>` tag necessarily
+  # still points at the *previous* release — the file is committed before the asset exists — so a
+  # consumer resolving `v<version>` would get the wrong binary. `swift/<version>` points at the
+  # commit made after the upload, which is the first commit where the two agree. Consumers depend on
+  # the Swift tags.
+  #
+  # macOS-only: `xcodebuild -create-xcframework` and the Kotlin/Native Apple linker both need it.
+  # This is also the first time CI links a release framework at all — `ci.yml` only ever compiled
+  # the iOS *test* targets — so treat a failure here as real rather than flaky, and see the Xcode
+  # selection step, which exists because CMP 1.11's `ui-uikit` needs the iOS 26 SDK.
+  publish-xcframework:
+    needs: [build-applications, build-vscode-extension]
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Derive version from tag
+        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup
+        with:
+          cache-read-only: 'true'
+      - name: Select an Xcode with the iOS 26 SDK
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$xcode" ]; then
+            echo "No Xcode 26 on this image; Compose Multiplatform's iOS targets need its SDK." >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+      - name: Assemble and package the XCFramework
+        run: ./gradlew :rc-player-compose:rcPlayerXcframeworkChecksum
+      - name: Upload the XCFramework to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            rc-player/compose/build/distributions/RcComposePlayer.xcframework.zip --clobber
+      - name: Point Package.swift at the uploaded asset and tag it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          checksum="$(cat rc-player/compose/build/distributions/RcComposePlayer.xcframework.zip.sha256)"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/RcComposePlayer.xcframework.zip"
+          scripts/update-package-swift.sh "$url" "$checksum"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "chore(release): point Package.swift at ${TAG_NAME}"
+          git push origin HEAD:main
+          git tag "swift/${PLUGIN_VERSION}"
+          git push origin "swift/${PLUGIN_VERSION}"
+
   # Build the runnable applications shipped on each GitHub Release: the CLI
   # (`compose-preview-*`) and the standalone MCP server (`compose-preview-mcp-*`).
   # The CLI tarball already implementation-bundles `:mcp`, so the standalone MCP
