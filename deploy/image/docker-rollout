@@ -166,17 +166,24 @@ main() {
         echo "==> Health check status for container $NEW_CONTAINER_ID"
 
         # shellcheck disable=SC2086 # DOCKER_ARGS must be unquoted to allow multiple arguments
-        docker $DOCKER_ARGS inspect --format='{{json .State.Health}}' "$NEW_CONTAINER_ID"
+        # A concurrently-removed or self-restarting container is itself useful failure evidence,
+        # but it must not abort this script before the rollback below gets a chance to clean up the
+        # remaining new replicas.
+        docker $DOCKER_ARGS inspect --format='{{json .State.Health}}' "$NEW_CONTAINER_ID" || true
 
         echo "==> Logs for container $NEW_CONTAINER_ID"
         # shellcheck disable=SC2086 # DOCKER_ARGS must be unquoted to allow multiple arguments
-        docker $DOCKER_ARGS logs "$NEW_CONTAINER_ID"
+        docker $DOCKER_ARGS logs "$NEW_CONTAINER_ID" || true
       done
 
       echo "==> New containers are not healthy. Rolling back." >&2
 
-      docker $DOCKER_ARGS stop $NEW_CONTAINER_IDS
-      docker $DOCKER_ARGS rm $NEW_CONTAINER_IDS
+      # Idempotent cleanup: some ids may already have disappeared. Stop/remove each survivor and
+      # continue through missing ids instead of leaking the rest of the failed rollout.
+      for NEW_CONTAINER_ID in $NEW_CONTAINER_IDS; do
+        docker $DOCKER_ARGS stop "$NEW_CONTAINER_ID" >/dev/null 2>&1 || true
+        docker $DOCKER_ARGS rm -f "$NEW_CONTAINER_ID" >/dev/null 2>&1 || true
+      done
 
       exit 1
     fi
@@ -210,9 +217,9 @@ main() {
   echo "==> Stopping and removing old containers"
 
   # shellcheck disable=SC2086 # DOCKER_ARGS and OLD_CONTAINER_IDS must be unquoted to allow multiple arguments
-  docker $DOCKER_ARGS stop $OLD_CONTAINER_IDS
+  docker $DOCKER_ARGS stop $OLD_CONTAINER_IDS || true
   # shellcheck disable=SC2086 # DOCKER_ARGS and OLD_CONTAINER_IDS must be unquoted to allow multiple arguments
-  docker $DOCKER_ARGS rm $OLD_CONTAINER_IDS
+  docker $DOCKER_ARGS rm $OLD_CONTAINER_IDS || true
 }
 
 while [ $# -gt 0 ]; do

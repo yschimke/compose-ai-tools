@@ -56,6 +56,8 @@ class ServeBackgroundWork(
    * instead of parked expensively.
    */
   maxConcurrentOptimizers: Int = DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
+  private val hostCoordinator: OptimizerHostCoordinator = OptimizerHostCoordinator.NONE,
+  private val pressureGate: OptimizerPressureGate? = null,
 ) {
   private val loadsInFlight = AtomicInteger()
   private val initialLoadPending = AtomicBoolean(false)
@@ -89,6 +91,7 @@ class ServeBackgroundWork(
   private val optimizerAdmissionWaitMillis = AtomicLong()
   private val optimizerPausedUntil = AtomicLong(Long.MIN_VALUE)
   private val optimizerPauseReason = ConcurrentHashMap<String, String>()
+  private val optimizerHostRefusals = AtomicLong()
 
   /**
    * True while the server is bringing catalogs up: the startup pass hasn't finished, or a refresh /
@@ -165,6 +168,13 @@ class ServeBackgroundWork(
       optimizerRefusals.incrementAndGet()
       return null
     }
+    val hostLease = acquireHostLease(system, waitMillis)
+    if (hostLease == null) {
+      releaseOptimizerLane(system)
+      optimizerHostRefusals.incrementAndGet()
+      optimizerRefusals.incrementAndGet()
+      return null
+    }
     optimizerAdmissions.incrementAndGet()
     optimizerRunning.computeIfAbsent(system) { AtomicInteger() }.incrementAndGet()
     return try {
@@ -173,8 +183,26 @@ class ServeBackgroundWork(
       optimizerRunning.computeIfPresent(system) { _, count ->
         if (count.decrementAndGet() == 0) null else count
       }
+      hostLease.close()
       releaseOptimizerLane(system)
     }
+  }
+
+  private fun acquireHostLease(system: String, waitMillis: Long): OptimizerHostLease? {
+    val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMillis.coerceAtLeast(0L))
+    while (!optimizersPaused()) {
+      hostCoordinator.tryAcquire(system)?.let {
+        return it
+      }
+      if (System.nanoTime() >= deadline) return null
+      try {
+        Thread.sleep(HOST_COORDINATION_RETRY_MILLIS)
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        return null
+      }
+    }
+    return null
   }
 
   /**
@@ -296,12 +324,15 @@ class ServeBackgroundWork(
   }
 
   /** Whether optimizer passes are currently stood down. Cheap enough for a per-batch check. */
-  fun optimizersPaused(): Boolean = clock() < optimizerPausedUntil.get()
+  fun optimizersPaused(): Boolean =
+    clock() < optimizerPausedUntil.get() || pressureGate?.snapshot()?.constrained == true
 
   /** Counters for `/status.json`; see [ThemeOptimizerAdmissionSnapshot]. */
   fun optimizerAdmissionSnapshot(): ThemeOptimizerAdmissionSnapshot {
     val until = optimizerPausedUntil.get()
-    val paused = clock() < until
+    val manuallyPaused = clock() < until
+    val pressure = pressureGate?.snapshot()
+    val paused = manuallyPaused || pressure?.constrained == true
     val queued = admissionLock.run {
       lock()
       try {
@@ -318,10 +349,17 @@ class ServeBackgroundWork(
       waitingSystems = queued,
       admissions = optimizerAdmissions.get(),
       refusals = optimizerRefusals.get(),
+      hostRefusals = optimizerHostRefusals.get(),
       admissionWaitMillis = optimizerAdmissionWaitMillis.get(),
       paused = paused,
-      pausedUntilEpochMillis = if (paused) until else null,
-      pauseReason = if (paused) optimizerPauseReason["reason"] else null,
+      pausedUntilEpochMillis = if (manuallyPaused) until else null,
+      pauseReason =
+        when {
+          manuallyPaused -> optimizerPauseReason["reason"]
+          pressure?.constrained == true -> pressure.reason
+          else -> null
+        },
+      pressure = pressure,
     )
   }
 
@@ -353,6 +391,8 @@ class ServeBackgroundWork(
      * another's renders without recreating the free-for-all.
      */
     const val DEFAULT_MAX_CONCURRENT_OPTIMIZERS: Int = 2
+
+    const val HOST_COORDINATION_RETRY_MILLIS: Long = 100L
 
     /** Pause reasons are bounded before they reach a status page. */
     const val MAX_PAUSE_REASON_CHARS: Int = 200
@@ -424,8 +464,10 @@ data class ThemeOptimizerAdmissionSnapshot(
   val waitingSystems: List<String> = emptyList(),
   val admissions: Long,
   val refusals: Long,
+  val hostRefusals: Long = 0,
   val admissionWaitMillis: Long,
   val paused: Boolean,
   val pausedUntilEpochMillis: Long? = null,
   val pauseReason: String? = null,
+  val pressure: OptimizerPressureSnapshot? = null,
 )

@@ -5,11 +5,15 @@ import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.CatalogRefreshResult
 import ee.schimke.composeai.cli.serve.CatalogThemeCache
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
+import ee.schimke.composeai.cli.serve.FileOptimizerHostCoordinator
 import ee.schimke.composeai.cli.serve.GenerationInputs
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
+import ee.schimke.composeai.cli.serve.LinuxHostResourceSampler
 import ee.schimke.composeai.cli.serve.LiveSeatLimiter
 import ee.schimke.composeai.cli.serve.MutableTrustStore
+import ee.schimke.composeai.cli.serve.OptimizerHostCoordinator
+import ee.schimke.composeai.cli.serve.OptimizerPressureGate
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidRenderService
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
 import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
@@ -745,8 +749,32 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * The lane is derived from [liveSeatLimiter] because widening it is only safe where something
    * else bounds daemon count: an unbounded budget (the CLI default) keeps the single lane.
    */
-  private val backgroundWork =
-    ServeBackgroundWork(maxConcurrentRenders = ServeBackgroundWork.renderLaneFor(liveSeatLimiter))
+  private val optimizerCoordinationDirectory: File? by lazy {
+    val explicit =
+      args.flagValue("--theme-optimizer-coordination-dir")?.takeIf { it.isNotBlank() }?.let(::File)
+    explicit
+      ?: catalogsFile
+        ?.displayPath
+        ?.let(::File)
+        ?.absoluteFile
+        ?.parentFile
+        ?.resolve("optimizer-locks")
+  }
+
+  private val backgroundWork by lazy {
+    val pressureSampler = LinuxHostResourceSampler()
+    ServeBackgroundWork(
+      maxConcurrentRenders = ServeBackgroundWork.renderLaneFor(liveSeatLimiter),
+      hostCoordinator =
+        optimizerCoordinationDirectory?.let {
+          FileOptimizerHostCoordinator(
+            directory = it,
+            lanes = ServeBackgroundWork.DEFAULT_MAX_CONCURRENT_OPTIMIZERS,
+          )
+        } ?: OptimizerHostCoordinator.NONE,
+      pressureGate = OptimizerPressureGate(sample = pressureSampler::sample),
+    )
+  }
 
   /**
    * Durable home for warmed theme renders (`--theme-cache-dir`), or null to keep the cache in
@@ -4190,6 +4218,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                           ${ThemeCacheStore.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB). Superseded
                           generations are reclaimed; generations still in use are never evicted, so
                           exceeding this is reported rather than acted on.
+        --theme-optimizer-coordination-dir <dir>
+                          Shared directory used to coordinate background optimizer lanes across
+                          server replicas. Defaults to optimizer-locks beside --catalogs-file; set
+                          this explicitly when replicas do not share that directory.
         --wasm-dir <system>=<dir>[,<system>=<dir>…]
                           In-browser CMP tier: map a design system to its assembled Kotlin/Wasm
                           catalog app (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist →
