@@ -855,7 +855,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // properties are deliberately NOT, because they are dominated by absolute paths that a fresh
     // staging directory changes on every load — hashing those would make every load a new
     // generation and buy nothing.
-    val renderConfig = launches.flatMap { it.jvmArgs }.sorted().joinToString(" ")
+    val renderConfig =
+      launches.joinToString(" | ") {
+        ThemeCacheFingerprint.renderConfig(it.systemProperties, it.jvmArgs)
+      }
     val routing = ThemeCacheFingerprint.routingDigest(alias)
     val variant = launches.map { it.variant }.distinct().sorted().joinToString("+")
     // A multi-module catalog renders from several bundles at once and its generation is all of them
@@ -874,7 +877,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
               ),
             variant = launch.variant,
             toolVersion = BUNDLE_VERSION,
-            renderConfig = launch.jvmArgs.sorted().joinToString(" "),
+            renderConfig =
+              ThemeCacheFingerprint.renderConfig(launch.systemProperties, launch.jvmArgs),
             routing = routing,
           ) ?: return CatalogThemeCache()
         }
@@ -3625,6 +3629,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       )
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
+    // The source-backed path registers directly rather than through `publishCatalogRuntime`, so it
+    // needs its own post-publication sweep — without it a deployment of only source-backed catalogs
+    // never reclaims a superseded generation, whatever the cap says.
+    sweepThemeCache()
     System.err.println(
       "serve: catalog $system → LIVE server-render from ${source.module}@${source.ref} " +
         "(?session=$system)"

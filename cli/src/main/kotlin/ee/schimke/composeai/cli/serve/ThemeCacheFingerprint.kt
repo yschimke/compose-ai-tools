@@ -136,6 +136,49 @@ object ThemeCacheFingerprint {
         .distinct()
         .map(::File)
 
+  /**
+   * The render-affecting launch settings that are *values* rather than file contents, as a stable
+   * string for [of]'s `renderConfig`.
+   *
+   * Excluding the descriptor's whole system-property map was wrong, and wrong in the same way as
+   * excluding the user classpath was: most of it is absolute paths that a fresh staging directory
+   * churns every load, but not all of it. `composeai.fonts.offline`, `composeai.svg.embedFonts` and
+   * the Android launch's `robolectric.*` settings all change what the renderer produces while the
+   * classpath stays byte-identical — offline font resolution, for instance, substitutes fallback
+   * glyphs for downloaded faces.
+   *
+   * So the filter is on the *shape of the value*, not on the map: a value that names a filesystem
+   * path is dropped (its churn is meaningless, and where its contents matter they are hashed by
+   * [renderedClasspath] instead), and everything else is kept. A setting that legitimately varies
+   * per load and is not a path will cost an unnecessary re-warm, which is the right direction to
+   * err.
+   */
+  fun renderConfig(systemProperties: Map<String, String>, jvmArgs: List<String>): String {
+    val covered = PAYLOAD_PROPERTIES.toSet() + USER_CLASS_DIRS_PROPERTY
+    val settings =
+      systemProperties
+        .filterKeys { it !in covered }
+        .filterValues { !looksLikePath(it) }
+        .entries
+        .sortedBy { it.key }
+        .joinToString(" ") { (key, value) -> "$key=$value" }
+    val args = jvmArgs.filterNot(::looksLikePath).sorted().joinToString(" ")
+    return listOf(settings, args).filter { it.isNotBlank() }.joinToString(" ")
+  }
+
+  /**
+   * Whether [value] names a filesystem location, and is therefore churn rather than configuration.
+   *
+   * Deliberately crude: an absolute path, or a JVM argument carrying one. Both a false positive
+   * (dropping a real setting) and a false negative (keeping a path) fail toward a re-warm rather
+   * than a wrong pixel, because anything genuinely load-bearing about a path's *contents* is hashed
+   * by [renderedClasspath].
+   */
+  private fun looksLikePath(value: String): Boolean =
+    value.startsWith(File.separator) ||
+      value.contains("=${File.separator}") ||
+      Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
+
   /** Stable digest of a catalog-id to daemon-id map, for [of]'s `routing`. */
   fun routingDigest(alias: Map<String, String>): String {
     if (alias.isEmpty()) return ""

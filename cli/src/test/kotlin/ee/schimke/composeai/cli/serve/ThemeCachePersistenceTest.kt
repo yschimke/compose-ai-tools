@@ -221,6 +221,40 @@ class ThemeCachePersistenceTest {
     )
   }
 
+  @Test
+  fun `render-affecting system properties are part of the generation, but their paths are not`() {
+    // Excluding the whole system-property map was the same mistake as excluding the user classpath:
+    // most of it is staging paths that churn every load, but `composeai.fonts.offline` and the
+    // Android launch's `robolectric.*` settings genuinely change what the renderer produces —
+    // offline font resolution substitutes fallback glyphs for downloaded faces.
+    val online = mapOf("composeai.fonts.offline" to "false")
+    val offline = mapOf("composeai.fonts.offline" to "true")
+
+    assertNotEquals(
+      ThemeCacheFingerprint.renderConfig(online, emptyList()),
+      ThemeCacheFingerprint.renderConfig(offline, emptyList()),
+    )
+
+    // A path-valued property is churn, not configuration: its directory moves every load, and where
+    // its contents matter they are hashed as classpath entries instead.
+    val stagedHere = mapOf("composeai.fonts.cacheDir" to "${File.separator}tmp${File.separator}a")
+    val stagedThere = mapOf("composeai.fonts.cacheDir" to "${File.separator}tmp${File.separator}b")
+    assertEquals(
+      ThemeCacheFingerprint.renderConfig(stagedHere, emptyList()),
+      ThemeCacheFingerprint.renderConfig(stagedThere, emptyList()),
+    )
+  }
+
+  @Test
+  fun `render config ignores the order settings arrive in`() {
+    val one =
+      ThemeCacheFingerprint.renderConfig(mapOf("a" to "1", "b" to "2"), listOf("-Xmx1g", "-Xss2m"))
+    val two =
+      ThemeCacheFingerprint.renderConfig(mapOf("b" to "2", "a" to "1"), listOf("-Xss2m", "-Xmx1g"))
+
+    assertEquals(one, two)
+  }
+
   // ---- store ----------------------------------------------------------------------------------
 
   /**

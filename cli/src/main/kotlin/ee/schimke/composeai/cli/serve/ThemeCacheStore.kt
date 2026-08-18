@@ -122,6 +122,7 @@ class ThemeCacheStore(
    */
   fun sweep(live: Set<GenerationId>, onlySystems: Set<String>? = null): SweepResult {
     val youngerThan = clock() - graceMillis
+    val beforeScan = knownBytes.get()
     val liveDirs = live.mapNotNull { it.dir() }.toSet()
     var deleted = 0
     var reclaimed = 0L
@@ -167,7 +168,13 @@ class ThemeCacheStore(
     }
 
     val total = survivingBytes
-    knownBytes.set(total)
+    // Merged, not assigned. A sweep runs concurrently with other catalogs' optimizers writing into
+    // this store — startup releases the background-work gate immediately before sweeping — so a
+    // bare
+    // `set` can discard a write that landed during the scan, or publish a total that never saw a
+    // file created after its directory was walked. Either way `/status` under-reports occupancy
+    // until the next sweep, which is exactly when an over-cap volume most needs to be visible.
+    knownBytes.getAndUpdate { current -> total + (current - beforeScan).coerceAtLeast(0) }
     knownGenerations.set(survivingGenerations)
     return SweepResult(
       deletedGenerations = deleted,
