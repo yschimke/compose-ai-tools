@@ -440,6 +440,26 @@ interface ServeHost : AutoCloseable {
   fun rcCompareImage(name: String): ByteArray? = null
 
   /**
+   * The **published** render of [previewId] by [backend], from this catalog's `rc-compare` staging
+   * — or null when nothing was staged for that pair.
+   *
+   * The offline parity pipeline draws every `ir/<id>.rc` document with every player, so these bytes
+   * already exist for exactly the browse a viewer performs when it opens on its default player.
+   * Serving them makes that page cost what an override-free browse costs: a map lookup and a file
+   * read, with no daemon, no render slot and no admission.
+   *
+   * Only ever an answer to a **bare** player selection. A request that also carries a font scale, a
+   * knob or a theme is asking for pixels the parity run never drew, and the caller must route it to
+   * the renderer as before — see [ServeHttpServer]'s use, which checks that before calling.
+   */
+  fun publishedRcPlayerRender(previewId: String, backend: RcPlayerBackend): ByteArray? {
+    val lane = backend.rcCompareLane ?: return null
+    val cell = rcCompare()?.rows?.firstOrNull { it.previewId == previewId }?.lanes?.get(lane)
+    val name = cell?.takeIf { it.rendered }?.render?.takeIf { it.isNotEmpty() } ?: return null
+    return rcCompareImage(name)
+  }
+
+  /**
    * True while the published comparison may still be arriving — the catalog's background staging
    * lane has not reported an outcome yet, so [rcCompare] returning null does not yet mean "this
    * catalog has none".

@@ -231,6 +231,10 @@ const STYLED_FIXTURES = new Set([
   "serve-component-browser-home",
   "serve-component-browser-catalog",
   "serve-component-browser-component",
+  // Catalog mode on a Remote Compose preview. Its claim is the renderer row — the browser players
+  // present, the daemon-backed ones absent rather than greyed — which is chrome, so it is only
+  // legible with the production stylesheet routed in.
+  "serve-component-browser-remote-compose",
   "serve-format-compare",
   // The Remote Compose player wall. Its whole claim is a LAYOUT — one column per player, a diff
   // growing inside a player's own column — and it is only visible at all once `format-compare.js`

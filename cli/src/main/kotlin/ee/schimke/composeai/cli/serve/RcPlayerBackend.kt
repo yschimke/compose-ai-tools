@@ -55,17 +55,41 @@ enum class RcPlayerBackend(
    * True when the browser plays the `.rc` document itself (the [JS] lane); false for a PNG lane.
    */
   val clientSide: Boolean,
+  /**
+   * This backend's column id in the catalog's published `rc-compare` staging
+   * ([RcCompareManifest.lanes]), or null when the offline pipeline has no column for it.
+   *
+   * The offline parity run already draws every `ir/<id>.rc` document with every player, so this is
+   * what lets a bare `?rcPlayer=<wire>` browse be answered from published bytes instead of a daemon
+   * render. Note [JAVA]'s column is `baked`: the AndroidX Java render **is** the reference the
+   * other lanes are scored against, which is also why the catalog's ordinary baked PNG is a Java
+   * capture rather than an embedded one.
+   */
+  val rcCompareLane: String?,
 ) {
-  JS("js", "JS", playerKind = null, clientSide = true),
-  CMP_WASM("cmp-wasm", "CMP Wasm", playerKind = null, clientSide = true),
-  JAVA("java", "Java", playerKind = RemoteComposePlayerKind.VIEW, clientSide = false),
+  JS("js", "JS", playerKind = null, clientSide = true, rcCompareLane = "js"),
+  CMP_WASM(
+    "cmp-wasm",
+    "CMP Wasm",
+    playerKind = null,
+    clientSide = true,
+    rcCompareLane = "cmp-wasm",
+  ),
+  JAVA(
+    "java",
+    "Java",
+    playerKind = RemoteComposePlayerKind.VIEW,
+    clientSide = false,
+    rcCompareLane = "baked",
+  ),
   CMP_ANDROID(
     "cmp-android",
     "CMP Android",
     playerKind = RemoteComposePlayerKind.EMBEDDED,
     clientSide = false,
+    rcCompareLane = "embedded",
   ),
-  CMP_JVM("cmp-jvm", "CMP JVM", playerKind = null, clientSide = false);
+  CMP_JVM("cmp-jvm", "CMP JVM", playerKind = null, clientSide = false, rcCompareLane = "cmp-jvm");
 
   companion object {
     /** The fixed universe the viewer renders as chips, in display order. */

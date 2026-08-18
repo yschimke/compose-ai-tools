@@ -2349,6 +2349,34 @@ class ServeWebFixtureTest {
         presenceUrl = "/compose-m3/api/presence",
         componentBrowser = true,
       )
+    // Catalog mode on a **Remote Compose** preview — the one page where the browser players are
+    // still on offer there.
+    //
+    // Catalog mode used to strip the whole Remote Compose facet along with the rest of the dev
+    // surface, which left a shared `?rcPlayer=…` link inert: no canvas, no chips, no switcher, and
+    // no control owning the param, so it was quietly dropped from the URL and the page fell back to
+    // the baked PNG. `js` and `cmp-wasm` replay published bytes in the visitor's own browser, so
+    // none of the reasons the daemon-backed lanes are gated apply to them.
+    //
+    // Its own fixture because the plain Catalog viewer above carries no `.rc` document, so it
+    // cannot show any of this — and without a fixture the surface would go back to being changed
+    // without a picture. The claim it holds is a PAIR: the switcher is present and offers exactly
+    // the two browser players, and the server-side ones are absent rather than greyed.
+    val componentBrowserRemoteCompose =
+      ServeWeb.viewerPage(
+        browserPreviews.first { it.id == "button-filled-pressed" },
+        token,
+        sessionId = "compose-m3",
+        catalogName = "Compose Material 3",
+        catalogTitle = "Compose Material 3",
+        basePath = "/compose-m3",
+        isPublic = true,
+        siblings = browserPreviews,
+        canRenderOverrides = true,
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android", "cmp-jvm", "cmp-wasm"),
+        componentBrowser = true,
+      )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
     // nav COLLAPSES to one entry per component (button-filled once, not ~8 times), mirroring the
@@ -2863,6 +2891,7 @@ class ServeWebFixtureTest {
         "serve-component-browser-home.html" to componentBrowserHome,
         "serve-component-browser-catalog.html" to componentBrowserCatalog,
         "serve-component-browser-component.html" to componentBrowserViewer,
+        "serve-component-browser-remote-compose.html" to componentBrowserRemoteCompose,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
         "serve-notfound.html" to notFound,
         "serve-docs-upload.html" to docUpload,

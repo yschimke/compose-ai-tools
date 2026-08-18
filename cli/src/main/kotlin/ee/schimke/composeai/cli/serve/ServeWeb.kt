@@ -6540,7 +6540,7 @@ $noteBlock        <div class="cp-site-footer-links">
     /**
      * Whether a server render of a given preview **replays a captured document** rather than
      * re-running the composable — the grid's counterpart of the viewer's `irReplay` flag, read from
-     * the same host question (`ServeHttpServer.droppedOverridesAreTerminal`) that decides whether a
+     * the same host question (`ServeHttpServer.isReplayedPreview`) that decides whether a
      * `themeProvider` render is refused.
      *
      * A declared theme installs a `PreviewWrapperProvider` **around a composition**, so a replayed
@@ -9059,11 +9059,19 @@ $rows
     @Suppress("NAME_SHADOWING") val hasSvgExport = hasSvgExport && pinned == null
     @Suppress("NAME_SHADOWING")
     val hasScrollExport = hasScrollExport && pinned == null && !componentBrowser
+    // Catalog mode keeps the Remote Compose facet whole — the `.rc` canvas and every player the
+    // host offers, embedded included — rather than stripping it with the rest of the dev surface.
+    //
+    // It used to come off with `!componentBrowser`, and the cost was a broken link: with no canvas,
+    // no chips and no lane select, nothing on the page owned the `rcPlayer` parameter, so
+    // `url-state.js` cleared it from the address bar and a shared `?rcPlayer=…` silently became an
+    // ordinary baked snapshot. Which player drew a document is the *subject* of a Remote Compose
+    // catalog, not an operational detail, so a catalog reader is exactly who wants to switch
+    // between them — and the lane a preview opens on stays the embedded player here as it is in
+    // Dev, rather than the two modes disagreeing about what the default rendering of a document is.
+    @Suppress("NAME_SHADOWING") val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null
     @Suppress("NAME_SHADOWING")
-    val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null && !componentBrowser
-    @Suppress("NAME_SHADOWING")
-    val enabledRcPlayers =
-      if (pinned == null && !componentBrowser) enabledRcPlayers else emptyList()
+    val enabledRcPlayers = if (pinned == null) enabledRcPlayers else emptyList()
     @Suppress("NAME_SHADOWING")
     val hasA11yOverlay = hasA11yOverlay && pinned == null && !componentBrowser
     @Suppress("NAME_SHADOWING")
@@ -9595,10 +9603,16 @@ $rows
     // left already names the current renderer, and a combo that repeated that name beside it read
     // as two controls arguing about the same fact ("Java  [Java ▾]"). So the chip answers *what am
     // I looking at* and this answers *what else could I look at* — which is the whole split.
+    //
+    // Catalog mode's switcher is the Remote Compose players and nothing else. The Wasm app already
+    // has a chip of its own there, and "Snapshot" is not a destination when it is the only other
+    // entry — so a Catalog page with no RC document keeps the bare chip row it always had, while a
+    // Remote Compose one grows the full player combo.
+    val selectLanes = if (componentBrowser) lanes.filter { it.value.startsWith("rc:") } else lanes
     val laneSelectHtml =
-      if (componentBrowser || lanes.size < 2) ""
+      if (selectLanes.size < 2) ""
       else
-        lanes.joinToString(
+        selectLanes.joinToString(
           separator = "",
           prefix =
             "<select id=\"cp-lane-select\" class=\"cp-lane-select\" " +
