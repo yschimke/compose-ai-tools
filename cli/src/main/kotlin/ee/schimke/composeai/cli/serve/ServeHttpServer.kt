@@ -517,6 +517,15 @@ class ServeHttpServer(
                 siteName = skin.first,
                 themeCss = skin.second,
                 themeStorageKey = skin.third,
+                componentBrowser = componentBrowser,
+                githubAuth =
+                  githubAuth?.let { auth ->
+                    ServeWeb.GitHubAuthStatus(
+                      loginHref = auth.loginPath(current),
+                      login = auth.currentLogin(current),
+                      restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
+                    )
+                  },
               ),
               ContentType.Text.Html,
               HttpStatusCode.NotFound,
@@ -1363,6 +1372,15 @@ class ServeHttpServer(
     return interfaceMode(call.request.cookies[ServeWeb.INTERFACE_MODE_COOKIE]) ?: componentBrowser
   }
 
+  private fun RoutingContext.githubAuthStatus(): ServeWeb.GitHubAuthStatus? =
+    githubAuth?.let { auth ->
+      ServeWeb.GitHubAuthStatus(
+        loginHref = auth.loginPath(call),
+        login = auth.currentLogin(call),
+        restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
+      )
+    }
+
   /** The two wire values of the Catalog / Dev switch; null for absent, empty, or anything else. */
   private fun interfaceMode(value: String?): Boolean? =
     when (value?.lowercase()) {
@@ -1468,6 +1486,8 @@ class ServeHttpServer(
         siteName = skin.first,
         themeCss = skin.second,
         themeStorageKey = skin.third,
+        componentBrowser = componentBrowserMode(),
+        githubAuth = githubAuthStatus(),
       ),
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
@@ -3276,14 +3296,7 @@ class ServeHttpServer(
         componentBrowser = componentBrowserMode(),
         version = BUNDLE_VERSION,
         unfurl = unfurl,
-        githubAuth =
-          githubAuth?.let { auth ->
-            ServeWeb.GitHubAuthStatus(
-              loginHref = auth.loginPath(call),
-              login = auth.currentLogin(call),
-              restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
-            )
-          },
+        githubAuth = githubAuthStatus(),
       ),
       ContentType.Text.Html,
     )
@@ -3515,6 +3528,8 @@ class ServeHttpServer(
           siteName = skin.first,
           themeCss = skin.second,
           themeStorageKey = skin.third,
+          componentBrowser = componentBrowserMode(),
+          githubAuth = githubAuthStatus(),
         ),
         ContentType.Text.Html,
       )
@@ -6785,6 +6800,8 @@ class ServeHttpServer(
           isPublic,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
+          componentBrowser = componentBrowserMode(),
+          githubAuth = githubAuthStatus(),
         ),
         ContentType.Text.Html,
         HttpStatusCode.Forbidden,

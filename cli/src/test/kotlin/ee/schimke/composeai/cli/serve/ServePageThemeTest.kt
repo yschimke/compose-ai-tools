@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.cli.PreviewInfo
 import ee.schimke.composeai.cli.PreviewParams
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -109,10 +110,12 @@ class ServePageThemeTest {
         "status" to ServeWeb.statusPage(status, token = "t"),
       )) {
       assertTrue(html.contains("class=\"cp-settings\""), "$name has no Settings menu")
-      assertTrue(
+      val hasPreview = name == "landing" || name == "viewer"
+      assertEquals(
+        hasPreview,
         html.contains("data-cp-page-theme value=\"match\"") ||
           html.contains("value=\"match\" data-cp-page-theme"),
-        "$name offers no Page theme choice",
+        "$name Page theme setting visibility",
       )
       // The setting ships in the page-shell bundle now (`cli/serve-web/src/chrome/pageTheme.ts`),
       // which every page emits; its behaviour is covered in `cli/serve-web/test/chrome.test.ts`.

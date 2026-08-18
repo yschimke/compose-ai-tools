@@ -698,6 +698,7 @@ $noteBlock        <div class="cp-site-footer-links">
     siteName: String = "",
     componentBrowser: Boolean = false,
     showInterfaceMode: Boolean = false,
+    showPreviewThemeSetting: Boolean = false,
   ): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
@@ -745,7 +746,7 @@ $noteBlock        <div class="cp-site-footer-links">
           <div class="cp-site-menu-panel" id="cp-site-menu-panel">
             <a class="cp-site-status-link" id="cp-status-link" href="/status$navSuffix">Status<span
               class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>$actionHtml
-            ${settingsMenuHtml().prependIndent("            ").trimStart()}
+            ${settingsMenuHtml(showPreviewThemeSetting).prependIndent("            ").trimStart()}
           </div>
         </nav>
       </header>
@@ -765,14 +766,13 @@ $noteBlock        <div class="cp-site-footer-links">
    * the scripts only reflect stored values and enhance the menu. It sits in the nav so it is in the
    * same place on every page, and last so it never displaces the links.
    */
-  private fun settingsMenuHtml(): String =
+  private fun settingsMenuHtml(showPreviewThemeSetting: Boolean): String =
     """
     <details class="cp-settings">
       <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
         <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
       </summary>
-      <div class="cp-settings-panel">
-        <fieldset class="cp-settings-group">
+      <div class="cp-settings-panel">${if (!showPreviewThemeSetting) "" else "\n" + """<fieldset class="cp-settings-group">
           <legend class="cp-settings-legend">Page theme</legend>
           <label class="cp-settings-option">
             <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
@@ -783,8 +783,8 @@ $noteBlock        <div class="cp-site-footer-links">
             <span>Follow my system</span>
           </label>
           <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-            match. Turn it off to keep the page on your operating system's setting.</p>
-        </fieldset>
+            match. Choose Follow my system to keep the page on your operating system's setting.</p>
+        </fieldset>""".trimIndent().prependIndent("        ")}
         <fieldset class="cp-settings-group cp-settings-keyboard">
           <legend class="cp-settings-legend">Keyboard</legend>
           <label class="cp-settings-option">
@@ -801,17 +801,6 @@ $noteBlock        <div class="cp-site-footer-links">
     </details>
     """
       .trimIndent()
-
-  /**
-   * A "back to all design systems" button for a catalog landing — replaces the in-catalog
-   * design-systems nav row, so a catalog page links **home** (the front-door index at `/`) rather
-   * than sideways to its siblings. Token-free in [isPublic] mode; a token-gated box keeps the
-   * token.
-   */
-  private fun backButton(token: String, isPublic: Boolean): String {
-    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    return """<a class="cp-back" href="/$suffix">← All design systems</a>"""
-  }
 
   /**
    * A breadcrumb trail for the site header's brand slot: the [parent] page as a link, then — when
@@ -3868,9 +3857,8 @@ $noteBlock        <div class="cp-site-footer-links">
     (function () {
       var el = document.getElementById("cp-theme");
       if (!el) return;
-      // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
-      // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
-      // catalog's Theme choice is the active override the visitor asked to keep while navigating.
+      // Runs before viewer.js' initial render. A clean explicit __light/__dark URL is reproducible:
+      // remembered choices never override the path. An explicit query parameter still wins below.
       var root = document.querySelector(".cp-viewer");
       var pid = (root && root.getAttribute("data-preview-id")) || "";
       var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
@@ -3893,7 +3881,7 @@ $noteBlock        <div class="cp-site-footer-links">
         var declared = stored && stored.indexOf("theme:") === 0;
         var option = null;
         Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-        if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+        if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
           el.value = stored;
           el.setAttribute("data-theme-active", "1");
         }
@@ -4169,7 +4157,7 @@ $noteBlock        <div class="cp-site-footer-links">
       val totals =
         if (componentBrowser) ""
         else
-          "\n          <div class=\"cp-sys-foot\">${s.previewCount} preview(s)" +
+          "\n          <div class=\"cp-sys-foot\">${counted(s.previewCount, "preview(s)")}" +
             (if (s.views > 0) " · ${formatViews(s.views)}" else "") +
             "</div>"
       // A dark-first (Wear) system backs its hero on the dark stage — same `data-bg-theme` hook the
@@ -4177,11 +4165,9 @@ $noteBlock        <div class="cp-site-footer-links">
       // white.
       val bg = if (s.darkStage) " data-bg-theme=\"dark\"" else ""
       val searchAttr =
-        if (!componentBrowser) ""
-        else
-          " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
+        " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.system} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
       return """
-      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix"$searchAttr>
+      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix" aria-label="$title"$searchAttr>
         <div class="cp-imgwrap">$img</div>
         <div class="cp-meta">
           <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance$totals
@@ -4194,7 +4180,7 @@ $noteBlock        <div class="cp-site-footer-links">
     // catalog's own provenance), so they're escaped like any other data on the page.
     fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String {
       val head = WebEscaping.htmlEscape(heading)
-      val count = "${list.size} ${WebEscaping.htmlEscape(noun)}"
+      val count = WebEscaping.htmlEscape(counted(list.size, noun))
       return """
       <div class="cp-section-title">
         <h1 class="cp-head">$head</h1>
@@ -4208,7 +4194,7 @@ $noteBlock        <div class="cp-site-footer-links">
     }
     val sections = homeSections(systems)
     val catalogSearch =
-      if (!componentBrowser || systems.isEmpty()) ""
+      if (systems.isEmpty()) ""
       else
         """
         <div class="cp-browser-home-tools">
@@ -4228,7 +4214,7 @@ $noteBlock        <div class="cp-site-footer-links">
       if (systems.isEmpty()) {
         "<h1 class=\"cp-head\">Design Systems</h1>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
-      } else if (componentBrowser) {
+      } else {
         catalogSearch +
           "\n" +
           sections
@@ -4236,12 +4222,6 @@ $noteBlock        <div class="cp-site-footer-links">
               section(s.heading, s.systems, s.noun, if (index == 0) "cp-grid" else "cp-grid-$index")
             }
             .joinToString("\n")
-      } else {
-        sections
-          .mapIndexed { index, s ->
-            section(s.heading, s.systems, s.noun, if (index == 0) "cp-grid" else "cp-grid-$index")
-          }
-          .joinToString("\n")
       }
     val globalComponents =
       if (systems.isEmpty()) ""
@@ -4316,6 +4296,13 @@ $noteBlock        <div class="cp-site-footer-links">
    */
   data class HomeSection(val heading: String, val systems: List<HomeSystem>, val noun: String)
 
+  /** Render legacy operator nouns such as `catalog(s)` as real singular/plural copy. */
+  private fun counted(count: Int, noun: String): String {
+    val singular = noun.replace("(s)", "")
+    val plural = if (noun.contains("(s)")) singular + "s" else noun
+    return "$count ${if (count == 1) singular else plural}"
+  }
+
   /**
    * Group the published catalogs by **publisher**, for the front-page sections.
    *
@@ -4363,7 +4350,7 @@ $noteBlock        <div class="cp-site-footer-links">
   /** The heading an ungrouped catalog falls back to: its repo owner's, else the "Other" bucket. */
   private fun ownerHeading(sourceRepo: String?): String {
     val owner = sourceRepo?.substringBefore('/')?.takeIf { it.isNotBlank() && it != sourceRepo }
-    return if (owner == null) OTHER_HEADING else "$owner org"
+    return if (owner == null) OTHER_HEADING else "$owner repositories"
   }
 
   /** The catch-all section for catalogs carrying no usable provenance. */
@@ -4397,6 +4384,8 @@ $noteBlock        <div class="cp-site-footer-links">
     siteName: String = "",
     themeCss: String = "",
     themeStorageKey: String = "",
+    componentBrowser: Boolean = false,
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
@@ -4408,6 +4397,9 @@ $noteBlock        <div class="cp-site-footer-links">
       siteName = siteName,
       themeCss = themeCss,
       themeStorageKey = themeStorageKey,
+      componentBrowser = componentBrowser,
+      interfaceModeControl = true,
+      headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
       body =
         """
         <h1 class="cp-head">Not found</h1>
@@ -5778,6 +5770,8 @@ $noteBlock        <div class="cp-site-footer-links">
     siteName: String = "",
     themeCss: String = "",
     themeStorageKey: String = "",
+    componentBrowser: Boolean = false,
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
@@ -5988,6 +5982,9 @@ $noteBlock        <div class="cp-site-footer-links">
       siteName = siteName,
       themeCss = themeCss,
       themeStorageKey = themeStorageKey,
+      componentBrowser = componentBrowser,
+      interfaceModeControl = true,
+      headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
     )
   }
 
@@ -6675,7 +6672,7 @@ $noteBlock        <div class="cp-site-footer-links">
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
-        <a class="cp-card"$anchor data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
+        <a class="cp-card"$anchor aria-label="${WebEscaping.htmlEscape(defaultLabel)}" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
           data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(lightLabel)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
@@ -6741,7 +6738,7 @@ $noteBlock        <div class="cp-site-footer-links">
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
-          <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q">
+          <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q" aria-label="$label">
             <div class="cp-imgwrap">
               ${thumbImg(src, label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
@@ -6899,7 +6896,8 @@ $noteBlock        <div class="cp-site-footer-links">
     // publishes catalogs (i.e. a home index exists to go back to). It rides in the site header's
     // brand slot with every other page's breadcrumb, rather than as the body's first line — a
     // catalog page's own heading and grid then start at the top of the content column.
-    val back = if (hasHomeIndex) backButton(token, isPublic) else ""
+    // The brand already links to the front door; an adjacent back button duplicated it.
+    val back = ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link) rides in the site footer, next to the build and source links it belongs with, rather
     // than interrupting the route from the catalog's heading to its content. It renders expanded:
@@ -7061,7 +7059,7 @@ $noteBlock        <div class="cp-site-footer-links">
     val subLine =
       if (componentBrowser) ""
       else
-        "<p class=\"cp-sub\">${previews.size} preview(s)" +
+        "<p class=\"cp-sub\">${counted(previews.size, "preview(s)")}" +
           (if (systemViews > 0) " · ${formatViews(systemViews)}" else "") +
           "$liveNote</p>"
     // …and the viewer's control row: the page's controls over what is *shown*, as compact pills at
@@ -9852,10 +9850,10 @@ $rows
       val daySelected = if (viewerTheme != "dark") " selected" else ""
       val nightSelected = if (viewerTheme == "dark") " selected" else ""
       val defaults =
-        if (wearAlwaysDark) "<option value=\"dark\"$nightSelected>Night (Default)</option>"
+        if (wearAlwaysDark) "<option value=\"dark\"$nightSelected>Dark (Default)</option>"
         else
-          "<option value=\"light\"$daySelected>Day (Default)</option>\n" +
-            "            <option value=\"dark\"$nightSelected>Night (Default)</option>"
+          "<option value=\"light\"$daySelected>Light (Default)</option>\n" +
+            "            <option value=\"dark\"$nightSelected>Dark (Default)</option>"
       val providerOptions = body.trimEnd().let { if (it.isEmpty()) "" else "\n            $it" }
       // Visually removed, deliberately — the same treatment the render-mode radios get. The Theme
       // axis is now picked from the chips on the viewer bar ([themeBarHtml]), but this select stays
@@ -9891,8 +9889,8 @@ $rows
     val themeBarHtml =
       themeChipsHtml(
           builtIns =
-            if (wearAlwaysDark) listOf("dark" to "Night")
-            else listOf("light" to "Day", "dark" to "Night"),
+            if (wearAlwaysDark) listOf("dark" to "Dark")
+            else listOf("light" to "Light", "dark" to "Dark"),
           declared = viewerDeclaredThemes,
           indent = "          ",
         )
@@ -9910,7 +9908,7 @@ $rows
       <details class="cp-theme-menu">
         <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
           <span class="cp-toggle-label">Theme</span>
-          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Night" else "Day"}</span>
+          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Dark" else "Light"}</span>
           <span class="cp-theme-caret" aria-hidden="true">▾</span>
         </summary>
         <div class="cp-theme-menu-panel">$themeBarHtml</div>
@@ -10725,7 +10723,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
       </head>
       <body${if (componentBrowser) " class=\"cp-component-browser\"" else ""}>
         ${scriptTag("serve-chrome.js")}
-        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl, themeStorageKey.isNotBlank() && interfaceModeControl)}
         <main class="cp-main">
         $body
         </main>$footerBlock$interfaceModeControls
@@ -10754,7 +10752,11 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
     val storedTheme =
       themeStorageKey
         .takeIf { it.isNotBlank() }
-        ?.let { "||localStorage.getItem(${WebEscaping.jsString(it)})" } ?: ""
+        ?.let {
+          "||(/(?:^|__)(?:light|dark)(?:__|$)/.test(" +
+            "decodeURIComponent(location.pathname).split('/').pop()||\"\")?\"\":" +
+            "localStorage.getItem(${WebEscaping.jsString(it)}))"
+        } ?: ""
     val modeEntries = declaredThemes.mapNotNull { theme ->
       theme.mode?.let { mode ->
         WebEscaping.jsString("theme:${theme.providerFqn}") + ":" + WebEscaping.jsString(mode)
