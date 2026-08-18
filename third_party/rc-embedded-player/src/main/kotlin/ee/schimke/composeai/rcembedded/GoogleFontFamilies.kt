@@ -22,37 +22,44 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import ee.schimke.composeai.fonts.google.GoogleFontCache
+import ee.schimke.composeai.fonts.google.GoogleFontKey
 import ee.schimke.composeai.fonts.google.GoogleFontSource
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Instances a `google:` family at a document's font-variation axes.
+ * Resolves a `google:` family — at a document's font-variation axes when it carries any — from the
+ * shared machine-local Google Fonts cache.
  *
- * The player already resolves a `google:` family: it hands the name to Compose's downloadable-font
- * path (`Font(GoogleFont(...))`), which under the daemon's Robolectric sandbox is served from the
- * shared machine-local font cache. What that path cannot do is *vary* it — the `Font(GoogleFont)`
- * factory takes a weight and a style and has no `variationSettings` parameter at all, which is what
- * the upstream `TODO: Support variation settings for Google fonts` in the text-layout seam is
- * about. A document asking for `wght 1000` therefore drew the family's default instance, and the
- * catalog's `wght` / `wdth` specimens rendered as four identical lines.
+ * The player has another way to resolve one: it hands the name to Compose's downloadable-font path
+ * (`Font(GoogleFont(...))`), which needs a font provider to answer. Two things that path cannot do
+ * are why this exists.
  *
- * Applying axes needs the face's *bytes*, so this resolves the family's **variable** file — the one
- * carrying an `fvar` table — through [GoogleFontSource.loadVariable], and builds a Compose `Font`
- * from that file with the axes attached. `Font(File, …, variationSettings)` applies them through
- * `Typeface.Builder.setFontVariationSettings` on API 26+, so the instance the player draws is a
- * real interpolation of the file rather than a synthesised approximation.
+ * It cannot **vary** a family. The `Font(GoogleFont)` factory takes a weight and a style and has no
+ * `variationSettings` parameter at all — the upstream `TODO: Support variation settings for Google
+ * fonts` in the text-layout seam. A document asking for `wght 1000` drew the family's default
+ * instance, and the catalog's `wght` / `wdth` specimens rendered as four identical lines. Applying
+ * axes needs the face's *bytes*, so an axis request resolves the family's **variable** file — the
+ * one carrying an `fvar` table — through [GoogleFontSource.loadVariable] and builds a Compose
+ * `Font` from it with the axes attached. `Font(File, …, variationSettings)` applies them through
+ * `Typeface.Builder.setFontVariationSettings` on API 26+, so the instance drawn is a real
+ * interpolation of the file rather than a synthesised approximation. That is a *different* file
+ * from the static one: the CSS API serves a baked instance even for a purely variable family.
  *
- * Note the file is a *different* file from the one the no-axes path resolves: the CSS API serves a
- * baked static instance, and this needs the pre-instancing original. That is why this is consulted
- * only when a document actually carries axes — an unvaried specimen keeps the existing path and its
- * smaller download.
+ * And it cannot resolve **anything** where no provider answers. Under Robolectric that means the
+ * render must carry the `FontsContractCompat` shadow — the daemon does, the `rc-compare` harness
+ * does not — so an unvaried branded family rendered in the platform default on that lane while four
+ * other lanes drew the real face (compose-ai-tools#4170). A request with no axes therefore resolves
+ * the ordinary static face from the same cache, which is what the jvm player's resolver already
+ * does with the same request.
  *
  * Nothing here can fail a render. No cache directory configured, an offline miss, a family with no
  * variable file (Lobster Two ships static faces only), a file the platform won't decode — every one
- * yields null and the caller keeps the behaviour it had before this existed.
+ * yields null and the caller falls back to the downloadable-font path, exactly as it did before
+ * this existed. On a device that is *always* the outcome: [fonts] is null unless
+ * `composeai.fonts.cacheDir` is set, and that is a render-side property no app sets.
  */
-internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) {
+internal class GoogleFontFamilies(private val fonts: GoogleFontSource?) {
 
   /**
    * Resolved families by request. The axis list is part of the key, not just the family: a variable
@@ -66,6 +73,9 @@ internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) 
    */
   private val files = ConcurrentHashMap<Pair<String, Boolean>, File>()
 
+  /** Static faces by `(family, weight, italic)` — the no-axes request, one file per instance. */
+  private val staticFiles = ConcurrentHashMap<GoogleFontKey, File>()
+
   private data class Request(
     val family: String,
     val italic: Boolean,
@@ -75,7 +85,11 @@ internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) 
 
   /**
    * The [FontFamily] drawing [family] at [axes], or null when this isn't a request it can serve —
-   * not a `google:` family, no axes to apply, or no variable file for it.
+   * not a `google:` family, or no file for it.
+   *
+   * With no [axes] this is the family's ordinary static face; with axes it is an instance of its
+   * variable file. See the class doc for why both are served from the cache rather than left to the
+   * downloadable-font path.
    */
   fun composeFontFamily(
     family: String?,
@@ -83,12 +97,21 @@ internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) 
     style: FontStyle,
     axes: List<Pair<String, Float>>,
   ): FontFamily? {
-    if (axes.isEmpty()) return null
     val name = googleFamilyName(family) ?: return null
     val italic = style == FontStyle.Italic
     val request = Request(name, italic, weight.weight, axes)
     families[request]?.let {
       return it
+    }
+    if (axes.isEmpty()) {
+      // No axes: the static instance the cache serves for this exact (family, weight, italic) is
+      // the whole answer, and there is nothing to vary it with.
+      val staticFile = resolveStaticFile(name, weight.weight, italic) ?: return null
+      val resolved =
+        runCatching { FontFamily(Font(file = staticFile, weight = weight, style = style)) }
+          .getOrNull() ?: return null
+      families[request] = resolved
+      return resolved
     }
     val file = resolveFile(name, italic) ?: return null
     val settings =
@@ -102,6 +125,18 @@ internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) 
         .getOrNull() ?: return null
     families[request] = resolved
     return resolved
+  }
+
+  /** The static face for one `(family, weight, italic)`, cached including misses like [files]. */
+  private fun resolveStaticFile(name: String, weight: Int, italic: Boolean): File? {
+    val source = fonts ?: return null
+    val key = GoogleFontKey(name, weight, italic)
+    staticFiles[key]?.let {
+      return it.takeIf { cached -> cached !== NO_FILE }
+    }
+    val file = runCatching { source.load(key) }.getOrNull()
+    staticFiles[key] = file ?: NO_FILE
+    return file
   }
 
   private fun resolveFile(name: String, italic: Boolean): File? {
@@ -145,15 +180,15 @@ internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) 
      * axes-dropped behaviour rather than fetching into a directory it would throw away. The daemon
      * launchers set the property for every server-side render.
      */
-    val Default: GoogleVariableFontFamilies by lazy {
-      testOverride ?: GoogleVariableFontFamilies(systemPropertyGoogleFontSource())
+    val Default: GoogleFontFamilies by lazy {
+      testOverride ?: GoogleFontFamilies(systemPropertyGoogleFontSource())
     }
 
     /**
      * Replaces [Default] before it is first read, so a test can drive the seam from a fake source
      * without a cache directory or a network. Ignored once [Default] has been resolved.
      */
-    internal var testOverride: GoogleVariableFontFamilies? = null
+    internal var testOverride: GoogleFontFamilies? = null
 
     private fun systemPropertyGoogleFontSource(): GoogleFontSource? {
       val cacheDir = System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() }

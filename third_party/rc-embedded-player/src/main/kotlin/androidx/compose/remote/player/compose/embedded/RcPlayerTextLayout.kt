@@ -48,7 +48,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
-import ee.schimke.composeai.rcembedded.GoogleVariableFontFamilies
+import ee.schimke.composeai.rcembedded.GoogleFontFamilies
 
 @Composable
 internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
@@ -322,13 +322,14 @@ private fun resolveFontFamily(
         )
       }
       fontName.startsWith("google:") -> {
-        // Axes first, when the document carries any: the downloadable-font factory below
-        // takes a weight and a style and has no `variationSettings` parameter, so it can
-        // resolve this family but not vary it. `GoogleVariableFontFamilies` instances the
-        // family's variable file at the requested axes; it returns null for an unvaried
-        // request, or when there is no variable file to be had, and the factory path
-        // (unchanged) takes over.
-        GoogleVariableFontFamilies.Default.composeFontFamily(
+        // The font cache first, when the render was given one. It answers both things the
+        // downloadable-font factory below cannot: it *varies* a family (the factory takes a
+        // weight and a style and has no `variationSettings` parameter at all), and it resolves
+        // one at all where no font provider answers — a Robolectric render without the
+        // `FontsContractCompat` shadow, which is the `rc-compare` harness. It returns null when
+        // there is no cache, no file, or nothing to instance, and the factory path (unchanged)
+        // takes over — which is every render on a device.
+        GoogleFontFamilies.Default.composeFontFamily(
             family = fontName,
             weight = fontWeight,
             style = fontStyle,

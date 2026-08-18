@@ -108,7 +108,21 @@ composeAiMavenPublishing {
 // Absent either property the harness skips, so `check` stays green without a staged catalog.
 tasks.withType<Test>().configureEach {
   for (key in
-    listOf("rc.embedded.input", "rc.embedded.output", "rc.view.output", "rc.semantics.report")) {
+    listOf(
+      "rc.embedded.input",
+      "rc.embedded.output",
+      "rc.view.output",
+      "rc.semantics.report",
+      // `composeai.fonts.*` are what turn a document's `google:` family into the real face: with a
+      // cache directory the player resolves it from the shared machine-local Google Fonts cache,
+      // the same one the snapshot renderer and the jvm lane read (which forwards the identical
+      // pair). Without one every branded family renders in the platform default, and the
+      // rc-compare row shows this lane in Roboto next to four lanes showing Orbitron
+      // (compose-ai-tools#4170). Unset — the default — keeps the render hermetic, which is what
+      // `check` wants.
+      "composeai.fonts.cacheDir",
+      "composeai.fonts.offline",
+    )) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
   val dynamicColorReport =

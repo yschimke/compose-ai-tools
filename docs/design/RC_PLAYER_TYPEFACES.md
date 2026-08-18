@@ -268,8 +268,9 @@ is genuinely upstream.
 Two different code paths, and they do not agree with each other:
 
 - **Layout / `TextLayout` ops** go through `RcPlayerTextLayout.standardFontFamily`, which handles the
-  built-in ids, a named family, and `google:` (via `GoogleFontFactory` + the GMS provider, i.e.
-  Compose's downloadable-font path), plus font-variation axes.
+  built-in ids, a named family, and `google:` (from the machine-local font cache when the render was
+  given one, else via `GoogleFontFactory` + the GMS provider, i.e. Compose's downloadable-font path),
+  plus font-variation axes.
 - **Canvas `DrawText` ops** go through `RcPlayerPaint.toTextStyle`, which maps *only* the four
   built-in ids (`else -> FontFamily.Default`) and drops a named or `google:` family on the floor —
   the upstream `TODO: Support proper font family resolution (see aosp/4187117)` this module vendored
@@ -285,13 +286,24 @@ variation settings for Google fonts`. Applying axes needs the face's bytes, and 
 *pre-instancing* file: the CSS API serves a baked static instance with no `fvar` table (see
 [Where the files come from](#where-the-files-come-from) below), so there is nothing in the file the
 unvaried path resolves to vary.
-[`GoogleVariableFontFamilies`](../../third_party/rc-embedded-player/src/main/kotlin/ee/schimke/composeai/rcembedded/GoogleVariableFontFamilies.kt)
+[`GoogleFontFamilies`](../../third_party/rc-embedded-player/src/main/kotlin/ee/schimke/composeai/rcembedded/GoogleFontFamilies.kt)
 resolves the family's **variable** file through `GoogleFontSource.loadVariable` and builds a
 `Font(File, …, variationSettings)`, which reaches
-`Typeface.Builder.setFontVariationSettings` on API 26+. It is consulted only when a document
-actually carries axes, so an unvaried specimen keeps the smaller static download; families are cached
-per axis set, because a variable file's instances are different faces and a family-keyed cache would
-hand a `wght 100` line the previous line's `wght 1000` family.
+`Typeface.Builder.setFontVariationSettings` on API 26+. An unvaried request takes the same
+resolver but its static branch, so it keeps the smaller download; families are cached per axis set,
+because a variable file's instances are different faces and a family-keyed cache would hand a
+`wght 100` line the previous line's `wght 1000` family.
+
+**A `google:` family resolves from the cache before the downloadable-font path, unvaried too.** That
+path needs a font *provider* to answer, and under Robolectric that means the render must carry the
+`FontsContractCompat` shadow. The daemon's render does; the `rc-compare` embedded harness does not,
+so a branded family there rendered in the platform default while the browser, wasm and baked lanes
+drew the real face ([#4170](https://github.com/yschimke/compose-ai-tools/issues/4170)). Serving the
+static face from the same cache the axes path uses removes the difference, and changes nothing on a
+device: the cache is configured by `composeai.fonts.cacheDir`, a render-side system property no app
+sets, and without it the resolver returns null and the provider path runs exactly as before. Both
+`rc-compare` lanes are handed the property by
+[`design-artifacts-reusable.yml`](../../.github/workflows/design-artifacts-reusable.yml).
 
 ### CMP JVM — embedded player over Skiko, server-side
 
