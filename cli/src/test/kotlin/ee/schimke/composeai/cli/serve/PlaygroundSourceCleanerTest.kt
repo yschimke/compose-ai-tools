@@ -1466,6 +1466,189 @@ class PlaygroundSourceCleanerTest {
     assertEquals(listOf("counted"), result.residue)
   }
 
+  // -----------------------------------------------------------------------------------------------
+  // Delegating catalogs: scaffold sources, EXPAND, and the string-keyed `when` dispatch (#4169).
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * A sticker sheet whose previews are one-line delegations, as `:samples:design-catalog-m3` is.
+   */
+  private val delegatingPreviews =
+    """
+    package demo.catalog
+
+    import androidx.compose.runtime.Composable
+    import demo.catalog.shared.CatalogComponent
+    import ee.schimke.composeai.preview.CatalogComponent
+
+    @CatalogComponent(id = "Button/Filled", group = "Buttons")
+    @CatalogModes
+    @Composable
+    fun FilledButton() = Sticker("button-filled")
+    """
+      .trimIndent()
+
+  private val stickerHelper =
+    """
+    package demo.catalog
+
+    import androidx.compose.runtime.Composable
+    import demo.catalog.shared.CatalogComponent
+
+    @Composable fun Sticker(id: String) = CatalogSticker { CatalogComponent(id) }
+    """
+      .trimIndent()
+
+  private val sharedComponents =
+    """
+    package demo.catalog.shared
+
+    import androidx.compose.material3.Button
+    import androidx.compose.material3.Text
+    import androidx.compose.runtime.Composable
+
+    @Composable
+    fun CatalogComponent(id: String) {
+      when (id) {
+        // The tally is what makes a stateless button do something visible.
+        "button-filled" -> {
+          val label = "Filled"
+          Button(onClick = {}) { Text(label) }
+        }
+        "button-text" ->
+          TextButton(onClick = {}) {
+            Text("Text")
+          }
+        else -> Text("unknown")
+      }
+    }
+    """
+      .trimIndent()
+
+  private val delegatingRules =
+    UsageRules(
+      scaffoldAnnotationPackages = listOf("ee.schimke.composeai.preview"),
+      scaffoldAnnotationNames = listOf("CatalogModes"),
+      scaffoldSources = listOf("a/Stickers.kt", "b/Components.kt"),
+      scaffolds =
+        mapOf(
+          "Sticker" to UsageRules.Scaffold(kind = UsageRules.Kind.EXPAND),
+          "CatalogComponent" to UsageRules.Scaffold(kind = UsageRules.Kind.EXPAND),
+          "CatalogSticker" to UsageRules.Scaffold(kind = UsageRules.Kind.UNWRAP),
+        ),
+    )
+
+  private fun cleanDelegating(
+    needle: String,
+    rules: UsageRules = delegatingRules,
+    helpers: List<String> = listOf(stickerHelper, sharedComponents),
+  ) =
+    PlaygroundSourceCleaner.clean(
+      source = delegatingPreviews,
+      bodyLine = lineIn(delegatingPreviews, needle),
+      rules = rules,
+      parser = null,
+      helperSources = helpers,
+    )
+
+  /**
+   * The reported bug: a preview that is only a delegation has no component in it, so the whole
+   * reduction has to cross into the file the component actually lives in.
+   */
+  @Test
+  fun `a delegating preview expands to the component the shared set dispatches to`() {
+    val result = assertNotNull(cleanDelegating("fun FilledButton"))
+
+    assertTrue(result.text.contains("""Button(onClick = {}) { Text(label) }"""), result.text)
+    // Only the branch that was asked for: expanding the dispatch whole would substitute the entire
+    // catalog for the one component.
+    assertFalse(result.text.contains("TextButton"), result.text)
+    assertFalse(result.text.contains("unknown"), result.text)
+    assertFalse(result.text.contains("when ("), result.text)
+    // Neither wrapper survives, and the expression body became a block one so two statements fit.
+    assertFalse(result.text.contains("Sticker"), result.text)
+    assertFalse(result.text.contains("CatalogComponent"), result.text)
+    assertTrue(result.text.contains("fun FilledButton() {"), result.text)
+    // The annotation the catalog declares in the previews' own package — no import to resolve it
+    // through — comes off too, and a real `@Preview` replaces it.
+    assertFalse(result.text.contains("@CatalogModes"), result.text)
+    assertTrue(result.text.contains("@Preview"), result.text)
+    // The imports the spliced body needs come from the file the body came from.
+    assertTrue(result.text.contains("import androidx.compose.material3.Button"), result.text)
+    assertEquals(emptyList(), result.residue, result.text)
+  }
+
+  /**
+   * A repo publishing several catalogs lists every catalog's scaffolding, so one name may be
+   * declared twice. Picking either would splice one catalog's helper into another's snippet.
+   */
+  @Test
+  fun `a name two scaffold sources both declare is not expanded`() {
+    val rival =
+      """
+      package demo.other
+
+      import androidx.compose.runtime.Composable
+
+      @Composable fun Sticker(id: String) = Text("some other catalog's sticker")
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        cleanDelegating(
+          "fun FilledButton",
+          helpers = listOf(stickerHelper, sharedComponents, rival),
+        )
+      )
+
+    assertTrue(result.text.contains("""Sticker("button-filled")"""), result.text)
+    assertFalse(result.text.contains("some other catalog"), result.text)
+    assertTrue(result.residue.contains("Sticker"), result.residue.toString())
+  }
+
+  /** No scaffold sources ⇒ exactly the behaviour that shipped before EXPAND existed. */
+  @Test
+  fun `an EXPAND rule with nothing to read leaves the call alone`() {
+    val result = assertNotNull(cleanDelegating("fun FilledButton", helpers = emptyList()))
+
+    assertTrue(result.text.contains("""Sticker("button-filled")"""), result.text)
+    assertFalse(result.text.contains("fun FilledButton() {"), result.text)
+  }
+
+  /**
+   * A dispatch key the call does not pin to a literal cannot be resolved to one branch, and
+   * guessing would put a component in front of a reader that the render never composed.
+   */
+  @Test
+  fun `a dispatch whose key is not a literal is declined and reported`() {
+    val computed =
+      """
+      package demo.catalog
+
+      import androidx.compose.runtime.Composable
+      import demo.catalog.shared.CatalogComponent
+
+      @Composable
+      fun FilledButton(slug: String) {
+        CatalogComponent(slug)
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source = computed,
+          bodyLine = lineIn(computed, "CatalogComponent(slug)"),
+          rules = delegatingRules,
+          parser = null,
+          helperSources = listOf(stickerHelper, sharedComponents),
+        )
+      )
+
+    assertTrue(result.text.contains("CatalogComponent(slug)"), result.text)
+    assertTrue(result.residue.contains("CatalogComponent"), result.residue.toString())
+  }
+
   private fun lineIn(text: String, needle: String): Int =
     text.lines().indexOfFirst { it.contains(needle) } + 1
 }

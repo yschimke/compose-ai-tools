@@ -263,7 +263,13 @@ class PlaygroundSeedResolver(
         if (where.bodyLine == null) null
         else {
           val rules = rulesFor(where)
-          PlaygroundSourceCleaner.clean(text, where.bodyLine, rules, stringsFor(where, rules))
+          PlaygroundSourceCleaner.clean(
+            source = text,
+            bodyLine = where.bodyLine,
+            rules = rules,
+            strings = stringsFor(where, rules),
+            helperSources = helperSourcesFor(where, rules),
+          )
         }
       } catch (e: Exception) {
         // A seed is a convenience. A cleaner bug must degrade to the verbatim slice that worked
@@ -310,6 +316,8 @@ class PlaygroundSeedResolver(
 
   private val stringsCache =
     ConcurrentHashMap<Pair<String, String>, Pair<Map<String, String>, Long>>()
+
+  private val helperCache = ConcurrentHashMap<Pair<String, String>, Pair<List<String>, Long>>()
 
   private fun rulesFor(where: Location): UsageRules {
     val key = where.repo to where.ref
@@ -359,7 +367,12 @@ class PlaygroundSeedResolver(
       ?.let {
         return it.first
       }
-    val url = ServeUrls.githubRawUrl(where.repo, where.ref, where.module, path)
+    // A leading `/` means the repo root rather than the catalog's own module — the resources a
+    // shared component module owns are not under the module the previews live in, and every
+    // existing (module-relative) rules file is unaffected because none of them starts with one.
+    val url =
+      if (path.startsWith("/")) ServeUrls.githubRawUrl(where.repo, where.ref, null, path)
+      else ServeUrls.githubRawUrl(where.repo, where.ref, where.module, path)
     val text =
       url
         ?.let { u ->
@@ -380,6 +393,57 @@ class PlaygroundSeedResolver(
     evictExpired(stringsCache, now)
     if (stringsCache.size < maxEntries) stringsCache[key] = strings to now
     return strings
+  }
+
+  /**
+   * The catalog's declared scaffold sources ([UsageRules.scaffoldSources]), read repo-root-relative
+   * at the same `ref` as the preview's own file, so a sticker and the shared component it delegates
+   * to are always from one revision.
+   *
+   * Cached per `(repo, ref)` beside the rules that named them: one catalog has one set, every
+   * preview in it wants the same set, and a browse of a catalog must not re-read a shared module on
+   * every card. Capped at [MAX_SCAFFOLD_SOURCES] files — the whole point is a handful of
+   * scaffolding files, and a rules file naming hundreds would turn one page load into a crawl of
+   * the repo.
+   */
+  private fun helperSourcesFor(where: Location, rules: UsageRules): List<String> {
+    val paths = rules.scaffoldSources.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    if (paths.isEmpty()) return emptyList()
+    if (paths.size > MAX_SCAFFOLD_SOURCES) {
+      onLog(
+        "compose-usage.json names ${paths.size} scaffold sources; reading the first $MAX_SCAFFOLD_SOURCES"
+      )
+    }
+    val wanted = paths.take(MAX_SCAFFOLD_SOURCES)
+    val key = where.repo to "${where.ref}:${wanted.joinToString("|")}"
+    val now = clock()
+    helperCache[key]
+      ?.takeIf { now - it.second < ttlSeconds * 1000 }
+      ?.let {
+        return it.first
+      }
+    val texts = wanted.mapNotNull { path ->
+      val url = ServeUrls.githubRawUrl(where.repo, where.ref, null, path) ?: return@mapNotNull null
+      val bytes =
+        try {
+          fetch(url)
+        } catch (e: Exception) {
+          onLog("fetching scaffold source $url failed (${e.message})")
+          null
+        }
+      if (bytes == null) {
+        onLog("could not read scaffold source $url")
+        return@mapNotNull null
+      }
+      if (bytes.size > maxBytes) {
+        onLog("$url is ${bytes.size} bytes, over the ${maxBytes}-byte cap")
+        return@mapNotNull null
+      }
+      bytes.decodeToString().takeIf { !it.contains('\uFFFD') }
+    }
+    evictExpired(helperCache, now)
+    if (helperCache.size < maxEntries) helperCache[key] = texts to now
+    return texts
   }
 
   /** Drops every entry past its TTL. Called before an insert, so the caps stay reachable. */
@@ -411,6 +475,13 @@ class PlaygroundSeedResolver(
         .replace("&apos;", "'")
         .replace("&amp;", "&")
         .trim()
+
+    /**
+     * How many [UsageRules.scaffoldSources] a catalog may have read. A catalog's scaffolding is a
+     * handful of files by construction (m3-catalog: 17 helpers across three); this is the bound
+     * that keeps a mistaken rules file from turning one Source panel into a repo crawl.
+     */
+    const val MAX_SCAFFOLD_SOURCES = 12
 
     /** A preview source file. Well above any real one, well below "somebody linked a blob". */
     const val DEFAULT_MAX_BYTES = 256 * 1024

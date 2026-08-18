@@ -85,12 +85,15 @@ object PlaygroundSourceCleaner {
     rules: UsageRules,
     strings: Map<String, String> = emptyMap(),
     parser: UsageSourceParser? = UsageSourceParser.of(),
+    helperSources: List<String> = emptyList(),
   ): Result? {
     if (bodyLine == null) return null
     val lines = source.lines()
     if (bodyLine < 1 || bodyLine > lines.size) return null
     if (lines[bodyLine - 1].isBlank()) return null
 
+    val helpers = helperIndex(helperSources)
+    val extraImports = LinkedHashSet<Import>()
     val imports = importMap(lines)
     val blocks = topLevelBlocks(lines)
     val entryIndex =
@@ -120,12 +123,33 @@ object PlaygroundSourceCleaner {
           residue = residue,
           addedImports = addedImports,
           parser = parser,
+          helpers = helpers,
+          extraImports = extraImports,
         )
       cleanedByIndex[index] = cleaned
       for ((name, at) in declaredAt) {
         if (at != index && at !in seen && mentionsWord(cleaned, name)) queue.addLast(at)
       }
     }
+
+    // Then the same closure across the declared scaffold sources. A catalog whose component
+    // bodies live in a shared module leaves the cleaned text calling `StatefulCheckbox` or
+    // `CardContentSlot` — names as unresolvable to a reader as the sticker frame was, and which
+    // the same-file pass structurally cannot reach. Bounded, unlike the same-file loop: these
+    // files are somebody else's whole module, and a snippet dragging a hundred declarations
+    // behind it has stopped being an example of anything.
+    val cleanedHelpers =
+      closeOverHelpers(
+        seeds = cleanedByIndex.values,
+        helpers = helpers,
+        skip = declaredAt.keys + rules.scaffolds.keys,
+        rules = rules,
+        strings = strings,
+        residue = residue,
+        addedImports = addedImports,
+        parser = parser,
+        extraImports = extraImports,
+      )
 
     // Entry first, then its helpers in file order — a reader wants the composable they clicked at
     // the top, not after two private helpers they did not ask about.
@@ -135,11 +159,12 @@ object PlaygroundSourceCleaner {
         .sorted()
         .filter { it != entryIndex }
         .forEach { add(cleanedByIndex.getValue(it)) }
+      addAll(cleanedHelpers)
     }
     val body = bodies.joinToString("\n\n").trimEnd()
     if (body.isBlank()) return null
 
-    val header = headerFor(lines, imports, body, addedImports, rules, residue)
+    val header = headerFor(lines, imports, body, addedImports, rules, residue, extraImports)
     val text = if (header.isEmpty()) body else "$header\n\n$body"
     return Result(text, blocks[entryIndex].name, residue.toList())
   }
@@ -192,9 +217,17 @@ object PlaygroundSourceCleaner {
    * harmless here: the pattern is still anchored at column 0 and still has to reach a real
    * declaration keyword.
    */
+  /**
+   * The leading annotations a one-line declaration carries — `@Composable fun Sticker(id: String) =
+   * …`, which is what ktfmt emits whenever the whole thing fits. Without this the declaration has
+   * no *name* as far as [declaredName] is concerned, so it is invisible to both closure passes: a
+   * one-line helper simply never came along, and the snippet called something it never brought.
+   */
+  private const val ANNOTATION_RUN = """(?:@[A-Za-z_][A-Za-z0-9_.]*(?:\([^)\n]*\))?\s+)*"""
+
   private val DECLARATION =
     Regex(
-      """^(?:[a-z]+\s+)*(?:fun|val|var|class|object|interface|typealias)\s+(?:<[^>]*>\s+)?([A-Za-z_][A-Za-z0-9_]*)"""
+      """^$ANNOTATION_RUN(?:[a-z]+\s+)*(?:fun|val|var|class|object|interface|typealias)\s+(?:<[^>]*>\s+)?([A-Za-z_][A-Za-z0-9_]*)"""
     )
 
   /**
@@ -256,6 +289,7 @@ object PlaygroundSourceCleaner {
     addedImports: Set<String>,
     rules: UsageRules,
     residue: MutableSet<String>,
+    extraImports: Set<Import> = emptySet(),
   ): String {
     // Kept whole, by paren balance rather than by line. A ktfmt-wrapped
     // `@file:OptIn(\n  A::class,\n  B::class,\n)` is one annotation across five lines, and a
@@ -265,22 +299,49 @@ object PlaygroundSourceCleaner {
       annotationBlocks(lines.takeWhile { !it.trimStart().startsWith("package ") })
         .filterNot { isScaffoldAnnotation(it.name, imports, rules) }
         .map { it.text }
-    val kept =
-      importsOf(lines).filter { import ->
-        if (isScaffoldPackage(import.fqn, rules)) {
-          // A scaffold import that is still referenced means a rule is missing, not that the import
-          // should be kept — record it and drop it, so the residue names the gap.
-          if (mentionsIdentifier(body, import.name)) residue.add(import.name)
-          false
-        } else {
-          mentionsIdentifier(body, import.name) ||
-            fileAnnotations.any { mentionsIdentifier(it, import.name) }
-        }
+    // The preview file's own imports, plus the ones the scaffold sources contributed for whatever
+    // was expanded or closed over out of them. An extra whose simple name the preview file already
+    // binds to something else is dropped rather than emitted alongside it: two imports of the same
+    // name do not compile, and the file being cleaned is the one whose meaning must win.
+    val ownNames = importsOf(lines).map { it.name }.toSet()
+    val candidates =
+      importsOf(lines) + extraImports.filter { it.name !in ownNames }.distinctBy { it.name }
+    val kept = candidates.filter { import ->
+      if (isScaffoldPackage(import.fqn, rules)) {
+        // A scaffold import that is still referenced means a rule is missing, not that the import
+        // should be kept — record it and drop it, so the residue names the gap.
+        if (mentionsIdentifier(body, import.name)) residue.add(import.name)
+        false
+      } else if (import.fqn in DELEGATION_IMPORTS) {
+        // `var checked by remember { mutableStateOf(…) }` needs `getValue`/`setValue` and names
+        // neither, so the mention test prunes exactly the two imports that make the delegation
+        // compile. Keep them whenever the body delegates — an unused import is a warning, a
+        // missing one is a snippet advertised as runnable that does not build.
+        usesPropertyDelegation(body)
+      } else {
+        mentionsIdentifier(body, import.name) ||
+          fileAnnotations.any { mentionsIdentifier(it, import.name) }
       }
+    }
     val all = (kept.map { it.render() } + addedImports.map { "import $it" }).distinct().sorted()
     return (fileAnnotations + (if (fileAnnotations.isEmpty()) emptyList() else listOf("")) + all)
       .joinToString("\n")
       .trim()
+  }
+
+  /**
+   * The two imports a `by` property delegation needs and never mentions. Compose's `MutableState`
+   * delegation is the reason: `import androidx.compose.runtime.getValue` is what makes `var x by
+   * remember { mutableStateOf(0) }` resolve, and nothing in that line says `getValue`.
+   */
+  private val DELEGATION_IMPORTS =
+    setOf("androidx.compose.runtime.getValue", "androidx.compose.runtime.setValue")
+
+  private fun usesPropertyDelegation(body: String): Boolean {
+    val mask = codeMask(body)
+    return Regex("""\b(?:val|var)\s+[A-Za-z_][A-Za-z0-9_]*\s+by\s""").findAll(body).any {
+      mask[it.range.first]
+    }
   }
 
   private data class AnnotationBlock(val name: String, val text: String)
@@ -322,8 +383,15 @@ object PlaygroundSourceCleaner {
     residue: MutableSet<String>,
     addedImports: MutableSet<String>,
     parser: UsageSourceParser?,
+    helpers: Map<String, Helper> = emptyMap(),
+    extraImports: MutableSet<Import> = mutableSetOf(),
   ): String {
     var out = stripScaffoldAnnotations(text, imports, rules)
+    // Before every other pass: a delegating sticker has no component in it *to* clean until what it
+    // delegates to has been spliced in, and everything below — the string inliner, the knob
+    // substitutions, the import prune — then runs over the real body rather than over a one-line
+    // wrapper. See [UsageRules.Kind.EXPAND].
+    out = expandDelegates(out, rules, helpers, residue, extraImports)
     out = inlineStringResources(out, strings)
     // Before anything matches on a helper name: a call written fully qualified is the same call.
     out = unqualifyScaffoldCalls(out, rules)
@@ -409,6 +477,10 @@ object PlaygroundSourceCleaner {
     imports: Map<String, String>,
     rules: UsageRules,
   ): Boolean {
+    // The bare-name list first: an annotation the catalog declares in the previews' own package
+    // (`@CatalogModes`) is written with no import at all, so there is nothing for the package rule
+    // below to resolve. See [UsageRules.scaffoldAnnotationNames].
+    if (simpleName in rules.scaffoldAnnotationNames) return true
     val fqn = imports[simpleName] ?: return false
     return isScaffoldPackage(fqn, rules)
   }
@@ -564,14 +636,13 @@ object PlaygroundSourceCleaner {
       if (scaffold.kind != UsageRules.Kind.UNWRAP) continue
       var guard = 0
       while (guard++ < MAX_REWRITES) {
-        val call = findCall(out, name) ?: break
-        val lambdaOpen = out.indexOf('{', call.argsEnd).takeIf { it >= 0 } ?: break
+        val (callStart, lambdaOpen) = findWrapperCall(out, name) ?: break
         val lambdaClose = matchBrace(out, lambdaOpen) ?: break
         val inner = out.substring(lambdaOpen + 1, lambdaClose)
-        val callIndent = indentOf(out, call.start)
-        val lineStart = out.lastIndexOf('\n', call.start - 1) + 1
-        val prefix = out.substring(lineStart, call.start)
-        val body = dedent(inner, callIndent)
+        val callIndent = indentOf(out, callStart)
+        val lineStart = out.lastIndexOf('\n', callStart - 1) + 1
+        val prefix = out.substring(lineStart, callStart)
+        val body = reindent(inner, callIndent)
         // Where the splice starts depends on what precedes the call on its own line.
         //
         // When the line is only indentation, splice from the line start: that indent is already the
@@ -584,10 +655,33 @@ object PlaygroundSourceCleaner {
         // body's own first-line indent, which the prefix now supplies.
         out =
           if (prefix.isBlank()) out.substring(0, lineStart) + body + out.substring(lambdaClose + 1)
-          else out.substring(0, call.start) + body.trimStart() + out.substring(lambdaClose + 1)
+          else out.substring(0, callStart) + body.trimStart() + out.substring(lambdaClose + 1)
       }
     }
     return out
+  }
+
+  /**
+   * A wrapper call and the `{` opening its trailing lambda — `Frame(size) { … }` **or** `Frame { …
+   * }`.
+   *
+   * The paren-less form is not an edge case, it is how most Compose wrappers are written, and
+   * [findCall] cannot see it: it requires a `(` after the name. So a catalog declaring its
+   * argument-free sticker frame as UNWRAP got no rewrite at all and the frame in its residue —
+   * which reads as "this rule needs writing" for a rule that was written correctly.
+   */
+  private fun findWrapperCall(text: String, name: String): Pair<Int, Int>? {
+    for (at in wordOccurrences(text, name)) {
+      var k = at + name.length
+      while (k < text.length && text[k].isWhitespace()) k++
+      if (k < text.length && text[k] == '(') {
+        val close = matchParen(text, k) ?: continue
+        k = close + 1
+        while (k < text.length && text[k].isWhitespace()) k++
+      }
+      if (k < text.length && text[k] == '{') return at to k
+    }
+    return null
   }
 
   /** A `name = value` argument, as distinct from a positional one. */
@@ -828,6 +922,547 @@ object PlaygroundSourceCleaner {
     lines.add(insertAt, "@$simple")
     addedImports.add(rules.previewAnnotation)
     return lines.joinToString("\n")
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Cross-file scaffolding: the declared scaffold sources, what may be expanded out of them, and
+  // what may be closed over from them. See [UsageRules.scaffoldSources] and
+  // [UsageRules.Kind.EXPAND].
+  // ---------------------------------------------------------------------------------------------
+
+  /** One top-level declaration read out of a scaffold source, carrying its file's imports. */
+  private data class Helper(
+    val text: String,
+    val imports: List<Import>,
+    val importMap: Map<String, String>,
+  )
+
+  /**
+   * At most this many declarations are pulled in from the scaffold sources. The same-file closure
+   * is deliberately unbounded — a preview file is the catalog author's own unit of code and all of
+   * it is about the preview — but these files are a whole shared module, and a snippet that drags a
+   * hundred declarations behind it has stopped being an example of the component.
+   */
+  private const val MAX_HELPER_CLOSURES = 8
+
+  /** And no single one larger than this: past it the helper *is* the snippet. */
+  private const val MAX_HELPER_BYTES = 4_000
+
+  /**
+   * Name → declaration across every scaffold source.
+   *
+   * A name declared more than once — in two of the files, or twice in one as an overload set — is
+   * removed rather than resolved by order. A repo that publishes several catalogs lists all of
+   * their scaffolding here, and quietly splicing one catalog's `counted` into another's snippet
+   * would produce code that never ran anywhere.
+   */
+  private fun helperIndex(sources: List<String>): Map<String, Helper> {
+    if (sources.isEmpty()) return emptyMap()
+    val out = LinkedHashMap<String, Helper>()
+    val ambiguous = mutableSetOf<String>()
+    for (source in sources) {
+      val lines = source.lines()
+      val imports = importsOf(lines)
+      val importMap = imports.associate { it.name to it.fqn }
+      for (block in topLevelBlocks(lines)) {
+        val name = block.name ?: continue
+        if (out.put(name, Helper(block.text, imports, importMap)) != null) ambiguous.add(name)
+      }
+    }
+    ambiguous.forEach { out.remove(it) }
+    return out
+  }
+
+  /**
+   * Clean whatever the seeds still call that a scaffold source declares, breadth-first, and return
+   * those bodies in the order they were pulled in.
+   *
+   * [skip] carries the names that are somebody else's business: what the preview's own file already
+   * declares (the same-file closure has it), and what the rules describe (a declared scaffold is
+   * rewritten, never copied in — copying it would defeat the rule and re-introduce the machinery).
+   */
+  private fun closeOverHelpers(
+    seeds: Collection<String>,
+    helpers: Map<String, Helper>,
+    skip: Set<String>,
+    rules: UsageRules,
+    strings: Map<String, String>,
+    residue: MutableSet<String>,
+    addedImports: MutableSet<String>,
+    parser: UsageSourceParser?,
+    extraImports: MutableSet<Import>,
+  ): List<String> {
+    if (helpers.isEmpty()) return emptyList()
+    val cleaned = LinkedHashMap<String, String>()
+    val queue = ArrayDeque<String>()
+    val queued = mutableSetOf<String>()
+    fun enqueue(text: String) {
+      for (name in helpers.keys) {
+        if (name in skip || name in queued) continue
+        if (mentionsWord(text, name)) {
+          queued.add(name)
+          queue.addLast(name)
+        }
+      }
+    }
+    seeds.forEach(::enqueue)
+    while (queue.isNotEmpty() && cleaned.size < MAX_HELPER_CLOSURES) {
+      val name = queue.removeFirst()
+      val helper = helpers.getValue(name)
+      // Too big to be an example. Left uncopied and named in the residue, so the note says the
+      // snippet still refers to something it did not bring along.
+      if (helper.text.length > MAX_HELPER_BYTES) {
+        residue.add(name)
+        continue
+      }
+      val body =
+        cleanBlock(
+          text = helper.text,
+          rules = rules,
+          imports = helper.importMap,
+          strings = strings,
+          isEntry = false,
+          residue = residue,
+          addedImports = addedImports,
+          parser = parser,
+          helpers = helpers,
+          extraImports = extraImports,
+        )
+      cleaned[name] = body
+      extraImports.addAll(helper.imports)
+      enqueue(body)
+    }
+    // Whatever the cap left in the queue is still referenced and still not here; say so rather than
+    // let the note claim a snippet that closes over everything it uses.
+    queue.forEach { residue.add(it) }
+    return cleaned.values.toList()
+  }
+
+  /**
+   * Replace every call to a declared [UsageRules.Kind.EXPAND] helper with the helper's own body,
+   * its parameters bound to the call's arguments.
+   *
+   * Iterative rather than recursive: an expansion may itself call another delegating helper
+   * (`Sticker(id)` → `CatalogSticker { CatalogComponent(id) }` → the component), and each pass over
+   * the text picks the next one up. A helper whose expansion still calls itself is declined instead
+   * — that is a recursion this cannot terminate, and the guard alone would only bound how large the
+   * damage got.
+   */
+  private fun expandDelegates(
+    text: String,
+    rules: UsageRules,
+    helpers: Map<String, Helper>,
+    residue: MutableSet<String>,
+    extraImports: MutableSet<Import>,
+  ): String {
+    val expandable =
+      rules.scaffolds
+        .filterValues { it.kind == UsageRules.Kind.EXPAND }
+        .keys
+        .filter { helpers.containsKey(it) }
+    if (expandable.isEmpty()) return text
+    var out = text
+    if (expandable.any { findCall(out, it) != null }) out = blockBodyForm(out)
+    val declined = mutableSetOf<String>()
+    var guard = 0
+    while (guard++ < MAX_REWRITES) {
+      val name = expandable.firstOrNull { it !in declined && findCall(out, it) != null } ?: break
+      val helper = helpers.getValue(name)
+      val call = findCall(out, name) ?: break
+      val expansion = expandCall(helper, out.substring(call.argsStart + 1, call.argsEnd))
+      if (expansion == null || mentionsWord(expansion, name)) {
+        declined.add(name)
+        residue.add(name)
+        continue
+      }
+      out = spliceExpansion(out, call, expansion)
+      extraImports.addAll(helper.imports)
+    }
+    return out
+  }
+
+  /**
+   * `@Composable fun X() = Sticker("id")` → `@Composable fun X() { Sticker("id") }`.
+   *
+   * An expression body is a fine shape for a one-line delegation and an impossible one for what the
+   * delegation expands *to*: a component body is several statements, and splicing them after an `=`
+   * produces Kotlin that does not parse. Converting first is safe only where the declaration
+   * returns `Unit`, so this requires a `@Composable` with **no declared return type** and leaves
+   * every other expression body exactly as written.
+   */
+  private fun blockBodyForm(text: String): String {
+    if (!mentionsWord(text, "@Composable")) return text
+    val mask = codeMask(text)
+    val head = findFunctionHead(text, mask) ?: return text
+    val open = head.range.last
+    val close = matchParen(text, open) ?: return text
+    var i = close + 1
+    while (i < text.length && text[i].isWhitespace()) i++
+    // A `:` here is a declared return type, and `{` is already a block body. Only a bare `=` is the
+    // Unit-returning expression body this may rewrite.
+    if (i >= text.length || text[i] != '=' || text.getOrNull(i + 1) == '=') return text
+    val body = text.substring(i + 1).trim()
+    if (body.isEmpty()) return text
+    val indent = head.range.first - (text.lastIndexOf('\n', head.range.first - 1) + 1)
+    return text.substring(0, i) +
+      "{\n" +
+      reindent(body, indent + 2) +
+      "\n" +
+      " ".repeat(indent) +
+      "}"
+  }
+
+  /**
+   * Anchored at a line start ([RegexOption.MULTILINE]), which is not cosmetic: `fun` is three
+   * lowercase letters, so the unanchored pattern's optional modifier run happily consumes it and
+   * matches from the middle of the *previous* line — `@Composable\nfun X(` matched at `omposable`.
+   * [Regex.findAll] returns non-overlapping matches, so that phantom swallowed the real declaration
+   * and every helper came back unparseable.
+   */
+  private val FUNCTION_HEAD =
+    Regex(
+      """^$ANNOTATION_RUN(?:[a-z]+\s+)*fun\s+(?:<[^>]*>\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\(""",
+      RegexOption.MULTILINE,
+    )
+
+  /**
+   * The declaration's own `fun Name(` — at a **code** position and at the start of its own line, so
+   * a `fun` written in the KDoc above it is never mistaken for the thing that KDoc documents.
+   */
+  private fun findFunctionHead(text: String, mask: BooleanArray): MatchResult? =
+    FUNCTION_HEAD.findAll(text).firstOrNull { match ->
+      val at = match.range.first
+      mask[at] && text.lastIndexOf('\n', at - 1) + 1 == at
+    }
+
+  /** A declared parameter: the name a body refers to it by, and its default if it has one. */
+  private data class Param(val name: String, val default: String?)
+
+  private data class FunctionDecl(val params: List<Param>, val body: String)
+
+  /**
+   * The body of the helper [helper] declares, with its parameters bound to [argsText].
+   *
+   * Null whenever the answer would be a guess — a declaration this cannot parse, an argument list
+   * that does not bind, a parameter left with neither an argument nor a default, or a `when`
+   * dispatch whose subject is not a literal. The caller then leaves the call alone and reports it.
+   */
+  private fun expandCall(helper: Helper, argsText: String): String? {
+    val decl = parseFunction(helper.text) ?: return null
+    val args =
+      bindArguments(splitTopLevel(argsText).map { it.trim() }, decl.params.map { it.name })
+        ?: return null
+    val bound =
+      decl.params.mapIndexed { i, p -> p.name to (args.getOrNull(i) ?: p.default) }.toMap()
+    if (bound.values.any { it == null }) return null
+    // A dispatch is all-or-nothing: either the one branch the call selects, or no expansion. Left
+    // to fall through, a key this cannot pin to a literal would splice the *entire* component set
+    // in — every branch of it — which is the one outcome worse than not expanding.
+    val dispatch = loneWhen(decl.body)
+    var body = if (dispatch == null) decl.body else dispatchBranch(dispatch, bound) ?: return null
+    for ((name, value) in bound) body = replaceWord(body, name, value!!)
+    // Normalised to column 0 as a block, never `trim`ped: trimming would strip the *first* line's
+    // indent and leave every continuation line carrying the helper file's original column, so the
+    // spliced body came out with its second line hanging eight spaces off its first.
+    return reindent(body, 0).ifBlank { null }
+  }
+
+  private val WHEN_SUBJECT = Regex("""^when\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*\{""")
+
+  private val STRING_LITERAL = Regex("""^"(?:[^"\\]|\\.)*"$""")
+
+  /** A body that is nothing but `when (<subject>) { … }` — a shared component set's dispatch. */
+  private data class LoneWhen(val subject: String, val entries: List<Pair<String, String>>)
+
+  /**
+   * [body] read as a dispatch, or null when it is not one.
+   *
+   * *Lone* is the requirement: anything after the `when`'s closing brace means the helper does more
+   * than dispatch, and keeping one branch of it would silently drop the rest.
+   */
+  private fun loneWhen(body: String): LoneWhen? {
+    val trimmed = body.trim()
+    val head = WHEN_SUBJECT.find(trimmed) ?: return null
+    val open = head.range.last
+    val close = matchBrace(trimmed, open) ?: return null
+    if (trimmed.substring(close + 1).isNotBlank()) return null
+    return LoneWhen(head.groupValues[1], whenEntries(trimmed.substring(open + 1, close)))
+  }
+
+  /**
+   * The one branch of a shared component set's `when (id)` that [bound] selects, or null when it
+   * selects none — a subject the call did not bind to a string literal, or a key with no branch and
+   * no `else`.
+   *
+   * A catalog's component set is one such dispatch over several hundred branches, so this is the
+   * difference between the snippet being the component and the snippet being the catalog.
+   */
+  private fun dispatchBranch(dispatch: LoneWhen, bound: Map<String, String?>): String? {
+    val key = bound[dispatch.subject]?.trim() ?: return null
+    if (!STRING_LITERAL.matches(key)) return null
+    val match =
+      dispatch.entries.firstOrNull { (conditions, _) ->
+        splitTopLevel(conditions).any { it.trim() == key }
+      } ?: dispatch.entries.firstOrNull { it.first.trim() == "else" } ?: return null
+    // Normalised, not trimmed: `trim` would take the *first* line's indentation with it and leave
+    // the rest of the branch carrying the component set's original column, which is the difference
+    // between a branch that reads as code and one whose second line hangs eight spaces to the
+    // right of its first.
+    val branch = reindent(match.second, 0)
+    // A braced branch body contributes its statements, not its braces.
+    return if (branch.startsWith("{") && matchBrace(branch, 0) == branch.length - 1)
+      branch.substring(1, branch.length - 1)
+    else branch
+  }
+
+  /**
+   * The `<conditions> -> <body>` entries of a `when` body, as text.
+   *
+   * A braced branch ends at its matching brace. An unbraced one ends at the next line indented no
+   * further than the entry itself — ktfmt's own rule for continuing an expression, and the only
+   * signal available without a parse. Comments between entries are skipped, which the m3 component
+   * set has plenty of.
+   */
+  private fun whenEntries(body: String): List<Pair<String, String>> {
+    val mask = codeMask(body)
+    val out = mutableListOf<Pair<String, String>>()
+    var i = 0
+    while (i < body.length) {
+      i = skipTrivia(body, i)
+      if (i >= body.length) break
+      val conditionStart = i
+      val entryIndent = conditionStart - (body.lastIndexOf('\n', conditionStart - 1) + 1)
+      val arrow = topLevelArrow(body, mask, i) ?: break
+      val conditions = body.substring(conditionStart, arrow)
+      var j = arrow + 2
+      while (j < body.length && body[j].isWhitespace()) j++
+      if (j >= body.length) break
+      // A branch written *below* its `->` keeps its own line's indentation: the entry text starts
+      // at the beginning of that line, not at its first token, so the dedent downstream can still
+      // see what column the branch was written in.
+      if (body[j] != '{') {
+        val lineStart = body.lastIndexOf('\n', j - 1)
+        if (lineStart > arrow) j = lineStart + 1
+      }
+      val end =
+        if (body[j] == '{') (matchBrace(body, j) ?: break) + 1
+        else expressionEnd(body, mask, j, entryIndent)
+      out.add(conditions to body.substring(j, end))
+      i = end
+    }
+    return out
+  }
+
+  /** Advances past whitespace and comments. */
+  private fun skipTrivia(text: String, from: Int): Int {
+    var i = from
+    while (i < text.length) {
+      when {
+        text[i].isWhitespace() -> i++
+        text.startsWith("//", i) -> i = text.indexOf('\n', i).takeIf { it >= 0 } ?: text.length
+        text.startsWith("/*", i) -> i = blockCommentEnd(text, i)
+        else -> return i
+      }
+    }
+    return i
+  }
+
+  /** The `->` separating an entry's conditions from its body — at depth 0, so no lambda's. */
+  private fun topLevelArrow(text: String, mask: BooleanArray, from: Int): Int? {
+    var depth = 0
+    var i = from
+    while (i < text.length - 1) {
+      if (mask[i]) {
+        when (text[i]) {
+          '(',
+          '[',
+          '{' -> depth++
+          ')',
+          ']',
+          '}' -> depth--
+          '-' -> if (depth == 0 && text[i + 1] == '>') return i
+        }
+      }
+      i++
+    }
+    return null
+  }
+
+  private fun expressionEnd(
+    text: String,
+    mask: BooleanArray,
+    from: Int,
+    entryIndent: Int,
+  ): Int {
+    var depth = 0
+    var i = from
+    while (i < text.length) {
+      if (mask[i]) {
+        when (text[i]) {
+          '(',
+          '[',
+          '{' -> depth++
+          ')',
+          ']',
+          '}' -> {
+            depth--
+            if (depth < 0) return i
+          }
+        }
+      }
+      if (text[i] == '\n' && depth == 0) {
+        val next = nextNonBlankIndent(text, i + 1)
+        if (next == null || next <= entryIndent) return i
+      }
+      i++
+    }
+    return text.length
+  }
+
+  private fun nextNonBlankIndent(text: String, from: Int): Int? {
+    var j = from
+    while (j < text.length) {
+      val end = text.indexOf('\n', j).takeIf { it >= 0 } ?: text.length
+      val line = text.substring(j, end)
+      if (line.isNotBlank()) return line.takeWhile { it == ' ' }.length
+      j = end + 1
+    }
+    return null
+  }
+
+  /**
+   * `fun Name(<params>) = <expr>` / `fun Name(<params>) { <body> }`, as parameters and body text.
+   *
+   * The declaration is found at a **code** position and at the start of its own line, so a `fun`
+   * written inside the KDoc above it is not mistaken for the declaration it documents.
+   */
+  private fun parseFunction(text: String): FunctionDecl? {
+    val mask = codeMask(text)
+    val head = findFunctionHead(text, mask) ?: return null
+    val open = head.range.last
+    val close = matchParen(text, open) ?: return null
+    val params =
+      splitTopLevel(text.substring(open + 1, close))
+        .mapNotNull { parseParam(it) }
+        .ifEmpty { if (text.substring(open + 1, close).isBlank()) emptyList() else return null }
+    var i = close + 1
+    while (i < text.length && text[i].isWhitespace()) i++
+    // Skip a declared return type: it may itself contain `->` and `<…>`, neither of which is the
+    // body, so scan to the first `=` or `{` that is not inside one.
+    if (i < text.length && text[i] == ':') {
+      var depth = 0
+      i++
+      while (i < text.length) {
+        if (mask[i]) {
+          when (text[i]) {
+            '(',
+            '[',
+            '<' -> depth++
+            ')',
+            ']',
+            '>' -> depth--
+            '{' -> if (depth <= 0) break
+            '=' -> if (depth <= 0 && text.getOrNull(i + 1) != '=') break
+          }
+        }
+        i++
+      }
+    }
+    if (i >= text.length) return null
+    return when (text[i]) {
+      '=' -> FunctionDecl(params, text.substring(i + 1).trim())
+      '{' -> {
+        val end = matchBrace(text, i) ?: return null
+        FunctionDecl(params, text.substring(i + 1, end))
+      }
+      else -> null
+    }
+  }
+
+  /** `id: String`, `index: Int? = null`, `content: @Composable () -> Unit`. */
+  private fun parseParam(text: String): Param? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return null
+    val mask = codeMask(trimmed)
+    val colon =
+      trimmed.indices.firstOrNull { trimmed[it] == ':' && mask[it] && !inBrackets(trimmed, it) }
+        ?: return null
+    val name =
+      Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*$""")
+        .find(trimmed.substring(0, colon))
+        ?.groupValues
+        ?.get(1) ?: return null
+    val rest = trimmed.substring(colon + 1)
+    val restMask = codeMask(rest)
+    val eq =
+      rest.indices.firstOrNull {
+        rest[it] == '=' &&
+          restMask[it] &&
+          rest.getOrNull(it + 1) != '=' &&
+          rest.getOrNull(it - 1) !in listOf('=', '!', '<', '>', '-') &&
+          !inBrackets(rest, it)
+      }
+    return Param(name, eq?.let { rest.substring(it + 1).trim() })
+  }
+
+  private fun inBrackets(text: String, at: Int): Boolean {
+    val mask = codeMask(text)
+    var depth = 0
+    for (i in 0 until at) {
+      if (!mask[i]) continue
+      when (text[i]) {
+        '(',
+        '[',
+        '<',
+        '{' -> depth++
+        ')',
+        ']',
+        '>',
+        '}' -> depth--
+      }
+    }
+    return depth > 0
+  }
+
+  /**
+   * Put [expansion] where the call was, indented to where the call sat.
+   *
+   * A one-line expansion replaces the call expression in place, as any substitution does. A
+   * multi-line one cannot: the call may share its line with a lambda brace that opened before it
+   * and closes after it (`CatalogSticker { CatalogComponent("x") }`), and simply pasting statements
+   * into the middle of that line produces something that parses only by accident. So the line is
+   * broken around it — what preceded the call, the expansion indented one level in, then what
+   * followed.
+   */
+  private fun spliceExpansion(text: String, call: Call, expansion: String): String {
+    val after = call.argsEnd + 1
+    if (!expansion.contains('\n')) {
+      return text.substring(0, call.start) + expansion + text.substring(after)
+    }
+    val lineStart = text.lastIndexOf('\n', call.start - 1) + 1
+    val lineEnd = text.indexOf('\n', after).takeIf { it >= 0 } ?: text.length
+    val prefix = text.substring(lineStart, call.start)
+    val suffix = text.substring(after, lineEnd)
+    val indent = prefix.takeWhile { it == ' ' }.length
+    val head = if (prefix.isBlank()) "" else prefix.trimEnd() + "\n"
+    val bodyIndent = if (prefix.isBlank()) indent else indent + 2
+    val tail = if (suffix.isBlank()) "" else "\n" + " ".repeat(indent) + suffix.trimStart()
+    return text.substring(0, lineStart) +
+      head +
+      reindent(expansion, bodyIndent) +
+      tail +
+      text.substring(lineEnd)
+  }
+
+  /** Re-indents a lifted body to [column], preserving its own internal shape. */
+  private fun reindent(text: String, column: Int): String {
+    val lines = text.lines().dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }
+    if (lines.isEmpty()) return ""
+    val common =
+      lines.filter { it.isNotBlank() }.minOfOrNull { line -> line.takeWhile { it == ' ' }.length }
+        ?: 0
+    val pad = " ".repeat(column)
+    return lines.joinToString("\n") { if (it.isBlank()) "" else (pad + it.drop(common)).trimEnd() }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1140,17 +1775,6 @@ object PlaygroundSourceCleaner {
   private fun indentOf(text: String, at: Int): Int {
     val lineStart = text.lastIndexOf('\n', at - 1) + 1
     return text.substring(lineStart, at).takeWhile { it == ' ' }.length
-  }
-
-  /** Re-indents a lambda body lifted out of its wrapper, to the column the wrapper sat at. */
-  private fun dedent(inner: String, toColumn: Int): String {
-    val lines = inner.lines().filter { it.isNotBlank() }
-    if (lines.isEmpty()) return ""
-    val common = lines.minOf { line -> line.takeWhile { it == ' ' }.length }
-    val shift = common - toColumn
-    return lines.joinToString("\n") { line ->
-      if (shift > 0) line.drop(minOf(shift, line.takeWhile { it == ' ' }.length)) else line
-    }
   }
 
   private fun removeLines(text: String, range: IntRange): String {
