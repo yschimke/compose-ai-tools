@@ -65,16 +65,16 @@ public player API.
 Create original code outside `third_party`:
 
 ```text
-:rc-player-trace          KMP: commonMain + desktop + wasmJs + iOS
+:rc-player-trace          KMP: commonMain + jvm + wasmJs + iOS
   androidx.tracing 2.x facade every module above opens spans through
 
-:rc-player-protocol       KMP: commonMain + desktop test target + wasmJs + iOS
+:rc-player-protocol       KMP: commonMain + jvm test target + wasmJs + iOS
   immutable operation IR, wire reader/writer, codecs, validation, debug JSON
 
-:rc-player-runtime        KMP: commonMain + desktop + wasmJs + iOS
+:rc-player-runtime        KMP: commonMain + jvm + wasmJs + iOS
   document linking, value store, expressions, clock, actions, invalidation
 
-:rc-player-compose        KMP/CMP: commonMain + desktop + wasmJs + iOS framework
+:rc-player-compose        KMP/CMP: commonMain + jvm + wasmJs + iOS framework
   operation interpreter, Compose layout, DrawScope renderer, input/semantics
 
 :rc-player-wasm           wasmJs executable
@@ -93,7 +93,11 @@ Tracing and profiling are written up separately in
 per-phase numbers.
 
 The JVM target in the first three modules is a fast test and reference-render target, not a
-production dependency on `remote-core`. Only `:rc-player-compat-tests` may depend on `remote-core`.
+production dependency on `remote-core`. It is declared as an **unnamed `jvm()`**, so the source sets
+are `jvmMain`/`jvmTest` and the test task is `:rc-player-<module>:jvmTest`. That is deliberate and
+matters for publishing: the artifact then carries the conventional `-jvm` classifier rather than
+`-desktop`, which would misname bytecode Android also resolves (#4063, and the same decision
+`runtimes/slots/build.gradle.kts` records). Only `:rc-player-compat-tests` may depend on `remote-core`.
 The Wasm distribution can reuse the repository's existing webpack-free assembly pattern from
 `:samples:cmp-wasm-catalog`, including the processed Skiko runtime.
 

@@ -47,7 +47,13 @@ kotlin {
   // per operation would scatter the same state across five top-level functions.
   compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
 
-  jvm("desktop")
+  // Unnamed `jvm()`, not `jvm("desktop")`. This module is published, and the JVM artifact should
+  // carry the conventional `-jvm` classifier — the decision `runtimes/slots/build.gradle.kts`
+  // already records for a published KMP module. `-desktop` also misnames bytecode that Android
+  // resolves perfectly well. The cost is that the source sets are `jvmMain`/`jvmTest` and the test
+  // task is `:rc-player-<module>:jvmTest`; nothing in `ci.yml` named the old paths (it runs
+  // `allTests`), so the rename is contained to this repo's source layout. See #4063.
+  jvm()
   iosX64()
   iosArm64()
   iosSimulatorArm64()
@@ -56,7 +62,7 @@ kotlin {
 
   sourceSets {
     commonTest.dependencies { implementation(kotlin("test")) }
-    val desktopMain by getting { dependencies { implementation(libs.androidx.tracing.kmp) } }
+    jvmMain.dependencies { implementation(libs.androidx.tracing.kmp) }
   }
 }
 
