@@ -1211,6 +1211,7 @@ the situation instead, on the cover sheet:
   "system": "meshcore-mobile",
   "title": "MeshCore",
   "completeness": {
+    "$comment": "Synthetic Activity renders: the app cold-starts with no data, so the frame is near-empty.",
     "exemptSemantics": ["*Activity", "app/getting-started"]
   }
 }

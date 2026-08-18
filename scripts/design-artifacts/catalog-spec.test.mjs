@@ -927,6 +927,21 @@ test("validateSpec rejects a malformed completeness block", () => {
   );
 });
 
+test("validateSpec accepts a $comment beside the exemptions", () => {
+  // The reason an entry is exempt belongs next to the list; JSON has nowhere else to put it.
+  assert.deepEqual(
+    validateSpec(
+      prioritySpec([{ componentId: "A", preview: "Alpha" }], {
+        completeness: {
+          $comment: "Synthetic Activity renders: cold start, no data, near-empty frame.",
+          exemptSemantics: ["*Activity"],
+        },
+      }),
+    ).errors,
+    [],
+  );
+});
+
 // --- select: one breakpoint of a multipreview, without splitting the function ---
 
 const wearSpecWith = (components) => ({

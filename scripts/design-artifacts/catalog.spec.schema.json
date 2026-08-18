@@ -89,6 +89,7 @@
       "description": "Escape hatches for the publish-time completeness gate, per entry rather than the wholesale `--allow-incomplete`.",
       "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "exemptSemantics": {
           "type": "array",
           "description": "componentIds whose render is expected to capture NO semantics tree, so their absence must not fail the publish (e.g. the synthetic Activity renders repository-wide discovery sweeps in: a cold-started app with no data and no network renders a near-empty frame). Matched against the whole componentId as the \"no semantics for: …\" report prints it, with `*` standing for any run of characters including `/` — e.g. [\"*Activity\", \"app/getting-started\"]. Exempt entries stay in catalog.json with their pixels and are reported separately; every other entry keeps the strict gate. Semantics only — a MISSING render still fails (declare `capture: \"none\"` for an entry that cannot rasterise). A pattern matching nothing is reported on every run so a stale exemption is visible.",
