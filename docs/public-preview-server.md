@@ -507,14 +507,19 @@ switch, conversely, drops any `?chrome=` from the current URL so the choice you 
 that applies. Pages whose body depends on the cookie say so with `Vary: Cookie`, so a shared cache
 can't hand one visitor's Catalog-mode HTML to a Dev-mode visitor.
 
-**What Catalog mode drops is the lane that costs the server something**, not everything that looks
-technical. The live stream, the full-page scroll capture, the accessibility overlay and the design
-annotations all go, because each one is a daemon, a render slot or a session lease. The **Remote
-Compose browser players stay**: `js` and `cmp-wasm` replay bytes already published at
-`/render/<id>.rc`, in the visitor's own browser, so none of those reasons apply to them. Their
-server-side siblings — `java` and `cmp-android` (daemon) and `cmp-jvm` (subprocess) — are absent
-there rather than shown greyed, since Catalog mode has *decided* not to offer them, which is a
-different claim from "unavailable on this host".
+**What Catalog mode drops is the operational surface, not the Remote Compose facet.** The live
+stream, the full-page scroll capture, the accessibility overlay and the design annotations all go.
+**Every player stays** — the browser pair (`js`, `cmp-wasm`) and the server-side ones (`java`,
+`cmp-android`, `cmp-jvm`) alike — and the page opens on the embedded player exactly as Dev does.
+
+That is a deliberate line, and it is not the cheap one. Which player drew a document is the
+*subject* of a Remote Compose catalog rather than an operational detail, so the reader of one is
+precisely who wants to switch between them, and a catalog whose landing lane disagreed with Dev's
+would be publishing a different default rendering of the same document. What makes it affordable is
+the published-raster lane [below](#a-player-selection-is-published-not-rendered): the default browse
+is answered from the parity run's staging, so the commonest page view costs a map lookup and a file
+read. It is **not** free in every case — a preview the run staged nothing for, or a knob or theme
+selected on top of the player, still reaches the daemon, which a Catalog page previously never did.
 
 The whole facet used to come off together, and the cost was a broken link: with no canvas, no chips
 and no switcher, no control on the page owned the `rcPlayer` parameter, so `url-state.js` cleared it
