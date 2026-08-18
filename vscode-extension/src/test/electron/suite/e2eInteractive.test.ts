@@ -397,6 +397,10 @@ function describeModulePanelState(
             }`,
             `empty state: ${emptyStateText(msgs) ?? "<none>"}`,
             `lastWarmDaemonError: ${api.getLastWarmDaemonError() ?? "<none>"}`,
+            `cancelled so far: ${
+                gradleApi?.cancelledTasks.join(", ") || "<none>"
+            }`,
+            `recent gradle:\n    ${describeGradleState()}`,
             `Compose Preview output tail:\n    ${api
                 .getOutputChannelTail(40)
                 .join("\n    ")}`,
@@ -450,6 +454,25 @@ function missingCaptures(repoRoot: string, msg: SetPreviewsMessage): string[] {
         }
     }
     return missing;
+}
+
+/**
+ * The `RealGradleApi` every scenario drives, so a timeout diagnostic can say what Gradle did.
+ *
+ * Module-scoped rather than passed around because the `describeState` callbacks are built at the
+ * point of each wait, several call frames from the suite's `before`.
+ */
+let gradleApi: RealGradleApi | undefined;
+
+/**
+ * What Gradle has been doing lately, for a wait that failed to embed.
+ *
+ * Every timeout in this suite is a wait for something a Gradle task should have produced, and the
+ * panel state alone cannot say whether the task ran, was served `FROM-CACHE`, or was cancelled
+ * mid-flight — which is the first fork in any investigation of a missing render (issue #4101).
+ */
+function describeGradleState(): string {
+    return gradleApi?.describeGradleActivity() ?? "gradle: <api not injected>";
 }
 
 function dumpTranscript(
@@ -517,29 +540,28 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const exported = await ext.activate();
         assert.ok(exported, "activate() must return ComposePreviewTestApi");
         api = exported;
-        api.injectGradleApi(
-            new RealGradleApi(repoRoot, (line) => console.log(line), [
-                `-PcomposePreview.filter=${FIXTURE_PREVIEW_FILTER.join(",")}`,
-                // Mandatory companion to the filter above, and its absence was
-                // a real bug. `composePreviewRenderAll` ends with a
-                // completeness check over the *whole* manifest, and
-                // `composePreview.missingRenders` defaults to `fail` — so
-                // narrowing the render to 6 of the module's 66 previews made
-                // the task fail every single time:
-                //
-                //   composePreviewRenderAll: render produced no output file
-                //   for 59 of 66 preview(s)
-                //
-                // Every refresh in this suite was therefore landing on
-                // `renderWithDiskFallback` instead of the happy path, so the
-                // scenarios were only ever exercising the degraded route — and
-                // scenario E's post-rename refresh then saw a manifest of 3
-                // resource-only previews and resolved to the panel's empty
-                // state. `ci.yml`'s bundle job pairs a narrowed render with
-                // `missingRenders=warn` for exactly this reason.
-                "-PcomposePreview.missingRenders=warn",
-            ]),
-        );
+        gradleApi = new RealGradleApi(repoRoot, (line) => console.log(line), [
+            `-PcomposePreview.filter=${FIXTURE_PREVIEW_FILTER.join(",")}`,
+            // Mandatory companion to the filter above, and its absence was
+            // a real bug. `composePreviewRenderAll` ends with a
+            // completeness check over the *whole* manifest, and
+            // `composePreview.missingRenders` defaults to `fail` — so
+            // narrowing the render to 6 of the module's 66 previews made
+            // the task fail every single time:
+            //
+            //   composePreviewRenderAll: render produced no output file
+            //   for 59 of 66 preview(s)
+            //
+            // Every refresh in this suite was therefore landing on
+            // `renderWithDiskFallback` instead of the happy path, so the
+            // scenarios were only ever exercising the degraded route — and
+            // scenario E's post-rename refresh then saw a manifest of 3
+            // resource-only previews and resolved to the panel's empty
+            // state. `ci.yml`'s bundle job pairs a narrowed render with
+            // `missingRenders=warn` for exactly this reason.
+            "-PcomposePreview.missingRenders=warn",
+        ]);
+        api.injectGradleApi(gradleApi);
 
         await vscode.commands.executeCommand("composePreview.panel.focus");
         await waitFor(
@@ -561,6 +583,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
         const androidNeedle = path.join("samples", "android");
+        // Same clamped-budget shape as B/C/E. A's three waits used to pass the Mocha ceiling
+        // straight through, so the shard that fails here — measured at 195–347s per cold render,
+        // three renders deep — reported `Timeout of 1800000ms exceeded` and nothing else. Each wait
+        // is render-gated, so each gets the render-sized budget and the panel/Gradle diagnostic.
+        const deadlineAt = Date.now() + this.timeout();
 
         // --- Cmp cold ---
         const cmpStart = Date.now();
@@ -571,7 +598,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
         const cmpFirst = await waitFor(
             "first cmp setPreviews",
-            this.timeout(),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -580,6 +607,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(cmpNeedle),
                 );
             },
+            describeModulePanelState(api, cmpNeedle),
         );
         observations.cmpFirst = {
             wallMs: Date.now() - cmpStart,
@@ -623,7 +651,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
         const androidFirst = await waitFor(
             "first android setPreviews",
-            this.timeout(),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -632,6 +660,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(androidNeedle),
                 );
             },
+            describeModulePanelState(api, androidNeedle),
         );
         observations.androidFirst = {
             wallMs: Date.now() - androidStart,
@@ -707,7 +736,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
         const cmpSecond = await waitFor(
             "second cmp setPreviews",
-            this.timeout(),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -716,6 +745,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(cmpNeedle),
                 );
             },
+            describeModulePanelState(api, cmpNeedle),
         );
         observations.cmpSecond = {
             wallMs: Date.now() - cmpReStart,
@@ -757,7 +787,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
         const baseline = await waitFor(
             "cmp baseline setPreviews",
-            this.timeout(),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -766,6 +796,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(cmpNeedle),
                 );
             },
+            describeModulePanelState(api, cmpNeedle),
         );
         const baselineIds = new Set(baseline.previews.map((p) => p.id));
         observations.baselineIds = [...baselineIds].sort();
@@ -915,7 +946,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.triggerSave(cmpFile);
         const afterRevert = await waitFor(
             `setPreviews after reverting ${tag}`,
-            this.timeout(),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -925,6 +956,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     return !m.previews.some((p) => p.id.endsWith(tag));
                 });
             },
+            describeModulePanelState(api, cmpNeedle),
         );
         observations.afterRevert = {
             previewCount: afterRevert.previews.length,
@@ -1019,6 +1051,10 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
         const androidNeedle = path.join("samples", "android");
+        // This scenario cancels a build on purpose, so it is the one most likely to be waiting on
+        // a module whose compiled output the cancellation emptied — the case `RealGradleApi`
+        // repairs on the next build, and reports on if it could not.
+        const deadlineAt = Date.now() + this.timeout();
 
         const racing = api.triggerRefresh(cmpFile, true, "full");
         // Give the cmp refresh enough wall time to enter Gradle.
@@ -1034,7 +1070,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
         const settled = await waitFor(
             "settled android setPreviews after race",
-            this.timeout(),
+            budgetWithin(deadlineAt, RENDER_ROUND_TRIP_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -1043,6 +1079,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(androidNeedle),
                 );
             },
+            describeModulePanelState(api, androidNeedle),
         );
 
         observations.finalModuleDir = settled.moduleDir;
@@ -1126,6 +1163,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 `old id present: ${ids ? ids.some((id) => OLD.test(id)) : "n/a"}`,
                 `new id present: ${ids ? ids.some((id) => NEW.test(id)) : "n/a"}`,
                 `lastWarmDaemonError: ${api.getLastWarmDaemonError() ?? "<none>"}`,
+                `recent gradle:\n    ${describeGradleState()}`,
                 `Compose Preview output tail:\n    ${tail}`,
             ].join("\n  ");
         };
