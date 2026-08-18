@@ -40,7 +40,6 @@ import java.io.File
 import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 
 /**
@@ -666,12 +665,10 @@ private fun captureRootFrame(
   // SemanticsNodeInteractionsProvider.onRoot() returns the merged semantic root; captureToImage()
   // on it pulls an ImageBitmap of the rendered surface. ImageBitmap.asSkiaBitmap() exposes the
   // backing Skia bitmap, which we then encode as PNG (matching the default DesktopRendererMain
-  // path that calls `scene.render().encodeToData(PNG)`).
+  // path that calls `scene.render().encodePngData()`).
   val bitmap = host.provider.onRoot().captureToImage()
   val skiaImage = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
-  val pngData =
-    skiaImage.encodeToData(EncodedImageFormat.PNG)
-      ?: error("Failed to encode captured frame to PNG")
+  val pngData = skiaImage.encodePngData() ?: error("Failed to encode captured frame to PNG")
   try {
     file.parentFile?.mkdirs()
     fileSystem.write(file.path.toPath()) { write(pngData.bytes) }

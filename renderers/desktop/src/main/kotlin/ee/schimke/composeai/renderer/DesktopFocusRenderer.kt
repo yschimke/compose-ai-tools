@@ -37,7 +37,6 @@ import java.io.File
 import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 
 /**
@@ -476,9 +475,7 @@ private fun captureFocusFrame(
 ) {
   val bitmap = provider.onRoot().captureToImage()
   val skiaImage = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
-  val pngData =
-    skiaImage.encodeToData(EncodedImageFormat.PNG)
-      ?: error("Failed to encode focused capture to PNG")
+  val pngData = skiaImage.encodePngData() ?: error("Failed to encode focused capture to PNG")
   val bytes =
     try {
       pngData.bytes
