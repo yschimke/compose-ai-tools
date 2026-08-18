@@ -379,6 +379,65 @@ class ServeStatusTest {
   }
 
   @Test
+  fun `status health includes a resident daemon whose render breaker disabled its live stream`() {
+    val stats =
+      RenderPerfStats()
+        .snapshot()
+        .copy(
+          breaker =
+            RenderBreakerSnapshot(
+              open = true,
+              fatal = true,
+              reason = "render linkage failure",
+            )
+        )
+    val broken =
+      object : ServeHost {
+        override val previews: List<ServePreview> = listOf(ServePreview("a", "A"))
+        override val label: String = "broken"
+        override val hasLiveStream: Boolean = false
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Failed("render linkage failure")
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun renderPerfStats(): RenderPerfSnapshot = stats
+
+        override fun close() {}
+      }
+    registry.register("broken", host = broken)
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "broken",
+          isPublic = true,
+        )
+        .also { it.start() }
+
+    val (jsonCode, json) = get("/status.json")
+    assertEquals(200, jsonCode)
+    assertTrue(json.contains("\"status\":\"degraded\""), json)
+
+    val (htmlCode, html) = get("/status")
+    assertEquals(200, htmlCode)
+    assertTrue(html.contains("1 open live render breaker"), html)
+    assertTrue(html.contains("href=\"#recent-render-failures\""), html)
+  }
+
+  @Test
   fun `status serves a styled html page`() {
     server = newServer(public = true, token = "unused")
     val (code, body) = get("/status")

@@ -4195,12 +4195,16 @@ class ServeHttpServer(
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
-    val currentLiveRenderFailureCount: Int = liveDaemons.count {
-      it.renderStats?.lastRenderFailed == true
+    val openRenderBreakerCount: Int = running.count { it.renderStats?.breaker?.open == true }
+    val currentLiveRenderFailureCount: Int = running.count {
+      it.renderStats?.let { stats -> stats.breaker?.open != true && stats.lastRenderFailed } == true
     }
     val catalogLoadFailureCount: Int = catalogs.count { it.loadError != null }
     val overallOk: Boolean =
-      failures.isEmpty() && catalogLoadFailureCount == 0 && currentLiveRenderFailureCount == 0
+      failures.isEmpty() &&
+        catalogLoadFailureCount == 0 &&
+        openRenderBreakerCount == 0 &&
+        currentLiveRenderFailureCount == 0
 
     private fun backendOf(weight: Int): String = if (weight >= 2) "android" else "desktop"
 
@@ -4505,6 +4509,8 @@ class ServeHttpServer(
               if (catalogLoadFailureCount > 0)
                 add(countLabel(catalogLoadFailureCount, "catalog load failure"))
               if (failures.isNotEmpty()) add(countLabel(failures.size, "daemon startup failure"))
+              if (openRenderBreakerCount > 0)
+                add(countLabel(openRenderBreakerCount, "open live render breaker"))
               if (currentLiveRenderFailureCount > 0)
                 add(countLabel(currentLiveRenderFailureCount, "current live render failure"))
             }
@@ -4514,6 +4520,7 @@ class ServeHttpServer(
           when {
             catalogLoadFailureCount > 0 -> "#catalogs"
             failures.isNotEmpty() -> "#recent-daemon-failures"
+            openRenderBreakerCount > 0 -> "#recent-render-failures"
             currentLiveRenderFailureCount > 0 -> "#recent-render-failures"
             else -> null
           },
