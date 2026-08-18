@@ -12,6 +12,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
+import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
@@ -29,6 +30,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
 import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
@@ -47,6 +49,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
@@ -891,6 +894,78 @@ class RcComposeSupportTest {
       )
 
     assertTrue(document.composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun acceptsWrapDimensionsAndStillRejectsIntrinsicOnes() {
+    // WRAP needs no modifier: sizing to the content is what Compose does when nothing says
+    // otherwise, which is also how AndroidX's embedded player implements it. Reporting it as
+    // unimplemented refused every `RemoteButton` — they wrap their label row
+    // (compose-ai-tools#4166).
+    fun sized(type: Int) =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcBoxLayout(3, -1, 2, 2),
+          RcWidthModifier(type, RcFloatWord.literal(1f)),
+          RcHeightModifier(type, RcFloatWord.literal(1f)),
+          RcLayoutContent(4),
+        ) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+
+    assertTrue(sized(RcDimensionType.WRAP).composeSupportReport().fullyRenderable)
+    // An intrinsic dimension does need a measurement pass the player has not implemented, and
+    // dropping it silently sizes from the parent instead — so it stays a reported gap.
+    assertEquals(
+      listOf("dimension type 4 is not implemented", "dimension type 4 is not implemented"),
+      sized(RcDimensionType.INTRINSIC_MIN).composeSupportReport().issues.map { it.detail },
+    )
+  }
+
+  @Test
+  fun acceptsATextColourPublishedByAnExpressionOrATheme() {
+    // A colour id is declared by whatever *publishes* it, not only by a literal. The player writes
+    // all three into one colour store, so a style reading a computed id resolves like any other;
+    // counting only `ColorConstant` refused documents it renders (compose-ai-tools#4166).
+    fun coreText(declaration: RcOperation) =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcTextData(42, "5.2 km · 28 min"),
+          declaration,
+          RcCoreText(textId = 42, properties = listOf(RcTextStyleProperty.IntValue(4, 74))),
+          RcLayoutContent(3),
+        ) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+
+    assertTrue(
+      coreText(RcColorExpression(outId = 74, modeAndAlpha = 5, first = 1, second = 2, third = 3))
+        .composeSupportReport()
+        .fullyRenderable
+    )
+    assertTrue(
+      coreText(
+          RcColorTheme(
+            outId = 74,
+            colorGroupId = 0,
+            lightModeIndex = -1,
+            darkModeIndex = -1,
+            lightModeFallback = 0xff112233.toInt(),
+            darkModeFallback = 0xff332211.toInt(),
+          )
+        )
+        .composeSupportReport()
+        .fullyRenderable
+    )
+    // Nothing publishes 74 here, so the style still reads a colour that would resolve to 0.
+    assertEquals(
+      "dynamic color id 74 is not declared",
+      coreText(RcTextData(43, "unrelated")).composeSupportReport().issues.single().detail,
+    )
   }
 
   @Test

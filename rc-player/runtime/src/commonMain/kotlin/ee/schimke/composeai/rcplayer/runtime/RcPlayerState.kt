@@ -38,6 +38,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
 import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
+import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
@@ -631,7 +632,21 @@ public class RcPlayerState(
                 applyContentStateOperation(node.operation, currentTheme, requestedTheme)
             }
           is RcLinkedNode.Container -> {
-            val isContentScope = node.operation is RcRootLayout || node.operation is RcLayoutContent
+            // A canvas-operations block is a scope too. Its own draw runs in the draw phase, but
+            // the values it *publishes* — a `ColorAttribute` decomposing the container colour, an
+            // expression over one — are read by siblings that come later in the document and are
+            // resolved during composition, which happens first. AndroidX executes one flat op list
+            // in wire order, so there the sibling always sees them; skipping this scope left those
+            // ids at 0. What that looked like: `remote-m3`'s disabled button, whose label colour is
+            // `onSurface`'s channels at 38% alpha — the alpha resolved to 0 and the label rendered
+            // fully transparent, over a container the same expression chain painted correctly.
+            //
+            // Replaying is safe to do twice: everything `applyContentStateOperation` handles is a
+            // pure function of its inputs, and the draw pass re-runs the block in order anyway.
+            val isContentScope =
+              node.operation is RcRootLayout ||
+                node.operation is RcLayoutContent ||
+                node.operation.opcode == RcOpcodes.CANVAS_OPERATIONS
             applyScope(node.children, currentTheme, isContentScope)
           }
         }

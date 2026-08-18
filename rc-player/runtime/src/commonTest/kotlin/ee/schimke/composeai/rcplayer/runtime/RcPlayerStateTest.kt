@@ -37,6 +37,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
 import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
+import ee.schimke.composeai.rcplayer.protocol.RcNoArg
+import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentDescription
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
@@ -977,6 +979,51 @@ class RcPlayerStateTest {
     assertEquals(0xffeeeeee.toInt(), state.color(30))
     assertEquals(0, state.color(31))
     assertEquals(0xfffedcba.toInt(), state.color(32))
+  }
+
+  @Test
+  fun replaysTheValuesACanvasOperationsBlockPublishesForItsLaterSiblings() {
+    // The block's *draw* is the draw phase's business, but the ids it publishes are read by
+    // siblings that come later in the document and resolve during composition, which runs first.
+    // AndroidX executes one flat list in wire order and always sees them; skipping the scope left
+    // them at 0. `remote-m3`'s disabled button is the case that showed it: the label's alpha comes
+    // from a `ColorAttribute` over the container colour decomposed inside the block, so the label
+    // rendered fully transparent over a container the same chain painted correctly.
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(0, 1, 0)),
+          listOf(RcColorConstant(7, 0x80ffffff.toInt())),
+        )
+      )
+    val tree =
+      listOf(
+        RcLinkedNode.Container(
+          RcRootLayout(1),
+          listOf(
+            RcLinkedNode.Container(
+              RcLayoutContent(2),
+              listOf(
+                RcLinkedNode.Container(
+                  RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+                  listOf(
+                    RcLinkedNode.Operation(RcColorAttribute(30, 7, RcColorAttribute.COLOR_ALPHA))
+                  ),
+                ),
+                // The sibling that reads it — the shape the label's colour chain has.
+                RcLinkedNode.Operation(
+                  RcFloatExpression(31, listOf(RcFloatWord(0x7fc00000 or 30)), null)
+                ),
+              ),
+            )
+          ),
+        )
+      )
+
+    state.applyLayoutContentStateOperations(tree)
+
+    assertEquals(0.5019608f, state.resolve(RcFloatWord(0x7fc00000 or 30)))
+    assertEquals(0.5019608f, state.resolve(RcFloatWord(0x7fc00000 or 31)))
   }
 
   @Test
