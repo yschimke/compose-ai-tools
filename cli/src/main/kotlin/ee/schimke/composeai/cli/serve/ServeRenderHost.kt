@@ -957,7 +957,19 @@ internal constructor(
         val hasOverrides = overrides != PreviewOverrides()
         val warmForThisRender = warmedUp.get() && (!hasOverrides || overridesWarmedUp.get())
         val budget = if (warmForThisRender) frameRenderTimeoutSeconds else renderTimeoutSeconds
-        if (!latch.await(budget, TimeUnit.SECONDS)) {
+        val completed =
+          try {
+            latch.await(budget, TimeUnit.SECONDS)
+          } catch (_: InterruptedException) {
+            // A caller may impose a tighter foreground bound than this host's cold-render budget.
+            // The daemon still owes a terminal event, so quarantine it exactly like a timeout
+            // before releasing the render lock; otherwise it can complete the next same-id render.
+            staleRenders.merge(previewId, 1, Int::plus)
+            Thread.currentThread().interrupt()
+            perfStats.recordBusy()
+            return RenderOutcome.Busy
+          }
+        if (!completed) {
           // The daemon still owes this queued render a `renderFinished`; record it so the late
           // event
           // is drained instead of completing a future same-id render with a stale PNG.

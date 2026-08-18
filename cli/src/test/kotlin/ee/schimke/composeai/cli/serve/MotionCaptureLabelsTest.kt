@@ -54,6 +54,13 @@ class MotionCaptureLabelsTest {
   }
 
   @Test
+  fun `an abbreviation does not end the instruction clause`() {
+    assertEquals("Use e.g. a swipe to dismiss", titleOf("Use e.g. a swipe to dismiss"))
+    assertEquals("Compare i.e. the two states", titleOf("Compare i.e. the two states"))
+    assertEquals("Open at 9 a.m. and wait", titleOf("Open at 9 a.m. and wait"))
+  }
+
+  @Test
   fun `a first clause that is itself long is cut on a word boundary`() {
     val caption =
       "Drag the sheet up past the halfway mark and let go so it completes on its own momentum"

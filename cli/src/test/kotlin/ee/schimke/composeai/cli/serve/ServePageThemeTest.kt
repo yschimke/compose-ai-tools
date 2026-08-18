@@ -87,6 +87,10 @@ class ServePageThemeTest {
       script,
     )
     assertTrue(script.contains("localStorage.getItem(\"cp-theme:wear-m3\")"), script)
+    assertTrue(
+      script.contains("match(/(?:^|__)(light|dark)(?:__|$)/)"),
+      "a clean baked preview URL must recover its light/dark variant before first paint: $script",
+    )
     // …and only an explicit light/dark says anything about the page's mode.
     assertTrue(script.contains("if(t===\"light\"||t===\"dark\")"), script)
   }

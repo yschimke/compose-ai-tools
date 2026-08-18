@@ -1,6 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -137,5 +140,36 @@ class RcJvmServeIntegrationTest {
       System.clearProperty("composeai.cli.libRcjvmDir")
       System.clearProperty("composeai.cli.libDaemonDesktopDir")
     }
+  }
+
+  @Test
+  fun `staged cmp-wasm parity output does not advertise an unavailable iframe player`() {
+    val host =
+      object : ServeHost {
+        override val previews = listOf(ServePreview("Foo", "Foo"))
+        override val label = "staged"
+
+        override fun hasRemoteComposeDoc(previewId: String) = true
+
+        override fun stagedRcPlayers(previewId: String) = listOf(RcPlayerBackend.CMP_WASM)
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.NotFound
+
+        override fun activeStreamCount() = 0
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun close() {}
+      }
+
+    assertEquals(listOf(RcPlayerBackend.JS), host.enabledRcPlayersFor("Foo"))
   }
 }

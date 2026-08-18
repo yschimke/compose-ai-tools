@@ -99,6 +99,7 @@ class ServeAdminRoutingTest {
   private val trustStoreFile = ServeTrustStoreFile("/config/producers.json".toPath(), fs)
   private val trust = MutableTrustStore()
   private val trustAdmin = ServeTrustAdmin(trust, trustStoreFile, onLog = {})
+  private val optimizerWork = ServeBackgroundWork()
 
   private val server: ServeHttpServer by lazy {
     registry.register("compose-m3", host = bundle("compose-m3"), pinned = true)
@@ -115,6 +116,7 @@ class ServeAdminRoutingTest {
         catalogLoads = tracker,
         catalogAdmin = admin,
         trustAdmin = trustAdmin,
+        themeOptimizerAdmin = optimizerWork,
         adminToken = adminToken,
         wasmCatalogs = wasmCatalogs,
       )
@@ -225,6 +227,15 @@ class ServeAdminRoutingTest {
       409,
       send("/admin/catalogs", method = "POST", body = """{"system":"compose-m3"}""").first,
     )
+  }
+
+  @Test
+  fun `a malformed optimizer pause duration is rejected instead of using the default`() {
+    val (code, body) = send("/admin/theme-optimization/pause?minutes=144O", method = "POST")
+
+    assertEquals(400, code)
+    assertTrue(body.contains("minutes must be an integer"), body)
+    assertFalse(optimizerWork.optimizersPaused(), "a typo must not silently pause for 30 minutes")
   }
 
   @Test

@@ -78,7 +78,11 @@ class ServeBackgroundWork(
    * this map has never run and sorts ahead of every system that has.
    */
   private val optimizerLastRanAt = ConcurrentHashMap<String, Long>()
-  private val optimizerRunning = ConcurrentHashMap.newKeySet<String>()
+  // A refresh opens the replacement host before the registry closes the previous one, so two
+  // generations of one system can legitimately hold lanes together. A set collapses those two
+  // admissions and the first release removes the replacement from status as well; counts preserve
+  // both the total and the de-duplicated system labels.
+  private val optimizerRunning = ConcurrentHashMap<String, AtomicInteger>()
   private val optimizerWaiting = AtomicInteger()
   private val optimizerAdmissions = AtomicLong()
   private val optimizerRefusals = AtomicLong()
@@ -162,11 +166,13 @@ class ServeBackgroundWork(
       return null
     }
     optimizerAdmissions.incrementAndGet()
-    optimizerRunning.add(system)
+    optimizerRunning.computeIfAbsent(system) { AtomicInteger() }.incrementAndGet()
     return try {
       block()
     } finally {
-      optimizerRunning.remove(system)
+      optimizerRunning.computeIfPresent(system) { _, count ->
+        if (count.decrementAndGet() == 0) null else count
+      }
       releaseOptimizerLane(system)
     }
   }
@@ -306,8 +312,8 @@ class ServeBackgroundWork(
     }
     return ThemeOptimizerAdmissionSnapshot(
       lanes = optimizerLanes,
-      running = optimizerRunning.size,
-      runningSystems = optimizerRunning.toSortedSet().toList(),
+      running = optimizerRunning.values.sumOf(AtomicInteger::get),
+      runningSystems = optimizerRunning.keys.toSortedSet().toList(),
       waiting = optimizerWaiting.get(),
       waitingSystems = queued,
       admissions = optimizerAdmissions.get(),

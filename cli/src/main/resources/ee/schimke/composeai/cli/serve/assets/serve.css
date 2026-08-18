@@ -181,6 +181,9 @@
 :root.cp-scheme-light { color-scheme: light; }
 :root.cp-scheme-dark { color-scheme: dark; }
 * { box-sizing: border-box; }
+/* The sticky header's full-bleed paint uses viewport units. Clip that decorative horizontal
+   overflow so a conventional scrollbar gutter cannot create a second, sideways scrollport. */
+html { overflow-x: clip; }
 body { margin: 0; padding: 28px; font-family: var(--md-sys-typescale-font);
   font-size: var(--md-sys-typescale-body-medium-size);
   line-height: var(--md-sys-typescale-body-medium-line);
@@ -1909,6 +1912,14 @@ cp-history-menu { display: contents; }
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
   background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer; }
+/* A phone-width stage cannot carry both buttons, the track, readout and rate on one line. Keep the
+   primary controls together and let the secondary readouts use a compact second row. */
+@media (max-width: 440px) {
+  .cp-motion-transport { flex-wrap: wrap; gap: 6px 8px; padding-inline: 8px; }
+  .cp-motion-scrub { flex-basis: calc(100% - 80px); min-width: 0; }
+  .cp-motion-time { order: 4; flex: 1 1 auto; text-align: left; }
+  .cp-motion-rate { order: 5; }
+}
 /* The inspection layers describe the SNAPSHOT — every box is placed from that image's natural size
    and offset (see inspect.js `place()`), and nothing re-places them when a lane takes the snapshot
    out of flow. Left alone they would keep their last geometry and hang over the recording,
