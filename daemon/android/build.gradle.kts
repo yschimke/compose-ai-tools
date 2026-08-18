@@ -37,6 +37,9 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.daemon"
+  // OkHttp 5.5's Android variant declares minCompileSdk 37. Keep targetSdk/minSdk on the shared
+  // convention defaults; compileSdk only controls which APIs are available while compiling.
+  compileSdk = 37
   // D-harness.v2 — promote the fixture composables (RedSquare/BlueSquare/GreenSquare/SlowSquare/
   // BoomComposable) from this module's `src/test/...` into a real testFixtures source set so
   // `:daemon:harness`'s test runtime classpath can pull them via
