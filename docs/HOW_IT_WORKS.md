@@ -66,6 +66,48 @@ graphics (`graphicsMode=NATIVE`, `pixelCopyRenderMode=hardware`).
    compress as PNG, write to file.
 ```
 
+### Freezing a preview at an intermediate animation frame
+
+The paused clock is the only deterministic handle on "part-way through". A
+preview that wants a specific point in a transition should pin the *capture
+instant* and size its animations against it:
+
+```kotlin
+@Preview(name = "Filmstrip")
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 600L)])
+```
+
+A capture with an explicit `advanceTimeMillis` is an exact snapshot: the
+renderer advances the paused clock to that virtual time, captures once, and
+skips the adaptive pixel-quiescence probe it runs for ordinary stills. So a
+`tween(durationMillis = d)` read at `t` is at `t / d` of its travel, every run,
+on every machine.
+
+What does **not** work is asking the transition where it is by fraction.
+`SeekableTransitionState.seekTo(fraction)` seeks a fraction of
+`Transition.totalDurationNanos`, and that total is the max over the child
+animations registered *so far* — a set that shared-element transitions keep
+growing, and that seeking itself adds initial-value animations to. Measured on
+`SharedElementFilmstripPreview` with every spec pinned to a fixed `tween`, its
+five panels still reported totals of 600/787/1050/1387/1800ms, two of them
+moving again between consecutive frames and differently on each run. The
+fraction was exact; the duration it was a fraction of was not, so the preview
+re-rendered differently on PRs that could not affect it (issue #4097). Sweeping
+a fraction with `animateTo` is fine — `NowPlayingContainerTransformPreview`
+does, and it renders byte-identically — because it ends where it aimed and the
+frames in between are frames of an animation, not claims about a fraction.
+
+Two smaller rules come with the recipe, both learned the same way:
+
+* **Give the start pose one frame before flipping the target state.** Shared
+  elements need a laid-out "from" to animate out of; flip in the first
+  composition and they snap straight to the target, so every panel renders at
+  ~100% no matter what it is labelled.
+* **Pin every spec, including the defaults you did not write.** `fadeIn()` and
+  `AnimatedContent`'s default `SizeTransform()` are springs, and a spring's
+  duration is estimated from the distance it happens to see — one stray default
+  puts one animation on a different timeline from the rest.
+
 ## Caching
 
 Both discovery and rendering are Gradle-cacheable tasks with declared

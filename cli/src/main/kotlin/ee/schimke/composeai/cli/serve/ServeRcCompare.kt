@@ -131,6 +131,17 @@ internal object ServeRcCompare {
    */
   val NONE = RcCompareManifest()
 
+  /**
+   * Whether the staging lane runs for a session whose catalog-id → daemon-id bridge is [alias].
+   *
+   * The whole view is re-keyed through that bridge, so a catalog with an empty one publishes
+   * nothing and the lane is never scheduled. Two callers must agree on this — the scheduler, which
+   * would otherwise do a pointless fetch, and the host, whose "still pending" answer is only
+   * meaningful when a lane is actually coming — so they share this one expression rather than each
+   * spelling it out.
+   */
+  fun stagesFor(alias: Map<String, String>): Boolean = alias.isNotEmpty()
+
   /** The published summary, branch-relative — the source this whole view is derived from. */
   const val SUMMARY_FILE = "rc-compare-summary.json"
 

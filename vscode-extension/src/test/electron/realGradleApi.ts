@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
+import * as fs from "fs";
 import * as path from "path";
 import type { GradleApi } from "../../gradleService";
 
@@ -9,6 +10,111 @@ import type { GradleApi } from "../../gradleService";
  * SIGKILL fallback covers a wedged JVM that ignores the term.
  */
 const KILL_GRACE_MS = 5_000;
+
+/**
+ * Arguments handed to the build that follows a cancellation which left a module's compiled output
+ * empty — the plugin's own advice, applied instead of left for the next scenario to trip over.
+ *
+ * `composePreviewDiscover` prints it when it happens ("its active class outputs contain 0 .class
+ * files … rerun with --no-build-cache --rerun-tasks"), and by then the run is already lost: the
+ * panel resolves to an empty state or waits out its budget for renders of classes that do not
+ * exist. See {@link RealGradleApi.cancelRunTask}.
+ */
+export const CANCELLATION_REPAIR_ARGS: ReadonlyArray<string> = [
+    "--rerun-tasks",
+    "--no-build-cache",
+];
+
+/** One `./gradlew` invocation, as the timeout diagnostics read it back. */
+export interface GradleInvocationRecord {
+    /** Head task, as `gradleService` names it (`:samples:cmp:composePreviewRenderAll`). */
+    readonly task: string;
+    readonly args: ReadonlyArray<string>;
+    readonly startedAt: number;
+    endedAt?: number;
+    status: "running" | "succeeded" | "failed" | "cancelled";
+    /** `> Task :x:y OUTCOME` lines, in the order Gradle printed them. */
+    readonly taskOutcomes: Array<{ task: string; outcome: string }>;
+    /** Set when this invocation was given {@link CANCELLATION_REPAIR_ARGS}. */
+    repaired?: boolean;
+}
+
+/**
+ * The `> Task :path OUTCOME` lines in `chunk`.
+ *
+ * Gradle omits the outcome word for a task that actually ran, which is the single most useful
+ * distinction a stuck-render diagnostic can draw — so it is spelled `EXECUTED` here rather than
+ * left blank.
+ */
+export function parseTaskOutcomes(
+    chunk: string,
+): Array<{ task: string; outcome: string }> {
+    const out: Array<{ task: string; outcome: string }> = [];
+    for (const line of chunk.split("\n")) {
+        const match = /^> Task (\S+)(?:\s+(\S[\S ]*?))?\s*$/.exec(line.trim());
+        if (!match) continue;
+        out.push({ task: match[1], outcome: match[2]?.trim() || "EXECUTED" });
+    }
+    return out;
+}
+
+/**
+ * Module directory a task path belongs to, relative to the repo root —
+ * `:samples:cmp:composePreviewRenderAll` → `samples/cmp`.
+ *
+ * Root-level tasks (`composePreviewApplied`) belong to no module and return `undefined`; there is
+ * nothing module-scoped to check or repair for those.
+ */
+export function moduleDirForTask(taskName: string): string | undefined {
+    if (!taskName.startsWith(":")) return undefined;
+    const segments = taskName.slice(1).split(":");
+    if (segments.length < 2) return undefined;
+    return path.join(...segments.slice(0, -1));
+}
+
+/** Directories a module's compiled classes can land in, relative to its project dir. */
+const CLASS_OUTPUT_ROOTS = [
+    path.join("build", "classes"),
+    path.join("build", "tmp", "kotlin-classes"),
+];
+
+/**
+ * Whether `moduleDir` has compiled output directories that contain no `.class` file at all.
+ *
+ * This is the plugin-side invariant restated on the harness side: a module that has been compiled
+ * has class files, and a module whose output roots exist but are empty was compiled into nothing —
+ * the shape a cancelled compile leaves behind, and the shape a build-cache entry stored from one
+ * hands back for free on every later run. A module that has never been built has no output roots
+ * and is not damaged, so it reports `false`.
+ */
+export function hasEmptyClassOutputs(
+    repoRoot: string,
+    moduleDir: string,
+): boolean {
+    const roots = CLASS_OUTPUT_ROOTS.map((relative) =>
+        path.join(repoRoot, moduleDir, relative),
+    ).filter((dir) => fs.existsSync(dir));
+    if (roots.length === 0) return false;
+    return !roots.some(containsClassFile);
+}
+
+/** First-hit search for a `.class` file — no need to count them to know the output is not empty. */
+function containsClassFile(dir: string): boolean {
+    let entries: fs.Dirent[];
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return false;
+    }
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            if (containsClassFile(path.join(dir, entry.name))) return true;
+        } else if (entry.name.endsWith(".class")) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /**
  * Real {@link GradleApi} that shells out to the repo's `./gradlew` wrapper.
@@ -69,6 +175,90 @@ export class RealGradleApi implements GradleApi {
         return this.cancelledTaskNames;
     }
 
+    /**
+     * Every `./gradlew` this API has driven, oldest first.
+     *
+     * The point of keeping it is the failure this suite actually reports: a wait that times out
+     * naming captures that never appeared. That message cannot tell "the render task ran and
+     * produced nothing" apart from "the render task was never reached", and the two want opposite
+     * investigations. {@link describeGradleActivity} turns the ledger into the line that does.
+     */
+    private readonly invocations: GradleInvocationRecord[] = [];
+
+    /**
+     * Modules whose last build was cancelled and whose compiled output has not been vetted since.
+     *
+     * A cancelled compile is how this suite manufactures the condition it then trips over: the
+     * output directory is left empty, the next build compiles nothing into it, and Gradle stores
+     * *that* as a cache entry — after which discovery finds 18 source files declaring `@Preview`
+     * and 0 `.class` files, on this run and on every later run that hits the same entry.
+     */
+    private readonly unvettedModules = new Set<string>();
+
+    /** @see invocations */
+    get gradleInvocations(): ReadonlyArray<GradleInvocationRecord> {
+        return this.invocations;
+    }
+
+    /**
+     * One line per recent `./gradlew`, for a timeout message to embed: what was asked for, how it
+     * ended, and what the compose-preview tasks in it did.
+     *
+     * Deliberately compact and deliberately not filtered by module — when renders do not arrive,
+     * the question is which of three states the pipeline is in (never ran / served from cache /
+     * cancelled mid-flight), and that answer is a line, not a log tail.
+     */
+    describeGradleActivity(limit = 4): string {
+        const recent = this.invocations.slice(-limit);
+        if (recent.length === 0) return "gradle: <no invocations>";
+        return recent
+            .map((record) => {
+                const seconds = Math.round(
+                    ((record.endedAt ?? Date.now()) - record.startedAt) / 1000,
+                );
+                const interesting = record.taskOutcomes
+                    .filter(({ task }) =>
+                        /composePreview|[Cc]ompile/.test(task),
+                    )
+                    .map(({ task, outcome }) => `${task} ${outcome}`);
+                const repaired = record.repaired
+                    ? ` [repaired: ${CANCELLATION_REPAIR_ARGS.join(" ")}]`
+                    : "";
+                const detail =
+                    interesting.length > 0
+                        ? `\n      ${interesting.join("\n      ")}`
+                        : " — no compile/render task reached";
+                return `gradle ${record.task}: ${record.status} after ${seconds}s${repaired}${detail}`;
+            })
+            .join("\n    ");
+    }
+
+    /**
+     * Extra arguments this invocation needs because a *previous* build for the same module was
+     * cancelled and left its compiled output empty.
+     *
+     * Checked here, at the last moment before the build starts, rather than assumed at cancellation
+     * time: a cancelled build usually damages nothing, and {@link CANCELLATION_REPAIR_ARGS} is
+     * expensive enough (a full rerun with the cache bypassed) that paying it on every cancellation
+     * would push a healthy scenario past its own budget. The check itself is a first-hit directory
+     * walk. Either way the module stops being suspect — this is the build that either repairs it
+     * or proves it was fine.
+     */
+    private repairArgsFor(
+        projectFolder: string,
+        taskName: string,
+    ): ReadonlyArray<string> {
+        const moduleDir = moduleDirForTask(taskName);
+        if (!moduleDir || !this.unvettedModules.has(moduleDir)) return [];
+        this.unvettedModules.delete(moduleDir);
+        if (!hasEmptyClassOutputs(projectFolder, moduleDir)) return [];
+        this.onLog(
+            `[realGradleApi] ${moduleDir} has compiled output directories with no .class files ` +
+                `after a cancelled build — rerunning with ${CANCELLATION_REPAIR_ARGS.join(" ")}`,
+        );
+        return CANCELLATION_REPAIR_ARGS;
+    }
+
     runTask(opts: {
         projectFolder: string;
         taskName: string;
@@ -84,14 +274,32 @@ export class RealGradleApi implements GradleApi {
             process.platform === "win32"
                 ? path.join(this.gradlewDir, "gradlew.bat")
                 : path.join(this.gradlewDir, "gradlew");
+        const repairArgs = this.repairArgsFor(
+            opts.projectFolder,
+            opts.taskName,
+        );
         const gradleArgs = [
             opts.taskName,
             ...(opts.args ?? []),
             ...this.extraArgs,
+            ...repairArgs,
         ];
         this.onLog(
             `[realGradleApi] ${gradlewPath} ${gradleArgs.join(" ")} (cwd=${opts.projectFolder})`,
         );
+        const record: GradleInvocationRecord = {
+            task: opts.taskName,
+            args: gradleArgs,
+            startedAt: Date.now(),
+            status: "running",
+            taskOutcomes: [],
+            repaired: repairArgs.length > 0 || undefined,
+        };
+        this.invocations.push(record);
+        // Gradle's task lines can straddle a chunk boundary, so parse from a carry-over buffer
+        // rather than per chunk — a `> Task … FROM-CACHE` split down the middle is exactly the
+        // line a stuck-render diagnostic needs.
+        let pending = "";
 
         // Under e2e-external the underlying gradleService routes Gradle output
         // to the extension's `outputChannel` (via `logger.append`), which
@@ -127,6 +335,14 @@ export class RealGradleApi implements GradleApi {
                 }
             };
             child.stdout.on("data", (chunk: Buffer) => {
+                pending += chunk.toString("utf-8");
+                const lastBreak = pending.lastIndexOf("\n");
+                if (lastBreak >= 0) {
+                    record.taskOutcomes.push(
+                        ...parseTaskOutcomes(pending.slice(0, lastBreak)),
+                    );
+                    pending = pending.slice(lastBreak + 1);
+                }
                 if (diagE2e) {
                     const text = chunk.toString("utf-8");
                     for (const line of text.split("\n")) {
@@ -152,10 +368,17 @@ export class RealGradleApi implements GradleApi {
             });
             child.once("error", (err) => {
                 forget();
+                record.endedAt = Date.now();
+                record.status = "failed";
                 reject(err);
             });
             child.once("close", (code, signal) => {
                 forget();
+                record.taskOutcomes.push(...parseTaskOutcomes(pending));
+                pending = "";
+                record.endedAt = Date.now();
+                record.status =
+                    code === 0 ? "succeeded" : signal ? "cancelled" : "failed";
                 if (diagE2e) {
                     console.log(
                         `[gradle exit] code=${code} signal=${signal ?? "none"} args=${gradleArgs.join(" ")}`,
@@ -211,6 +434,11 @@ export class RealGradleApi implements GradleApi {
         }
         if (signalSent) {
             this.cancelledTaskNames.push(opts.taskName);
+            // A build killed mid-compile can leave the module's class output directory empty, and
+            // the *next* build then compiles nothing into it and caches that. Remember the module
+            // so the next build for it is vetted before it starts — see {@link repairArgsFor}.
+            const moduleDir = moduleDirForTask(opts.taskName);
+            if (moduleDir) this.unvettedModules.add(moduleDir);
             this.onLog(
                 `[realGradleApi] cancel ${opts.taskName} (key=${key}) — terminating gradlew pid ${child.pid}`,
             );

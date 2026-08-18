@@ -104,6 +104,17 @@ class ServeBundleHost(
    */
   liveOnly: List<String> = emptyList(),
   /**
+   * Whether a background lane will stage this session's published Remote Compose player comparison.
+   *
+   * This is what makes [rcComparePending] mean "the lane has not landed yet" rather than "there is
+   * no manifest on disk". Only [ServeCatalogStore] schedules that lane, and only for a catalog with
+   * previews to re-key — every other session (a plain uploaded bundle, a served directory) has no
+   * lane to wait for. Gating on the file alone made `pending()` permanently true for those, which
+   * dropped every one of their viewer pages to `no-store` for the life of the host: the pages are
+   * fully baked and exactly the ones edge caching is for.
+   */
+  private val stagesRcCompare: Boolean = false,
+  /**
    * Ids this catalog publishes a baked PNG for, **whether or not those pixels are local yet**.
    *
    * A plain uploaded bundle passes none and keeps the original identity model: its previews are
@@ -221,7 +232,7 @@ class ServeBundleHost(
 
   override fun rcCompareImage(name: String): ByteArray? = rcCompare.image(name)
 
-  override fun rcComparePending(): Boolean = rcCompare.pending()
+  override fun rcComparePending(): Boolean = stagesRcCompare && rcCompare.pending()
 
   // Read once at load, like the reference manifest: the feed is a published snapshot, so re-reading
   // it per request would buy nothing (a refresh reloads the whole catalog and rebuilds this host).

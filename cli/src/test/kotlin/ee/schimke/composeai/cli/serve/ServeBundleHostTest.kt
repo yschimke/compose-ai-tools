@@ -21,6 +21,26 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `a session with no staging lane is never waiting for a published comparison`() {
+    // `pending` gates cacheability: the viewer and compare pages drop to `no-store` while the
+    // catalog's background lane might still land a manifest. A plain uploaded bundle has no such
+    // lane — nothing will ever write `rc-compare/index.json` for it — so reading the file's absence
+    // as "still pending" left every one of its fully-baked pages uncacheable for the life of the
+    // host, which is the opposite of what a baked session wants.
+    val host = ServeBundleHost(bundle("com.example.Red" to byteArrayOf(4, 2)), label = "b")
+    assertFalse(host.rcComparePending())
+
+    // A catalog whose lane IS scheduled keeps the provisional answer until the lane settles.
+    val staging =
+      ServeBundleHost(
+        bundle("com.example.Red" to byteArrayOf(4, 2)),
+        label = "b",
+        stagesRcCompare = true,
+      )
+    assertTrue(staging.rcComparePending())
+  }
+
+  @Test
   fun `the no-admission fast path serves real local pixels`() {
     // Against the REAL host, not a fake. The fast path is only worth anything if it actually finds
     // the file: a fake that returns bytes regardless would pass while the production path silently

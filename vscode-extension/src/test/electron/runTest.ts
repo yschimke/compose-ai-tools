@@ -139,12 +139,28 @@ async function main(): Promise<void> {
         //  - `--disable-gpu` avoids GL fallback noise on xvfb.
         //  - `--disable-updates` keeps the host from spawning the update
         //    check during a 30s test window.
+        //
+        // `COMPOSE_PREVIEW_E2E_USER_DATA_DIR` relocates the host's user-data
+        // directory. Unset — the CI case — nothing changes and it stays at
+        // `<cwd>/.vscode-test/user-data`, which the workflow uploads on
+        // failure. It exists because VS Code opens its main IPC socket
+        // *inside* that directory and a Unix domain socket path is capped at
+        // 103 characters: from a git worktree under
+        // `<repo>/.claude/worktrees/<branch>/vscode-extension` the host dies
+        // on startup with `Error: listen EINVAL … 1.13-main.sock` before a
+        // single test runs. Pointing this at e.g. `/tmp/cp-e2e` is what makes
+        // the suite runnable where the flakiness work happens.
         launchArgs: [
             workspacePath,
             "--disable-workspace-trust",
             "--no-sandbox",
             "--disable-gpu",
             "--disable-updates",
+            ...(process.env.COMPOSE_PREVIEW_E2E_USER_DATA_DIR
+                ? [
+                      `--user-data-dir=${process.env.COMPOSE_PREVIEW_E2E_USER_DATA_DIR}`,
+                  ]
+                : []),
         ],
         extensionTestsEnv: {
             ELECTRON_RUN_AS_NODE: undefined,
