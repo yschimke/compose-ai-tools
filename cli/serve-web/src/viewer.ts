@@ -3983,6 +3983,18 @@ function syncUrl() {
     new URLSearchParams(query()).forEach(function (value, name) {
         if (ownsUrlParam(name)) values[name] = value;
     });
+    // A pinned frame cannot apply a theme override, but the page still carries the selection that
+    // led into revision history. Keep that descriptive state in the address bar while query()
+    // deliberately omits it from /render (which must request only the published PNG). Without
+    // this, the first unrelated URL sync stripped themeProvider and made revision scrubbing forget
+    // the visitor's theme even though the disabled Theme control plainly explains it is unapplied.
+    if (pinnedAt) {
+        var pinnedParams = new URLSearchParams(location.search);
+        ["themeProvider", "uiMode"].forEach(function (name) {
+            var value = pinnedParams.get(name);
+            if (value) values[name] = value;
+        });
+    }
     if (scrollLong && scrollLong.checked) values.scroll = "long";
     // The exploded view and its knobs, written from the same helper the render URL uses so the
     // page's own address, the copied link and the fetched bytes can never disagree about the

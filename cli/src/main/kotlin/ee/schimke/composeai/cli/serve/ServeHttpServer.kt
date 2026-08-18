@@ -5146,6 +5146,7 @@ class ServeHttpServer(
       // for distinct shas hold Ktor's request threads through several round trips each.
       val preview = previewId?.let { id ->
         val host = catalogBundleHost(renderHost)
+        val currentPreview = renderHost.previews.firstOrNull { it.id == id }
         val pinnedPreview =
           revisions.pinned?.let { pin ->
             withContext(Dispatchers.IO) { host?.pinnedPreview(pin, id) }
@@ -5158,8 +5159,20 @@ class ServeHttpServer(
           revisions.pinned?.let { pin ->
             withContext(Dispatchers.IO) { host?.pinnedCatalogIsAuthoritative(pin) }
           } == true
-        pinnedPreview
-          ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
+        when {
+          // The revision still owns the route. While the id survives, enrich its historical
+          // component identity with the tip's state/props/source metadata; those fields are not in
+          // catalog.json, and dropping them is what made the same variant lose half its label and
+          // toolbar. Keep the revision's componentId when it had one, so a genuine historical move
+          // between components is still represented. A retired id has no current record and uses
+          // the historical placeholder on its own.
+          pinnedPreview != null ->
+            currentPreview?.copy(
+              componentId = pinnedPreview.componentId ?: currentPreview.componentId
+            ) ?: pinnedPreview
+          revisionAnswers -> null
+          else -> currentPreview
+        }
       }
       if (preview == null) {
         if (revisions.pinned != null && previewId != null) {
@@ -5434,6 +5447,13 @@ class ServeHttpServer(
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
           revisions = revisions,
+          revisionQuery =
+            requestOverrideParams(sessionId)
+              .filterKeys { it == "themeProvider" || it == "uiMode" }
+              .entries
+              .joinToString("&") { (key, value) ->
+                "${WebEscaping.urlEncodeSegment(key)}=${WebEscaping.urlEncodeSegment(value)}"
+              },
           parityIssues =
             renderHost.parityIssues()?.issues.orEmpty().filter { issue ->
               preview.id in issue.previewIds ||

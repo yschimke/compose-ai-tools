@@ -135,6 +135,30 @@ class ServeViewerThemeBarTest {
   }
 
   @Test
+  fun `a pinned toolbar keeps current-only controls visible and explains why they are disabled`() {
+    val preview = ServePreview("plain.Button", "Button", sourceFile = "Button.kt")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        siblings = listOf(preview),
+        canApplyOverrides = true,
+        hasSvgExport = true,
+        usageHref = "/usage/plain.Button",
+        basePath = "/compose-m3",
+        revisions = ServeWeb.CatalogRevisions(pinned = "1111111"),
+      )
+
+    assertTrue(html.contains("id=\"cp-source-chip\"") && html.contains(">Source</button>"), html)
+    assertTrue(html.contains("Pinned revision — source is only available"), html)
+    assertTrue(html.contains("id=\"cp-svg-toggle\"") && html.contains(">SVG</button>"), html)
+    assertTrue(html.contains("Pinned revision — SVG is generated"), html)
+    assertTrue(html.contains("id=\"cp-explode-toggle\"") && html.contains(">3D</button>"), html)
+    assertTrue(html.contains("Pinned revision — 3D is generated"), html)
+    assertFalse(html.contains("id=\"cp-source-panel\""), html)
+  }
+
+  @Test
   fun `viewer js drives the select from the chips rather than rendering themes itself`() {
     val script = viewerSource()
     assertTrue(

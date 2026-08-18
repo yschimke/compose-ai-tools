@@ -282,15 +282,31 @@ class ServePinnedRevisionTest {
 
     assertTrue(page.contains("data-pinned-at=\"$oldCommit\""), page)
     assertTrue(page.contains("data-can-render-overrides=\"false\""), page)
-    // The SVG export is the one that looks static and isn't: it is produced per request, so the
-    // toggle and the download link both go while the pin is in force.
-    assertFalse(page.contains("cp-fmt-svg"), page)
+    // Generated outputs remain visible when the current component offers them, but are disabled;
+    // their routes and direct links still go away because they have no historical bytes.
     assertFalse(page.contains("$previewId.svg"), page)
     // The spec lane is the opposite case and stays — a design reference is a published file, so it
     // has a real answer at that commit — but it must be *asked* for at that commit.
     if (page.contains("/reference/$referenceId.png")) {
       assertTrue(page.contains("/reference/$referenceId.png?at=$oldCommit"), page)
     }
+  }
+
+  @Test
+  fun `revision links retain a selected theme while the pinned page reports the baked theme`() {
+    val port = start().port
+    val provider = "ee.schimke.m3catalog.LightMediumContrastTheme"
+
+    val current = text("http://127.0.0.1:$port/$system/p/$previewId?themeProvider=$provider")
+    assertTrue(current.contains("themeProvider=$provider&amp;at=$oldCommit"), current)
+
+    val pinned =
+      text("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit&themeProvider=$provider")
+    assertTrue(pinned.contains("Pinned revision — theme overrides are not applied"), pinned)
+    assertTrue(pinned.contains("id=\"cp-theme-toggle-value\">Night</span>"), pinned)
+    // An id that still exists uses the same canonical name on Current and pinned pages.
+    assertTrue(current.contains("Button Filled"), current)
+    assertTrue(pinned.contains("Button Filled"), pinned)
   }
 
   @Test
@@ -332,7 +348,7 @@ class ServePinnedRevisionTest {
     assertTrue(page.contains("data-preview-id=\"$retiredId\""), page)
     assertTrue(page.contains("Pinned to catalog revision"), page)
     // Named by the component that revision declared it under, rather than by the bare id.
-    assertTrue(page.contains("Button/Filled"), page)
+    assertTrue(page.contains("Button Filled"), page)
     // Unpinned, the id is simply gone — a retired preview is not resurrected onto the live catalog.
     assertEquals(404, get("http://127.0.0.1:$port/$system/p/$retiredId").first)
   }
