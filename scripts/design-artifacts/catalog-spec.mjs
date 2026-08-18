@@ -824,8 +824,11 @@ function completenessErrors(spec) {
     return ["`completeness` must be an object (currently only `exemptSemantics` lives in it)"];
   }
   const errors = [];
+  // `$comment` is allowed alongside the fields, as it is at the top level: an exemption is a
+  // judgement call ("these renders capture nothing by their nature") and the reason belongs next to
+  // the list, not in a distant header — JSON has nowhere else to put it.
   for (const key of Object.keys(block)) {
-    if (key !== "exemptSemantics") {
+    if (key !== "exemptSemantics" && key !== "$comment") {
       errors.push(`completeness.${key} is not a known field (did you mean \`exemptSemantics\`?)`);
     }
   }
