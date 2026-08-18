@@ -1264,7 +1264,13 @@ class ServeCatalogLiveHost(
         add(RcPlayerBackend.CMP_ANDROID)
       }
       if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
+      // A player the parity run staged is offerable whatever the daemon is doing — the bytes are
+      // published, so the lane answers without one. This is also what keeps the catalog's
+      // preferred embedded default in the enabled set on a box whose daemon is down or absent,
+      // rather than silently demoting the page to the JS canvas.
+      addAll(stagedRcPlayers(previewId).filterNot { it in this })
     }
+      .sortedBy { RcPlayerBackend.UNIVERSE.indexOf(it) }
   }
 
   /**

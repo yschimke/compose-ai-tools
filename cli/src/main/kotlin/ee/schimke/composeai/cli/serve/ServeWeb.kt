@@ -9618,7 +9618,15 @@ $rows
             "<select id=\"cp-lane-select\" class=\"cp-lane-select\" " +
               "aria-label=\"Switch renderer\" " +
               "title=\"Draw this preview with a different renderer\" " +
-              "data-default=\"$defaultLane\" data-rc-default=\"$defaultRcBackend\">" +
+              "data-default=\"$defaultLane\" data-rc-default=\"$defaultRcBackend\"" +
+              // Catalog mode drops the renderer chip with the rest of the Live control, and that
+              // chip is what made this a *command* menu: "switch renderer…" at rest is only honest
+              // while something beside it names the renderer in use. Without it the menu is the
+              // sole indicator, so it has to hold its selection instead of bouncing back to the
+              // placeholder — otherwise picking Java leaves nothing on the page, or in the
+              // accessibility tree, saying Java is what is drawing.
+              (if (componentBrowser) " data-lane-state=\"1\"" else "") +
+              ">" +
               "<option value=\"\" selected>Switch renderer…</option>",
           postfix = "</select>",
         ) { lane ->

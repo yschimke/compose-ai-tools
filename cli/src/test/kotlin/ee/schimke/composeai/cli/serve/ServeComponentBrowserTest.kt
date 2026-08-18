@@ -252,6 +252,40 @@ class ServeComponentBrowserTest {
   }
 
   /**
+   * Catalog mode drops the renderer **chip** with the rest of the Live control, and that chip is
+   * what made the combo a *command* menu: "Switch renderer…" at rest is only honest while something
+   * beside it names the renderer in use. Without a chip the combo is the sole indicator, so the
+   * server marks it as a state field and `viewer.js` keeps the selection in it — otherwise picking
+   * Java left nothing on the page, or in the accessibility tree, saying Java was drawing.
+   */
+  @Test
+  fun `catalog mode marks the renderer combo as a state field, having no chip`() {
+    val catalog =
+      ServeWeb.viewerPage(
+        preview = ServePreview("appcard-time", "App card time", componentId = "Card/AppCard"),
+        token = token,
+        catalogTitle = "Remote Compose Material 3",
+        componentBrowser = true,
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+      )
+    assertFalse(catalog.contains("id=\"cp-live-toggle\""), "no chip in Catalog mode")
+    assertTrue(catalog.contains("data-lane-state=\"1\""), "so the combo holds the state instead")
+
+    // Dev keeps both, and the combo stays the command menu it was — the chip is the state there.
+    val dev =
+      ServeWeb.viewerPage(
+        preview = ServePreview("appcard-time", "App card time", componentId = "Card/AppCard"),
+        token = token,
+        catalogTitle = "Remote Compose Material 3",
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+      )
+    assertTrue(dev.contains("id=\"cp-live-toggle\""))
+    assertFalse(dev.contains("data-lane-state"))
+  }
+
+  /**
    * Dev mode is untouched: every player stays on offer, the unavailable ones as disabled options.
    */
   @Test
