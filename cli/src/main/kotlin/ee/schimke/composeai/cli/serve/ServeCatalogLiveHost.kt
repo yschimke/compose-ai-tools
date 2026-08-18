@@ -456,7 +456,15 @@ class ServeCatalogLiveHost(
     // Off by default — see [themeOptimizationEnabled]. Returning before `configureTargets` leaves
     // the cache with no targets, so `themeOptimizationSnapshot()` reports null and `/status` shows
     // no optimization row at all rather than one stuck at "waiting" forever.
-    if (!themeOptimizationEnabled) return
+    //
+    // But renders adopted from disk still have to be CHECKED. Disabling the eager pass turns off
+    // filling the cache, not trusting it: a restarted server with the pass off would otherwise
+    // serve
+    // every persisted entry without the fingerprint safety check ever running.
+    if (!themeOptimizationEnabled) {
+      verifyAdoptedRendersOnly(jobs)
+      return
+    }
     catalogThemeCache.configureTargets(jobs.map { it.cacheKey })
     if (jobs.isEmpty()) return
     // `fullyOptimized` is deliberately NOT an early return until the persisted renders have been
@@ -560,6 +568,28 @@ class ServeCatalogLiveHost(
         "serve: catalog $label — persisted theme renders no longer match this renderer; " +
           "dropped the generation and re-warming from scratch"
       )
+    }
+  }
+
+  /**
+   * Check adopted renders for a catalog whose eager pass is switched off.
+   *
+   * Same admission as the pass itself — a lane, then the idle gate — because it renders, and a
+   * disabled optimizer is not a licence to spend the box's daemons at startup. Runs on the
+   * optimizer executor so the caller (a prewarm or a presence heartbeat) is never blocked on it.
+   */
+  private fun verifyAdoptedRendersOnly(jobs: List<ThemeOptimizationJob>) {
+    if (persistenceVerified.get() || jobs.isEmpty()) return
+    if (!optimizationStarted.compareAndSet(false, true)) return
+    optimizationExecutor.execute {
+      try {
+        backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
+          if (awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+          true
+        }
+      } finally {
+        optimizationStarted.set(false)
+      }
     }
   }
 

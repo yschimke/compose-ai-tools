@@ -125,7 +125,13 @@ object ThemeCacheFingerprint {
         ?.split(File.pathSeparator)
         ?.filter { it.isNotBlank() }
         ?.map(::File)
-        .orEmpty())
+        .orEmpty()) +
+      // Captured payloads the daemon renders FROM rather than executes: the extracted IR/Remote
+      // Compose documents and the bundle manifest. `BundleIrReplayStore` reads these bytes to
+      // produce the scene, so a bundle that regenerates a capture without touching a single class
+      // renders differently — and would otherwise carry the previous generation's name.
+      PAYLOAD_PROPERTIES.mapNotNull { key -> systemProperties[key]?.takeIf { it.isNotBlank() } }
+        .map(::File)
 
   /** Stable digest of a catalog-id to daemon-id map, for [of]'s `routing`. */
   fun routingDigest(alias: Map<String, String>): String {
@@ -139,6 +145,16 @@ object ThemeCacheFingerprint {
 
   /** Where the daemon launch carries the catalog's own classes — see [renderedClasspath]. */
   const val USER_CLASS_DIRS_PROPERTY: String = "composeai.daemon.userClassDirs"
+
+  /**
+   * Launch properties naming rendered-from *content* rather than executed code.
+   *
+   * Kept as a list because the failure they share is silent: each one is a path in a system
+   * property rather than a classpath entry, so anything that only reads `classpath` misses it and
+   * two genuinely different generations agree on a name.
+   */
+  val PAYLOAD_PROPERTIES: List<String> =
+    listOf("composeai.daemon.irDir", "composeai.daemon.bundleManifestPath")
 
   /**
    * Fold several module fingerprints into one.

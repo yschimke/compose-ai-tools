@@ -185,7 +185,7 @@ class ThemeCachePersistenceTest {
     // renders it does get are most worth keeping.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configurePersistable(listOf("declared-theme"))
 
@@ -223,6 +223,16 @@ class ThemeCachePersistenceTest {
 
   // ---- store ----------------------------------------------------------------------------------
 
+  /**
+   * A store whose sweep grace window is disabled, so a test can assert reclamation directly.
+   *
+   * Production keeps a grace window for the zero-downtime rollout case — see the dedicated test
+   * below — but every other assertion here is about what the sweep decides, not about how long it
+   * waits to decide it.
+   */
+  private fun store(root: File, maxBytes: Long = ThemeCacheStore.DEFAULT_MAX_BYTES) =
+    ThemeCacheStore(root, maxBytes = maxBytes, graceMillis = 0)
+
   private fun inputs(fingerprint: String) =
     GenerationInputs(
       system = "m3-catalog",
@@ -233,15 +243,73 @@ class ThemeCachePersistenceTest {
     )
 
   @Test
+  fun `a generation young enough to belong to another replica is not reclaimed`() {
+    // The image deployment rolls out zero-downtime: a new replica boots beside the running one on
+    // the same volume and sees the old one's generations as unreferenced. Sweeping them would
+    // delete
+    // a possibly 28-hour cache belonging to the replica still serving production — and still
+    // serving
+    // it if the new replica fails readiness.
+    val root = tempDir()
+    val theirs = "a".repeat(64)
+    val ours = "b".repeat(64)
+    var now = 1_000_000L
+    val rolling = ThemeCacheStore(root, graceMillis = 60 * 60_000, clock = { now })
+    rolling.open("m3-catalog", theirs, inputs(theirs))!!.put("k", ByteArray(32))
+    rolling.open("m3-catalog", ours, inputs(ours))!!.put("k", ByteArray(32))
+
+    val during =
+      rolling.sweep(
+        setOf(ThemeCacheStore.GenerationId("m3-catalog", ours)),
+        onlySystems = setOf("m3-catalog"),
+      )
+    assertEquals(0, during.deletedGenerations, "the other replica's cache must survive the rollout")
+
+    // Once the window has passed there is no replica left that could be using it.
+    now += 2 * 60 * 60_000
+    val after =
+      rolling.sweep(
+        setOf(ThemeCacheStore.GenerationId("m3-catalog", ours)),
+        onlySystems = setOf("m3-catalog"),
+      )
+    assertEquals(1, after.deletedGenerations)
+  }
+
+  @Test
+  fun `captured IR payloads are part of the generation`() {
+    // A bundle can regenerate a Remote Compose / protolayout capture without touching a class. The
+    // daemon renders FROM those bytes, and they arrive as system-property paths rather than
+    // classpath entries — so anything reading only the classpath calls two different scenes one
+    // generation.
+    val dir = tempDir()
+    val jarFile = jar(dir, "catalog.jar", "UNCHANGED")
+    val ir = File(dir, "ir").apply { mkdirs() }
+    jar(ir, "scene.rc", "capture-1")
+
+    fun fingerprintNow() =
+      fingerprint(
+        ThemeCacheFingerprint.renderedClasspath(
+          classpath = listOf(jarFile.absolutePath),
+          systemProperties = mapOf(ThemeCacheFingerprint.PAYLOAD_PROPERTIES[0] to ir.absolutePath),
+        )
+      )
+
+    val before = fingerprintNow()
+    jar(ir, "scene.rc", "capture-2")
+
+    assertNotEquals(before, fingerprintNow(), "a regenerated capture must be a new generation")
+  }
+
+  @Test
   fun `a render written by one process is read by the next`() {
     // The whole point: a server restart is a new process over the same disk.
     val root = tempDir()
     val fp = "a".repeat(64)
 
-    val first = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val first = store(root).open("m3-catalog", fp, inputs(fp))!!
     first.put("button-filled__brand", byteArrayOf(1, 2, 3))
 
-    val second = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val second = store(root).open("m3-catalog", fp, inputs(fp))!!
     assertEquals(1, second.loadedEntries)
     assertTrue(second.contains("button-filled__brand"))
     assertContentEquals(byteArrayOf(1, 2, 3), second.get("button-filled__brand"))
@@ -252,9 +320,9 @@ class ThemeCachePersistenceTest {
     val root = tempDir()
     val old = "a".repeat(64)
     val new = "b".repeat(64)
-    ThemeCacheStore(root).open("m3-catalog", old, inputs(old))!!.put("k", byteArrayOf(9))
+    store(root).open("m3-catalog", old, inputs(old))!!.put("k", byteArrayOf(9))
 
-    val fresh = ThemeCacheStore(root).open("m3-catalog", new, inputs(new))!!
+    val fresh = store(root).open("m3-catalog", new, inputs(new))!!
 
     assertEquals(0, fresh.loadedEntries)
     assertNull(fresh.get("k"), "a new fingerprint must start clean, not inherit")
@@ -264,7 +332,7 @@ class ThemeCachePersistenceTest {
   fun `two catalogs with identical keys do not share renders`() {
     val root = tempDir()
     val fp = "c".repeat(64)
-    val store = ThemeCacheStore(root)
+    val store = store(root)
     store.open("m3-catalog", fp, inputs(fp))!!.put("shared-key", byteArrayOf(1))
 
     assertNull(store.open("wear-m3", fp, inputs(fp))!!.get("shared-key"))
@@ -275,7 +343,7 @@ class ThemeCachePersistenceTest {
     val root = tempDir()
     val live = "a".repeat(64)
     val dead = "b".repeat(64)
-    val store = ThemeCacheStore(root)
+    val store = store(root)
     store.open("m3-catalog", live, inputs(live))!!.put("k", ByteArray(64))
     store.open("m3-catalog", dead, inputs(dead))!!.put("k", ByteArray(64))
 
@@ -294,7 +362,7 @@ class ThemeCachePersistenceTest {
     // making no progress.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val store = ThemeCacheStore(root, maxBytes = 1)
+    val store = store(root, maxBytes = 1)
     store.open("m3-catalog", fp, inputs(fp))!!.put("k", ByteArray(4096))
 
     val result = store.sweep(setOf(ThemeCacheStore.GenerationId("m3-catalog", fp)))
@@ -325,7 +393,7 @@ class ThemeCachePersistenceTest {
     // was already on disk.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     // A memory tier far too small to hold both entries.
     val cache = CatalogThemeCache(maxBytes = 128, persistence = generation)
     cache.configureTargets(listOf("one", "two"))
@@ -348,7 +416,7 @@ class ThemeCachePersistenceTest {
     // the same identity that just proved untrustworthy.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one", "two"))
     cache.put("one", byteArrayOf(1))
@@ -365,7 +433,7 @@ class ThemeCachePersistenceTest {
   fun `verification keeps a generation whose renders still match`() {
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(7))
@@ -381,7 +449,7 @@ class ThemeCachePersistenceTest {
     // whole change exists to prevent.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(7))
@@ -403,7 +471,7 @@ class ThemeCachePersistenceTest {
     // box grow the store until the volume filled.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("declared-theme"))
 
@@ -426,7 +494,7 @@ class ThemeCachePersistenceTest {
     // silently re-render everything after each restart.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(maxBytes = 8, persistence = generation)
     cache.configureTargets(listOf("big"))
 
@@ -444,7 +512,7 @@ class ThemeCachePersistenceTest {
     // silently and the catalog would re-render into memory alone, losing it all again at restart.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
     val cache = CatalogThemeCache(persistence = generation)
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(1))
@@ -455,7 +523,7 @@ class ThemeCachePersistenceTest {
     assertTrue(generation.contains("one"), "the generation must accept writes again")
     assertContentEquals(
       byteArrayOf(42),
-      ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!.get("one"),
+      store(root).open("m3-catalog", fp, inputs(fp))!!.get("one"),
     )
   }
 
@@ -466,7 +534,7 @@ class ThemeCachePersistenceTest {
     // restart ~28 hours of warming, punishing a catalog for a network blip.
     val root = tempDir()
     val fp = "a".repeat(64)
-    val store = ThemeCacheStore(root)
+    val store = store(root)
     store.open("m3-catalog", fp, inputs(fp))!!.put("k", ByteArray(32))
     store.open("did-not-load", fp, inputs(fp))!!.put("k", ByteArray(32))
 
@@ -488,7 +556,7 @@ class ThemeCachePersistenceTest {
     val root = tempDir()
     val old = "a".repeat(64)
     val new = "b".repeat(64)
-    val store = ThemeCacheStore(root)
+    val store = store(root)
     store.open("m3-catalog", old, inputs(old))!!.put("k", ByteArray(32))
     store.open("m3-catalog", new, inputs(new))!!.put("k", ByteArray(32))
 
@@ -499,7 +567,7 @@ class ThemeCachePersistenceTest {
       )
 
     assertEquals(1, result.deletedGenerations)
-    assertEquals(0, ThemeCacheStore(root).open("m3-catalog", old, inputs(old))!!.loadedEntries)
+    assertEquals(0, store(root).open("m3-catalog", old, inputs(old))!!.loadedEntries)
   }
 
   @Test

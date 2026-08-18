@@ -885,11 +885,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         renderConfig = "$renderConfig routing=$routing",
       )
     val generation = store.open(system, fingerprint, inputs) ?: return CatalogThemeCache()
-    val superseded = liveThemeGenerations.put(system, fingerprint) != null
-    // A refresh that produced a NEW fingerprint has just retired the old one; reclaim it now rather
-    // than at the next restart, or a box that regenerates several times a day never gets the disk
-    // back. Swept only on the replacement path — a first load has nothing to supersede.
-    if (superseded) sweepThemeCache()
+    // The map is updated here, but the SWEEP is not run here. This is called while a replacement
+    // host is still being staged: `openHost` or publication can still fail and leave the previous
+    // host serving from the registry — and reclaiming its generation at this point would delete a
+    // warmed cache still in use, and leave its attached generation unable to write. Retirement
+    // waits
+    // for a successful publication (see [sweepThemeCache]'s callers).
+    liveThemeGenerations[system] = fingerprint
     if (generation.loadedEntries > 0) {
       System.err.println(
         "serve: catalog $system → ${generation.loadedEntries} theme renders adopted from disk"
@@ -3355,6 +3357,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       return false
     }
     previousResources?.let { runCatching { it.close() } }
+    // Publication succeeded, so any generation this catalog superseded is now genuinely retired and
+    // safe to reclaim. Doing it here rather than when the replacement cache was opened is what
+    // keeps
+    // a failed `openHost` from deleting the cache of the host still serving.
+    sweepThemeCache()
     return true
   }
 

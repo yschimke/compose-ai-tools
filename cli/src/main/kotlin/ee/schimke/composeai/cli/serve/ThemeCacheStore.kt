@@ -47,6 +47,17 @@ class ThemeCacheStore(
    * between sweeps would silently stop persisting exactly when it was working hardest.
    */
   private val maxBytes: Long = DEFAULT_MAX_BYTES,
+  /**
+   * How recently a generation must have been created to be spared by [sweep] even when this process
+   * has no use for it.
+   *
+   * This exists for the zero-downtime rollout the image deployment performs: a new replica boots
+   * alongside the running one, sharing the `/config` volume this store defaults into, and knows
+   * nothing of the old replica's fingerprints. Without a grace window it would reclaim the cache of
+   * the replica still serving production — and if the new replica then failed readiness, the old
+   * one would carry on with its warming deleted out from under it.
+   */
+  private val graceMillis: Long = DEFAULT_SWEEP_GRACE_MILLIS,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   private val json = Json {
@@ -106,6 +117,7 @@ class ThemeCacheStore(
    * answer and not something this can quietly fix.
    */
   fun sweep(live: Set<GenerationId>, onlySystems: Set<String>? = null): SweepResult {
+    val youngerThan = clock() - graceMillis
     val liveDirs = live.mapNotNull { it.dir() }.toSet()
     var deleted = 0
     var reclaimed = 0L
@@ -124,7 +136,19 @@ class ThemeCacheStore(
       }
       for (generationDir in generationDirs) {
         val size = generationDir.sizeOnDisk()
-        if (generationDir in liveDirs) {
+        // Live here, young enough to be live in ANOTHER PROCESS, or undeletable — all three are
+        // survivors, and each for its own reason:
+        //  - ours: obviously;
+        //  - young: the image deployment rolls out zero-downtime, so a new replica boots beside the
+        //    old one on the same volume and sees the old one's generations as unreferenced.
+        // Sweeping
+        //    them would delete a possibly 28-hour cache belonging to a replica that is still
+        // serving
+        //    production — and still the one serving it if the new replica fails its readiness
+        // check;
+        //  - undeletable: the bytes are still on the volume whatever the filesystem said, and a
+        //    census that omits them can report the store under a cap it is actually over.
+        if (generationDir in liveDirs || createdAt(generationDir) > youngerThan) {
           survivingBytes += size
           survivingGenerations++
           continue
@@ -132,6 +156,10 @@ class ThemeCacheStore(
         if (generationDir.deleteRecursively()) {
           deleted++
           reclaimed += size
+        } else {
+          survivingBytes += size
+          survivingGenerations++
+          recordFailure(systemDir.name, "could not reclaim ${generationDir.name}")
         }
       }
       // A system directory left empty by the sweep is itself garbage.
@@ -175,6 +203,20 @@ class ThemeCacheStore(
       misses = misses.get(),
       lastFailureReason = lastFailure["reason"],
     )
+
+  /**
+   * When this generation was first created, from its manifest, falling back to the directory's own
+   * timestamp and finally to "now" — an unreadable age must read as *young*, so an unparseable
+   * manifest errs toward keeping bytes rather than deleting another replica's cache.
+   */
+  private fun createdAt(dir: File): Long =
+    runCatching {
+      json
+        .decodeFromString(GenerationInputs.serializer(), File(dir, MANIFEST_NAME).readText())
+        .createdAtEpochMillis
+        .takeIf { it > 0 }
+    }
+      .getOrNull() ?: dir.lastModified().takeIf { it > 0 } ?: clock()
 
   private fun recordFailure(system: String, reason: String) {
     writeFailures.incrementAndGet()
@@ -294,6 +336,9 @@ class ThemeCacheStore(
 
   companion object {
     const val DEFAULT_MAX_BYTES: Long = 8L * 1024 * 1024 * 1024
+
+    /** Long enough to cover a rollout's readiness window, short enough to reclaim the same day. */
+    const val DEFAULT_SWEEP_GRACE_MILLIS: Long = 60L * 60 * 1000
     const val MANIFEST_NAME: String = "manifest.json"
     const val MAX_REASON_CHARS: Int = 200
     private const val PNG_SUFFIX = ".png"
