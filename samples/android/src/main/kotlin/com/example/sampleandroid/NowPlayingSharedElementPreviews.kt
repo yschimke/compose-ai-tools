@@ -123,9 +123,11 @@ private fun NowPlayingSharedLayout(modifier: Modifier = Modifier) {
   // flipping an AnimatedContent targetState. Under the paused render clock a targetState flip snaps
   // the shared-element bounds to their target in a single captured frame (only the fades tween);
   // making the transition *fraction* the clock-driven animation means the bounds interpolate
-  // smoothly across every captured frame — the same seekable primitive
-  // SharedElementFilmstripPreview
-  // uses for fixed fractions, animated here instead of seeked.
+  // smoothly across every captured frame. Note this animates the fraction rather than pinning it:
+  // SharedElementFilmstripPreview used to *seek* to constant fractions and had to stop, because a
+  // fraction is a share of a total duration that shared-element transitions keep changing (issue
+  // #4097). Sweeping the fraction 0→1 is unaffected — it ends where it started aiming, and every
+  // frame in between is a frame of the animation rather than a claim about a specific fraction.
   val seekState = remember { SeekableTransitionState(PlayerScreen.MiniPlayer) }
   LaunchedEffect(Unit) {
     seekState.animateTo(PlayerScreen.FullPlayer, animationSpec = tween(MORPH_MS))
