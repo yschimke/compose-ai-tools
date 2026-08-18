@@ -146,6 +146,18 @@
       "allowedVersions": "!/-SNAPSHOT$/"
     },
     {
+      "description": "Remote Compose, its Wear widget layer and Glance Wear resolve from an androidx-main snapshot (`1.0.0-SNAPSHOT`), pinned by build id as `androidxSnapshotBuildId` in settings.gradle.kts. Renovate can't track a build id embedded in a repository URL, and left enabled the gradle minor/patch group would 'upgrade' the snapshot back onto a Google Maven alpha that predates the APIs the samples and connector call. Moving the snapshot means editing that one line and re-verifying a render.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^androidx\\.compose\\.remote($|[.:])/",
+        "/^androidx\\.wear\\.compose\\.remote($|[.:])/",
+        "/^androidx\\.glance\\.wear($|[.:])/"
+      ],
+      "enabled": false
+    },
+    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"

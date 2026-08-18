@@ -286,3 +286,14 @@ internal fun RcPlayerCustom(layout: Custom, modifier: Modifier) {
     customPlugins?.Render(component, modifier = Modifier)
   }
 }
+
+// Upstream declares these two helpers file-private in its own copy of this file, so the vendored
+// player can't call them once the Remote Compose snapshot ships the `…player.compose.embedded`
+// package (the Google Maven alphas didn't). Same predicates, byte for byte: a "float" property is
+// FLOAT_PROP or FLOAT_RETURN, a "string" one is STRING_PROP or TEXT_RETURN — everything else reads
+// as an int, which is what the `ints` accessor above assumes.
+private fun Custom.CustomProperty.isFloat(): Boolean =
+  mDataType == Custom.CustomProperty.FLOAT_PROP || mDataType == Custom.CustomProperty.FLOAT_RETURN
+
+private fun Custom.CustomProperty.isString(): Boolean =
+  mDataType == Custom.CustomProperty.STRING_PROP || mDataType == Custom.CustomProperty.TEXT_RETURN

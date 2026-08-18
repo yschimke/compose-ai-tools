@@ -146,58 +146,57 @@ wear = "1.4.0"
 # de-facto helper most Wear apps use to wrap their root content. Used by
 # `:samples:wear` previews to demonstrate the ambient override end-to-end.
 horologist = "0.7.15"
-# Remote Compose — alpha artifacts, used only by `:samples:remotecompose` to
-# demonstrate `RemotePreview` + `@PreviewWrapper(RemotePreviewWrapper::class)`.
-# Re-check minCompileSdk / AGP requirements when bumping these — the alpha
-# line has historically tightened them between releases.
+# Remote Compose — resolved from an androidx-main post-submit snapshot (see
+# `androidxSnapshotBuildId` in `settings.gradle.kts`, which is where a bump
+# happens; these three keys just read `1.0.0-SNAPSHOT` off that one build).
+# Used by `:samples:remotecompose` to demonstrate `RemotePreview` +
+# `@PreviewWrapper(RemotePreviewWrapper::class)`, by the daemon connector, and
+# by the vendored embedded player. Re-check minCompileSdk / AGP requirements
+# when moving the build id — the line has historically tightened them.
 #  * ui-tooling-preview 1.11.0-rc01 is the first released artifact that
 #    contains `PreviewWrapper` / `PreviewWrapperProvider` — 1.10.x (the
 #    current BOM) doesn't have them. Declared explicitly because the
 #    sample doesn't depend on compose-bom.
-#  * compose-remote is held at alpha08 because alpha09 dropped
-#    `androidx.compose.remote.creation.compose.modifier.ClickActionModifierKt`,
-#    which `wear-compose-remote:remote-material3:alpha02` was built against
-#    and still calls into. Bumping the pair together (e.g. once a newer
-#    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
-#    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
-#    inside `RemoteButtonImpl` at preview render time.
-#  * Renovate's `gradle-minorpatch` bump to the `compose-remote alpha11` /
-#    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
-#    harness render), so the pair was previously held at the last green
-#    pre-bump versions until a mutually-rebuilt pair could be verified together.
-#    alpha13 / alpha06 is that mutually-rebuilt pair: the connector + samples
-#    were migrated to the new API (`HostAction` went `internal` — build actions
-#    via the public `hostAction(...)` factory returning `Action`;
-#    `captureSingleRemoteDocument` now takes `RemoteCreationDisplayInfo` +
-#    `RemoteDensity` + `LayoutDirection`; the `RemotePreview` composable became
-#    `RemoteContentPreview`), so the pair now tracks the latest
-#    verified-together alpha. alpha14 / alpha07 is the next such pair:
-#    `RemoteDensity.from` dropped its trailing `Context` arg and now derives
-#    density solely from the `RemoteCreationDisplayInfo` it's handed.
-#    alpha17 / alpha09 is the current such pair: `remote-material3:1.0.0-alpha09`
-#    declares `remote-creation`/`remote-creation-compose` 1.0.0-alpha17 in its POM,
-#    and `glance-wear:1.0.0-alpha16` does the same, so all three move together.
-compose-remote = "1.0.0-alpha17"
+#  * Why one snapshot build instead of three Google Maven pins: the three
+#    groups only work together when they were built against the same
+#    `remote-creation*`, and matching them by hand kept going wrong. alpha09
+#    dropped `…creation.compose.modifier.ClickActionModifierKt` that
+#    `remote-material3:alpha02` still called, giving a runtime
+#    `NoClassDefFoundError` inside `RemoteButtonImpl` at render time; a
+#    Renovate bump of the `alpha11` / `alpha04` pair took CI red on both the
+#    Kotlin compile and the daemon-harness render; and #2823 once pinned a
+#    `wear-compose-remote` version that didn't exist yet (every artifact
+#    404'd), making `:samples:design-catalog-remote-m3` unresolvable. One
+#    build id can't skew — the wear layer and Glance Wear resolve the exact
+#    `remote-creation*` they were compiled against.
+#  * API drift still happens between builds, and it lands in the samples +
+#    connector, not just in resolution. Past migrations, for shape: `HostAction`
+#    went `internal` (build actions via the public `hostAction(...)` factory
+#    returning `Action`); `captureSingleRemoteDocument` took on
+#    `RemoteCreationDisplayInfo` + `RemoteDensity` + `LayoutDirection`;
+#    `RemotePreview` became `RemoteContentPreview`; `RemoteDensity.from` dropped
+#    its trailing `Context` arg. Expect the same class of fix when the build id
+#    moves — verify a render, not just a compile.
+compose-remote = "1.0.0-SNAPSHOT"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.6.0"
 # `FontRequest` / `FontsContractCompat` — the downloadable-fonts provider API the vendored embedded
 # player's typeface resolver uses to service `google:` font prefixes.
 androidx-core = "1.19.0"
-#    Check Google Maven before bumping: the `androidx.wear.compose.remote` group
-#    publishes behind `androidx.compose.remote`, and #2823 once pinned a version that
-#    didn't exist yet (every artifact 404'd), making `:samples:design-catalog-remote-m3`
-#    unresolvable and taking `main` red. Bump it together with `compose-remote`, to the
-#    version whose POM names the `compose-remote` pin above.
-wear-compose-remote = "1.0.0-alpha09"
+#    `androidx.wear.compose.remote:remote-material3`, from the same snapshot build as
+#    `compose-remote` above — on the snapshot line it resolves
+#    `androidx.compose.remote.foundation:foundation` (a module the Google Maven alphas
+#    don't publish at all), which in turn pulls the matching `remote-creation*`.
+wear-compose-remote = "1.0.0-SNAPSHOT"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:design-catalog-remote-m3` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
-# `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. alpha16 is
-# built against compose-remote alpha17 (see its POM), so bump this in lockstep
-# with the `compose-remote` pin above — a skewed pair risks the same
-# creation/player version drift the Remote Compose comment describes.
-glance-wear = "1.0.0-alpha16"
+# `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. Comes from the
+# same snapshot build as the two pins above — it declares `remote-creation*`
+# itself, so a skewed pin risks exactly the creation/player drift the Remote
+# Compose comment describes.
+glance-wear = "1.0.0-SNAPSHOT"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
