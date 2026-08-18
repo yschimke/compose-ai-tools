@@ -1830,6 +1830,41 @@ class ServeCatalogLiveHostTest {
     )
   }
 
+  /**
+   * A knob edit cannot use the baked fallback: those pixels ignore the requested value and the HTTP
+   * layer correctly turns them into a 503. The foreground request must therefore wait for the
+   * bounded warm just like a theme edit, then render the requested value itself.
+   */
+  @Test
+  fun `a knob render on a cold id waits for its warm instead of dropping the override`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+      )
+    val overrides =
+      PreviewOverrides(
+        namedOverrides = mapOf("color" to PreviewOverrideValue.StringValue("outlined"))
+      )
+
+    val outcome = composite.render(catalogId, overrides)
+
+    assertTrue(
+      outcome is RenderOutcome.Ok,
+      "a cold knob edit must produce live pixels, got $outcome",
+    )
+    assertEquals("live:$daemonId", outcome.png.decodeToString())
+    assertTrue(live.renderCalls >= 2, "one warm render plus the knob render")
+  }
+
   /** A warm that never succeeds must not hold the request for the whole budget. */
   @Test
   fun `a pure theme render gives up when the warm itself fails`() {
