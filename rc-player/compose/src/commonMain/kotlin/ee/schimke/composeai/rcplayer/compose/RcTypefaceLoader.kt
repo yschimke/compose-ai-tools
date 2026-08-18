@@ -93,6 +93,12 @@ public class RcBundledTypefaceLoader(faces: Map<String, RcFontFaces>) : RcTypefa
  * Whether the generic fallback chain should move onto the loader — letting a host own it — is
  * deliberately left to #4061; this preserves today's behaviour exactly.
  */
+/**
+ * The key a document uses when it names no family at all. A host's default-role family is
+ * registered under it as well as under its own name — see [RcManifestTypefaceLoader].
+ */
+internal const val RC_DEFAULT_FAMILY: String = "default"
+
 internal fun rcResolveTypeface(
   recordedName: String?,
   fontFamilyId: Int,
@@ -103,7 +109,7 @@ internal fun rcResolveTypeface(
   fun host(name: String): FontFamily? = loader.typeface(name, settings)
   return when (val family = recordedName?.lowercase()) {
     null,
-    "default" -> host("default") ?: FontFamily.Default
+    RC_DEFAULT_FAMILY -> host(RC_DEFAULT_FAMILY) ?: FontFamily.Default
     "sans-serif" -> host(family) ?: FontFamily.SansSerif
     "serif" -> host(family) ?: FontFamily.Serif
     "monospace" -> host(family) ?: FontFamily.Monospace

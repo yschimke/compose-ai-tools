@@ -63,6 +63,12 @@ public final class ee/schimke/composeai/rcplayer/compose/RcFontFaces {
 	public static synthetic fun family$default (Lee/schimke/composeai/rcplayer/compose/RcFontFaces;Landroidx/compose/ui/text/font/FontVariation$Settings;ILjava/lang/Object;)Landroidx/compose/ui/text/font/FontFamily;
 }
 
+public final class ee/schimke/composeai/rcplayer/compose/RcManifestTypefaceLoader {
+	public static final field $stable I
+	public fun <init> (Lkotlin/jvm/functions/Function2;)V
+	public final fun load (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
 public final class ee/schimke/composeai/rcplayer/compose/RcNamedValuesKt {
 	public static final fun getColor (Lee/schimke/composeai/rcplayer/runtime/RcNamedValue$Color;)J
 	public static final fun rcNamedColor-8_81llA (J)Lee/schimke/composeai/rcplayer/runtime/RcNamedValue$Color;

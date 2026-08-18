@@ -56,7 +56,13 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.foundation)
       @Suppress("DEPRECATION") implementation(compose.ui)
     }
-    commonTest.dependencies { implementation(kotlin("test")) }
+    commonTest.dependencies {
+      implementation(kotlin("test"))
+      // `runTest` only — `RcManifestTypefaceLoader.load` suspends, and its rules have to be
+      // asserted on every target, not just the browser (#4061). Test-scope, so it never reaches a
+      // consumer's POM.
+      implementation(libs.kotlinx.coroutines.test)
+    }
     jvmTest.dependencies {
       @Suppress("DEPRECATION") implementation(compose.desktop.currentOs)
       implementation(libs.jetbrains.compose.ui.test)
