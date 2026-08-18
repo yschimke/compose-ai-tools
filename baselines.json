@@ -796,8 +796,8 @@
     "serve-landing-sections-filter-focus.dark.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "dark",
-      "sha256": "cfc7cbd9a16d1413e233a9aed97cbf8d67fa25353eccf3ba4172b7afb9a3cee6",
-      "size": 57723
+      "sha256": "fe1fc76091f068f30af8d5911fa8d74ad5cce8c06ae8f1fdac2f2e3938d80c32",
+      "size": 59532
     },
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
@@ -892,8 +892,8 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "80373e5d7bd692b13f5bfbe79fc6f1630c555b5e582afee24405e89b4274d1db",
-      "size": 76728
+      "sha256": "9318444377ef7a6393783456389bea0f82a27987b7cc45c83576c4d74f5455b6",
+      "size": 80883
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
@@ -1492,14 +1492,14 @@
     "serve-viewer-pinned-lanes.dark.png": {
       "fixture": "serve-viewer-pinned-lanes",
       "theme": "dark",
-      "sha256": "b4e01f92d102d6a17dd91168d96796de0b24f090c0d42c43ddf933108415706d",
-      "size": 75939
+      "sha256": "c04e40aa554538d297b5378fd231b3fa2cc893086fd1378a18a2a343a969b8fa",
+      "size": 84230
     },
     "serve-viewer-pinned-lanes.light.png": {
       "fixture": "serve-viewer-pinned-lanes",
       "theme": "light",
-      "sha256": "e34323b694a6038b51da44f1b020f3d3b0a2124a48998bb8764010a512533483",
-      "size": 74419
+      "sha256": "bba8c4817f704494be8be5ebfe64dce7347a61df737e15582b36e64d4d4458db",
+      "size": 82438
     },
     "serve-viewer-rc-players-player-java.dark.png": {
       "fixture": "serve-viewer-rc-players-player-java",
