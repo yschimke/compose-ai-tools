@@ -2760,6 +2760,10 @@ private fun Modifier.applyWidth(
     RcDimensionType.EXACT_DP -> width(state.resolve(width.value).dp)
     RcDimensionType.FILL,
     RcDimensionType.FILL_PARENT_MAX_WIDTH -> fillMaxWidth()
+    // WRAP is the *absence* of a size modifier — Compose already sizes a component to its content,
+    // which is how AndroidX's own embedded player implements it too. INTRINSIC_MIN/MAX fall here
+    // as well, and those genuinely are unimplemented; `composeSupportReport` draws that line, so
+    // the two cases stay distinguishable even though the modifier chain treats them alike.
     else -> this
   }
 
@@ -2791,6 +2795,8 @@ private fun Modifier.applyHeight(
     RcDimensionType.EXACT_DP -> height(state.resolve(height.value).dp)
     RcDimensionType.FILL,
     RcDimensionType.FILL_PARENT_MAX_HEIGHT -> fillMaxHeight()
+    // See `applyWidth`: WRAP is Compose's default sizing, INTRINSIC_MIN/MAX are the unimplemented
+    // pair the support report names.
     else -> this
   }
 

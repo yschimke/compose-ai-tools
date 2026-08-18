@@ -134,11 +134,21 @@ public fun RcDocument.composeSupportReport(
           else -> null
         }
       }
+  // A colour id is declared by a literal `ColorConstant` or by one of the two operations that
+  // *compute* a colour under an out id — `ColorExpression` (a tween/HSV/ARGB build) and
+  // `ColorTheme` (a light/dark pair, resolved by `applyColorTheme`). The player publishes all
+  // three into the same colour store, so a text style reading a computed id resolves exactly like
+  // one reading a literal; counting only the literals rejected documents the player renders fine.
+  // Every themed `RemoteButton` label is one — a `ColorExpression` over the container's
+  // `ColorAttribute` channels (compose-ai-tools#4166).
   val colorIds =
-    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcColorConstant>().mapTo(
-      mutableSetOf()
-    ) {
-      it.id
+    operations.mapNotNullTo(mutableSetOf()) { operation ->
+      when (operation) {
+        is ee.schimke.composeai.rcplayer.protocol.RcColorConstant -> operation.id
+        is RcColorExpression -> operation.outId
+        is ee.schimke.composeai.rcplayer.protocol.RcColorTheme -> operation.outId
+        else -> null
+      }
     }
   val dynamicLists = operations.filterIsInstance<RcDynamicFloatList>().associateBy { it.id }
   val integerExpressionIds =
@@ -443,17 +453,7 @@ public fun RcDocument.composeSupportReport(
         issues += RcComposeSupportIssue(index, "IntegerExpression", detail)
       }
     }
-    if (
-      operation is RcWidthModifier &&
-        operation.type !in
-          setOf(
-            RcDimensionType.EXACT,
-            RcDimensionType.FILL,
-            RcDimensionType.WEIGHT,
-            RcDimensionType.EXACT_DP,
-            RcDimensionType.FILL_PARENT_MAX_WIDTH,
-          )
-    ) {
+    if (operation is RcWidthModifier && operation.type !in SUPPORTED_WIDTH_TYPES) {
       issues +=
         RcComposeSupportIssue(
           index,
@@ -461,17 +461,7 @@ public fun RcDocument.composeSupportReport(
           "dimension type ${operation.type} is not implemented",
         )
     }
-    if (
-      operation is RcHeightModifier &&
-        operation.type !in
-          setOf(
-            RcDimensionType.EXACT,
-            RcDimensionType.FILL,
-            RcDimensionType.WEIGHT,
-            RcDimensionType.EXACT_DP,
-            RcDimensionType.FILL_PARENT_MAX_HEIGHT,
-          )
-    ) {
+    if (operation is RcHeightModifier && operation.type !in SUPPORTED_HEIGHT_TYPES) {
       issues +=
         RcComposeSupportIssue(
           index,
@@ -1202,6 +1192,39 @@ private fun paintIssue(paint: RcPaintData): String? {
   }
   return null
 }
+
+/**
+ * The dimension types `applyWidth`/`applyHeight` turn into a Compose size.
+ *
+ * [RcDimensionType.WRAP] is in the list even though neither applies a modifier for it: wrapping the
+ * content *is* Compose's default sizing, so the absence of a modifier is the implementation, and it
+ * is the same thing AndroidX's own embedded player does (`Type.WRAP -> this // Default`). Reporting
+ * it as unimplemented refused documents both players render identically — every `RemoteButton`
+ * sizes its label row that way (compose-ai-tools#4166).
+ *
+ * [RcDimensionType.INTRINSIC_MIN] and [RcDimensionType.INTRINSIC_MAX] stay out: those need a real
+ * intrinsic measurement, and dropping them silently sizes the component from its parent instead.
+ */
+private val SUPPORTED_WIDTH_TYPES =
+  setOf(
+    RcDimensionType.EXACT,
+    RcDimensionType.FILL,
+    RcDimensionType.WRAP,
+    RcDimensionType.WEIGHT,
+    RcDimensionType.EXACT_DP,
+    RcDimensionType.FILL_PARENT_MAX_WIDTH,
+  )
+
+/** [SUPPORTED_WIDTH_TYPES]'s vertical twin — same reasoning, `FILL_PARENT_MAX_HEIGHT` instead. */
+private val SUPPORTED_HEIGHT_TYPES =
+  setOf(
+    RcDimensionType.EXACT,
+    RcDimensionType.FILL,
+    RcDimensionType.WRAP,
+    RcDimensionType.WEIGHT,
+    RcDimensionType.EXACT_DP,
+    RcDimensionType.FILL_PARENT_MAX_HEIGHT,
+  )
 
 private const val PAINT_TEXT_SIZE = 1
 private const val PAINT_COLOR = 4

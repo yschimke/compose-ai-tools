@@ -24,7 +24,9 @@ import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.core.operations.BitmapFontData
 import androidx.compose.remote.core.operations.ClipPath
 import androidx.compose.remote.core.operations.ClipRect
+import androidx.compose.remote.core.operations.ColorAttribute
 import androidx.compose.remote.core.operations.ColorConstant
+import androidx.compose.remote.core.operations.ColorExpression
 import androidx.compose.remote.core.operations.ComponentValue
 import androidx.compose.remote.core.operations.ConditionalOperations
 import androidx.compose.remote.core.operations.DrawArc
@@ -131,6 +133,9 @@ internal fun DrawScope.executeOperations(
   // redirected to an offscreen bitmap so it can be restored (on a `bitmapId == 0` reset, and
   // defensively at the end of the op stream).
   var mainCanvas: Canvas? = null
+  // Allocated on demand: only a value-producing `PaintOperation` in this stream needs one, and the
+  // overwhelming majority of streams have none.
+  var evalPaintContext: GraphPaintContext? = null
   for (op in operations) {
     if (op is androidx.compose.remote.core.VariableSupport) {
       op.updateVariables(read)
@@ -159,6 +164,33 @@ internal fun DrawScope.executeOperations(
       }
       is ColorConstant -> op.apply(remoteContext)
       is NamedVariable -> op.apply(remoteContext)
+      // A colour *derived* in the draw stream — `ColorExpression` (a tween/HSV/ARGB build) or
+      // `ColorAttribute` (a channel pulled out of another colour). Both publish an id a later
+      // `PaintBundle.COLOR_ID` in this same stream reads, and neither reached the store before:
+      // the graph index only walks the document's operation tree, and these live in a component's
+      // `mDrawContentOperations` (a `Modifier.drawWithContent` canvas block), which hangs off the
+      // component as a field rather than as a child. So `isComputed` was false, `getColor` fell
+      // through to a store nothing had ever written, and the paint came out 0 — fully
+      // transparent. That is compose-ai-tools#4165's missing button container: every
+      // `RemoteIconButton`/`RemoteButton` draws its background exactly this way, from a
+      // `tween(containerColor, selectedContainerColor, …)` ColorExpression.
+      //
+      // `updateVariables(read)` above already resolved the inputs through the graph (so a
+      // time/variable-driven colour re-runs this draw), which leaves publishing the result. Writes
+      // go to `remoteContext`, the real store, for the same reason the `FloatExpression` branch
+      // above does: the graph suppresses writes during evaluation.
+      is ColorExpression -> op.apply(remoteContext)
+      // `ColorAttribute` is a `PaintOperation`, so it publishes from `paint` rather than `apply`
+      // (`PaintOperation.apply` forwards there only in PAINT mode with a context attached) — the
+      // same split `GraphContext.evaluate` handles, and the reason it has a draw-nothing
+      // `GraphPaintContext` at all. Reuse that here, over the real store: the op reads the colour
+      // it decomposes and writes the channel back, both of which belong in the store the rest of
+      // this stream reads.
+      is ColorAttribute -> {
+        val context =
+          evalPaintContext ?: GraphPaintContext(remoteContext).also { evalPaintContext = it }
+        op.paint(context)
+      }
       is ParticlesLoop -> {
         // Particle system: bridged to the core (View player) implementation. Needs the
         // graph for seed state + frame-clock observation; without it skip.
