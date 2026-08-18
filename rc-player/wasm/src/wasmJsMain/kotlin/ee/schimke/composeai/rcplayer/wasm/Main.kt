@@ -20,11 +20,11 @@ import androidx.compose.ui.window.ComposeViewport
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
 import ee.schimke.composeai.rcplayer.compose.RcFontFace
 import ee.schimke.composeai.rcplayer.compose.RcFontFaces
+import ee.schimke.composeai.rcplayer.compose.RcPlayerTheme
 import ee.schimke.composeai.rcplayer.compose.composeSupportReport
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
-import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.runtime.RcHostActionValue
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
@@ -72,11 +72,15 @@ public fun main() {
   setRcPlatformTracingEnabled(queryParameter("rcTrace") == "1")
   loadRequest = LoadRequest(queryParameter("src"), generation = 0)
   installDocumentSwap()
+  // `?theme=` is part of the embed contract, so the accepted spellings stay exactly as they were;
+  // only the type the player takes has changed. Anything else — including no parameter at all —
+  // follows the browser's `prefers-color-scheme`, which is what `RcTheme.UNSPECIFIED` resolved to
+  // here before.
   val theme =
     when (queryParameter("theme")?.lowercase()) {
-      "light" -> RcTheme.LIGHT
-      "dark" -> RcTheme.DARK
-      else -> RcTheme.UNSPECIFIED
+      "light" -> RcPlayerTheme.Light
+      "dark" -> RcPlayerTheme.Dark
+      else -> RcPlayerTheme.System
     }
   ComposeViewport(viewportContainerId = "rcPlayer") {
     LaunchedEffect(Unit) {

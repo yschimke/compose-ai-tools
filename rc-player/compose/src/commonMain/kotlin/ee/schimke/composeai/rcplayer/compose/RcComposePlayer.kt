@@ -276,38 +276,38 @@ import org.jetbrains.skia.ImageInfo
 public fun RcComposePlayer(
   bytes: ByteArray,
   modifier: Modifier = Modifier,
-  theme: Int = RcTheme.SYSTEM,
+  theme: RcPlayerTheme = RcPlayerTheme.System,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
-  systemColorLookup: (name: String) -> Int? = { null },
+  systemColors: (name: String) -> Color? = { null },
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
-  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies, systemColorLookup)
+  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies, systemColors)
 }
 
 @Composable
 public fun RcComposePlayer(
   document: RcDocument,
   modifier: Modifier = Modifier,
-  theme: Int = RcTheme.SYSTEM,
+  theme: RcPlayerTheme = RcPlayerTheme.System,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   fontFamilies: Map<String, RcFontFaces> = emptyMap(),
-  systemColorLookup: (name: String) -> Int? = { null },
+  systemColors: (name: String) -> Color? = { null },
 ) {
-  // Resolve once, at the only place that can: `SYSTEM` and `UNSPECIFIED` are questions for the
-  // host, and everything below this point — section gating, and every `ColorTheme` selection —
-  // needs a concrete answer. See [rcResolveSystemTheme] for why leaving them unresolved is not a
-  // neutral default.
+  // Resolve once, at the only place that can: `RcPlayerTheme.System` is a question for the host,
+  // and everything below this point — section gating, and every `ColorTheme` selection — needs a
+  // concrete answer. See [rcResolveSystemTheme] for why leaving it unresolved is not a neutral
+  // default.
   RcComposePlayerResolved(
     document,
     modifier,
-    rcResolveSystemTheme(theme),
+    theme.resolve(),
     namedValues,
     onEvent,
     fontFamilies,
-    systemColorLookup,
+    systemColors,
   )
 }
 
@@ -319,10 +319,10 @@ private fun RcComposePlayerResolved(
   namedValues: Map<String, RcNamedValue>,
   onEvent: (RcPlayerEvent) -> Unit,
   fontFamilies: Map<String, RcFontFaces>,
-  systemColorLookup: (name: String) -> Int?,
+  systemColors: (name: String) -> Color?,
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
-  val latestSystemColorLookup by rememberUpdatedState(systemColorLookup)
+  val latestSystemColors by rememberUpdatedState(systemColors)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
   var invalidationVersion by remember { mutableIntStateOf(0) }
   var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
@@ -347,12 +347,16 @@ private fun RcComposePlayerResolved(
             RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
           }
         },
-        // Read through `latestSystemColorLookup`, never captured directly: a host's lookup is
-        // usually a capturing lambda, so a parent recomposition hands us a fresh instance. Keying
-        // the state on it would rebuild `RcPlayerState` — discarding variables an action changed,
+        // Read through `latestSystemColors`, never captured directly: a host's lookup is usually a
+        // capturing lambda, so a parent recomposition hands us a fresh instance. Keying the state
+        // on it would rebuild `RcPlayerState` — discarding variables an action changed,
         // touch-expression state and running animation timelines — because a colour callback that
         // resolves the same palette happened to be reallocated.
-        systemColorLookup = { name -> latestSystemColorLookup(name) },
+        //
+        // The `Color` -> ARGB conversion happens here, at the module boundary: `RcPlayerState`
+        // lives in `:rc-player-runtime`, which has no Compose UI dependency, and packed ARGB really
+        // is the wire value there. See [toRcArgb].
+        systemColorLookup = { name -> latestSystemColors(name)?.toRcArgb() },
       )
     }
   val needsContinuousFrames =

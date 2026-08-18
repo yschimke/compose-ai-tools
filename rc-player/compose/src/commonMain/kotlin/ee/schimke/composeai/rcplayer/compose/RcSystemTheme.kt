@@ -22,9 +22,16 @@ import ee.schimke.composeai.rcplayer.protocol.RcTheme
  * `isSystemInDarkTheme` rather than an Android `Configuration` read: it is the Compose-level answer
  * and it exists on every target this player runs on, so desktop, iOS, wasm and Android all resolve
  * `SYSTEM` the same way instead of the JVM lanes quietly falling to one side.
+ *
+ * **Internal, not public.** Hosts name a theme with [RcPlayerTheme] and never see a wire constant,
+ * so this had no caller outside the module — the ABI dump added in #4062 is what made that visible.
+ * It still takes an `Int` and still handles `UNSPECIFIED`, because the collapse of `SYSTEM` and
+ * `UNSPECIFIED` into [RcPlayerTheme.System] is a statement about the *host* boundary: a document's
+ * own operations still carry `UNSPECIFIED`, and `RcComposeViewController` used to default to it.
+ * Keeping both cases here is what makes that collapse behaviour-preserving rather than a guess.
  */
 @Composable
-public fun rcResolveSystemTheme(theme: Int): Int =
+internal fun rcResolveSystemTheme(theme: Int): Int =
   when (theme) {
     RcTheme.SYSTEM,
     RcTheme.UNSPECIFIED -> if (isSystemInDarkTheme()) RcTheme.DARK else RcTheme.LIGHT
