@@ -830,7 +830,7 @@ class ServeWebTest {
         systemViews = 1234,
       )
     assertTrue(landing.contains("""<div class="cp-engage">12 views</div>"""), landing)
-    assertTrue(landing.contains("2 preview(s) · 1.2k views"), landing)
+    assertTrue(landing.contains("2 previews · 1.2k views"), landing)
 
     val viewer =
       ServeWeb.viewerPage(
@@ -860,7 +860,7 @@ class ServeWebTest {
           ),
         token = "t",
       )
-    assertTrue(html.contains("42 preview(s) · 12.3k views"), html)
+    assertTrue(html.contains("42 previews · 12.3k views"), html)
   }
 
   @Test

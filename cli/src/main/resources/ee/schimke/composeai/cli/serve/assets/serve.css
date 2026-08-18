@@ -205,9 +205,11 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    `space-between` their absence slid the nav between centred and hard-right from page to page.
    A `1fr auto 1fr` grid pins the brand left and the nav right whatever the middle holds. */
 .cp-site-header { min-height: 56px; margin-bottom: 14px; padding: 4px 0 8px;
-  position: sticky; top: 0; z-index: 80; background: var(--cp-bg);
+  position: sticky; top: 0; z-index: 80; background: var(--cp-bg); isolation: isolate;
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
   align-items: center; gap: 18px; }
+.cp-site-header::before { content: ""; position: absolute; z-index: -1; top: 0; bottom: 0;
+  left: 50%; width: 100vw; transform: translateX(-50%); background: var(--cp-bg); }
 /* The lead slot: the brand, then this page's breadcrumb / back link. Navigation belongs in the
    navigation bar — as the body's first line it spent a whole row (plus its margin) restating
    where you are, and on the viewer that row is the difference between the render being on screen
@@ -1251,6 +1253,18 @@ cp-parity-scores { display: contents; }
    would squash the height without narrowing the width. The heroes are rasterised at 2x this
    box, so clamping here is what makes them crisp rather than merely small. */
 .cp-imgwrap img { max-width: 100%; max-height: 240px; width: auto; height: auto; display: block; }
+.cp-imgwrap[data-image-state="loading"]::before, .cp-stage[data-image-state="loading"]::before {
+  content: ""; position: absolute; inset: 12px; border-radius: inherit;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cp-fg) 8%, transparent) 50%, transparent 70%);
+  background-size: 220% 100%; animation: cp-image-loading 1.2s ease-in-out infinite; }
+@keyframes cp-image-loading { to { background-position-x: -220%; } }
+.cp-imgwrap[data-image-state="loading"] img, .cp-stage[data-image-state="loading"] > img { visibility: hidden; }
+.cp-image-error { position: absolute; z-index: 2; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center;
+  color: var(--md-sys-color-on-error-container); background: var(--md-sys-color-error-container);
+  border-radius: var(--md-sys-shape-corner-small); }
+.cp-image-error button { color: var(--md-sys-color-on-error-container); background: transparent;
+  border: 1px solid currentColor; border-radius: var(--md-sys-shape-corner-full); padding: 6px 14px; }
 /* A framed thumbnail: a clip window whose aspect-ratio is the component box, that crops away a
    sticker's empty watch canvas. The window's natural width is the box (so it never upscales past
    1x), but `max-width: 100%` lets it shrink to a narrow grid card instead of overflowing it —
@@ -1342,6 +1356,14 @@ cp-history-menu { display: contents; }
 .cp-theme-menu-panel .cp-theme-bar { display: flex; flex-direction: column; align-items: stretch;
   gap: 2px; overflow: visible; padding: 0; }
 .cp-theme-menu-panel .cp-theme-btn { min-width: 12em; width: 100%; text-align: left; }
+/* Keep option labels in the menu's foreground; a small swatch carries the theme preview. */
+.cp-theme-menu-panel .cp-theme-btn[data-theme-mode] { color-scheme: normal;
+  background: transparent; color: var(--md-sys-color-on-surface); border-color: transparent; }
+.cp-theme-menu-panel .cp-theme-btn[data-theme-mode]::before { content: ""; flex: 0 0 16px;
+  width: 16px; height: 16px; margin-right: 8px; border-radius: 50%;
+  background: light-dark(#f6f2fa, #29272e); border: 1px solid var(--md-sys-color-outline); }
+.cp-theme-menu-panel .cp-theme-btn[data-theme-mode="light"]::before { color-scheme: light; }
+.cp-theme-menu-panel .cp-theme-btn[data-theme-mode="dark"]::before { color-scheme: dark; }
 /* The axis toggles are the drawer toggle's compact sibling: same pill, same selected language,
    but two-part — the axis it folds, then the value that axis currently holds. Four full-size
    drawer pills on the title row of a 1100px laptop wrap; at this size they don't. */
@@ -3191,7 +3213,7 @@ cp-page-zoom button:focus-visible {
 /* Streamlined, Storybook-like component browser (`serve --component-browser`). Full serve mode
    keeps the richer authoring/diagnostic chrome above; these rules only arrange the smaller set of
    controls the server emits in browser mode. */
-.cp-component-browser .cp-site-header { grid-template-columns: minmax(0, 1fr) auto; }
+.cp-component-browser .cp-site-header { max-width: 1680px; grid-template-columns: minmax(0, 1fr) auto; }
 .cp-component-browser .cp-site-lead { min-width: 0; }
 .cp-component-browser .cp-main { max-width: 1680px; }
 .cp-component-browser .cp-catalog-head-row { align-items: center; margin-bottom: 18px; }

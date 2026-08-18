@@ -1137,7 +1137,7 @@ class ServeHttpRoutingTest {
     // also carries no ?token — the route needs none.
     assertTrue(landing.contains("href=\"/compose-m3/p/$previewId\""), "path card link: $landing")
     assertTrue(!landing.contains("token="), "public path landing links are token-free: $landing")
-    assertTrue(landing.contains("1 preview(s) · 1 view"), "catalog visit counted: $landing")
+    assertTrue(landing.contains("1 preview · 1 view"), "catalog visit counted: $landing")
 
     val (viewerCode, viewer) = get("/compose-m3/p/$previewId")
     assertEquals(200, viewerCode)

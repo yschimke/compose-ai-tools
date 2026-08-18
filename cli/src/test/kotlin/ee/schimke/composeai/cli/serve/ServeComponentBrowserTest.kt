@@ -44,6 +44,9 @@ class ServeComponentBrowserTest {
       html.indexOf("</main>") < html.indexOf("querySelectorAll(\"[data-cp-interface-mode]\")")
     )
     assertTrue(html.contains("androidx/androidx"))
+    assertTrue(html.contains("aria-label=\"Material 3\""))
+    assertTrue(html.contains("No catalogs match your search."))
+    assertTrue(html.contains("h.hidden=!!g&&!Array.prototype.some.call(g.children"))
     assertTrue(html.contains("class=\"cp-component-browser\""))
     assertFalse(html.contains("84 preview(s)"))
     assertFalse(html.contains("<div class=\"cp-id\">compose-m3</div>"))
@@ -220,6 +223,29 @@ class ServeComponentBrowserTest {
     assertTrue(html.contains("document.cookie=key+\"=\"+mode"))
     assertTrue(html.contains("u.searchParams.delete(\"chrome\")"))
     assertFalse(html.contains("class=\"cp-component-browser\""))
+  }
+
+  @Test
+  fun `dev home exposes catalog search too`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        systems =
+          listOf(
+            ServeWeb.HomeSystem(
+              system = "compose-m3",
+              title = "Material 3",
+              subtitle = null,
+              previewCount = 1,
+              trust = null,
+              heroPreviewId = null,
+            )
+          ),
+        token = token,
+      )
+
+    assertTrue(html.contains("id=\"cp-browser-catalog-search\""))
+    assertTrue(html.contains("data-browser-search=\"material 3 compose-m3"))
+    assertTrue(html.contains("id=\"cp-browser-catalog-empty\""))
   }
 
   @Test

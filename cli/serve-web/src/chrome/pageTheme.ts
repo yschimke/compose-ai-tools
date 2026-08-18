@@ -76,6 +76,14 @@ function currentChoice(): string {
     const params = new URLSearchParams(location.search);
     const fromUrl = params.get("theme") || params.get("uiMode");
     if (fromUrl) return fromUrl;
+    const viewer = document.querySelector<HTMLElement>(
+        ".cp-viewer[data-preview-id]",
+    );
+    const previewId = viewer?.getAttribute("data-preview-id") || "";
+    if (/(?:^|__)(?:light|dark)(?:__|$)/.test(previewId)) {
+        const baked = viewer?.getAttribute("data-bg-theme") || "";
+        if (baked === "light" || baked === "dark") return baked;
+    }
     const key = themeKey();
     return (key && stored(key)) || "";
 }

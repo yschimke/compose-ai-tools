@@ -8,6 +8,7 @@
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <script>try{var s=localStorage.getItem("cp-interface-mode");if(s){localStorage.removeItem("cp-interface-mode");if((s==="catalog"||s==="dev")&&document.cookie.indexOf("cp_chrome=")<0){document.cookie="cp_chrome="+s+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");if(document.cookie.indexOf("cp_chrome="+s)>=0&&!/[?&]chrome=/.test(location.search))location.reload();}}}catch(e){}</script>
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -23,6 +24,10 @@
     </a>
   </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
+    <div class="cp-interface-mode" role="group" aria-label="Interface mode">
+      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
+      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
+    </div>
     <details class="cp-site-menu" id="cp-site-menu">
       <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
         aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
@@ -35,19 +40,6 @@
           <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
         </summary>
         <div class="cp-settings-panel">
-          <fieldset class="cp-settings-group">
-            <legend class="cp-settings-legend">Page theme</legend>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-              <span>Match the preview theme</span>
-            </label>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-              <span>Follow my system</span>
-            </label>
-            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-              match. Turn it off to keep the page on your operating system's setting.</p>
-          </fieldset>
           <fieldset class="cp-settings-group cp-settings-keyboard">
             <legend class="cp-settings-legend">Keyboard</legend>
             <label class="cp-settings-option">
@@ -141,6 +133,7 @@
             <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
           </div>
         </footer>
+        <script>(function(){var key="cp_chrome";document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{document.cookie=key+"="+mode+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");}catch(e){}var u=new URL(location.href);u.searchParams.delete("chrome");if(document.cookie.indexOf(key+"="+mode)<0)u.searchParams.set("chrome",mode);var q=u.searchParams.toString();location.assign(u.pathname+(q?"?"+q:"")+u.hash);});});})();</script>
         <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
       </body>
     </html>
