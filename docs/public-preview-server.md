@@ -660,12 +660,26 @@ re-renders a small sample and compares it to what was adopted from disk. A misma
 whole generation — an input the fingerprint missed makes every entry under that name suspect. A
 daemon that cannot answer yet verifies nothing rather than discarding anything.
 
-There is deliberately **no temp-directory fallback**: a theme cache thrown away with the container
-would cost disk and render time to buy nothing, so where there is no durable location the server
-runs memory-only and says so. On the Compose stack that durable location is a named volume
-(`theme_cache:/config/theme-cache` in `deploy/vps/docker-compose.yml`), which is what survives the
-container recreation a deploy performs. `/status.json` reports the tier as `themeCache` — generation
-count, bytes, hits and writes.
+The tier is **off by default and opt-in**, and unset does not mean off — `--theme-cache-dir none`
+does. On the prebuilt image an unset value would derive a directory beside `catalogs.json`, which is
+the durable `preview_config` volume, so the cache would quietly grow on the volume holding the
+operator's catalog set and trust store. There is also deliberately **no temp-directory fallback**: a
+cache thrown away with the container costs disk and render time to buy nothing, so where there is no
+durable location the server runs memory-only and says so.
+
+`preview.coo.ee` runs the **prebuilt image** profile, [`deploy/image`](../deploy/image) — not the
+from-source `deploy/vps` one. Its compose file mounts a dedicated `preview_theme_cache` volume at
+`/theme-cache`, kept separate from `preview_config` for the reason above, so enabling the cache is a
+one-line `.env` change:
+
+```
+SERVE_THEME_CACHE_DIR=/theme-cache
+```
+
+A named volume is what survives the container recreation the rolling update performs — replicas
+overlap during that rollout and share the volume, which is why the sweeper spares generations young
+enough to belong to the outgoing replica. `/status.json` reports the tier as `themeCache` —
+generation count, bytes, hits and writes.
 
 The cache can also be filled **ahead of the first visitor** — an idle pass that walks each catalog's
 `previews × declaredThemes` set and renders the missing entries — but that pass is **off by

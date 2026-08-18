@@ -179,11 +179,17 @@ services:
       SERVE_CATALOG_REFRESH: "${SERVE_CATALOG_REFRESH:-}"
       # RSS feed history work sleeps after this many seconds without a feed request. Empty ⇒ 7 days.
       SERVE_CATALOG_FEED_IDLE: "${SERVE_CATALOG_FEED_IDLE:-}"
-      # Warmed theme renders (the per-catalog theme cache) persist across container recreation when
-      # this points at a mounted volume. Defaults to `none` — OFF — deliberately: an unset value
-      # would otherwise derive a directory beside catalogs.json, which here is the durable
-      # `preview_config` volume, and quietly grow an up-to-8-GB render cache on the volume an
-      # operator keeps their configuration in. Point it at a volume of its own to turn it on.
+      # Warmed theme renders (the per-catalog theme cache) survive container recreation, which is
+      # what the rolling update below performs — so a restart no longer discards hours of background
+      # warming. Set SERVE_THEME_CACHE_DIR=/theme-cache in .env to turn it on; it lands on the
+      # dedicated `preview_theme_cache` volume mounted below.
+      #
+      # Defaults to `none` — OFF — deliberately, on two counts. An unset value would derive a
+      # directory beside catalogs.json, which here is the durable `preview_config` volume, quietly
+      # growing an up-to-8-GB cache on the volume holding the operator's configuration. And the
+      # reuse rules are new: a generation is keyed by a fingerprint of everything that decides the
+      # pixels, and an input that fingerprint misses would serve stale renders, so the conservative
+      # first-release posture is opt-in.
       SERVE_THEME_CACHE_DIR: "${SERVE_THEME_CACHE_DIR:-none}"
       SERVE_THEME_CACHE_MAX_BYTES: "${SERVE_THEME_CACHE_MAX_BYTES:-}"
       # Bundle-upload lane (POST a locally-built bundle and browse it here). Off unless asked for.
@@ -223,6 +229,11 @@ services:
       # (`- ./catalogs.json:/config/catalogs.json`) to keep it in version control.
       # The same volume carries producers.json (the trust store) for the same reasons.
       - preview_config:/config
+      # Warmed theme renders, on a volume of their OWN — never on preview_config, which is where
+      # the catalog set and trust store live and must not be crowded out by an up-to-8-GB render
+      # cache. Mounted unconditionally so turning the cache on is a one-line .env change
+      # (SERVE_THEME_CACHE_DIR=/theme-cache); while it stays `none` the volume is simply empty.
+      - preview_theme_cache:/theme-cache
     # To also pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:
     #   - ./producers.json:/trust/producers.json:ro
@@ -370,6 +381,7 @@ services:
       com.centurylinklabs.watchtower.enable: "true"
 
 volumes:
+  preview_theme_cache:
   # Runtime download caches for `preview` (resolved live-bundle dep jars + fonts), kept across
   # image rolls so a freshly-rolled replica reuses them instead of re-downloading. See the
   # `preview` service's volumes block for why the baked android-all / ~/.m2 are excluded.
