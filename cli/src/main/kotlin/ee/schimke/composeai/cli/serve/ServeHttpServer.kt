@@ -1503,7 +1503,10 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
     val skin = siteSkin()
-    markGeneration("static-page", pageCacheControl())
+    // These misses are not immutable: catalog refresh, admin registration, or asynchronous parity
+    // staging can make the same URL valid without a deployment. Never let a browser or proxy keep
+    // the old 404 after that state changes.
+    markGeneration("static-page", DYNAMIC_RESOURCE_CACHE_CONTROL)
     call.respondText(
       ServeWeb.notFoundPage(
         message,
@@ -3537,6 +3540,9 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handleStatus(json: Boolean) {
     if (rejectBadToken()) return
     val wantJson = json || call.request.queryParameters["format"].equals("json", ignoreCase = true)
+    // Operational state must reach browsers and monitors immediately in both directions: neither
+    // a healthy snapshot after failure nor a stale failure after recovery is useful status.
+    markGeneration("status", DYNAMIC_RESOURCE_CACHE_CONTROL)
     // On a top-level site, `/status` reports on THAT app only: its catalog row, its daemons, and
     // the startup failures that name it. A visitor to `m3.preview.coo.ee/status` has no business
     // learning what else this box happens to run, and a monitor pointed at the site should alert on
@@ -3550,7 +3556,6 @@ class ServeHttpServer(
         ContentType.Application.Json,
       )
     } else {
-      markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.statusPage(
           data.toView(),
@@ -4334,12 +4339,13 @@ class ServeHttpServer(
           },
         runningServers =
           running.map { d ->
+            val static = d.pinned
             RunningServerDto(
               id = d.id,
               label = d.label,
-              backend = backendOf(d.liveSeatWeight),
-              seatWeight = d.liveSeatWeight,
-              activeStreams = d.activeStreams,
+              backend = if (static) "static" else backendOf(d.liveSeatWeight),
+              seatWeight = if (static) 0 else d.liveSeatWeight,
+              activeStreams = if (static) 0 else d.activeStreams,
               uptimeSeconds = d.startedAt?.let { ((nowMillis - it) / 1000).coerceAtLeast(0) },
               renderStats = d.renderStats,
               daemonPools = d.daemonPools,
@@ -7780,7 +7786,7 @@ private data class CatalogDto(
 private data class RunningServerDto(
   val id: String,
   val label: String,
-  /** `desktop` / `android`, derived from the live-seat weight. */
+  /** `static`, or `desktop` / `android` derived from the live-seat weight. */
   val backend: String,
   val seatWeight: Int,
   val activeStreams: Int,
