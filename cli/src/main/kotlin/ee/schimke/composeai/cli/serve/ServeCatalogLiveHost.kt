@@ -438,10 +438,6 @@ class ServeCatalogLiveHost(
 
   /** Fill every catalog-preview × declared-theme cache entry while the whole server is idle. */
   private fun startThemeOptimization() {
-    // Off by default — see [themeOptimizationEnabled]. Returning before `configureTargets` leaves
-    // the cache with no targets, so `themeOptimizationSnapshot()` reports null and `/status` shows
-    // no optimization row at all rather than one stuck at "waiting" forever.
-    if (!themeOptimizationEnabled) return
     val catalogIds =
       previews.asSequence().map { it.id }.filter(alias::containsKey).sorted().toList()
     val jobs = catalogIds.flatMap { previewId ->
@@ -454,6 +450,13 @@ class ServeCatalogLiveHost(
         )
       }
     }
+    // The finite declared-theme set is declared to the disk tier FIRST and unconditionally, so that
+    // a deployment with the eager pass switched off still persists the renders visitors ask for.
+    catalogThemeCache.configurePersistable(jobs.map { it.cacheKey })
+    // Off by default — see [themeOptimizationEnabled]. Returning before `configureTargets` leaves
+    // the cache with no targets, so `themeOptimizationSnapshot()` reports null and `/status` shows
+    // no optimization row at all rather than one stuck at "waiting" forever.
+    if (!themeOptimizationEnabled) return
     catalogThemeCache.configureTargets(jobs.map { it.cacheKey })
     if (jobs.isEmpty()) return
     // `fullyOptimized` is deliberately NOT an early return until the persisted renders have been
@@ -472,11 +475,10 @@ class ServeCatalogLiveHost(
     optimizationActive.set(true)
     optimizationExecutor.execute {
       try {
-        // Before anything else, and before the fully-optimized shortcut: renders adopted from disk
-        // are worthless if they no longer match this renderer. A no-op when nothing was adopted, so
-        // a cold cache pays nothing.
-        verifyPersistedRenders(jobs)
-        if (catalogThemeCache.snapshot().fullyOptimized) return@execute
+        // Verification does NOT run here, ahead of admission — see the slot below. It renders, and
+        // renders at startup are exactly what the catalog-load gate and the lane cap exist to
+        // hold back: `prewarm` starts one of these tasks per catalog, so a warmed restart would
+        // cold-start a daemon for every catalog at once while the others were still loading.
         // No stagger before the door, deliberately. Every catalog does become runnable the instant
         // the idle gate opens — measured on the deployed box as 11 catalogs entering inside 464 ms
         // — but with the cap in place a simultaneous arrival is harmless: two are admitted and the
@@ -498,7 +500,12 @@ class ServeCatalogLiveHost(
         while (true) {
           val outcome =
             backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
-              runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
+              // Inside the lane and behind the idle gate, so the sample's renders are admitted on
+              // exactly the terms every other background render is. Cheap and once per host: a
+              // no-op when nothing was adopted from disk.
+              if (!persistenceVerified.get() && awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+              if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
+              else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
             }
           if (outcome == null) {
             // Parked, not failed: `keepLiveWarm` re-enters on the next presence heartbeat, and
@@ -533,9 +540,9 @@ class ServeCatalogLiveHost(
    * cache proves nothing, and a daemon that cannot answer yet is "no evidence", not "mismatch".
    */
   private fun verifyPersistedRenders(jobs: List<ThemeOptimizationJob>) {
-    if (!persistenceVerified.compareAndSet(false, true)) return
+    if (persistenceVerified.get()) return
     val byKey = jobs.associateBy { it.cacheKey }
-    val trustworthy = catalogThemeCache.verifySample { key ->
+    val outcome = catalogThemeCache.verifySample { key ->
       val job = byKey[key] ?: return@verifySample null
       val daemonId = alias[job.previewId] ?: return@verifySample null
       val outcome = runCatching { live.render(daemonId, job.overrides) }.getOrNull()
@@ -543,7 +550,12 @@ class ServeCatalogLiveHost(
         ?.takeIf { it.generation == RenderOutcome.Generation.DAEMON }
         ?.png
     }
-    if (!trustworthy) {
+    // Latched only once the question is actually answered. `NO_EVIDENCE` — every sampled render
+    // came back Busy, Failed, or out of some cache — leaves it unlatched so the next pass asks
+    // again; latching there would permanently skip the check on the one occasion it never ran.
+    if (outcome.settled) persistenceVerified.set(true)
+    if (outcome == CatalogThemeCache.VerifyOutcome.MISMATCH) {
+      persistenceVerified.set(true)
       System.err.println(
         "serve: catalog $label — persisted theme renders no longer match this renderer; " +
           "dropped the generation and re-warming from scratch"

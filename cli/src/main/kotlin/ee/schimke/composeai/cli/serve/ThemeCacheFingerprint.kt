@@ -71,6 +71,16 @@ object ThemeCacheFingerprint {
     variant: String,
     toolVersion: String,
     renderConfig: String,
+    /**
+     * Digest of the catalog-id to daemon-preview routing this generation renders through.
+     *
+     * Persisted keys name the **published catalog** preview id, but a render resolves that id
+     * through the alias map before it reaches a daemon. That map comes from the catalog manifest,
+     * not the bundle — so a delivery-branch update can repoint an id at a different daemon preview
+     * while shipping a byte-identical executable bundle. Same classpath, same key, different
+     * pixels, and a five-entry verification sample would very likely miss the one row that moved.
+     */
+    routing: String = "",
   ): String? {
     if (classpath.isEmpty() || classpath.size > MAX_CLASSPATH_ENTRIES) return null
     val digest = MessageDigest.getInstance("SHA-256")
@@ -78,6 +88,7 @@ object ThemeCacheFingerprint {
     digest.line("variant", variant)
     digest.line("version", toolVersion)
     digest.line("renderConfig", renderConfig)
+    digest.line("routing", routing)
     // Hashed in the order the descriptor lists them, NOT sorted. Classpath order is semantically
     // significant: when two entries carry the same class or resource the JVM resolves the earlier
     // one, so a reordering with identical bytes can genuinely change the pixels. Sorting made both
@@ -115,6 +126,16 @@ object ThemeCacheFingerprint {
         ?.filter { it.isNotBlank() }
         ?.map(::File)
         .orEmpty())
+
+  /** Stable digest of a catalog-id to daemon-id map, for [of]'s `routing`. */
+  fun routingDigest(alias: Map<String, String>): String {
+    if (alias.isEmpty()) return ""
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.line("schema", SCHEMA)
+    // Sorted by catalog id: the map's iteration order is not part of what it means.
+    alias.entries.sortedBy { it.key }.forEach { (id, daemonId) -> digest.line(id, daemonId) }
+    return digest.digest().hex()
+  }
 
   /** Where the daemon launch carries the catalog's own classes — see [renderedClasspath]. */
   const val USER_CLASS_DIRS_PROPERTY: String = "composeai.daemon.userClassDirs"

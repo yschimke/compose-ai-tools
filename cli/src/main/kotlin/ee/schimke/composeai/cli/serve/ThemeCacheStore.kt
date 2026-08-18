@@ -149,6 +149,10 @@ class ThemeCacheStore(
     )
   }
 
+  /** Every system with a directory in the store, whether or not this server still serves it. */
+  fun systems(): Set<String> =
+    root.listFiles()?.filter { it.isDirectory }?.map { it.name }?.toSet().orEmpty()
+
   /**
    * Disk occupancy as of the last sweep, plus everything written since.
    *
@@ -257,6 +261,10 @@ class ThemeCacheStore(
      */
     fun discard(): Boolean {
       present.clear()
+      // Measured before the delete and subtracted, or the census would carry the discarded
+      // generation's bytes plus its rebuilt replacement until the next sweep — making the one
+      // number an operator uses to judge occupancy roughly twice the truth.
+      knownBytes.addAndGet(-dir.sizeOnDisk())
       return runCatching {
           // The PNGs go; the DIRECTORY stays. This generation object remains attached to a live
           // CatalogThemeCache, and deleting the directory under it would make every later `put`

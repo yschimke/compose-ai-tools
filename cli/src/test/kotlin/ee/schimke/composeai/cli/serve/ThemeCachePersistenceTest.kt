@@ -177,6 +177,50 @@ class ThemeCachePersistenceTest {
     assertEquals(listOf(framework), resolved)
   }
 
+  @Test
+  fun `declared themes persist even when the eager optimizer pass is switched off`() {
+    // With `-Dcomposeai.serve.themeOptimization=false` the pass never declares its targets, so
+    // gating persistence on the target set refused every render a visitor actually asked for and
+    // each restart began again — persistence doing nothing on precisely the configuration where the
+    // renders it does get are most worth keeping.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val cache = CatalogThemeCache(persistence = generation)
+    cache.configurePersistable(listOf("declared-theme"))
+
+    cache.put("declared-theme", byteArrayOf(5))
+
+    assertTrue(generation.contains("declared-theme"))
+    // And no optimization row is claimed, which is what a disabled pass should report.
+    assertNull(cache.snapshot().takeIf { it.total > 0 })
+  }
+
+  @Test
+  fun `the alias routing is part of the generation`() {
+    // Persisted keys name the published catalog id, but a render resolves it through the alias map
+    // first. A delivery-branch update can repoint an id at a different daemon preview while
+    // shipping
+    // a byte-identical bundle — same classpath, same key, different pixels.
+    val dir = tempDir()
+    val cp = listOf(jar(dir, "catalog.jar", "CLASSES"))
+    fun fp(alias: Map<String, String>) =
+      ThemeCacheFingerprint.of(
+        cp,
+        variant = "desktop",
+        toolVersion = "1.14.0",
+        renderConfig = "density=2",
+        routing = ThemeCacheFingerprint.routingDigest(alias),
+      )
+
+    assertNotEquals(fp(mapOf("button" to "daemon-a")), fp(mapOf("button" to "daemon-b")))
+    assertEquals(
+      fp(mapOf("a" to "x", "b" to "y")),
+      fp(mapOf("b" to "y", "a" to "x")),
+      "map iteration order is not part of what the routing means",
+    )
+  }
+
   // ---- store ----------------------------------------------------------------------------------
 
   private fun inputs(fingerprint: String) =
@@ -310,9 +354,9 @@ class ThemeCachePersistenceTest {
     cache.put("one", byteArrayOf(1))
     cache.put("two", byteArrayOf(2))
 
-    val trustworthy = cache.verifySample { byteArrayOf(99) }
+    val outcome = cache.verifySample { byteArrayOf(99) }
 
-    assertFalse(trustworthy)
+    assertEquals(CatalogThemeCache.VerifyOutcome.MISMATCH, outcome)
     assertEquals(0, cache.snapshot().cached, "a failed verification leaves nothing behind")
     assertNull(cache.get("one"))
   }
@@ -326,7 +370,7 @@ class ThemeCachePersistenceTest {
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(7))
 
-    assertTrue(cache.verifySample { byteArrayOf(7) })
+    assertEquals(CatalogThemeCache.VerifyOutcome.VERIFIED, cache.verifySample { byteArrayOf(7) })
     assertEquals(1, cache.snapshot().cached)
   }
 
@@ -342,7 +386,11 @@ class ThemeCachePersistenceTest {
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(7))
 
-    assertTrue(cache.verifySample { null })
+    assertEquals(
+      CatalogThemeCache.VerifyOutcome.NO_EVIDENCE,
+      cache.verifySample { null },
+      "a daemon that cannot answer leaves the question open, it does not settle it",
+    )
     assertEquals(1, cache.snapshot().cached)
   }
 
@@ -401,7 +449,7 @@ class ThemeCachePersistenceTest {
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(1))
 
-    assertFalse(cache.verifySample { byteArrayOf(99) })
+    assertEquals(CatalogThemeCache.VerifyOutcome.MISMATCH, cache.verifySample { byteArrayOf(99) })
 
     cache.put("one", byteArrayOf(42))
     assertTrue(generation.contains("one"), "the generation must accept writes again")
@@ -460,7 +508,8 @@ class ThemeCachePersistenceTest {
     cache.configureTargets(listOf("one"))
     cache.put("one", byteArrayOf(1))
 
-    assertTrue(
+    assertEquals(
+      CatalogThemeCache.VerifyOutcome.NOTHING_TO_VERIFY,
       cache.verifySample { byteArrayOf(99) },
       "nothing persisted means nothing to distrust",
     )

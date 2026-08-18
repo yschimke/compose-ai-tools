@@ -788,17 +788,21 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    */
   private fun sweepThemeCache() {
     val store = themeCacheStore ?: return
-    // Scoped to the systems we actually hold a current generation for. A catalog whose load failed
-    // this pass — a transient fetch error, or a shutdown before the loader reached it — has no
-    // entry here, and its previously warmed generation must survive: deleting it would make the
-    // refresher's later success restart ~28 hours of warming from zero, punishing a catalog for a
-    // network blip.
     val live =
-      liveThemeGenerations.entries.map { (system, fingerprint) ->
-        ThemeCacheStore.GenerationId(system, fingerprint)
-      }
+      liveThemeGenerations.entries
+        .map { (system, fingerprint) -> ThemeCacheStore.GenerationId(system, fingerprint) }
+        .toSet()
+    // Three populations, and only the middle one is left alone:
+    //  - loaded now: sweep it, so a refresh reclaims the fingerprint it just superseded;
+    //  - configured but NOT loaded this pass: skip it. A transient fetch error or a shutdown before
+    //    the loader reached it must not cost ~28 hours of re-warming;
+    //  - no longer configured at all: sweep it, with no live generation to protect anything, so an
+    //    operator removing a catalog actually gets the disk back. Passing null here — "sweep
+    //    everything" — would collapse the first two together.
+    val configuredButUnloaded = themeCacheConfiguredSystems().orEmpty() - liveThemeGenerations.keys
+    val sweepable = runCatching { store.systems() }.getOrNull().orEmpty() - configuredButUnloaded
     val result =
-      runCatching { store.sweep(live.toSet(), onlySystems = liveThemeGenerations.keys.toSet()) }
+      runCatching { store.sweep(live, onlySystems = sweepable + liveThemeGenerations.keys) }
         .getOrNull() ?: return
     if (result.deletedGenerations > 0) {
       System.err.println(
@@ -813,6 +817,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       )
     }
   }
+
+  /**
+   * Systems this server is configured to serve, once the catalog tracker exists. Null before then,
+   * which makes the sweep conservative rather than destructive.
+   */
+  @Volatile private var themeCacheConfiguredSystems: () -> Set<String>? = { null }
 
   /**
    * The generation currently in use **per system**, so a sweep knows what it must not reclaim.
@@ -831,7 +841,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * render with, and the variant it will render as — so nothing here has to be kept in step by hand
    * with what the renderer actually loads.
    */
-  private fun themeCacheFor(system: String, vararg descriptors: File): CatalogThemeCache {
+  private fun themeCacheFor(
+    system: String,
+    alias: Map<String, String>,
+    vararg descriptors: File,
+  ): CatalogThemeCache {
     val store = themeCacheStore ?: return CatalogThemeCache()
     val launches = descriptors.map {
       ServeBundleDaemon.readLaunchDescriptor(it) ?: return CatalogThemeCache()
@@ -842,6 +856,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // staging directory changes on every load — hashing those would make every load a new
     // generation and buy nothing.
     val renderConfig = launches.flatMap { it.jvmArgs }.sorted().joinToString(" ")
+    val routing = ThemeCacheFingerprint.routingDigest(alias)
     val variant = launches.map { it.variant }.distinct().sorted().joinToString("+")
     // A multi-module catalog renders from several bundles at once and its generation is all of them
     // together — any one changing changes what a visitor sees.
@@ -857,6 +872,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             variant = launch.variant,
             toolVersion = BUNDLE_VERSION,
             renderConfig = launch.jvmArgs.sorted().joinToString(" "),
+            routing = routing,
           ) ?: return CatalogThemeCache()
         }
       ) ?: return CatalogThemeCache()
@@ -866,7 +882,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         fingerprint = fingerprint,
         toolVersion = BUNDLE_VERSION,
         variant = variant,
-        renderConfig = renderConfig,
+        renderConfig = "$renderConfig routing=$routing",
       )
     val generation = store.open(system, fingerprint, inputs) ?: return CatalogThemeCache()
     val superseded = liveThemeGenerations.put(system, fingerprint) != null
@@ -3031,6 +3047,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           )
         }
       )
+    // The sweeper needs configured-but-unloaded systems, which only the tracker knows.
+    themeCacheConfiguredSystems = loads::configuredSystems
     val store =
       ServeCatalogStore(
         root = dir,
@@ -3285,7 +3303,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         perPreviewRenderStats = perPreviewPool::renderPerfStats,
         perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
         perPreviewReapIdle = perPreviewPool::reapIdle,
-        catalogThemeCache = themeCacheFor(system, materialized.descriptor),
+        catalogThemeCache = themeCacheFor(system, alias, materialized.descriptor),
         serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
         backgroundWork = backgroundWork,
       )
@@ -3485,7 +3503,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           perPreviewPoolStats = { opened.map { it.pool.snapshot() } },
           perPreviewReapIdle = { idle -> opened.sumOf { it.pool.reapIdle(idle) } },
           catalogThemeCache =
-            themeCacheFor(system, *opened.map { it.state.descriptor }.toTypedArray()),
+            themeCacheFor(system, alias, *opened.map { it.state.descriptor }.toTypedArray()),
           serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
           backgroundWork = backgroundWork,
         )
@@ -3584,7 +3602,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         // URLs and falls back to baked PNGs for ids it can't render.
         previewAliases = alias,
         bakedFallback = bakedFallback,
-        catalogThemeCache = themeCacheFor(system, built.descriptor),
+        catalogThemeCache = themeCacheFor(system, alias, built.descriptor),
         serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
         backgroundWork = backgroundWork,
         // A source-built Android/Robolectric catalog costs the same heavier live-seat weight as the

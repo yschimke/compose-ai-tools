@@ -160,6 +160,16 @@ class CatalogLoadTracker(
     synchronized(lock) { ordered.toList() }.mapNotNull { states[it.system] }
 
   /** Catalogs with a usable registered copy; used to seed only successful branch heads. */
+  /**
+   * Every catalog this server is **configured** to serve, whether or not it loaded.
+   *
+   * The distinction that matters to the theme cache's sweeper: a configured system that failed to
+   * load must keep its warmed renders (a fetch can fail transiently, and re-warming m3-catalog
+   * costs ~28 hours), while a system no longer configured at all has renders nothing can ever read
+   * again and must be reclaimed. Absence from [availableSystems] alone cannot tell those apart.
+   */
+  fun configuredSystems(): Set<String> = states.keys.toSet()
+
   fun availableSystems(): Set<String> =
     states.values.asSequence().filter { it.available }.map { it.config.system }.toSet()
 

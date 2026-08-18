@@ -125,6 +125,9 @@ class CatalogThemeCache(
   // Access-order map: the byte cap evicts the least-recently-read render first.
   private val renders = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
   private val targetKeys = ConcurrentHashMap.newKeySet<String>()
+  // The bounded set the DISK tier accepts — see [configurePersistable] for why it is not
+  // targetKeys.
+  private val persistableKeys = ConcurrentHashMap.newKeySet<String>()
   private val failedKeys = ConcurrentHashMap.newKeySet<String>()
   // Consecutive live-render failures per key, and the last reason seen. Both are cleared by a
   // successful [put], so a key only stays latched while it keeps failing.
@@ -198,7 +201,26 @@ class CatalogThemeCache(
 
   fun configureTargets(keys: Collection<String>) {
     targetKeys += keys
+    configurePersistable(keys)
     refreshCompletion()
+  }
+
+  /**
+   * Declare the finite set of keys the disk tier will accept, without claiming them as optimization
+   * targets.
+   *
+   * The two are separate because the eager prefetch pass can be switched off
+   * (`-Dcomposeai.serve.themeOptimization=false`) while foreground renders of those same declared
+   * themes carry on. Gating persistence on [targetKeys] alone meant a disabled optimizer left the
+   * set empty for the host's lifetime, so every render a visitor actually asked for was refused by
+   * the disk tier and every restart began again — persistence silently doing nothing on exactly the
+   * configuration that most needs the renders it does get to be durable.
+   *
+   * Kept out of [targetKeys] so `/status` still reports no optimization row for a disabled pass,
+   * rather than one parked at "waiting" forever.
+   */
+  fun configurePersistable(keys: Collection<String>) {
+    persistableKeys += keys
   }
 
   /**
@@ -234,7 +256,7 @@ class CatalogThemeCache(
     // distinct keys indefinitely, and since a live generation is never evicted to honour
     // `--theme-cache-max-bytes`, that fills the volume. Ad-hoc override renders stay in the bounded
     // memory tier, exactly as they did before persistence existed.
-    if (key in targetKeys) persistence?.put(key, png)
+    if (key in persistableKeys) persistence?.put(key, png)
     remember(key, png)
     failedKeys.remove(key)
     failureCounts.remove(key)
@@ -283,13 +305,18 @@ class CatalogThemeCache(
    *
    * Returns true if the generation is trustworthy (verified, or nothing to verify).
    */
-  fun verifySample(sampleSize: Int = VERIFY_SAMPLE, render: (String) -> ByteArray?): Boolean {
-    val store = persistence ?: return true
-    val candidates = targetKeys.filter(store::contains).sorted().take(sampleSize)
-    if (candidates.isEmpty()) return true
+  fun verifySample(
+    sampleSize: Int = VERIFY_SAMPLE,
+    render: (String) -> ByteArray?,
+  ): VerifyOutcome {
+    val store = persistence ?: return VerifyOutcome.NOTHING_TO_VERIFY
+    val candidates = persistableKeys.filter(store::contains).sorted().take(sampleSize)
+    if (candidates.isEmpty()) return VerifyOutcome.NOTHING_TO_VERIFY
+    var compared = 0
     for (key in candidates) {
       val cached = store.get(key) ?: continue
       val fresh = render(key) ?: continue
+      compared++
       if (!fresh.contentEquals(cached)) {
         store.discard()
         synchronized(renderLock) {
@@ -298,10 +325,30 @@ class CatalogThemeCache(
         }
         state.set("paused")
         completedAt.set(0)
-        return false
+        return VerifyOutcome.MISMATCH
       }
     }
-    return true
+    // Zero successful comparisons is NOT a pass. Every sampled render can come back Busy, Failed or
+    // served from a cache during a cold start, and treating that as "verified" would latch the
+    // check permanently on the one occasion it was never actually performed — leaving a stale
+    // generation to serve wrong pixels for the life of the process. The caller retries instead.
+    return if (compared > 0) VerifyOutcome.VERIFIED else VerifyOutcome.NO_EVIDENCE
+  }
+
+  /** What [verifySample] managed to establish. */
+  enum class VerifyOutcome {
+    /** At least one persisted render was re-rendered and matched. */
+    VERIFIED,
+    /** No disk tier, or nothing adopted from it — there is nothing that could be stale. */
+    NOTHING_TO_VERIFY,
+    /** The renderer answered nothing usable, so the question is still open. Ask again. */
+    NO_EVIDENCE,
+    /** A persisted render no longer matches; the generation has been discarded. */
+    MISMATCH;
+
+    /** Whether the persisted renders may be trusted from here on. */
+    val settled: Boolean
+      get() = this == VERIFIED || this == NOTHING_TO_VERIFY
   }
 
   fun markRunning(nowMillis: Long) {
