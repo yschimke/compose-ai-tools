@@ -20,10 +20,13 @@ class CatalogThemeCacheTest {
     assertNull(cache.get("b"))
     assertContentEquals(byteArrayOf(1, 1, 1), cache.get("a"))
     assertContentEquals(byteArrayOf(3, 3, 3), cache.get("c"))
-    assertEquals(
-      CatalogRenderCacheSnapshot(entries = 2, bytes = 6, maxBytes = 6, evictions = 1),
-      cache.renderCacheSnapshot(),
-    )
+    // Occupancy only. The same snapshot also carries read counters, and asserting the whole object
+    // would make this eviction test fail whenever a read is added to it.
+    val snapshot = cache.renderCacheSnapshot()
+    assertEquals(2, snapshot.entries)
+    assertEquals(6, snapshot.bytes)
+    assertEquals(6, snapshot.maxBytes)
+    assertEquals(1, snapshot.evictions)
   }
 
   @Test

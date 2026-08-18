@@ -253,6 +253,11 @@ class ServeCatalogLiveHost(
    */
   private val themeRendersInFlight = ConcurrentHashMap.newKeySet<String>()
   private val optimizationStarted = AtomicBoolean()
+  /**
+   * Persisted renders are checked against this renderer once per host — see
+   * [verifyPersistedRenders].
+   */
+  private val persistenceVerified = AtomicBoolean()
   private val optimizationActive = AtomicBoolean()
   private val warmExecutor by lazy {
     Executors.newSingleThreadExecutor { r ->
@@ -433,10 +438,6 @@ class ServeCatalogLiveHost(
 
   /** Fill every catalog-preview × declared-theme cache entry while the whole server is idle. */
   private fun startThemeOptimization() {
-    // Off by default — see [themeOptimizationEnabled]. Returning before `configureTargets` leaves
-    // the cache with no targets, so `themeOptimizationSnapshot()` reports null and `/status` shows
-    // no optimization row at all rather than one stuck at "waiting" forever.
-    if (!themeOptimizationEnabled) return
     val catalogIds =
       previews.asSequence().map { it.id }.filter(alias::containsKey).sorted().toList()
     val jobs = catalogIds.flatMap { previewId ->
@@ -449,8 +450,29 @@ class ServeCatalogLiveHost(
         )
       }
     }
+    // The finite declared-theme set is declared to the disk tier FIRST and unconditionally, so that
+    // a deployment with the eager pass switched off still persists the renders visitors ask for.
+    catalogThemeCache.configurePersistable(jobs.map { it.cacheKey })
+    // Off by default — see [themeOptimizationEnabled]. Returning before `configureTargets` leaves
+    // the cache with no targets, so `themeOptimizationSnapshot()` reports null and `/status` shows
+    // no optimization row at all rather than one stuck at "waiting" forever.
+    //
+    // But renders adopted from disk still have to be CHECKED. Disabling the eager pass turns off
+    // filling the cache, not trusting it: a restarted server with the pass off would otherwise
+    // serve
+    // every persisted entry without the fingerprint safety check ever running.
+    if (!themeOptimizationEnabled) {
+      verifyAdoptedRendersOnly(jobs)
+      return
+    }
     catalogThemeCache.configureTargets(jobs.map { it.cacheKey })
-    if (jobs.isEmpty() || catalogThemeCache.snapshot().fullyOptimized) return
+    if (jobs.isEmpty()) return
+    // `fullyOptimized` is deliberately NOT an early return until the persisted renders have been
+    // checked. A generation adopted whole from disk reports fully optimized on the first heartbeat,
+    // so returning here would skip verification in exactly the fully-warmed restart case it exists
+    // for — and a fingerprint that missed an input would then serve stale pixels indefinitely. The
+    // check moves inside the task, below.
+    if (catalogThemeCache.snapshot().fullyOptimized && persistenceVerified.get()) return
     // Never start a pass into a broken renderer. The optimizer is the largest consumer of the
     // render gate, and every item it queues against an open breaker is pure waste — 4740 remaining
     // at a ~7h ETA on work where every single render fails (issue #3448). Targets stay configured
@@ -461,6 +483,10 @@ class ServeCatalogLiveHost(
     optimizationActive.set(true)
     optimizationExecutor.execute {
       try {
+        // Verification does NOT run here, ahead of admission — see the slot below. It renders, and
+        // renders at startup are exactly what the catalog-load gate and the lane cap exist to
+        // hold back: `prewarm` starts one of these tasks per catalog, so a warmed restart would
+        // cold-start a daemon for every catalog at once while the others were still loading.
         // No stagger before the door, deliberately. Every catalog does become runnable the instant
         // the idle gate opens — measured on the deployed box as 11 catalogs entering inside 464 ms
         // — but with the cap in place a simultaneous arrival is harmless: two are admitted and the
@@ -482,7 +508,12 @@ class ServeCatalogLiveHost(
         while (true) {
           val outcome =
             backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
-              runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
+              // Inside the lane and behind the idle gate, so the sample's renders are admitted on
+              // exactly the terms every other background render is. Cheap and once per host: a
+              // no-op when nothing was adopted from disk.
+              if (!persistenceVerified.get() && awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+              if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
+              else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
             }
           if (outcome == null) {
             // Parked, not failed: `keepLiveWarm` re-enters on the next presence heartbeat, and
@@ -496,6 +527,67 @@ class ServeCatalogLiveHost(
         }
       } finally {
         optimizationActive.set(false)
+        optimizationStarted.set(false)
+      }
+    }
+  }
+
+  /**
+   * Check a few renders adopted from disk against what this daemon produces now, once per host.
+   *
+   * The fingerprint that named the persisted generation covers the inputs it was told about. An
+   * input nobody thought of — a base image bumped without a release, a render default that never
+   * reached the config string — changes the pixels without changing the name, and every entry under
+   * that name is then quietly wrong. That matters more here than in an ordinary build cache: a
+   * stale build artifact gets caught by a test, a stale preview is handed to an agent as ground
+   * truth.
+   *
+   * Rendered through [live] rather than [renderPrefetch], deliberately: the prefetch path consults
+   * this very cache and would hand back the bytes being verified, so the comparison would pass by
+   * construction. Only a `DAEMON` generation counts as fresh evidence — anything served from a
+   * cache proves nothing, and a daemon that cannot answer yet is "no evidence", not "mismatch".
+   */
+  private fun verifyPersistedRenders(jobs: List<ThemeOptimizationJob>) {
+    if (persistenceVerified.get()) return
+    val byKey = jobs.associateBy { it.cacheKey }
+    val outcome = catalogThemeCache.verifySample { key ->
+      val job = byKey[key] ?: return@verifySample null
+      val daemonId = alias[job.previewId] ?: return@verifySample null
+      val outcome = runCatching { live.render(daemonId, job.overrides) }.getOrNull()
+      (outcome as? RenderOutcome.Ok)
+        ?.takeIf { it.generation == RenderOutcome.Generation.DAEMON }
+        ?.png
+    }
+    // Latched only once the question is actually answered. `NO_EVIDENCE` — every sampled render
+    // came back Busy, Failed, or out of some cache — leaves it unlatched so the next pass asks
+    // again; latching there would permanently skip the check on the one occasion it never ran.
+    if (outcome.settled) persistenceVerified.set(true)
+    if (outcome == CatalogThemeCache.VerifyOutcome.MISMATCH) {
+      persistenceVerified.set(true)
+      System.err.println(
+        "serve: catalog $label — persisted theme renders no longer match this renderer; " +
+          "dropped the generation and re-warming from scratch"
+      )
+    }
+  }
+
+  /**
+   * Check adopted renders for a catalog whose eager pass is switched off.
+   *
+   * Same admission as the pass itself — a lane, then the idle gate — because it renders, and a
+   * disabled optimizer is not a licence to spend the box's daemons at startup. Runs on the
+   * optimizer executor so the caller (a prewarm or a presence heartbeat) is never blocked on it.
+   */
+  private fun verifyAdoptedRendersOnly(jobs: List<ThemeOptimizationJob>) {
+    if (persistenceVerified.get() || jobs.isEmpty()) return
+    if (!optimizationStarted.compareAndSet(false, true)) return
+    optimizationExecutor.execute {
+      try {
+        backgroundWork.withOptimizerSlot(label, OPTIMIZER_ADMISSION_WAIT_MILLIS) {
+          if (awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+          true
+        }
+      } finally {
         optimizationStarted.set(false)
       }
     }
@@ -529,7 +621,11 @@ class ServeCatalogLiveHost(
     // list is already ordered by: every theme of one preview renders together, so one warm is
     // amortised across all of them and the pass never interleaves two previews' daemon opens.
     val byPreview =
-      jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
+      // `contains`, not `get`: planning only needs to know WHETHER a target is warm. Reading it
+      // pulls every already-persisted PNG off disk on every slice — hundreds of megabytes for a
+      // partly warmed catalog — only for the 128 MB memory window to evict most of them again
+      // before the next slice repeats the whole thing.
+      jobs.filterNot { catalogThemeCache.contains(it.cacheKey) }.groupBy { it.previewId }
     var previewsDone = 0
     for ((previewId, previewJobs) in byPreview) {
       // The slice is checked HERE and nowhere finer, on the preview boundary. A preview is the

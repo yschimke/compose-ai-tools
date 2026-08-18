@@ -274,6 +274,8 @@ class ServeHttpServer(
   private val branchFetchStats: (() -> BranchFetchSnapshot?)? = null,
   /** Cross-catalog optimizer admission for `/status.json`, read from the shared background-work. */
   private val themeOptimizerStats: (() -> ThemeOptimizerAdmissionSnapshot?)? = null,
+  /** Disk tier for warmed theme renders, for `/status.json`. Null when persistence is off. */
+  private val themeCacheStats: (() -> ThemeCacheStoreSnapshot?)? = null,
   /**
    * The shared background-work handle, for the admin pause/resume routes. Separate from
    * [themeOptimizerStats] because reading counters is safe on any server while standing the
@@ -4296,6 +4298,7 @@ class ServeHttpServer(
         // Box-wide and unattributed per system, so scoped out on a site host for the same reason
         // the branch counters are.
         themeOptimizer = if (onlySystem == null) themeOptimizerStats?.invoke() else null,
+        themeCache = if (onlySystem == null) themeCacheStats?.invoke() else null,
         renderStats =
           RenderPerfSnapshot.aggregate(
             // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something
@@ -7251,6 +7254,14 @@ private data class StatusResponse(
    * reports "running" and nothing progresses looks identical, per catalog, to a box doing fine.
    */
   val themeOptimizer: ThemeOptimizerAdmissionSnapshot? = null,
+  /**
+   * The theme cache's disk tier ([ThemeCacheStoreSnapshot]), or null when it is memory-only.
+   *
+   * Answers the question the per-catalog rows could not: whether warming is *accumulating*. A box
+   * whose `cached` counts keep returning to zero and whose `themeCache` is absent is not slow — it
+   * is starting over, which is what m3-catalog did 7-10 times a day before this existed.
+   */
+  val themeCache: ThemeCacheStoreSnapshot? = null,
   /**
    * Server-wide render-latency roll-up across the running live daemons (see
    * [RenderPerfSnapshot.aggregate] — counts sum, `firstRenderMs` is the worst first render,

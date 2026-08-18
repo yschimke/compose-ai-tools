@@ -84,13 +84,58 @@ data class ThemeOptimizationSnapshot(
   val maxBatchWidth: Int = 0,
 )
 
-/** Memory occupancy of one catalog generation's rendered-preview cache. */
+/**
+ * One catalog generation's rendered-preview cache: memory occupancy, what the reads did, and the
+ * disk tier behind it.
+ *
+ * [entries]/[bytes]/[maxBytes]/[evictions] describe the memory window. Everything after them exists
+ * to answer a question occupancy cannot: whether the cache is *being used*. A cache that is filling
+ * and a cache that is filling and never read look the same from the outside, and with a disk tier
+ * the second one costs I/O on every render for nothing.
+ */
 @Serializable
 data class CatalogRenderCacheSnapshot(
   val entries: Int,
   val bytes: Long,
   val maxBytes: Long,
   val evictions: Long,
+  /** Reads served from the memory window. */
+  val memoryHits: Long = 0,
+  /** Reads the memory window missed and the disk tier answered. */
+  val diskHits: Long = 0,
+  /** Reads neither tier could answer, so a render had to happen. */
+  val misses: Long = 0,
+  /**
+   * Reads deliberately refused because the generation was adopted from a previous process and had
+   * not yet been verified.
+   *
+   * Kept out of [misses] so it cannot be read as the cache failing: these are entries the cache
+   * holds and is choosing not to serve, and during a cold start they can outnumber real misses.
+   * Counted so a hit rate that looks terrible for the first few minutes of a process is explainable
+   * rather than alarming.
+   */
+  val withheld: Long = 0,
+  /**
+   * Hits over reads — `(memoryHits + diskHits) / (memoryHits + diskHits + misses)` — or null before
+   * anything has been read.
+   *
+   * Published rather than left to the reader because the counters are cumulative over the process
+   * and a cumulative pair read once tells you nothing about whether the cache is currently earning
+   * its keep. [withheld] is excluded from the denominator for the reason given above.
+   */
+  val hitRate: Double? = null,
+  /** The disk tier's own counters, or null when this catalog has none — see [persistenceOff]. */
+  val persisted: ThemeCacheGenerationSnapshot? = null,
+  /**
+   * Why this catalog has no disk tier, when it has none.
+   *
+   * Every reason a catalog falls back to memory-only used to be indistinguishable from "the server
+   * was started without a cache directory" — an unreadable launch descriptor, a classpath entry the
+   * fingerprint could not digest, a generation directory that could not be created. Those are
+   * exactly the failures worth knowing about, because they are silent and permanent for the life of
+   * the host, so they are named here.
+   */
+  val persistenceOff: String? = null,
 )
 
 /**
@@ -107,13 +152,37 @@ data class CatalogRenderCacheSnapshot(
 class CatalogThemeCache(
   maxBytes: Long =
     System.getProperty("composeai.serve.catalogRenderCacheMaxBytes")?.toLongOrNull()
-      ?: DEFAULT_MAX_BYTES
+      ?: DEFAULT_MAX_BYTES,
+  /**
+   * Disk tier for this catalog generation, or null to keep the historical memory-only behaviour.
+   *
+   * **Memory is a window onto this, not a copy of it.** The in-memory cap is 128 MB and a fully
+   * warmed m3-catalog is 10,120 PNGs — several times that — so preloading the generation would just
+   * thrash the LRU and, worse, would report `cached` as whatever happened to fit rather than what
+   * is actually warm. Instead [get] falls through to disk and promotes, and every count of what is
+   * cached asks both tiers. That is what lets `cached` keep climbing past the point where memory
+   * alone would have started evicting.
+   */
+  private val persistence: ThemeCacheStore.Generation? = null,
+  /**
+   * Why there is no disk tier, when [persistence] is null — surfaced as
+   * [CatalogRenderCacheSnapshot.persistenceOff].
+   */
+  private val persistenceOffReason: String? = null,
 ) {
   val maxBytes: Long = maxBytes.coerceAtLeast(0)
   private val renderLock = Any()
   // Access-order map: the byte cap evicts the least-recently-read render first.
   private val renders = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
   private val targetKeys = ConcurrentHashMap.newKeySet<String>()
+  // The bounded set the DISK tier accepts — see [configurePersistable] for why it is not
+  // targetKeys.
+  private val persistableKeys = ConcurrentHashMap.newKeySet<String>()
+  // False while renders ADOPTED FROM A PREVIOUS PROCESS are still unverified — see [get]. Only
+  // those
+  // are in question: anything this process rendered came from this renderer and needs no checking,
+  // which is why the quarantine is keyed on `wasAdopted` rather than on having a disk tier at all.
+  private val persistenceTrusted = java.util.concurrent.atomic.AtomicBoolean(false)
   private val failedKeys = ConcurrentHashMap.newKeySet<String>()
   // Consecutive live-render failures per key, and the last reason seen. Both are cleared by a
   // successful [put], so a key only stays latched while it keeps failing.
@@ -124,6 +193,13 @@ class CatalogThemeCache(
   private val busyCounts = ConcurrentHashMap<String, Int>()
   private val byteCount = AtomicLong(0)
   private val evictionCount = AtomicLong(0)
+  // Read outcomes, so `/status` can say whether this cache is answering anything at all. Split by
+  // tier because the two have different costs and different fixes: a memory hit is free, a disk hit
+  // is the persistence tier earning its I/O, and a miss is a render.
+  private val memoryHits = AtomicLong(0)
+  private val diskHits = AtomicLong(0)
+  private val readMisses = AtomicLong(0)
+  private val withheldReads = AtomicLong(0)
   private val state = AtomicReference("waiting")
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
@@ -187,12 +263,100 @@ class CatalogThemeCache(
 
   fun configureTargets(keys: Collection<String>) {
     targetKeys += keys
+    configurePersistable(keys)
     refreshCompletion()
   }
 
-  fun get(key: String): ByteArray? = synchronized(renderLock) { renders[key] }
+  /**
+   * Declare the finite set of keys the disk tier will accept, without claiming them as optimization
+   * targets.
+   *
+   * The two are separate because the eager prefetch pass can be switched off
+   * (`-Dcomposeai.serve.themeOptimization=false`) while foreground renders of those same declared
+   * themes carry on. Gating persistence on [targetKeys] alone meant a disabled optimizer left the
+   * set empty for the host's lifetime, so every render a visitor actually asked for was refused by
+   * the disk tier and every restart began again — persistence silently doing nothing on exactly the
+   * configuration that most needs the renders it does get to be durable.
+   *
+   * Kept out of [targetKeys] so `/status` still reports no optimization row for a disabled pass,
+   * rather than one parked at "waiting" forever.
+   */
+  fun configurePersistable(keys: Collection<String>) {
+    persistableKeys += keys
+  }
+
+  /**
+   * The render for [key] from memory, or from disk (promoted into memory), or null.
+   *
+   * The disk read is on the miss path only, so a warm working set costs exactly what it did before
+   * persistence existed.
+   */
+  fun get(key: String): ByteArray? {
+    synchronized(renderLock) { renders[key] }
+      ?.let {
+        memoryHits.incrementAndGet()
+        return it
+      }
+    // Adopted-but-unverified bytes are NOT served. Verification is asynchronous — it needs a lane
+    // and a warm daemon — and until it settles these renders are exactly the thing the fingerprint
+    // might have got wrong. Serving them meanwhile hands out stale pixels precisely in the window
+    // the safety check exists to cover, and traffic can hold that window open for a long time by
+    // keeping the box non-idle. A miss here costs a fresh render; a hit here could cost the truth.
+    //
+    // Only the READ path is withheld. [contains] still reports them, so the optimizer does not
+    // re-render what is already on disk while the question is open.
+    val store =
+      persistence
+        ?: run {
+          readMisses.incrementAndGet()
+          return null
+        }
+    if (!persistenceTrusted.get() && store.wasAdopted(key)) {
+      withheldReads.incrementAndGet()
+      return null
+    }
+    val fromDisk =
+      store.get(key)
+        ?: run {
+          readMisses.incrementAndGet()
+          return null
+        }
+    diskHits.incrementAndGet()
+    // Promoted through the ordinary write path so it takes part in the LRU and the byte accounting
+    // like any other entry — but NOT written back to disk, which is where it just came from.
+    remember(key, fromDisk)
+    return fromDisk
+  }
+
+  /** Whether [key] is warm in either tier, without paying to read the bytes. */
+  fun contains(key: String): Boolean =
+    synchronized(renderLock) { renders.containsKey(key) } || persistence?.contains(key) == true
 
   fun put(key: String, png: ByteArray) {
+    // Disk first, and NOT gated on the memory cap: the disk tier has its own budget and is the
+    // authoritative store behind a deliberately smaller memory window, so a render too large for
+    // that window must still be persisted rather than silently re-rendered after every restart.
+    //
+    // **Only configured targets are persisted.** This method also takes successful foreground
+    // renders with arbitrary overrides — widths, locales, devices, knob values — and those are
+    // unbounded in a way `previews × declaredThemes` is not: on a public box a visitor could mint
+    // distinct keys indefinitely, and since a live generation is never evicted to honour
+    // `--theme-cache-max-bytes`, that fills the volume. Ad-hoc override renders stay in the bounded
+    // memory tier, exactly as they did before persistence existed.
+    // While quarantined, a fresh render REPLACES the adopted copy rather than being dropped because
+    // a file already sits at that key — see [ThemeCacheStore.Generation.put].
+    if (key in persistableKeys)
+      persistence?.put(key, png, replaceExisting = !persistenceTrusted.get())
+    remember(key, png)
+    failedKeys.remove(key)
+    failureCounts.remove(key)
+    failureReasons.remove(key)
+    busyCounts.remove(key)
+    refreshCompletion()
+  }
+
+  /** Hold [png] in the memory tier under the byte cap, evicting least-recently-read first. */
+  private fun remember(key: String, png: ByteArray) {
     synchronized(renderLock) {
       if (renders.containsKey(key)) return@synchronized
       if (png.size.toLong() > maxBytes) return@synchronized
@@ -203,17 +367,89 @@ class CatalogThemeCache(
         renders.remove(eldest.key)
         byteCount.addAndGet(-eldest.value.size.toLong())
         evictionCount.incrementAndGet()
-        if (eldest.key in targetKeys) {
+        // An eviction only un-completes the catalog when the entry is gone for good. With a disk
+        // tier it is not: the memory cap is smaller than a warmed catalog by design, so treating
+        // every eviction as lost progress would park a fully-warmed catalog at `paused` forever and
+        // send the optimizer back to re-render what is already on disk.
+        if (eldest.key in targetKeys && persistence?.contains(eldest.key) != true) {
           state.set("paused")
           completedAt.set(0)
         }
       }
     }
-    failedKeys.remove(key)
-    failureCounts.remove(key)
-    failureReasons.remove(key)
-    busyCounts.remove(key)
-    refreshCompletion()
+  }
+
+  /**
+   * Check a sample of the persisted generation against what the renderer produces **now**, and drop
+   * the whole generation if they disagree.
+   *
+   * This is the safety net for the one thing [ThemeCacheFingerprint] cannot promise. The
+   * fingerprint covers the inputs it was told about; an input nobody thought of — a base image
+   * bumped without a release, a render default that never reached the config string — changes the
+   * pixels without changing the name, and every entry under that name is then quietly wrong. Wrong
+   * pixels matter more here than in an ordinary build cache: a stale build artifact gets caught by
+   * a test, a stale preview is shown to an agent as ground truth.
+   *
+   * [render] returns the freshly rendered bytes for a cache key, or null if it could not render —
+   * which is **not** a mismatch and must not drop anything, or a busy daemon would wipe the cache.
+   *
+   * Returns true if the generation is trustworthy (verified, or nothing to verify).
+   */
+  fun verifySample(
+    sampleSize: Int = VERIFY_SAMPLE,
+    render: (String) -> ByteArray?,
+  ): VerifyOutcome {
+    val store = persistence ?: return VerifyOutcome.NOTHING_TO_VERIFY
+    // Only entries ADOPTED FROM THE PREVIOUS PROCESS can answer the question. On a partly warmed
+    // restart, foreground traffic persists missing keys before the idle verification task runs, and
+    // sampling those would let five renders this process just made "verify" a generation whose old
+    // bytes were never looked at — trusting the cache on the strength of checking itself.
+    val candidates = persistableKeys.filter(store::wasAdopted).sorted().take(sampleSize)
+    if (candidates.isEmpty()) {
+      // Nothing was adopted, so nothing can be stale: everything from here is this renderer's own.
+      persistenceTrusted.set(true)
+      return VerifyOutcome.NOTHING_TO_VERIFY
+    }
+    var compared = 0
+    for (key in candidates) {
+      val cached = store.get(key) ?: continue
+      val fresh = render(key) ?: continue
+      compared++
+      if (!fresh.contentEquals(cached)) {
+        store.discard()
+        synchronized(renderLock) {
+          renders.clear()
+          byteCount.set(0)
+        }
+        state.set("paused")
+        completedAt.set(0)
+        // The suspect bytes are gone, so what the cache holds from here is this renderer's own.
+        persistenceTrusted.set(true)
+        return VerifyOutcome.MISMATCH
+      }
+    }
+    // Zero successful comparisons is NOT a pass. Every sampled render can come back Busy, Failed or
+    // served from a cache during a cold start, and treating that as "verified" would latch the
+    // check permanently on the one occasion it was never actually performed — leaving a stale
+    // generation to serve wrong pixels for the life of the process. The caller retries instead.
+    if (compared > 0) persistenceTrusted.set(true)
+    return if (compared > 0) VerifyOutcome.VERIFIED else VerifyOutcome.NO_EVIDENCE
+  }
+
+  /** What [verifySample] managed to establish. */
+  enum class VerifyOutcome {
+    /** At least one persisted render was re-rendered and matched. */
+    VERIFIED,
+    /** No disk tier, or nothing adopted from it — there is nothing that could be stale. */
+    NOTHING_TO_VERIFY,
+    /** The renderer answered nothing usable, so the question is still open. Ask again. */
+    NO_EVIDENCE,
+    /** A persisted render no longer matches; the generation has been discarded. */
+    MISMATCH;
+
+    /** Whether the persisted renders may be trusted from here on. */
+    val settled: Boolean
+      get() = this == VERIFIED || this == NOTHING_TO_VERIFY
   }
 
   fun markRunning(nowMillis: Long) {
@@ -298,7 +534,7 @@ class CatalogThemeCache(
   fun failureReason(key: String): String? = if (key in failedKeys) failureReasons[key] else null
 
   fun markPassFinished(nowMillis: Long) {
-    if (synchronized(renderLock) { targetKeys.all(renders::containsKey) }) {
+    if (targetKeys.all(::contains)) {
       completedAt.compareAndSet(0, nowMillis)
       state.set("complete")
     } else {
@@ -307,7 +543,10 @@ class CatalogThemeCache(
   }
 
   fun snapshot(): ThemeOptimizationSnapshot {
-    val cachedTargets = synchronized(renderLock) { targetKeys.count(renders::containsKey) }
+    // Counted across BOTH tiers. Counting memory alone would report a fully warmed catalog as
+    // partially cached the moment the 128 MB window started evicting, which is precisely the
+    // condition persistence exists to create.
+    val cachedTargets = targetKeys.count(::contains)
     val total = targetKeys.size
     val complete = total > 0 && cachedTargets == total
     // Read each counter ONCE and derive everything from those values. Reading them per-field lets a
@@ -327,10 +566,7 @@ class CatalogThemeCache(
       total = total,
       cached = cachedTargets,
       remaining = (total - cachedTargets).coerceAtLeast(0),
-      failed =
-        synchronized(renderLock) {
-          failedKeys.count { it in targetKeys && !renders.containsKey(it) }
-        },
+      failed = failedKeys.count { it in targetKeys && !contains(it) },
       cachedBytes = byteCount.get(),
       fullyOptimized = complete,
       startedAtEpochMillis = startedAt.get().takeIf { it > 0 },
@@ -356,15 +592,29 @@ class CatalogThemeCache(
     )
   }
 
-  fun renderCacheSnapshot(): CatalogRenderCacheSnapshot =
-    synchronized(renderLock) {
+  fun renderCacheSnapshot(): CatalogRenderCacheSnapshot {
+    // Read once and derive, for the reason [snapshot] gives: a rate computed from counters read
+    // separately can publish a hit rate that does not match the counts printed beside it.
+    val memory = memoryHits.get()
+    val disk = diskHits.get()
+    val missed = readMisses.get()
+    val reads = memory + disk + missed
+    return synchronized(renderLock) {
       CatalogRenderCacheSnapshot(
         entries = renders.size,
         bytes = byteCount.get(),
         maxBytes = maxBytes,
         evictions = evictionCount.get(),
+        memoryHits = memory,
+        diskHits = disk,
+        misses = missed,
+        withheld = withheldReads.get(),
+        hitRate = if (reads > 0) (memory + disk).toDouble() / reads else null,
+        persisted = persistence?.stats(),
+        persistenceOff = if (persistence == null) persistenceOffReason else null,
       )
     }
+  }
 
   /** [activeMillis] is passed in so the rate divides by the same numbers the snapshot publishes. */
   private fun ratePerMinute(activeMillis: Long): Double? {
@@ -374,15 +624,23 @@ class CatalogThemeCache(
   }
 
   private fun refreshCompletion() {
-    if (
-      targetKeys.isNotEmpty() && synchronized(renderLock) { targetKeys.all(renders::containsKey) }
-    ) {
+    if (targetKeys.isNotEmpty() && targetKeys.all(::contains)) {
       state.set("complete")
     }
   }
 
   companion object {
     const val DEFAULT_MAX_BYTES: Long = 128L * 1024 * 1024
+
+    /**
+     * Persisted renders re-rendered and compared when a generation is adopted.
+     *
+     * Small on purpose. This is a smoke test for "did the fingerprint miss an input", and an input
+     * that changes the renderer changes it for every preview — so a handful of entries answers the
+     * question as well as a thousand would, at a cost (a few seconds) that a startup can absorb
+     * against the 28 hours of rendering it is protecting.
+     */
+    const val VERIFY_SAMPLE: Int = 5
 
     /**
      * Consecutive on-demand render failures before a key is treated as permanently unrenderable.

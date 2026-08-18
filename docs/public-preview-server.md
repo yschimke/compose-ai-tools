@@ -629,10 +629,78 @@ declares themes gets a leading **Default** chip to return to. The choice persist
 
 Completed catalog-grid theme renders are cached on the catalog host, above the LRU pool of
 preview-scoped daemons. Re-selecting a theme therefore reuses its PNGs even if those daemons were
-evicted. Refreshing the catalog replaces the host, so the replacement starts with an empty cache;
-mixed theme-plus-knob renders remain in the daemon's bounded override cache rather than growing
-this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or shared
-proxy from replaying old-catalog pixels after refresh.
+evicted. Mixed theme-plus-knob renders remain in the daemon's bounded override cache rather than
+growing this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or
+shared proxy from replaying old-catalog pixels after refresh.
+
+### The cache can outlive the process (`--theme-cache-dir`)
+
+In memory alone that cache is dropped by two separate events — a server restart, and a catalog
+reload, since every load builds a fresh session state. On `preview.coo.ee` those fired **7–10 times
+a day** (on 2026-08-17: three delivery-branch regenerations and four releases) against an
+`m3-catalog` needing roughly **28 hours** of background rendering to warm its 10,120 targets. It had
+never once had a window long enough to finish, which reads on `/status` as a `cached` count that
+keeps returning to zero.
+
+Pointing `--theme-cache-dir` at a durable directory adds a disk tier under the memory one. Memory
+stays a 128 MB window onto it — a fully warmed catalog is several times that — so lookups fall
+through to disk and promote, and `cached` counts both tiers.
+
+Reuse is decided by a **fingerprint of what produced the pixels**, not by the cache key alone: the
+content hash of the classpath the daemon renders with, the daemon variant, the tool version, and the
+render config. Each `(system, fingerprint)` pair is its own directory, so a new catalog revision or
+a new server build simply writes a new generation and reads none of the old one — invalidation is
+structural rather than something a reader must remember to check. Generations nothing can read any
+more are swept once the catalog pass finishes; a live set that exceeds `--theme-cache-max-bytes` is
+reported rather than evicted, because deleting what is currently being warmed would just make the
+optimizer render it again.
+
+Because a fingerprint can only cover the inputs it was told about, the first optimizer pass
+re-renders a small sample and compares it to what was adopted from disk. A mismatch discards the
+whole generation — an input the fingerprint missed makes every entry under that name suspect. A
+daemon that cannot answer yet verifies nothing rather than discarding anything.
+
+The tier is **off by default and opt-in**, and unset does not mean off — `--theme-cache-dir none`
+does. On the prebuilt image an unset value would derive a directory beside `catalogs.json`, which is
+the durable `preview_config` volume, so the cache would quietly grow on the volume holding the
+operator's catalog set and trust store. There is also deliberately **no temp-directory fallback**: a
+cache thrown away with the container costs disk and render time to buy nothing, so where there is no
+durable location the server runs memory-only and says so.
+
+`preview.coo.ee` runs the **prebuilt image** profile, [`deploy/image`](../deploy/image) — not the
+from-source `deploy/vps` one. Its compose file mounts a dedicated `preview_theme_cache` volume at
+`/theme-cache`, kept separate from `preview_config` for the reason above, so enabling the cache is a
+one-line `.env` change:
+
+```
+SERVE_THEME_CACHE_DIR=/theme-cache
+```
+
+A named volume is what survives the container recreation the rolling update performs — replicas
+overlap during that rollout and share the volume, which is why the sweeper spares generations young
+enough to belong to the outgoing replica.
+
+#### Telling a working cache from write amplification
+
+A disk cache that is earning its keep and one that is doing I/O for nothing fill the volume at the
+same rate. `/status.json` publishes the counters that separate them, in two places.
+
+Store-wide, as `themeCache`: `generations`, `bytes`, `writes`, `hits`, `misses`, and
+`generationsBySystem`. That last one is the churn detector — a catalog the box has only ever served
+one way should have **one** generation on disk, and a count that climbs with every restart means
+some input the fingerprint reads is unstable, so each process writes a fresh generation that nobody
+will ever adopt.
+
+Per catalog, on the `renderCache` row:
+
+| field | what a bad value means |
+| --- | --- |
+| `hitRate`, `memoryHits`, `diskHits`, `misses` | hits over reads. A `hitRate` near zero with writes climbing is a cache nothing reads. |
+| `withheld` | reads refused because the generation was adopted but not yet verified. Excluded from `misses` and from `hitRate`, so a cold start's low numbers are explainable rather than alarming. |
+| `persisted.fingerprint` | the generation directory this catalog reads and writes. If it differs across two restarts that changed nothing, the **key** moved. |
+| `persisted.adopted` | renders already on disk when this process opened the generation — the only evidence anything survived the restart. `0` after a restart that should have found a warm generation is the failure. |
+| `persisted.writes` | renders written this process. Climbing while `adopted` stays `0` on every restart *is* the write-amplification case, stated in two numbers. |
+| `persistenceOff` | this catalog has no disk tier and why (`launch descriptor unreadable`, `fingerprint unavailable …`). Absent when the server simply was not given a cache directory. |
 
 The cache can also be filled **ahead of the first visitor** — an idle pass that walks each catalog's
 `previews × declaredThemes` set and renders the missing entries — but that pass is **off by
