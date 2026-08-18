@@ -17,10 +17,12 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.ComposeViewport
+import ee.schimke.composeai.rcplayer.compose.RcBundledTypefaceLoader
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
 import ee.schimke.composeai.rcplayer.compose.RcFontFace
 import ee.schimke.composeai.rcplayer.compose.RcFontFaces
 import ee.schimke.composeai.rcplayer.compose.RcPlayerTheme
+import ee.schimke.composeai.rcplayer.compose.RcTypefaceLoader
 import ee.schimke.composeai.rcplayer.compose.composeSupportReport
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
@@ -44,7 +46,7 @@ private sealed interface LoadState {
 
   data class Ready(
     val document: RcDocument,
-    val fontFamilies: Map<String, RcFontFaces>,
+    val typefaces: RcTypefaceLoader,
     val namedValues: Map<String, RcNamedValue>,
   ) : LoadState
 
@@ -106,16 +108,19 @@ public fun main() {
               val bytes =
                 rcTrace(RcTraceCategory.DOCUMENT, "rc:fetchDocument") { fetchBytes(source) }
               val document = RcDocumentCodec.decode(bytes)
-              val fontFamilies = withTimeout(8_000) { loadHostFontFamilies() }
+              // Async work stays in construction: the manifest is fetched and decoded here, and the
+              // player is handed a loader that only looks things up. `RcTypefaceLoader.typeface` is
+              // called during composition and draw and cannot suspend.
+              val typefaces = RcBundledTypefaceLoader(withTimeout(8_000) { loadHostFontFamilies() })
               document
                 .composeSupportReport(
                   RcOperationProfiles.CMP_WASM_ALPHA16,
-                  availableFontFamilies = fontFamilies.keys,
+                  availableFontFamilies = typefaces.families,
                   allowExternalImagePlaceholders =
                     queryParameter("allowExternalImagePlaceholders") == "1",
                 )
                 .requireFullyRenderable()
-              LoadState.Ready(document, fontFamilies, namedValuesFromLocation())
+              LoadState.Ready(document, typefaces, namedValuesFromLocation())
             }
             .fold(onSuccess = { it }, onFailure = { LoadState.Failed(it.message ?: "load failed") })
     }
@@ -135,7 +140,7 @@ public fun main() {
           theme = theme,
           namedValues = state.namedValues,
           onEvent = ::postPlayerEvent,
-          fontFamilies = state.fontFamilies,
+          typefaces = state.typefaces,
         )
         LaunchedEffect(request) {
           // Compose schedules Skiko's raster work after composition. One frame only proves the

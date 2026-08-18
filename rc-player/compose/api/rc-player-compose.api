@@ -1,6 +1,13 @@
+public final class ee/schimke/composeai/rcplayer/compose/RcBundledTypefaceLoader : ee/schimke/composeai/rcplayer/compose/RcTypefaceLoader {
+	public static final field $stable I
+	public fun <init> (Ljava/util/Map;)V
+	public fun getFamilies ()Ljava/util/Set;
+	public fun typeface (Ljava/lang/String;Landroidx/compose/ui/text/font/FontVariation$Settings;)Landroidx/compose/ui/text/font/FontFamily;
+}
+
 public final class ee/schimke/composeai/rcplayer/compose/RcComposePlayerKt {
-	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
-	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
 }
 
 public final class ee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue {
@@ -63,5 +70,21 @@ public final class ee/schimke/composeai/rcplayer/compose/RcPlayerTheme : java/la
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
 	public static fun values ()[Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/compose/RcTypefaceLoader {
+	public static final field Companion Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader$Companion;
+	public abstract fun getFamilies ()Ljava/util/Set;
+	public abstract fun typeface (Ljava/lang/String;Landroidx/compose/ui/text/font/FontVariation$Settings;)Landroidx/compose/ui/text/font/FontFamily;
+	public static synthetic fun typeface$default (Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Ljava/lang/String;Landroidx/compose/ui/text/font/FontVariation$Settings;ILjava/lang/Object;)Landroidx/compose/ui/text/font/FontFamily;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcTypefaceLoader$Companion {
+	public final fun getDefault ()Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;
+	public final fun getEmpty ()Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcTypefaceLoader$DefaultImpls {
+	public static synthetic fun typeface$default (Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Ljava/lang/String;Landroidx/compose/ui/text/font/FontVariation$Settings;ILjava/lang/Object;)Landroidx/compose/ui/text/font/FontFamily;
 }
 
