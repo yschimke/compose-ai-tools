@@ -221,6 +221,31 @@ class ServeGithubSiteAuthTest {
   }
 
   @Test
+  fun `a site's styled 404 follows the authenticated page cache policy`() {
+    get("/missing", "m3.preview.coo.ee").use {
+      assertEquals(404, it.code)
+      assertEquals(ServeHttpServer.ANON_PAGE_CACHE_CONTROL, it.header("Cache-Control"))
+      assertTrue(it.headers("Vary").any { value -> value.contains("Cookie", ignoreCase = true) })
+    }
+
+    val (state, stateCookie) = start("m3.preview.coo.ee")
+    val sessionCookie =
+      get(
+          "/auth/github/callback?code=ok&state=${enc(state)}",
+          "preview.coo.ee",
+          stateCookie,
+        )
+        .use { response ->
+          response.headers("Set-Cookie").first { it.startsWith("cp_gh_auth=") }.substringBefore(';')
+        }
+    get("/missing", "m3.preview.coo.ee", sessionCookie).use {
+      assertEquals(404, it.code)
+      assertEquals(ServeHttpServer.SIGNED_IN_PAGE_CACHE_CONTROL, it.header("Cache-Control"))
+      assertTrue(it.headers("Vary").any { value -> value.contains("Cookie", ignoreCase = true) })
+    }
+  }
+
+  @Test
   fun `without a cookie domain a site host is told sign-in cannot round-trip`() {
     val hostOnly = auth(cookieDomain = null)
     assertFalse(

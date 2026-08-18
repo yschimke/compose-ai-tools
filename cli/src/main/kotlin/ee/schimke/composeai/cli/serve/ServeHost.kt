@@ -440,6 +440,47 @@ interface ServeHost : AutoCloseable {
   fun rcCompareImage(name: String): ByteArray? = null
 
   /**
+   * The **published** render of [previewId] by [backend], from this catalog's `rc-compare` staging
+   * — or null when nothing was staged for that pair.
+   *
+   * The offline parity pipeline draws every `ir/<id>.rc` document with every player, so these bytes
+   * already exist for exactly the browse a viewer performs when it opens on its default player.
+   * Serving them makes that page cost what an override-free browse costs: a map lookup and a file
+   * read, with no daemon, no render slot and no admission.
+   *
+   * Only ever an answer to a **bare** player selection. A request that also carries a font scale, a
+   * knob or a theme is asking for pixels the parity run never drew, and the caller must route it to
+   * the renderer as before — see [ServeHttpServer]'s use, which checks that before calling.
+   */
+  /**
+   * The backends [previewId] has a **published** render for — the parity run's staging, in
+   * [RcPlayerBackend.UNIVERSE] order.
+   *
+   * Folded into [enabledRcPlayersFor] so the picker offers exactly what the host can produce.
+   * Without it the capability list and the render lane disagreed: a static bundle carrying staged
+   * rasters would answer a hand-typed `?rcPlayer=cmp-android` perfectly well while showing that
+   * option greyed, and Catalog mode would open on JS because its preferred embedded default was not
+   * in the enabled set.
+   *
+   * Reads the manifest, not the images: this runs per preview while building a page, and whether a
+   * lane was staged is a field on the row.
+   */
+  fun stagedRcPlayers(previewId: String): List<RcPlayerBackend> {
+    val row = rcCompare()?.rows?.firstOrNull { it.previewId == previewId } ?: return emptyList()
+    return RcPlayerBackend.UNIVERSE.filter { backend ->
+      val cell = backend.rcCompareLane?.let { row.lanes[it] }
+      cell != null && cell.rendered && cell.render.isNotEmpty()
+    }
+  }
+
+  fun publishedRcPlayerRender(previewId: String, backend: RcPlayerBackend): ByteArray? {
+    val lane = backend.rcCompareLane ?: return null
+    val cell = rcCompare()?.rows?.firstOrNull { it.previewId == previewId }?.lanes?.get(lane)
+    val name = cell?.takeIf { it.rendered }?.render?.takeIf { it.isNotEmpty() } ?: return null
+    return rcCompareImage(name)
+  }
+
+  /**
    * True while the published comparison may still be arriving — the catalog's background staging
    * lane has not reported an outcome yet, so [rcCompare] returning null does not yet mean "this
    * catalog has none".
@@ -491,7 +532,11 @@ interface ServeHost : AutoCloseable {
         // The desktop embedded player renders the same `.rc` server-side via an isolated
         // subprocess; enable it wherever the sidecar player is installed and a render spec exists.
         if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
+        // …and every player the parity run already drew. Those need no renderer at all, so a host
+        // that carries the staging can offer them however little else it can do.
+        addAll(stagedRcPlayers(previewId).filterNot { it in this })
       }
+        .sortedBy { RcPlayerBackend.UNIVERSE.indexOf(it) }
     } else {
       emptyList()
     }

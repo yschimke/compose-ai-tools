@@ -38,6 +38,9 @@ internal object ServeBugReport {
    */
   const val REPO: String = "yschimke/compose-ai-tools"
 
+  /** Labels pre-applied to reports opened by the server UI. */
+  const val LABELS: String = "ui-report,bug,daemon"
+
   /** The report page's path, offered from the site footer on every browser-facing page. */
   const val PATH: String = "/report-bug"
 
@@ -141,8 +144,9 @@ internal object ServeBugReport {
         append("![render](").append(render).append(")\n\n")
         append(
           "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
-            "stop showing what you saw. A pasted screenshot of the page stays put — GitHub " +
-            "hosts those pixels itself. -->\n\n\n"
+            "stop showing what you saw. GitHub displays it through Camo, but Camo proxies the " +
+            "source URL; it does not make a versioned snapshot. A pasted screenshot of the " +
+            "page stays put because GitHub hosts those pixels itself. -->\n\n\n"
         )
       } else {
         append(

@@ -44,6 +44,9 @@ class ServeComponentBrowserTest {
       html.indexOf("</main>") < html.indexOf("querySelectorAll(\"[data-cp-interface-mode]\")")
     )
     assertTrue(html.contains("androidx/androidx"))
+    assertTrue(html.contains("aria-label=\"Material 3\""))
+    assertTrue(html.contains("No catalogs match your search."))
+    assertTrue(html.contains("h.hidden=!!g&&!Array.prototype.some.call(g.children"))
     assertTrue(html.contains("class=\"cp-component-browser\""))
     assertFalse(html.contains("84 preview(s)"))
     assertFalse(html.contains("<div class=\"cp-id\">compose-m3</div>"))
@@ -176,7 +179,12 @@ class ServeComponentBrowserTest {
     assertTrue(html.contains("Copy SVG"))
 
     assertFalse(html.contains("id=\"cp-live-toggle\""))
-    assertFalse(html.contains("id=\"cp-lane-select\""))
+    // The switcher survives here, because this preview carries a `.rc` document — which player drew
+    // a document is the subject of a Remote Compose catalog, not operational chrome. See `catalog
+    // mode keeps the whole remote compose facet`.
+    assertTrue(html.contains("id=\"cp-lane-select\""))
+    assertTrue(html.contains("value=\"rc:js\""))
+    assertTrue(html.contains("value=\"rc:java\""))
     assertFalse(html.contains("id=\"cp-svg-toggle\""))
     assertFalse(html.contains("id=\"cp-explode-toggle\""))
     assertFalse(html.contains("Accessibility</label>"))
@@ -204,6 +212,99 @@ class ServeComponentBrowserTest {
     assertFalse(html.contains("id=\"cp-lane-select\""))
   }
 
+  /**
+   * A Remote Compose preview keeps the **whole** player facet in Catalog mode — embedded included.
+   *
+   * It used to come off with the rest of the dev surface, which made a shared `?rcPlayer=…` link
+   * inert here: no canvas, no chips, no lane select, and no control owning the param, so
+   * `url-state.js` cleared it from the address bar and the link quietly became an ordinary baked
+   * snapshot. Which player drew a document is the *subject* of a Remote Compose catalog rather than
+   * an operational detail, so the reader of one is exactly who wants to switch between them.
+   *
+   * The landing lane matching Dev's is the load-bearing half: both modes open on the embedded
+   * player, so the two cannot disagree about what the default rendering of a document is.
+   */
+  @Test
+  fun `catalog mode keeps the whole remote compose facet`() {
+    val html =
+      ServeWeb.viewerPage(
+        preview = ServePreview("appcard-time", "App card time", componentId = "Card/AppCard"),
+        token = token,
+        catalogTitle = "Remote Compose Material 3",
+        componentBrowser = true,
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android", "cmp-jvm", "cmp-wasm"),
+      )
+
+    // The canvas lane is present, so the `.rc` document has something to paint into.
+    assertTrue(html.contains("data-has-rc-doc=\"1\""))
+    assertTrue(html.contains("id=\"cp-rc-canvas\""))
+    // …and the switcher offers every player the host reported, browser and server-side alike.
+    assertTrue(html.contains("id=\"cp-lane-select\""))
+    for (wire in listOf("js", "cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
+      assertTrue(html.contains("value=\"rc:$wire\""), "$wire is offered in Catalog mode")
+    }
+    // The lane it opens on is the embedded player, exactly as in Dev. Asserted on both attributes
+    // because it is the visible consequence of the change and the thing a reviewer should weigh: an
+    // RC preview in Catalog mode now lands on a rendered player rather than the baked PNG.
+    assertTrue(html.contains("data-rc-default=\"cmp-android\""))
+    assertTrue(html.contains("data-default=\"rc:cmp-android\""))
+  }
+
+  /**
+   * Catalog mode drops the renderer **chip** with the rest of the Live control, and that chip is
+   * what made the combo a *command* menu: "Switch renderer…" at rest is only honest while something
+   * beside it names the renderer in use. Without a chip the combo is the sole indicator, so the
+   * server marks it as a state field and `viewer.js` keeps the selection in it — otherwise picking
+   * Java left nothing on the page, or in the accessibility tree, saying Java was drawing.
+   */
+  @Test
+  fun `catalog mode marks the renderer combo as a state field, having no chip`() {
+    val catalog =
+      ServeWeb.viewerPage(
+        preview = ServePreview("appcard-time", "App card time", componentId = "Card/AppCard"),
+        token = token,
+        catalogTitle = "Remote Compose Material 3",
+        componentBrowser = true,
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+      )
+    assertFalse(catalog.contains("id=\"cp-live-toggle\""), "no chip in Catalog mode")
+    assertTrue(catalog.contains("data-lane-state=\"1\""), "so the combo holds the state instead")
+
+    // Dev keeps both, and the combo stays the command menu it was — the chip is the state there.
+    val dev =
+      ServeWeb.viewerPage(
+        preview = ServePreview("appcard-time", "App card time", componentId = "Card/AppCard"),
+        token = token,
+        catalogTitle = "Remote Compose Material 3",
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+      )
+    assertTrue(dev.contains("id=\"cp-live-toggle\""))
+    assertFalse(dev.contains("data-lane-state"))
+  }
+
+  /**
+   * Dev mode is untouched: every player stays on offer, the unavailable ones as disabled options.
+   */
+  @Test
+  fun `dev mode still offers the server-side remote compose players`() {
+    val html =
+      ServeWeb.viewerPage(
+        preview = ServePreview("appcard-time", "App card time", componentId = "Card/AppCard"),
+        token = token,
+        catalogTitle = "Remote Compose Material 3",
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+      )
+
+    assertTrue(html.contains("value=\"rc:java\""))
+    assertTrue(html.contains("value=\"rc:cmp-android\""))
+    assertTrue(html.contains("value=\"rc:cmp-jvm\""), "an unavailable player is still listed")
+    assertTrue(html.contains("data-rc-default=\"cmp-android\""))
+  }
+
   @Test
   fun `dev mode exposes the same sticky global switch with dev selected`() {
     val html =
@@ -220,6 +321,29 @@ class ServeComponentBrowserTest {
     assertTrue(html.contains("document.cookie=key+\"=\"+mode"))
     assertTrue(html.contains("u.searchParams.delete(\"chrome\")"))
     assertFalse(html.contains("class=\"cp-component-browser\""))
+  }
+
+  @Test
+  fun `dev home exposes catalog search too`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        systems =
+          listOf(
+            ServeWeb.HomeSystem(
+              system = "compose-m3",
+              title = "Material 3",
+              subtitle = null,
+              previewCount = 1,
+              trust = null,
+              heroPreviewId = null,
+            )
+          ),
+        token = token,
+      )
+
+    assertTrue(html.contains("id=\"cp-browser-catalog-search\""))
+    assertTrue(html.contains("data-browser-search=\"material 3 compose-m3"))
+    assertTrue(html.contains("id=\"cp-browser-catalog-empty\""))
   }
 
   @Test

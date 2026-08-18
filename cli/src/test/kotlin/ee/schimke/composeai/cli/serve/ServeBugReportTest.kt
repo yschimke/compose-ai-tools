@@ -36,6 +36,7 @@ class ServeBugReportTest {
     // The whole point of the split from ServeIssueReport: a catalog's repo cannot fix the server.
     assertEquals("yschimke/compose-ai-tools", ServeBugReport.REPO)
     assertEquals("https://github.com/yschimke/compose-ai-tools/issues/new", ServeBugReport.action())
+    assertEquals("ui-report,bug,daemon", ServeBugReport.LABELS)
   }
 
   @Test
@@ -91,7 +92,10 @@ class ServeBugReportTest {
 
   @Test
   fun `a publicly reachable render is embedded, a local one is only linked`() {
-    assertTrue(ServeBugReport.body(server, page).contains("![render](https://preview.coo.ee/"))
+    val embedded = ServeBugReport.body(server, page)
+    assertTrue(embedded.contains("![render](https://preview.coo.ee/"))
+    assertTrue(embedded.contains("Camo proxies the source URL"), embedded)
+    assertTrue(embedded.contains("does not make a versioned snapshot"), embedded)
 
     val local =
       page.copy(

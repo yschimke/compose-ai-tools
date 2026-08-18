@@ -199,10 +199,11 @@ class ServePinnedManifest(
           // component behind, and the page attributes one component's render to another. Whichever
           // declaration owns the pixels owns the name, even when that name is nothing.
           if (componentId != null) labels[id] = componentId else labels.remove(id)
-          val theme =
-            runCatching { image.jsonObject["theme"]?.jsonPrimitive?.content }
-              .getOrNull()
-              ?.takeIf { it == "light" || it == "dark" }
+          val theme = runCatching {
+            image.jsonObject["theme"]?.jsonPrimitive?.content
+          }
+            .getOrNull()
+            ?.takeIf { it == "light" || it == "dark" }
           if (theme != null) themes[id] = theme else themes.remove(id)
         }
       }

@@ -2349,6 +2349,34 @@ class ServeWebFixtureTest {
         presenceUrl = "/compose-m3/api/presence",
         componentBrowser = true,
       )
+    // Catalog mode on a **Remote Compose** preview — the one page where the browser players are
+    // still on offer there.
+    //
+    // Catalog mode used to strip the whole Remote Compose facet along with the rest of the dev
+    // surface, which left a shared `?rcPlayer=…` link inert: no canvas, no chips, no switcher, and
+    // no control owning the param, so it was quietly dropped from the URL and the page fell back to
+    // the baked PNG. `js` and `cmp-wasm` replay published bytes in the visitor's own browser, so
+    // none of the reasons the daemon-backed lanes are gated apply to them.
+    //
+    // Its own fixture because the plain Catalog viewer above carries no `.rc` document, so it
+    // cannot show any of this — and without a fixture the surface would go back to being changed
+    // without a picture. The claim it holds is a PAIR: the switcher is present and offers exactly
+    // the two browser players, and the server-side ones are absent rather than greyed.
+    val componentBrowserRemoteCompose =
+      ServeWeb.viewerPage(
+        browserPreviews.first { it.id == "button-filled-pressed" },
+        token,
+        sessionId = "compose-m3",
+        catalogName = "Compose Material 3",
+        catalogTitle = "Compose Material 3",
+        basePath = "/compose-m3",
+        isPublic = true,
+        siblings = browserPreviews,
+        canRenderOverrides = true,
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android", "cmp-jvm", "cmp-wasm"),
+        componentBrowser = true,
+      )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
     // nav COLLAPSES to one entry per component (button-filled once, not ~8 times), mirroring the
@@ -2533,14 +2561,61 @@ class ServeWebFixtureTest {
             // Exactly two hours after the fixed catalog generation time.
             nowMillis = 1_784_287_800_000,
             overallOk = false,
+            healthReason = "1 daemon startup failure · 1 recent live render failure",
+            healthHref = "#recent-daemon-failures",
             summary =
               listOf(
-                ServeWeb.Stat("Catalogs", "4"),
+                ServeWeb.Stat(
+                  "Catalogs",
+                  "4/4 loaded",
+                  ServeWeb.Meter(
+                    total = 4,
+                    segments = listOf(ServeWeb.MeterSegment("loaded", 4, "primary")),
+                  ),
+                ),
+                ServeWeb.Stat(
+                  "Published catalog renders",
+                  "76 rendered · 1 failed · 0 deferred",
+                  ServeWeb.Meter(
+                    total = 77,
+                    segments =
+                      listOf(
+                        ServeWeb.MeterSegment("rendered", 76, "primary"),
+                        ServeWeb.MeterSegment("failed", 1, "warning"),
+                      ),
+                  ),
+                ),
                 ServeWeb.Stat("Live daemons running", "1"),
                 ServeWeb.Stat("Active streams", "2"),
-                ServeWeb.Stat("Live seats", "3 free / 5"),
+                ServeWeb.Stat(
+                  "Live seats",
+                  "3 free / 5",
+                  ServeWeb.Meter(
+                    total = 5,
+                    segments =
+                      listOf(
+                        ServeWeb.MeterSegment("in use", 2, "secondary"),
+                        ServeWeb.MeterSegment("free", 3, "primary"),
+                      ),
+                  ),
+                ),
                 ServeWeb.Stat("Known sessions", "4"),
                 ServeWeb.Stat("Uptime", "3d 4h"),
+                ServeWeb.Stat(
+                  "Live renders",
+                  "1630 ok · 1 failed · 42 cached",
+                  ServeWeb.Meter(
+                    total = 1673,
+                    segments =
+                      listOf(
+                        ServeWeb.MeterSegment("ok", 1630, "primary"),
+                        ServeWeb.MeterSegment("failed", 1, "warning"),
+                        ServeWeb.MeterSegment("cached", 42, "secondary"),
+                      ),
+                  ),
+                ),
+                ServeWeb.Stat("Average render latency", "741ms"),
+                ServeWeb.Stat("Worst first render", "13679ms"),
               ),
             config =
               listOf(
@@ -2576,6 +2651,13 @@ class ServeWebFixtureTest {
                       fullyOptimized = true,
                       startedAtEpochMillis = 1_721_209_800_000,
                       completedAtEpochMillis = 1_721_209_920_000,
+                    ),
+                  renderCache =
+                    CatalogRenderCacheSnapshot(
+                      entries = 1448,
+                      bytes = 13L * 1024 * 1024,
+                      maxBytes = 128L * 1024 * 1024,
+                      evictions = 0,
                     ),
                 ),
                 ServeWeb.StatusCatalog(
@@ -2618,6 +2700,7 @@ class ServeWebFixtureTest {
                   listed = false,
                   trust = "unverified",
                   previews = 11,
+                  failedRenders = 1,
                   live = true,
                   running = false,
                   degradation = null,
@@ -2808,6 +2891,7 @@ class ServeWebFixtureTest {
         "serve-component-browser-home.html" to componentBrowserHome,
         "serve-component-browser-catalog.html" to componentBrowserCatalog,
         "serve-component-browser-component.html" to componentBrowserViewer,
+        "serve-component-browser-remote-compose.html" to componentBrowserRemoteCompose,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
         "serve-notfound.html" to notFound,
         "serve-docs-upload.html" to docUpload,
@@ -3433,7 +3517,7 @@ class ServeWebFixtureTest {
         "href=\"https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3\""
       ) &&
         serveStatus.contains("2 hours ago") &&
-        serveStatus.contains("15 Jul 2026, 08:05 UTC") &&
+        serveStatus.contains("2 days ago") &&
         serveStatus.contains("compose-ai-tools <code>0.16.54</code>") &&
         serveStatus.contains("design-parity <code>0.1.25</code>"),
       "catalog status links its delivery branch and shows friendly build provenance",
@@ -4022,21 +4106,21 @@ class ServeWebFixtureTest {
       "a listed app shows its human title on the front door",
     )
     assertTrue(
-      homeIndex.contains("<h1 class=\"cp-head\">yschimke org</h1>"),
+      homeIndex.contains("<h1 class=\"cp-head\">yschimke repositories</h1>"),
       "catalogs published by yschimke have their own section",
     )
     // A catalog that claims no configured group is sectioned by its source repo's OWNER — nothing
-    // in the server knows `confetti-wear`, so Confetti gets a `joreilly org` section for free.
+    // in the server knows `confetti-wear`, so Confetti gets a publisher-repository section.
     assertTrue(
-      homeIndex.contains("<h1 class=\"cp-head\">joreilly org</h1>"),
+      homeIndex.contains("<h1 class=\"cp-head\">joreilly repositories</h1>"),
       "an unconfigured publisher still gets its own section, derived from the source repo",
     )
     assertTrue(
       homeIndex.indexOf("href=\"/remote-m3/\"") <
-        homeIndex.indexOf("<h1 class=\"cp-head\">yschimke org</h1>") &&
+        homeIndex.indexOf("<h1 class=\"cp-head\">yschimke repositories</h1>") &&
         homeIndex.indexOf("href=\"/homeassistant-remotecompose/\"") <
-          homeIndex.indexOf("<h1 class=\"cp-head\">joreilly org</h1>") &&
-        homeIndex.indexOf("<h1 class=\"cp-head\">joreilly org</h1>") <
+          homeIndex.indexOf("<h1 class=\"cp-head\">joreilly repositories</h1>") &&
+        homeIndex.indexOf("<h1 class=\"cp-head\">joreilly repositories</h1>") <
           homeIndex.indexOf("href=\"/confetti-wear/\""),
       "cards are split between the design system, yschimke, and joreilly sections",
     )
@@ -4232,8 +4316,7 @@ class ServeWebFixtureTest {
       "the themed landing's filter script drives both the theme toggle and the search box",
     )
     // The viewer seeds the unified Theme select from the catalog-scoped key and writes every
-    // choice back. Declared themes are restored even for ids with an explicit baked light/dark
-    // token—the catalog selection is the active override while the id is only the fallback.
+    // choice back. Explicit baked light/dark ids remain reproducible and ignore remembered themes.
     assertTrue(
       viewer.contains("localStorage.getItem(\"cp-theme:default\""),
       "viewer seeds its Theme select from the catalog-scoped theme key on load",
@@ -4244,9 +4327,9 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       viewerThemes.contains("stored.indexOf(\"theme:\") === 0") &&
-        viewerThemes.contains("declared || (!themed") &&
+        viewerThemes.contains("!urlOption && !themed && option") &&
         viewerThemes.contains("el.setAttribute(\"data-theme-active\", \"1\")"),
-      "a declared catalog theme becomes the active viewer override even on a baked theme id",
+      "a remembered catalog theme is restored only when the preview path has no baked theme",
     )
     // The exclusivity rule itself moved to `cli/serve-web/src/viewer/themeChoice.ts`, where
     // `viewerThemeChoice.test.ts` drives it over every value instead of grepping for one spelling
@@ -5213,30 +5296,20 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `a catalog landing shows a back-to-home button instead of a sideways catalog nav`() {
-    // A server that publishes a home index (hasHomeIndex) replaces the old design-systems nav row
-    // with a single back button that links HOME (the front-door index at /), token-gated here. The
-    // flag — not a catalog list — gates it, so an app-only server (--catalogs-unlisted, no listed
-    // catalogs) whose landings still have a home index keeps a way back.
+  fun `a catalog landing uses the home-linked brand instead of duplicate navigation`() {
     val front = ServeWeb.landingPage(moduleLabel, previews, token, hasHomeIndex = true)
     assertFalse(front.contains("class=\"cp-systems\""), "the sideways design-systems nav is gone")
-    assertTrue(
-      front.contains("class=\"cp-back\" href=\"/?token=$token\""),
-      "a landing with a home index links back to it",
-    )
+    assertFalse(front.contains("class=\"cp-back\""), "the home link is not duplicated")
     // No sideways links to the other catalogs any more.
     assertFalse(
       front.contains("href=\"/wear-m3/?token=$token\""),
       "no sideways link to sibling catalogs",
     )
 
-    // Public mode: the back button is token-free (every route is open).
+    // Public mode keeps the same single route home.
     val public =
       ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, hasHomeIndex = true)
-    assertTrue(
-      public.contains("class=\"cp-back\" href=\"/\""),
-      "the public back button is token-free",
-    )
+    assertFalse(public.contains("class=\"cp-back\""), "the public home link is not duplicated")
 
     // No home index → no back button (a plain, single-module `serve` with nothing to go back to).
     assertFalse(
@@ -5550,8 +5623,8 @@ class ServeWebFixtureTest {
       "no live stream ⇒ the live-only overlay toggles are omitted entirely, not left dead",
     )
     assertTrue(
-      staticView.contains(">Day (Default)</option>") &&
-        staticView.contains(">Night (Default)</option>"),
+      staticView.contains(">Light (Default)</option>") &&
+        staticView.contains(">Dark (Default)</option>"),
       "the unified Theme selector always carries the two default modes",
     )
 
@@ -5907,9 +5980,13 @@ class ServeWebFixtureTest {
     )
     // …by writing an INPUT VALUE, never an href. The affordance is a GET form whose action is a
     // server-rendered literal, so no page-derived string can reach a navigation sink.
+    val refreshReportLinkSource =
+      viewerSource()
+        .substringAfter("function refreshReportLink()")
+        .substringBefore("function stripToken(")
     assertTrue(
-      viewerSource().contains("body.value = tpl.replace(") &&
-        !viewerSource().contains("link.href = "),
+      refreshReportLinkSource.contains("body.value = tpl.replace(") &&
+        !refreshReportLinkSource.contains(".href = "),
       "the report prefill goes into a form input, not a navigation sink",
     )
     // The URL is copied by a plainly-named button rather than by clicking a field whose only clue
@@ -5975,8 +6052,8 @@ class ServeWebFixtureTest {
     // One selector carries the default day/night modes and each provider FQN with its human name.
     assertTrue(
       view.contains("id=\"cp-theme\"") &&
-        view.contains(">Day (Default)</option>") &&
-        view.contains(">Night (Default)</option>"),
+        view.contains(">Light (Default)</option>") &&
+        view.contains(">Dark (Default)</option>"),
       "declared themes share one selector with the two default modes",
     )
     assertTrue(
@@ -6016,11 +6093,11 @@ class ServeWebFixtureTest {
         declaredThemes = themes,
       )
     assertTrue(
-      discoveredNightPreview.contains("<option value=\"dark\" selected>Night (Default)</option>"),
+      discoveredNightPreview.contains("<option value=\"dark\" selected>Dark (Default)</option>"),
       "a preview discovered with night uiMode selects its actual baked default",
     )
     assertFalse(
-      discoveredNightPreview.contains("<option value=\"light\" selected>Day (Default)</option>"),
+      discoveredNightPreview.contains("<option value=\"light\" selected>Light (Default)</option>"),
       "a night preview does not fall back to the ID-based day heuristic",
     )
 

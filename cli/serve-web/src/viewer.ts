@@ -77,6 +77,8 @@ function controlValue(el: Control): string {
 interface DroppedOverridesError extends Error {
     cpDropped?: string;
     cpTerminal?: boolean;
+    /** `Retry-After` seconds from a non-terminal refusal, when the server sent one. */
+    cpRetryAfter?: number;
 }
 
 /**
@@ -728,7 +730,28 @@ function snapshotSettled() {
         fn();
     }
 }
-function refreshSnapshot() {
+// A non-terminal refusal (503 + `Retry-After`) means the render lane exists and is merely cold,
+// busy, or out of seats — a cold Android daemon is tens of seconds, and it recovers on its own. The
+// page used to print "retry shortly" and then do nothing, leaving a deep link or the viewer's own
+// default player lane stuck on an error until the visitor touched a control or reloaded. So the
+// advice is now carried out: a bounded, server-paced retry.
+//
+// Bounded because the alternative is a page that hammers a struggling box forever, and because a
+// lane that has not come up after this long is better reported than silently retried. The counter
+// is per *attempt sequence*, not per page: any control change starts a new render and resets it,
+// which is also what stops a queued retry from painting over a newer request — `snapshotGen` has
+// already moved on and the guard at the top of the handler drops it.
+var SNAPSHOT_RETRY_LIMIT = 4;
+var snapshotRetryTimer: ReturnType<typeof setTimeout> | null = null;
+var snapshotRetries = 0;
+function cancelSnapshotRetry() {
+    if (snapshotRetryTimer === null) return;
+    clearTimeout(snapshotRetryTimer);
+    snapshotRetryTimer = null;
+}
+function refreshSnapshot(isRetry?: boolean) {
+    if (!isRetry) snapshotRetries = 0;
+    cancelSnapshotRetry();
     status.textContent = "rendering…";
     var gen = ++snapshotGen;
     setSnapshotLoading(true);
@@ -760,8 +783,15 @@ function refreshSnapshot() {
                         "dropped overrides",
                     );
                     e.cpDropped = dropped;
-                    // 409 is terminal: this preview has no live lane, so retrying never helps.
+                    // 409 is terminal: retrying can never apply this override. 503 is the
+                    // opposite claim — the lane exists and is merely cold, busy or out of seats —
+                    // and the server says how long to wait.
                     e.cpTerminal = response.status === 409;
+                    var after = parseInt(
+                        response.headers.get("Retry-After") || "",
+                        10,
+                    );
+                    if (after > 0) e.cpRetryAfter = after;
                     throw e;
                 }
                 throw new Error("render " + response.status);
@@ -810,14 +840,31 @@ function refreshSnapshot() {
             if (gen !== snapshotGen) return;
             setSnapshotLoading(false);
             if (e && e.cpDropped) {
+                var params = e.cpDropped.split(",").join(", ");
+                var willRetry =
+                    !e.cpTerminal && snapshotRetries < SNAPSHOT_RETRY_LIMIT;
                 showModeError(
                     "Not rendered with " +
-                        e.cpDropped.split(",").join(", ") +
+                        params +
                         " — " +
                         (e.cpTerminal
                             ? "this preview can only be served as its published snapshot."
-                            : "the live render is unavailable right now; retry shortly."),
+                            : willRetry
+                              ? "the live render is warming up; retrying…"
+                              : "the live render is unavailable right now; change a control to try again."),
                 );
+                if (willRetry) {
+                    snapshotRetries++;
+                    // Pace off the server's own `Retry-After` when it sent one, so a box that knows
+                    // it is busy sets the interval rather than the page guessing at it.
+                    var wait = (e.cpRetryAfter || 2) * 1000 * snapshotRetries;
+                    snapshotRetryTimer = setTimeout(function () {
+                        snapshotRetryTimer = null;
+                        if (gen !== snapshotGen) return;
+                        refreshSnapshot(true);
+                    }, wait);
+                    return;
+                }
                 snapshotSettled();
                 return;
             }
@@ -3631,8 +3678,27 @@ if (laneSelect) {
     // the state — so reconciling it means returning it to its placeholder. Doing that here rather
     // than in the change handler covers every route out of a lane (the Live toggle, an SVG swap,
     // Back/Forward), not just a pick.
+    //
+    // …except where there is no chip. Catalog mode drops it along with the Live control, which
+    // makes this menu the only thing on the page that could report the renderer in use, so there it
+    // holds the selection instead. `data-lane-state` is set by the server precisely when the chip
+    // was omitted, so the two can't disagree about which of the two shapes this control is in.
+    var laneHoldsState = laneSelect.getAttribute("data-lane-state") === "1";
     syncLaneSelect = function () {
-        laneSelect.value = "";
+        if (!laneHoldsState) {
+            laneSelect.value = "";
+            return;
+        }
+        // Only a lane the menu actually offers: a value it has no option for would blank the
+        // control, which is worse than the placeholder it replaced.
+        var lane = currentLaneValue();
+        var offered = Array.prototype.some.call(
+            laneSelect.options,
+            function (o: HTMLOptionElement) {
+                return o.value === lane;
+            },
+        );
+        laneSelect.value = offered ? lane : "";
     };
     function pickLane(value: string) {
         if (!value) return; // the placeholder; nothing was chosen

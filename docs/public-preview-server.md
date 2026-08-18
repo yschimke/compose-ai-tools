@@ -507,6 +507,27 @@ switch, conversely, drops any `?chrome=` from the current URL so the choice you 
 that applies. Pages whose body depends on the cookie say so with `Vary: Cookie`, so a shared cache
 can't hand one visitor's Catalog-mode HTML to a Dev-mode visitor.
 
+**What Catalog mode drops is the operational surface, not the Remote Compose facet.** The live
+stream, the full-page scroll capture, the accessibility overlay and the design annotations all go.
+**Every player stays** — the browser pair (`js`, `cmp-wasm`) and the server-side ones (`java`,
+`cmp-android`, `cmp-jvm`) alike — and the page opens on the embedded player exactly as Dev does.
+
+That is a deliberate line, and it is not the cheap one. Which player drew a document is the
+*subject* of a Remote Compose catalog rather than an operational detail, so the reader of one is
+precisely who wants to switch between them, and a catalog whose landing lane disagreed with Dev's
+would be publishing a different default rendering of the same document. What makes it affordable is
+the published-raster lane [below](#a-player-selection-is-published-not-rendered): the default browse
+is answered from the parity run's staging, so the commonest page view costs a map lookup and a file
+read. It is **not** free in every case — a preview the run staged nothing for, or a knob or theme
+selected on top of the player, still reaches the daemon, which a Catalog page previously never did.
+
+The whole facet used to come off together, and the cost was a broken link: with no canvas, no chips
+and no switcher, no control on the page owned the `rcPlayer` parameter, so `url-state.js` cleared it
+from the address bar and a shared `?rcPlayer=js` link quietly became an ordinary baked snapshot. One
+consequence worth knowing: a Remote Compose preview in Catalog mode now opens on the browser player
+rather than the baked PNG — the same shape Dev mode already had, where the landing lane is a player
+too.
+
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
 
@@ -2564,9 +2585,64 @@ for):
 |---|---|
 | no override, or one the baked variant already satisfies (`uiMode=light` on a `…__light` id, `background=default`) | `200`, `X-Compose-Preview-Generation: baked` |
 | the override was applied | `200`, `X-Compose-Preview-Generation: daemon` (or `daemon-cache` / `catalog-cache`) |
+| a **bare** `?rcPlayer=<wire>` on a catalog whose parity run staged that player | `200`, `X-Compose-Preview-Generation: rc-published` — published bytes, no renderer |
 | the preview **has** a live lane, but it can't serve right now (daemon down/cold, no free seat) | `503` + `Retry-After: 2` |
 | the preview has **no** live lane at all (static or untrusted catalog, unmapped variant) | `409` — retrying can't help |
+| the request names an axis **no replay can ever honour** (`localeTag`, `themeProvider`, `knob.<key>`, a string `rc.<name>` on an IR-backed preview) | `409` — retrying can't help |
 | `&fallback=baked` on the request | `200` + `X-Compose-Preview-Render: baked-fallback` |
+
+### A player selection is published, not rendered
+
+Opening a Remote Compose preview means drawing its document with *some* player, and the viewer opens
+on one by default — so "which player drew this" is the single commonest thing a `/render` request on
+such a catalog says. It used to be answered by the daemon every time: `?rcPlayer=cmp-android`
+measured about **0.75s** warm on the public box, and on a cold one it fell back to baked pixels and
+then refused.
+
+Nothing had to be rendered for it, because the offline `rc-compare` parity pipeline already draws
+every `ir/<id>.rc` document with every player and publishes the results on the delivery branch. A
+**bare** player selection is now answered from that staging — a manifest lookup and a file read, with
+no daemon, no render slot and no admission — which is what an override-free browse has always cost.
+
+Two things make it safe to state that narrowly:
+
+- **The baked PNG is not a substitute.** It is the **AndroidX Java** capture — the reference the
+  other lanes are scored against, which is why the compare page's first column is labelled that way.
+  Serving it for `?rcPlayer=cmp-android` would be the #3449 failure again: the wrong player's pixels
+  under a confident `200`.
+- **Bare means bare.** Strip the player from the request and whatever remains must be something the
+  baked snapshot would itself satisfy. A font scale, a device, a knob or a theme asks for pixels the
+  parity run never drew, so it routes to the renderer exactly as before. A player the run staged
+  nothing for falls through the same way rather than 404ing.
+- **It is consulted before the baked snapshot, not after.** `bakedRender` answers from the preview's
+  published PNG without reading the overrides at all, so ordering the staging second would make the
+  whole lane unreachable on any host that has baked pixels — which is every real bundle and catalog
+  host. `cmp-jvm` is caught earlier still, ahead of the subprocess short-circuit, which returns
+  before the override parse.
+
+It is its own generation (`rc-published`) rather than `baked` because the two make opposite claims:
+`baked` means "no renderer ran and your overrides are NOT reflected", which is what turns an
+override-bearing request into a refusal, while these bytes *are* the requested player's output.
+
+**A `503` here is acted on, not just printed.** The viewer used to say "retry shortly" and then do
+nothing, so a deep link — or the viewer's own default player lane — sat on the error until the
+visitor touched a control or reloaded. It now retries on the server's own `Retry-After`, backing off
+over at most four attempts before it stops and says so. Bounded on purpose: a page that retried
+forever would hammer a box that is already struggling, and a lane still down after that is better
+reported than silently re-asked. Any control change starts a fresh render and resets the count, and
+a queued retry that has been overtaken is dropped rather than painting over the newer request.
+
+**Which of the two `409`s applies is a property of the axis, not of the preview.** A Remote Compose
+preview is redrawn by replaying its captured document, and for a while that fact alone decided the
+refusal: *every* transient baked fallback on such a preview answered `409` + "the override can never
+apply". That is false about a daemon that is merely cold — the identical URL is a `200` once it is
+warm — and the viewer treats `409` as final, so a cold start disabled the lane until a reload.
+`rcPlayer` is the sharpest case, since choosing which player replays the document is precisely what
+the replay path reads. The narrow set in `CatalogLiveRouting.irReplayDroppedOverrideNames` is the
+authority on what a replay genuinely cannot answer; everything else on a replayed preview takes the
+`503` above, exactly as it would on one that recomposes. Where a request mixes the two, one terminal
+axis makes the whole response terminal — it can never be satisfied in full, so `Retry-After` would
+invite a loop — and the message names the hopeless axis rather than everything dropped.
 
 All four override-carrying responses carry **`X-Compose-Preview-Dropped-Overrides`** — a
 comma-separated list of exactly the params the returned bytes do not reflect (`fontScale,uiMode`,

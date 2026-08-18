@@ -12,7 +12,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(/(?:^|__)(?:light|dark)(?:__|$)/.test(decodeURIComponent(location.pathname).split('/').pop()||"")?"":localStorage.getItem("cp-theme:default")));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
@@ -23,7 +23,6 @@
       <span class="cp-site-wordmark">compose-preview</span>
     </a>
     <span class="cp-site-catalog">:samples:cmp</span>
-    <a class="cp-back" href="/">← All design systems</a>
   </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
     <div class="cp-interface-mode" role="group" aria-label="Interface mode">
@@ -43,18 +42,18 @@
         </summary>
         <div class="cp-settings-panel">
           <fieldset class="cp-settings-group">
-            <legend class="cp-settings-legend">Page theme</legend>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-              <span>Match the preview theme</span>
-            </label>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-              <span>Follow my system</span>
-            </label>
-            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-              match. Turn it off to keep the page on your operating system's setting.</p>
-          </fieldset>
+                    <legend class="cp-settings-legend">Page theme</legend>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+                      <span>Match the preview theme</span>
+                    </label>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+                      <span>Follow my system</span>
+                    </label>
+                    <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+                      match. Choose Follow my system to keep the page on your operating system's setting.</p>
+                  </fieldset>
           <fieldset class="cp-settings-group cp-settings-keyboard">
             <legend class="cp-settings-legend">Keyboard</legend>
             <label class="cp-settings-option">
@@ -73,7 +72,7 @@
   </nav>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">:samples:cmp</h1></div><p class="cp-sub">6 preview(s)</p></div>
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">:samples:cmp</h1></div><p class="cp-sub">6 previews</p></div>
         <div class="cp-catalog-tools">
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
@@ -93,7 +92,7 @@
 </div>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview">
+        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview" aria-label="Button">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png">
   </div>
@@ -103,7 +102,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview">
+<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview" aria-label="Card">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png">
   </div>
@@ -113,7 +112,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview">
+<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview" aria-label="Dialog">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png">
   </div>
@@ -123,7 +122,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview">
+<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview" aria-label="List screen">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png">
   </div>
@@ -133,7 +132,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview">
+<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview" aria-label="Profile screen">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png">
   </div>
@@ -143,7 +142,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview">
+<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview" aria-label="Settings screen">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png">
   </div>

@@ -12,7 +12,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:remote-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(/(?:^|__)(?:light|dark)(?:__|$)/.test(decodeURIComponent(location.pathname).split('/').pop()||"")?"":localStorage.getItem("cp-theme:remote-m3")));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
@@ -42,18 +42,18 @@
         </summary>
         <div class="cp-settings-panel">
           <fieldset class="cp-settings-group">
-            <legend class="cp-settings-legend">Page theme</legend>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-              <span>Match the preview theme</span>
-            </label>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-              <span>Follow my system</span>
-            </label>
-            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-              match. Turn it off to keep the page on your operating system's setting.</p>
-          </fieldset>
+                    <legend class="cp-settings-legend">Page theme</legend>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+                      <span>Match the preview theme</span>
+                    </label>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+                      <span>Follow my system</span>
+                    </label>
+                    <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+                      match. Choose Follow my system to keep the page on your operating system's setting.</p>
+                  </fieldset>
           <fieldset class="cp-settings-group cp-settings-keyboard">
             <legend class="cp-settings-legend">Keyboard</legend>
             <label class="cp-settings-option">
@@ -78,9 +78,9 @@
 
         <div class="cp-head-toggles"><span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" disabled aria-describedby="cp-pinned-controls-note"
   title="Pinned revision — theme overrides are not applied to published pixels">
-    <span class="cp-toggle-label">Theme</span>
-    <span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span>
-  </button></span><details class="cp-revisions">
+  <span class="cp-toggle-label">Theme</span>
+  <span class="cp-toggle-value" id="cp-theme-toggle-value">Light</span>
+</button></span><details class="cp-revisions">
   <summary class="cp-revisions-btn">
     <span class="cp-revisions-key">Revision</span>
     <span class="cp-revision-date">2026-08-13 07:10 UTC</span>
@@ -108,7 +108,7 @@
   <a class="cp-pinned-current" href="/remote-m3/p/appcard__ideal__default__compact?token=demo-token-fixture">view current</a>
 </section>
       <div class="cp-preview-primary" aria-label="Preview renderer">
-          <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
@@ -147,8 +147,8 @@
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           <span class="cp-modes-inputs" aria-hidden="true">
   <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1" disabled>
-    <option value="light" selected>Day (Default)</option>
-    <option value="dark">Night (Default)</option>
+    <option value="light" selected>Light (Default)</option>
+    <option value="dark">Dark (Default)</option>
   </select>
 </span>
           <details class="cp-group" data-cp-group="size">
@@ -254,9 +254,8 @@
       <script>(function () {
   var el = document.getElementById("cp-theme");
   if (!el) return;
-  // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
-  // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
-  // catalog's Theme choice is the active override the visitor asked to keep while navigating.
+  // Runs before viewer.js' initial render. A clean explicit __light/__dark URL is reproducible:
+  // remembered choices never override the path. An explicit query parameter still wins below.
   var root = document.querySelector(".cp-viewer");
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
@@ -279,7 +278,7 @@
     var declared = stored && stored.indexOf("theme:") === 0;
     var option = null;
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-    if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+    if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
       el.value = stored;
       el.setAttribute("data-theme-active", "1");
     }

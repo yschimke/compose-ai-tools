@@ -4,8 +4,6 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -698,6 +696,7 @@ $noteBlock        <div class="cp-site-footer-links">
     siteName: String = "",
     componentBrowser: Boolean = false,
     showInterfaceMode: Boolean = false,
+    showPreviewThemeSetting: Boolean = false,
   ): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
@@ -745,7 +744,7 @@ $noteBlock        <div class="cp-site-footer-links">
           <div class="cp-site-menu-panel" id="cp-site-menu-panel">
             <a class="cp-site-status-link" id="cp-status-link" href="/status$navSuffix">Status<span
               class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>$actionHtml
-            ${settingsMenuHtml().prependIndent("            ").trimStart()}
+            ${settingsMenuHtml(showPreviewThemeSetting).prependIndent("            ").trimStart()}
           </div>
         </nav>
       </header>
@@ -765,14 +764,13 @@ $noteBlock        <div class="cp-site-footer-links">
    * the scripts only reflect stored values and enhance the menu. It sits in the nav so it is in the
    * same place on every page, and last so it never displaces the links.
    */
-  private fun settingsMenuHtml(): String =
+  private fun settingsMenuHtml(showPreviewThemeSetting: Boolean): String =
     """
     <details class="cp-settings">
       <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
         <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
       </summary>
-      <div class="cp-settings-panel">
-        <fieldset class="cp-settings-group">
+      <div class="cp-settings-panel">${if (!showPreviewThemeSetting) "" else "\n" + """<fieldset class="cp-settings-group">
           <legend class="cp-settings-legend">Page theme</legend>
           <label class="cp-settings-option">
             <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
@@ -783,8 +781,8 @@ $noteBlock        <div class="cp-site-footer-links">
             <span>Follow my system</span>
           </label>
           <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-            match. Turn it off to keep the page on your operating system's setting.</p>
-        </fieldset>
+            match. Choose Follow my system to keep the page on your operating system's setting.</p>
+        </fieldset>""".trimIndent().prependIndent("        ")}
         <fieldset class="cp-settings-group cp-settings-keyboard">
           <legend class="cp-settings-legend">Keyboard</legend>
           <label class="cp-settings-option">
@@ -801,17 +799,6 @@ $noteBlock        <div class="cp-site-footer-links">
     </details>
     """
       .trimIndent()
-
-  /**
-   * A "back to all design systems" button for a catalog landing — replaces the in-catalog
-   * design-systems nav row, so a catalog page links **home** (the front-door index at `/`) rather
-   * than sideways to its siblings. Token-free in [isPublic] mode; a token-gated box keeps the
-   * token.
-   */
-  private fun backButton(token: String, isPublic: Boolean): String {
-    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    return """<a class="cp-back" href="/$suffix">← All design systems</a>"""
-  }
 
   /**
    * A breadcrumb trail for the site header's brand slot: the [parent] page as a link, then — when
@@ -1211,13 +1198,17 @@ $noteBlock        <div class="cp-site-footer-links">
   private fun bgTheme(id: String, darkFirst: Boolean): String? =
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
-  /** The preview's baked theme, preferring its actual discovery-time uiMode over id heuristics. */
+  /**
+   * The preview's baked theme, preferring explicit catalog metadata, then its discovery-time
+   * uiMode, over id heuristics.
+   */
   private fun previewTheme(preview: ServePreview, darkFirst: Boolean): String? =
-    when (preview.uiMode and UI_MODE_NIGHT_MASK) {
-      UI_MODE_NIGHT_YES -> "dark"
-      UI_MODE_NIGHT_NO -> "light"
-      else -> bgTheme(preview.id, darkFirst)
-    }
+    preview.theme
+      ?: when (preview.uiMode and UI_MODE_NIGHT_MASK) {
+        UI_MODE_NIGHT_YES -> "dark"
+        UI_MODE_NIGHT_NO -> "light"
+        else -> bgTheme(preview.id, darkFirst)
+      }
 
   /** Stable, catalog-specific persistence key shared by that catalog's landing and viewer pages. */
   private fun themeStorageKey(sessionId: String?, basePath: String): String {
@@ -2476,8 +2467,8 @@ $noteBlock        <div class="cp-site-footer-links">
    * ([viewerThemePickerHtml]) so one control appears on both pages instead of two that drift.
    *
    * [builtIns] are the `(choice value, label)` pairs the page offers before any app-declared theme
-   * — the landing's baked `light`/`dark` swap (or its lone `default`), the viewer's Day/Night
-   * uiMode pair (or Night alone on a dark-first system). [declared] follows as one
+   * — the landing's baked `light`/`dark` swap (or its lone `default`), the viewer's Light/Dark
+   * uiMode pair (or Dark alone on a dark-first system). [declared] follows as one
    * `theme:<providerFqn>` chip each, qualified with its group when its bare name would collide with
    * a built-in label or with another declared theme.
    */
@@ -2994,6 +2985,7 @@ $noteBlock        <div class="cp-site-footer-links">
           var lbl = c.getAttribute("data-" + k + "-label");
           if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+          c.setAttribute("aria-label", lbl);
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
           if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
           c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
@@ -3868,9 +3860,8 @@ $noteBlock        <div class="cp-site-footer-links">
     (function () {
       var el = document.getElementById("cp-theme");
       if (!el) return;
-      // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
-      // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
-      // catalog's Theme choice is the active override the visitor asked to keep while navigating.
+      // Runs before viewer.js' initial render. A clean explicit __light/__dark URL is reproducible:
+      // remembered choices never override the path. An explicit query parameter still wins below.
       var root = document.querySelector(".cp-viewer");
       var pid = (root && root.getAttribute("data-preview-id")) || "";
       var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
@@ -3893,7 +3884,7 @@ $noteBlock        <div class="cp-site-footer-links">
         var declared = stored && stored.indexOf("theme:") === 0;
         var option = null;
         Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-        if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+        if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
           el.value = stored;
           el.setAttribute("data-theme-active", "1");
         }
@@ -4169,7 +4160,7 @@ $noteBlock        <div class="cp-site-footer-links">
       val totals =
         if (componentBrowser) ""
         else
-          "\n          <div class=\"cp-sys-foot\">${s.previewCount} preview(s)" +
+          "\n          <div class=\"cp-sys-foot\">${counted(s.previewCount, "preview(s)")}" +
             (if (s.views > 0) " · ${formatViews(s.views)}" else "") +
             "</div>"
       // A dark-first (Wear) system backs its hero on the dark stage — same `data-bg-theme` hook the
@@ -4177,11 +4168,9 @@ $noteBlock        <div class="cp-site-footer-links">
       // white.
       val bg = if (s.darkStage) " data-bg-theme=\"dark\"" else ""
       val searchAttr =
-        if (!componentBrowser) ""
-        else
-          " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
+        " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.system} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
       return """
-      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix"$searchAttr>
+      <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix" aria-label="$title"$searchAttr>
         <div class="cp-imgwrap">$img</div>
         <div class="cp-meta">
           <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance$totals
@@ -4194,7 +4183,7 @@ $noteBlock        <div class="cp-site-footer-links">
     // catalog's own provenance), so they're escaped like any other data on the page.
     fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String {
       val head = WebEscaping.htmlEscape(heading)
-      val count = "${list.size} ${WebEscaping.htmlEscape(noun)}"
+      val count = WebEscaping.htmlEscape(counted(list.size, noun))
       return """
       <div class="cp-section-title">
         <h1 class="cp-head">$head</h1>
@@ -4208,7 +4197,7 @@ $noteBlock        <div class="cp-site-footer-links">
     }
     val sections = homeSections(systems)
     val catalogSearch =
-      if (!componentBrowser || systems.isEmpty()) ""
+      if (systems.isEmpty()) ""
       else
         """
         <div class="cp-browser-home-tools">
@@ -4228,7 +4217,7 @@ $noteBlock        <div class="cp-site-footer-links">
       if (systems.isEmpty()) {
         "<h1 class=\"cp-head\">Design Systems</h1>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
-      } else if (componentBrowser) {
+      } else {
         catalogSearch +
           "\n" +
           sections
@@ -4236,12 +4225,6 @@ $noteBlock        <div class="cp-site-footer-links">
               section(s.heading, s.systems, s.noun, if (index == 0) "cp-grid" else "cp-grid-$index")
             }
             .joinToString("\n")
-      } else {
-        sections
-          .mapIndexed { index, s ->
-            section(s.heading, s.systems, s.noun, if (index == 0) "cp-grid" else "cp-grid-$index")
-          }
-          .joinToString("\n")
       }
     val globalComponents =
       if (systems.isEmpty()) ""
@@ -4316,6 +4299,13 @@ $noteBlock        <div class="cp-site-footer-links">
    */
   data class HomeSection(val heading: String, val systems: List<HomeSystem>, val noun: String)
 
+  /** Render legacy operator nouns such as `catalog(s)` as real singular/plural copy. */
+  private fun counted(count: Int, noun: String): String {
+    val singular = noun.replace("(s)", "")
+    val plural = if (noun.contains("(s)")) singular + "s" else noun
+    return "$count ${if (count == 1) singular else plural}"
+  }
+
   /**
    * Group the published catalogs by **publisher**, for the front-page sections.
    *
@@ -4363,7 +4353,7 @@ $noteBlock        <div class="cp-site-footer-links">
   /** The heading an ungrouped catalog falls back to: its repo owner's, else the "Other" bucket. */
   private fun ownerHeading(sourceRepo: String?): String {
     val owner = sourceRepo?.substringBefore('/')?.takeIf { it.isNotBlank() && it != sourceRepo }
-    return if (owner == null) OTHER_HEADING else "$owner org"
+    return if (owner == null) OTHER_HEADING else "$owner repositories"
   }
 
   /** The catch-all section for catalogs carrying no usable provenance. */
@@ -4397,6 +4387,8 @@ $noteBlock        <div class="cp-site-footer-links">
     siteName: String = "",
     themeCss: String = "",
     themeStorageKey: String = "",
+    componentBrowser: Boolean = false,
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
@@ -4408,6 +4400,9 @@ $noteBlock        <div class="cp-site-footer-links">
       siteName = siteName,
       themeCss = themeCss,
       themeStorageKey = themeStorageKey,
+      componentBrowser = componentBrowser,
+      interfaceModeControl = true,
+      headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
       body =
         """
         <h1 class="cp-head">Not found</h1>
@@ -5664,8 +5659,14 @@ $noteBlock        <div class="cp-site-footer-links">
    */
   private val JSON_COMPACT = Json { encodeDefaults = true }
 
-  /** A labelled figure (a stat tile / config row) on the [statusPage]. */
-  data class Stat(val key: String, val value: String)
+  /** One coloured part of a [Meter]. */
+  data class MeterSegment(val label: String, val value: Long, val tone: String)
+
+  /** Part-of-whole data rendered underneath a status stat's human-readable value. */
+  data class Meter(val total: Long, val segments: List<MeterSegment>)
+
+  /** A labelled figure on the [statusPage], optionally backed by a capacity/progress meter. */
+  data class Stat(val key: String, val value: String, val meter: Meter? = null)
 
   /** One published catalog's row on the [statusPage] — its trust, size, liveness, provenance. */
   data class StatusCatalog(
@@ -5739,8 +5740,11 @@ $noteBlock        <div class="cp-site-footer-links">
     val public: Boolean,
     /** Wall-clock instant used to turn recent catalog generation times into relative labels. */
     val nowMillis: Long,
-    /** No catalog load or recent daemon startup failures (drives the header badge). */
+    /** No catalog-load, daemon-startup, or recent live-render failures. */
     val overallOk: Boolean,
+    /** Human explanation for a degraded badge, with an in-page diagnostic target. */
+    val healthReason: String? = null,
+    val healthHref: String? = null,
     val summary: List<Stat>,
     val config: List<Stat>,
     val catalogs: List<StatusCatalog>,
@@ -5778,20 +5782,56 @@ $noteBlock        <div class="cp-site-footer-links">
     siteName: String = "",
     themeCss: String = "",
     themeStorageKey: String = "",
+    componentBrowser: Boolean = false,
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
     val suffix = if (view.public) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
-    fun stat(s: Stat) =
-      "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(s.key)}</div>" +
-        "<div class=\"cp-stat-val\">${esc(s.value)}</div></div>"
+    fun stat(s: Stat): String {
+      val meter =
+        s.meter?.let { meter ->
+          val total = meter.total.coerceAtLeast(0)
+          val segments =
+            meter.segments.joinToString("") { segment ->
+              val width =
+                if (total == 0L) 0.0
+                else segment.value.coerceIn(0, total).toDouble() * 100.0 / total
+              "<span class=\"cp-meter-segment cp-meter-segment--${esc(segment.tone)}\" " +
+                "style=\"width:${"%.3f".format(Locale.ROOT, width)}%\" " +
+                "title=\"${esc(segment.label)}: ${segment.value}\"></span>"
+            }
+          "<div class=\"cp-meter\" role=\"img\" aria-label=\"${esc(s.value)}\">$segments</div>"
+        } ?: ""
+      return "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(s.key)}</div>" +
+        "<div class=\"cp-stat-val\">${esc(s.value)}</div>$meter</div>"
+    }
+
+    fun inlineMeter(label: String, value: Long, total: Long, tone: String): String {
+      val percent = if (total <= 0L) 0.0 else value.coerceIn(0, total).toDouble() * 100.0 / total
+      return "<span class=\"cp-inline-meter\" role=\"img\" aria-label=\"${esc(label)}\">" +
+        "<span class=\"cp-inline-meter-fill cp-inline-meter-fill--${esc(tone)}\" " +
+        "style=\"width:${"%.3f".format(Locale.ROOT, percent)}%\"></span></span>"
+    }
 
     val healthBadge =
       if (view.overallOk) " <span class=\"cp-badge cp-badge--trusted\">✓ healthy</span>"
-      else " <span class=\"cp-badge cp-badge--unverified\">⚠ degraded</span>"
+      else {
+        val reason = view.healthReason?.takeIf { it.isNotBlank() }
+        val title = reason?.let { " title=\"${esc(it)}\"" } ?: ""
+        val label = "⚠ degraded" + reason?.let { ": ${esc(it)}" }.orEmpty()
+        view.healthHref
+          ?.takeIf { it.isNotBlank() }
+          ?.let { href ->
+            " <a class=\"cp-badge cp-badge--unverified\" href=\"${esc(href)}\"$title>$label</a>"
+          } ?: " <span class=\"cp-badge cp-badge--unverified\"$title>$label</span>"
+      }
 
     val summaryGrid = view.summary.joinToString("\n") { stat(it) }
-    val configGrid = view.config.joinToString("\n") { stat(it) }
+    val configGrid =
+      view.config.joinToString("\n") {
+        "<div class=\"cp-status-config-row\"><dt>${esc(it.key)}</dt><dd>${esc(it.value)}</dd></div>"
+      }
 
     val catalogRows =
       if (view.catalogs.isEmpty())
@@ -5850,7 +5890,13 @@ $noteBlock        <div class="cp-site-footer-links">
                     "${optimization.cached}/${optimization.total} cached" +
                     if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
                 }
-              "<div class=\"cp-muted\">${esc(detail)}</div>"
+              "<div class=\"cp-muted\">${esc(detail)}</div>" +
+                inlineMeter(
+                  detail,
+                  optimization.cached.toLong(),
+                  optimization.total.toLong(),
+                  if (optimization.failed > 0) "warning" else "primary",
+                )
             } ?: ""
           val renderCache =
             c.renderCache?.let { cache ->
@@ -5858,7 +5904,8 @@ $noteBlock        <div class="cp-site-footer-links">
                 "preview cache ${cache.entries} entries · " +
                   "${humanBytes(cache.bytes)} / ${humanBytes(cache.maxBytes)}" +
                   if (cache.evictions > 0) " · ${cache.evictions} evicted" else ""
-              "<div class=\"cp-muted\">${esc(detail)}</div>"
+              "<div class=\"cp-muted\">${esc(detail)}</div>" +
+                inlineMeter(detail, cache.bytes, cache.maxBytes, "secondary")
             } ?: ""
           // An idle catalog's facts are last-known, not live — say so next to the badge rather than
           // leaving the cell blank, which would read as untrusted.
@@ -5889,8 +5936,9 @@ $noteBlock        <div class="cp-site-footer-links">
           "start on demand and suspend when idle.</td></tr>"
       else
         view.servers.joinToString("\n") { s ->
+          val id = if (s.id == s.label) "" else "<div class=\"cp-muted\">${esc(s.id)}</div>"
           "<tr>" +
-            "<td>${esc(s.label)}<div class=\"cp-muted\">${esc(s.id)}</div></td>" +
+            "<td>${esc(s.label)}$id</td>" +
             "<td><code>${esc(s.backend)}</code></td>" +
             "<td>${s.activeStreams}</td>" +
             "<td>${esc(s.upForText)}</td>" +
@@ -5945,7 +5993,7 @@ $noteBlock        <div class="cp-site-footer-links">
       $summaryGrid
       </div>
 
-      <p class="cp-status-sec">Catalogs</p>
+      <p class="cp-status-sec" id="catalogs">Catalogs</p>
       <div class="cp-status-scroll"><table class="cp-table">
         <thead><tr><th>Catalog</th><th>Trust</th><th>Previews</th><th>State</th></tr></thead>
         <tbody>
@@ -5962,14 +6010,14 @@ $noteBlock        <div class="cp-site-footer-links">
       </table></div>
 
       <p class="cp-status-sec">Configuration</p>
-      <div class="cp-status-grid">
+      <dl class="cp-status-config">
       $configGrid
-      </div>
+      </dl>
 
-      <p class="cp-status-sec">Recent daemon startup failures</p>
+      <p class="cp-status-sec" id="recent-daemon-failures">Recent daemon startup failures</p>
       $failureSection
 
-      <p class="cp-status-sec">Recent render failures</p>
+      <p class="cp-status-sec" id="recent-render-failures">Recent live render failures</p>
       $renderFailureSection
       """
         .trimIndent()
@@ -5988,6 +6036,9 @@ $noteBlock        <div class="cp-site-footer-links">
       siteName = siteName,
       themeCss = themeCss,
       themeStorageKey = themeStorageKey,
+      componentBrowser = componentBrowser,
+      interfaceModeControl = true,
+      headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
     )
   }
 
@@ -6086,7 +6137,11 @@ $noteBlock        <div class="cp-site-footer-links">
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="${esc(report.action)}">
-        <input type="hidden" name="title" value="${esc(report.title)}">
+        <label class="cp-bug-summary">Summary
+          <input class="cp-bug-summary-input" type="text" name="title" required
+            autocomplete="off" placeholder="Briefly describe the problem">
+        </label>
+        <input type="hidden" name="labels" value="${esc(ServeBugReport.LABELS)}">
         <input type="hidden" name="body" id="cp-bug-body" value="${esc(report.body)}"
           data-report-template="${esc(report.bodyTemplate)}">
         <button type="submit" class="cp-doc-btn cp-bug-submit">$GITHUB_ICON
@@ -6135,28 +6190,37 @@ $noteBlock        <div class="cp-site-footer-links">
   /** One titled group of `key → value` diagnostics on [bugReportPage]. */
   data class BugReportSection(val title: String, val rows: List<Pair<String, String>>)
 
-  /** Recent generation times read naturally; older builds use a compact, unambiguous UTC date. */
+  /** Generation times use one relative format; the exact ISO instant remains in the title. */
   private fun friendlyGeneratedAt(iso: String, nowMillis: Long): String {
     val generated = runCatching { Instant.parse(iso) }.getOrNull() ?: return prettyDate(iso)
-    val ageSeconds = (nowMillis - generated.toEpochMilli()) / 1000
-    if (ageSeconds >= 0 && ageSeconds < 86_400) {
+    val ageMillis = nowMillis - generated.toEpochMilli()
+    if (ageMillis < 0) {
+      val futureSeconds = (-ageMillis + 999) / 1000
       return when {
-        ageSeconds < 60 -> "just now"
-        ageSeconds < 3_600 -> {
-          val minutes = ageSeconds / 60
-          "$minutes ${if (minutes == 1L) "minute" else "minutes"} ago"
-        }
-        else -> {
-          val hours = ageSeconds / 3_600
-          "$hours ${if (hours == 1L) "hour" else "hours"} ago"
-        }
+        futureSeconds < 60 -> "in less than a minute"
+        futureSeconds < 3_600 -> relativeTime(futureSeconds / 60, "minute", future = true)
+        futureSeconds < 86_400 -> relativeTime(futureSeconds / 3_600, "hour", future = true)
+        futureSeconds < 2_592_000 -> relativeTime(futureSeconds / 86_400, "day", future = true)
+        futureSeconds < 31_536_000 ->
+          relativeTime(futureSeconds / 2_592_000, "month", future = true)
+        else -> relativeTime(futureSeconds / 31_536_000, "year", future = true)
       }
     }
-    return STATUS_DATE_FORMAT.format(generated)
+    val ageSeconds = ageMillis / 1000
+    return when {
+      ageSeconds < 60 -> "just now"
+      ageSeconds < 3_600 -> relativeTime(ageSeconds / 60, "minute")
+      ageSeconds < 86_400 -> relativeTime(ageSeconds / 3_600, "hour")
+      ageSeconds < 2_592_000 -> relativeTime(ageSeconds / 86_400, "day")
+      ageSeconds < 31_536_000 -> relativeTime(ageSeconds / 2_592_000, "month")
+      else -> relativeTime(ageSeconds / 31_536_000, "year")
+    }
   }
 
-  private val STATUS_DATE_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm 'UTC'", Locale.ENGLISH).withZone(ZoneOffset.UTC)
+  private fun relativeTime(amount: Long, unit: String, future: Boolean = false): String {
+    val duration = "$amount $unit${if (amount == 1L) "" else "s"}"
+    return if (future) "in $duration" else "$duration ago"
+  }
 
   /**
    * Per-system **display policy** — the single source of truth for what background surface each
@@ -6480,7 +6544,7 @@ $noteBlock        <div class="cp-site-footer-links">
     /**
      * Whether a server render of a given preview **replays a captured document** rather than
      * re-running the composable — the grid's counterpart of the viewer's `irReplay` flag, read from
-     * the same host question (`ServeHttpServer.droppedOverridesAreTerminal`) that decides whether a
+     * the same host question (`ServeHttpServer.isReplayedPreview`) that decides whether a
      * `themeProvider` render is refused.
      *
      * A declared theme installs a `PreviewWrapperProvider` **around a composition**, so a replayed
@@ -6675,7 +6739,7 @@ $noteBlock        <div class="cp-site-footer-links">
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
-        <a class="cp-card"$anchor data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
+        <a class="cp-card"$anchor aria-label="${WebEscaping.htmlEscape(defaultLabel)}" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
           data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(lightLabel)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
@@ -6741,7 +6805,7 @@ $noteBlock        <div class="cp-site-footer-links">
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
-          <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q">
+          <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q" aria-label="$label">
             <div class="cp-imgwrap">
               ${thumbImg(src, label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
@@ -6899,7 +6963,8 @@ $noteBlock        <div class="cp-site-footer-links">
     // publishes catalogs (i.e. a home index exists to go back to). It rides in the site header's
     // brand slot with every other page's breadcrumb, rather than as the body's first line — a
     // catalog page's own heading and grid then start at the top of the content column.
-    val back = if (hasHomeIndex) backButton(token, isPublic) else ""
+    // The brand already links to the front door; an adjacent back button duplicated it.
+    val back = ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link) rides in the site footer, next to the build and source links it belongs with, rather
     // than interrupting the route from the catalog's heading to its content. It renders expanded:
@@ -7061,7 +7126,7 @@ $noteBlock        <div class="cp-site-footer-links">
     val subLine =
       if (componentBrowser) ""
       else
-        "<p class=\"cp-sub\">${previews.size} preview(s)" +
+        "<p class=\"cp-sub\">${counted(previews.size, "preview(s)")}" +
           (if (systemViews > 0) " · ${formatViews(systemViews)}" else "") +
           "$liveNote</p>"
     // …and the viewer's control row: the page's controls over what is *shown*, as compact pills at
@@ -9008,11 +9073,19 @@ $rows
     @Suppress("NAME_SHADOWING") val hasSvgExport = hasSvgExport && pinned == null
     @Suppress("NAME_SHADOWING")
     val hasScrollExport = hasScrollExport && pinned == null && !componentBrowser
+    // Catalog mode keeps the Remote Compose facet whole — the `.rc` canvas and every player the
+    // host offers, embedded included — rather than stripping it with the rest of the dev surface.
+    //
+    // It used to come off with `!componentBrowser`, and the cost was a broken link: with no canvas,
+    // no chips and no lane select, nothing on the page owned the `rcPlayer` parameter, so
+    // `url-state.js` cleared it from the address bar and a shared `?rcPlayer=…` silently became an
+    // ordinary baked snapshot. Which player drew a document is the *subject* of a Remote Compose
+    // catalog, not an operational detail, so a catalog reader is exactly who wants to switch
+    // between them — and the lane a preview opens on stays the embedded player here as it is in
+    // Dev, rather than the two modes disagreeing about what the default rendering of a document is.
+    @Suppress("NAME_SHADOWING") val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null
     @Suppress("NAME_SHADOWING")
-    val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null && !componentBrowser
-    @Suppress("NAME_SHADOWING")
-    val enabledRcPlayers =
-      if (pinned == null && !componentBrowser) enabledRcPlayers else emptyList()
+    val enabledRcPlayers = if (pinned == null) enabledRcPlayers else emptyList()
     @Suppress("NAME_SHADOWING")
     val hasA11yOverlay = hasA11yOverlay && pinned == null && !componentBrowser
     @Suppress("NAME_SHADOWING")
@@ -9088,7 +9161,7 @@ $rows
               " title=\"Pinned revision — SVG is generated from the current catalog\""
         val button =
           "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
-          "aria-pressed=\"false\"$availability>SVG</button>"
+            "aria-pressed=\"false\"$availability>SVG</button>"
         if (pinned == null) button
         else
           "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
@@ -9108,7 +9181,7 @@ $rows
               " title=\"Pinned revision — 3D is generated from the current catalog\""
         val button =
           "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
-          "aria-pressed=\"false\"$availability>3D</button>"
+            "aria-pressed=\"false\"$availability>3D</button>"
         if (pinned == null) button
         else
           "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
@@ -9365,17 +9438,15 @@ $rows
         val tabClass = if (componentBrowser) " cp-browser-tab" else ""
         val tabAttrs = if (componentBrowser) " role=\"tab\" aria-selected=\"false\"" else ""
         val disabled =
-          if (pinned == null) ""
-          else " disabled aria-describedby=\"cp-pinned-controls-note\""
+          if (pinned == null) "" else " disabled aria-describedby=\"cp-pinned-controls-note\""
         val usageSrc =
-          if (pinned == null)
-            " data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\""
+          if (pinned == null) " data-usage-src=\"${WebEscaping.htmlEscape(usageHref ?: "")}\""
           else ""
         val button =
           "<button type=\"button\" id=\"cp-source-chip\" class=\"cp-spec-chip cp-source-chip$tabClass\"$tabAttrs " +
-          "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
-          "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
-          "title=\"${WebEscaping.htmlEscape(tip)}\"$usageSrc$disabled>Source</button>"
+            "aria-pressed=\"false\" aria-controls=\"cp-source-panel\" " +
+            "data-source-chip-tip=\"${WebEscaping.htmlEscape(tip)}\"$usageSrc " +
+            "title=\"${WebEscaping.htmlEscape(tip)}\"$disabled>Source</button>"
         if (pinned == null) button
         else
           "<span class=\"cp-disabled-control\" tabindex=\"0\" " +
@@ -9577,16 +9648,30 @@ $rows
     // left already names the current renderer, and a combo that repeated that name beside it read
     // as two controls arguing about the same fact ("Java  [Java ▾]"). So the chip answers *what am
     // I looking at* and this answers *what else could I look at* — which is the whole split.
+    //
+    // Catalog mode's switcher is the Remote Compose players and nothing else. The Wasm app already
+    // has a chip of its own there, and "Snapshot" is not a destination when it is the only other
+    // entry — so a Catalog page with no RC document keeps the bare chip row it always had, while a
+    // Remote Compose one grows the full player combo.
+    val selectLanes = if (componentBrowser) lanes.filter { it.value.startsWith("rc:") } else lanes
     val laneSelectHtml =
-      if (componentBrowser || lanes.size < 2) ""
+      if (selectLanes.size < 2) ""
       else
-        lanes.joinToString(
+        selectLanes.joinToString(
           separator = "",
           prefix =
             "<select id=\"cp-lane-select\" class=\"cp-lane-select\" " +
               "aria-label=\"Switch renderer\" " +
               "title=\"Draw this preview with a different renderer\" " +
-              "data-default=\"$defaultLane\" data-rc-default=\"$defaultRcBackend\">" +
+              "data-default=\"$defaultLane\" data-rc-default=\"$defaultRcBackend\"" +
+              // Catalog mode drops the renderer chip with the rest of the Live control, and that
+              // chip is what made this a *command* menu: "switch renderer…" at rest is only honest
+              // while something beside it names the renderer in use. Without it the menu is the
+              // sole indicator, so it has to hold its selection instead of bouncing back to the
+              // placeholder — otherwise picking Java leaves nothing on the page, or in the
+              // accessibility tree, saying Java is what is drawing.
+              (if (componentBrowser) " data-lane-state=\"1\"" else "") +
+              ">" +
               "<option value=\"\" selected>Switch renderer…</option>",
           postfix = "</select>",
         ) { lane ->
@@ -9895,10 +9980,10 @@ $rows
       val daySelected = if (viewerTheme != "dark") " selected" else ""
       val nightSelected = if (viewerTheme == "dark") " selected" else ""
       val defaults =
-        if (wearAlwaysDark) "<option value=\"dark\"$nightSelected>Night (Default)</option>"
+        if (wearAlwaysDark) "<option value=\"dark\"$nightSelected>Dark (Default)</option>"
         else
-          "<option value=\"light\"$daySelected>Day (Default)</option>\n" +
-            "            <option value=\"dark\"$nightSelected>Night (Default)</option>"
+          "<option value=\"light\"$daySelected>Light (Default)</option>\n" +
+            "            <option value=\"dark\"$nightSelected>Dark (Default)</option>"
       val providerOptions = body.trimEnd().let { if (it.isEmpty()) "" else "\n            $it" }
       // Visually removed, deliberately — the same treatment the render-mode radios get. The Theme
       // axis is now picked from the chips on the viewer bar ([themeBarHtml]), but this select stays
@@ -9934,8 +10019,8 @@ $rows
     val themeBarHtml =
       themeChipsHtml(
           builtIns =
-            if (wearAlwaysDark) listOf("dark" to "Night")
-            else listOf("light" to "Day", "dark" to "Night"),
+            if (wearAlwaysDark) listOf("dark" to "Dark")
+            else listOf("light" to "Light", "dark" to "Dark"),
           declared = viewerDeclaredThemes,
           indent = "          ",
         )
@@ -9954,7 +10039,7 @@ $rows
         <span class="cp-disabled-control" tabindex="0" aria-describedby="cp-pinned-controls-note"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" disabled aria-describedby="cp-pinned-controls-note"
           title="Pinned revision — theme overrides are not applied to published pixels">
           <span class="cp-toggle-label">Theme</span>
-          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Night" else "Day"}</span>
+          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Dark" else "Light"}</span>
         </button></span>
         """
           .trimIndent()
@@ -9963,7 +10048,7 @@ $rows
       <details class="cp-theme-menu">
         <summary class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-controls="cp-theme-bar">
           <span class="cp-toggle-label">Theme</span>
-          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Night" else "Day"}</span>
+          <span class="cp-toggle-value" id="cp-theme-toggle-value">${if (viewerTheme == "dark") "Dark" else "Light"}</span>
           <span class="cp-theme-caret" aria-hidden="true">▾</span>
         </summary>
         <div class="cp-theme-menu-panel">$themeBarHtml</div>
@@ -10423,8 +10508,7 @@ $rows
       </div>${if (browserVariant.isBlank()) "" else "\n      $browserVariant"}
       $revisionBanner${degradeBanner(degradations)}$issueRows
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      $primaryControls
-        $pinnedControlsNote
+      $primaryControls${if (pinnedControlsNote.isBlank()) "" else "\n        $pinnedControlsNote"}
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       $modeInputs
@@ -10791,7 +10875,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
       </head>
       <body${if (componentBrowser) " class=\"cp-component-browser\"" else ""}>
         ${scriptTag("serve-chrome.js")}
-        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl, themeStorageKey.isNotBlank() && interfaceModeControl)}
         <main class="cp-main">
         $body
         </main>$footerBlock$interfaceModeControls
@@ -10820,7 +10904,11 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
     val storedTheme =
       themeStorageKey
         .takeIf { it.isNotBlank() }
-        ?.let { "||localStorage.getItem(${WebEscaping.jsString(it)})" } ?: ""
+        ?.let {
+          "||(/(?:^|__)(?:light|dark)(?:__|$)/.test(" +
+            "decodeURIComponent(location.pathname).split('/').pop()||\"\")?\"\":" +
+            "localStorage.getItem(${WebEscaping.jsString(it)}))"
+        } ?: ""
     val modeEntries = declaredThemes.mapNotNull { theme ->
       theme.mode?.let { mode ->
         WebEscaping.jsString("theme:${theme.providerFqn}") + ":" + WebEscaping.jsString(mode)

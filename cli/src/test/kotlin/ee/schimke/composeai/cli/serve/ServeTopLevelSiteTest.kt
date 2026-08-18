@@ -109,11 +109,21 @@ class ServeTopLevelSiteTest {
   }
 
   /** A request whose `Host` header is [host] — how a vhost actually reaches this listener. */
-  private fun get(path: String, host: String? = null): Triple<Int, String, String?> {
-    val url = "http://127.0.0.1:${server!!.port}$path"
-    val req = Request.Builder().url(url)
-    if (host != null) req.header("Host", host)
-    client.newCall(req.build()).execute().use { r ->
+  private fun request(path: String, host: String? = null, cookie: String? = null) =
+    Request.Builder()
+      .url("http://127.0.0.1:${server!!.port}$path")
+      .apply {
+        if (host != null) header("Host", host)
+        if (cookie != null) header("Cookie", cookie)
+      }
+      .build()
+
+  private fun get(
+    path: String,
+    host: String? = null,
+    cookie: String? = null,
+  ): Triple<Int, String, String?> {
+    client.newCall(request(path, host, cookie)).execute().use { r ->
       return Triple(r.code, r.body?.string() ?: "", r.header("Location"))
     }
   }
@@ -279,6 +289,26 @@ class ServeTopLevelSiteTest {
     val (_, mainStatus, _) = get("/status")
     assertFalse(mainStatus.contains("cp-theme:compose-m3"), mainStatus)
     assertFalse(mainStatus.contains("cp-site-catalog"), mainStatus)
+  }
+
+  @Test
+  fun `a site's styled 404 resolves interface mode from its request`() {
+    server = newServer()
+    val cookie = "${ServeWeb.INTERFACE_MODE_COOKIE}=catalog"
+
+    val (_, rememberedCatalog, _) = get("/missing", host = siteHost, cookie = cookie)
+    assertTrue(rememberedCatalog.contains("class=\"cp-component-browser\""), rememberedCatalog)
+    assertTrue(
+      rememberedCatalog.contains("data-cp-interface-mode=\"catalog\" aria-pressed=\"true\""),
+      rememberedCatalog,
+    )
+
+    val (_, pinnedDev, _) = get("/missing?chrome=dev", host = siteHost, cookie = cookie)
+    assertFalse(pinnedDev.contains("class=\"cp-component-browser\""), pinnedDev)
+    assertTrue(
+      pinnedDev.contains("data-cp-interface-mode=\"dev\" aria-pressed=\"true\""),
+      pinnedDev,
+    )
   }
 
   @Test

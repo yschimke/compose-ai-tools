@@ -160,7 +160,7 @@ class ServeUrlStateTest {
     assertTrue(html.contains("""var provider = params.get("themeProvider");"""), html)
     assertTrue(html.contains("""var uiMode = params.get("uiMode");"""), html)
     assertTrue(
-      html.contains("if (!urlOption && option && !option.disabled"),
+      html.contains("if (!urlOption && !themed && option && !option.disabled"),
       "the remembered theme applies only when the URL names none",
     )
   }

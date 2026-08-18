@@ -74,6 +74,7 @@ class ServeStatusTest {
     catalogLoads: CatalogLoadTracker? = null,
     failedCatalogPreviews: List<String> = emptyList(),
     deferredCatalogPreviews: List<String> = emptyList(),
+    recordDaemonFailure: Boolean = true,
     playgroundHealth: (() -> PlaygroundHealth)? = null,
   ): ServeHttpServer {
     registry.register(
@@ -107,7 +108,7 @@ class ServeStatusTest {
       pinned = true,
     )
     // A recorded startup failure, so the status shows the degraded state + failure row.
-    daemonLog.record("wear-m3", "daemon launch timed out")
+    if (recordDaemonFailure) daemonLog.record("wear-m3", "daemon launch timed out")
     return ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -323,6 +324,120 @@ class ServeStatusTest {
   }
 
   @Test
+  fun `status health recovers after a successful live render while retaining failure history`() {
+    val stats = RenderPerfStats()
+    val live =
+      object : ServeHost {
+        override val previews: List<ServePreview> = listOf(ServePreview("a", "A"))
+        override val label: String = "live"
+        override val hasLiveStream: Boolean = true
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Ok(png())
+
+        override fun activeStreamCount(): Int = 1
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun renderPerfStats(): RenderPerfSnapshot = stats.snapshot()
+
+        override fun close() {}
+      }
+    registry.register("live", host = live)
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "live",
+          isPublic = true,
+        )
+        .also { it.start() }
+
+    stats.recordFailed(500, timeout = false, reason = "transient render failure")
+    val (_, failedJson) = get("/status.json")
+    assertTrue(failedJson.contains("\"status\":\"degraded\""), failedJson)
+    assertTrue(failedJson.contains("\"lastRenderFailed\":true"), failedJson)
+
+    stats.recordOk(100, cold = false)
+    val (_, recoveredJson) = get("/status.json")
+    assertTrue(recoveredJson.contains("\"status\":\"ok\""), recoveredJson)
+    assertTrue(recoveredJson.contains("\"lastRenderFailed\":false"), recoveredJson)
+    assertTrue(recoveredJson.contains("transient render failure"), recoveredJson)
+
+    val (_, recoveredHtml) = get("/status")
+    assertTrue(recoveredHtml.contains("✓ healthy"), recoveredHtml)
+    assertTrue(recoveredHtml.contains("transient render failure"), recoveredHtml)
+  }
+
+  @Test
+  fun `status health includes a resident daemon whose render breaker disabled its live stream`() {
+    val stats =
+      RenderPerfStats()
+        .snapshot()
+        .copy(
+          breaker =
+            RenderBreakerSnapshot(
+              open = true,
+              fatal = true,
+              reason = "render linkage failure",
+            )
+        )
+    val broken =
+      object : ServeHost {
+        override val previews: List<ServePreview> = listOf(ServePreview("a", "A"))
+        override val label: String = "broken"
+        override val hasLiveStream: Boolean = false
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Failed("render linkage failure")
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun renderPerfStats(): RenderPerfSnapshot = stats
+
+        override fun close() {}
+      }
+    registry.register("broken", host = broken)
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "broken",
+          isPublic = true,
+        )
+        .also { it.start() }
+
+    val (jsonCode, json) = get("/status.json")
+    assertEquals(200, jsonCode)
+    assertTrue(json.contains("\"status\":\"degraded\""), json)
+
+    val (htmlCode, html) = get("/status")
+    assertEquals(200, htmlCode)
+    assertTrue(html.contains("1 open live render breaker"), html)
+    assertTrue(html.contains("href=\"#recent-render-failures\""), html)
+  }
+
+  @Test
   fun `status serves a styled html page`() {
     server = newServer(public = true, token = "unused")
     val (code, body) = get("/status")
@@ -343,7 +458,80 @@ class ServeStatusTest {
     assertTrue(body.contains("design-parity <code>0.1.25</code>"), body)
     // The recent failure surfaces the degraded badge + row.
     assertTrue(body.contains("degraded"), body)
+    assertTrue(body.contains("href=\"#recent-daemon-failures\""), body)
+    assertTrue(body.contains("1 daemon startup failure"), body)
     assertTrue(body.contains("daemon launch timed out"), body)
+  }
+
+  @Test
+  fun `status uses relative catalog times and omits a repeated server id`() {
+    val now = Instant.parse("2026-08-18T12:00:00Z")
+    val html =
+      ServeWeb.statusPage(
+        token = "unused",
+        view =
+          ServeWeb.StatusView(
+            version = "test",
+            public = true,
+            nowMillis = now.toEpochMilli(),
+            overallOk = true,
+            summary = emptyList(),
+            config = emptyList(),
+            catalogs =
+              listOf(
+                ServeWeb.StatusCatalog(
+                  id = "old-catalog",
+                  title = "Old catalog",
+                  listed = true,
+                  trust = "unverified",
+                  previews = 1,
+                  live = false,
+                  running = false,
+                  degradation = null,
+                  provenance =
+                    ServeWeb.CatalogProvenance(
+                      repo = "example/catalog",
+                      branch = "published",
+                      generatedAt = now.minusSeconds(2 * 86_400).toString(),
+                    ),
+                ),
+                ServeWeb.StatusCatalog(
+                  id = "future-catalog",
+                  title = "Future catalog",
+                  listed = true,
+                  trust = "unverified",
+                  previews = 1,
+                  live = false,
+                  running = false,
+                  degradation = null,
+                  provenance =
+                    ServeWeb.CatalogProvenance(
+                      repo = "example/future-catalog",
+                      branch = "published",
+                      generatedAt = now.plusSeconds(2 * 86_400).toString(),
+                    ),
+                ),
+              ),
+            servers =
+              listOf(
+                ServeWeb.StatusServer(
+                  id = "same-session-x",
+                  label = "same-session-x",
+                  backend = "desktop",
+                  activeStreams = 0,
+                  upForText = "1m",
+                )
+              ),
+            failures = emptyList(),
+          ),
+      )
+
+    assertTrue(html.contains(">2 days ago</span>"), html)
+    assertTrue(html.contains("title=\"2026-08-16T12:00:00Z\""), html)
+    assertTrue(html.contains(">in 2 days</span>"), html)
+    assertTrue(html.contains("title=\"2026-08-20T12:00:00Z\""), html)
+    assertTrue(html.contains("<td>same-session-x</td>"), html)
+    assertFalse(html.contains("<div class=\"cp-muted\">same-session-x</div>"), html)
   }
 
   @Test
@@ -354,15 +542,19 @@ class ServeStatusTest {
         token = "unused",
         failedCatalogPreviews = listOf("render-failed--button-filled"),
         deferredCatalogPreviews = listOf("live-only-one", "live-only-two"),
+        recordDaemonFailure = false,
       )
     val (_, json) = get("/status.json")
     assertTrue(json.contains("\"failedRenders\":1"), json)
     assertTrue(json.contains("\"deferredPreviews\":2"), json)
-    assertTrue(json.contains("\"status\":\"degraded\""), json)
+    assertTrue(json.contains("\"status\":\"ok\""), json)
 
     val (_, html) = get("/status")
     assertTrue(html.contains("2 rendered · 1 failed · 2 deferred"), html)
-    assertTrue(html.contains("Catalog renders"), html)
+    assertTrue(html.contains("Published catalog renders"), html)
+    assertTrue(html.contains("✓ healthy"), html)
+    assertTrue(html.contains("No recent render failures."), html)
+    assertTrue(html.contains("cp-meter-segment--warning"), html)
   }
 
   @Test

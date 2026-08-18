@@ -298,10 +298,9 @@ class ServePinnedRevisionTest {
     // metadata, while inferring from the id would report Night for pixels published as Day.
     val historicalCatalog = catalogJson.replace("\"theme\":\"dark\"", "\"theme\":\"light\"")
     val old = "https://raw.githubusercontent.com/$repo/$oldCommit/"
-    val port =
-      startWith { url ->
-        if (url == "${old}catalog.json") historicalCatalog.encodeToByteArray() else fetch(url)
-      }
+    val port = startWith { url ->
+      if (url == "${old}catalog.json") historicalCatalog.encodeToByteArray() else fetch(url)
+    }
     val provider = "ee.schimke.m3catalog.LightMediumContrastTheme"
 
     val current = text("http://127.0.0.1:$port/$system/p/$previewId?themeProvider=$provider")
@@ -310,12 +309,9 @@ class ServePinnedRevisionTest {
     val pinned =
       text("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit&themeProvider=$provider")
     assertTrue(pinned.contains("Pinned revision — theme overrides are not applied"), pinned)
-    assertTrue(pinned.contains("id=\"cp-theme-toggle-value\">Day</span>"), pinned)
+    assertTrue(pinned.contains("id=\"cp-theme-toggle-value\">Light</span>"), pinned)
     val ogImage =
-      Regex("<meta property=\"og:image\" content=\"([^\"]+)\"")
-        .find(pinned)
-        ?.groupValues
-        ?.get(1)
+      Regex("<meta property=\"og:image\" content=\"([^\"]+)\"").find(pinned)?.groupValues?.get(1)
     assertTrue(ogImage?.contains("at=$oldCommit") == true, pinned)
     assertFalse(ogImage?.contains("themeProvider") == true, pinned)
     assertFalse(pinned.contains("data-usage-src="), pinned)

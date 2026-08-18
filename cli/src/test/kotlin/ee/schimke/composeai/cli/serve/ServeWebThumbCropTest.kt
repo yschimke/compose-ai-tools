@@ -146,7 +146,7 @@ class ServeWebThumbCropTest {
     val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
 
     assertFalse(html.contains("<h1 class=\"cp-head\">android/compose-samples</h1>"))
-    assertTrue(html.contains("<h1 class=\"cp-head\">someorg org</h1>"))
+    assertTrue(html.contains("<h1 class=\"cp-head\">someorg repositories</h1>"))
     assertTrue(html.contains("href=\"/jetnews/\""))
   }
 
@@ -169,7 +169,7 @@ class ServeWebThumbCropTest {
 
     val sections = ServeWeb.homeSections(listOf(impostor))
 
-    assertEquals(listOf("someorg org"), sections.map { it.heading })
+    assertEquals(listOf("someorg repositories"), sections.map { it.heading })
   }
 
   @Test
@@ -239,7 +239,10 @@ class ServeWebThumbCropTest {
         )
       )
 
-    assertEquals(listOf("joreilly org", "yschimke org", "Other"), sections.map { it.heading })
+    assertEquals(
+      listOf("joreilly repositories", "yschimke repositories", "Other"),
+      sections.map { it.heading },
+    )
     assertEquals(2, sections.first().systems.size)
     assertEquals("catalog(s)", sections.first().noun)
   }

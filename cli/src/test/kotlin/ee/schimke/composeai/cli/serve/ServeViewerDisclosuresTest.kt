@@ -187,13 +187,13 @@ class ServeViewerDisclosuresTest {
     val dark =
       viewer(listOf(ServePreview("button__ideal__default__dark", "Button", theme = "dark")))
     assertTrue(
-      dark.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Night</span>"),
+      dark.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Dark</span>"),
       dark,
     )
     val light =
       viewer(listOf(ServePreview("button__ideal__default__light", "Button", theme = "light")))
     assertTrue(
-      light.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Day</span>"),
+      light.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Light</span>"),
       light,
     )
     // The label has to agree with the SELECT, which is the axis's state holder: a preview with no
@@ -201,11 +201,13 @@ class ServeViewerDisclosuresTest {
     // than contradicting the selected option until the observer catches up.
     val untagged = viewer(listOf(ServePreview("com.example.ButtonPreview", "Button")))
     assertTrue(
-      untagged.contains("<option value=\"light\" selected>Day (Default)</option>"),
+      untagged.contains("<option value=\"light\" selected>Light (Default)</option>"),
       untagged,
     )
     assertTrue(
-      untagged.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Day</span>"),
+      untagged.contains(
+        "<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Light</span>"
+      ),
       "an untagged preview opens on Day; the toggle must not say Night: $untagged",
     )
     // The theme is picked without a page load, so the server-rendered label would go stale on the

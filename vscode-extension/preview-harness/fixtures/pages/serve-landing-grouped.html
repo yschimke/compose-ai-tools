@@ -12,7 +12,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(/(?:^|__)(?:light|dark)(?:__|$)/.test(decodeURIComponent(location.pathname).split('/').pop()||"")?"":localStorage.getItem("cp-theme:default")));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <script src="/assets/serve/fixture/serve-chrome.js"></script>
@@ -23,7 +23,6 @@
       <span class="cp-site-wordmark">compose-preview</span>
     </a>
     <span class="cp-site-catalog">compose-m3</span>
-    <a class="cp-back" href="/">← All design systems</a>
   </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
     <div class="cp-interface-mode" role="group" aria-label="Interface mode">
@@ -43,18 +42,18 @@
         </summary>
         <div class="cp-settings-panel">
           <fieldset class="cp-settings-group">
-            <legend class="cp-settings-legend">Page theme</legend>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
-              <span>Match the preview theme</span>
-            </label>
-            <label class="cp-settings-option">
-              <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
-              <span>Follow my system</span>
-            </label>
-            <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
-              match. Turn it off to keep the page on your operating system's setting.</p>
-          </fieldset>
+                    <legend class="cp-settings-legend">Page theme</legend>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+                      <span>Match the preview theme</span>
+                    </label>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+                      <span>Follow my system</span>
+                    </label>
+                    <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+                      match. Choose Follow my system to keep the page on your operating system's setting.</p>
+                  </fieldset>
           <fieldset class="cp-settings-group cp-settings-keyboard">
             <legend class="cp-settings-legend">Keyboard</legend>
             <label class="cp-settings-option">
@@ -73,7 +72,7 @@
   </nav>
 </header>
         <main class="cp-main">
-                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3</h1></div><p class="cp-sub">14 preview(s)</p></div>
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">compose-m3</h1></div><p class="cp-sub">14 previews</p></div>
         <div class="cp-catalog-tools">
 <div class="cp-head-toggles">
 <div class="cp-toolbar">
@@ -172,7 +171,7 @@
 <div class="cp-subgroup" id="cp-group-button">
 <h2 class="cp-group-head">Button</h2>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-button-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-button-filled__ideal__default__light" aria-label="Button filled (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
   data-l-id="button-filled__ideal__default__light" data-l-label="Button filled (light)"
   data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
@@ -187,7 +186,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-button-outlined__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-button-outlined__ideal__default__light" aria-label="Button outlined (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-outlined__ideal__default__light.png" data-l-href="/p/button-outlined__ideal__default__light"
   data-l-id="button-outlined__ideal__default__light" data-l-label="Button outlined (light)"
   data-d-src="/render/button-outlined__ideal__default__dark.png" data-d-href="/p/button-outlined__ideal__default__dark"
@@ -202,7 +201,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-button-tonal__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-button-tonal__ideal__default__light" aria-label="Button tonal (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-tonal__ideal__default__light.png" data-l-href="/p/button-tonal__ideal__default__light"
   data-l-id="button-tonal__ideal__default__light" data-l-label="Button tonal (light)"
   data-d-src="/render/button-tonal__ideal__default__dark.png" data-d-href="/p/button-tonal__ideal__default__dark"
@@ -222,7 +221,7 @@
 <div class="cp-subgroup" id="cp-group-card">
 <h2 class="cp-group-head">Card</h2>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-card-elevated__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-card-elevated__ideal__default__light" aria-label="Card elevated (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/card-elevated__ideal__default__light.png" data-l-href="/p/card-elevated__ideal__default__light"
   data-l-id="card-elevated__ideal__default__light" data-l-label="Card elevated (light)"
   data-d-src="/render/card-elevated__ideal__default__dark.png" data-d-href="/p/card-elevated__ideal__default__dark"
@@ -237,7 +236,7 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-card-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-card-filled__ideal__default__light" aria-label="Card filled (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/card-filled__ideal__default__light.png" data-l-href="/p/card-filled__ideal__default__light"
   data-l-id="card-filled__ideal__default__light" data-l-label="Card filled (light)"
   data-d-src="/render/card-filled__ideal__default__dark.png" data-d-href="/p/card-filled__ideal__default__dark"
@@ -257,7 +256,7 @@
 <div class="cp-subgroup" id="cp-group-fab">
 <h2 class="cp-group-head">FAB</h2>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-fab__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-fab__ideal__default__light" aria-label="FAB (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/fab__ideal__default__light.png" data-l-href="/p/fab__ideal__default__light"
   data-l-id="fab__ideal__default__light" data-l-label="FAB (light)"
   data-d-src="/render/fab__ideal__default__dark.png" data-d-href="/p/fab__ideal__default__dark"
@@ -277,7 +276,7 @@
 <div class="cp-subgroup" id="cp-group-badge">
 <h2 class="cp-group-head">Badge</h2>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-badge__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+<a class="cp-card" id="cp-card-badge__ideal__default__light" aria-label="Badge (light)" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/badge__ideal__default__light.png" data-l-href="/p/badge__ideal__default__light"
   data-l-id="badge__ideal__default__light" data-l-label="Badge (light)"
   data-d-src="/render/badge__ideal__default__dark.png" data-d-href="/p/badge__ideal__default__dark"
@@ -407,6 +406,7 @@ function applyVariant(c, k, withSrc) {
   var lbl = c.getAttribute("data-" + k + "-label");
   if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+  c.setAttribute("aria-label", lbl);
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
