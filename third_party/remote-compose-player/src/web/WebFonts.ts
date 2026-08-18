@@ -231,6 +231,25 @@ function hasLocalFace(family: string): boolean {
  * a `wdth` ramp drawing identical lines. A range in the declaration is exactly what a variable face
  * advertises (`font-weight: 100 1000`), so it is the right question to ask.
  */
+/**
+ * Families this module has itself asked the CSS API for a *variable* stylesheet.
+ *
+ * [hasLocalVariableFace] is the right question only about faces the **host** vendored. Once our own
+ * axis request has landed, it answers yes for every later axis request for that family — including
+ * one for an axis the declared face pins. A page that renders many documents (the `rc-compare`
+ * harness renders a whole catalog into one page) therefore had its first axis win and every other
+ * silently skipped: `Roboto Flex` registered over `wght` while painting the weight specimen, then
+ * the width specimen's `wdth@25..151` request was dropped as "already variable" and its three lines
+ * drew at one width. Document *order* decided it, which is why it reproduced in the catalog run and
+ * not for the document alone (compose-ai-tools#4177).
+ *
+ * So the short-circuit consults this first: a family we asked for is not a local face, and a wider
+ * span is worth a request. The URL carries every axis recorded so far ([recordAxes] accumulates),
+ * so the second request supersedes the first rather than adding a competing narrow one, and
+ * [stylesheets] still memoizes by URL — a repeat of the same span costs nothing.
+ */
+const ownVariableFamilies = new Set<string>();
+
 function hasLocalVariableFace(family: string): boolean {
     const want = family.toLowerCase();
     let found = false;
@@ -306,11 +325,16 @@ function registerStylesheet(
         // The bundle also runs under node-canvas, where there is no document and no font registry;
         // a named family there simply falls through to the fallback generic.
         p = Promise.resolve();
-    } else if (variable ? hasLocalVariableFace(family) : hasLocalFace(family)) {
+    } else if (
+        variable
+            ? !ownVariableFamilies.has(family.toLowerCase()) && hasLocalVariableFace(family)
+            : hasLocalFace(family)
+    ) {
         // The page already carries a vendored face for this family — faster and more faithful than
         // the network copy, so it wins and no request is made.
         p = Promise.resolve();
     } else {
+        if (variable) ownVariableFamilies.add(family.toLowerCase());
         p = loadStylesheet(url);
     }
     stylesheets.set(key, p);
@@ -561,6 +585,7 @@ export function resetWebFonts(): void {
     embeddedFaces.clear();
     stylesheets.clear();
     axisSpans.clear();
+    ownVariableFamilies.clear();
     variants.clear();
     done.clear();
     waiting.clear();

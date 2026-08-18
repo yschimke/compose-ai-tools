@@ -22,13 +22,20 @@ After bumping the vendored source (a new upstream commit under
 copy it back over this file:
 
 ```bash
-cd third_party/remote-compose-player
-npm ci
-npx esbuild src/web/main.ts \
+(cd third_party/remote-compose-player && npm ci)
+./third_party/remote-compose-player/node_modules/.bin/esbuild \
+  third_party/remote-compose-player/src/web/main.ts \
   --bundle --format=iife --target=es2020 \
   --global-name=RC --external:canvas \
-  --outfile=../../cli/src/main/resources/rc-player/bundle.js
+  --outfile=cli/src/main/resources/rc-player/bundle.js
 ```
+
+Run it **from the repository root**, as written. esbuild labels each bundled
+module with its path *relative to the working directory*, so the same source
+built from inside `third_party/remote-compose-player/` differs from this file in
+~280 comment lines and 4.7 kB while being otherwise identical — a diff that
+buries whatever actually changed. From the root the rebuild is byte-for-byte
+reproducible: with no source edit, `cmp` against the committed file passes.
 
 `--external:canvas` keeps the Node-only `canvas` dependency out of the browser
 build. Keep this file and the vendored source in lockstep — a stale bundle would

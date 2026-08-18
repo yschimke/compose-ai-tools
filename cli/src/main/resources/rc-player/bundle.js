@@ -17849,6 +17849,7 @@ void main() {
     });
     return found;
   }
+  var ownVariableFamilies = /* @__PURE__ */ new Set();
   function hasLocalVariableFace(family) {
     const want = family.toLowerCase();
     let found = false;
@@ -17893,9 +17894,10 @@ void main() {
       p = Promise.resolve();
     } else if (typeof document === "undefined" || !document.fonts) {
       p = Promise.resolve();
-    } else if (variable ? hasLocalVariableFace(family) : hasLocalFace(family)) {
+    } else if (variable ? !ownVariableFamilies.has(family.toLowerCase()) && hasLocalVariableFace(family) : hasLocalFace(family)) {
       p = Promise.resolve();
     } else {
+      if (variable) ownVariableFamilies.add(family.toLowerCase());
       p = loadStylesheet(url);
     }
     stylesheets.set(key, p);
@@ -18056,6 +18058,7 @@ void main() {
     embeddedFaces.clear();
     stylesheets.clear();
     axisSpans.clear();
+    ownVariableFamilies.clear();
     variants.clear();
     done.clear();
     waiting.clear();
@@ -20582,8 +20585,9 @@ void main() {
      * families) and the frame it keeps. Interactive players get the same effect from the repaint the
      * player schedules when a face lands.
      */
-    fontsReady() {
-      return webFontsReady();
+    async fontsReady() {
+      await webFontsReady();
+      this.document?.invalidateMeasure();
     }
     resize(newWidth, newHeight) {
       this.canvas.width = newWidth;
