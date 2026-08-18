@@ -455,7 +455,13 @@ class ServeCatalogLiveHost(
       }
     }
     catalogThemeCache.configureTargets(jobs.map { it.cacheKey })
-    if (jobs.isEmpty() || catalogThemeCache.snapshot().fullyOptimized) return
+    if (jobs.isEmpty()) return
+    // `fullyOptimized` is deliberately NOT an early return until the persisted renders have been
+    // checked. A generation adopted whole from disk reports fully optimized on the first heartbeat,
+    // so returning here would skip verification in exactly the fully-warmed restart case it exists
+    // for — and a fingerprint that missed an input would then serve stale pixels indefinitely. The
+    // check moves inside the task, below.
+    if (catalogThemeCache.snapshot().fullyOptimized && persistenceVerified.get()) return
     // Never start a pass into a broken renderer. The optimizer is the largest consumer of the
     // render gate, and every item it queues against an open breaker is pure waste — 4740 remaining
     // at a ~7h ETA on work where every single render fails (issue #3448). Targets stay configured
@@ -466,6 +472,11 @@ class ServeCatalogLiveHost(
     optimizationActive.set(true)
     optimizationExecutor.execute {
       try {
+        // Before anything else, and before the fully-optimized shortcut: renders adopted from disk
+        // are worthless if they no longer match this renderer. A no-op when nothing was adopted, so
+        // a cold cache pays nothing.
+        verifyPersistedRenders(jobs)
+        if (catalogThemeCache.snapshot().fullyOptimized) return@execute
         // No stagger before the door, deliberately. Every catalog does become runnable the instant
         // the idle gate opens — measured on the deployed box as 11 catalogs entering inside 464 ms
         // — but with the cap in place a simultaneous arrival is harmless: two are admitted and the
@@ -569,7 +580,6 @@ class ServeCatalogLiveHost(
     // amortised across all of them and the pass never interleaves two previews' daemon opens.
     val byPreview =
       jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
-    verifyPersistedRenders(jobs)
     var previewsDone = 0
     for ((previewId, previewJobs) in byPreview) {
       // The slice is checked HERE and nowhere finer, on the preview boundary. A preview is the

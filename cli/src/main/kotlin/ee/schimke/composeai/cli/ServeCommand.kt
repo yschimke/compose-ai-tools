@@ -788,7 +788,18 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    */
   private fun sweepThemeCache() {
     val store = themeCacheStore ?: return
-    val result = runCatching { store.sweep(liveThemeGenerations.toSet()) }.getOrNull() ?: return
+    // Scoped to the systems we actually hold a current generation for. A catalog whose load failed
+    // this pass — a transient fetch error, or a shutdown before the loader reached it — has no
+    // entry here, and its previously warmed generation must survive: deleting it would make the
+    // refresher's later success restart ~28 hours of warming from zero, punishing a catalog for a
+    // network blip.
+    val live =
+      liveThemeGenerations.entries.map { (system, fingerprint) ->
+        ThemeCacheStore.GenerationId(system, fingerprint)
+      }
+    val result =
+      runCatching { store.sweep(live.toSet(), onlySystems = liveThemeGenerations.keys.toSet()) }
+        .getOrNull() ?: return
     if (result.deletedGenerations > 0) {
       System.err.println(
         "serve: theme cache swept ${result.deletedGenerations} stale generation(s), " +
@@ -803,9 +814,15 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     }
   }
 
-  /** Generations opened this run, so [ThemeCacheStore.sweep] knows what it must not reclaim. */
-  private val liveThemeGenerations =
-    java.util.concurrent.ConcurrentHashMap.newKeySet<ThemeCacheStore.GenerationId>()
+  /**
+   * The generation currently in use **per system**, so a sweep knows what it must not reclaim.
+   *
+   * A map rather than a growing set, because a catalog refresh supersedes its own previous
+   * fingerprint: an append-only set would keep protecting every generation the box had ever opened,
+   * so a delivery branch regenerating a few times a day would accumulate multi-gigabyte generations
+   * that the cap could never reclaim.
+   */
+  private val liveThemeGenerations = java.util.concurrent.ConcurrentHashMap<String, String>()
 
   /**
    * Build the disk tier for one catalog generation, or null when it has no durable identity.
@@ -832,7 +849,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       ThemeCacheFingerprint.combine(
         launches.map { launch ->
           ThemeCacheFingerprint.of(
-            classpath = launch.classpath.map(::File),
+            classpath =
+              ThemeCacheFingerprint.renderedClasspath(
+                launch.classpath,
+                launch.systemProperties,
+              ),
             variant = launch.variant,
             toolVersion = BUNDLE_VERSION,
             renderConfig = launch.jvmArgs.sorted().joinToString(" "),
@@ -848,7 +869,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         renderConfig = renderConfig,
       )
     val generation = store.open(system, fingerprint, inputs) ?: return CatalogThemeCache()
-    liveThemeGenerations += ThemeCacheStore.GenerationId(system, fingerprint)
+    val superseded = liveThemeGenerations.put(system, fingerprint) != null
+    // A refresh that produced a NEW fingerprint has just retired the old one; reclaim it now rather
+    // than at the next restart, or a box that regenerates several times a day never gets the disk
+    // back. Swept only on the replacement path — a first load has nothing to supersede.
+    if (superseded) sweepThemeCache()
     if (generation.loadedEntries > 0) {
       System.err.println(
         "serve: catalog $system → ${generation.loadedEntries} theme renders adopted from disk"
@@ -4095,6 +4120,19 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         --catalog-feed-cache <dir>
                           Durable shallow-Git + generated-XML cache for catalog feeds. Defaults to a
                           catalog-feeds directory beside --catalogs-file, or a temp dir in local mode.
+        --theme-cache-dir <dir>
+                          Durable store for warmed theme renders, so background warming survives a
+                          restart and a catalog refresh. Defaults to a theme-cache directory beside
+                          --catalogs-file; with no durable location the cache stays in memory only
+                          (there is deliberately no temp-dir fallback — it would be thrown away with
+                          the process). Entries are keyed by a fingerprint of the render classpath,
+                          daemon variant, tool version and render config, so a new catalog revision
+                          or server build never reads the previous one's pixels.
+        --theme-cache-max-bytes <n>
+                          Ceiling for that store across every catalog (default
+                          ${ThemeCacheStore.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB). Superseded
+                          generations are reclaimed; generations still in use are never evicted, so
+                          exceeding this is reported rather than acted on.
         --wasm-dir <system>=<dir>[,<system>=<dir>…]
                           In-browser CMP tier: map a design system to its assembled Kotlin/Wasm
                           catalog app (./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist →

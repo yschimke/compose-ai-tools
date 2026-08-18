@@ -224,10 +224,17 @@ class CatalogThemeCache(
     synchronized(renderLock) { renders.containsKey(key) } || persistence?.contains(key) == true
 
   fun put(key: String, png: ByteArray) {
-    if (png.size.toLong() > maxBytes) return
-    // Disk first. A render that survives the process is worth more than one that does not, and if
-    // the two were to disagree the durable copy should be the one that exists.
-    persistence?.put(key, png)
+    // Disk first, and NOT gated on the memory cap: the disk tier has its own budget and is the
+    // authoritative store behind a deliberately smaller memory window, so a render too large for
+    // that window must still be persisted rather than silently re-rendered after every restart.
+    //
+    // **Only configured targets are persisted.** This method also takes successful foreground
+    // renders with arbitrary overrides — widths, locales, devices, knob values — and those are
+    // unbounded in a way `previews × declaredThemes` is not: on a public box a visitor could mint
+    // distinct keys indefinitely, and since a live generation is never evicted to honour
+    // `--theme-cache-max-bytes`, that fills the volume. Ad-hoc override renders stay in the bounded
+    // memory tier, exactly as they did before persistence existed.
+    if (key in targetKeys) persistence?.put(key, png)
     remember(key, png)
     failedKeys.remove(key)
     failureCounts.remove(key)

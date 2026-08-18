@@ -69,12 +69,16 @@ class ThemeCachePersistenceTest {
   }
 
   @Test
-  fun `classpath order does not invent a new generation`() {
+  fun `classpath order is part of the generation, because precedence decides the pixels`() {
+    // When two entries carry the same class or resource the JVM resolves the earlier one, so the
+    // same jars in a different order can genuinely render differently. Hashing order-insensitively
+    // would let a render be reused from the wrong resolution order — a wrong pixel, where being
+    // order-sensitive costs at worst an unnecessary re-warm.
     val dir = tempDir()
     val one = jar(dir, "a.jar", "A")
     val two = jar(dir, "b.jar", "B")
 
-    assertEquals(fingerprint(listOf(one, two)), fingerprint(listOf(two, one)))
+    assertNotEquals(fingerprint(listOf(one, two)), fingerprint(listOf(two, one)))
   }
 
   @Test
@@ -129,6 +133,48 @@ class ThemeCachePersistenceTest {
     // One unknown module makes the whole multi-module generation unknown.
     assertNull(ThemeCacheFingerprint.combine(listOf("aaa", "")))
     assertNull(ThemeCacheFingerprint.combine(emptyList()))
+  }
+
+  @Test
+  fun `the catalog's own classes are fingerprinted, not just its framework dependencies`() {
+    // The collision this closes. `splitBundleRuntime` puts the bundle's own classes/ directory into
+    // `composeai.daemon.userClassDirs` and leaves `classpath` holding parent overlays and daemon
+    // sidecars only — so hashing `classpath` alone gave two catalog revisions with unchanged
+    // dependencies the SAME name, and the new revision would adopt the old one's pixels. That is
+    // exactly the failure this whole mechanism exists to prevent, and it is invisible from the
+    // parent classpath.
+    val dir = tempDir()
+    val framework = jar(dir, "compose-runtime.jar", "UNCHANGED")
+    val classes = File(dir, "classes").apply { mkdirs() }
+    jar(classes, "Buttons.class", "revision-1")
+
+    fun fingerprintNow() =
+      fingerprint(
+        ThemeCacheFingerprint.renderedClasspath(
+          classpath = listOf(framework.absolutePath),
+          systemProperties =
+            mapOf(ThemeCacheFingerprint.USER_CLASS_DIRS_PROPERTY to classes.absolutePath),
+        )
+      )
+
+    val before = fingerprintNow()
+    jar(classes, "Buttons.class", "revision-2")
+
+    assertNotEquals(before, fingerprintNow(), "a catalog code change must be a new generation")
+  }
+
+  @Test
+  fun `a descriptor with no user classpath still fingerprints its parent classpath`() {
+    val dir = tempDir()
+    val framework = jar(dir, "compose-runtime.jar", "DEPS")
+
+    val resolved =
+      ThemeCacheFingerprint.renderedClasspath(
+        classpath = listOf(framework.absolutePath),
+        systemProperties = emptyMap(),
+      )
+
+    assertEquals(listOf(framework), resolved)
   }
 
   // ---- store ----------------------------------------------------------------------------------
@@ -298,6 +344,114 @@ class ThemeCachePersistenceTest {
 
     assertTrue(cache.verifySample { null })
     assertEquals(1, cache.snapshot().cached)
+  }
+
+  @Test
+  fun `only configured targets are written to disk`() {
+    // `put` also takes foreground renders with arbitrary overrides — widths, locales, devices, knob
+    // values — and those are unbounded where `previews × declaredThemes` is not. Since a live
+    // generation is never evicted to honour the cap, persisting them would let a visitor on a
+    // public
+    // box grow the store until the volume filled.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val cache = CatalogThemeCache(persistence = generation)
+    cache.configureTargets(listOf("declared-theme"))
+
+    cache.put("declared-theme", byteArrayOf(1))
+    cache.put("ad-hoc?width=999&locale=fr", byteArrayOf(2))
+
+    assertTrue(generation.contains("declared-theme"))
+    assertFalse(
+      generation.contains("ad-hoc?width=999&locale=fr"),
+      "an arbitrary override render must not reach the durable tier",
+    )
+    // It is still served from memory, exactly as before persistence existed.
+    assertContentEquals(byteArrayOf(2), cache.get("ad-hoc?width=999&locale=fr"))
+  }
+
+  @Test
+  fun `a render too large for the memory window is still persisted`() {
+    // The disk tier has its own budget and is the authoritative store behind a deliberately smaller
+    // memory window. Gating the durable write on the memory cap made a small-memory deployment
+    // silently re-render everything after each restart.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val cache = CatalogThemeCache(maxBytes = 8, persistence = generation)
+    cache.configureTargets(listOf("big"))
+
+    cache.put("big", ByteArray(64) { 3 })
+
+    assertTrue(generation.contains("big"))
+    assertEquals(1, cache.snapshot().cached)
+    assertContentEquals(ByteArray(64) { 3 }, cache.get("big"))
+  }
+
+  @Test
+  fun `a discarded generation can still be rebuilt`() {
+    // Discarding deletes the stale PNGs but must leave a writable directory: the same Generation
+    // stays attached to the live cache, and if its directory vanished every later write would fail
+    // silently and the catalog would re-render into memory alone, losing it all again at restart.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val generation = ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!
+    val cache = CatalogThemeCache(persistence = generation)
+    cache.configureTargets(listOf("one"))
+    cache.put("one", byteArrayOf(1))
+
+    assertFalse(cache.verifySample { byteArrayOf(99) })
+
+    cache.put("one", byteArrayOf(42))
+    assertTrue(generation.contains("one"), "the generation must accept writes again")
+    assertContentEquals(
+      byteArrayOf(42),
+      ThemeCacheStore(root).open("m3-catalog", fp, inputs(fp))!!.get("one"),
+    )
+  }
+
+  @Test
+  fun `a system absent from the live set keeps its generations`() {
+    // A catalog whose load failed this pass — a transient fetch error, a shutdown before the loader
+    // reached it — has no live generation. Sweeping it would make the refresher's later success
+    // restart ~28 hours of warming, punishing a catalog for a network blip.
+    val root = tempDir()
+    val fp = "a".repeat(64)
+    val store = ThemeCacheStore(root)
+    store.open("m3-catalog", fp, inputs(fp))!!.put("k", ByteArray(32))
+    store.open("did-not-load", fp, inputs(fp))!!.put("k", ByteArray(32))
+
+    val result =
+      store.sweep(
+        setOf(ThemeCacheStore.GenerationId("m3-catalog", fp)),
+        onlySystems = setOf("m3-catalog"),
+      )
+
+    assertEquals(0, result.deletedGenerations)
+    assertTrue(store.open("did-not-load", fp, inputs(fp))!!.contains("k"))
+  }
+
+  @Test
+  fun `a superseded generation of a loaded system is still reclaimed`() {
+    // The other half of the same rule: scoping the sweep to loaded systems must not stop it
+    // reclaiming that system's own previous fingerprint, or a branch regenerating several times a
+    // day accumulates generations until the volume fills.
+    val root = tempDir()
+    val old = "a".repeat(64)
+    val new = "b".repeat(64)
+    val store = ThemeCacheStore(root)
+    store.open("m3-catalog", old, inputs(old))!!.put("k", ByteArray(32))
+    store.open("m3-catalog", new, inputs(new))!!.put("k", ByteArray(32))
+
+    val result =
+      store.sweep(
+        setOf(ThemeCacheStore.GenerationId("m3-catalog", new)),
+        onlySystems = setOf("m3-catalog"),
+      )
+
+    assertEquals(1, result.deletedGenerations)
+    assertEquals(0, ThemeCacheStore(root).open("m3-catalog", old, inputs(old))!!.loadedEntries)
   }
 
   @Test

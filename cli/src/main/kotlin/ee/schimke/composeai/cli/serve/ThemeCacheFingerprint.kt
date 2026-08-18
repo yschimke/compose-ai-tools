@@ -78,16 +78,46 @@ object ThemeCacheFingerprint {
     digest.line("variant", variant)
     digest.line("version", toolVersion)
     digest.line("renderConfig", renderConfig)
-    // Sorted by NAME, not by the order the descriptor happens to list them: a classpath reordered
-    // between loads is the same classpath, and a fingerprint that disagreed would throw away a
-    // whole generation's warming for nothing.
-    val entries = classpath.sortedBy { it.name }
-    for (entry in entries) {
+    // Hashed in the order the descriptor lists them, NOT sorted. Classpath order is semantically
+    // significant: when two entries carry the same class or resource the JVM resolves the earlier
+    // one, so a reordering with identical bytes can genuinely change the pixels. Sorting made both
+    // orders one generation, which would let a render be reused from the wrong resolution order.
+    // The cost of being order-sensitive is a re-warm if the order ever churns for no reason; the
+    // cost of being order-blind is wrong pixels, and only one of those is a correctness bug.
+    for (entry in classpath) {
       val hash = hashFile(entry) ?: return null
       digest.line("entry", "${entry.name}:$hash")
     }
     return digest.digest().hex()
   }
+
+  /**
+   * Everything a daemon launched with this descriptor will actually load, in load order — the
+   * parent [classpath] **and** the user classpath carried in [systemProperties].
+   *
+   * The user half is not a detail, it is the catalog itself. `ServeBundleDaemon.splitBundleRuntime`
+   * puts the bundle's own `classes/` directory, its rehydrated external resources and its child
+   * dependency jars into `composeai.daemon.userClassDirs`, leaving `classpath` holding only parent
+   * overlays and daemon sidecars. Fingerprinting the parent alone therefore gives two catalog
+   * revisions with unchanged framework dependencies the *same* name, and the new revision adopts
+   * the old one's pixels — the exact collision this whole mechanism exists to prevent.
+   *
+   * Only the contents of these paths are ever hashed, never the paths themselves, so the fresh
+   * staging directory each load creates does not invent a new generation.
+   */
+  fun renderedClasspath(
+    classpath: List<String>,
+    systemProperties: Map<String, String>,
+  ): List<File> =
+    classpath.map(::File) +
+      (systemProperties[USER_CLASS_DIRS_PROPERTY]
+        ?.split(File.pathSeparator)
+        ?.filter { it.isNotBlank() }
+        ?.map(::File)
+        .orEmpty())
+
+  /** Where the daemon launch carries the catalog's own classes — see [renderedClasspath]. */
+  const val USER_CLASS_DIRS_PROPERTY: String = "composeai.daemon.userClassDirs"
 
   /**
    * Fold several module fingerprints into one.

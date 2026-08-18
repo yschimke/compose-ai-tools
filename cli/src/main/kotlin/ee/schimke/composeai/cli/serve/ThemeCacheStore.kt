@@ -57,6 +57,10 @@ class ThemeCacheStore(
   private val writeFailures = AtomicLong()
   private val hits = AtomicLong()
   private val misses = AtomicLong()
+  // Census published by [sweep] and advanced by each write — see [snapshot] for why it is not read
+  // from the filesystem on the request path.
+  private val knownBytes = AtomicLong()
+  private val knownGenerations = java.util.concurrent.atomic.AtomicInteger()
   private val lastFailure = ConcurrentHashMap<String, String>()
 
   /**
@@ -75,6 +79,8 @@ class ThemeCacheStore(
       return null
     }
     writeManifest(dir, inputs)
+    knownGenerations.incrementAndGet()
+    knownBytes.addAndGet(dir.sizeOnDisk())
     return Generation(dir, system)
   }
 
@@ -99,17 +105,28 @@ class ThemeCacheStore(
    * than acted on: it means the cap is too small for the catalog set, which is a configuration
    * answer and not something this can quietly fix.
    */
-  fun sweep(live: Set<GenerationId>): SweepResult {
+  fun sweep(live: Set<GenerationId>, onlySystems: Set<String>? = null): SweepResult {
     val liveDirs = live.mapNotNull { it.dir() }.toSet()
     var deleted = 0
     var reclaimed = 0L
-    val survivors = mutableListOf<Pair<File, Long>>()
+    var survivingBytes = 0L
+    var survivingGenerations = 0
 
     for (systemDir in root.listFiles()?.filter { it.isDirectory }.orEmpty()) {
-      for (generationDir in systemDir.listFiles()?.filter { it.isDirectory }.orEmpty()) {
+      val generationDirs = systemDir.listFiles()?.filter { it.isDirectory }.orEmpty()
+      // A system the caller has no current generation for is left entirely alone. Absence from the
+      // live set means "we did not load this catalog", which is not the same as "this catalog's
+      // warmed renders are garbage" — a load can fail transiently, and its cache must outlive that.
+      if (onlySystems != null && systemDir.name !in onlySystems) {
+        survivingBytes += systemDir.sizeOnDisk()
+        survivingGenerations += generationDirs.size
+        continue
+      }
+      for (generationDir in generationDirs) {
         val size = generationDir.sizeOnDisk()
         if (generationDir in liveDirs) {
-          survivors += generationDir to size
+          survivingBytes += size
+          survivingGenerations++
           continue
         }
         if (generationDir.deleteRecursively()) {
@@ -121,7 +138,9 @@ class ThemeCacheStore(
       if (systemDir.listFiles()?.isEmpty() == true) systemDir.delete()
     }
 
-    val total = survivors.sumOf { it.second }
+    val total = survivingBytes
+    knownBytes.set(total)
+    knownGenerations.set(survivingGenerations)
     return SweepResult(
       deletedGenerations = deleted,
       reclaimedBytes = reclaimed,
@@ -130,16 +149,21 @@ class ThemeCacheStore(
     )
   }
 
-  fun snapshot(): ThemeCacheStoreSnapshot {
-    val generations =
-      root
-        .listFiles()
-        ?.filter { it.isDirectory }
-        ?.sumOf { it.listFiles()?.count { child -> child.isDirectory } ?: 0 } ?: 0
-    return ThemeCacheStoreSnapshot(
+  /**
+   * Disk occupancy as of the last sweep, plus everything written since.
+   *
+   * **Deliberately not a live census.** `/status.json` is a monitoring endpoint that gets polled,
+   * and one warmed catalog is 10,120 files — recursively walking the tree per request would put
+   * tens of thousands of filesystem metadata operations on the request path, growing with every
+   * catalog served. The sweep already walks the tree for its own reasons, so it publishes the total
+   * on the way past and writes add to it from there. Slightly stale between sweeps, which is the
+   * right trade for a number nobody acts on within a second.
+   */
+  fun snapshot(): ThemeCacheStoreSnapshot =
+    ThemeCacheStoreSnapshot(
       root = root.path,
-      generations = generations,
-      bytes = root.sizeOnDisk(),
+      generations = knownGenerations.get(),
+      bytes = knownBytes.get(),
       maxBytes = maxBytes,
       writes = writes.get(),
       writeFailures = writeFailures.get(),
@@ -147,7 +171,6 @@ class ThemeCacheStore(
       misses = misses.get(),
       lastFailureReason = lastFailure["reason"],
     )
-  }
 
   private fun recordFailure(system: String, reason: String) {
     writeFailures.incrementAndGet()
@@ -217,6 +240,7 @@ class ThemeCacheStore(
         }
         present += name
         writes.incrementAndGet()
+        knownBytes.addAndGet(png.size.toLong())
       } catch (e: IOException) {
         runCatching { temp.delete() }
         recordFailure(system, e.message ?: e::class.simpleName ?: "write failed")
@@ -233,7 +257,16 @@ class ThemeCacheStore(
      */
     fun discard(): Boolean {
       present.clear()
-      return runCatching { dir.deleteRecursively() }.getOrDefault(false)
+      return runCatching {
+          // The PNGs go; the DIRECTORY stays. This generation object remains attached to a live
+          // CatalogThemeCache, and deleting the directory under it would make every later `put`
+          // fail its temp write, catch the IOException and persist nothing — so the optimizer would
+          // re-render the whole catalog into memory alone and lose it all again at restart. The
+          // point of discarding is to stop trusting these bytes, not to stop writing new ones.
+          dir.listFiles()?.forEach { it.deleteRecursively() }
+          dir.isDirectory || dir.mkdirs()
+        }
+        .getOrDefault(false)
     }
 
     private fun fileName(cacheKey: String): String =
