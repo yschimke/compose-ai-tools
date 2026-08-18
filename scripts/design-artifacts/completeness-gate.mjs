@@ -8,6 +8,11 @@
  * A spec made entirely of declared sticker-less or deferred entries has no
  * `missing` entries, so it is not mistaken for a failed render here.
  *
+ * `withoutSemanticsCount` arrives already net of the spec's
+ * `completeness.exemptSemantics` (see completeness-exemptions.mjs). The declaration
+ * is resolved by the caller so this stays one comparison over counts, the same way
+ * `capture: "none"` and `deferred` entries never reach `missingCount`.
+ *
  * @returns {"empty" | "incomplete" | null}
  */
 export function completenessFailure({

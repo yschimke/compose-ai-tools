@@ -316,6 +316,11 @@ entry, including GIF/APNG artifacts. If two modules use the same preview functio
 spec-preferred/primary module keeps the unqualified name and later modules receive a stable
 `<module>::<function>` join key.
 
+Generated entries are held to the same completeness gate as authored ones, which is usually right and
+occasionally not: an app's synthetic Activity renders capture no semantics by their nature. Name them
+in [`completeness.exemptSemantics`](#renders-with-no-semantics-completenessexemptsemantics) rather
+than reaching for `--allow-incomplete`.
+
 Executable bundles retain distinct module classpaths, so repository-wide publication never merges
 them. With `publish-live-bundle: true`, `catalog.json` carries a `liveBundles[]` descriptor for each
 module (and the primary legacy `liveBundle` for older servers). Additional modules receive a stable,
@@ -1172,6 +1177,77 @@ questions. `priority: "deferred"` says *don't bake this one in CI — the live s
 can render it on demand*, and needs a live path to be legal. `capture: "none"` says
 *nothing can render this to a PNG at all*, live path or not. A deferred entry is
 still coverage the sheet can produce; a `"none"` entry is a recorded gap.
+Both differ again from `completeness.exemptSemantics` below, which excuses an entry
+that *did* produce its sticker and only lacks a semantics tree.
+
+## Renders with no semantics (`completeness.exemptSemantics`)
+
+The completeness gate has two halves: a spec entry that produced no PNG is a
+**missing render**, and a rendered entry whose capture carries no semantics tree is
+a **semantics-less render**. Either one refuses the publish, because both usually
+mean the render broke — no pixels, or pixels with no tokens/contrast/greenlines
+behind them.
+
+Repository-wide mode (`modules: all`) turns the second half into a standing false
+failure. Discovery sweeps every preview-enabled module's previews into the catalog
+as fallback inventory, and that inventory includes the app's **synthetic Activity
+renders** — `app/MainActivity`, `wear/WearMainActivity`, … — which legitimately
+capture nothing: the app cold-starts under the renderer with no data and no
+network, so the frame is near-empty and the semantics pass has nothing to walk.
+
+```text
+[meshcore-mobile] no semantics for: app/MainActivity, app/getting-started, wear/WearMainActivity, wear/LicenseActivity
+[meshcore-mobile] incomplete render — refusing to publish. Re-run the render, or pass --allow-incomplete to override.
+```
+
+Neither older escape hatch reaches it. There is no `components[]` line to withhold
+— discovery invented the entry, so nothing in the spec names it — and
+`--allow-incomplete` is all-or-nothing, so switching it on to tolerate an Activity
+frame also lets a genuinely broken *declared* component publish unnoticed. Declare
+the situation instead, on the cover sheet:
+
+```jsonc
+{
+  "system": "meshcore-mobile",
+  "title": "MeshCore",
+  "completeness": {
+    "exemptSemantics": ["*Activity", "app/getting-started"]
+  }
+}
+```
+
+- Matched against the **whole componentId**, exactly as the `no semantics for: …`
+  line prints it — so a failing run's output can be pasted straight in, and
+  `wear/WearMainActivity` and `mobile/MainActivity` are both addressable.
+- `*` is the only metacharacter and stands for **any run of characters, `/`
+  included** — so `*Activity` reaches a nested module's
+  `feature/home/LicenseActivity` without a second wildcard vocabulary to learn.
+  Patterns are anchored at both ends: a bare `Activity` matches only an id named
+  exactly that, because on an exclusion axis over-matching silently excuses work
+  nobody exempted.
+- An exempt entry **stays in `catalog.json` with its pixels** — the sticker is fine
+  and worth serving; it is only the semantics half of the gate it is excused from —
+  and is counted separately, the way `deferred` records are:
+
+  ```text
+  [meshcore-mobile] 4 render(s) exempt from the semantics gate (completeness.exemptSemantics): app/MainActivity, app/getting-started, wear/WearMainActivity, wear/LicenseActivity — kept in catalog.json, not counted against the completeness gate
+  ```
+
+- A pattern that matches **nothing** is named on every run, so an exemption left
+  behind by a renamed or deleted preview shows up rather than standing by to excuse
+  a render it was never written for:
+
+  ```text
+  [meshcore-mobile] completeness.exemptSemantics pattern(s) matched no semantics-less render: app/getting-started — every render they name either captured semantics or is no longer in the catalog, so the exemption can be dropped
+  ```
+
+Deliberately narrow on two axes. **Semantics only**: a missing render still fails,
+since no pixels at all is the failure the gate exists to catch (an entry that
+genuinely cannot rasterise declares `capture: "none"` above). And **opt-in per
+catalog**: exempting all discovery-supplied fallback inventory by default would be
+defensible — a fallback component was never promised by the catalog author — but it
+widens the blind spot for every repository-wide catalog at once, silently. A list in
+the spec says which ids, where a reviewer sees them.
 
 ## Theme specimens (`section: "Themes"` / `@FixedTheme`)
 

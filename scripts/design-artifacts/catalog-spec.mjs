@@ -508,6 +508,9 @@ export function validateSpec(spec, opts = {}) {
   // `modePriority` is validated too, and so a bad value is reported once rather than per entry.
   errors.push(...modePriorityErrors(spec));
   warnings.push(...modePriorityWarnings(spec));
+  // Like `modePriority`, a cover-sheet-level block: checked before `groups` so an annotation-only
+  // catalog — which is exactly the repository-wide shape this exemption exists for — is checked too.
+  errors.push(...completenessErrors(spec));
   if (opts.liveBundle === false && specDefersAnything(spec)) {
     errors.push(
       "this spec defers coverage (`priority: \"deferred\"` / `modePriority`) but the publish has no " +
@@ -804,6 +807,46 @@ function priorityErrors(entry, path) {
     `${path}.priority must be one of ${PRIORITIES.map((p) => `"${p}"`).join(", ")} ` +
       `(got ${JSON.stringify(value)})`,
   ];
+}
+
+/**
+ * Structural checks for the `completeness` block (issue #4117).
+ *
+ * An ERROR rather than a lenient skip, on the same reasoning as `capture` and `priority`: the
+ * consumer ignores a malformed value (`exemptSemanticsPatterns` exempts nothing), so a typed-wrong
+ * exemption would present as the gate failing on the very entry it was written to excuse — with
+ * nothing pointing back at the spec.
+ */
+function completenessErrors(spec) {
+  const block = spec?.completeness;
+  if (block === undefined) return [];
+  if (typeof block !== "object" || block === null || Array.isArray(block)) {
+    return ["`completeness` must be an object (currently only `exemptSemantics` lives in it)"];
+  }
+  const errors = [];
+  for (const key of Object.keys(block)) {
+    if (key !== "exemptSemantics") {
+      errors.push(`completeness.${key} is not a known field (did you mean \`exemptSemantics\`?)`);
+    }
+  }
+  const exempt = block.exemptSemantics;
+  if (exempt === undefined) return errors;
+  if (!Array.isArray(exempt)) {
+    errors.push(
+      "`completeness.exemptSemantics` must be an array of componentId patterns " +
+        '(e.g. ["*Activity", "app/getting-started"])',
+    );
+    return errors;
+  }
+  exempt.forEach((pattern, i) => {
+    if (typeof pattern !== "string" || pattern.trim().length === 0) {
+      errors.push(
+        `completeness.exemptSemantics[${i}] must be a non-empty componentId pattern ` +
+          `(got ${JSON.stringify(pattern)})`,
+      );
+    }
+  });
+  return errors;
 }
 
 /** Structural checks for the `modePriority` axis table. */
