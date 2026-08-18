@@ -1,0 +1,103 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <compose-ai-tools:rc-player-trace>
+final class ee.schimke.composeai.rcplayer.trace/RcTraceEvent { // ee.schimke.composeai.rcplayer.trace/RcTraceEvent|null[0]
+    constructor <init>(kotlin/String, kotlin/String, kotlin/Long, kotlin/Long) // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.<init>|<init>(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long){}[0]
+
+    final val category // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.category|{}category[0]
+        final fun <get-category>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.category.<get-category>|<get-category>(){}[0]
+    final val durationNanos // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.durationNanos|{}durationNanos[0]
+        final fun <get-durationNanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.durationNanos.<get-durationNanos>|<get-durationNanos>(){}[0]
+    final val name // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.name|{}name[0]
+        final fun <get-name>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.name.<get-name>|<get-name>(){}[0]
+    final val startNanos // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.startNanos|{}startNanos[0]
+        final fun <get-startNanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.startNanos.<get-startNanos>|<get-startNanos>(){}[0]
+
+    final fun component1(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.component1|component1(){}[0]
+    final fun component2(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.component2|component2(){}[0]
+    final fun component3(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.component3|component3(){}[0]
+    final fun component4(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.component4|component4(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String = ..., kotlin/Long = ..., kotlin/Long = ...): ee.schimke.composeai.rcplayer.trace/RcTraceEvent // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.copy|copy(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceEvent.toString|toString(){}[0]
+}
+
+final class ee.schimke.composeai.rcplayer.trace/RcTraceRecorder { // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder|null[0]
+    constructor <init>(kotlin/Int = ...) // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.<init>|<init>(kotlin.Int){}[0]
+
+    final var droppedEvents // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.droppedEvents|{}droppedEvents[0]
+        final fun <get-droppedEvents>(): kotlin/Int // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.droppedEvents.<get-droppedEvents>|<get-droppedEvents>(){}[0]
+
+    final fun counters(): kotlin.collections/Map<kotlin/String, kotlin/Long> // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.counters|counters(){}[0]
+    final fun elapsedNanos(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.elapsedNanos|elapsedNanos(){}[0]
+    final fun events(): kotlin.collections/List<ee.schimke.composeai.rcplayer.trace/RcTraceEvent> // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.events|events(){}[0]
+    final fun reset() // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.reset|reset(){}[0]
+    final fun summary(): kotlin.collections/List<ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats> // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.summary|summary(){}[0]
+    final fun toChromeTraceJson(kotlin/String): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceRecorder.toChromeTraceJson|toChromeTraceJson(kotlin.String){}[0]
+}
+
+final class ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats { // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats|null[0]
+    constructor <init>(kotlin/String, kotlin/String, kotlin/Int, kotlin/Long, kotlin/Long, kotlin/Long, kotlin/Long, kotlin/Long) // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.<init>|<init>(kotlin.String;kotlin.String;kotlin.Int;kotlin.Long;kotlin.Long;kotlin.Long;kotlin.Long;kotlin.Long){}[0]
+
+    final val category // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.category|{}category[0]
+        final fun <get-category>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.category.<get-category>|<get-category>(){}[0]
+    final val count // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.count|{}count[0]
+        final fun <get-count>(): kotlin/Int // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.count.<get-count>|<get-count>(){}[0]
+    final val maxNanos // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.maxNanos|{}maxNanos[0]
+        final fun <get-maxNanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.maxNanos.<get-maxNanos>|<get-maxNanos>(){}[0]
+    final val meanNanos // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.meanNanos|{}meanNanos[0]
+        final fun <get-meanNanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.meanNanos.<get-meanNanos>|<get-meanNanos>(){}[0]
+    final val medianNanos // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.medianNanos|{}medianNanos[0]
+        final fun <get-medianNanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.medianNanos.<get-medianNanos>|<get-medianNanos>(){}[0]
+    final val name // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.name|{}name[0]
+        final fun <get-name>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.name.<get-name>|<get-name>(){}[0]
+    final val p95Nanos // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.p95Nanos|{}p95Nanos[0]
+        final fun <get-p95Nanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.p95Nanos.<get-p95Nanos>|<get-p95Nanos>(){}[0]
+    final val totalNanos // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.totalNanos|{}totalNanos[0]
+        final fun <get-totalNanos>(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.totalNanos.<get-totalNanos>|<get-totalNanos>(){}[0]
+
+    final fun component1(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component1|component1(){}[0]
+    final fun component2(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component2|component2(){}[0]
+    final fun component3(): kotlin/Int // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component3|component3(){}[0]
+    final fun component4(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component4|component4(){}[0]
+    final fun component5(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component5|component5(){}[0]
+    final fun component6(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component6|component6(){}[0]
+    final fun component7(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component7|component7(){}[0]
+    final fun component8(): kotlin/Long // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.component8|component8(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String = ..., kotlin/Int = ..., kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ...): ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.copy|copy(kotlin.String;kotlin.String;kotlin.Int;kotlin.Long;kotlin.Long;kotlin.Long;kotlin.Long;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceSectionStats.toString|toString(){}[0]
+}
+
+final class ee.schimke.composeai.rcplayer.trace/RcTraceSpan // ee.schimke.composeai.rcplayer.trace/RcTraceSpan|null[0]
+
+final object ee.schimke.composeai.rcplayer.trace/RcTrace { // ee.schimke.composeai.rcplayer.trace/RcTrace|null[0]
+    final var recorder // ee.schimke.composeai.rcplayer.trace/RcTrace.recorder|{}recorder[0]
+        final fun <get-recorder>(): ee.schimke.composeai.rcplayer.trace/RcTraceRecorder? // ee.schimke.composeai.rcplayer.trace/RcTrace.recorder.<get-recorder>|<get-recorder>(){}[0]
+        final fun <set-recorder>(ee.schimke.composeai.rcplayer.trace/RcTraceRecorder?) // ee.schimke.composeai.rcplayer.trace/RcTrace.recorder.<set-recorder>|<set-recorder>(ee.schimke.composeai.rcplayer.trace.RcTraceRecorder?){}[0]
+
+    final fun begin(kotlin/String, kotlin/String): ee.schimke.composeai.rcplayer.trace/RcTraceSpan? // ee.schimke.composeai.rcplayer.trace/RcTrace.begin|begin(kotlin.String;kotlin.String){}[0]
+    final fun counter(kotlin/String, kotlin/String, kotlin/Long) // ee.schimke.composeai.rcplayer.trace/RcTrace.counter|counter(kotlin.String;kotlin.String;kotlin.Long){}[0]
+    final fun end(ee.schimke.composeai.rcplayer.trace/RcTraceSpan?) // ee.schimke.composeai.rcplayer.trace/RcTrace.end|end(ee.schimke.composeai.rcplayer.trace.RcTraceSpan?){}[0]
+    final fun instant(kotlin/String, kotlin/String) // ee.schimke.composeai.rcplayer.trace/RcTrace.instant|instant(kotlin.String;kotlin.String){}[0]
+    final fun isEnabled(kotlin/String): kotlin/Boolean // ee.schimke.composeai.rcplayer.trace/RcTrace.isEnabled|isEnabled(kotlin.String){}[0]
+}
+
+final object ee.schimke.composeai.rcplayer.trace/RcTraceCategory { // ee.schimke.composeai.rcplayer.trace/RcTraceCategory|null[0]
+    final const val DOCUMENT // ee.schimke.composeai.rcplayer.trace/RcTraceCategory.DOCUMENT|{}DOCUMENT[0]
+        final fun <get-DOCUMENT>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceCategory.DOCUMENT.<get-DOCUMENT>|<get-DOCUMENT>(){}[0]
+    final const val FRAME // ee.schimke.composeai.rcplayer.trace/RcTraceCategory.FRAME|{}FRAME[0]
+        final fun <get-FRAME>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceCategory.FRAME.<get-FRAME>|<get-FRAME>(){}[0]
+    final const val INPUT // ee.schimke.composeai.rcplayer.trace/RcTraceCategory.INPUT|{}INPUT[0]
+        final fun <get-INPUT>(): kotlin/String // ee.schimke.composeai.rcplayer.trace/RcTraceCategory.INPUT.<get-INPUT>|<get-INPUT>(){}[0]
+}
+
+final fun ee.schimke.composeai.rcplayer.trace/setRcPlatformTracingEnabled(kotlin/Boolean) // ee.schimke.composeai.rcplayer.trace/setRcPlatformTracingEnabled|setRcPlatformTracingEnabled(kotlin.Boolean){}[0]
+final inline fun <#A: kotlin/Any?> ee.schimke.composeai.rcplayer.trace/rcTrace(kotlin/String, kotlin/String, kotlin/Function0<#A>): #A // ee.schimke.composeai.rcplayer.trace/rcTrace|rcTrace(kotlin.String;kotlin.String;kotlin.Function0<0:0>){0§<kotlin.Any?>}[0]

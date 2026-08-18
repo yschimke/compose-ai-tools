@@ -1,0 +1,3145 @@
+public final class ee/schimke/composeai/rcplayer/protocol/RcAccessibilitySemantics : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcAccessibilitySemantics$Companion;
+	public static final field MODE_CLEAR_AND_SET I
+	public static final field MODE_MERGE I
+	public static final field MODE_SET I
+	public static final field ROLE_BUTTON I
+	public static final field ROLE_CAROUSEL I
+	public static final field ROLE_CHECKBOX I
+	public static final field ROLE_DROPDOWN_LIST I
+	public static final field ROLE_IMAGE I
+	public static final field ROLE_PICKER I
+	public static final field ROLE_RADIO_BUTTON I
+	public static final field ROLE_SWITCH I
+	public static final field ROLE_TAB I
+	public static final field ROLE_UNKNOWN I
+	public fun <init> (IIIIIZZ)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Z
+	public final fun component7 ()Z
+	public final fun copy (IIIIIZZ)Lee/schimke/composeai/rcplayer/protocol/RcAccessibilitySemantics;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcAccessibilitySemantics;IIIIIZZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcAccessibilitySemantics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClickable ()Z
+	public final fun getContentDescriptionId ()I
+	public final fun getEnabled ()Z
+	public final fun getMode ()I
+	public fun getOpcode ()I
+	public final fun getRole ()I
+	public final fun getStateDescriptionId ()I
+	public final fun getTextId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcAccessibilitySemantics$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcAlignByModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcAlignByModifier$Companion;
+	public static final field FIRST_BASELINE_ID I
+	public static final field LAST_BASELINE_ID I
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2 ()I
+	public final fun copy-U3dz7fA (II)Lee/schimke/composeai/rcplayer/protocol/RcAlignByModifier;
+	public static synthetic fun copy-U3dz7fA$default (Lee/schimke/composeai/rcplayer/protocol/RcAlignByModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcAlignByModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFlags ()I
+	public final fun getLine-tGZKRUM ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcAlignByModifier$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcAndroidSystemColors {
+	public static final field GROUP Ljava/lang/String;
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcAndroidSystemColors;
+	public final fun getNAMES ()Ljava/util/List;
+	public final fun nameAt (I)Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcAnimationSpec : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3 ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5 ()I
+	public final fun component6-39VkKJc ()I
+	public final fun component7-39VkKJc ()I
+	public final fun copy-DE1r5UA (IIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcAnimationSpec;
+	public static synthetic fun copy-DE1r5UA$default (Lee/schimke/composeai/rcplayer/protocol/RcAnimationSpec;IIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcAnimationSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getEnterAnimation-39VkKJc ()I
+	public final fun getExitAnimation-39VkKJc ()I
+	public final fun getMotionDurationMillis-tGZKRUM ()I
+	public final fun getMotionEasingType ()I
+	public fun getOpcode ()I
+	public final fun getVisibilityDurationMillis-tGZKRUM ()I
+	public final fun getVisibilityEasingType ()I
+	public fun hashCode ()I
+	public final fun isEnabled ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBackgroundModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field COLOR_REFERENCE_FLAG I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcBackgroundModifier$Companion;
+	public static final field SHAPE_CIRCLE I
+	public static final field SHAPE_RECTANGLE I
+	public synthetic fun <init> (IIIIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun component7-tGZKRUM ()I
+	public final fun component8-tGZKRUM ()I
+	public final fun component9 ()I
+	public final fun copy-MStBUG8 (IIIIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcBackgroundModifier;
+	public static synthetic fun copy-MStBUG8$default (Lee/schimke/composeai/rcplayer/protocol/RcBackgroundModifier;IIIIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcBackgroundModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlpha-tGZKRUM ()I
+	public final fun getBlue-tGZKRUM ()I
+	public final fun getColorId ()I
+	public final fun getFlags ()I
+	public final fun getGreen-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getRed-tGZKRUM ()I
+	public final fun getReserved1 ()I
+	public final fun getReserved2 ()I
+	public final fun getShapeType ()I
+	public final fun getUsesColorId ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBackgroundModifier$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBitmapData : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcBitmapData$Companion;
+	public static final field ENCODING_INLINE I
+	public static final field TYPE_PNG I
+	public static final field TYPE_PNG_8888 I
+	public static final field TYPE_PNG_ALPHA_8 I
+	public static final field TYPE_RAW8 I
+	public static final field TYPE_RAW8888 I
+	public fun <init> (IIIII[B)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()[B
+	public final fun copy (IIIII[B)Lee/schimke/composeai/rcplayer/protocol/RcBitmapData;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcBitmapData;IIIII[BILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcBitmapData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getData ()[B
+	public final fun getEncoding ()I
+	public final fun getHeight ()I
+	public final fun getImageId ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBitmapData$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBooleanConstant : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IZ)V
+	public final fun component1 ()I
+	public final fun component2 ()Z
+	public final fun copy (IZ)Lee/schimke/composeai/rcplayer/protocol/RcBooleanConstant;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcBooleanConstant;IZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcBooleanConstant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getValue ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBorderModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10-tGZKRUM ()I
+	public final fun component11 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun component7-tGZKRUM ()I
+	public final fun component8-tGZKRUM ()I
+	public final fun component9-tGZKRUM ()I
+	public final fun copy-Arj4qqg (IIIIIIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcBorderModifier;
+	public static synthetic fun copy-Arj4qqg$default (Lee/schimke/composeai/rcplayer/protocol/RcBorderModifier;IIIIIIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcBorderModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlpha-tGZKRUM ()I
+	public final fun getBlue-tGZKRUM ()I
+	public final fun getBorderWidth-tGZKRUM ()I
+	public final fun getColorId ()I
+	public final fun getFlags ()I
+	public final fun getGreen-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getRed-tGZKRUM ()I
+	public final fun getReserved ()I
+	public final fun getRoundedCorner-tGZKRUM ()I
+	public final fun getShapeType ()I
+	public final fun getUsesColorId ()Z
+	public final fun getWireVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcBoxLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/rcplayer/protocol/RcBoxLayout;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcBoxLayout;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcBoxLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public fun getOpcode ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCanvasContent : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcCanvasContent;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcCanvasContent;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcCanvasContent;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCanvasLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcCanvasLayout;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcCanvasLayout;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcCanvasLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcClickArea : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun component7 ()I
+	public final fun copy-BUIxIHg (IIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcClickArea;
+	public static synthetic fun copy-BUIxIHg$default (Lee/schimke/composeai/rcplayer/protocol/RcClickArea;IIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcClickArea;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBottom-tGZKRUM ()I
+	public final fun getContentDescriptionId ()I
+	public final fun getId ()I
+	public final fun getLeft-tGZKRUM ()I
+	public final fun getMetadataId ()I
+	public fun getOpcode ()I
+	public final fun getRight-tGZKRUM ()I
+	public final fun getTop-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcClickModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcClickModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcClipRectModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcClipRectModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCollapsibleColumnLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-ueTzqPw (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcCollapsibleColumnLayout;
+	public static synthetic fun copy-ueTzqPw$default (Lee/schimke/composeai/rcplayer/protocol/RcCollapsibleColumnLayout;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcCollapsibleColumnLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public fun getOpcode ()I
+	public final fun getSpacedBy-tGZKRUM ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCollapsiblePriorityModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcCollapsiblePriorityModifier$Companion;
+	public static final field HORIZONTAL I
+	public static final field VERTICAL I
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcCollapsiblePriorityModifier;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcCollapsiblePriorityModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcCollapsiblePriorityModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getOrientation ()I
+	public final fun getPriority-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCollapsiblePriorityModifier$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCollapsibleRowLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-ueTzqPw (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcCollapsibleRowLayout;
+	public static synthetic fun copy-ueTzqPw$default (Lee/schimke/composeai/rcplayer/protocol/RcCollapsibleRowLayout;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcCollapsibleRowLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public fun getOpcode ()I
+	public final fun getSpacedBy-tGZKRUM ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColorAttribute : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field COLOR_ALPHA I
+	public static final field COLOR_BLUE I
+	public static final field COLOR_BRIGHTNESS I
+	public static final field COLOR_GREEN I
+	public static final field COLOR_HUE I
+	public static final field COLOR_RED I
+	public static final field COLOR_SATURATION I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcColorAttribute$Companion;
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcColorAttribute;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcColorAttribute;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcColorAttribute;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColorId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColorAttribute$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColorConstant : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcColorConstant;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcColorConstant;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcColorConstant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArgb ()I
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColorExpression : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field ARGB_MODE I
+	public static final field COLOR_COLOR_INTERPOLATE I
+	public static final field COLOR_ID_INTERPOLATE I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcColorExpression$Companion;
+	public static final field HSV_MODE I
+	public static final field IDARGB_MODE I
+	public static final field ID_COLOR_INTERPOLATE I
+	public static final field ID_ID_INTERPOLATE I
+	public fun <init> (IIIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun copy (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcColorExpression;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcColorExpression;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcColorExpression;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirst ()I
+	public final fun getMode ()I
+	public final fun getModeAndAlpha ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getSecond ()I
+	public final fun getThird ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColorExpression$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColorTheme : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IIIIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun copy (IIIIII)Lee/schimke/composeai/rcplayer/protocol/RcColorTheme;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcColorTheme;IIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcColorTheme;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getColorGroupId ()I
+	public final fun getDarkModeFallback ()I
+	public final fun getDarkModeIndex ()I
+	public final fun getLightModeFallback ()I
+	public final fun getLightModeIndex ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcColumnLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-ueTzqPw (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcColumnLayout;
+	public static synthetic fun copy-ueTzqPw$default (Lee/schimke/composeai/rcplayer/protocol/RcColumnLayout;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcColumnLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public fun getOpcode ()I
+	public final fun getSpacedBy-tGZKRUM ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcComponentValue : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field CONTENT_HEIGHT I
+	public static final field CONTENT_WIDTH I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcComponentValue$Companion;
+	public static final field HEIGHT I
+	public static final field LOCAL_X I
+	public static final field LOCAL_Y I
+	public static final field ROOT_X I
+	public static final field ROOT_Y I
+	public static final field WIDTH I
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcComponentValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcComponentValue;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcComponentValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public final fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcComponentValue$Companion {
+	public final fun getVALID_TYPES ()Lkotlin/ranges/IntRange;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcConditionalOperations : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field CHANGED I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcConditionalOperations$Companion;
+	public static final field EQUAL I
+	public static final field GREATER_THAN I
+	public static final field GREATER_THAN_OR_EQUAL I
+	public static final field LESS_THAN I
+	public static final field LESS_THAN_OR_EQUAL I
+	public static final field NOT_EQUAL I
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-JvqVRcY (III)Lee/schimke/composeai/rcplayer/protocol/RcConditionalOperations;
+	public static synthetic fun copy-JvqVRcY$default (Lee/schimke/composeai/rcplayer/protocol/RcConditionalOperations;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcConditionalOperations;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLeft-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getRight-tGZKRUM ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcConditionalOperations$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcCoreText : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcCoreText;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcCoreText;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcCoreText;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public final fun getProperties ()Ljava/util/List;
+	public final fun getTextId ()I
+	public final fun getTextStyleId ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDataMapEntry {
+	public fun <init> (Ljava/lang/String;II)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (Ljava/lang/String;II)Lee/schimke/composeai/rcplayer/protocol/RcDataMapEntry;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcDataMapEntry;Ljava/lang/String;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDataMapEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public final fun getName ()Ljava/lang/String;
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDataMapLookup : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcDataMapLookup;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcDataMapLookup;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDataMapLookup;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKeyTextId ()I
+	public final fun getMapId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDebugMessage : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcDebugMessage$Companion;
+	public static final field SHOW_USAGE I
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3 ()I
+	public final fun copy-dqVWVpA (III)Lee/schimke/composeai/rcplayer/protocol/RcDebugMessage;
+	public static synthetic fun copy-dqVWVpA$default (Lee/schimke/composeai/rcplayer/protocol/RcDebugMessage;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDebugMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFlags ()I
+	public fun getOpcode ()I
+	public final fun getTextId ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDebugMessage$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDimensionConstraintsModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcDimensionConstraintsModifier$Companion;
+	public static final field HORIZONTAL I
+	public static final field REQUIRED_HORIZONTAL I
+	public static final field REQUIRED_VERTICAL I
+	public static final field VERTICAL I
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-JvqVRcY (III)Lee/schimke/composeai/rcplayer/protocol/RcDimensionConstraintsModifier;
+	public static synthetic fun copy-JvqVRcY$default (Lee/schimke/composeai/rcplayer/protocol/RcDimensionConstraintsModifier;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDimensionConstraintsModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaximum-tGZKRUM ()I
+	public final fun getMinimum-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDimensionConstraintsModifier$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDimensionType {
+	public static final field EXACT I
+	public static final field EXACT_DP I
+	public static final field FILL I
+	public static final field FILL_PARENT_MAX_HEIGHT I
+	public static final field FILL_PARENT_MAX_WIDTH I
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcDimensionType;
+	public static final field INTRINSIC_MAX I
+	public static final field INTRINSIC_MIN I
+	public static final field WEIGHT I
+	public static final field WRAP I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDocument {
+	public fun <init> (Lee/schimke/composeai/rcplayer/protocol/RcHeader;Ljava/util/List;)V
+	public final fun component1 ()Lee/schimke/composeai/rcplayer/protocol/RcHeader;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Lee/schimke/composeai/rcplayer/protocol/RcHeader;Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcDocument;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Lee/schimke/composeai/rcplayer/protocol/RcHeader;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDocument;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeader ()Lee/schimke/composeai/rcplayer/protocol/RcHeader;
+	public final fun getOperations ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDocumentCodec {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcDocumentCodec;
+	public final fun decode ([BLee/schimke/composeai/rcplayer/protocol/RcWireLimits;)Lee/schimke/composeai/rcplayer/protocol/RcDocument;
+	public static synthetic fun decode$default (Lee/schimke/composeai/rcplayer/protocol/RcDocumentCodec;[BLee/schimke/composeai/rcplayer/protocol/RcWireLimits;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDocument;
+	public final fun encode (Lee/schimke/composeai/rcplayer/protocol/RcDocument;)[B
+	public final fun encodeOperation (Lee/schimke/composeai/rcplayer/protocol/RcWireWriter;Lee/schimke/composeai/rcplayer/protocol/RcOperation;)V
+	public final fun getSupportedOperations ()Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDocumentSupport {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcDocumentSupport;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcDocumentSupport;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDocumentSupport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFullyRenderable ()Z
+	public final fun getParseOnly ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun requireFullyRenderable ()V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDraw3 : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-x9GP5S4 (IIII)Lee/schimke/composeai/rcplayer/protocol/RcDraw3;
+	public static synthetic fun copy-x9GP5S4$default (Lee/schimke/composeai/rcplayer/protocol/RcDraw3;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDraw3;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirst-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getSecond-tGZKRUM ()I
+	public final fun getThird-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDraw4 : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-lOg0PXY (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcDraw4;
+	public static synthetic fun copy-lOg0PXY$default (Lee/schimke/composeai/rcplayer/protocol/RcDraw4;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDraw4;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirst-tGZKRUM ()I
+	public final fun getFourth-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getSecond-tGZKRUM ()I
+	public final fun getThird-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDraw6 : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun component7-tGZKRUM ()I
+	public final fun copy-DU_hl0k (IIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcDraw6;
+	public static synthetic fun copy-DU_hl0k$default (Lee/schimke/composeai/rcplayer/protocol/RcDraw6;IIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDraw6;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFifth-tGZKRUM ()I
+	public final fun getFirst-tGZKRUM ()I
+	public final fun getFourth-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getSecond-tGZKRUM ()I
+	public final fun getSixth-tGZKRUM ()I
+	public final fun getThird-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawBitmap : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6 ()I
+	public final fun copy-n4F8L5g (IIIIII)Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmap;
+	public static synthetic fun copy-n4F8L5g$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmap;IIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmap;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBottom-tGZKRUM ()I
+	public final fun getContentDescriptionId ()I
+	public final fun getImageId ()I
+	public final fun getLeft-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getRight-tGZKRUM ()I
+	public final fun getTop-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawBitmapInt : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IIIIIIIIII)V
+	public final fun component1 ()I
+	public final fun component10 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun component8 ()I
+	public final fun component9 ()I
+	public final fun copy (IIIIIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmapInt;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmapInt;IIIIIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmapInt;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContentDescriptionId ()I
+	public final fun getDstBottom ()I
+	public final fun getDstLeft ()I
+	public final fun getDstRight ()I
+	public final fun getDstTop ()I
+	public final fun getImageId ()I
+	public fun getOpcode ()I
+	public final fun getSrcBottom ()I
+	public final fun getSrcLeft ()I
+	public final fun getSrcRight ()I
+	public final fun getSrcTop ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawBitmapScaled : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10 ()I
+	public final fun component11-tGZKRUM ()I
+	public final fun component12 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun component7-tGZKRUM ()I
+	public final fun component8-tGZKRUM ()I
+	public final fun component9-tGZKRUM ()I
+	public final fun copy-DirOUOg (IIIIIIIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmapScaled;
+	public static synthetic fun copy-DirOUOg$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmapScaled;IIIIIIIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawBitmapScaled;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContentDescriptionId ()I
+	public final fun getDstBottom-tGZKRUM ()I
+	public final fun getDstLeft-tGZKRUM ()I
+	public final fun getDstRight-tGZKRUM ()I
+	public final fun getDstTop-tGZKRUM ()I
+	public final fun getImageId ()I
+	public fun getOpcode ()I
+	public final fun getScaleFactor-tGZKRUM ()I
+	public final fun getScaleType ()I
+	public final fun getSrcBottom-tGZKRUM ()I
+	public final fun getSrcLeft-tGZKRUM ()I
+	public final fun getSrcRight-tGZKRUM ()I
+	public final fun getSrcTop-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawText : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIIZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun component7-tGZKRUM ()I
+	public final fun component8 ()Z
+	public final fun copy-esXmXe0 (IIIIIIIZ)Lee/schimke/composeai/rcplayer/protocol/RcDrawText;
+	public static synthetic fun copy-esXmXe0$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawText;IIIIIIIZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawText;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContextEnd ()I
+	public final fun getContextStart ()I
+	public final fun getEnd ()I
+	public fun getOpcode ()I
+	public final fun getRtl ()Z
+	public final fun getStart ()I
+	public final fun getTextId ()I
+	public final fun getX-tGZKRUM ()I
+	public final fun getY-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawTextAnchored : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field BASELINE_RELATIVE I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcDrawTextAnchored$Companion;
+	public static final field MEASURE_EVERY_TIME I
+	public static final field MONOSPACE_MEASURE I
+	public static final field TEXT_RTL I
+	public synthetic fun <init> (IIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6 ()I
+	public final fun copy-n4F8L5g (IIIIII)Lee/schimke/composeai/rcplayer/protocol/RcDrawTextAnchored;
+	public static synthetic fun copy-n4F8L5g$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawTextAnchored;IIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawTextAnchored;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFlags ()I
+	public fun getOpcode ()I
+	public final fun getPanX-tGZKRUM ()I
+	public final fun getPanY-tGZKRUM ()I
+	public final fun getTextId ()I
+	public final fun getX-tGZKRUM ()I
+	public final fun getY-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawTextAnchored$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawTextOnPath : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-wEXniXk (IIII)Lee/schimke/composeai/rcplayer/protocol/RcDrawTextOnPath;
+	public static synthetic fun copy-wEXniXk$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawTextOnPath;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawTextOnPath;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHorizontalOffset-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getPathId ()I
+	public final fun getTextId ()I
+	public final fun getVerticalOffset-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDrawTweenPath : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-Mkqg_gU (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcDrawTweenPath;
+	public static synthetic fun copy-Mkqg_gU$default (Lee/schimke/composeai/rcplayer/protocol/RcDrawTweenPath;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDrawTweenPath;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getPath1Id ()I
+	public final fun getPath2Id ()I
+	public final fun getStart-tGZKRUM ()I
+	public final fun getStop-tGZKRUM ()I
+	public final fun getTween-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcDynamicFloatList : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcDynamicFloatList;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcDynamicFloatList;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcDynamicFloatList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public final fun getLength-tGZKRUM ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFitBoxLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/rcplayer/protocol/RcFitBoxLayout;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcFitBoxLayout;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFitBoxLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public fun getOpcode ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatConstant : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcFloatConstant;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcFloatConstant;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFloatConstant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatExpression : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;Ljava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcFloatExpression;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcFloatExpression;ILjava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFloatExpression;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimation ()Ljava/util/List;
+	public final fun getExpression ()Ljava/util/List;
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatFunctionCall : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcFloatFunctionCall;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcFloatFunctionCall;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFloatFunctionCall;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArguments ()Ljava/util/List;
+	public final fun getFunctionId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatFunctionDefine : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcFloatFunctionDefine;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcFloatFunctionDefine;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFloatFunctionDefine;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getParameterIds ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatList : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcFloatList;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcFloatList;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFloatList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getValues ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatWord {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcFloatWord$Companion;
+	public static final synthetic fun box-impl (I)Lee/schimke/composeai/rcplayer/protocol/RcFloatWord;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public final fun getBits ()I
+	public static final fun getReferencedId-impl (I)Ljava/lang/Integer;
+	public static final fun getValue-impl (I)F
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public static final fun isNaNEncoded-impl (I)Z
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFloatWord$Companion {
+	public final fun literal-TypcxcU (F)I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFlowLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun copy-NU6V1w4 (IIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcFlowLayout;
+	public static synthetic fun copy-NU6V1w4$default (Lee/schimke/composeai/rcplayer/protocol/RcFlowLayout;IIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcFlowLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public final fun getMaxItemsInEachRow ()I
+	public final fun getMaxLines ()I
+	public fun getOpcode ()I
+	public final fun getSpacedBy-tGZKRUM ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcFontData : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II[B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getData ()[B
+	public final fun getFontId ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute {
+	public abstract fun getIndex ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$FloatValue : ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$FloatValue;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$FloatValue;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$FloatValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getIndex ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$IntValue : ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$IntValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$IntValue;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerAttribute$IntValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getIndex ()I
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field ALPHA I
+	public static final field AMBIENT_SHADOW_COLOR I
+	public static final field ATTRIBUTE_COUNT I
+	public static final field BLUR_RADIUS_X I
+	public static final field BLUR_RADIUS_Y I
+	public static final field BLUR_TILE_MODE I
+	public static final field CAMERA_DISTANCE I
+	public static final field COMPOSITING_STRATEGY I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerModifier$Companion;
+	public static final field HAS_BLUR I
+	public static final field ROTATION_X I
+	public static final field ROTATION_Y I
+	public static final field ROTATION_Z I
+	public static final field SCALE_X I
+	public static final field SCALE_Y I
+	public static final field SHADOW_ELEVATION I
+	public static final field SHAPE I
+	public static final field SHAPE_RADIUS I
+	public static final field SPOT_SHADOW_COLOR I
+	public static final field TRANSFORM_ORIGIN_X I
+	public static final field TRANSFORM_ORIGIN_Y I
+	public static final field TRANSLATION_X I
+	public static final field TRANSLATION_Y I
+	public static final field TRANSLATION_Z I
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerModifier;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerModifier;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttributes ()Ljava/util/List;
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcGraphicsLayerModifier$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHapticFeedback : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-XDRdRyQ ()I
+	public final fun copy-Yd2KgCY (I)Lee/schimke/composeai/rcplayer/protocol/RcHapticFeedback;
+	public static synthetic fun copy-Yd2KgCY$default (Lee/schimke/composeai/rcplayer/protocol/RcHapticFeedback;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHapticFeedback;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getType-XDRdRyQ ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHapticType {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcHapticType$Companion;
+	public static final synthetic fun box-impl (I)Lee/schimke/composeai/rcplayer/protocol/RcHapticType;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public final fun getWireValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHapticType$Companion {
+	public final fun getClockTick-XDRdRyQ ()I
+	public final fun getConfirm-XDRdRyQ ()I
+	public final fun getContextClick-XDRdRyQ ()I
+	public final fun getDragStart-XDRdRyQ ()I
+	public final fun getGestureEnd-XDRdRyQ ()I
+	public final fun getGestureStart-XDRdRyQ ()I
+	public final fun getGestureThresholdActivate-XDRdRyQ ()I
+	public final fun getGestureThresholdDeactivate-XDRdRyQ ()I
+	public final fun getKeyboardPress-XDRdRyQ ()I
+	public final fun getKeyboardRelease-XDRdRyQ ()I
+	public final fun getKeyboardTap-XDRdRyQ ()I
+	public final fun getLongPress-XDRdRyQ ()I
+	public final fun getNone-XDRdRyQ ()I
+	public final fun getReject-XDRdRyQ ()I
+	public final fun getSegmentFrequentTick-XDRdRyQ ()I
+	public final fun getSegmentTick-XDRdRyQ ()I
+	public final fun getTextHandleMove-XDRdRyQ ()I
+	public final fun getToggleOff-XDRdRyQ ()I
+	public final fun getToggleOn-XDRdRyQ ()I
+	public final fun getVirtualKey-XDRdRyQ ()I
+	public final fun getVirtualKeyRelease-XDRdRyQ ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeader : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcHeader$Companion;
+	public static final field DENSITY_BEHAVIOR_DP I
+	public static final field DENSITY_BEHAVIOR_LEGACY I
+	public static final field DENSITY_BEHAVIOR_PIXELS I
+	public static final field DOC_DENSITY_AT_GENERATION I
+	public static final field DOC_DENSITY_BEHAVIOR I
+	public static final field DOC_HEIGHT I
+	public static final field DOC_WIDTH I
+	public fun <init> (Lee/schimke/composeai/rcplayer/protocol/RcVersion;Ljava/util/List;IIJZ)V
+	public synthetic fun <init> (Lee/schimke/composeai/rcplayer/protocol/RcVersion;Ljava/util/List;IIJZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lee/schimke/composeai/rcplayer/protocol/RcVersion;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()J
+	public final fun component6 ()Z
+	public final fun copy (Lee/schimke/composeai/rcplayer/protocol/RcVersion;Ljava/util/List;IIJZ)Lee/schimke/composeai/rcplayer/protocol/RcHeader;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHeader;Lee/schimke/composeai/rcplayer/protocol/RcVersion;Ljava/util/List;IIJZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeader;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCapabilities ()J
+	public final fun getDensity ()F
+	public final fun getDensityBehavior ()I
+	public final fun getHeight ()I
+	public final fun getLegacyCapabilities ()J
+	public final fun getLegacyHeight ()I
+	public final fun getLegacyWidth ()I
+	public final fun getModern ()Z
+	public fun getOpcode ()I
+	public final fun getProperties ()Ljava/util/List;
+	public final fun getVersion ()Lee/schimke/composeai/rcplayer/protocol/RcVersion;
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeader$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeaderProperty {
+	public fun <init> (ILee/schimke/composeai/rcplayer/protocol/RcHeaderValue;)V
+	public final fun component1 ()I
+	public final fun component2 ()Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue;
+	public final fun copy (ILee/schimke/composeai/rcplayer/protocol/RcHeaderValue;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderProperty;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHeaderProperty;ILee/schimke/composeai/rcplayer/protocol/RcHeaderValue;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderProperty;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()I
+	public final fun getValue ()Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/protocol/RcHeaderValue {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeaderValue$FloatValue : ee/schimke/composeai/rcplayer/protocol/RcHeaderValue {
+	public synthetic fun <init> (ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun copy-jeHuU8k (I)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$FloatValue;
+	public static synthetic fun copy-jeHuU8k$default (Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$FloatValue;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$FloatValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeaderValue$IntValue : ee/schimke/composeai/rcplayer/protocol/RcHeaderValue {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$IntValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$IntValue;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$IntValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeaderValue$LongValue : ee/schimke/composeai/rcplayer/protocol/RcHeaderValue {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$LongValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$LongValue;JILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$LongValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeaderValue$StringValue : ee/schimke/composeai/rcplayer/protocol/RcHeaderValue {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$StringValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$StringValue;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeaderValue$StringValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeightInModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-V48VuZs (II)Lee/schimke/composeai/rcplayer/protocol/RcHeightInModifier;
+	public static synthetic fun copy-V48VuZs$default (Lee/schimke/composeai/rcplayer/protocol/RcHeightInModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeightInModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaximum-tGZKRUM ()I
+	public final fun getMinimum-tGZKRUM ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHeightModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcHeightModifier;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcHeightModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHeightModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcHostAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostAction;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostMetadataAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcHostMetadataAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostMetadataAction;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostMetadataAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId ()I
+	public final fun getMetadataTextId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue;)V
+	public final fun component1 ()I
+	public final fun component2 ()Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue;
+	public final fun copy (ILee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue;)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostNamedAction;ILee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getNameTextId ()I
+	public fun getOpcode ()I
+	public final fun getValue ()Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$Companion;
+	public static final field TYPE_FLOAT I
+	public static final field TYPE_FLOAT_ARRAY I
+	public static final field TYPE_INTEGER I
+	public static final field TYPE_NONE I
+	public static final field TYPE_STRING I
+	public abstract fun getType ()I
+	public abstract fun getValueId ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$Companion {
+	public static final field TYPE_FLOAT I
+	public static final field TYPE_FLOAT_ARRAY I
+	public static final field TYPE_INTEGER I
+	public static final field TYPE_NONE I
+	public static final field TYPE_STRING I
+	public final fun fromWire (II)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatListValue : ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatListValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatListValue;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatListValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getType ()I
+	public fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatValue : ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatValue;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$FloatValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getType ()I
+	public fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$IntegerValue : ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$IntegerValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$IntegerValue;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$IntegerValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getType ()I
+	public fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$None : ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$None;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getType ()I
+	public fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$TextValue : ee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$TextValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$TextValue;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcHostNamedActionValue$TextValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getType ()I
+	public fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIdList : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcIdList;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcIdList;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcIdList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public final fun getIds ()Ljava/util/List;
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIdLookup : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-ODCArW4 (III)Lee/schimke/composeai/rcplayer/protocol/RcIdLookup;
+	public static synthetic fun copy-ODCArW4$default (Lee/schimke/composeai/rcplayer/protocol/RcIdLookup;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcIdLookup;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndex-tGZKRUM ()I
+	public final fun getListId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIdMap : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcIdMap$Companion;
+	public static final field TYPE_BOOLEAN I
+	public static final field TYPE_FLOAT I
+	public static final field TYPE_INT I
+	public static final field TYPE_LONG I
+	public static final field TYPE_STRING I
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcIdMap;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcIdMap;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcIdMap;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEntries ()Ljava/util/List;
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIdMap$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIdOperation : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcIdOperation;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcIdOperation;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcIdOperation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcImageAttribute : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcImageAttribute$Companion;
+	public static final field IMAGE_HEIGHT I
+	public static final field IMAGE_WIDTH I
+	public fun <init> (IIILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (IIILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcImageAttribute;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcImageAttribute;IIILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcImageAttribute;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArgs ()Ljava/util/List;
+	public final fun getImageId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcImageAttribute$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcImageLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-ueTzqPw (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcImageLayout;
+	public static synthetic fun copy-ueTzqPw$default (Lee/schimke/composeai/rcplayer/protocol/RcImageLayout;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcImageLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlpha-tGZKRUM ()I
+	public final fun getAnimationId ()I
+	public final fun getBitmapId ()I
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public final fun getScaleType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcImpulseProcess : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcImpulseProcess;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcImpulseStart : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-V48VuZs (II)Lee/schimke/composeai/rcplayer/protocol/RcImpulseStart;
+	public static synthetic fun copy-V48VuZs$default (Lee/schimke/composeai/rcplayer/protocol/RcImpulseStart;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcImpulseStart;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDuration-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getStartAt-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIntegerConstant : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcIntegerConstant;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcIntegerConstant;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcIntegerConstant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIntegerExpression : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field ABS I
+	public static final field ADD I
+	public static final field AND I
+	public static final field CLAMP I
+	public static final field COPY_SIGN I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcIntegerExpression$Companion;
+	public static final field DECR I
+	public static final field DIV I
+	public static final field IFELSE I
+	public static final field INCR I
+	public static final field MAD I
+	public static final field MAX I
+	public static final field MIN I
+	public static final field MOD I
+	public static final field MUL I
+	public static final field NEG I
+	public static final field NOT I
+	public static final field OFFSET I
+	public static final field OR I
+	public static final field SHL I
+	public static final field SHR I
+	public static final field SIGN I
+	public static final field SUB I
+	public static final field USHR I
+	public static final field VAR1 I
+	public static final field VAR2 I
+	public static final field VAR3 I
+	public static final field XOR I
+	public fun <init> (IILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (IILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcIntegerExpression;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcIntegerExpression;IILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcIntegerExpression;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMask ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getValues ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun isMarked (I)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcIntegerExpression$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLayoutAnimation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcLayoutAnimation$Companion;
+	public static final synthetic fun box-impl (I)Lee/schimke/composeai/rcplayer/protocol/RcLayoutAnimation;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public static final fun getAndroidXValue-impl (I)I
+	public final fun getWireValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLayoutAnimation$Companion {
+	public final fun getFadeIn-39VkKJc ()I
+	public final fun getFadeOut-39VkKJc ()I
+	public final fun getParticle-39VkKJc ()I
+	public final fun getRotate-39VkKJc ()I
+	public final fun getSlideBottom-39VkKJc ()I
+	public final fun getSlideLeft-39VkKJc ()I
+	public final fun getSlideRight-39VkKJc ()I
+	public final fun getSlideTop-39VkKJc ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLayoutCompute : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcLayoutCompute$Companion;
+	public static final field MEASURE I
+	public static final field POSITION I
+	public fun <init> (IIZ)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Z
+	public final fun copy (IIZ)Lee/schimke/composeai/rcplayer/protocol/RcLayoutCompute;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcLayoutCompute;IIZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcLayoutCompute;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimateChanges ()Z
+	public final fun getBoundsId ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLayoutCompute$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLayoutContent : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcLayoutContent;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcLayoutContent;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcLayoutContent;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLongConstant : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IJ)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun copy (IJ)Lee/schimke/composeai/rcplayer/protocol/RcLongConstant;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcLongConstant;IJILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcLongConstant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getValue ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcLoopOperation : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-x9GP5S4 (IIII)Lee/schimke/composeai/rcplayer/protocol/RcLoopOperation;
+	public static synthetic fun copy-x9GP5S4$default (Lee/schimke/composeai/rcplayer/protocol/RcLoopOperation;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcLoopOperation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFrom-tGZKRUM ()I
+	public final fun getIndexVariableId ()I
+	public fun getOpcode ()I
+	public final fun getStep-tGZKRUM ()I
+	public final fun getUntil-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMarqueeModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6-tGZKRUM ()I
+	public final fun copy-RzYgAlI (IIIIII)Lee/schimke/composeai/rcplayer/protocol/RcMarqueeModifier;
+	public static synthetic fun copy-RzYgAlI$default (Lee/schimke/composeai/rcplayer/protocol/RcMarqueeModifier;IIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcMarqueeModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationMode ()I
+	public final fun getInitialDelayMillis-tGZKRUM ()I
+	public final fun getIterations ()I
+	public fun getOpcode ()I
+	public final fun getRepeatDelayMillis-tGZKRUM ()I
+	public final fun getSpacing-tGZKRUM ()I
+	public final fun getVelocity-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMatrixConstant : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (IILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixConstant;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcMatrixConstant;IILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixConstant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public final fun getValues ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMatrixExpression : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (IILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixExpression;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcMatrixExpression;IILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixExpression;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExpression ()Ljava/util/List;
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMatrixFromPath : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4 ()I
+	public final fun copy-gPlUuBo (IIII)Lee/schimke/composeai/rcplayer/protocol/RcMatrixFromPath;
+	public static synthetic fun copy-gPlUuBo$default (Lee/schimke/composeai/rcplayer/protocol/RcMatrixFromPath;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixFromPath;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFlags ()I
+	public fun getOpcode ()I
+	public final fun getPathId ()I
+	public final fun getPercent-tGZKRUM ()I
+	public final fun getVerticalOffset-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMatrixVectorMath : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixVectorMath;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcMatrixVectorMath;ILjava/util/List;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcMatrixVectorMath;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInputs ()Ljava/util/List;
+	public final fun getMatrixId ()I
+	public fun getOpcode ()I
+	public final fun getOutputs ()Ljava/util/List;
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMultiClickModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;)V
+	public final fun component1 ()Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+	public final fun copy (Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;)Lee/schimke/composeai/rcplayer/protocol/RcMultiClickModifier;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcMultiClickModifier;Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcMultiClickModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getType ()Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMultiClickType : java/lang/Enum {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType$Companion;
+	public static final field DOUBLE Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+	public static final field LONG Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+	public static final field SINGLE Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getWireValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+	public static fun values ()[Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcMultiClickType$Companion {
+	public final fun fromWire (I)Lee/schimke/composeai/rcplayer/protocol/RcMultiClickType;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcNamedVariable : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field COLOR_TYPE I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcNamedVariable$Companion;
+	public static final field FLOAT_ARRAY_TYPE I
+	public static final field FLOAT_TYPE I
+	public static final field IMAGE_TYPE I
+	public static final field INT_TYPE I
+	public static final field LONG_TYPE I
+	public static final field STRING_TYPE I
+	public fun <init> (IILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (IILjava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcNamedVariable;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcNamedVariable;IILjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcNamedVariable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public final fun getName ()Ljava/lang/String;
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcNamedVariable$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcNoArg : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcNoArg;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcNoArg;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcNoArg;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOffsetModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-V48VuZs (II)Lee/schimke/composeai/rcplayer/protocol/RcOffsetModifier;
+	public static synthetic fun copy-V48VuZs$default (Lee/schimke/composeai/rcplayer/protocol/RcOffsetModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcOffsetModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getX-tGZKRUM ()I
+	public final fun getY-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOpcodes {
+	public static final field ACCESSIBILITY_SEMANTICS I
+	public static final field ANIMATED_FLOAT I
+	public static final field ANIMATION_SPEC I
+	public static final field ATTRIBUTE_COLOR I
+	public static final field ATTRIBUTE_IMAGE I
+	public static final field ATTRIBUTE_TEXT I
+	public static final field ATTRIBUTE_TIME I
+	public static final field CANVAS_OPERATIONS I
+	public static final field CLICK_AREA I
+	public static final field CLIP_PATH I
+	public static final field CLIP_RECT I
+	public static final field COLOR_CONSTANT I
+	public static final field COLOR_EXPRESSIONS I
+	public static final field COLOR_THEME I
+	public static final field COMPONENT_VALUE I
+	public static final field CONDITIONAL_OPERATIONS I
+	public static final field CONTAINER_END I
+	public static final field CORE_TEXT I
+	public static final field DATA_BITMAP I
+	public static final field DATA_BOOLEAN I
+	public static final field DATA_FLOAT I
+	public static final field DATA_FONT I
+	public static final field DATA_INT I
+	public static final field DATA_LONG I
+	public static final field DATA_MAP_LOOKUP I
+	public static final field DATA_PATH I
+	public static final field DATA_TEXT I
+	public static final field DEBUG_MESSAGE I
+	public static final field DRAW_ARC I
+	public static final field DRAW_BITMAP I
+	public static final field DRAW_BITMAP_INT I
+	public static final field DRAW_BITMAP_SCALED I
+	public static final field DRAW_CIRCLE I
+	public static final field DRAW_CONTENT I
+	public static final field DRAW_LINE I
+	public static final field DRAW_OVAL I
+	public static final field DRAW_PATH I
+	public static final field DRAW_RECT I
+	public static final field DRAW_ROUND_RECT I
+	public static final field DRAW_SECTOR I
+	public static final field DRAW_TEXT_ANCHOR I
+	public static final field DRAW_TEXT_ON_PATH I
+	public static final field DRAW_TEXT_RUN I
+	public static final field DRAW_TWEEN_PATH I
+	public static final field DYNAMIC_FLOAT_LIST I
+	public static final field FLOAT_LIST I
+	public static final field FUNCTION_CALL I
+	public static final field FUNCTION_DEFINE I
+	public static final field HAPTIC_FEEDBACK I
+	public static final field HEADER I
+	public static final field HOST_ACTION I
+	public static final field HOST_METADATA_ACTION I
+	public static final field HOST_NAMED_ACTION I
+	public static final field ID_LIST I
+	public static final field ID_LOOKUP I
+	public static final field ID_MAP I
+	public static final field IMPULSE_PROCESS I
+	public static final field IMPULSE_START I
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcOpcodes;
+	public static final field INTEGER_EXPRESSION I
+	public static final field LAYOUT_BOX I
+	public static final field LAYOUT_CANVAS I
+	public static final field LAYOUT_CANVAS_CONTENT I
+	public static final field LAYOUT_COLLAPSIBLE_COLUMN I
+	public static final field LAYOUT_COLLAPSIBLE_ROW I
+	public static final field LAYOUT_COLUMN I
+	public static final field LAYOUT_COMPUTE I
+	public static final field LAYOUT_CONTENT I
+	public static final field LAYOUT_FIT_BOX I
+	public static final field LAYOUT_FLOW I
+	public static final field LAYOUT_IMAGE I
+	public static final field LAYOUT_ROOT I
+	public static final field LAYOUT_ROW I
+	public static final field LAYOUT_STATE I
+	public static final field LAYOUT_TEXT I
+	public static final field LOOP_START I
+	public static final field MATRIX_CONSTANT I
+	public static final field MATRIX_EXPRESSION I
+	public static final field MATRIX_FROM_PATH I
+	public static final field MATRIX_RESTORE I
+	public static final field MATRIX_ROTATE I
+	public static final field MATRIX_SAVE I
+	public static final field MATRIX_SCALE I
+	public static final field MATRIX_SKEW I
+	public static final field MATRIX_TRANSLATE I
+	public static final field MATRIX_VECTOR_MATH I
+	public static final field MODIFIER_ALIGN_BY I
+	public static final field MODIFIER_BACKGROUND I
+	public static final field MODIFIER_BORDER I
+	public static final field MODIFIER_CLICK I
+	public static final field MODIFIER_CLIP_RECT I
+	public static final field MODIFIER_COLLAPSIBLE_PRIORITY I
+	public static final field MODIFIER_DIMENSION_CONSTRAINTS I
+	public static final field MODIFIER_DRAW_CONTENT I
+	public static final field MODIFIER_GRAPHICS_LAYER I
+	public static final field MODIFIER_HEIGHT I
+	public static final field MODIFIER_HEIGHT_IN I
+	public static final field MODIFIER_MARQUEE I
+	public static final field MODIFIER_MULTI_CLICK I
+	public static final field MODIFIER_OFFSET I
+	public static final field MODIFIER_PADDING I
+	public static final field MODIFIER_RIPPLE I
+	public static final field MODIFIER_ROUNDED_CLIP_RECT I
+	public static final field MODIFIER_SCROLL I
+	public static final field MODIFIER_TOUCH_CANCEL I
+	public static final field MODIFIER_TOUCH_DOWN I
+	public static final field MODIFIER_TOUCH_UP I
+	public static final field MODIFIER_VISIBILITY I
+	public static final field MODIFIER_WIDTH I
+	public static final field MODIFIER_WIDTH_IN I
+	public static final field MODIFIER_ZINDEX I
+	public static final field NAMED_VARIABLE I
+	public static final field PAINT_VALUES I
+	public static final field PATH_ADD I
+	public static final field PATH_COMBINE I
+	public static final field PATH_CREATE I
+	public static final field PATH_EXPRESSION I
+	public static final field PATH_TWEEN I
+	public static final field REM I
+	public static final field ROOT_CONTENT_BEHAVIOR I
+	public static final field ROOT_CONTENT_DESCRIPTION I
+	public static final field RUN_ACTION I
+	public static final field TEXT_FROM_FLOAT I
+	public static final field TEXT_LENGTH I
+	public static final field TEXT_LOOKUP I
+	public static final field TEXT_LOOKUP_INT I
+	public static final field TEXT_MEASURE I
+	public static final field TEXT_MERGE I
+	public static final field TEXT_STYLE I
+	public static final field TEXT_SUBTEXT I
+	public static final field TEXT_TRANSFORM I
+	public static final field THEME I
+	public static final field TOUCH_EXPRESSION I
+	public static final field UPDATE_DYNAMIC_FLOAT_LIST I
+	public static final field VALUE_FLOAT_CHANGE_ACTION I
+	public static final field VALUE_FLOAT_EXPRESSION_CHANGE_ACTION I
+	public static final field VALUE_INTEGER_CHANGE_ACTION I
+	public static final field VALUE_INTEGER_EXPRESSION_CHANGE_ACTION I
+	public static final field VALUE_STRING_CHANGE_ACTION I
+	public static final field WAKE_IN I
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public abstract fun getOpcode ()I
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/protocol/RcOperationCodec {
+	public abstract fun decode (Lee/schimke/composeai/rcplayer/protocol/RcWireReader;)Lee/schimke/composeai/rcplayer/protocol/RcOperation;
+	public abstract fun encode (Lee/schimke/composeai/rcplayer/protocol/RcWireWriter;Lee/schimke/composeai/rcplayer/protocol/RcOperation;)V
+	public abstract fun getSpec ()Lee/schimke/composeai/rcplayer/protocol/RcOperationSpec;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationInventory {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcOperationInventory;
+	public final fun getByOpcode ()Ljava/util/Map;
+	public final fun getEntries ()Ljava/util/List;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationInventoryEntry {
+	public fun <init> (ILjava/lang/String;Ljava/lang/String;ILee/schimke/composeai/rcplayer/protocol/RcOperationStatus;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public final fun copy (ILjava/lang/String;Ljava/lang/String;ILee/schimke/composeai/rcplayer/protocol/RcOperationStatus;)Lee/schimke/composeai/rcplayer/protocol/RcOperationInventoryEntry;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcOperationInventoryEntry;ILjava/lang/String;Ljava/lang/String;ILee/schimke/composeai/rcplayer/protocol/RcOperationStatus;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcOperationInventoryEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCluster ()I
+	public final fun getConstantName ()Ljava/lang/String;
+	public final fun getOpcode ()I
+	public final fun getStableName ()Ljava/lang/String;
+	public final fun getStatus ()Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationInventoryKt {
+	public static final fun supportReport (Lee/schimke/composeai/rcplayer/protocol/RcDocument;)Lee/schimke/composeai/rcplayer/protocol/RcDocumentSupport;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationProfile {
+	public fun <init> (Ljava/lang/String;Ljava/util/Set;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/Set;
+	public final fun copy (Ljava/lang/String;Ljava/util/Set;)Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;Ljava/lang/String;Ljava/util/Set;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOpcodes ()Ljava/util/Set;
+	public fun hashCode ()I
+	public final fun supports (I)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationProfiles {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcOperationProfiles;
+	public final fun getANDROIDX_JAVA_ALPHA16 ()Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;
+	public final fun getCMP_IOS_ALPHA16 ()Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;
+	public final fun getCMP_WASM_ALPHA16 ()Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationSpec {
+	public fun <init> (ILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcOperationSpec;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcOperationSpec;ILjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcOperationSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcOperationStatus : java/lang/Enum {
+	public static final field IMPLEMENTED Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public static final field PARSE_ONLY Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public static final field RESERVED Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public static final field UNAVAILABLE Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public static final field UNSUPPORTED Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+	public static fun values ()[Lee/schimke/composeai/rcplayer/protocol/RcOperationStatus;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPaddingModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-yfR_vc4 (IIII)Lee/schimke/composeai/rcplayer/protocol/RcPaddingModifier;
+	public static synthetic fun copy-yfR_vc4$default (Lee/schimke/composeai/rcplayer/protocol/RcPaddingModifier;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPaddingModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBottom-tGZKRUM ()I
+	public final fun getLeft-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getRight-tGZKRUM ()I
+	public final fun getTop-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPaintData : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcPaintData;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcPaintData;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPaintData;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getWords ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathAppend : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcPathAppend;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcPathAppend;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPathAppend;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getWords ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathCombine : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/rcplayer/protocol/RcPathCombine;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcPathCombine;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPathCombine;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getOperation ()I
+	public final fun getOutId ()I
+	public final fun getPath1Id ()I
+	public final fun getPath2Id ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathCommands {
+	public static final field CLOSE I
+	public static final field CONIC I
+	public static final field CUBIC I
+	public static final field DONE I
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcPathCommands;
+	public static final field LINE I
+	public static final field MOVE I
+	public static final field QUADRATIC I
+	public static final field RESET I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathCreate : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-JvqVRcY (III)Lee/schimke/composeai/rcplayer/protocol/RcPathCreate;
+	public static synthetic fun copy-JvqVRcY$default (Lee/schimke/composeai/rcplayer/protocol/RcPathCreate;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPathCreate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getStartX-tGZKRUM ()I
+	public final fun getStartY-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathData : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcPathData;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcPathData;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPathData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public final fun getIdAndWinding ()I
+	public fun getOpcode ()I
+	public final fun getWinding ()I
+	public final fun getWords ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathExpression : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcPathExpression$Companion;
+	public static final field LINEAR I
+	public static final field LOOP I
+	public static final field MONOTONIC I
+	public static final field POLAR I
+	public static final field WINDING_MASK I
+	public synthetic fun <init> (IIIIILjava/util/List;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/util/List;
+	public final fun copy--T6SqAE (IIIIILjava/util/List;Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcPathExpression;
+	public static synthetic fun copy--T6SqAE$default (Lee/schimke/composeai/rcplayer/protocol/RcPathExpression;IIIIILjava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPathExpression;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCount-tGZKRUM ()I
+	public final fun getExpressionX ()Ljava/util/List;
+	public final fun getExpressionY ()Ljava/util/List;
+	public final fun getFlags ()I
+	public final fun getId ()I
+	public final fun getMax-tGZKRUM ()I
+	public final fun getMin-tGZKRUM ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathExpression$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcPathTween : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-ai2j4fo (IIII)Lee/schimke/composeai/rcplayer/protocol/RcPathTween;
+	public static synthetic fun copy-ai2j4fo$default (Lee/schimke/composeai/rcplayer/protocol/RcPathTween;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcPathTween;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getPath1Id ()I
+	public final fun getPath2Id ()I
+	public final fun getTween-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRemark : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcRemark;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcRemark;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcRemark;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRippleModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcRippleModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRootContentBehavior : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field ALIGNMENT_BOTTOM I
+	public static final field ALIGNMENT_CENTER I
+	public static final field ALIGNMENT_END I
+	public static final field ALIGNMENT_HORIZONTAL_CENTER I
+	public static final field ALIGNMENT_START I
+	public static final field ALIGNMENT_TOP I
+	public static final field ALIGNMENT_VERTICAL_CENTER I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcRootContentBehavior$Companion;
+	public static final field NONE I
+	public static final field SCALE_CROP I
+	public static final field SCALE_FILL_BOUNDS I
+	public static final field SCALE_FILL_HEIGHT I
+	public static final field SCALE_FILL_WIDTH I
+	public static final field SCALE_FIT I
+	public static final field SCALE_INSIDE I
+	public static final field SIZING_LAYOUT I
+	public static final field SIZING_SCALE I
+	public fun <init> (IIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/rcplayer/protocol/RcRootContentBehavior;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcRootContentBehavior;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcRootContentBehavior;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlignment ()I
+	public final fun getMode ()I
+	public fun getOpcode ()I
+	public final fun getScroll ()I
+	public final fun getSizing ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRootContentBehavior$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRootContentDescription : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcRootContentDescription;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcRootContentDescription;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcRootContentDescription;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getTextId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRootLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcRootLayout;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcRootLayout;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcRootLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getComponentId ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRoundedClipRectModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-yfR_vc4 (IIII)Lee/schimke/composeai/rcplayer/protocol/RcRoundedClipRectModifier;
+	public static synthetic fun copy-yfR_vc4$default (Lee/schimke/composeai/rcplayer/protocol/RcRoundedClipRectModifier;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcRoundedClipRectModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBottomEnd-tGZKRUM ()I
+	public final fun getBottomStart-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getTopEnd-tGZKRUM ()I
+	public final fun getTopStart-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRowLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun copy-ueTzqPw (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcRowLayout;
+	public static synthetic fun copy-ueTzqPw$default (Lee/schimke/composeai/rcplayer/protocol/RcRowLayout;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcRowLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public fun getOpcode ()I
+	public final fun getSpacedBy-tGZKRUM ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcRunAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcRunAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcScrollModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcScrollModifier$Companion;
+	public static final field HORIZONTAL I
+	public static final field VERTICAL I
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-x9GP5S4 (IIII)Lee/schimke/composeai/rcplayer/protocol/RcScrollModifier;
+	public static synthetic fun copy-x9GP5S4$default (Lee/schimke/composeai/rcplayer/protocol/RcScrollModifier;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcScrollModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDirection ()I
+	public final fun getMax-tGZKRUM ()I
+	public final fun getNotchMax-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getPosition-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcScrollModifier$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcStateLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (IIIII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun copy (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcStateLayout;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcStateLayout;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcStateLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getComponentId ()I
+	public final fun getHorizontalPositioning ()I
+	public final fun getIndexId ()I
+	public fun getOpcode ()I
+	public final fun getVerticalPositioning ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextAttribute : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcTextAttribute$Companion;
+	public static final field TEXT_LENGTH I
+	public fun <init> (IIII)V
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IIII)Lee/schimke/composeai/rcplayer/protocol/RcTextAttribute;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextAttribute;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextAttribute;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getReserved ()I
+	public final fun getTextId ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextAttribute$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextData : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (ILjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcTextData;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextData;ILjava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextData;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()I
+	public fun getOpcode ()I
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextFromFloat : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun copy-ijxt-XA (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcTextFromFloat;
+	public static synthetic fun copy-ijxt-XA$default (Lee/schimke/composeai/rcplayer/protocol/RcTextFromFloat;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextFromFloat;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDigitsAfter ()I
+	public final fun getDigitsBefore ()I
+	public final fun getFlags ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextLayout : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field ALIGN_CENTER I
+	public static final field ALIGN_END I
+	public static final field ALIGN_JUSTIFY I
+	public static final field ALIGN_LEFT I
+	public static final field ALIGN_RIGHT I
+	public static final field ALIGN_START I
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcTextLayout$Companion;
+	public static final field FLAG_DYNAMIC_COLOR I
+	public static final field OVERFLOW_CLIP I
+	public static final field OVERFLOW_ELLIPSIS I
+	public static final field OVERFLOW_MIDDLE_ELLIPSIS I
+	public static final field OVERFLOW_START_ELLIPSIS I
+	public static final field OVERFLOW_VISIBLE I
+	public synthetic fun <init> (IIIIIIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10 ()I
+	public final fun component11 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6 ()I
+	public final fun component7-tGZKRUM ()I
+	public final fun component8 ()I
+	public final fun component9 ()I
+	public final fun copy-lCalofg (IIIIIIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcTextLayout;
+	public static synthetic fun copy-lCalofg$default (Lee/schimke/composeai/rcplayer/protocol/RcTextLayout;IIIIIIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnimationId ()I
+	public final fun getColor ()I
+	public final fun getComponentId ()I
+	public final fun getFlags ()I
+	public final fun getFontFamilyId ()I
+	public final fun getFontSize-tGZKRUM ()I
+	public final fun getFontStyle ()I
+	public final fun getFontWeight-tGZKRUM ()I
+	public final fun getMaxLines ()I
+	public fun getOpcode ()I
+	public final fun getOverflow ()I
+	public final fun getTextAlign ()I
+	public final fun getTextAlignAndFlags ()I
+	public final fun getTextId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextLayout$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextLength : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcTextLength;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextLength;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextLength;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getTextId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextLookup : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-ODCArW4 (III)Lee/schimke/composeai/rcplayer/protocol/RcTextLookup;
+	public static synthetic fun copy-ODCArW4$default (Lee/schimke/composeai/rcplayer/protocol/RcTextLookup;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextLookup;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndex-tGZKRUM ()I
+	public final fun getListId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextLookupInt : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcTextLookupInt;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextLookupInt;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextLookupInt;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndexId ()I
+	public final fun getListId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextMeasure : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcTextMeasure;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextMeasure;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextMeasure;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getTextId ()I
+	public final fun getType ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextMerge : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcTextMerge;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextMerge;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextMerge;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLeftId ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getRightId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextStyle : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyle;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextStyle;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyle;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getParentStyleId ()Ljava/lang/Integer;
+	public final fun getProperties ()Ljava/util/List;
+	public final fun getStyleId ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty {
+	public abstract fun getId ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$BooleanValue : ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty {
+	public fun <init> (IZ)V
+	public final fun component1 ()I
+	public final fun component2 ()Z
+	public final fun copy (IZ)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$BooleanValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$BooleanValue;IZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$BooleanValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()I
+	public final fun getValue ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatArrayValue : ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatArrayValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatArrayValue;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatArrayValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()I
+	public final fun getValues ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatValue : ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatValue;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatValue;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$FloatValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntArrayValue : ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty {
+	public fun <init> (ILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (ILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntArrayValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntArrayValue;ILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntArrayValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()I
+	public final fun getValues ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntValue : ee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntValue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntValue;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextStyleProperty$IntValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()I
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextSubtext : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun copy-wEXniXk (IIII)Lee/schimke/composeai/rcplayer/protocol/RcTextSubtext;
+	public static synthetic fun copy-wEXniXk$default (Lee/schimke/composeai/rcplayer/protocol/RcTextSubtext;IIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextSubtext;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLength-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getStart-tGZKRUM ()I
+	public final fun getTextId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTextTransform : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5 ()I
+	public final fun copy-cSP2Z5I (IIIII)Lee/schimke/composeai/rcplayer/protocol/RcTextTransform;
+	public static synthetic fun copy-cSP2Z5I$default (Lee/schimke/composeai/rcplayer/protocol/RcTextTransform;IIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTextTransform;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLength-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getOperation ()I
+	public final fun getOutId ()I
+	public final fun getStart-tGZKRUM ()I
+	public final fun getTextId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTheme : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcTheme$Companion;
+	public static final field DARK I
+	public static final field LIGHT I
+	public static final field SYSTEM I
+	public static final field UNSPECIFIED I
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcTheme;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcTheme;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTheme;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getTheme ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTheme$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTimeAttribute : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (IIILjava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3-NmlSY_M ()I
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy-PB7W-YQ (IIILjava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcTimeAttribute;
+	public static synthetic fun copy-PB7W-YQ$default (Lee/schimke/composeai/rcplayer/protocol/RcTimeAttribute;IIILjava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTimeAttribute;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArgumentIds ()Ljava/util/List;
+	public fun getOpcode ()I
+	public final fun getOutId ()I
+	public final fun getTimeId ()I
+	public final fun getType-NmlSY_M ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTimeAttributeType {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcTimeAttributeType$Companion;
+	public static final synthetic fun box-impl (I)Lee/schimke/composeai/rcplayer/protocol/RcTimeAttributeType;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public static final fun getExecutionValue-impl (I)I
+	public static final fun getRequiresContinuousFrames-impl (I)Z
+	public final fun getWireValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTimeAttributeType$Companion {
+	public final fun getDayOfMonth-NmlSY_M ()I
+	public final fun getDayOfWeekZeroBased-NmlSY_M ()I
+	public final fun getDayOfYear-NmlSY_M ()I
+	public final fun getFromArgumentHours-NmlSY_M ()I
+	public final fun getFromArgumentMinutes-NmlSY_M ()I
+	public final fun getFromArgumentSeconds-NmlSY_M ()I
+	public final fun getFromDocumentLoadSeconds-NmlSY_M ()I
+	public final fun getFromNowHours-NmlSY_M ()I
+	public final fun getFromNowMinutes-NmlSY_M ()I
+	public final fun getFromNowSeconds-NmlSY_M ()I
+	public final fun getHour-NmlSY_M ()I
+	public final fun getMinute-NmlSY_M ()I
+	public final fun getMonthZeroBased-NmlSY_M ()I
+	public final fun getSecond-NmlSY_M ()I
+	public final fun getYear-NmlSY_M ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTouchCancelModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcTouchCancelModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTouchDownModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcTouchDownModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTouchExpression : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcTouchExpression$Companion;
+	public static final field STOP_ABSOLUTE_POS I
+	public static final field STOP_ENDS I
+	public static final field STOP_GENTLY I
+	public static final field STOP_INSTANTLY I
+	public static final field STOP_NOTCHES_ABSOLUTE I
+	public static final field STOP_NOTCHES_EVEN I
+	public static final field STOP_NOTCHES_PERCENTS I
+	public static final field STOP_NOTCHES_SINGLE_EVEN I
+	public synthetic fun <init> (IIIIIILjava/util/List;ILjava/util/List;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10 ()Ljava/util/List;
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun component4-tGZKRUM ()I
+	public final fun component5-tGZKRUM ()I
+	public final fun component6 ()I
+	public final fun component7 ()Ljava/util/List;
+	public final fun component8 ()I
+	public final fun component9 ()Ljava/util/List;
+	public final fun copy-bG4YT3Y (IIIIIILjava/util/List;ILjava/util/List;Ljava/util/List;)Lee/schimke/composeai/rcplayer/protocol/RcTouchExpression;
+	public static synthetic fun copy-bG4YT3Y$default (Lee/schimke/composeai/rcplayer/protocol/RcTouchExpression;IIIIIILjava/util/List;ILjava/util/List;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTouchExpression;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDefaultValue-tGZKRUM ()I
+	public final fun getEasingSpec ()Ljava/util/List;
+	public final fun getExpression ()Ljava/util/List;
+	public final fun getId ()I
+	public final fun getMax-tGZKRUM ()I
+	public final fun getMin-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getStopMode ()I
+	public final fun getStopSpec ()Ljava/util/List;
+	public final fun getTouchEffects ()I
+	public final fun getVelocityId-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTouchExpression$Companion {
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTouchUpModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcTouchUpModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcTransform2 : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-JvqVRcY (III)Lee/schimke/composeai/rcplayer/protocol/RcTransform2;
+	public static synthetic fun copy-JvqVRcY$default (Lee/schimke/composeai/rcplayer/protocol/RcTransform2;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcTransform2;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirst-tGZKRUM ()I
+	public fun getOpcode ()I
+	public final fun getSecond-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcUpdateDynamicFloatList : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun component3-tGZKRUM ()I
+	public final fun copy-JvqVRcY (III)Lee/schimke/composeai/rcplayer/protocol/RcUpdateDynamicFloatList;
+	public static synthetic fun copy-JvqVRcY$default (Lee/schimke/composeai/rcplayer/protocol/RcUpdateDynamicFloatList;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcUpdateDynamicFloatList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndex-tGZKRUM ()I
+	public final fun getListId ()I
+	public fun getOpcode ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcValueFloatChangeAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcValueFloatChangeAction;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcValueFloatChangeAction;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcValueFloatChangeAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getTargetValueId ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcValueFloatExpressionChangeAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcValueFloatExpressionChangeAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcValueFloatExpressionChangeAction;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcValueFloatExpressionChangeAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExpressionId ()I
+	public fun getOpcode ()I
+	public final fun getTargetValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcValueIntegerChangeAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcValueIntegerChangeAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcValueIntegerChangeAction;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcValueIntegerChangeAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getTargetValueId ()I
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcValueIntegerExpressionChangeAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Lee/schimke/composeai/rcplayer/protocol/RcValueIntegerExpressionChangeAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcValueIntegerExpressionChangeAction;JJILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcValueIntegerExpressionChangeAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExpressionId ()J
+	public fun getOpcode ()I
+	public final fun getTargetValueId ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcValueStringChangeAction : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lee/schimke/composeai/rcplayer/protocol/RcValueStringChangeAction;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcValueStringChangeAction;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcValueStringChangeAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getTargetValueId ()I
+	public final fun getValueId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcVersion {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lee/schimke/composeai/rcplayer/protocol/RcVersion;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcVersion;IIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMajor ()I
+	public final fun getMinor ()I
+	public final fun getPatch ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcVisibilityModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lee/schimke/composeai/rcplayer/protocol/RcVisibilityModifier;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcVisibilityModifier;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcVisibilityModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getVisibilityId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWakeIn : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun copy-jeHuU8k (I)Lee/schimke/composeai/rcplayer/protocol/RcWakeIn;
+	public static synthetic fun copy-jeHuU8k$default (Lee/schimke/composeai/rcplayer/protocol/RcWakeIn;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcWakeIn;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getSeconds-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWidthInModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-V48VuZs (II)Lee/schimke/composeai/rcplayer/protocol/RcWidthInModifier;
+	public static synthetic fun copy-V48VuZs$default (Lee/schimke/composeai/rcplayer/protocol/RcWidthInModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcWidthInModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaximum-tGZKRUM ()I
+	public final fun getMinimum-tGZKRUM ()I
+	public fun getOpcode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWidthModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2-tGZKRUM ()I
+	public final fun copy-l8SDznk (II)Lee/schimke/composeai/rcplayer/protocol/RcWidthModifier;
+	public static synthetic fun copy-l8SDznk$default (Lee/schimke/composeai/rcplayer/protocol/RcWidthModifier;IIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcWidthModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getType ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWireException : java/lang/IllegalArgumentException {
+	public fun <init> (ILjava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (ILjava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getByteOffset ()I
+	public final fun getFieldName ()Ljava/lang/String;
+	public final fun getOperationName ()Ljava/lang/String;
+	public final fun getOperationOpcode ()Ljava/lang/Integer;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWireLimits {
+	public fun <init> ()V
+	public fun <init> (IIIIIIII)V
+	public synthetic fun <init> (IIIIIIIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun component8 ()I
+	public final fun copy (IIIIIIII)Lee/schimke/composeai/rcplayer/protocol/RcWireLimits;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/protocol/RcWireLimits;IIIIIIIIILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcWireLimits;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxBlobBytes ()I
+	public final fun getMaxCollectionEntries ()I
+	public final fun getMaxDocumentBytes ()I
+	public final fun getMaxImageDimension ()I
+	public final fun getMaxPaintWords ()I
+	public final fun getMaxPathWords ()I
+	public final fun getMaxStringBytes ()I
+	public final fun getMaxTableEntries ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWireReader {
+	public fun <init> ([BLee/schimke/composeai/rcplayer/protocol/RcWireLimits;)V
+	public synthetic fun <init> ([BLee/schimke/composeai/rcplayer/protocol/RcWireLimits;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun currentOpcode ()Ljava/lang/Integer;
+	public final fun currentOperationName ()Ljava/lang/String;
+	public final fun ensureExhausted ()V
+	public final fun fail (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)Ljava/lang/Void;
+	public static synthetic fun fail$default (Lee/schimke/composeai/rcplayer/protocol/RcWireReader;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;ILjava/lang/Object;)Ljava/lang/Void;
+	public final fun getLimits ()Lee/schimke/composeai/rcplayer/protocol/RcWireLimits;
+	public final fun getOffset ()I
+	public final fun getRemaining ()I
+	public final fun inOperation (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+	public final fun readBoolean (Ljava/lang/String;)Z
+	public final fun readByteArray (Ljava/lang/String;I)[B
+	public static synthetic fun readByteArray$default (Lee/schimke/composeai/rcplayer/protocol/RcWireReader;Ljava/lang/String;IILjava/lang/Object;)[B
+	public final fun readCount (Ljava/lang/String;I)I
+	public final fun readFloatWord-TypcxcU (Ljava/lang/String;)I
+	public final fun readInt (Ljava/lang/String;)I
+	public final fun readLong (Ljava/lang/String;)J
+	public final fun readU16 (Ljava/lang/String;)I
+	public final fun readU8 (Ljava/lang/String;)I
+	public final fun readUtf8 (Ljava/lang/String;I)Ljava/lang/String;
+	public static synthetic fun readUtf8$default (Lee/schimke/composeai/rcplayer/protocol/RcWireReader;Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/String;
+	public final fun setOperation (Ljava/lang/Integer;Ljava/lang/String;)V
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcWireWriter {
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getSize ()I
+	public final fun toByteArray ()[B
+	public final fun writeBoolean (Z)V
+	public final fun writeByteArray ([B)V
+	public final fun writeFloatWord-jeHuU8k (I)V
+	public final fun writeInt (I)V
+	public final fun writeLong (J)V
+	public final fun writeU16 (I)V
+	public final fun writeU8 (I)V
+	public final fun writeUtf8 (Ljava/lang/String;)V
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcZIndexModifier : ee/schimke/composeai/rcplayer/protocol/RcOperation {
+	public synthetic fun <init> (ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-tGZKRUM ()I
+	public final fun copy-jeHuU8k (I)Lee/schimke/composeai/rcplayer/protocol/RcZIndexModifier;
+	public static synthetic fun copy-jeHuU8k$default (Lee/schimke/composeai/rcplayer/protocol/RcZIndexModifier;IILjava/lang/Object;)Lee/schimke/composeai/rcplayer/protocol/RcZIndexModifier;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getOpcode ()I
+	public final fun getValue-tGZKRUM ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

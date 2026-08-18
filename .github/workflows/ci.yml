@@ -396,9 +396,20 @@ jobs:
       # that module's build.gradle.kts). Its non-Compose siblings still declare `iosX64()`, so they
       # keep their entries below. Naming a task that no longer exists fails the whole invocation
       # ("Cannot locate tasks that match ..."), not just that one target.
+      # `checkKotlinAbi` diffs each library module's real public ABI against the dumps committed
+      # under `rc-player/*/api/` (see #4062). It runs here rather than anywhere else because the
+      # klib dump covers the iOS targets, and those klibs only build on macOS — this is the repo's
+      # one macOS job. `allTests` does not imply `check`, so the gate has to be named explicitly.
+      # Regenerate the dumps with `./gradlew :rc-player-<module>:updateKotlinAbi` when a surface
+      # change is intended.
       - name: Run shared, Wasm, and iOS player tests
         run: |
           ./gradlew \
+            :rc-player-trace:checkKotlinAbi \
+            :rc-player-protocol:checkKotlinAbi \
+            :rc-player-runtime:checkKotlinAbi \
+            :rc-player-compose:checkKotlinAbi \
+            :rc-player-trace:allTests \
             :rc-player-protocol:allTests \
             :rc-player-runtime:allTests \
             :rc-player-compose:allTests \

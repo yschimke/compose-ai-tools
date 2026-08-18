@@ -1,0 +1,80 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, wasmJs]
+// Alias: ios => [iosArm64, iosSimulatorArm64]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <compose-ai-tools:rc-player-compose>
+final class ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue { // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue|null[0]
+    constructor <init>(kotlin/Int, kotlin/String, kotlin/String) // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.<init>|<init>(kotlin.Int;kotlin.String;kotlin.String){}[0]
+
+    final val detail // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.detail|{}detail[0]
+        final fun <get-detail>(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.detail.<get-detail>|<get-detail>(){}[0]
+    final val operation // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.operation|{}operation[0]
+        final fun <get-operation>(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.operation.<get-operation>|<get-operation>(){}[0]
+    final val operationIndex // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.operationIndex|{}operationIndex[0]
+        final fun <get-operationIndex>(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.operationIndex.<get-operationIndex>|<get-operationIndex>(){}[0]
+
+    final fun component1(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.component1|component1(){}[0]
+    final fun component2(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.component2|component2(){}[0]
+    final fun component3(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.component3|component3(){}[0]
+    final fun copy(kotlin/Int = ..., kotlin/String = ..., kotlin/String = ...): ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.copy|copy(kotlin.Int;kotlin.String;kotlin.String){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue.toString|toString(){}[0]
+}
+
+final class ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport { // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport|null[0]
+    constructor <init>(kotlin.collections/List<ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue>) // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.<init>|<init>(kotlin.collections.List<ee.schimke.composeai.rcplayer.compose.RcComposeSupportIssue>){}[0]
+
+    final val fullyRenderable // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.fullyRenderable|{}fullyRenderable[0]
+        final fun <get-fullyRenderable>(): kotlin/Boolean // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.fullyRenderable.<get-fullyRenderable>|<get-fullyRenderable>(){}[0]
+    final val issues // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.issues|{}issues[0]
+        final fun <get-issues>(): kotlin.collections/List<ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue> // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.issues.<get-issues>|<get-issues>(){}[0]
+
+    final fun component1(): kotlin.collections/List<ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue> // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.component1|component1(){}[0]
+    final fun copy(kotlin.collections/List<ee.schimke.composeai.rcplayer.compose/RcComposeSupportIssue> = ...): ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.copy|copy(kotlin.collections.List<ee.schimke.composeai.rcplayer.compose.RcComposeSupportIssue>){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.hashCode|hashCode(){}[0]
+    final fun requireFullyRenderable() // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.requireFullyRenderable|requireFullyRenderable(){}[0]
+    final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport.toString|toString(){}[0]
+}
+
+final class ee.schimke.composeai.rcplayer.compose/RcFontFace { // ee.schimke.composeai.rcplayer.compose/RcFontFace|null[0]
+    constructor <init>(kotlin/String, kotlin/ByteArray, kotlin/Int = ..., kotlin/Boolean = ...) // ee.schimke.composeai.rcplayer.compose/RcFontFace.<init>|<init>(kotlin.String;kotlin.ByteArray;kotlin.Int;kotlin.Boolean){}[0]
+
+    final val data // ee.schimke.composeai.rcplayer.compose/RcFontFace.data|{}data[0]
+        final fun <get-data>(): kotlin/ByteArray // ee.schimke.composeai.rcplayer.compose/RcFontFace.data.<get-data>|<get-data>(){}[0]
+    final val identity // ee.schimke.composeai.rcplayer.compose/RcFontFace.identity|{}identity[0]
+        final fun <get-identity>(): kotlin/String // ee.schimke.composeai.rcplayer.compose/RcFontFace.identity.<get-identity>|<get-identity>(){}[0]
+    final val italic // ee.schimke.composeai.rcplayer.compose/RcFontFace.italic|{}italic[0]
+        final fun <get-italic>(): kotlin/Boolean // ee.schimke.composeai.rcplayer.compose/RcFontFace.italic.<get-italic>|<get-italic>(){}[0]
+    final val weight // ee.schimke.composeai.rcplayer.compose/RcFontFace.weight|{}weight[0]
+        final fun <get-weight>(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/RcFontFace.weight.<get-weight>|<get-weight>(){}[0]
+}
+
+final class ee.schimke.composeai.rcplayer.compose/RcFontFaces { // ee.schimke.composeai.rcplayer.compose/RcFontFaces|null[0]
+    constructor <init>(ee.schimke.composeai.rcplayer.compose/RcFontFace) // ee.schimke.composeai.rcplayer.compose/RcFontFaces.<init>|<init>(ee.schimke.composeai.rcplayer.compose.RcFontFace){}[0]
+    constructor <init>(kotlin.collections/List<ee.schimke.composeai.rcplayer.compose/RcFontFace>) // ee.schimke.composeai.rcplayer.compose/RcFontFaces.<init>|<init>(kotlin.collections.List<ee.schimke.composeai.rcplayer.compose.RcFontFace>){}[0]
+
+    final fun family(androidx.compose.ui.text.font/FontVariation.Settings? = ...): androidx.compose.ui.text.font/FontFamily? // ee.schimke.composeai.rcplayer.compose/RcFontFaces.family|family(androidx.compose.ui.text.font.FontVariation.Settings?){}[0]
+}
+
+final val ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportIssue$stableprop // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportIssue$stableprop|#static{}ee_schimke_composeai_rcplayer_compose_RcComposeSupportIssue$stableprop[0]
+final val ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportReport$stableprop // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportReport$stableprop|#static{}ee_schimke_composeai_rcplayer_compose_RcComposeSupportReport$stableprop[0]
+final val ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFace$stableprop // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFace$stableprop|#static{}ee_schimke_composeai_rcplayer_compose_RcFontFace$stableprop[0]
+final val ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFaces$stableprop // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFaces$stableprop|#static{}ee_schimke_composeai_rcplayer_compose_RcFontFaces$stableprop[0]
+
+final fun (ee.schimke.composeai.rcplayer.protocol/RcDocument).ee.schimke.composeai.rcplayer.compose/composeSupportReport(ee.schimke.composeai.rcplayer.protocol/RcOperationProfile? = ..., kotlin.collections/Set<kotlin/String> = ..., kotlin/Boolean = ...): ee.schimke.composeai.rcplayer.compose/RcComposeSupportReport // ee.schimke.composeai.rcplayer.compose/composeSupportReport|composeSupportReport@ee.schimke.composeai.rcplayer.protocol.RcDocument(ee.schimke.composeai.rcplayer.protocol.RcOperationProfile?;kotlin.collections.Set<kotlin.String>;kotlin.Boolean){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/RcComposePlayer(ee.schimke.composeai.rcplayer.protocol/RcDocument, androidx.compose.ui/Modifier?, kotlin/Int, kotlin.collections/Map<kotlin/String, ee.schimke.composeai.rcplayer.runtime/RcNamedValue>?, kotlin/Function1<ee.schimke.composeai.rcplayer.runtime/RcPlayerEvent, kotlin/Unit>?, kotlin.collections/Map<kotlin/String, ee.schimke.composeai.rcplayer.compose/RcFontFaces>?, kotlin/Function1<kotlin/String, kotlin/Int?>?, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // ee.schimke.composeai.rcplayer.compose/RcComposePlayer|RcComposePlayer(ee.schimke.composeai.rcplayer.protocol.RcDocument;androidx.compose.ui.Modifier?;kotlin.Int;kotlin.collections.Map<kotlin.String,ee.schimke.composeai.rcplayer.runtime.RcNamedValue>?;kotlin.Function1<ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent,kotlin.Unit>?;kotlin.collections.Map<kotlin.String,ee.schimke.composeai.rcplayer.compose.RcFontFaces>?;kotlin.Function1<kotlin.String,kotlin.Int?>?;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/RcComposePlayer(kotlin/ByteArray, androidx.compose.ui/Modifier?, kotlin/Int, kotlin.collections/Map<kotlin/String, ee.schimke.composeai.rcplayer.runtime/RcNamedValue>?, kotlin/Function1<ee.schimke.composeai.rcplayer.runtime/RcPlayerEvent, kotlin/Unit>?, kotlin.collections/Map<kotlin/String, ee.schimke.composeai.rcplayer.compose/RcFontFaces>?, kotlin/Function1<kotlin/String, kotlin/Int?>?, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // ee.schimke.composeai.rcplayer.compose/RcComposePlayer|RcComposePlayer(kotlin.ByteArray;androidx.compose.ui.Modifier?;kotlin.Int;kotlin.collections.Map<kotlin.String,ee.schimke.composeai.rcplayer.runtime.RcNamedValue>?;kotlin.Function1<ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent,kotlin.Unit>?;kotlin.collections.Map<kotlin.String,ee.schimke.composeai.rcplayer.compose.RcFontFaces>?;kotlin.Function1<kotlin.String,kotlin.Int?>?;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportIssue$stableprop_getter(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportIssue$stableprop_getter|ee_schimke_composeai_rcplayer_compose_RcComposeSupportIssue$stableprop_getter(){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportReport$stableprop_getter(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcComposeSupportReport$stableprop_getter|ee_schimke_composeai_rcplayer_compose_RcComposeSupportReport$stableprop_getter(){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFace$stableprop_getter(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFace$stableprop_getter|ee_schimke_composeai_rcplayer_compose_RcFontFace$stableprop_getter(){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFaces$stableprop_getter(): kotlin/Int // ee.schimke.composeai.rcplayer.compose/ee_schimke_composeai_rcplayer_compose_RcFontFaces$stableprop_getter|ee_schimke_composeai_rcplayer_compose_RcFontFaces$stableprop_getter(){}[0]
+final fun ee.schimke.composeai.rcplayer.compose/rcResolveSystemTheme(kotlin/Int, androidx.compose.runtime/Composer?, kotlin/Int): kotlin/Int // ee.schimke.composeai.rcplayer.compose/rcResolveSystemTheme|rcResolveSystemTheme(kotlin.Int;androidx.compose.runtime.Composer?;kotlin.Int){}[0]
+
+// Targets: [ios]
+final fun ee.schimke.composeai.rcplayer.compose/RcComposeViewController(kotlin/ByteArray, kotlin/Int = ..., kotlin/Function1<ee.schimke.composeai.rcplayer.runtime/RcPlayerEvent, kotlin/Unit> = ..., kotlin.collections/Map<kotlin/String, ee.schimke.composeai.rcplayer.compose/RcFontFaces> = ..., kotlin/Function1<kotlin/String, kotlin/Unit> = ...): platform.UIKit/UIViewController // ee.schimke.composeai.rcplayer.compose/RcComposeViewController|RcComposeViewController(kotlin.ByteArray;kotlin.Int;kotlin.Function1<ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent,kotlin.Unit>;kotlin.collections.Map<kotlin.String,ee.schimke.composeai.rcplayer.compose.RcFontFaces>;kotlin.Function1<kotlin.String,kotlin.Unit>){}[0]

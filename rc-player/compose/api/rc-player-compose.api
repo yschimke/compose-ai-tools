@@ -1,0 +1,62 @@
+public final class ee/schimke/composeai/rcplayer/compose/RcComposePlayerKt {
+	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;ILjava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;ILjava/util/Map;Lkotlin/jvm/functions/Function1;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue {
+	public static final field $stable I
+	public fun <init> (ILjava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;Ljava/lang/String;)Lee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue;ILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDetail ()Ljava/lang/String;
+	public final fun getOperation ()Ljava/lang/String;
+	public final fun getOperationIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcComposeSupportKt {
+	public static final fun composeSupportReport (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;Ljava/util/Set;Z)Lee/schimke/composeai/rcplayer/compose/RcComposeSupportReport;
+	public static synthetic fun composeSupportReport$default (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Lee/schimke/composeai/rcplayer/protocol/RcOperationProfile;Ljava/util/Set;ZILjava/lang/Object;)Lee/schimke/composeai/rcplayer/compose/RcComposeSupportReport;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcComposeSupportReport {
+	public static final field $stable I
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lee/schimke/composeai/rcplayer/compose/RcComposeSupportReport;
+	public static synthetic fun copy$default (Lee/schimke/composeai/rcplayer/compose/RcComposeSupportReport;Ljava/util/List;ILjava/lang/Object;)Lee/schimke/composeai/rcplayer/compose/RcComposeSupportReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFullyRenderable ()Z
+	public final fun getIssues ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun requireFullyRenderable ()V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcFontFace {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;[BIZ)V
+	public synthetic fun <init> (Ljava/lang/String;[BIZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getData ()[B
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getItalic ()Z
+	public final fun getWeight ()I
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcFontFaces {
+	public static final field $stable I
+	public fun <init> (Lee/schimke/composeai/rcplayer/compose/RcFontFace;)V
+	public fun <init> (Ljava/util/List;)V
+	public final fun family (Landroidx/compose/ui/text/font/FontVariation$Settings;)Landroidx/compose/ui/text/font/FontFamily;
+	public static synthetic fun family$default (Lee/schimke/composeai/rcplayer/compose/RcFontFaces;Landroidx/compose/ui/text/font/FontVariation$Settings;ILjava/lang/Object;)Landroidx/compose/ui/text/font/FontFamily;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcSystemThemeKt {
+	public static final fun rcResolveSystemTheme (ILandroidx/compose/runtime/Composer;I)I
+}
+
