@@ -116,10 +116,11 @@ If the automatic chain ever leaves a release half-published (e.g. Maven Central 
 
 Both fallbacks share the same concurrency group as the primary path, so they can't race each other. The final upload step is idempotent — it uploads onto an existing Release (or creates one if none exists).
 
-**One exception: npm.** Neither fallback can publish `@yschimke/compose-design-map`, because both
+**One exception: npm.** Neither fallback can publish `@yschimke/compose-design-map` or
+`@yschimke/remote-compose-player-cmp`, because both
 enter through `release.yml` and the npm trusted publisher is bound to `release-please.yml` (see the
 trusted-publishing note under "What the `release.yml` workflow does" — npm permits one binding per
-package). If `publish-design-map` failed, re-run *that job* in the original **Release PR** run
+package). If `publish-design-map` or `publish-wasm-player` failed, re-run *that job* in the original **Release PR** run
 instead: Actions → the run → **Re-run failed jobs**. An `E404 Not Found - PUT` from `npm publish`
 means the OIDC token did not match the trusted publisher, not that the package or version is
 missing.
@@ -148,7 +149,9 @@ republishing the release.
    - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
 4. Publishes **`@yschimke/compose-design-map`** (the `design-map/` package — the annotations→`design-map.json` projection) to **npm**, at the tag's version. Uses npm Trusted Publishing (OIDC), so there is no npm token to rotate; provenance is attached automatically. Like the marketplace publishes it is tolerated rather than blocking, and it skips a version already on npm, so re-running it is safe. Unlike the other steps, its recovery is **re-running the failed job in the original release run**, not a `workflow_dispatch` of `release.yml` — see the trusted-publisher note below.
-5. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+5. Publishes **`@yschimke/remote-compose-player-cmp`** (the CMP/Wasm Remote Compose player bundle, staged by `:rc-player-wasm:rcPlayerNpmPackage`) to **npm**, at the tag's version, and attaches the same bundle to the Release as `rc-player-wasm.zip` for consumers who do not want npm. Same OIDC trusted-publishing arrangement, same tolerated-not-blocking posture, same re-run-the-job recovery as the design map. Its **embed contract** — `?src=`, `window.rcPlayerLoad`, the readiness marker — is versioned separately from the release; see [docs/design/RC_PLAYER_EMBED.md](design/RC_PLAYER_EMBED.md).
+6. Publishes the **iOS XCFramework**: uploads `RcComposePlayer.xcframework.zip` to the Release, rewrites `Package.swift` to point at it, and tags that commit `swift/<version>`. The Swift tag exists because SPM verifies a checksum that can only be written *after* the asset is uploaded; see [docs/design/RC_PLAYER_SWIFT.md](design/RC_PLAYER_SWIFT.md).
+7. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Alongside `release.yml`, the automatic release chain starts
 `preview-host-image.yml` immediately after tag creation. That job builds only

@@ -471,6 +471,74 @@ jobs:
           fi
           npm publish "${flags[@]}"
 
+  # Publish the CMP/Wasm Remote Compose player bundle to npm (#4067), so a web page can embed it
+  # without cloning this repo and running Gradle.
+  #
+  # Same posture as `publish-design-map` above, and for the same reasons — including the
+  # `continue-on-error` and the "re-run this job, do not re-dispatch" recovery note, which is about
+  # npm's Trusted Publisher binding to the entry-point workflow rather than about this package.
+  #
+  # `rcPlayerNpmPackage` only *stages* the directory; `npm` runs here and nowhere else. Keeping Node
+  # out of the Gradle build is the constraint that made the CLI vendor a prebuilt JS player in the
+  # first place (docs/design/RC_CMP_WASM_PLAYER.md), and it still holds.
+  publish-wasm-player:
+    needs: [build-applications, build-vscode-extension]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      id-token: write # OIDC trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG_NAME }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-read-only: 'true'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Upgrade npm (OIDC trusted publishing needs >= 11.5.1)
+        run: npm install -g npm@latest
+      # The size budget in `wasmPlayerDist` is the gate in front of an irreversible publish: npm
+      # refuses to overwrite a version, so a bundle that ballooned would have to be superseded.
+      - name: Stage the npm package
+        run: ./gradlew :rc-player-wasm:rcPlayerNpmPackage
+      - name: Set version from the tag
+        working-directory: rc-player/wasm/build/npmPackage
+        # The committed version is the 0.0.0 placeholder, as in `design-map`. Read from $TAG_NAME in
+        # the env rather than templating it, so a tag name cannot inject arguments.
+        run: npm version --no-git-tag-version --allow-same-version "${TAG_NAME#v}"
+      - name: Publish
+        env:
+          IS_RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
+        working-directory: rc-player/wasm/build/npmPackage
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if npm view "@yschimke/remote-compose-player-cmp@${version}" version >/dev/null 2>&1; then
+            echo "skip @yschimke/remote-compose-player-cmp@${version} (already published)"
+            exit 0
+          fi
+          flags=(--access public)
+          if [ "${IS_RECOVERY}" = "true" ]; then
+            flags+=(--provenance=false)
+            echo "recovery publish: provenance disabled (ref does not name the built tree)"
+          fi
+          npm publish "${flags[@]}"
+      # Also attach the raw bundle to the Release, for a consumer who wants the files without npm.
+      # Cheap, and it means a failed npm publish still leaves the release usable.
+      - name: Attach the bundle to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          (cd rc-player/wasm/build && zip -qr rc-player-wasm.zip wasmDist)
+          gh release upload "$TAG_NAME" rc-player/wasm/build/rc-player-wasm.zip --clobber
+
   release:
     # The GitHub Release asset upload depends ONLY on the build jobs that produce the assets — it is
     # deliberately NOT gated on `publish-gradle-plugin`. The Maven Central publish is slow and

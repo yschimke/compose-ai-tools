@@ -103,7 +103,9 @@ is no list to keep in step.
 
 `:rc-player-wasm` (an executable), `:rc-player-profile` (an application), `:rc-player-metrics` and
 `:rc-player-compat-tests` (fixture generators) are not published. The Wasm *distribution* is a
-different problem and is tracked in #4067. The iOS framework is packaged as an XCFramework and
+different problem: the browser bundle ships as the npm package
+`@yschimke/remote-compose-player-cmp`, with its embed contract written down and versioned separately
+in [RC_PLAYER_EMBED.md](RC_PLAYER_EMBED.md). The iOS framework is packaged as an XCFramework and
 distributed through Swift Package Manager — see [RC_PLAYER_SWIFT.md](RC_PLAYER_SWIFT.md).
 
 One target set across all four, deliberately: `iosX64` is gone everywhere rather than present on the

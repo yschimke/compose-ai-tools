@@ -71,6 +71,13 @@ public fun main() {
   // whatever else the embedding page measures, so a player embedded in someone's dashboard should
   // not be filling it on every frame. `?rcTrace=1` turns the player's spans on for a session; the
   // span names match the ones the desktop player writes into Perfetto.
+  // Publish the embed contract's version before anything else, so a host that loaded this bundle
+  // from npm can tell what it is talking to. The npm package's major tracks this number; the
+  // contract itself is written up in docs/design/RC_PLAYER_EMBED.md (#4067). It is a separate
+  // number from the repo's release version deliberately: the bundle ships on every release, and a
+  // host cares about whether `?src=` and `window.rcPlayerLoad` still mean what it coded against,
+  // not about which release it happens to have.
+  publishContractVersion(RC_PLAYER_EMBED_CONTRACT_VERSION)
   setRcPlatformTracingEnabled(queryParameter("rcTrace") == "1")
   loadRequest = LoadRequest(queryParameter("src"), generation = 0)
   installDocumentSwap()
@@ -365,6 +372,21 @@ private fun flattenNamedValuesFromLocation(): JsString? =
 private fun decodeUriComponent(value: String): String = decodeUriComponentJs(value).toString()
 
 private fun decodeUriComponentJs(value: String): JsString = js("decodeURIComponent(value)")
+
+/**
+ * The embed contract's version — see docs/design/RC_PLAYER_EMBED.md.
+ *
+ * Bump on any change a host could observe: a query parameter's meaning, the `data-rc-player-state`
+ * values, the `postMessage` payloads, or `window.rcPlayerLoad`'s behaviour. Adding a parameter or a
+ * message type is additive and does not bump it; a host feature-detects those.
+ */
+private const val RC_PLAYER_EMBED_CONTRACT_VERSION: Int = 1
+
+private fun publishContractVersion(version: Int): Unit =
+  js(
+    "(window.rcPlayerContractVersion = version, " +
+      "document.documentElement.dataset.rcPlayerContract = String(version))"
+  )
 
 private fun postReady(): Unit =
   js(
