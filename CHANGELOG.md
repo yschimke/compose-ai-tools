@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.15.0](https://github.com/yschimke/compose-ai-tools/compare/v1.14.1...v1.15.0) (2026-08-18)
+
+
+### Features
+
+* **serve:** persist warmed theme renders across restarts and regenerations ([#4145](https://github.com/yschimke/compose-ai-tools/issues/4145)) ([bd112b8](https://github.com/yschimke/compose-ai-tools/commit/bd112b8d3421146410aeaaa112815c769673924d))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.squareup.okhttp3:okhttp to v5.5.0 ([#4154](https://github.com/yschimke/compose-ai-tools/issues/4154)) ([cf2ab41](https://github.com/yschimke/compose-ai-tools/commit/cf2ab415d7cf81eaf16edc11a0f83c3781b3f09f))
+* **serve:** address missed Codex review findings ([#4162](https://github.com/yschimke/compose-ai-tools/issues/4162)) ([4781e20](https://github.com/yschimke/compose-ai-tools/commit/4781e20284ec69a0ec0c0e254fa118e35ef21f22))
+* **serve:** address PR 4162 review feedback ([#4163](https://github.com/yschimke/compose-ai-tools/issues/4163)) ([c4a737d](https://github.com/yschimke/compose-ai-tools/commit/c4a737d961f27af4a80980d6c0be1efbc6016126))
+* **serve:** await cold style override renders ([#4152](https://github.com/yschimke/compose-ai-tools/issues/4152)) ([4c0c7a6](https://github.com/yschimke/compose-ai-tools/commit/4c0c7a6a4e5c262b114bed5419510d051922dd0a))
+* **serve:** clarify status health and capacity ([#4155](https://github.com/yschimke/compose-ai-tools/issues/4155)) ([12e921f](https://github.com/yschimke/compose-ai-tools/commit/12e921feec907e7576a4b8ce74280e32412fe9e9))
+* **serve:** improve UI issue reports ([#4153](https://github.com/yschimke/compose-ai-tools/issues/4153)) ([57ad6b2](https://github.com/yschimke/compose-ai-tools/commit/57ad6b2c661d8682365b64d895c206bdbbac10ef))
+* **serve:** keep pinned revision controls consistent ([#4157](https://github.com/yschimke/compose-ai-tools/issues/4157)) ([e608bb4](https://github.com/yschimke/compose-ai-tools/commit/e608bb4d63391a7e59c32541ddfb5d21b33bc468))
+* **serve:** name the renderer in Catalog mode, and offer what the staging can answer ([#4160](https://github.com/yschimke/compose-ai-tools/issues/4160)) ([54dfa91](https://github.com/yschimke/compose-ai-tools/commit/54dfa91898dac5a51f2d74e583f398c6ada26db9))
+* **serve:** resolve UI consistency and state issues ([#4156](https://github.com/yschimke/compose-ai-tools/issues/4156)) ([3bb7bd0](https://github.com/yschimke/compose-ai-tools/commit/3bb7bd051491fff07b9e4618c7d86bf389f483e8))
+* **serve:** stop a cold daemon permanently disabling a Remote Compose player ([#4158](https://github.com/yschimke/compose-ai-tools/issues/4158)) ([17169cf](https://github.com/yschimke/compose-ai-tools/commit/17169cf08a4a3182ff555000a45f88f354f84ee5))
+
 ## [1.14.1](https://github.com/yschimke/compose-ai-tools/compare/v1.14.0...v1.14.1) (2026-08-17)
 
 
