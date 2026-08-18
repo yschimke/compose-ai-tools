@@ -110,6 +110,7 @@ public class RcPlayerState(
   private val basePaths = mutableMapOf<Int, RcPathData>()
   private val paths = mutableMapOf<Int, RcPathData>()
   private val variableNames = mutableMapOf<String, RcNamedVariable>()
+  private val documentNamedValues = mutableMapOf<String, RcNamedValue>()
   private val matrices = mutableMapOf<Int, RcMatrixConstant>()
   private val computedMatrices = mutableMapOf<Int, FloatArray>()
   private val idLists = mutableMapOf<Int, RcIdList>()
@@ -183,6 +184,10 @@ public class RcPlayerState(
     document.operations.filterIsInstance<RcTouchExpression>().forEach { operation ->
       if (operation.id !in floats) floats[operation.id] = resolve(operation.defaultValue)
     }
+    // Snapshot what the *document* recorded for each named variable, before any host override is
+    // applied. `setNamedValue` has no inverse, so without this a host that stops supplying a value
+    // has no way back — see [clearNamedValue].
+    variableNames.keys.forEach { name -> documentNamedValues[name] = readNamedValue(name) }
     namedValues.forEach { (name, value) -> setNamedValue(name, value) }
     beginFrame()
   }
@@ -1067,6 +1072,57 @@ public class RcPlayerState(
 
   public fun setLong(id: Int, value: Long) {
     longs[id] = value
+  }
+
+  /**
+   * The value [name] currently holds, typed by the variable's AndroidX type.
+   *
+   * The counterpart to [setNamedValue]: a host driving a document needs to read a value back — an
+   * action inside the document can change one — and this is also how [clearNamedValue] knows what
+   * the document recorded before any override.
+   */
+  public fun namedValue(name: String): RcNamedValue = readNamedValue(name)
+
+  /**
+   * Restore [name] to the value the document recorded, discarding any host override.
+   *
+   * The inverse [setNamedValue] never had. A host holding named values in a map will eventually
+   * *remove* one, and the only sensible reading of that is "stop overriding it", which needs the
+   * pre-override value — captured at construction, because by the time a removal happens the
+   * original has been overwritten. Values a document action changed are *not* restored: those are
+   * the document's own, not the host's, and the host never overrode them.
+   */
+  public fun clearNamedValue(name: String) {
+    val variable = requireNotNull(variableNames[name]) { "Unknown named variable '$name'" }
+    if (variable.type == RcNamedVariable.STRING_TYPE) {
+      // A text override outlives the frame it was set in: `beginFrame` rebuilds `texts` from
+      // `baseTexts` and then re-applies `textOverrides` on top, every frame. So clearing one means
+      // *removing* the override, not writing the old string back — writing it back would install a
+      // fresh override that happens to hold the document's text, and the document could never
+      // change it again.
+      textOverrides.remove(variable.id)
+      baseTexts[variable.id]?.let { texts[variable.id] = it } ?: texts.remove(variable.id)
+      return
+    }
+    documentNamedValues[name]?.let { setNamedValue(name, it) }
+  }
+
+  private fun readNamedValue(name: String): RcNamedValue {
+    val variable = requireNotNull(variableNames[name]) { "Unknown named variable '$name'" }
+    return when (variable.type) {
+      // `texts` is rebuilt per frame from `baseTexts`, so during construction — when
+      // `documentNamedValues` is captured — only `baseTexts` holds the document's own string.
+      RcNamedVariable.STRING_TYPE ->
+        RcNamedValue.Text(texts[variable.id] ?: baseTexts[variable.id].orEmpty())
+      RcNamedVariable.FLOAT_TYPE -> RcNamedValue.FloatValue(floats[variable.id] ?: 0f)
+      RcNamedVariable.COLOR_TYPE -> RcNamedValue.Color(colors[variable.id] ?: 0)
+      RcNamedVariable.INT_TYPE -> RcNamedValue.Integer(integers[variable.id] ?: 0)
+      RcNamedVariable.LONG_TYPE -> RcNamedValue.LongValue(longs[variable.id] ?: 0L)
+      else ->
+        throw IllegalArgumentException(
+          "Named variable '$name' has AndroidX type ${variable.type}, which carries no host value"
+        )
+    }
   }
 
   public fun setNamedValue(name: String, value: RcNamedValue) {

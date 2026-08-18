@@ -45,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -277,7 +278,7 @@ public fun RcComposePlayer(
   bytes: ByteArray,
   modifier: Modifier = Modifier,
   theme: RcPlayerTheme = RcPlayerTheme.System,
-  namedValues: Map<String, RcNamedValue> = emptyMap(),
+  namedValues: SnapshotStateMap<String, RcNamedValue> = rememberRcNamedValues(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   typefaces: RcTypefaceLoader = RcTypefaceLoader.Default,
   systemColors: (name: String) -> Color? = { null },
@@ -291,7 +292,7 @@ public fun RcComposePlayer(
   document: RcDocument,
   modifier: Modifier = Modifier,
   theme: RcPlayerTheme = RcPlayerTheme.System,
-  namedValues: Map<String, RcNamedValue> = emptyMap(),
+  namedValues: SnapshotStateMap<String, RcNamedValue> = rememberRcNamedValues(),
   onEvent: (RcPlayerEvent) -> Unit = {},
   typefaces: RcTypefaceLoader = RcTypefaceLoader.Default,
   systemColors: (name: String) -> Color? = { null },
@@ -316,7 +317,7 @@ private fun RcComposePlayerResolved(
   document: RcDocument,
   modifier: Modifier,
   theme: Int,
-  namedValues: Map<String, RcNamedValue>,
+  namedValues: SnapshotStateMap<String, RcNamedValue>,
   onEvent: (RcPlayerEvent) -> Unit,
   typefaces: RcTypefaceLoader,
   systemColors: (name: String) -> Color?,
@@ -327,11 +328,18 @@ private fun RcComposePlayerResolved(
   var invalidationVersion by remember { mutableIntStateOf(0) }
   var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
   var nextFrameRequestVersion by remember(document) { mutableIntStateOf(0) }
+  // Keyed on the document alone. `namedValues` is deliberately *not* in the key: a host rebuilding
+  // an equal map in a parent recomposition would otherwise construct a fresh `RcPlayerState` and
+  // discard running animation timelines, mid-drag touch state and every variable a document action
+  // had changed — the same hazard the `systemColors` comment below describes, on the one API a host
+  // uses to drive a live document. Changes are applied incrementally instead; see the
+  // `LaunchedEffect` under this block.
   val state =
-    remember(document, namedValues) {
+    remember(document) {
       RcPlayerState(
         document,
-        namedValues,
+        // Seeded once, from whatever the map holds when this document is first composed.
+        namedValues.toMap(),
         eventSink = { latestEventSink(it) },
         onInvalidated = { invalidationVersion += 1 },
         effectSink = { effect ->
@@ -359,6 +367,30 @@ private fun RcComposePlayerResolved(
         systemColorLookup = { name -> latestSystemColors(name)?.toRcArgb() },
       )
     }
+  // Apply host edits to the live state instead of rebuilding it. `setNamedValue` already applied a
+  // single value incrementally against `variableNames`, type-checked against the AndroidX variable
+  // type; nothing on the public path called it. A removal means "stop overriding this", which needs
+  // the pre-override value, so `clearNamedValue` is its inverse (see `RcPlayerState`).
+  //
+  // Restarted on `state` rather than `document` so a swap re-seeds from the map the host still
+  // owns. Errors are deliberately not caught: an unknown name or a type mismatch threw from the
+  // `RcPlayerState` constructor before this change, and a host that names a variable the document
+  // does not have should still hear about it rather than watch the value quietly not apply.
+  LaunchedEffect(state) {
+    var applied = namedValues.toMap()
+    snapshotFlow { namedValues.toMap() }
+      .collect { current ->
+        if (current == applied) return@collect
+        (applied.keys - current.keys).forEach(state::clearNamedValue)
+        current.forEach { (name, value) ->
+          if (applied[name] != value) state.setNamedValue(name, value)
+        }
+        applied = current
+        // `setNamedValue` writes into the state's maps without going through the action path, so
+        // nothing else tells the draw layer a value moved.
+        invalidationVersion += 1
+      }
+  }
   val needsContinuousFrames =
     remember(document) {
       document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null } ||

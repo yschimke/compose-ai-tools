@@ -9,7 +9,9 @@ package ee.schimke.composeai.rcplayer.wasm
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -131,6 +133,15 @@ public fun main() {
       // failure still has to be reported — `rcPlayerLoad` cleared the marker the first one set.
       is LoadState.Failed -> LaunchedEffect(request, state.message) { reportFailure(state.message) }
       is LoadState.Ready -> {
+        // Keyed on the document, not the page: `?namedValues=` belongs to the page, but the
+        // *variables* belong to the document, so a swap starts from the URL's values again rather
+        // than carrying the previous document's overrides into one that may not declare them.
+        // Seeded during composition so the player's `RcPlayerState` is constructed with them
+        // already in place, exactly as the old `Map` parameter was.
+        val namedValues =
+          remember(state.document) {
+            mutableStateMapOf<String, RcNamedValue>().apply { putAll(state.namedValues) }
+          }
         RcComposePlayer(
           state.document,
           Modifier.fillMaxSize().drawWithContent {
@@ -138,7 +149,7 @@ public fun main() {
             drawContent()
           },
           theme = theme,
-          namedValues = state.namedValues,
+          namedValues = namedValues,
           onEvent = ::postPlayerEvent,
           typefaces = state.typefaces,
         )

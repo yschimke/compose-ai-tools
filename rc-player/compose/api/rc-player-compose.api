@@ -6,8 +6,8 @@ public final class ee/schimke/composeai/rcplayer/compose/RcBundledTypefaceLoader
 }
 
 public final class ee/schimke/composeai/rcplayer/compose/RcComposePlayerKt {
-	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
-	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer (Lee/schimke/composeai/rcplayer/protocol/RcDocument;Landroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Landroidx/compose/runtime/snapshots/SnapshotStateMap;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun RcComposePlayer ([BLandroidx/compose/ui/Modifier;Lee/schimke/composeai/rcplayer/compose/RcPlayerTheme;Landroidx/compose/runtime/snapshots/SnapshotStateMap;Lkotlin/jvm/functions/Function1;Lee/schimke/composeai/rcplayer/compose/RcTypefaceLoader;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
 }
 
 public final class ee/schimke/composeai/rcplayer/compose/RcComposeSupportIssue {
@@ -61,6 +61,12 @@ public final class ee/schimke/composeai/rcplayer/compose/RcFontFaces {
 	public fun <init> (Ljava/util/List;)V
 	public final fun family (Landroidx/compose/ui/text/font/FontVariation$Settings;)Landroidx/compose/ui/text/font/FontFamily;
 	public static synthetic fun family$default (Lee/schimke/composeai/rcplayer/compose/RcFontFaces;Landroidx/compose/ui/text/font/FontVariation$Settings;ILjava/lang/Object;)Landroidx/compose/ui/text/font/FontFamily;
+}
+
+public final class ee/schimke/composeai/rcplayer/compose/RcNamedValuesKt {
+	public static final fun getColor (Lee/schimke/composeai/rcplayer/runtime/RcNamedValue$Color;)J
+	public static final fun rcNamedColor-8_81llA (J)Lee/schimke/composeai/rcplayer/runtime/RcNamedValue$Color;
+	public static final fun rememberRcNamedValues ([Lkotlin/Pair;Landroidx/compose/runtime/Composer;I)Landroidx/compose/runtime/snapshots/SnapshotStateMap;
 }
 
 public final class ee/schimke/composeai/rcplayer/compose/RcPlayerTheme : java/lang/Enum {

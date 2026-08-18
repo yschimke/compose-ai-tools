@@ -760,6 +760,7 @@ public final class ee/schimke/composeai/rcplayer/runtime/RcPlayerState {
 	public final fun beginFrame (FJ)V
 	public static synthetic fun beginFrame$default (Lee/schimke/composeai/rcplayer/runtime/RcPlayerState;FJILjava/lang/Object;)V
 	public final fun boolean (I)Ljava/lang/Boolean;
+	public final fun clearNamedValue (Ljava/lang/String;)V
 	public final fun color (I)I
 	public final fun emitDebugMessage (Lee/schimke/composeai/rcplayer/protocol/RcDebugMessage;)V
 	public final fun evaluateConditional (Lee/schimke/composeai/rcplayer/protocol/RcConditionalOperations;)Z
@@ -783,6 +784,7 @@ public final class ee/schimke/composeai/rcplayer/runtime/RcPlayerState {
 	public final fun integer (I)Ljava/lang/Integer;
 	public final fun long (I)Ljava/lang/Long;
 	public final fun matrixValues (I)[F
+	public final fun namedValue (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/runtime/RcNamedValue;
 	public final fun namedVariable (Ljava/lang/String;)Lee/schimke/composeai/rcplayer/protocol/RcNamedVariable;
 	public final fun path (I)Lee/schimke/composeai/rcplayer/protocol/RcPathData;
 	public final fun performHapticFeedback (Lee/schimke/composeai/rcplayer/protocol/RcHapticFeedback;)V
