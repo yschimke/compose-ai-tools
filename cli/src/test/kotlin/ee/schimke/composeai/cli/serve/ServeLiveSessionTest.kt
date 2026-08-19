@@ -16,6 +16,9 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class ServeLiveSessionTest {
 
+  /** A `setOverrides` message, as the viewer sends one when a knob changes. */
+  private val SET_DARK_OVERRIDES = """{"type":"setOverrides","overrides":{"uiMode":"dark"}}"""
+
   private val previewId = "com.example.Red"
 
   private fun newRenderRoot(): File =
@@ -180,8 +183,48 @@ class ServeLiveSessionTest {
       assertEquals(1, sent.size)
       val obj = Json.parseToJsonElement(sent[0]).jsonObject
       assertEquals("frame", obj.getValue("type").jsonPrimitive.content)
-      assertEquals("5", obj.getValue("seq").jsonPrimitive.content)
       assertEquals(payload, obj.getValue("dataBase64").jsonPrimitive.content)
+      // The socket numbers its own frames from 0 rather than relaying the daemon's per-stream
+      // counter (which is 5 here) — see the next test for why that matters.
+      assertEquals("0", obj.getValue("seq").jsonPrimitive.content)
+    }
+  }
+
+  @Test
+  fun `frame seq keeps climbing across a stream restart`() {
+    // Issue #4285. Every `setOverrides` closes the held daemon stream and opens a replacement whose
+    // own `seq` counts from zero. Relaying that made the socket's sequence jump BACKWARDS on any
+    // knob change — harmless while the browser painted whatever it received, and fatal once the
+    // client uses `seq` to drop stale frames: a viewer several frames in would reject the entire
+    // restarted stream and freeze the lane for good.
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val live =
+        assertNotNull(
+          ServeLiveSession.tryStart(
+            h,
+            previewId,
+            emptyMap(),
+            send = sent::add,
+            system = "compose-m3",
+          )
+        )
+      val payload = Base64.getEncoder().encodeToString("xy".toByteArray())
+      session.emitStreamFrame(assertNotNull(session.lastFrameStreamId), 7, payloadBase64 = payload)
+      session.emitStreamFrame(assertNotNull(session.lastFrameStreamId), 8, payloadBase64 = payload)
+
+      // Restart the held stream the way a knob change does; the new one numbers from zero again.
+      live.onClientMessage(SET_DARK_OVERRIDES)
+      session.emitStreamFrame(assertNotNull(session.lastFrameStreamId), 0, payloadBase64 = payload)
+      session.emitStreamFrame(assertNotNull(session.lastFrameStreamId), 1, payloadBase64 = payload)
+
+      val seqs =
+        sent
+          .map { Json.parseToJsonElement(it).jsonObject }
+          .filter { it["type"]?.jsonPrimitive?.content == "frame" }
+          .map { it.getValue("seq").jsonPrimitive.content.toLong() }
+      assertEquals(listOf(0L, 1L, 2L, 3L), seqs)
     }
   }
 

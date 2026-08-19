@@ -178,6 +178,34 @@ requestAnimationFrame(tick);
 // Wire ws.onFrame(...) to the daemon's `streamFrame` notification handler.
 ```
 
+## `serve` — the same rules, a different wire
+
+The preview server does not put `composestream/1` on the wire. A browser
+talks to `/ws/{previewId}` in `ServeStreamProtocol`'s much smaller
+envelope — `{type:"frame", seq, codec, widthPx, heightPx, dataBase64}` —
+and `ServeLiveSession` translates between that and the daemon's
+`stream/start` + `streamFrame`. The *client rules* above are the same on
+both, and both lanes now enforce them:
+`cli/serve-web/src/live/framePainter.ts` is the serve-side counterpart to
+`streamClient.ts`, shared by the viewer's stage and the grid's
+`<cp-catalog-live>` cards.
+
+Until issue #4285 the serve lanes enforced none of it: every frame built
+an `Image` from a `data:` URL and painted in `onload`, with no ordering
+guard at all. Decode time varies with frame content, so a heavier frame N
+could still be decoding when a lighter N+1 resolved, and the late N then
+painted *over* N+1 and stayed — until the next frame, or forever if the
+stream had gone quiescent.
+
+**`seq` on the serve wire is the socket's, not the daemon's.** One socket
+outlives several daemon streams: every `setOverrides` restarts the held
+session and every `switch` opens a replacement, each numbering from zero.
+`ServeLiveSession` therefore counts its own frames for the life of the
+connection. Relaying the daemon's numbers was harmless while the client
+painted everything it received and became load-bearing the moment the
+client started dropping stale frames — a viewer forty frames in would
+have rejected an entire restarted stream and frozen the lane.
+
 ## Codec negotiation
 
 `stream/start.codec` is a request; `stream/start.result.codec` is the
@@ -218,3 +246,7 @@ canvas painter; there is no opt-in setting and no fallback.
   multi-stream demux, sink isolation, late-bind buffering.
 - `vscode-extension` `liveCommand.test.ts` — pins the LIVE-button →
   wire-command rule (every entry point posts the same shape).
+- `cli` `ServeLiveSessionTest` — the socket's own monotonic `seq`,
+  including across a stream restart.
+- `cli/serve-web` `liveFramePainter.test.ts` — newest-wins queue, stale
+  drop after dispatch, the post-decode watermark, heartbeat handling.

@@ -5064,9 +5064,11 @@ class ServeWebFixtureTest {
       viewerSource().contains("(boxW - w) / 2") && viewerSource().contains("(boxH - h) / 2"),
       "the fitted frame is centred within the snapshot box",
     )
-    // drawFrame caches the buffer dims and re-fits on each frame; a resize re-fits too.
+    // The painter caches the buffer dims and re-fits on every frame; a resize re-fits too. Reads
+    // the decoded bitmap rather than an <img>'s natural size since #4285 moved the lane onto
+    // `createImageBitmap` for the ordering guarantees.
     assertTrue(
-      viewerSource().contains("liveW = im.naturalWidth;") &&
+      viewerSource().contains("liveW = bitmap.width;") &&
         viewerSource().contains("fitLiveCanvas();"),
       "each frame caches its dims and re-fits",
     )
