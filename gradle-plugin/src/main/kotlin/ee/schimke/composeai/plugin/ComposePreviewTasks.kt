@@ -1089,8 +1089,15 @@ internal object ComposePreviewTasks {
       // The empty artifact view preserves the default resolution (same files as `from(config)`)
       // while
       // resolving lazily through a serializable view — mirrors `composePreviewDiscover` above.
-      classpath.from(toolClasspath.incoming.artifactView {}.files)
+      val toolFiles = toolClasspath.incoming.artifactView {}.files
+      classpath.from(toolFiles)
       pinnedConsumerClasspath(project, dependencyConfigName())?.let { classpath.from(it) }
+      // The same files again, on their own, so the skiko check can tell the tool's resolved pair
+      // apart from the consumer's instead of reading the concatenation as one skewed classpath
+      // (#4200, fixed in #4234). `classpath` stays the union: the AndroidX-artifact check wants to
+      // see the
+      // consumer's jars, and a substring scan gives the same answer over either shape.
+      this.toolClasspath.from(toolFiles)
     }
 
   /**
