@@ -85,6 +85,19 @@ class RenderCircuitBreaker(
   /** How long a rate-tripped breaker stays shut before admitting one probe render. */
   private val probeCooldownMillis: Long = PROBE_COOLDOWN_MILLIS,
   private val clock: () -> Long = System::currentTimeMillis,
+  /**
+   * Given the failure text of a **fatal** trip, one extra sentence explaining it — or null when
+   * there is nothing to add.
+   *
+   * The open breaker's reason is what every refused render answers with, so it is the only
+   * diagnosis anyone outside the box ever sees. A bare `UnsatisfiedLinkError: 'int
+   * org.jetbrains.skia…'` names the missing symbol and nothing that explains it, which is how
+   * issue #4220 was reported and why its cause had to be inferred from outside; the serve path
+   * supplies [SkikoNativePairing.linkageDiagnosis] here so the same body also names the Skiko skew
+   * the daemon's own classpath carries. Called once, under the lock, on the trip only — never on
+   * the hot path. Anything it throws is dropped: a diagnosis must not cost the trip.
+   */
+  private val linkageDiagnosis: (String) -> String? = { null },
 ) {
   private val lock = Any()
 
@@ -147,9 +160,11 @@ class RenderCircuitBreaker(
       val marker = RenderFailureClassifier.fatalMarker(reason)
       if (marker != null) {
         fatal = true
+        val diagnosis = runCatching { linkageDiagnosis(reason) }.getOrNull()
         openReason =
           "render lane disabled after a non-recoverable $marker — retrying cannot help. " +
-            "Last failure: $reason"
+            "Last failure: $reason" +
+            diagnosis?.let { " $it" }.orEmpty()
         openedAtEpochMillis = clock()
         tripFailureRate = failureRate()
         return
