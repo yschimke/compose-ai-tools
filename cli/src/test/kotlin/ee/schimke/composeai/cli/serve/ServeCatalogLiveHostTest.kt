@@ -1219,7 +1219,15 @@ class ServeCatalogLiveHostTest {
       )
 
     composite.prewarm()
-    awaitOk(5_000) { backgroundWork.optimizerAdmissionSnapshot().takeIf { it.running == 1 } }
+    // The pass is at the quiet gate, which it now waits out holding NO lane — so what says it has
+    // started is its own worker being active, not an admission. (It used to be `running == 1`;
+    // that assertion was reading the bug where a gated pass sat on a lane the whole time.)
+    awaitOk(5_000) { composite.backgroundWorkActive.takeIf { it } }
+    assertEquals(
+      0,
+      backgroundWork.optimizerAdmissionSnapshot().running,
+      "a pass waiting for quiet must not be occupying a lane while it waits",
+    )
     backgroundWork.pauseOptimizers(60_000, "deploy")
     idleMillis.set(Long.MAX_VALUE)
     Thread.sleep(150)
@@ -1637,6 +1645,137 @@ class ServeCatalogLiveHostTest {
       waited.waitingMillis >= waited.gateWaitMillis,
       "the total must not contradict the part it is made of",
     )
+    composite.close()
+  }
+
+  /**
+   * A gated pass must not hold a lane while it waits — the failure that took the deployed server's
+   * theme cache to a standstill.
+   *
+   * Two catalogs won the two lanes at startup, blocked in the quiet wait, and never came out:
+   * `idleMillis()` answers *busy* outright while any session holds a lease, so nothing they were
+   * waiting for could ever arrive. Every other catalog was refused every 20s — 8,052 refusals, 43
+   * cumulative hours at the door — and not one of the 23 was ever granted a turn.
+   */
+  @Test
+  fun `a pass waiting on a gate that never opens leaves both lanes free for everyone else`() {
+    val backgroundWork = ServeBackgroundWork(maxConcurrentOptimizers = 1)
+    val previews = listOf(ServePreview(daemonId, daemonId))
+    fun host(idle: () -> Long?) =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live =
+          RecordingHost(previews = previews, tag = "live", declaredThemes = listOf(brandTheme)),
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = idle,
+        themeOptimizationIdleMillis = 100,
+        // The ceiling is the subject of its own test; off here so this one measures the lane.
+        optimizerGateCeilingMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+
+    // Null is the registry's "a session holds an open lease": this catalog can never be granted a
+    // turn, however long it waits.
+    val blocked = host { null }
+    blocked.prewarm()
+    awaitOk(5_000) { blocked.backgroundWorkActive.takeIf { it } }
+
+    repeat(5) {
+      assertEquals(
+        0,
+        backgroundWork.optimizerAdmissionSnapshot().running,
+        "a pass that cannot be granted a turn must wait at the gate, not on the only lane",
+      )
+      Thread.sleep(50)
+    }
+
+    // ...and the single lane is still there for a catalog whose box IS quiet.
+    val quiet = host { Long.MAX_VALUE }
+    quiet.prewarm()
+    assertTrue(awaitOptimization(quiet).fullyOptimized, "the free lane must be usable")
+
+    blocked.close()
+    quiet.close()
+  }
+
+  /**
+   * The ceiling: a gate that can shut permanently is indistinguishable from the feature being off.
+   *
+   * `idleMillis()` returning null is not "very busy", it is "unanswerable" — no quiet window ever
+   * satisfies it — so without a ceiling one leaked session lease switches theme optimization off
+   * for the life of the process, silently. The forced turn is deliberately one preview wide, which
+   * this asserts by leaving the box permanently busy and still expecting the work to finish.
+   */
+  @Test
+  fun `a gate that stays shut past the ceiling still grants a turn`() {
+    val backgroundWork = ServeBackgroundWork()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { null },
+        themeOptimizationIdleMillis = 100,
+        optimizerGateCeilingMillis = 50,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    val done = awaitOptimization(composite)
+
+    assertTrue(done.fullyOptimized, "the ceiling must make progress a shut gate never would")
+    assertTrue(done.turnsForced > 0, "and say so: the box never granted this turn, the ceiling did")
+    assertTrue(
+      done.turnsForced <= done.turnsGranted,
+      "forced turns are a slice of the granted total, not a separate tally",
+    )
+    composite.close()
+  }
+
+  /**
+   * The one refusal the ceiling must respect.
+   *
+   * Catalog loading reads as busy on purpose: a daemon start starved by background renders is
+   * recorded as `livebundle-unavailable` and degrades that catalog to baked PNGs for the whole
+   * process. A cold theme cache is recoverable; that is not — so the ceiling waits for loading in a
+   * way it deliberately does not wait for traffic.
+   */
+  @Test
+  fun `the ceiling does not override the catalog-loading gate`() {
+    val backgroundWork = ServeBackgroundWork()
+    backgroundWork.expectInitialCatalogLoad()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        // Quiet as far as requests go — only the load is holding the gate.
+        serverIdleMillis = backgroundWork.idleClock { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 100,
+        optimizerGateCeilingMillis = 50,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    // Comfortably past the ceiling, which would have forced a turn were traffic the only reason.
+    Thread.sleep(400)
+    assertEquals(0, live.renderCalls, "no render may start while catalogs are still loading")
+    assertEquals(0, composite.themeOptimizationSnapshot()?.turnsForced)
+
+    backgroundWork.initialCatalogLoadFinished()
+    assertTrue(awaitOptimization(composite).fullyOptimized)
     composite.close()
   }
 
