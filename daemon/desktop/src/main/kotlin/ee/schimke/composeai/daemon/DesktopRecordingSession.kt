@@ -21,6 +21,7 @@ import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.renderer.encodePngData
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -30,7 +31,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
@@ -1028,7 +1028,7 @@ class DesktopRecordingSession(
   private fun encodeScaledPng(image: Image): ByteArray =
     if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {
       // Fast path: no scaling needed, encode the held scene's Image directly.
-      image.encodeToData(EncodedImageFormat.PNG)?.bytes ?: error("encodeToData(PNG) returned null")
+      image.encodePngData()?.bytes ?: error("encodePngData() returned null")
     } else {
       // Scaled path: draw the natural-size Image onto a `frameWidthPx × frameHeightPx` raster
       // surface and encode the snapshot. `LINEAR` sampling is the right default for both up- and
@@ -1047,8 +1047,7 @@ class DesktopRecordingSession(
         )
         val snap = surface.makeImageSnapshot()
         try {
-          snap.encodeToData(EncodedImageFormat.PNG)?.bytes
-            ?: error("encodeToData(PNG) returned null (scaled)")
+          snap.encodePngData()?.bytes ?: error("encodePngData() returned null (scaled)")
         } finally {
           snap.close()
         }
@@ -1066,8 +1065,8 @@ class DesktopRecordingSession(
    */
   private fun talkBackFrameBytes(image: Image, frameIndex: Int): ByteArray {
     val naturalBytes =
-      image.encodeToData(EncodedImageFormat.PNG)?.bytes
-        ?: error("encodeToData(PNG) returned null at frame $frameIndex (talkBack)")
+      image.encodePngData()?.bytes
+        ?: error("encodePngData() returned null at frame $frameIndex (talkBack)")
     val nodes = extractTalkBackNodes()
     val stopCount = TalkBackTraversal.focusStops(nodes).size
     val focusedStop = TalkBackOverlayFrames.focusedStopForFrame(frameIndex, fps, stopCount)
