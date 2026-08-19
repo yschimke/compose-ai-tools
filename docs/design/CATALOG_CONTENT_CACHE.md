@@ -259,14 +259,36 @@ Each ships independently and is provable on its own.
 
 | # | Change | Wins | Risk |
 | --- | --- | --- | --- |
-| **1** | `--catalog-cache-dir`; move `.res-cache` and the executable bundles + splits into `<root>/blobs/` | The largest byte win (100 MB-class bundles), and it survives *reloads* as well as restarts | Low — the sha verification already exists; only the path changes |
+| **1 — landed** | `--catalog-cache-dir` + `--catalog-cache-max-bytes`; `.res-cache` and the executable bundles + splits moved into a content-addressed [`CatalogBlobPool`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/CatalogBlobPool.kt) | The largest byte win (100 MB-class bundles), and it survives *reloads* as well as restarts | Low — the sha verification already existed; only the path changed |
 | **2** | Asset cache for commit-pinned reads, behind `fetchCatalogAsset`; `cached` counter | Lazy PNGs, motion, references, and the `?at=` lane stop re-fetching | Low — one funnel, one admission rule |
 | **3** | Generation snapshots + `current` pointer; adopt-then-converge boot; seed the refresher's head | The restart win: catalogs serve before any network | Medium — the adoption checks are where the care goes |
-| **4** | `?flush=1`, `DELETE /admin/catalog-cache[/<system>]`, `catalogCache` status block, sweeper + grace window | Operability, and the ability to tell a working cache from write amplification | Low |
+| **4** | `?flush=1`, `DELETE /admin/catalog-cache[/<system>]`, `catalogCache` status block | Operability, and the ability to tell a working cache from write amplification | Low |
 | **5** | Background audit: adopted-commit reachability from the Atom feed, plus a sampled byte comparison | Catches disk corruption and rewritten history | Low — reports, never gates |
 
 Phases 1–2 are worth doing regardless of whether 3 lands: they are pure subtraction from the fetch
 path with no new correctness surface. Phase 3 is where the headline number is.
+
+### What phase 1 shipped, and where it differs from this plan
+
+Two deliberate departures, both in the direction of shipping less surface rather than more:
+
+- **The sweeper came with phase 1, not phase 4.** It was planned late because it reads like
+  operability, but an opt-in durable cache with no ceiling is a "you turned this on and it filled
+  your disk" waiting to happen — and it turned out to be ~30 lines here rather than the careful
+  live-set reasoning `ThemeCacheStore.sweep` needs, because evicting a pooled blob is *always* safe:
+  the worst it costs is the fetch that produces it again. The grace window came with it, for the
+  overlapping replicas a rolling update creates.
+- **There is no derived default.** The plan said "mirroring `--theme-cache-dir`'s conventions
+  exactly", and the theme and feed caches both default to a directory beside `catalogs.json` — which
+  on the prebuilt image is the *configuration* volume. That is fine for a few MB of feed XML and
+  wrong for several GB of executable bundles, and the theme cache already had to introduce a `none`
+  sentinel to defend against exactly that. So this one has no derived location at all: unset means
+  the temp-dir pool the server always had, a path means that path, `none` forces the temp dir back.
+
+Also worth recording, because it is the number phase 3 has to beat: with the pool warm, what a boot
+still pays is the *manifests* — one Atom feed, one `catalog.json`, one preview index and the
+reference/page indexes per catalog — plus re-assembling each per-system staging directory. The
+executable tier, which was the bulk, is now read locally.
 
 ## What this deliberately does not do
 

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.BundleVerifier
+import ee.schimke.composeai.cli.serve.CatalogBlobPool
 import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.CatalogRefreshResult
 import ee.schimke.composeai.cli.serve.CatalogThemeCache
@@ -774,6 +775,83 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         } ?: OptimizerHostCoordinator.NONE,
       pressureGate = OptimizerPressureGate(sample = pressureSampler::sample),
     )
+  }
+
+  /**
+   * Durable, content-addressed home for the heavy bytes a catalog load fetches — the executable
+   * `liveBundle`, its per-preview splits, and the externalised resource pool ([CatalogBlobPool]).
+   *
+   * **Unlike the theme cache, unset is not off.** A temp-directory pool is exactly what this server
+   * has always had — it is shared across systems and reloads and simply dies with the process — so
+   * falling back to one costs nothing that was not already being paid. What `none` buys is the
+   * ability to say "do not keep these bytes anywhere durable"; what a directory buys is that a
+   * rolled container stops re-downloading ~100 MB per live catalog.
+   *
+   * **There is deliberately no derived default.** The feed and theme caches land beside
+   * `catalogs.json`, which on the prebuilt image is the configuration volume — fine for a few MB of
+   * feed XML, wrong for a pool that may hold several GB of executable bundles. So an unset flag
+   * means the temp-dir pool this always had, a path means that path, and `none` forces the temp dir
+   * back (which is how a deployment overrides an environment default without unsetting it).
+   */
+  private val catalogBlobPool: CatalogBlobPool by lazy {
+    val requested = args.flagValue("--catalog-cache-dir")?.takeIf { it.isNotBlank() }
+    val maxBytes =
+      args.flagValue("--catalog-cache-max-bytes")?.toLongOrNull()?.takeIf { it > 0 }
+        ?: CatalogBlobPool.DEFAULT_MAX_BYTES
+    val preferred = requested?.takeIf { it != "none" }?.let(::File)
+    if (
+      preferred != null && (preferred.isDirectory || preferred.mkdirs()) && preferred.canWrite()
+    ) {
+      System.err.println(
+        "serve: catalog blob cache at $preferred (cap ${maxBytes / (1024 * 1024)} MB)"
+      )
+      CatalogBlobPool(preferred, maxBytes = maxBytes)
+    } else {
+      if (preferred != null) {
+        System.err.println("serve: catalog blob cache $preferred is not writable; using a temp dir")
+      }
+      val temp =
+        java.nio.file.Files.createTempDirectory("serve-catalog-blobs").toFile().also {
+          it.deleteOnExit()
+        }
+      CatalogBlobPool(temp, maxBytes = maxBytes)
+    }
+  }
+
+  /**
+   * Rate limiter for [sweepCatalogBlobs] — see there for why it is not a per-call-site decision.
+   */
+  private val lastCatalogBlobSweep = java.util.concurrent.atomic.AtomicLong()
+
+  /**
+   * Reclaim pooled blobs no longer worth their disk.
+   *
+   * Eviction is always safe here — the worst a reclaimed blob costs is the fetch that produces it
+   * again — so unlike [sweepThemeCache] this needs to know nothing about which catalogs are live.
+   * What it does need is to run after a **refresh** and not only after the startup pass: a box that
+   * regenerates several times a day would otherwise accumulate every superseded revision's bundles
+   * for the life of the process, which is exactly the disk this is supposed to bound.
+   *
+   * That makes it callable from every publication site, so the cost is bounded here rather than by
+   * each caller remembering to: a sweep is a directory census, the grace window means a sweep
+   * minutes after the last one is a near-certain no-op, and 23 catalogs publishing in sequence at
+   * boot would otherwise run 23 of them. [force] is for the end of the startup pass, which reports
+   * what the boot actually found — the one number that says whether the cache is working.
+   */
+  private fun sweepCatalogBlobs(force: Boolean = false) {
+    val now = System.currentTimeMillis()
+    val previous = lastCatalogBlobSweep.get()
+    if (!force && now - previous < CATALOG_BLOB_SWEEP_INTERVAL_MILLIS) return
+    if (!lastCatalogBlobSweep.compareAndSet(previous, now)) return
+    val snapshot = runCatching { catalogBlobPool.sweep() }.getOrNull() ?: return
+    // Otherwise silent: a periodic line saying nothing happened is noise, and the counters belong
+    // on /status rather than in the log.
+    if (force || snapshot.evicted > 0) {
+      System.err.println(
+        "serve: catalog blob cache — ${snapshot.blobs} blob(s), ${snapshot.bytes / (1024 * 1024)} MB, " +
+          "${snapshot.hits} hit(s), ${snapshot.misses} miss(es), ${snapshot.evicted} reclaimed"
+      )
+    }
   }
 
   /**
@@ -3078,6 +3156,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           // work is free to start; leaving it claimed would park the optimizer forever.
           backgroundWork.initialCatalogLoadFinished()
           sweepThemeCache()
+          sweepCatalogBlobs(force = true)
           if (!closed.get()) onComplete(loaded)
         }
       }
@@ -3123,6 +3202,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
         maxImages = catalogMaxImages,
+        blobs = catalogBlobPool,
         serverSideRenderEnabled = allowRenderTrusted,
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
@@ -3426,6 +3506,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // keeps
     // a failed `openHost` from deleting the cache of the host still serving.
     sweepThemeCache()
+    sweepCatalogBlobs()
     return true
   }
 
@@ -3690,6 +3771,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // needs its own post-publication sweep — without it a deployment of only source-backed catalogs
     // never reclaims a superseded generation, whatever the cap says.
     sweepThemeCache()
+    sweepCatalogBlobs()
     System.err.println(
       "serve: catalog $system → LIVE server-render from ${source.module}@${source.ref} " +
         "(?session=$system)"
@@ -4213,6 +4295,21 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         --catalog-feed-cache <dir>
                           Durable shallow-Git + generated-XML cache for catalog feeds. Defaults to a
                           catalog-feeds directory beside --catalogs-file, or a temp dir in local mode.
+        --catalog-cache-dir <dir>|none
+                          Durable, content-addressed store for the heavy bytes a catalog fetches —
+                          the executable liveBundle, its per-preview splits and the externalised
+                          resource pool — so a reload or a restart re-reads them instead of pulling
+                          ~100 MB per live catalog again. Unset (and `none`) keeps the temp-dir pool
+                          this always had, which dies with the process; there is no derived default,
+                          because the obvious one is the config volume. Only bytes addressed by a
+                          commit-pinned URL are cached, so a load that could not resolve its
+                          delivery commit populates nothing.
+        --catalog-cache-max-bytes <n>
+                          Ceiling for that store (default
+                          ${CatalogBlobPool.DEFAULT_MAX_BYTES / (1024L * 1024 * 1024)} GB).
+                          Reclaimed oldest-first after the startup pass and after each later
+                          catalog publication; blobs newer than an hour are spared so the replicas
+                          that overlap during a rolling update cannot evict each other's.
         --theme-cache-dir <dir>|none
                           Durable store for warmed theme renders, so background warming survives a
                           restart and a catalog refresh. `none` disables it. Defaults to a
@@ -4261,6 +4358,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
      */
     const val DEFAULT_CATALOG_REFRESH_SECONDS = 600L
     const val DEFAULT_CATALOG_FEED_IDLE_SECONDS = 7L * 24 * 60 * 60
+
+    /**
+     * Floor between catalog-blob sweeps. Comfortably shorter than the pool's own grace window (so a
+     * sweep is never the thing that delays a reclaim) and long enough that a burst of catalog
+     * publications runs one census rather than one each.
+     */
+    const val CATALOG_BLOB_SWEEP_INTERVAL_MILLIS = 5L * 60 * 1000
 
     /**
      * Compiles per minute per caller. Sized for a person using the editor, not for a script: a

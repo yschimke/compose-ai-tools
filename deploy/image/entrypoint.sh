@@ -383,5 +383,13 @@ fi
 [[ -n "${SERVE_THEME_CACHE_MAX_BYTES:-}" ]] &&
   args+=(--theme-cache-max-bytes "${SERVE_THEME_CACHE_MAX_BYTES}")
 
+# The heavy bytes a catalog fetches — its executable liveBundle, the per-preview splits and the
+# externalised resource pool — kept on a volume so a rolled replica reads them instead of pulling
+# ~100 MB per live catalog again. Unlike the theme cache, unset is NOT off: the server falls back
+# to a temp-dir pool, which is what it always had. Only commit-pinned reads are cached.
+[[ -n "${SERVE_CATALOG_CACHE_DIR:-}" ]] && args+=(--catalog-cache-dir "${SERVE_CATALOG_CACHE_DIR}")
+[[ -n "${SERVE_CATALOG_CACHE_MAX_BYTES:-}" ]] &&
+  args+=(--catalog-cache-max-bytes "${SERVE_CATALOG_CACHE_MAX_BYTES}")
+
 echo "entrypoint: compose-preview serve on 0.0.0.0:${PORT}" >&2
 exec compose-preview "${args[@]}"
