@@ -49,6 +49,25 @@ data class UsageRules(
    * through the file's own imports, so a rule here can never strike an unrelated annotation that
    * happens to share a name.
    */
+  /**
+   * Gradle module paths these rules describe — `["samples:design-catalog-m3", …]`.
+   *
+   * **Empty means every module in the repo**, which is what a single-catalog repo wants and what
+   * every existing rules file gets.
+   *
+   * It matters for a repo that publishes SEVERAL catalogs, as this one does. The rules file is read
+   * once per `(repo, ref)`, so without scoping the m3 sticker sheet's `Sticker`/`CatalogComponent`
+   * scaffolds and its `scaffoldSources` were also handed to the Wear and Remote catalogs, whose
+   * helpers are not declared there at all. Two consequences, both silent: their snippets could not
+   * resolve a helper the rules never named (Wear previews call the cross-file `wearCounted`), and
+   * `declaresCatalogScaffolds` — the Source panel's "the catalog declared its scaffolding, so what
+   * is left is usage code" note — answered *true* for catalogs that had declared nothing, dressing
+   * an unresolved snippet in the stronger claim.
+   *
+   * A location whose module is not listed falls back to [GENERIC], the same path a catalog with no
+   * rules file takes.
+   */
+  @SerialName("modules") val modules: List<String> = emptyList(),
   @SerialName("scaffoldAnnotationPackages")
   val scaffoldAnnotationPackages: List<String> = emptyList(),
 
@@ -371,6 +390,18 @@ data class UsageRules(
      * claim a declaration it never made.
      */
     fun UsageRules.declaresCatalogScaffolds(): Boolean = catalogScaffolds().isNotEmpty()
+
+    /**
+     * Whether these rules describe [module] — see [UsageRules.modules].
+     *
+     * An unscoped file (the common case, and every file written before scoping existed) applies
+     * everywhere. A scoped file applies only where it says. A location with no module at all is
+     * treated as covered: the alternative is silently dropping to [GENERIC] on a catalog published
+     * before discovery recorded the field, which would be a regression for the very catalog the
+     * rules were written for.
+     */
+    fun UsageRules.appliesToModule(module: String?): Boolean =
+      modules.isEmpty() || module == null || module in modules
 
     /**
      * The scaffolds a catalog declared itself — the merged map minus the generic ones it inherited.

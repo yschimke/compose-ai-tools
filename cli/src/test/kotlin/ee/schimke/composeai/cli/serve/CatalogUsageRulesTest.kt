@@ -15,6 +15,7 @@
  */
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.serve.UsageRules.Companion.appliesToModule
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -147,5 +148,63 @@ class CatalogUsageRulesTest {
       rules.scaffoldSources.size <= PlaygroundSeedResolver.MAX_SCAFFOLD_SOURCES,
       "more scaffold sources than the resolver will read",
     )
+  }
+
+  /**
+   * The rules are scoped to the modules they were written for, and the scope actually covers the
+   * catalog they describe.
+   *
+   * Both halves matter and they fail in opposite directions. Too WIDE (the old unscoped file) and
+   * the m3 sticker sheet's scaffolds reach the Wear and Remote catalogs, whose helpers these rules
+   * never name — their snippets then carry unresolved calls under `declaresCatalogScaffolds`'s
+   * stronger "the catalog declared its scaffolding" note. Too NARROW — a module renamed here but
+   * not in `catalog.spec.json` — and the m3 catalog silently drops to the generic rules, which is
+   * issue #4169 all over again with nothing to say it regressed.
+   */
+  @Test
+  fun `the rules are scoped to the m3 modules they describe`() {
+    assertEquals(
+      listOf("samples:design-catalog-m3", "samples:design-catalog-m3-shared"),
+      rules.modules,
+    )
+
+    // The scope has to include the module the m3 catalog actually publishes under, read from the
+    // spec rather than repeated here.
+    val declared =
+      Regex(""""module"\s*:\s*"([^"]+)"""")
+        .find(File(root, "samples/design-catalog-m3/catalog.spec.json").readText())
+        ?.groupValues
+        ?.get(1)
+    assertTrue(
+      declared != null && rules.appliesToModule(declared),
+      "compose-usage.json does not cover the module the m3 catalog publishes under ($declared)",
+    )
+    // Every scaffold source lives in one of the scoped modules — a source outside them would be
+    // read for a catalog these rules no longer apply to.
+    assertTrue(
+      rules.scaffoldSources.all { path ->
+        rules.modules.any { path.startsWith(it.replace(':', '/') + "/") }
+      },
+      "a scaffold source lives outside the scoped modules: ${rules.scaffoldSources}",
+    )
+
+    // The sibling catalogs published from this same repo must NOT inherit them.
+    assertFalse(rules.appliesToModule("samples:design-catalog-wear-m3"))
+    assertFalse(rules.appliesToModule("samples:design-catalog-remote-m3"))
+  }
+
+  /**
+   * An unscoped rules file — every one written before scoping existed — still applies everywhere.
+   */
+  @Test
+  fun `rules naming no modules apply to every module`() {
+    val unscoped =
+      assertNotNull(UsageRules.parse("""{"scaffolds":{"Sticker":{"kind":"EXPAND"}}}"""))
+
+    assertTrue(unscoped.appliesToModule("samples:design-catalog-wear-m3"))
+    assertTrue(unscoped.appliesToModule(null))
+    // A scoped file still covers a location with no module at all: a catalog published before
+    // discovery recorded the field must not lose the rules that were written for it.
+    assertTrue(rules.appliesToModule(null))
   }
 }

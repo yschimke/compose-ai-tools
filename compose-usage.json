@@ -15,7 +15,18 @@
     "`Sticker(\"<slug>\")` over the shared component set in :samples:design-catalog-m3-shared, so",
     "without `scaffoldSources` + EXPAND the Source panel showed the wrapper and no component at",
     "all (issue #4169). The wear and remote catalogs compose their components inline and need",
-    "nothing here beyond the generic rules they already inherit."
+    "nothing here beyond the generic rules they already inherit.",
+    "",
+    "`modules` is what keeps that true. The server reads ONE compose-usage.json per (repo, ref),",
+    "so without it these m3-only rules reached the wear and remote catalogs too: scaffoldSources",
+    "naming files their previews never touch, and `declaresCatalogScaffolds` claiming on the",
+    "Source panel that they had declared scaffolding they had not. Both silent. A catalog whose",
+    "module is not listed falls back to the generic rules, exactly as a repo shipping no",
+    "compose-usage.json does."
+  ],
+  "modules": [
+    "samples:design-catalog-m3",
+    "samples:design-catalog-m3-shared"
   ],
   "scaffoldAnnotationPackages": [
     "com.example.designcatalogm3"
