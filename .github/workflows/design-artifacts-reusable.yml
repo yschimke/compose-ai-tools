@@ -199,6 +199,20 @@ on:
         required: false
         type: boolean
         default: true
+      reference-backdrop:
+        description: >
+          Publish each design reference on the ground its sticker was drawn on, as a hex colour
+          (e.g. '#000000'). Empty (the default) leaves references transparent, which is right
+          wherever the kit's own cells carry a background. Set it for a catalog whose previews
+          declare `showBackground` and whose design nodes do not — a dark-first Wear sheet is the
+          case: the scorer crops both sides to their content box, so a node export of a clock strip
+          on transparency is enlarged to the size of a watch face before it is compared with one,
+          and the row reports the missing ground instead of the component. Applied only to stickers
+          whose alpha channel is the whole frame or the inscribed device disc; a transparent
+          component sticker is left alone and counted in the step's summary.
+        required: false
+        type: string
+        default: ''
       fold-artifact:
         description: 'Name of an artifact (uploaded by a prior caller job) holding a pre-built render bundle to fold in as its own top-level section AFTER generate — e.g. a re-themed sibling catalog. Empty ⇒ no fold-in. Requires fold-bundle, fold-spec, fold-section.'
         required: false
@@ -1496,6 +1510,7 @@ jobs:
           # the rest of the manifest still publishes.
           FIGMA_TOKEN: ${{ secrets.figma_token }}
           FIGMA_CONTENTS_ONLY: ${{ inputs.figma-contents-only }}
+          REFERENCE_BACKDROP: ${{ inputs.reference-backdrop }}
         run: |
           set -euo pipefail
           if [ ! -f "design-map.json" ]; then
@@ -1520,7 +1535,8 @@ jobs:
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
             --spec "$INPUT_SPEC" \
-            --figma-contents-only "$FIGMA_CONTENTS_ONLY"
+            --figma-contents-only "$FIGMA_CONTENTS_ONLY" \
+            --reference-backdrop "$REFERENCE_BACKDROP"
 
       # The design-parity dashboard's feed (`parity/activity.json`) — recent
       # commits, recent Figma versions/comments, and the mapping gaps behind
