@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "cc4051ec4a258651b3a6b9a0a736915c489800ae",
+    "generatedFrom": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2655,283 +2655,19 @@
             "flapCount": 0
         },
         "samples:android/com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip": {
-            "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
+            "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.png",
             "versions": [
                 {
-                    "blob": "7d65cf68f23633152bff3d06618ca2d268df2c65",
-                    "commit": "cc4051ec4a258651b3a6b9a0a736915c489800ae",
-                    "date": "2026-08-18T18:50:08Z",
-                    "sourceSha": "1d7a7f33",
-                    "sinceCommit": "ead1fb7c53edcfda7956e537c4ce561163e78026",
-                    "commits": 7,
-                    "occurrences": 7
-                },
-                {
-                    "blob": "9be81a9d9900db7b2540f2b41333b99659e6d25f",
-                    "commit": "eead19d46fb7b620f70ad04f8fe8c31f9080d922",
-                    "date": "2026-08-18T18:02:54Z",
-                    "sourceSha": "94d83e4c",
-                    "sinceCommit": "4b6a460d9ddfaf903c668ff8addcc0b35efc790e",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "fe7c297a7f4a31325c7716198aa9f9039c7214be",
-                    "commit": "9f1e032a74494645d827a59692340a9f84d48574",
-                    "date": "2026-08-18T17:23:09Z",
-                    "sourceSha": "c4a737d9",
-                    "sinceCommit": "1ace03e90b964bb3b3973388115d804c05d51d38",
-                    "commits": 3,
-                    "occurrences": 3
-                },
-                {
-                    "blob": "52fd4583dd01d9d0917116cc794cb2aa70b2cfbf",
-                    "commit": "fadda2dd4ae52a535c6529984ef72c2cd1e680e4",
-                    "date": "2026-08-18T13:06:38Z",
-                    "sourceSha": "4781e202",
-                    "sinceCommit": "4c1a96685f8fd7f07890b8a18614b44fc553ae2d",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "ca326bb0ffbc1c5f95f7bfd4c3f343671e0ec941",
-                    "commit": "8b1760585890361fcfa26958380836bb90a11cf9",
-                    "date": "2026-08-18T12:25:43Z",
-                    "sourceSha": "e608bb4d",
-                    "sinceCommit": "e291447f3dd80872ec0491b2d1c1065899a70f8d",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "cfb14a4ae19714b411c7428d20c04e81fb40c498",
-                    "commit": "f773e3ea5e864d20af8e6fee2ac7e17279b9136b",
-                    "date": "2026-08-18T09:53:22Z",
-                    "sourceSha": "54dfa918",
-                    "sinceCommit": "05dccdf6b126d58278188bd2a48bf553a4278a9b",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "3231fee0b8be9801b5c26873dae399ac92df3ae4",
-                    "commit": "f610aa5ebf3e43910f844505bf8595103a474d54",
-                    "date": "2026-08-18T09:15:20Z",
-                    "sourceSha": "17169cf0",
-                    "sinceCommit": "baa7d8eed53806d0a89acfcd3749c5e10babfbae",
-                    "commits": 8,
-                    "occurrences": 8
-                },
-                {
-                    "blob": "8c8a3b217c73d0cdad39a4472836f26637412aba",
-                    "commit": "32c881ab8d5cb44a5960b3cea2841a9fa598f2a3",
-                    "date": "2026-08-18T08:50:40Z",
-                    "sourceSha": "cf2ab415",
-                    "sinceCommit": "b9a4d2912c022e8613d5f7df739f8e5862d3d34d",
-                    "commits": 4,
-                    "occurrences": 4
-                },
-                {
-                    "blob": "f37dd63eca9f0751fc678d9a6ac21021354055e2",
-                    "commit": "93de78d6585eb1eb63f6f7bc082aa54d075bc595",
-                    "date": "2026-08-18T08:23:57Z",
-                    "sourceSha": "57ad6b2c",
-                    "sinceCommit": "99cf8a3c5b48b5e3c1a6b39a51ce21f071716e86",
-                    "commits": 3,
-                    "occurrences": 3
-                },
-                {
-                    "blob": "c4b5bfbaf41b8705afffdd144a6035ac993d8df0",
-                    "commit": "ed12fbe7427707a53da20baf8888475a9f620317",
-                    "date": "2026-08-18T06:10:39Z",
-                    "sourceSha": "bd112b8d",
-                    "commits": 1
-                },
-                {
-                    "blob": "9325979b951033fdd0323c09100b4ecfe084800b",
-                    "commit": "5c1accd362e95e223c21c41d4367d103d53a44c0",
-                    "date": "2026-08-17T23:31:34Z",
-                    "sourceSha": "7ac39bb4",
-                    "sinceCommit": "376ae105208b207a7f3191de92c049458569c1aa",
-                    "commits": 4,
-                    "occurrences": 4
-                },
-                {
-                    "blob": "93ae92e135fa55acc4ce12ff418c4b72bbadfed2",
-                    "commit": "5bb211b795a4ed176abe98dc2f9c1da5ff72d7a3",
-                    "date": "2026-08-17T22:26:59Z",
-                    "sourceSha": "7b5cb91e",
-                    "sinceCommit": "cd3b9c2c5e0481b6bc35f0e5392429aa1c184bd4",
-                    "commits": 4,
-                    "occurrences": 4
-                },
-                {
-                    "blob": "4af71deebb726252c97ad452feed83be77e96939",
-                    "commit": "a93253b31be29eb35e6fcfaa05ba54c3e1d7f0f9",
-                    "date": "2026-08-17T22:01:10Z",
-                    "sourceSha": "6cf8a0e2",
-                    "sinceCommit": "fccbfeca2a1a992a5065ebaf0121a0d119bbfe19",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "c49d5b2ed2622b9eb9d46f7095dee812119f91de",
-                    "commit": "4061d83c3b630cb89c31d1f4cbf3e5686d389d09",
-                    "date": "2026-08-17T21:14:00Z",
-                    "sourceSha": "d21b6fde",
-                    "sinceCommit": "4e5cecb46132b001a042cd4c65ccbdc7d9814a1b",
-                    "commits": 3,
-                    "occurrences": 3
-                },
-                {
-                    "blob": "3098499511a722e297e73b511b8acb1ba777c11a",
-                    "commit": "9e6676630701ea497d144d5d15fd2632eb1f6864",
-                    "date": "2026-08-17T20:45:57Z",
-                    "sourceSha": "863c8348",
-                    "commits": 1
-                },
-                {
-                    "blob": "690b9c79955a5502f2d9734857289f79e9ca76a6",
-                    "commit": "d6aa93b2da6dffcc904f4ec414acf93770cd879b",
-                    "date": "2026-08-17T20:20:58Z",
-                    "sourceSha": "b23711d6",
-                    "commits": 1
-                },
-                {
-                    "blob": "6484c799aa2032c7269e39b853e51db38bb8bc7e",
-                    "commit": "03538c3534ac62b75f9771ab43b5d9713c009d9a",
-                    "date": "2026-08-17T19:12:36Z",
-                    "sourceSha": "25872ee4",
-                    "sinceCommit": "91695d9c6b9ecf112ed6ea8315f14b1bbae63b21",
-                    "commits": 3,
-                    "occurrences": 3
-                },
-                {
-                    "blob": "6d5a576bfdbbc10950fc71227316a55aaee6e480",
-                    "commit": "57f673adab631cf9c9eee874df7d8729142d3d69",
-                    "date": "2026-08-17T11:45:56Z",
-                    "sourceSha": "c9903031",
-                    "sinceCommit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "99ca542b25bbb1748884a7a4d720aa79550ebfe0",
-                    "commit": "fcd040cac8b7c1805ab98728fa45e9100fdb2506",
-                    "date": "2026-08-17T11:26:21Z",
-                    "sourceSha": "e9def9bc",
-                    "sinceCommit": "475c16ff2b9cf6d9e322ab2e84b970ee835f3914",
-                    "commits": 3,
-                    "occurrences": 3
-                },
-                {
-                    "blob": "13f8b16e0c5891842df42a5579119192e5c5c522",
-                    "commit": "7a2945f273f7bedfd2a4017008a68d687821f1e9",
-                    "date": "2026-08-17T10:46:10Z",
-                    "sourceSha": "db09322e",
-                    "commits": 1
-                },
-                {
-                    "blob": "3493cd7f3eea7596cb6a607efd4cc8a37db67386",
-                    "commit": "c2e4a7fe85f7e12b9ed83ddc87717b474196bc31",
-                    "date": "2026-08-17T08:17:58Z",
-                    "sourceSha": "ba309d9d",
-                    "sinceCommit": "bfd1e1b6c76d66634d7d411a9f6f92cde6c4afc1",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "c89875900677680aae5aec0ed08fa10486ae7e91",
-                    "commit": "44b8aadfd1fdb3e5baf3409dbb5aad6f7fcbf5a1",
-                    "date": "2026-08-16T23:27:11Z",
-                    "sourceSha": "3ecf53b2",
-                    "commits": 1
-                },
-                {
-                    "blob": "2afc8eac16d3e2a32792ca4209bba34d076fe473",
-                    "commit": "a43826a51f3993b51bfcff6d2063ab2f5bd04612",
-                    "date": "2026-08-16T22:43:43Z",
-                    "sourceSha": "b2660a25",
-                    "sinceCommit": "0560ed42871d5ae10e687ccf978417bbc843ea6b",
-                    "commits": 4,
-                    "occurrences": 4
-                },
-                {
-                    "blob": "36df0c8da579b2d11855b0ab8195a5bc8c82344f",
-                    "commit": "467fd30760c6ac12a935b77deae90cfd450d8aaa",
-                    "date": "2026-08-16T21:49:45Z",
-                    "sourceSha": "bb192541",
-                    "sinceCommit": "ac474fd388f40f296c9eccfc24cd0422b4c2ec5d",
-                    "commits": 4,
-                    "occurrences": 4
-                },
-                {
-                    "blob": "64e8948dd489d0f78e9e7abcb69971b5e6adcaf6",
-                    "commit": "83dba971254593af9d5516dfb54eb21310739fc1",
-                    "date": "2026-08-16T21:16:22Z",
-                    "sourceSha": "0024cd2b",
-                    "commits": 1
-                },
-                {
-                    "blob": "a7efd2e0a57dd26b5b8d619a40b1dba9809d11a6",
-                    "commit": "c6c53101959ded541ee1c36e33c8220def73dcbe",
-                    "date": "2026-08-16T20:38:06Z",
-                    "sourceSha": "1c47a483",
-                    "sinceCommit": "7107b9fcde2235aacd70caefcc7c1784f3806266",
-                    "commits": 2,
-                    "occurrences": 2
-                },
-                {
-                    "blob": "e25d81514ccad0c68e69f365fe718a1d1e621c2a",
-                    "commit": "0da0fc415a2dbe435d9417b2da1400b94c9e0017",
-                    "date": "2026-08-16T17:48:10Z",
-                    "sourceSha": "e0568a99",
-                    "commits": 1
-                },
-                {
-                    "blob": "55ea7fe22b050e4813ff0852eb4693809b8ad3b0",
-                    "commit": "36e019c3d5da4d83e2e355c72e59f5cee97c6bca",
-                    "date": "2026-08-16T15:01:49Z",
-                    "sourceSha": "d075e9c9",
-                    "commits": 1
-                },
-                {
-                    "blob": "8d4eabd0d7eb60c78078bb804f9024f2936886c0",
-                    "commit": "4dd6a0900e0f18a427740a086f47fc4d5d8f7e74",
-                    "date": "2026-08-16T13:38:33Z",
-                    "sourceSha": "69b4adfd",
-                    "commits": 1
-                },
-                {
-                    "blob": "a2351b2cec98f916470f23a2b0641e8e0740e305",
-                    "commit": "d67812184f30145e5d7d7d71c5d4d8bf57ba62ba",
-                    "date": "2026-08-16T11:02:33Z",
-                    "sourceSha": "0d0a05f6",
-                    "commits": 1
-                },
-                {
-                    "blob": "e80fe9dae4a2d6df8a497c3faadbbe56f764aa59",
-                    "commit": "228bb0691190f213b41d820df9b6ba778c994b1a",
-                    "date": "2026-08-16T09:58:18Z",
-                    "sourceSha": "9bd2c74b",
-                    "commits": 1
-                },
-                {
-                    "blob": "5b6825748d4925e008c1fec34a7b430038bed802",
-                    "commit": "1bea1b0ed3c1b9d5a4e33f6296a67b1b064425fa",
-                    "date": "2026-08-16T08:54:33Z",
-                    "sourceSha": "f95bd556",
-                    "commits": 1
-                },
-                {
-                    "blob": "c496a9703f33a3d86f1956542a57a11cb92ce9fa",
-                    "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
-                    "date": "2026-08-14T10:40:34Z",
-                    "sourceSha": "5b91ca7c",
+                    "blob": "6fd8f29db5c7c850c654b389a5008097ba7a7ef5",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
                     "commits": 1
                 }
             ],
-            "observations": 79,
-            "unstable": true,
-            "flapCount": 46
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
         },
         "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
             "path": "renders/samples:android/ContainerTransformAnimatedPreview_Container_Transform-7b9dc97b.gif",
@@ -6093,6 +5829,13 @@
             "path": "renders/samples:design-catalog-remote-m3/ButtonGroupRemote_width_320dp_height_240dp_dpi_320-3a9a618a.png",
             "versions": [
                 {
+                    "blob": "4da430ea34a3892c332d21749977453190e3decd",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "3f9e9f79054ea87d71a6d6ea4ea55d52d798e975",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6100,7 +5843,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6153,6 +5896,13 @@
             "path": "renders/samples:design-catalog-remote-m3/CompactRemoteButton_width_200dp_height_200dp_dpi_320-7ee67fc7.png",
             "versions": [
                 {
+                    "blob": "72ca0c2d7173694ee96ed9032a69c68fc1b0c93f",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "d369be6f67ccf520a1b6b6cefa91933e2c6a0e01",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6160,13 +5910,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320-2f5d5e12.png",
             "versions": [
+                {
+                    "blob": "dc386e3c94d06b65fdc60c52fce85df12b893879",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "9c310f80c51e3afcaba5375d0955b452843e57b1",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6175,13 +5932,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/FilledRemoteButton_width_200dp_height_200dp_dpi_320-6cca0df4.png",
             "versions": [
+                {
+                    "blob": "a94ad8a5d58f6666ca254ca026a12f3a34cc2631",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "e93fb0e6c05268797bb94ccb6337bd07bc7779a3",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6190,7 +5954,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6228,6 +5992,13 @@
             "path": "renders/samples:design-catalog-remote-m3/NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320-623f9ce1.png",
             "versions": [
                 {
+                    "blob": "a94ad8a5d58f6666ca254ca026a12f3a34cc2631",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "e93fb0e6c05268797bb94ccb6337bd07bc7779a3",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6235,13 +6006,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote_width=320dp,height=240dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/OutlinedCardRemote_width_320dp_height_240dp_dpi_320-a0ceded5.png",
             "versions": [
+                {
+                    "blob": "3c4383c243f79a01490df4efe368a8e4dcf348a6",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "de928ede29b9fb8e244738d56c5e7f39538f43a6",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6250,13 +6028,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteButton_width_200dp_height_200dp_dpi_320-4a5e18ae.png",
             "versions": [
+                {
+                    "blob": "75e7b74e8b548c0b510906e431a69a82dfe34712",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "9b08337de1254ecc5124fbbedaf0f9265792d84e",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6265,7 +6050,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6303,6 +6088,13 @@
             "path": "renders/samples:design-catalog-remote-m3/TextRemoteButton_width_200dp_height_200dp_dpi_320-875514dd.png",
             "versions": [
                 {
+                    "blob": "a1a8f3178e838cf59c570a3b94b62bf08438d779",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "dc41942a80a0dff122dfa427ca2554bbe8251c76",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6310,7 +6102,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6363,6 +6155,13 @@
             "path": "renders/samples:design-catalog-remote-m3/TypographyRemote_width_320dp_height_240dp_dpi_320-af41f511.png",
             "versions": [
                 {
+                    "blob": "a18939338859fbdc024325989e601e83eb52007b",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "3dd42a4adcfc6f386e8945362f0df9e77a25f029",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6370,7 +6169,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6408,6 +6207,13 @@
             "path": "renders/samples:design-catalog-remote-m3/WatchScreenRemote_width_227dp_height_227dp_dpi_320-5416f245.png",
             "versions": [
                 {
+                    "blob": "db096eb4552f1ea723aff553a121e94f509ceadc",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "a6f2bddca459ba0bc7a3b606e6cd7b8cccb6cc3b",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6415,13 +6221,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconLabelRemoteButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/CompactIconLabelRemoteButton_width_200dp_height_200dp_dpi_320-10546e96.png",
             "versions": [
+                {
+                    "blob": "3963a4b64e655a3f1ef8a54003b942451e9d9158",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "40d863154a9703e34a2b906aa6198b0642f9ccf6",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6430,13 +6243,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.CompactIconOnlyRemoteButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/CompactIconOnlyRemoteButton_width_200dp_height_200dp_dpi_320-b75dc272.png",
             "versions": [
+                {
+                    "blob": "1fe509cbadb32d01b0530bcbb8b50a4bf3703633",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "fbb4cf2439402f275a54df11c0d8abe9b6f9e2ac",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6445,7 +6265,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6468,6 +6288,13 @@
             "path": "renders/samples:design-catalog-remote-m3/DisabledRemoteButton_width_200dp_height_200dp_dpi_320-6a5fcde6.png",
             "versions": [
                 {
+                    "blob": "599191ea74ede2faa960ac8e6aa41c9a796eaa90",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "9b0c909e92953bcbcce233eeec064dde8aa330dc",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6475,13 +6302,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.ExtraSmallRemoteIconButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/ExtraSmallRemoteIconButton_width_200dp_height_200dp_dpi_320-129d5c18.png",
             "versions": [
+                {
+                    "blob": "64497fd12754e2ccd521115daae6a9a239c17706",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "b74854cd28153707af1237c70fefa537d7d98535",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6490,13 +6324,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteIconButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/FilledRemoteIconButton_width_200dp_height_200dp_dpi_320-6ef461ca.png",
             "versions": [
+                {
+                    "blob": "ad9ef1b9b35ee92c0724decc9370deb0adbdf195",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "75ff588d37c64a20abda31079cf0e4acc7591f30",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6505,13 +6346,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.FilledRemoteTextButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/FilledRemoteTextButton_width_200dp_height_200dp_dpi_320-c034f9e0.png",
             "versions": [
+                {
+                    "blob": "a20dbb8551e624ab43faac8e3059717ec01363a2",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "2e36c89ac90f6d0da674bc41509d034648e2a76c",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6520,7 +6368,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6543,6 +6391,13 @@
             "path": "renders/samples:design-catalog-remote-m3/IconLabelRemoteButton_width_320dp_height_240dp_dpi_320-d431fa0f.png",
             "versions": [
                 {
+                    "blob": "60ad0c85064818beaf66a21fff4c3da7064d0941",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "531786a06b73714e6dac8ba680454bf7ca60dd94",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6550,13 +6405,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IconLabelSecondaryRemoteButton_width=320dp,height=240dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/IconLabelSecondaryRemoteButton_width_320dp_height_240dp_dpi_320-2f89a268.png",
             "versions": [
+                {
+                    "blob": "5c11013499fef51290bbc57cdc91940a1529837f",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "29b574a43a921fd9348380f8e321d14342657d03",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6565,7 +6427,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6603,6 +6465,13 @@
             "path": "renders/samples:design-catalog-remote-m3/InteractivePageIndicatorRemote_width_200dp_height_200dp_dpi_320-c33829cb.png",
             "versions": [
                 {
+                    "blob": "0c94e92d0047e1c0f843a8c947ae644c059905bc",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "650b3092a493bf63e0a10bc4778e1e915ac02c88",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6610,13 +6479,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteIconButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/LargeRemoteIconButton_width_200dp_height_200dp_dpi_320-7673092a.png",
             "versions": [
+                {
+                    "blob": "5162cb19ca7cf458cf7f59e34eb551d6a6098fa7",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "a1c65845f4ec36921d7e5d04bdc4ece590298382",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6625,13 +6501,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.LargeRemoteTextButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/LargeRemoteTextButton_width_200dp_height_200dp_dpi_320-549e574e.png",
             "versions": [
+                {
+                    "blob": "bebd46f35e4c3b2ffa5ba5cfc1dc368c5eb9e46e",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "e01738bdd6f5ecd132c12d263f17036d27fe6a79",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6640,13 +6523,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteIconButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteIconButton_width_200dp_height_200dp_dpi_320-0b6dbe86.png",
             "versions": [
+                {
+                    "blob": "f73ad8da71f0166cd49a599845e26d2c79f3b1fc",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "67ef551dfb16d668e32637930450ddb31356d197",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6655,13 +6545,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.OutlinedRemoteTextButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/OutlinedRemoteTextButton_width_200dp_height_200dp_dpi_320-c3437e61.png",
             "versions": [
+                {
+                    "blob": "f778926ce132e44e6a470867119612a924e1622f",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "262169b889d197c5f45eb0b226f5d8b43ed7e69f",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6670,7 +6567,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6693,6 +6590,13 @@
             "path": "renders/samples:design-catalog-remote-m3/SmallRemoteIconButton_width_200dp_height_200dp_dpi_320-d13aebe7.png",
             "versions": [
                 {
+                    "blob": "eebfe64afcf3ef999b0396627bdb2f398cd24be2",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "df01f72f2bef044c3c82265044818a9f715ccd7d",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6700,13 +6604,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.SmallRemoteTextButton_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/SmallRemoteTextButton_width_200dp_height_200dp_dpi_320-c65978c9.png",
             "versions": [
+                {
+                    "blob": "4911d6ceb8c11b7acf23fa79064f4b786ac3a0c9",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "78c550863ba1a4c40d8304fedc9c4a5ae4f239ea",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6715,13 +6626,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeContentRemoteTitleCard_width=320dp,height=240dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/TimeContentRemoteTitleCard_width_320dp_height_240dp_dpi_320-5f946c02.png",
             "versions": [
+                {
+                    "blob": "3515819cd2d0e86e48583848927d9e31fafadf62",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "f8e54b7b866219feda5d2273fa66e00e147148dc",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6730,13 +6648,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.TimeRemoteAppCard_width=320dp,height=240dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/TimeRemoteAppCard_width_320dp_height_240dp_dpi_320-147ffe47.png",
             "versions": [
+                {
+                    "blob": "e7f8f355eeea9f34f97130dbe7fa0d5012b1458d",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "492556ee99e1d4bd7fb88ba3c3835b1197ec0c93",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6745,7 +6670,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6768,6 +6693,13 @@
             "path": "renders/samples:design-catalog-remote-m3/TonalRemoteButton_width_200dp_height_200dp_dpi_320-9b96aafe.png",
             "versions": [
                 {
+                    "blob": "32651d967c8e73101128b0a5534486ca9d811dae",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "d4481f9e43d55173fbe0ba8b7d8817972ba39021",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6775,7 +6707,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7922,6 +7854,13 @@
             "path": "renders/samples:remotecompose/activity__MainActivity.png",
             "versions": [
                 {
+                    "blob": "66a941042b3106b96741fc330869b226d076e259",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "060a4c5c001793e21b7caec3e3f78e9323be8354",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7929,7 +7868,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7967,6 +7906,13 @@
             "path": "renders/samples:remotecompose/RemoteButtonEnabledPreview-23dedf54.png",
             "versions": [
                 {
+                    "blob": "bef7f3897190471aef8d4d97a4793acb60de0c0d",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
+                {
                     "blob": "571d18b4cc937d7646d874a709dcd2306c2fe15e",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -7974,13 +7920,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview": {
             "path": "renders/samples:remotecompose/RemoteButtonWithBorderPreview-298b3408.png",
             "versions": [
+                {
+                    "blob": "987d1c8bfbbdad8404e45f6661f177c766ef0491",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "1287adf694adce594e07e449e538ba1de2c84e29",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
@@ -7989,13 +7942,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview": {
             "path": "renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview-f3014b8f.png",
             "versions": [
+                {
+                    "blob": "1fe6a660826c66f03694eae4fb55e6302c0c3856",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "9a95f0d0a3063757fb6b791da40737dbcd5f0970",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
@@ -8004,13 +7964,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
             "path": "renders/samples:remotecompose/RemoteButtonWithShapePreview-3935d3f3.png",
             "versions": [
+                {
+                    "blob": "1881a3edc8ef83134442b247ec4dbe14c4b7c9e4",
+                    "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
+                    "date": "2026-08-19T00:34:21Z",
+                    "sourceSha": "f1f4eb33",
+                    "commits": 1
+                },
                 {
                     "blob": "abb86510803bd0c240e6b09f41ebac7867c09063",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
@@ -8019,7 +7986,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
