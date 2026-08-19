@@ -13,6 +13,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
@@ -864,5 +865,60 @@ class ServeStatusTest {
     assertEquals(true, opt["paused"]?.jsonPrimitive?.content?.toBoolean())
     assertEquals(65_000L, opt["pausedUntilEpochMillis"]?.jsonPrimitive?.long)
     assertTrue(body.contains("traffic spike"), "the pause reason should reach the page: $body")
+  }
+
+  /**
+   * The gate's input reaches the page, in both projections.
+   *
+   * `/status.json` had every counter describing what a pass did once it was granted a turn and none
+   * describing whether a turn was available at all — so a server whose quiet gate never opened
+   * published the same row as one with nothing left to do. The HTML page carried even less: 23
+   * catalogs each saying "theme optimization paused" and nothing saying why.
+   */
+  @Test
+  fun `status explains a theme optimizer gate that is being held shut`() {
+    val bg = ServeBackgroundWork(clock = { 5_000L })
+    bg.initialCatalogLoadFinished()
+    // Null is the registry's "a session holds an open lease" — permanently busy to the gate.
+    bg.idleClock { null }
+
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          themeOptimizerStats = { bg.optimizerAdmissionSnapshot() },
+        )
+        .also { it.start() }
+
+    val (code, body) = get("/status.json")
+    assertEquals(200, code)
+    val opt =
+      Json.parseToJsonElement(body).jsonObject["themeOptimizer"]?.jsonObject
+        ?: error("status.json carries no themeOptimizer: $body")
+    assertTrue(
+      opt["serverIdleMillis"] is kotlinx.serialization.json.JsonNull,
+      "a busy clock is published as null, not omitted: $body",
+    )
+    assertEquals(
+      ServeBackgroundWork.IDLE_BLOCKED_BY_SESSION_LEASE,
+      opt["idleBlockedBy"]?.jsonPrimitive?.content,
+    )
+    assertTrue(
+      (opt["idleThresholdMillis"]?.jsonPrimitive?.long ?: 0) > 0,
+      "the threshold travels with the reading: $body",
+    )
+    assertNotNull(
+      Json.parseToJsonElement(body).jsonObject["daemons"]?.jsonObject?.get("leasedSessions"),
+      "the lease holders are named beside the daemon counters: $body",
+    )
+
+    val (htmlCode, html) = get("/status")
+    assertEquals(200, htmlCode)
+    assertTrue(html.contains("Theme optimiser gate"), "the page names the gate: $html")
+    assertTrue(html.contains("closed"), "and says it is shut: $html")
   }
 }

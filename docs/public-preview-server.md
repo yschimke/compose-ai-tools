@@ -749,6 +749,24 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
   more than one background one. The permit is taken per render, so a catalog that parks for traffic
   hands it straight to the next one.
 
+**When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
+before it starts: the whole server has to have been untouched for
+`-Dcomposeai.serve.themeOptimizationIdleMillis` (60s by default). That gate reads
+`ServeSessionRegistry.idleMillis()`, which answers *busy* — not a number — while any session holds
+an open lease, so one long-lived WebSocket, or one lease leaked by a request cancelled mid-flight,
+stands the optimizer down for as long as it is held. The per-catalog `themeOptimization` rows cannot
+show this: they say `paused` whether the box is being politely quiet or the gate will never open
+again. Read `themeOptimizer` on `/status.json` instead:
+
+- `serverIdleMillis` — the gate's input, or `null` for busy — against `idleThresholdMillis`, the
+  quiet it must reach. The `/status` page prints the same comparison as **Theme optimiser gate**.
+- `idleBlockedBy` — why it reads busy: `session-lease` (a lease is held; `daemons.leasedSessions`
+  names the holders) or `catalog-load` (catalogs are still being fetched, which is the gate working
+  as designed).
+- Per catalog, `gateWaitMillis` accrues *while* a pass waits, not only once it is let through — so a
+  gate that has never opened shows a climbing wait beside `turnsGranted: 0`, rather than the zeros
+  that also describe a catalog with nothing left to do.
+
 The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
 60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
 the server's render-slot count. Other pages remain serial, queue completion/page exit releases the

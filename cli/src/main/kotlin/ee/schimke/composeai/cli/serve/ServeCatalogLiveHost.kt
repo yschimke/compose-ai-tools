@@ -123,8 +123,7 @@ class ServeCatalogLiveHost(
    * [ServeBackgroundWork].
    */
   private val backgroundWork: ServeBackgroundWork = ServeBackgroundWork(),
-  private val themeOptimizationIdleMillis: Long =
-    System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L,
+  private val themeOptimizationIdleMillis: Long = themeOptimizationIdleMillisDefault(),
   /**
    * How long one admitted pass may hold its optimizer lane before giving it back and re-queueing.
    *
@@ -869,9 +868,9 @@ class ServeCatalogLiveHost(
       return false
     }
     if (!optimizerHasTurn.get()) {
-      val waitedFrom = clock()
+      // The wait is charged inside [awaitQuiet], per poll — see there for why charging it here,
+      // on the way out, was the wrong place.
       val granted = awaitServerIdle()
-      catalogThemeCache.recordGateWait(clock() - waitedFrom)
       if (!granted) return false
       catalogThemeCache.recordTurnGranted()
       optimizerHasTurn.set(true)
@@ -896,7 +895,6 @@ class ServeCatalogLiveHost(
     optimizerHasTurn.set(false)
     catalogThemeCache.recordTurnYielded()
     catalogThemeCache.markPaused()
-    val resumeFrom = clock()
     // Re-enter on the SHORT window, not the full entry one. [themeOptimizationIdleMillis] answers
     // "may I start work on a box someone might be using?" — a cold-start question, asked once. Once
     // the pass has been running, the box has already proved it goes quiet, and the only question
@@ -904,7 +902,6 @@ class ServeCatalogLiveHost(
     // per interruption is what capped throughput: at a ~50% yield rate a 60s re-entry averages
     // ~30s/entry against a sub-second render, i.e. ~97% waiting.
     return awaitQuiet(OPTIMIZER_RESUME_MILLIS).also {
-      catalogThemeCache.recordGateWait(clock() - resumeFrom)
       if (it) {
         // A resume IS a grant. Counting only cold entries made yields exceed grants after any
         // interrupted pass, which reads as the gate losing turns it never handed out.
@@ -921,6 +918,14 @@ class ServeCatalogLiveHost(
    * Block until the server has been untouched for [quietMillis]. Polls at a fraction of the window
    * so a short resume window is not rounded up to a full second of dead time — a 1s poll against a
    * 1.5s window would put the floor back where it started.
+   *
+   * **The gate wait is charged here, per poll, not by the caller once this returns.** Charging on
+   * the way out means a pass still waiting has spent, as far as `/status` is concerned, no time at
+   * the gate — so the one counter that names a closed gate reads `gateWaitMillis: 0`, which is also
+   * what a pass that sailed straight through reports. A box whose gate had never opened once in
+   * three hours published an all-zero optimizer row on every catalog and looked idle by choice.
+   * Accruing as we wait makes an unopened gate visible while it is still unopened, which is the
+   * only time the reading is any use.
    */
   private fun awaitQuiet(quietMillis: Long): Boolean {
     val pollMillis = quietMillis.coerceAtMost(1_000L).coerceAtLeast(50L) / 2
@@ -929,7 +934,10 @@ class ServeCatalogLiveHost(
       val idleMillis = serverIdleMillis()
       if (idleMillis != null && idleMillis >= quietMillis) return true
       catalogThemeCache.markPaused()
-      if (!pauseOptimization(pollMillis)) return false
+      val polledFrom = clock()
+      val slept = pauseOptimization(pollMillis)
+      catalogThemeCache.recordGateWait(clock() - polledFrom)
+      if (!slept) return false
     }
   }
 
@@ -1627,6 +1635,17 @@ class ServeCatalogLiveHost(
      * next presence heartbeat.
      */
     internal const val OPTIMIZER_ADMISSION_WAIT_MILLIS = 20_000L
+
+    /**
+     * Whole-server quiet the idle gate requires before a cold pass may start.
+     *
+     * Read through a function rather than held in a `val` so the system property is still honoured
+     * when it is set after this class loads, and so [ServeBackgroundWork] can publish the same
+     * number on `/status.json` without restating the default. A gate whose threshold is invisible
+     * is one nobody can tell from a gate that is simply never reached.
+     */
+    internal fun themeOptimizationIdleMillisDefault(): Long =
+      System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L
 
     /** Default lane slice — see the `optimizerSliceMillis` constructor parameter for the trade. */
     internal const val DEFAULT_OPTIMIZER_SLICE_MILLIS = 5 * 60_000L

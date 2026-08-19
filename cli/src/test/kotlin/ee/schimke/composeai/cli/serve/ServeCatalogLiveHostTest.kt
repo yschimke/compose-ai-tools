@@ -1598,6 +1598,48 @@ class ServeCatalogLiveHostTest {
   }
 
   /** Wait for the background pass to go quiet, finished or not (unlike [awaitOptimization]). */
+  /**
+   * A pass still waiting at the idle gate must report the time it is spending there.
+   *
+   * The wait used to be charged by the caller, once [awaitQuiet] returned — so a gate that had not
+   * opened yet contributed nothing, and `gateWaitMillis: 0` meant both "sailed straight through"
+   * and "has been stuck here for three hours". The deployed server published exactly that: 23
+   * catalogs, `turnsGranted 0`, and a wait counter reading zero on every one of them.
+   */
+  @Test
+  fun `time spent at a gate that has not opened is reported while it is still shut`() {
+    val backgroundWork = ServeBackgroundWork()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        // Null is how the registry spells "a session holds a lease": permanently busy, so this
+        // gate never opens and the pass never gets a turn.
+        serverIdleMillis = { null },
+        themeOptimizationIdleMillis = 100,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    val waited =
+      awaitOk(5_000) { composite.themeOptimizationSnapshot()?.takeIf { it.gateWaitMillis > 0 } }
+
+    assertEquals(0, waited.turnsGranted, "the gate never opened, so no turn was ever granted")
+    assertEquals(0, live.renderCalls, "and nothing was rendered")
+    assertTrue(
+      waited.waitingMillis >= waited.gateWaitMillis,
+      "the total must not contradict the part it is made of",
+    )
+    composite.close()
+  }
+
   private fun awaitPassIdle(host: ServeCatalogLiveHost) {
     repeat(200) {
       if (!host.backgroundWorkActive) return

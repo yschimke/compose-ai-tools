@@ -528,6 +528,35 @@ class ServeSessionRegistryTest {
   }
 
   /**
+   * A busy answer has to be attributable, or everything downstream of it looks broken for no
+   * visible reason.
+   *
+   * [ServeSessionRegistry.idleMillis] going null stands the theme optimizer down and holds the
+   * `--exit-when-idle` watchdog open, and a lease released in a `finally` can still leak when the
+   * request is cancelled mid-flight. Naming the holders turns "the box says it is busy and is
+   * serving nothing" from an inference into a one-line read on `/status.json`.
+   */
+  @Test
+  fun `leasedSessions names exactly the holders that make the server read busy`() {
+    ServeSessionRegistry(open = Opener(), factory = CountingFactory(), reaperIntervalMillis = 0)
+      .use { reg ->
+        assertEquals(emptyList(), reg.leasedSessions())
+
+        val b = assertNotNull(reg.lease("b"))
+        val a = assertNotNull(reg.lease("a"))
+        assertEquals(listOf("a", "b"), reg.leasedSessions(), "sorted, so a diff is stable")
+        assertNull(reg.idleMillis(), "and these are precisely why the clock reads busy")
+
+        a.close()
+        assertEquals(listOf("b"), reg.leasedSessions())
+
+        b.close()
+        assertEquals(emptyList(), reg.leasedSessions())
+        assertNotNull(reg.idleMillis(), "the clock runs again once the last lease is released")
+      }
+  }
+
+  /**
    * The GC is the *second* removal path, and it has to discard too.
    *
    * Every suspended session is captured, a forked revision host included, so a reclaim that removed

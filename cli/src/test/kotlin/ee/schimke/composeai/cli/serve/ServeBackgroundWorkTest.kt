@@ -210,4 +210,74 @@ class ServeBackgroundWorkTest {
     release.countDown()
     holder.join(5_000)
   }
+
+  /**
+   * The gate's *input*, published so a closed gate is diagnosable from `/status.json`.
+   *
+   * A box whose optimizer never ran reported the same all-zero row as one with nothing left to do,
+   * because every counter described what a pass did after it was granted a turn and none described
+   * whether a turn was ever available. These three fields are that missing read.
+   */
+  @Test
+  fun `the admission snapshot publishes the idle clock the quiet gate reads`() {
+    var now = 100_000L
+    var requestIdle: Long? = 90_000L
+    val work = ServeBackgroundWork(clock = { now })
+    work.initialCatalogLoadFinished()
+    work.idleClock { requestIdle }
+
+    val running = work.optimizerAdmissionSnapshot()
+    assertEquals(0L, running.serverIdleMillis, "the load just finished, so the catalog clock is 0")
+    assertNull(running.idleBlockedBy)
+    assertEquals(
+      ServeCatalogLiveHost.themeOptimizationIdleMillisDefault(),
+      running.idleThresholdMillis,
+      "the threshold travels with the reading, so `closed` names what it was compared against",
+    )
+
+    now += 120_000
+    assertEquals(90_000L, work.optimizerAdmissionSnapshot().serverIdleMillis)
+  }
+
+  @Test
+  fun `a held session lease is named as the reason the idle clock reads busy`() {
+    val work = ServeBackgroundWork(clock = { 100_000L })
+    work.initialCatalogLoadFinished()
+    // Null from the registry means "a session holds an open lease" — the state that stands the
+    // optimizer down for the life of the process when the lease is leaked.
+    work.idleClock { null }
+
+    val snapshot = work.optimizerAdmissionSnapshot()
+
+    assertNull(snapshot.serverIdleMillis)
+    assertEquals(ServeBackgroundWork.IDLE_BLOCKED_BY_SESSION_LEASE, snapshot.idleBlockedBy)
+  }
+
+  @Test
+  fun `catalog loading is distinguished from a lease as the reason for a busy clock`() {
+    val work = ServeBackgroundWork(clock = { 100_000L })
+    work.idleClock { 90_000L }
+    work.expectInitialCatalogLoad()
+
+    val loading = work.optimizerAdmissionSnapshot()
+    assertNull(loading.serverIdleMillis)
+    assertEquals(
+      ServeBackgroundWork.IDLE_BLOCKED_BY_CATALOG_LOAD,
+      loading.idleBlockedBy,
+      "the two have opposite fixes: one is a bug, the other is the gate working",
+    )
+
+    work.initialCatalogLoadFinished()
+    assertNull(work.optimizerAdmissionSnapshot().idleBlockedBy)
+  }
+
+  @Test
+  fun `a server whose hosts never asked for a clock reports no idle reading at all`() {
+    val work = ServeBackgroundWork(clock = { 100_000L })
+
+    val snapshot = work.optimizerAdmissionSnapshot()
+
+    assertNull(snapshot.serverIdleMillis)
+    assertNull(snapshot.idleBlockedBy, "no clock is not the same as a clock reading busy")
+  }
 }
