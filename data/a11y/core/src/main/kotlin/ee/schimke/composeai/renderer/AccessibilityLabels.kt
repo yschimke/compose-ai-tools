@@ -8,103 +8,68 @@ package ee.schimke.composeai.renderer
  * one TalkBack announcement. For the shapes where the clickable surface and the copy are different
  * elements — a Wear `Button(icon = …, label = { Text("Filled") })`, an `IconButton` whose
  * `contentDescription` lives on the inner `Icon` — that leaves the stop with an empty `label` and
- * the copy stranded on an unmerged child that no screen reader stops on. Every consumer then reads
- * the stop as unlabelled: the inspection layer prints `(unlabelled)`, the legend falls back to the
- * role, and [TalkBackUtterance] speaks the state with no name in front of it.
+ * the copy stranded on a child that no screen reader stops on. Every consumer then reads the stop
+ * as unlabelled: the inspection layer prints `(unlabelled)`, the legend falls back to the role, and
+ * [TalkBackUtterance] speaks the state with no name in front of it. What ATF reports for that
+ * button is measured in `:renderer-android`'s `WearButtonA11yHierarchyProbeTest`.
  *
- * TalkBack announces "Filled, double-tap to activate" for that button, so that is what the node
- * should carry. The CMP side already resolves this at the source
- * (`DesktopAccessibilityNodeExtractor.effectiveLabel` walks the merged subtree); ATF gives us no
- * such subtree handle after the walk has flattened it, so the equivalent runs here as a pure pass
- * over the emitted list.
+ * TalkBack announces "Filled, double-tap to activate" there, so that is what the node should carry.
+ * This is the same walk `DesktopAccessibilityNodeExtractor.effectiveLabel` does on the CMP side,
+ * and it reads the hierarchy the same way: **real ancestry**, taken while the walk still holds it.
+ * A nested focus stop owns its own announcement, so its subtree is pruned — but the walk carries on
+ * with the descendants after it, which is what lets a row that folds in a title, a button of its
+ * own, then a subtitle announce "Title Subtitle".
  *
- * **Reconstructing "which nodes did this stop fold in" from a flat list** takes both signals the
- * wire carries, and neither alone is enough:
- * - *Emission order* — nodes come out in pre-order, so a stop's descendants are the nodes that
- *   follow it, up to the point the walk leaves its subtree. This is the rule
- *   `AccessibilityOverlay.groupNodes` and the VS Code bundle presenter already group on.
- * - *Bounds containment* — which says where that subtree ends, and which of the nodes inside it
- *   belong to a **nested** focus stop instead. A row that folds in a title, then a button of its
- *   own, then a subtitle announces "Title Subtitle": the button owns its own announcement, but the
- *   subtitle after it is still the row's. Stopping at the nested stop (order alone) would drop the
- *   subtitle; ignoring it would swallow the button's copy into the row.
+ * Structural questions have to be answered here, at extraction, because the `a11y/hierarchy` wire
+ * format is flat: it has no parent link, so a consumer reading it back can only approximate the
+ * subtree from emission order and bounds (`cli/serve-web`'s `mergedDescendantLabel` does exactly
+ * that, for hierarchies baked before this walk started rolling labels up). Approximating is what
+ * this avoids.
  */
 object AccessibilityLabels {
 
   /**
-   * Returns [nodes] with every blank-labelled focus stop given the announcement its merged
-   * descendants supply, joined by `" "` in traversal order. Nodes that already carry a label are
-   * untouched, and a stop whose descendants supply nothing stays blank — an unlabelled clickable
-   * really is unlabelled, and that is a finding worth seeing, not one worth papering over.
-   *
-   * Pure and idempotent: running it twice yields the same list.
+   * The slice of a hierarchy element the roll-up reads. Kept to three members so the rule can be
+   * exercised against hand-built trees — ATF's own `ViewHierarchyElement` needs a real `View` graph
+   * to construct, which is why the projection used to be tested against flat node lists that could
+   * only prove its arithmetic, never its reading of the tree.
    */
-  fun rollUpMergedLabels(nodes: List<AccessibilityNode>): List<AccessibilityNode> {
-    if (nodes.none { it.merged && it.label.isBlank() }) return nodes
-    return nodes.mapIndexed { index, node ->
-      if (!node.merged || node.label.isNotBlank()) node
-      else {
-        val rolled = mergedDescendantLabel(nodes, index)
-        if (rolled.isEmpty()) node else node.copy(label = rolled)
-      }
-    }
+  interface Element {
+    /** The copy this element carries itself: `contentDescription` else `text`. */
+    val ownLabel: String
+
+    /**
+     * `true` when this element folds its descendants into a single announcement — ATF's
+     * `isScreenReaderFocusable` on a non-scrollable element
+     * ([AccessibilityChecker.mergesDescendants]), the analogue of Compose's
+     * `isMergingSemanticsOfDescendants`.
+     */
+    val mergesDescendants: Boolean
+
+    val children: List<Element>
   }
 
   /**
-   * The announcement the merged node at [index] gets from the descendants it folds in — the
-   * following nodes that sit inside its bounds, minus those a nested focus stop announces itself,
-   * in traversal order with blanks dropped.
+   * What a screen reader announces for [element]: the copy it carries itself, or — for a merging
+   * element that carries none — the copy of the descendants it folds in, joined by `" "` in
+   * traversal order.
    *
-   * A node whose bounds don't parse is skipped rather than treated as the end of the subtree: it
-   * describes nothing anyone can point at, and ending the scan there would silently truncate the
-   * announcement. A **parent** whose bounds don't parse has no subtree to test against, so it falls
-   * back to the plain following run.
+   * Empty when nothing supplies a name. An unlabelled clickable really is unlabelled, and that is a
+   * finding worth seeing, not one worth papering over.
    */
-  fun mergedDescendantLabel(nodes: List<AccessibilityNode>, index: Int): String {
-    val parent = parseBounds(nodes[index].boundsInScreen) ?: return followingRunLabel(nodes, index)
+  fun announcement(element: Element): String {
+    val own = element.ownLabel.trim()
+    if (own.isNotEmpty()) return own
+    if (!element.mergesDescendants) return ""
     val parts = mutableListOf<String>()
-    // The nested focus stop currently being skipped over, if any — what sits inside it is part of
-    // its announcement, not of ours.
-    var nested: Bounds? = null
-    for (i in index + 1 until nodes.size) {
-      val node = nodes[i]
-      val bounds = parseBounds(node.boundsInScreen) ?: continue
-      // Out of the parent's box: the walk has left its subtree, and what follows belongs to
-      // something else.
-      if (!parent.contains(bounds)) break
-      if (nested != null && nested.contains(bounds)) continue
-      nested = null
-      if (node.merged) {
-        nested = bounds
-        continue
-      }
-      node.label.trim().takeIf { it.isNotEmpty() }?.let { parts += it }
+    fun collect(node: Element, isRoot: Boolean) {
+      // A nested stop is read as its own announcement, so its subtree is not part of this one —
+      // but what follows it still is.
+      if (!isRoot && node.mergesDescendants) return
+      node.ownLabel.trim().takeIf { it.isNotEmpty() }?.let { parts += it }
+      for (child in node.children) collect(child, isRoot = false)
     }
+    collect(element, isRoot = true)
     return parts.joinToString(" ")
-  }
-
-  /**
-   * The plain following run of non-stops — the fallback for a parent whose bounds don't parse, and
-   * so has no box to test its descendants against.
-   */
-  private fun followingRunLabel(nodes: List<AccessibilityNode>, index: Int): String {
-    val parts = mutableListOf<String>()
-    for (i in index + 1 until nodes.size) {
-      if (nodes[i].merged) break
-      nodes[i].label.trim().takeIf { it.isNotEmpty() }?.let { parts += it }
-    }
-    return parts.joinToString(" ")
-  }
-
-  private data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
-    fun contains(other: Bounds): Boolean =
-      left <= other.left && top <= other.top && right >= other.right && bottom >= other.bottom
-  }
-
-  private fun parseBounds(wire: String): Bounds? {
-    val parts = wire.split(',')
-    if (parts.size != 4) return null
-    val values = parts.map { it.trim().toIntOrNull() ?: return null }
-    return Bounds(values[0], values[1], values[2], values[3])
   }
 }

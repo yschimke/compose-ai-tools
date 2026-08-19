@@ -51,6 +51,9 @@ class AccessibilityLabelDemoRender {
     val size = BitmapFactory.decodeFile(source.absolutePath)
     val nodes = reportedNodes(size.width, size.height)
     size.recycle()
+    // The announcement the walk now produces for that button, from the same tree ATF hands it —
+    // not a string typed in here, so the two frames differ by exactly the change under review.
+    val announced = AccessibilityLabels.announcement(reportedTree())
 
     AccessibilityOverlay.generate(
       sourcePng = source,
@@ -61,7 +64,7 @@ class AccessibilityLabelDemoRender {
     AccessibilityOverlay.generate(
       sourcePng = source,
       findings = emptyList(),
-      nodes = AccessibilityLabels.rollUpMergedLabels(nodes),
+      nodes = nodes.mapIndexed { i, node -> if (i == 0) node.copy(label = announced) else node },
       destPng = File(outDir, "after.png"),
     )
   }
@@ -92,6 +95,29 @@ class AccessibilityLabelDemoRender {
       ),
     )
   }
+
+  /**
+   * The same button as [reportedNodes], as the tree the ATF walk reads: a merging, clickable
+   * surface holding a decorative icon and the label. `:renderer-android`'s
+   * `WearButtonA11yHierarchyProbeTest` is where this shape is measured against a real render rather
+   * than asserted.
+   */
+  private fun reportedTree(): AccessibilityLabels.Element =
+    element(
+      merges = true,
+      children = listOf(element(), element(own = "Filled")),
+    )
+
+  private fun element(
+    own: String = "",
+    merges: Boolean = false,
+    children: List<AccessibilityLabels.Element> = emptyList(),
+  ): AccessibilityLabels.Element =
+    object : AccessibilityLabels.Element {
+      override val ownLabel = own
+      override val mergesDescendants = merges
+      override val children = children
+    }
 
   /** A stand-in for the reported render: a filled Wear button with a leading icon and a label. */
   private fun paintMockButton(): Bitmap {

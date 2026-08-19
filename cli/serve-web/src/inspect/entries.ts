@@ -136,8 +136,13 @@ const boundsKey = (wire: string | null | undefined): string =>
  * of its own, then a subtitle announces "Title Subtitle" — stopping at the nested stop drops the
  * subtitle, ignoring it swallows the button's copy into the row.
  *
- * Mirrors `AccessibilityLabels.mergedDescendantLabel` in `:data-a11y-core`, which is where a
- * freshly rendered hierarchy gets this done before it reaches the wire.
+ * This is an APPROXIMATION, and deliberately the second line of defence: a freshly rendered
+ * hierarchy arrives with the label already on the stop, because `AccessibilityLabels` reads the
+ * real parent/child links during extraction, before the wire flattens them away. What is left here
+ * cannot be made exact — two rectangles that nest tell you nothing certain about ancestry, so a
+ * stop drawn over the whole of its parent will still swallow what follows it — and the payload has
+ * no ancestry to consult instead. Re-rendering the bundle is the fix for those; this keeps the
+ * common shapes readable until someone does.
  */
 function mergedDescendantLabel(nodes: A11yNode[], index: number): string {
     const parts: string[] = [];
