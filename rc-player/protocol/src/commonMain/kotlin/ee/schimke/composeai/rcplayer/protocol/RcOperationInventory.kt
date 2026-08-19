@@ -26,14 +26,22 @@ public data class RcOperationProfile(val name: String, val opcodes: Set<Int>) {
 /**
  * The operation sets each player can execute, as published API.
  *
- * **The `ALPHA16` in these names is a capture, not a version.** Each profile records which
- * operations a given player understood as of the AndroidX Remote Compose alpha16 registry — the
- * release this stack's inventory was built against. A newer AndroidX release adds a *sibling*
- * constant rather than changing what one of these means, so a consumer that pinned
- * `CMP_WASM_ALPHA16` keeps getting the set it tested against. Deciding that before the first
- * release rather than after was #4064's question; the alternative — making them internal — would
- * leave a host no way to ask `composeSupportReport` which player it is targeting, which is the one
- * thing these exist for.
+ * They are public rather than internal because a host has to tell `composeSupportReport` which
+ * player it is targeting, and that is the only thing these exist for. #4064 asked whether to make
+ * them internal before the first release; this is the answer.
+ *
+ * **`ALPHA16` names the registry generation, and these sets are not frozen at it.** Every profile
+ * is computed from [RcOperationInventory], which is generated from the checked-in
+ * `rc-operations.manifest`. Advancing that manifest — the normal way this stack tracks a new
+ * AndroidX release — changes what `CMP_WASM_ALPHA16` and `CMP_IOS_ALPHA16` contain, because a newly
+ * implemented operation joins `cmpImplementedOpcodes` below. The suffix records which AndroidX
+ * registry the manifest currently tracks; it is not a promise that the membership is pinned at
+ * today's contents.
+ *
+ * So: a consumer that needs an exact set pins the library version, which is the only thing that
+ * actually fixes the manifest. And when the manifest does advance to a later AndroidX release,
+ * these constants should be *renamed* to the new generation rather than silently kept — leaving
+ * `ALPHA16` on a set that no longer describes alpha16 is the failure mode worth avoiding.
  */
 public object RcOperationProfiles {
   private val cmpImplementedOpcodes: Set<Int> =
