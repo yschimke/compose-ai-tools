@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ModifierInfo
@@ -1561,8 +1560,8 @@ internal object ModifierTokenResolver {
    * shapes that land here was a sharp `<rect>` — geometry we never established, drawn over the
    * correctly-shaped pixels beneath it (issue #3254).
    *
-   * Sampled as a polyline via [PathMeasure] at the same cadence [DrawCaptureExtractor] uses for
-   * captured draw paths, which keeps this to common Compose API and off `PathIterator`. Same
+   * Sampled as a polyline via [PlatformPathMeasure] at the same cadence [DrawCaptureExtractor] uses
+   * for captured draw paths, which keeps this to common Compose API and off `PathIterator`. Same
    * single-contour limit as that sampler: a multi-contour outline (a ring, a shape with a hole)
    * contributes only its first contour. A container shape is one closed contour, and anything more
    * exotic still exports closer than a rectangle would.
@@ -1592,7 +1591,7 @@ internal object ModifierTokenResolver {
    * when the path is empty or degenerate.
    */
   private fun sampleClosedPath(path: Path, widthPx: Float, heightPx: Float): String {
-    val measure = PathMeasure().apply { setPath(path, false) }
+    val measure = PlatformPathMeasure.of(path) ?: return ""
     val length = measure.length
     if (!length.isFinite() || length <= 0f) return ""
     val step = 1.5f

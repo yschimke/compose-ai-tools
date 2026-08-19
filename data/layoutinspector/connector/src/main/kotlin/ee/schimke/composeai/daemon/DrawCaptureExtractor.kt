@@ -11,7 +11,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -279,8 +278,7 @@ internal object DrawCaptureExtractor {
     }
 
     private fun sampledPath(path: Path): String {
-      val pm = PathMeasure()
-      pm.setPath(path, false)
+      val pm = PlatformPathMeasure.of(path) ?: return ""
       val len = pm.length
       if (len <= 0f) return ""
       val step = 1.5f
