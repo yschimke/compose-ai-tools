@@ -9,6 +9,21 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
+/**
+ * A second skiko, resolved for inspection only.
+ *
+ * The renderer compiles against whatever `compose-multiplatform` brings (0.144.6 today), so its own
+ * test classpath can only ever demonstrate ONE `Image.encodeToData` shape — and the shape that
+ * broke every desktop capture is the other one (#4190). This configuration resolves the newer jar
+ * beside it without letting it near anything that runs, so the shape can be read off the real
+ * artifact rather than off a hand-written stand-in.
+ */
+val skikoEncodeProbe: Configuration by configurations.creating {
+  isCanBeConsumed = false
+  isCanBeResolved = true
+  description = "A skiko resolved for reflection only, never on a compile or runtime classpath."
+}
+
 dependencies {
   implementation(compose.desktop.currentOs)
   implementation(libs.jetbrains.compose.ui)
@@ -67,6 +82,24 @@ dependencies {
   implementation(project(":data-preview-overrides-runtime"))
 
   testImplementation(libs.junit)
+
+  // Deliberately NOT a test dependency: it is resolved into its own configuration and handed to the
+  // test as a path, so `SkikoBridgeShapeTest` can load it in an isolated classloader. Putting it on
+  // the test runtime classpath instead would let conflict resolution pick ONE skiko for the whole
+  // module, which is precisely the mechanism being guarded against.
+  skikoEncodeProbe(libs.skiko.awt.encode.probe)
+}
+
+tasks.withType<Test>().configureEach {
+  // A lazily-resolved, content-keyed view rather than the live Configuration: the same reason
+  // `ComposePreviewTasks` feeds its guards `incoming.artifactView { }.files` — a Configuration on a
+  // task field is not serializable by the configuration cache.
+  val probeJars = skikoEncodeProbe.incoming.artifactView {}.files
+  inputs
+    .files(probeJars)
+    .withPropertyName("skikoEncodeProbe")
+    .withNormalizer(ClasspathNormalizer::class)
+  doFirst { systemProperty("composeai.test.skikoEncodeProbe", probeJars.asPath) }
 }
 
 composeAiMavenPublishing {
