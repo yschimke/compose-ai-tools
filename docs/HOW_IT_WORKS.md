@@ -116,7 +116,10 @@ knowing:
 Sampling pixels alone cannot decide this, which is why the existing
 quiescence probe doesn't already cover it: a reveal that hasn't started yet is
 pixel-identical to a settled one, so a frame-to-frame comparison latches onto
-the empty container and calls it stable.
+the empty container and calls it stable. Making that probe's *default* safer
+for authors who never think to reach for an annotation — not arming its fast
+path until the first observed frame delta, and surfacing an exhausted sample
+budget somewhere a consumer's build can fail on — is issue #4239.
 
 An animation with no end can't quiesce, so it captures at the `maxMs` bound —
 the annotation belongs on a reveal, not on a spinner.
@@ -128,8 +131,8 @@ so a live Wear/Android frame agrees with the published PNG. The **desktop
 daemon** does not yet: it holds a frame cursor across the two `render()` calls
 of a capture and reuses it for the interactive session, so installing a settle
 clock there is a change to that cursor's contract rather than a change to one
-render — tracked separately. A settled CMP preview served live therefore still
-shows its first frame; its published PNG is settled.
+render — tracked in issue #4238. A settled CMP preview served live therefore
+still shows its first frame; its published PNG is settled.
 
 ### Freezing a preview at an intermediate animation frame
 

@@ -22,15 +22,13 @@ Children start at `alpha = 0` and are animated in from a `LaunchedEffect` after 
 
 Nothing fades; the value is simply written after the first composition.
 
-![deferred value, settled](android-deferred-value-after.png)
+| Before — no annotation | After — `@SettledPreview(afterMs = 300)` |
+| --- | --- |
+| ![deferred value, unsettled](android-deferred-value-before.png) | ![deferred value, settled](android-deferred-value-after.png) |
 
-Without the annotation this frame shows the `—` placeholder. `DeferredValueUnsettledPreview` is
-committed beside the settled one and `SettledPreviewPixelTest` asserts the pair (the settled capture
-carries >5× the dark pixels of the unsettled one), but the "before" PNG is not staged here — the
-local box could not hold a Gradle daemon long enough to render it. Re-run
-`./gradlew :samples:android:composePreviewRenderAll -PcomposePreview.filter=DeferredValue` and copy
-`DeferredValueUnsettledPreview_Deferred_unsettled-*.png` in as `android-deferred-value-before.png`
-to complete the pair.
+Without the annotation the frame shows the `—` placeholder; with an exact 300ms window the value
+that lands at 150ms is already in. `SettledPreviewPixelTest` asserts the pair (the settled capture
+carries >5× the dark pixels of the unsettled one), so both halves keep rendering on every PR.
 
 ## Desktop (CMP)
 
