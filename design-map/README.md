@@ -122,9 +122,20 @@ written when nothing declares an axis.
 
 ## Two things worth knowing
 
-**Only the light capture is mapped.** One entry per component, not per rendered mode, and the light
-one — because that is the mode design kits draw their frames in. Diffing a dark render against a
+**One capture per component is mapped, not one per rendered mode** — a component maps to a single
+design node. Where a composable publishes a themed pair, the **light** capture is the one that
+pairs, because that is the mode design kits draw their frames in: diffing a dark render against a
 light reference reports the whole palette as a finding.
+
+Where it publishes exactly **one** mode, that one pairs, whatever it is. A dark-first catalog — a
+Wear watch face is a black screen, so its component multipreview is a single dark capture — names no
+`Light` capture anywhere, and demanding one used to project the whole catalog to an empty map: a
+file reading as "nothing here corresponds to the kit" rather than "the projector could not see
+these", which `--strict` could not fire on either.
+
+Several modes with **no light among them** is the one case that stays unmapped. Picking one would be
+guessing which of `Dark` and `Coral` the kit drew, so those components are reported
+(`diagnostics.ambiguousMode`, and a `--strict` failure) rather than paired at random.
 
 **`overrides.props` beats `overrides.seeds` where both exist.** They are not the same list. `seeds`
 holds only the values that differ from the composable's defaults; `props` — emitted for a
