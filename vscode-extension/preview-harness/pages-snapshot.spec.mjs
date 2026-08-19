@@ -1665,6 +1665,44 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The provenance row with an EXECUTABLE BUNDLE in it, at the tablet width this used to break
+    // at. No committed fixture carries `download executable bundle` — it needs a live viewer with
+    // a bundle — which is exactly why the panel could be clipped by 160px here with every check
+    // green. The link is injected rather than fixtured because what is under test is the panel's
+    // independence from the row's contents, not the link itself: with the panel anchored to the
+    // toggle, a fourth entry pushed it to x=420 and `html { overflow-x: clip }` cut it off with no
+    // scrollbar to reveal it; anchored to the row, its position does not move at all.
+    fixture: "serve-viewer",
+    suffix: "report-open-bundle",
+    viewport: { width: 760, height: 800 },
+    apply: async (page) => {
+      await page.evaluate(() => {
+        const report = document.getElementById("cp-report");
+        report.removeAttribute("open");
+        // The markup `ServeWeb.executableBundleLinkHtml` emits, in the place
+        // `previewLinksHtml` puts it: after playground, before the report toggle.
+        const link = document.createElement("a");
+        link.href = "/bundle/fixture.jar";
+        link.setAttribute("download", "");
+        link.textContent = "download executable bundle";
+        report.closest(".cp-preview-links").insertBefore(link, report);
+      });
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // Geometry, not just pixels: a panel clipped by `overflow-x: clip` still screenshots as a
+      // plausible-looking page, so assert it is inside the viewport rather than trusting the eye.
+      const box = await page.evaluate(() => {
+        const r = document
+          .querySelector("#cp-report .cp-report-panel")
+          .getBoundingClientRect();
+        return { left: r.left, right: r.right, width: innerWidth };
+      });
+      expect(box.left).toBeGreaterThanOrEqual(0);
+      expect(box.right).toBeLessThanOrEqual(box.width);
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     fixture: "serve-viewer",
     suffix: "connecting",
     apply: async (page) => {

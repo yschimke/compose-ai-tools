@@ -480,7 +480,7 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 /* Per-preview GitHub links under the viewer title: source file, and "report an issue". One flex
    row so they read as a single line whether one or both are present. */
 .cp-preview-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
-  margin: 0 0 8px; }
+  margin: 0 0 8px; position: relative; }
 .cp-source, .cp-report, .cp-figma { margin: 0; font-size: 0.8rem; }
 /* The report affordance is a disclosure whose panel holds a GET form (its action is the GitHub
    issue form, its body a hidden input) so no page state ever reaches a navigation sink — but its
@@ -496,6 +496,21 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    floats rather than pushing the render down the page, and resets font-size because the provenance
    row it hangs from is 0.8rem and a form the reporter types into should not be. */
 .cp-report { position: relative; }
+/* …but in the provenance row the panel is anchored to the ROW, not to the toggle. A `max-width`
+   caps how wide a panel is and says nothing about where it starts, and this toggle's start moves:
+   it is the last-but-one entry in a row whose earlier entries are all optional, so every link a
+   session happens to have shifts it right. A live viewer with an executable bundle carries four
+   before it and pushed the panel to x=420 — clipped by up to 160px between 680 and 820px, and
+   `html { overflow-x: clip }` means clipped, not scrollable, so the Summary field was simply
+   unreachable. Anchoring to the row (which spans the full content width) makes the panel's
+   position independent of how many links precede it, so no future addition to this row can
+   reintroduce the bug at some width nobody thought to test.
+   Scoped to the row, because the focused comparison renders the same affordance with no
+   `.cp-preview-links` around it (see `ServeWeb.referenceComparisonPage`); there `.cp-report` stays
+   relative, which is the only containing block that panel has — making it static would resolve
+   `top: 100%` against the initial one and drop the panel 619px ABOVE its own toggle. Measured. */
+.cp-preview-links { position: relative; }
+.cp-preview-links .cp-report { position: static; }
 .cp-report-panel { position: absolute; left: 0; top: calc(100% + 6px); z-index: 50;
   width: max-content; max-width: min(420px, calc(100vw - 32px)); padding: 12px;
   border-radius: var(--md-sys-shape-corner-medium);
@@ -2565,27 +2580,6 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      catalog calls its themes. */
   .cp-catalog-theme { position: static; }
   .cp-catalog-theme .cp-theme-menu-panel { left: 0; right: auto; }
-  /* The viewer's report panel has the same shape of problem, one row down and pointing the other
-     way. Its toggle is the THIRD entry in the provenance row (`source`, `playground`, then this),
-     and that row does not wrap until far below phone width — so the panel's containing block
-     starts ~190px inside the viewport while its cap only says how WIDE it may be. Measured on the
-     `serve-viewer` fixture at 360px: the panel ran from x=191 to x=519 and took the document's
-     scrollWidth with it, so the Summary field was half off screen and the whole page scrolled
-     sideways. Broken at every width up to ~636px, i.e. exactly this block's band.
-     Same remedy as the Theme panel above: hand the panel to the row, which spans the full content
-     width, so `left: 0` anchors it to the row's left edge instead of the toggle's. `top: 100%` is
-     then measured against the row — one line tall — so it still opens just under the link it
-     belongs to. The cap keeps the right edge on screen, so both ends are inside the viewport.
-     Scoped to the report INSIDE that row, because it is the row that makes this necessary and the
-     row that fixes it. The focused comparison renders the same affordance with no
-     `.cp-preview-links` around it (see `ServeWeb.referenceComparisonPage`), where the toggle
-     already sits at the content's left edge and the base rule keeps the panel on screen by
-     itself — and where making `.cp-report` static would take away the panel's only containing
-     block, resolving `top: 100%` against the initial one and dropping the panel 619px ABOVE its
-     own toggle. Measured, before this scoping was added. */
-  .cp-preview-links { position: relative; }
-  .cp-preview-links .cp-report { position: static; }
-  .cp-preview-links .cp-report-panel { left: 0; right: auto; max-width: calc(100vw - 32px); }
   /* The heading is the catalog's name and the bar three rows above it is already the catalog's
      name. Hidden rather than removed — `clip` keeps it in the accessibility tree, so the document
      still has its `<h1>` and the page still announces what it is. Only when the bar really is
