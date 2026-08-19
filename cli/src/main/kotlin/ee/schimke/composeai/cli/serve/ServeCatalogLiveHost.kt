@@ -1050,6 +1050,18 @@ class ServeCatalogLiveHost(
   override fun hasA11yOverlayFor(previewId: String): Boolean =
     previewId in alias && live.hasA11yOverlayFor(alias.getValue(previewId))
 
+  /**
+   * Annotation capability comes from the live lane, NOT from [canApplyOverrides].
+   *
+   * The composite reports `canApplyOverrides = false` because browsing serves baked pixels — but
+   * the default `hasDesignAnnotations` reads exactly that flag, so a catalog fronted by a live
+   * daemon advertised itself as unable to produce the layers its daemon produces on request.
+   */
+  override val hasDesignAnnotations: Boolean by lazy { live.hasDesignAnnotations }
+
+  override fun hasDesignAnnotationsFor(previewId: String): Boolean =
+    previewId in alias && live.hasDesignAnnotations
+
   override fun hasScrollExportFor(previewId: String): Boolean =
     previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
 
@@ -1489,6 +1501,25 @@ class ServeCatalogLiveHost(
   override fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome {
     val daemonId = alias[previewId] ?: return A11yOutcome.NotFound
     return liveHostFor(daemonId).renderA11y(daemonId, overrides)
+  }
+
+  /**
+   * The typography + theme inspection layers follow [renderA11y] exactly: the baked lane has no
+   * daemon to capture a `compose/semantics` tree from, so a mapped id routes live and an unmapped
+   * one has nothing to inspect.
+   *
+   * Without this the composite inherited [ServeHost]'s daemon-less default — `NotFound` — while the
+   * viewer still offered the Typography checkbox from the catalog's *published reference*
+   * annotations (issue #4254). Ticking it on the Compose render fetched `<frame>.annotations`, got
+   * a 404, and drew nothing: a control that looked live on every catalog page and worked on none of
+   * them.
+   */
+  override fun renderAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome {
+    val daemonId = alias[previewId] ?: return AnnotationsOutcome.NotFound
+    return liveHostFor(daemonId).renderAnnotations(daemonId, overrides)
   }
 
   /**

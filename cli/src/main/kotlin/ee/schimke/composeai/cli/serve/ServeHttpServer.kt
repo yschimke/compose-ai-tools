@@ -5473,10 +5473,12 @@ class ServeHttpServer(
               "$basePath/bundle/${WebEscaping.urlEncodeSegment(preview.id)}${requestQuerySuffix()}"
             else null,
           // The inspection layers: the accessibility focus map needs an a11y-capable daemon, the
-          // typography / theme layers a semantics-capturing one. Both are session-wide facts (any
-          // preview this daemon renders can be inspected), unlike the export gates above.
+          // typography / theme layers a semantics-capturing one. Both are asked per preview, not
+          // session-wide: a catalog host fronts the whole catalog but only its daemon-twinned ids
+          // can be inspected, so an unmapped (Android-only) variant must omit the controls rather
+          // than offer ones whose fetch can only 404.
           hasA11yOverlay = renderHost.hasA11yOverlayFor(preview.id),
-          hasDesignAnnotations = renderHost.hasDesignAnnotations,
+          hasDesignAnnotations = renderHost.hasDesignAnnotationsFor(preview.id),
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           // Per-preview: offer the in-browser Remote Compose canvas lane only when this preview

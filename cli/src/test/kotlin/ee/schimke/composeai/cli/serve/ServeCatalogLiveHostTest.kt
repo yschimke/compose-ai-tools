@@ -46,6 +46,8 @@ class ServeCatalogLiveHostTest {
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
     override val hasA11yOverlay: Boolean = false,
+    /** Whether this host can project the typography / theme layers off a semantics tree. */
+    override val hasDesignAnnotations: Boolean = false,
     /**
      * Ids this host lists but has no pixels for (a catalog's deferred previews) — `render` reports
      * `NotFound` for them, exactly as the real baked host does.
@@ -81,6 +83,7 @@ class ServeCatalogLiveHostTest {
     var lastSvgId: String? = null
     var lastStreamId: String? = null
     var lastA11yId: String? = null
+    var lastAnnotationsId: String? = null
     var renderCalls = 0
     val renderedIds = Collections.synchronizedList(mutableListOf<String>())
     var closed = false
@@ -121,6 +124,18 @@ class ServeCatalogLiveHostTest {
       return A11yOutcome.Ok(
         """{"previewId":"$previewId","nodes":[],"findings":[],"touchTargets":[]}"""
           .encodeToByteArray()
+      )
+    }
+
+    override fun renderAnnotations(
+      previewId: String,
+      overrides: PreviewOverrides,
+    ): AnnotationsOutcome {
+      lastAnnotationsId = previewId
+      lastRenderOverrides = overrides
+      if (!hasDesignAnnotations) return AnnotationsOutcome.NotFound
+      return AnnotationsOutcome.Ok(
+        """{"previewId":"$previewId","annotations":[],"tags":{}}""".encodeToByteArray()
       )
     }
 
@@ -450,6 +465,57 @@ class ServeCatalogLiveHostTest {
       composite.renderA11y(androidOnlyId, PreviewOverrides()),
     )
     assertNull(live.lastA11yId)
+  }
+
+  @Test
+  fun `typography inspection maps the catalog id and preserves live overrides`() {
+    // Issue #4254: the composite reports `canApplyOverrides = false` (browsing is baked pixels),
+    // and
+    // the default `hasDesignAnnotations` reads exactly that flag — so a catalog fronted by a live
+    // daemon claimed it could not produce the layers its daemon produces on request, and
+    // `.annotations` 404'd while the viewer still offered the Typography checkbox.
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasDesignAnnotations = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    val overrides = knobOverride().copy(uiMode = UiMode.DARK, fontScale = 1.3f)
+
+    assertTrue(composite.hasDesignAnnotations)
+    assertTrue(composite.hasDesignAnnotationsFor(catalogId))
+    val out = composite.renderAnnotations(catalogId, overrides) as AnnotationsOutcome.Ok
+    assertEquals(daemonId, live.lastAnnotationsId)
+    // The viewer's overrides must reach the daemon: a font-scaled frame's type sizes are the whole
+    // point of the layer, so inspecting the catalog's original pixels would describe the wrong
+    // text.
+    assertEquals(overrides, live.lastRenderOverrides)
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$daemonId\""))
+    assertNull(baked.lastAnnotationsId)
+  }
+
+  @Test
+  fun `typography inspection stays unavailable for a catalog preview without a daemon twin`() {
+    val baked =
+      RecordingHost(previews = listOf(ServePreview(androidOnlyId, androidOnlyId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasDesignAnnotations = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertFalse(composite.hasDesignAnnotationsFor(androidOnlyId))
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      composite.renderAnnotations(androidOnlyId, PreviewOverrides()),
+    )
+    assertNull(live.lastAnnotationsId)
   }
 
   @Test
