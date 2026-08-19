@@ -728,6 +728,129 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * Regression for #4210 — the seed has to be in the controller **before the first composition
+   * pass**, not one pass late.
+   *
+   * [namedOverrideChangesRenderedFill] above cannot catch this: it reads the knob straight into the
+   * composition, so a seed applied after the first pass still lands, via the recomposition the
+   * snapshot write triggers. A knob captured by a **keyless `remember`** has no second chance — the
+   * initializer runs once, on the first pass, and every androidx `remember*State` factory
+   * (`rememberTimePickerState`, `rememberDatePickerState`, …) is exactly that shape. When the seed
+   * arrived late, a `@OverrideVariant` cell seeding one of those quietly published its unseeded
+   * sibling's pixels, with no error and no diff.
+   *
+   * The baked `:renderer-desktop` lane never had the bug (`DesktopRendererMain` calls
+   * `PreviewOverrideController.set` before it composes anything), which is why "baked is right,
+   * live is wrong" was the reported shape.
+   */
+  @Test
+  fun namedOverrideReachesAKeylessRememberOnTheFirstComposition() {
+    val outputDir = tempFolder.newFolder("renders-remembered-override")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "remembered",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RememberedOverridableSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "remembered",
+            )
+          )
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      val seeded =
+        renderAndDecode(
+          host,
+          "previewId=remembered;overrides=${encodeNamedBag("fill", "#FF42A5F5")}",
+          "remembered-seeded",
+        )
+      val bluePct = pixelMatchPct(seeded, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "a seed captured by a keyless remember must be the seeded blue, not the author default; " +
+          "got ${"%.2f".format(bluePct * 100)}% blue",
+        bluePct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * Regression for #4209 — the sibling symptom of the same late seed.
+   *
+   * An animation captures its initial value on the first composition pass. Seeding after that pass
+   * doesn't set the value, it *retargets* an animation already sitting on the unseeded one — and a
+   * render captures the first frame or two, so the PNG shows the value the seed was supposed to
+   * replace. On the live lane that drew `ToggleButton`'s unchecked container with its checked shape
+   * (and, at `xs`, a bare rectangle), for exactly the cells whose resting shape differs from their
+   * checked shape.
+   *
+   * Asserted on a colour animation rather than a shape one: the property under test is *when* the
+   * seed lands, and both animations take their initial value from the first pass.
+   */
+  @Test
+  fun namedOverrideSettlesAnAnimatedValueWithoutAnimatingFromTheDefault() {
+    val outputDir = tempFolder.newFolder("renders-animated-override")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "animated",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "AnimatedOverridableSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "animated",
+            )
+          )
+      )
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+      )
+    host.start()
+    try {
+      val seeded =
+        renderAndDecode(
+          host,
+          "previewId=animated;overrides=${encodeNamedBag("fill", "#FF42A5F5")}",
+          "animated-seeded",
+        )
+      val bluePct = pixelMatchPct(seeded, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "an animated value must start settled on the seed, not animate to it from the author " +
+          "default; got ${"%.2f".format(bluePct * 100)}% blue",
+        bluePct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * The `previewId=` one-shot lane — the same bundle-backed live-daemon path as
    * [namedOverrideAppliesOnPreviewIdPayloadPath] — rotates the frame but used to leave the wrap
    * flags on their old axis, so a fixed-width / wrapped-height preview turned portrait kept
