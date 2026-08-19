@@ -390,6 +390,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "DeferredValueSettledPreview_Deferred_value-a8cd1a6d.a11y.png",
+      "cleanBasename": "DeferredValueSettledPreview_Deferred_value-a8cd1a6d.png",
+      "findings": [],
+      "functionName": "DeferredValueSettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.DeferredValueSettledPreview_Deferred value",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.a11y.png",
+      "cleanBasename": "DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.png",
+      "findings": [],
+      "functionName": "DeferredValueUnsettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.DeferredValueUnsettledPreview_Deferred unsettled",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase-0d81b92c.a11y.png",
       "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase-0d81b92c.png",
       "findings": [
@@ -1261,6 +1283,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.a11y.png",
+      "cleanBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
+      "findings": [],
+      "functionName": "RedToBlueScrollTimedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollTimedPreview_ScrollTimed",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.a11y.png",
       "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.png",
       "findings": [],
@@ -1269,6 +1302,28 @@
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72",
       "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RevealCardSettledPreview_Reveal_settled-c7245802.a11y.png",
+      "cleanBasename": "RevealCardSettledPreview_Reveal_settled-c7245802.png",
+      "findings": [],
+      "functionName": "RevealCardSettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.RevealCardSettledPreview_Reveal settled",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.a11y.png",
+      "cleanBasename": "RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.png",
+      "findings": [],
+      "functionName": "RevealCardUnsettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.RevealCardUnsettledPreview_Reveal unsettled",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
       "variant": ""
     },
     {
@@ -1388,7 +1443,7 @@
         {
           "boundsInScreen": "179,132,383,185",
           "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 4 other item(s).",
+          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 8 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
           "viewDescription": "android.widget.TextView"
         }
@@ -1604,6 +1659,28 @@
       "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default",
       "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DesktopRevealSettledPreview_Reveal_settled-fd6af239.a11y.png",
+      "cleanBasename": "DesktopRevealSettledPreview_Reveal_settled-fd6af239.png",
+      "findings": [],
+      "functionName": "DesktopRevealSettledPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SettledPreviewsKt.DesktopRevealSettledPreview_Reveal settled",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.a11y.png",
+      "cleanBasename": "DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.png",
+      "findings": [],
+      "functionName": "DesktopRevealUnsettledPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SettledPreviewsKt.DesktopRevealUnsettledPreview_Reveal unsettled",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SettledPreviews.kt",
       "variant": ""
     },
     {
@@ -2102,17 +2179,6 @@
       "variant": "pixel_8"
     },
     {
-      "annotatedBasename": "AssistChipSticker_Dark-c6a3982a.a11y.png",
-      "cleanBasename": "AssistChipSticker_Dark-c6a3982a.png",
-      "findings": [],
-      "functionName": "AssistChipSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.AssistChipSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "BadgeSticker_Dark-dc162abd.a11y.png",
       "cleanBasename": "BadgeSticker_Dark-dc162abd.png",
       "findings": [],
@@ -2132,50 +2198,6 @@
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark",
       "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "CircularProgressSticker_Dark-9e6726a1.png",
-      "findings": [],
-      "functionName": "CircularProgressSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.CircularProgressSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ElevatedButtonSticker_Dark-d072583a.a11y.png",
-      "cleanBasename": "ElevatedButtonSticker_Dark-d072583a.png",
-      "findings": [],
-      "functionName": "ElevatedButtonSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.ElevatedButtonSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ElevatedCardSticker_Dark-18954843.a11y.png",
-      "cleanBasename": "ElevatedCardSticker_Dark-18954843.png",
-      "findings": [],
-      "functionName": "ElevatedCardSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.ElevatedCardSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FabSticker_Dark-4af5bc82.a11y.png",
-      "cleanBasename": "FabSticker_Dark-4af5bc82.png",
-      "findings": [],
-      "functionName": "FabSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.FabSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -2234,39 +2256,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilledCardSticker_Dark-a4dde0c8.a11y.png",
-      "cleanBasename": "FilledCardSticker_Dark-a4dde0c8.png",
-      "findings": [],
-      "functionName": "FilledCardSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.FilledCardSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FilledTonalButtonSticker_Dark-33902564.a11y.png",
-      "cleanBasename": "FilledTonalButtonSticker_Dark-33902564.png",
-      "findings": [],
-      "functionName": "FilledTonalButtonSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledTonalButtonSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FilterChipSelected_Dark-58750fb8.a11y.png",
-      "cleanBasename": "FilterChipSelected_Dark-58750fb8.png",
-      "findings": [],
-      "functionName": "FilterChipSelected",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.FilterChipSelected_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "",
       "cleanBasename": "LinearProgressSticker_Dark-b4131c7d.png",
       "findings": [],
@@ -2275,61 +2264,6 @@
       "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Dark",
       "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "OutlinedButtonSticker_Dark-d56655ef.a11y.png",
-      "cleanBasename": "OutlinedButtonSticker_Dark-d56655ef.png",
-      "findings": [],
-      "functionName": "OutlinedButtonSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.OutlinedButtonSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "OutlinedCardSticker_Dark-6c9348c5.a11y.png",
-      "cleanBasename": "OutlinedCardSticker_Dark-6c9348c5.png",
-      "findings": [],
-      "functionName": "OutlinedCardSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.OutlinedCardSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "OutlinedTextFieldSticker_Dark-0946df4b.a11y.png",
-      "cleanBasename": "OutlinedTextFieldSticker_Dark-0946df4b.png",
-      "findings": [],
-      "functionName": "OutlinedTextFieldSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.OutlinedTextFieldSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTextFields.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "RadioSelected_Dark-831f5cf9.a11y.png",
-      "cleanBasename": "RadioSelected_Dark-831f5cf9.png",
-      "findings": [],
-      "functionName": "RadioSelected",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.RadioSelected_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SegmentedToggle_Dark-a426966f.a11y.png",
-      "cleanBasename": "SegmentedToggle_Dark-a426966f.png",
-      "findings": [],
-      "functionName": "SegmentedToggle",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogStatesKt.SegmentedToggle_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
     {
@@ -2440,17 +2374,6 @@
       "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Dark",
       "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "TextButtonSticker_Dark-7129bde1.a11y.png",
-      "cleanBasename": "TextButtonSticker_Dark-7129bde1.png",
-      "findings": [],
-      "functionName": "TextButtonSticker",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.TextButtonSticker_Dark",
-      "rendersDir": "design-catalog-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
     {
@@ -3540,17 +3463,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxButtonChecked-16f1990b.a11y.png",
-      "cleanBasename": "CheckboxButtonChecked-16f1990b.png",
-      "findings": [],
-      "functionName": "CheckboxButtonChecked",
-      "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked",
-      "rendersDir": "design-catalog-wear-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "ChildButtonSticker-3f85a48b.a11y.png",
       "cleanBasename": "ChildButtonSticker-3f85a48b.png",
       "findings": [],
@@ -3645,17 +3557,6 @@
       "functionName": "IndeterminateCircularProgressSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
-      "rendersDir": "design-catalog-wear-m3",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ListHeaderSticker-7f5259a9.a11y.png",
-      "cleanBasename": "ListHeaderSticker-7f5259a9.png",
-      "findings": [],
-      "functionName": "ListHeaderSticker",
-      "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker",
       "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
