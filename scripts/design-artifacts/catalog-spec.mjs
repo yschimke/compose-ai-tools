@@ -832,6 +832,14 @@ function completenessErrors(spec) {
       errors.push(`completeness.${key} is not a known field (did you mean \`exemptSemantics\`?)`);
     }
   }
+  // Allowed is not the same as untyped. The schema declares `$comment` a string, and
+  // `validate-catalog-spec.mjs` runs THIS validator rather than the schema — so without the check a
+  // number, object, array or null sails through the advertised structural pre-flight and is
+  // rejected later by whatever schema-aware tooling the author reaches for, which is the worst
+  // possible order to learn it in.
+  if ("$comment" in block && typeof block.$comment !== "string") {
+    errors.push("`completeness.$comment` must be a string");
+  }
   const exempt = block.exemptSemantics;
   if (exempt === undefined) return errors;
   if (!Array.isArray(exempt)) {
