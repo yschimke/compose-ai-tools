@@ -606,6 +606,11 @@ fun main(args: Array<String>) {
             minHeightPx = minHeightPx,
             maxWidthPx = maxWidthPx,
             maxHeightPx = maxHeightPx,
+            // Discovery attaches a settle to a focused still just as it does to a plain one, so
+            // the succeeding focus path has to honour it too — not only the fallback below.
+            settleWindowMs =
+              if (settleAfterMs < 0) 0L
+              else if (settleAfterMs > 0) settleAfterMs.toLong() else settleMaxMs.toLong(),
           )
         if (!didCapture) {
           renderPreview(

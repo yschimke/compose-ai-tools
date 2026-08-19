@@ -121,7 +121,34 @@ data class Capture(
    * Absent (null) on a capture rendered at the default advance.
    */
   val settle: JsonElement? = null,
-)
+) {
+  /**
+   * Binary-compatible constructor retained for consumers compiled before [settle] was added. Same
+   * policy — and same reasoning — as [CatalogEntry]'s pre-`kitValue` constructor: a default on the
+   * new primary parameter preserves *source* compatibility only, while appending it still changes
+   * the JVM constructor descriptor and its default-argument bridge.
+   */
+  constructor(
+    advanceTimeMillis: Long? = null,
+    scroll: ScrollCapture? = null,
+    renderOutput: String = "",
+    optional: Boolean = false,
+    focus: JsonElement? = null,
+    focusGif: JsonElement? = null,
+    hover: JsonElement? = null,
+    gestureHint: JsonElement? = null,
+  ) : this(
+    advanceTimeMillis = advanceTimeMillis,
+    scroll = scroll,
+    renderOutput = renderOutput,
+    optional = optional,
+    focus = focus,
+    focusGif = focusGif,
+    hover = hover,
+    gestureHint = gestureHint,
+    settle = null,
+  )
+}
 
 /**
  * Design-catalog role. Mirrors `CatalogRole` in gradle-plugin/PreviewData.kt — string-typed decode

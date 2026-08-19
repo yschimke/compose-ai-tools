@@ -67,11 +67,17 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
     timeMillis: Long,
     continuation: CancellableContinuation<Unit>,
   ) {
-    scheduled.add(
+    val entry =
       Scheduled(nowMs + timeMillis.coerceAtLeast(0), seq++) {
         with(continuation) { resumeUndispatched(Unit) }
       }
-    )
+    scheduled.add(entry)
+    // Drop the entry when its coroutine is cancelled — a `LaunchedEffect { delay(…) }` whose key
+    // changes, or whose composable leaves the composition, cancels the continuation but would
+    // otherwise leave a corpse in the queue until its original deadline. [hasScheduledWork] cannot
+    // tell a corpse from live work, so auto settle would walk the full [maxMs] bound instead of
+    // stopping when the composition actually went quiet.
+    continuation.invokeOnCancellation { scheduled.remove(entry) }
   }
 
   /** Whether any `delay` is still outstanding — the half of quiescence pixels cannot see. */
