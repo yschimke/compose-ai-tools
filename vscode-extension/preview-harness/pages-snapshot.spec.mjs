@@ -308,6 +308,13 @@ const STYLED_FIXTURES = new Set([
   // decided by viewer.js at runtime — captured bare it is an unstyled run of buttons in which
   // neither the pill treatment nor the enabled-state sync moves a baseline at all.
   "serve-viewer-themes",
+  // …and the crowded shape of that same control: eight theme choices, which is what put them
+  // behind a dropdown in the first place. It is committed for exactly this panel, so it has to be
+  // captured with the real stylesheet — the rows ARE paint (a swatch column, labels resolved in
+  // the page's own `color-scheme`, the selected row's inset ring), and bare they are an unstyled
+  // run of buttons in which none of that moves a baseline. Its `theme-menu` state below is what
+  // opens it; closed, this page is one pill that says "Dark".
+  "serve-viewer-theme-overflow",
   // The grid's long-press live lane. Both halves of its claim are styling: the "hold for live"
   // affordance that appears under a pointer, and the canvas overlay + accent chip a streaming
   // card wears. Captured bare there is no overlay at all — the script never loads — so the whole
@@ -1587,6 +1594,23 @@ const FIXTURE_STATES = [
       // error — and the whole point is that both sides capture so the pixels can disagree.
       await page.waitForTimeout(300);
     },
+  },
+  {
+    // The VIEWER's Theme menu open, on the fixture that carries eight choices. The landing's
+    // `theme-menu` state below shoots the same panel, but only ever with five rows and never
+    // beside a stage — and the menu is the one control on this page whose contents no other shot
+    // reaches, since the pill it hangs off says nothing but the theme in force. Both schemes, on
+    // purpose: the rows resolve their colours from whichever one the page is painted in, and a
+    // regression that pins them to one is legible only when the two shots disagree.
+    fixture: "serve-viewer-theme-overflow",
+    suffix: "theme-menu",
+    apply: async (page) => {
+      await page.click("#cp-theme-toggle");
+      await page.waitForSelector(".cp-theme-menu[open] .cp-theme-menu-panel");
+    },
+    // The pointer rests on the summary otherwise, which is a hover state on the toggle and not
+    // part of what this shot is about.
+    parkPointer: true,
   },
   {
     // The page theme following the SELECTED PREVIEW THEME (the "Page theme" setting, on by

@@ -1529,15 +1529,43 @@ cp-history-menu { display: contents; }
   box-shadow: var(--md-sys-elevation-level2); }
 .cp-theme-menu-panel .cp-theme-bar { display: flex; flex-direction: column; align-items: stretch;
   gap: 2px; overflow: visible; padding: 0; }
-.cp-theme-menu-panel .cp-theme-btn { min-width: 12em; width: 100%; text-align: left; }
-/* Keep option labels in the menu's foreground; a small swatch carries the theme preview. */
-.cp-theme-menu-panel .cp-theme-btn[data-theme-mode] { color-scheme: normal;
+/* A menu ROW is the same chip in a different container, and every rule that makes it one has to
+   out-specify `.cp-theme-bar .cp-theme-btn` — the horizontal scroller's own rule, declared further
+   down this sheet at the SAME specificity, so a bare `.cp-theme-menu-panel .cp-theme-btn` set
+   `display`, `text-align` and `min-width` and then had all three taken straight back off. Naming
+   the bar as well is what makes them stick. `display` is the load-bearing one: the scroller wants
+   `inline-block` (it is what `text-overflow` needs), but that leaves the swatch below an INLINE
+   box, and `width`/`height` do not apply to one — the 16px circle collapsed to a 2px sliver of its
+   own border floating beside every label, which is what the menu has been drawing. Ellipsis goes
+   with it: these rows are full-width on a panel that sizes to its content, so a long theme name
+   wraps rather than being clipped by an `overflow: hidden` that would also crop the selected row's
+   inset ring. */
+.cp-theme-menu-panel .cp-theme-bar .cp-theme-btn { display: flex; min-width: 12em; width: 100%;
+  text-align: left; white-space: normal; overflow: visible; }
+/* Keep option labels in the menu's foreground; a small swatch carries the theme preview.
+   `inherit`, and NOT the `normal` this rule used to carry: that keyword does not mean "whatever
+   the page is", it means the UA's own default — light. So it re-resolved every `light-dark()` in
+   the token layer for these rows alone, and `--md-sys-color-on-surface` came out #1d1b20, painted
+   on the dark `surface-container-high` the panel above is filled with: near-black on near-black.
+   On a dark-first catalog that took out the whole menu, because every declared theme there carries
+   `data-theme-mode="dark"` and so every row matched — `/wear-m3/`'s six themes opened as six
+   invisible labels. `inherit` takes the page's own scheme, which is what "the menu's foreground"
+   meant. The swatch keeps its per-row pin below, so the taster survives. */
+.cp-theme-menu-panel .cp-theme-bar .cp-theme-btn[data-theme-mode] { color-scheme: inherit;
   background: transparent; color: var(--md-sys-color-on-surface); border-color: transparent; }
-.cp-theme-menu-panel .cp-theme-btn[data-theme-mode]::before { content: ""; flex: 0 0 16px;
-  width: 16px; height: 16px; margin-right: 8px; border-radius: 50%;
+/* The swatch column is a COLUMN — every row reserves the slot, only a row whose mode is known
+   paints one in it. Left-aligned labels that started at the panel's padding on `Dark` and 24px in
+   on the row below it read as two lists; an empty leading box on the rows that have no swatch to
+   show (the baked Light/Dark pair, which is its own taster, and any theme with no resolvable mode)
+   costs nothing and lines them all up. */
+.cp-theme-menu-panel .cp-theme-bar .cp-theme-btn::before { content: ""; flex: 0 0 16px;
+  width: 16px; height: 16px; margin-right: 8px; border-radius: 50%; }
+.cp-theme-menu-panel .cp-theme-bar .cp-theme-btn[data-theme-mode]::before {
   background: light-dark(#f6f2fa, #29272e); border: 1px solid var(--md-sys-color-outline); }
-.cp-theme-menu-panel .cp-theme-btn[data-theme-mode="light"]::before { color-scheme: light; }
-.cp-theme-menu-panel .cp-theme-btn[data-theme-mode="dark"]::before { color-scheme: dark; }
+.cp-theme-menu-panel .cp-theme-bar .cp-theme-btn[data-theme-mode="light"]::before {
+  color-scheme: light; }
+.cp-theme-menu-panel .cp-theme-bar .cp-theme-btn[data-theme-mode="dark"]::before {
+  color-scheme: dark; }
 /* The axis toggles are the drawer toggle's compact sibling: same pill, same selected language,
    but two-part — the axis it folds, then the value that axis currently holds. Four full-size
    drawer pills on the title row of a 1100px laptop wrap; at this size they don't. */
