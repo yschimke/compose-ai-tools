@@ -1779,6 +1779,198 @@ class PlaygroundSourceCleanerTest {
     assertFalse(result.text.contains("FilledButtonComponent"), result.text)
   }
 
+  /**
+   * A scaffold annotation sharing its physical line with the rest of the declaration.
+   *
+   * Legal Kotlin, and checked in: `CatalogText.kt:42` is `@CatalogModes @Composable fun
+   * TextBrandedSpecimen() = Sticker("text-branded")`. The stripper worked line-by-line, so
+   * recognising `@CatalogModes` discarded the whole line — `@Composable` and the function with it —
+   * leaving nothing to emit and falling back to the verbatim wrapper, which is the snippet this
+   * class exists to replace.
+   */
+  @Test
+  fun `a scaffold annotation sharing a line with the declaration takes only itself`() {
+    val source =
+      """
+      package demo.catalog
+
+      import androidx.compose.runtime.Composable
+
+      @CatalogModes @Composable fun TextBrandedSpecimen() = Sticker("text-branded")
+      """
+        .trimIndent()
+    val components =
+      """
+      package demo.catalog.shared
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun CatalogComponent(id: String) {
+        when (id) {
+          "text-branded" -> Text("Branded")
+          else -> Text("unknown")
+        }
+      }
+      """
+        .trimIndent()
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source = source,
+          bodyLine = lineIn(source, "fun TextBrandedSpecimen"),
+          rules = delegatingRules,
+          parser = null,
+          helperSources = listOf(stickerHelper, components),
+        )
+      )
+
+    // The scaffold annotation goes, everything else on that line stays, and the delegation still
+    // reduces to the component behind it.
+    assertFalse(result.text.contains("@CatalogModes"), result.text)
+    assertTrue(result.text.contains("@Composable"), result.text)
+    assertTrue(result.text.contains("fun TextBrandedSpecimen()"), result.text)
+    assertTrue(result.text.contains("""Text("Branded")"""), result.text)
+    assertFalse(result.text.contains("Sticker("), result.text)
+  }
+
+  /** An annotation with arguments on a shared line — the span to remove is not just a word. */
+  @Test
+  fun `only the matched annotation span is removed when it carries arguments`() {
+    val source =
+      """
+      package demo.catalog
+
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.CatalogComponent
+
+      @CatalogComponent(id = "Text/Branded", group = "Text") @Composable fun Branded() = Sticker("text-branded")
+      """
+        .trimIndent()
+    val components =
+      """
+      package demo.catalog.shared
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun CatalogComponent(id: String) {
+        when (id) {
+          "text-branded" -> Text("Branded")
+          else -> Text("unknown")
+        }
+      }
+      """
+        .trimIndent()
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source = source,
+          bodyLine = lineIn(source, "fun Branded"),
+          rules = delegatingRules,
+          parser = null,
+          helperSources = listOf(stickerHelper, components),
+        )
+      )
+
+    assertFalse(result.text.contains("""id = "Text/Branded""""), result.text)
+    assertTrue(result.text.contains("@Composable"), result.text)
+    assertTrue(result.text.contains("fun Branded()"), result.text)
+    assertTrue(result.text.contains("""Text("Branded")"""), result.text)
+  }
+
+  /**
+   * An extension helper in a scaffold source, called the only way an extension can be.
+   *
+   * `helperIndex` keys on `declaredName`, which took the first identifier after `fun` — so `private
+   * fun Morph.toComposePath(...)` was recorded under `Morph`, the RECEIVER. A body calling
+   * `morph.toComposePath(progress)` matched neither that key (wrong word) nor, once keyed properly,
+   * `mentionsWord` (which rejects a name preceded by `.`, correctly, for plain calls). The
+   * checked-in `shape-morph` component is exactly this shape: its snippet carried
+   * `ShapeMorphViewer` and left `toComposePath` behind — unresolved, and absent from residue too,
+   * because the residue check reads the same index.
+   */
+  @Test
+  fun `an extension helper is indexed by its callable name and followed through a receiver call`() {
+    val source =
+      """
+      package demo.catalog
+
+      import androidx.compose.runtime.Composable
+
+      @CatalogModes
+      @Composable
+      fun ShapeMorph() = Sticker("shape-morph")
+      """
+        .trimIndent()
+    val components =
+      """
+      package demo.catalog.shared
+
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun CatalogComponent(id: String) {
+        when (id) {
+          "shape-morph" -> ShapeMorphViewer()
+          else -> Unit
+        }
+      }
+
+      @Composable
+      fun ShapeMorphViewer() {
+        val morph = rememberMorph()
+        val path = morph.toComposePath(0.5f)
+        Draw(path)
+      }
+
+      private fun Morph.toComposePath(progress: Float): String = "path at " + progress
+      """
+        .trimIndent()
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source = source,
+          bodyLine = lineIn(source, "fun ShapeMorph"),
+          rules = delegatingRules,
+          parser = null,
+          helperSources = listOf(stickerHelper, components),
+        )
+      )
+
+    assertTrue(result.text.contains("fun ShapeMorphViewer"), result.text)
+    assertTrue(
+      result.text.contains("fun Morph.toComposePath"),
+      "the extension the snippet calls was left behind:\n${result.text}",
+    )
+    assertEquals(emptyList(), result.residue, result.text)
+  }
+
+  /**
+   * The receiver-aware check must not drag in a same-named helper that is only read, not called.
+   */
+  @Test
+  fun `a property read on a receiver does not pull in a same-named function`() {
+    assertTrue(
+      PlaygroundSourceCleaner.mentionsExtensionCall("morph.toComposePath(0.5f)", "toComposePath")
+    )
+    assertTrue(
+      PlaygroundSourceCleaner.mentionsExtensionCall("a.b().toComposePath (x)", "toComposePath")
+    )
+    assertFalse(
+      PlaygroundSourceCleaner.mentionsExtensionCall("state.toComposePath", "toComposePath")
+    )
+    // A package qualifier is not a receiver call.
+    assertFalse(
+      PlaygroundSourceCleaner.mentionsExtensionCall("\"morph.toComposePath(1f)\"", "toComposePath")
+    )
+  }
+
   private fun lineIn(text: String, needle: String): Int =
     text.lines().indexOfFirst { it.contains(needle) } + 1
 }
