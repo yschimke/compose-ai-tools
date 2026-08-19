@@ -308,13 +308,6 @@ const STYLED_FIXTURES = new Set([
   // decided by viewer.js at runtime — captured bare it is an unstyled run of buttons in which
   // neither the pill treatment nor the enabled-state sync moves a baseline at all.
   "serve-viewer-themes",
-  // …and the crowded shape of that same control: eight theme choices, which is what put them
-  // behind a dropdown in the first place. It is committed for exactly this panel, so it has to be
-  // captured with the real stylesheet — the rows ARE paint (a swatch column, labels resolved in
-  // the page's own `color-scheme`, the selected row's inset ring), and bare they are an unstyled
-  // run of buttons in which none of that moves a baseline. Its `theme-menu` state below is what
-  // opens it; closed, this page is one pill that says "Dark".
-  "serve-viewer-theme-overflow",
   // The grid's long-press live lane. Both halves of its claim are styling: the "hold for live"
   // affordance that appears under a pointer, and the canvas overlay + accent chip a streaming
   // card wears. Captured bare there is no overlay at all — the script never loads — so the whole

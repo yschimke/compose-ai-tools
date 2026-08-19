@@ -42,11 +42,10 @@ first place, and the fixture committed for exactly this panel.
 The light pair is the argument for capturing both schemes: on its own it
 would have said the menu was fine.
 
-Shot from the fixture at 1280px with the production stylesheet routed in.
-The same two captures are now taken by the harness on every PR —
-`serve-viewer-theme-overflow` joins `STYLED_FIXTURES` and gains a
-`theme-menu` state in `pages-snapshot.spec.mjs`, so the panel's paint is
-diffed rather than left to a report:
+Shot from the fixture at 1280px. The same two captures are now taken by the
+harness on every PR — `serve-viewer-theme-overflow` gains a `theme-menu`
+state in `pages-snapshot.spec.mjs`, so the panel's paint is diffed rather
+than left to a report:
 
 ```
 cd vscode-extension
@@ -55,5 +54,10 @@ HARNESS_FIXTURE=serve-viewer-theme-overflow \
 # → out/serve-viewer-theme-overflow-theme-menu.{light,dark}.png
 ```
 
-Before this change that fixture was captured bare and shut: no stylesheet,
-no open menu. Neither fault would have moved a baseline.
+Before this change that fixture was captured only SHUT. The stylesheet was
+never the missing half — `preview-harness/_server.mjs` serves
+`/assets/serve/*` to every page fixture, so the page was already painted —
+but with the menu closed the panel is off-screen, and both faults live
+entirely inside it. Neither would have moved a baseline. (That is also why
+this branch's diff leaves the fixture's own two captures untouched and adds
+only the new state: the page at rest is unchanged.)
