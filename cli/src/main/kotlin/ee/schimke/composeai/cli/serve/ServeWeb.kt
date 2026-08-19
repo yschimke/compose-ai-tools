@@ -839,17 +839,16 @@ $noteBlock        <div class="cp-site-footer-links">
   /**
    * The viewer's "report an issue" affordance: a prefilled GitHub new-issue **form** for the
    * preview on screen, assembled by [ServeIssueReport] (see [ServeIssueReport.action] for why a
-   * form rather than a link). [action] is the issue form's URL, [title] and [body] are its hidden
-   * inputs — filled for the settings the page was served at, so it works with JS off — and
-   * [bodyTemplate] is the same body with the render link left as
-   * [ServeIssueReport.RENDER_PLACEHOLDER], which the viewer JS re-substitutes as the overrides
-   * change. [repo] names the target in the tooltip so nobody files against a repo they didn't mean
-   * to, and [login] — present only when the visitor has a GitHub session on this server — says
-   * whose account will author it.
+   * form rather than a link). [action] is the issue form's URL and [body] is its hidden input —
+   * filled for the settings the page was served at, so it works with JS off — while [bodyTemplate]
+   * is the same body with the render link left as [ServeIssueReport.RENDER_PLACEHOLDER], which the
+   * viewer JS re-substitutes as the overrides change. There is deliberately **no** title: the
+   * reporter types it (see [reportIssueHtml]). [repo] names the target so nobody files against a
+   * repo they didn't mean to, and [login] — present only when the visitor has a GitHub session on
+   * this server — says whose account will author it.
    */
   data class ReportIssue(
     val action: String,
-    val title: String,
     val body: String,
     val bodyTemplate: String,
     val repo: String,
@@ -967,23 +966,49 @@ $noteBlock        <div class="cp-site-footer-links">
   }
 
   /**
-   * Renders [report] as the GET form that sits beside the per-preview "source" link — styled as a
-   * link, since that is what it behaves like. Null (a surface with no repo to file against) renders
-   * nothing.
+   * Renders [report] as the per-preview "report an issue" affordance beside the "source" link: a
+   * disclosure styled as a link, opening a small panel whose one visible control is a **required**
+   * Summary the reporter writes themselves.
+   *
+   * **Why the reporter types the title.** This used to be one click straight to a prefilled issue
+   * whose title the server wrote (`Preview issue: <preview> (<system>)`) — which named the preview
+   * and said nothing about what was wrong, so a repo collected a queue of issues distinguishable
+   * only by opening them. The preview's identity was never the interesting part and is not lost: it
+   * is the `| Preview |` row of the body's "Which preview" table, which every report still carries.
+   * This is the same trade `/report-bug` already makes — see [bugReportPage]'s Summary input — so
+   * the two reporting affordances now ask for the same thing.
+   *
+   * **Why a script-free `<details>`.** The form has to keep working with JS off, which is also what
+   * enforces the title: `required` is the browser's own check, so a reporter cannot submit an
+   * untitled report whether or not the page's script ran. Nothing here is scripted — the disclosure
+   * is the element's own behaviour, the `action` stays a server-rendered literal, and the only
+   * thing the viewer JS touches is the hidden `body` input it already refreshed.
+   *
+   * Null (a surface with no repo to file against) renders nothing.
    */
   private fun reportIssueHtml(report: ReportIssue?): String {
     val r = report ?: return ""
     val who =
       r.login?.takeIf { it.isNotBlank() }?.let { " as @${WebEscaping.htmlEscape(it)}" } ?: ""
-    val tip = "File an issue on ${WebEscaping.htmlEscape(r.repo)}$who"
-    return "\n      <form class=\"cp-report\" id=\"cp-report\" method=\"get\" target=\"_blank\"" +
+    val repo = WebEscaping.htmlEscape(r.repo)
+    val tip = "File an issue on $repo$who"
+    return "\n      <details class=\"cp-report\" id=\"cp-report\">" +
+      "<summary class=\"cp-report-link\" title=\"$tip\">" +
+      "$GITHUB_ICON report an issue</summary>" +
+      "\n        <div class=\"cp-report-panel\">" +
+      "<form class=\"cp-report-form\" method=\"get\" target=\"_blank\"" +
       " rel=\"noopener\" action=\"${WebEscaping.htmlEscape(r.action)}\">" +
-      "<input type=\"hidden\" name=\"title\" value=\"${WebEscaping.htmlEscape(r.title)}\">" +
+      "<label class=\"cp-report-summary\">Summary" +
+      "<input class=\"cp-report-summary-input\" type=\"text\" name=\"title\" required" +
+      " autocomplete=\"off\" placeholder=\"Briefly describe what is wrong\"></label>" +
       "<input type=\"hidden\" name=\"body\" id=\"cp-report-body\"" +
       " value=\"${WebEscaping.htmlEscape(r.body)}\"" +
       " data-report-template=\"${WebEscaping.htmlEscape(r.bodyTemplate)}\">" +
-      "<button type=\"submit\" class=\"cp-report-link\" title=\"$tip\">" +
-      "$GITHUB_ICON report an issue</button></form>"
+      "<button type=\"submit\" class=\"cp-report-submit\">" +
+      "$GITHUB_ICON Open a prefilled issue</button>" +
+      "<span class=\"cp-report-note\">Files against $repo$who. The rest of the report — which " +
+      "preview, which build, the links — is filled in for you on GitHub.</span>" +
+      "</form></div></details>"
   }
 
   /** Render catalog-published GitHub issues. Every href has already been rebuilt by the store. */
@@ -6046,16 +6071,15 @@ $noteBlock        <div class="cp-site-footer-links">
    * What [bugReportPage] draws: the assembled report, plus the pieces the page needs to show the
    * reporter what they are about to file.
    *
-   * [title] and [body] are [ServeBugReport]'s output for the settings the page was served at, so
-   * the form works with JS off. [bodyTemplate] is the same body with
-   * [ServeBugReport.CLIENT_PLACEHOLDER] where the browser block goes, which the page script fills
-   * from `navigator` / `window`. [renderUrl], when present, is the token-stripped `/render` PNG of
-   * whatever the reporter was looking at — shown on the page as a thumbnail so "this is what I saw"
-   * is literal rather than described.
+   * [body] is [ServeBugReport]'s output for the settings the page was served at, so the form works
+   * with JS off — the title is the reporter's own, typed into the page's Summary field.
+   * [bodyTemplate] is the same body with [ServeBugReport.CLIENT_PLACEHOLDER] where the browser
+   * block goes, which the page script fills from `navigator` / `window`. [renderUrl], when present,
+   * is the token-stripped `/render` PNG of whatever the reporter was looking at — shown on the page
+   * as a thumbnail so "this is what I saw" is literal rather than described.
    */
   data class BugReport(
     val action: String,
-    val title: String,
     val body: String,
     val bodyTemplate: String,
     val repo: String,

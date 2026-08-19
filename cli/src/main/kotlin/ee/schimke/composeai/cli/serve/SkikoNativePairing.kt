@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.BundleReader
+import java.io.File
 
 /**
  * Keeps a served bundle's Skiko **bindings** and the `libskiko` **native** they call at one
@@ -153,6 +154,33 @@ internal object SkikoNativePairing {
       "not share will fail with UnsatisfiedLinkError. Republish the catalog against a Compose " +
       "Multiplatform version whose Skiko this server ships."
   }
+
+  /**
+   * [classpathSkew] for the daemon launched from [descriptorPath], to be appended to a **fatal**
+   * linkage failure — or null when this failure is not Skia's, the descriptor is unreadable, or the
+   * classpath is coherent and the link error therefore has some other cause.
+   *
+   * The startup log already carries [classpathSkew], but nobody outside the box reads it. What they
+   * read is the open breaker's reason, which the host returns as the body of every `409` the dead
+   * lane answers with — and in compose-ai-tools#4220 that body was the whole report: it named the
+   * missing symbol and nothing that explains it, so the skew had to be inferred from the outside.
+   * Attaching the skew here means a lane that dies of a split Skiko says so to whoever finds it.
+   *
+   * Read at trip time rather than at host construction: the descriptor is a file the daemon already
+   * launched from, and a diagnosis nobody needs must not cost a read per host.
+   */
+  fun linkageDiagnosis(reason: String, descriptorPath: File): String? {
+    if (SKIA_PACKAGE !in reason) return null
+    val descriptor = ServeBundleDaemon.readLaunchDescriptor(descriptorPath) ?: return null
+    return classpathSkew(descriptor.classpath)
+  }
+
+  /**
+   * Enough of the package name to catch both halves — `org.jetbrains.skia.*` (the bindings whose
+   * `external` declarations fail to link) and `org.jetbrains.skiko.*` (the loader). A linkage error
+   * naming neither belongs to some other library, and the Skiko pair says nothing about it.
+   */
+  private const val SKIA_PACKAGE = "org.jetbrains.ski"
 
   /** `skiko`, `skiko-awt`, `skiko-awt-runtime-<platform>` — anything but the version suffix. */
   private val SKIKO_ARTIFACT = Regex("""^skiko(?:-[a-z0-9]+)*-(\d[\w.\-]*)\.jar$""")

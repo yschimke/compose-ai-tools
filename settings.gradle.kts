@@ -450,6 +450,10 @@ include(":data-render-connector")
 
 project(":data-render-connector").projectDir = file("data/render/connector")
 
+include(":data-motion-core")
+
+project(":data-motion-core").projectDir = file("data/motion/core")
+
 include(":data-scroll-core")
 
 project(":data-scroll-core").projectDir = file("data/scroll/core")

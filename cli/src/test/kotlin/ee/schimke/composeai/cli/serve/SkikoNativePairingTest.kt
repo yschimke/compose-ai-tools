@@ -1,11 +1,15 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.BundleReader
+import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
+import java.io.File
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlinx.serialization.json.Json
 
 /**
  * The split-Skiko repair from #4220: a bundle's recorded coordinates name the bindings but not the
@@ -162,6 +166,82 @@ class SkikoNativePairingTest {
       )
 
     assertNull(SkikoNativePairing.classpathSkew(repaired))
+  }
+
+  @Test
+  fun `a fatal Skia link error is answered with the skew its daemon classpath carries`() {
+    val descriptor =
+      writeDescriptor(
+        listOf(
+          "/cache/org.jetbrains.skiko/skiko-awt/0.148.2/skiko-awt-0.148.2.jar",
+          "/opt/serve/lib-daemon-desktop/skiko-awt-runtime-linux-x64-0.144.6.jar",
+        )
+      )
+
+    val diagnosis =
+      assertNotNull(
+        SkikoNativePairing.linkageDiagnosis(
+          "render failed: UnsatisfiedLinkError: 'int " +
+            "org.jetbrains.skia.paragraph.ParagraphKt._nGetUnresolvedCodepointsCount(long)'",
+          descriptor,
+        )
+      )
+
+    assertContains(diagnosis, "bindings 0.148.2")
+    assertContains(diagnosis, "libskiko 0.144.6")
+  }
+
+  @Test
+  fun `a link error with nothing to add says nothing`() {
+    val coherent =
+      writeDescriptor(
+        listOf("/cache/skiko-awt-0.148.2.jar", "/cache/skiko-awt-runtime-linux-x64-0.148.2.jar")
+      )
+    val skewed =
+      writeDescriptor(
+        listOf("/cache/skiko-awt-0.148.2.jar", "/cache/skiko-awt-runtime-linux-x64-0.144.6.jar")
+      )
+    val skiaFailure =
+      "render failed: UnsatisfiedLinkError: 'int org.jetbrains.skia.paragraph.ParagraphKt._n(long)'"
+
+    assertNull(
+      SkikoNativePairing.linkageDiagnosis(skiaFailure, coherent),
+      "a matched pair means this link error has some other cause — don't invent one",
+    )
+    assertNull(
+      SkikoNativePairing.linkageDiagnosis(
+        "render failed: UnsatisfiedLinkError: 'void com.example.Native.init()'",
+        skewed,
+      ),
+      "a link error that is not Skia's says nothing about the Skiko pair",
+    )
+    assertNull(
+      SkikoNativePairing.linkageDiagnosis(skiaFailure, File("/no/such/daemon-launch.json")),
+      "an unreadable descriptor says nothing rather than guessing",
+    )
+  }
+
+  private fun writeDescriptor(classpath: List<String>): File {
+    val dir = Files.createTempDirectory("skiko-linkage-diagnosis").toFile()
+    val file = File(dir, "daemon-launch.json")
+    file.writeText(
+      Json.encodeToString(
+        DaemonLaunchDescriptor.serializer(),
+        DaemonLaunchDescriptor(
+          schemaVersion = 2,
+          modulePath = ":catalog",
+          variant = "desktop",
+          enabled = true,
+          mainClass = "ee.schimke.composeai.daemon.DaemonMain",
+          classpath = classpath,
+          jvmArgs = emptyList(),
+          systemProperties = emptyMap(),
+          workingDirectory = dir.absolutePath,
+          manifestPath = File(dir, "previews.json").absolutePath,
+        ),
+      )
+    )
+    return file
   }
 
   /** Nothing to compare is not a skew — an Android (Robolectric) daemon carries no Skiko at all. */

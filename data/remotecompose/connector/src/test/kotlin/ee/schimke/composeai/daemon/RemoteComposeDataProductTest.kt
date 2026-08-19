@@ -149,6 +149,65 @@ class RemoteComposeDataProductTest {
     assertNull("dropped key must not linger", controller.valueOf("label"))
   }
 
+  /**
+   * [RemoteComposeController.set] is called from *inside* composition by
+   * [RemoteComposeOverrideExtension] so the first pass is seeded, which makes idempotence
+   * load-bearing rather than a nicety: an unconditional write there dirties state the same pass
+   * reads. Same guard [RemoteComposeController.setNamedValue] / `setProfile` / `setPlayer` carry.
+   */
+  @Test
+  fun controller_set_is_idempotent_and_does_not_notify_when_nothing_changed() {
+    val controller = RemoteComposeController
+    val override =
+      RemoteComposeOverride(
+        profile = RemoteComposeProfile.ANDROIDX,
+        namedValues = mapOf("score" to RemoteNamedValue.FloatValue(0.5f)),
+        acceptedHostActions = listOf("allowed"),
+      )
+    controller.set(override)
+
+    var notifications = 0
+    val unregister = controller.addChangeListener { notifications++ }
+    try {
+      controller.set(override)
+      assertEquals("re-applying an identical override must notify nobody", 0, notifications)
+      controller.set(override.copy(namedValues = mapOf("score" to RemoteNamedValue.FloatValue(1f))))
+      assertEquals("a changed override must still notify", 1, notifications)
+    } finally {
+      unregister()
+    }
+  }
+
+  /**
+   * The on-dispose counterpart. The extension applies its seed during composition but disposes
+   * through a `DisposableEffect`, so when the override changes the *new* seed is already installed
+   * by the time the *old* one's `onDispose` runs — a blind `set(null)` there would leave the live
+   * render unseeded.
+   */
+  @Test
+  fun controller_clearSeed_only_clears_while_that_seed_is_still_applied() {
+    val controller = RemoteComposeController
+    val outgoing =
+      RemoteComposeOverride(namedValues = mapOf("fill" to RemoteNamedValue.StringValue("red")))
+    val incoming =
+      RemoteComposeOverride(namedValues = mapOf("fill" to RemoteNamedValue.StringValue("blue")))
+
+    controller.set(outgoing)
+    controller.set(incoming)
+    controller.clearSeed(outgoing)
+    assertEquals(
+      "a stale render's dispose must not clear the seed that replaced it",
+      RemoteNamedValue.StringValue("blue"),
+      controller.valueOf("fill"),
+    )
+
+    controller.clearSeed(incoming)
+    assertNull(
+      "the render that still owns the seed clears it on dispose",
+      controller.valueOf("fill"),
+    )
+  }
+
   @Test
   fun controller_setNamedValue_merges_without_dropping_existing_keys() {
     val controller = RemoteComposeController

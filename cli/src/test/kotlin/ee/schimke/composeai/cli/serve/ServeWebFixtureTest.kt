@@ -182,7 +182,6 @@ class ServeWebFixtureTest {
       .let { ctx ->
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(ctx.repo),
-          title = ServeIssueReport.title(ctx),
           body = ServeIssueReport.body(ctx),
           bodyTemplate = ServeIssueReport.body(ctx, renderPlaceholder = true),
           repo = ctx.repo,
@@ -2774,7 +2773,6 @@ class ServeWebFixtureTest {
         report =
           ServeWeb.BugReport(
             action = ServeBugReport.action(),
-            title = ServeBugReport.title(bugReportPageContext),
             body = ServeBugReport.body(bugReportServer, bugReportPageContext),
             bodyTemplate =
               ServeBugReport.body(

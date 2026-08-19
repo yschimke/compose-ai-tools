@@ -110,7 +110,12 @@ carries it in the bundle (`previews/<id>.figma.svg`) and copies it onto the
 branch, exactly as it does the schematic `wireframes/`.
 
 Components carrying an `@InteractionPreview` or `@AnimatedPreview` also ship the
-animated capture itself, under **`motion/`**. It is named from the sticker it sits
+animated capture itself, under **`motion/`**. Both renderer backends produce them —
+`@InteractionPreview` used to be desktop-only, and on an Android or Wear catalog it
+produced no capture *and* took the component's ordinary still down with it
+([#4215](https://github.com/yschimke/compose-ai-tools/issues/4215)); see
+[Motion captures](https://yschimke.github.io/compose-ai-tools/reference/motion/) for
+what the two backends share and what stays per-backend. It is named from the sticker it sits
 beside — `images/switch-on/ideal__default__dark.png` publishes its capture as
 `motion/switch-on/ideal__default__dark.apng` — so the two cannot drift apart, and a
 function carrying both kinds keeps them separate with an `__interaction` segment.
@@ -120,6 +125,23 @@ consumer assumes it, so a 114-frame recording pasted in there would publish its 
 frame and silently drop the point. Each entry carries the `kind`
 (`interaction` / `animation`), the caption its annotation declared, and the `theme` of
 the sticker it accompanies.
+
+The Wear catalog's `SwitchButton/On` is the standing example — a `targets = [0, 0]`
+toggle recorded on the Robolectric lane, framed to the same 217×136 box as the still it
+sits beside:
+
+![The Wear SwitchButton interaction capture, frame by frame: at rest (on), thumb travelling, settled off, travelling back, back at rest](../images/interaction-preview-wear-switch-filmstrip.png)
+
+The capture itself is
+[`interaction-preview-wear-switch.apng`](../images/interaction-preview-wear-switch.apng)
+— 114 frames at an exact `1/60` delay — and it publishes *beside* the component's
+ordinary still, not instead of it:
+
+![The SwitchButton still, on state, 217×136](../images/interaction-preview-wear-switch-still.png)
+
+Neither end state's still can show the travel between them, which is the whole reason
+the capture exists; and a motion capture that fails now reports itself beside its own
+output rather than deleting that still.
 
 The preview server offers them on the component page as a **Motion** chip beside the
 still, never as the default frame. That is a deliberate reading of what a capture is
