@@ -87,8 +87,8 @@ floor with a warning, rather than the two backends quietly capturing different i
 
 ## #4239 — the visual-settle probe
 
-No image: this one moved no pixels in `:samples:android` at all. It is recorded here because the
-render-level numbers are the evidence.
+No image: this one moved no pixels at all. It is recorded here because the render-level numbers are
+the evidence.
 
 The probe used to return as soon as two frames matched with no mismatch behind them. Two identical
 frames at `t = 0` is the expected opening of any delayed reveal, so quiescence was being declared
@@ -96,23 +96,62 @@ before the animation began. Declaring settled now requires having seen the compo
 all-identical run spends its whole budget and reports `NEVER_CHANGED` rather than claiming it
 watched something finish.
 
-Measured over a full `:samples:android:composePreviewRenderAll` before and after — 180 outputs on
-`main`, 183 after:
-
-- **176 byte-identical.** All four files that changed are accounted for above: the three
-  non-frame-aligned `_TIME_` captures #4247 moves, plus the `AsyncImageUnreachablePreview` warnings
-  sidecar, which gains its new (empty) `unsettledCaptures` array. **No render moved because of the
-  probe change.**
-- **3 new files**: `SettledPlusAnimatedPreview`'s `.png` and `.gif` (#4244), and one new warnings
-  sidecar — `LoadingPreview`, an indeterminate `CircularProgressIndicator` that can never quiesce,
-  which now records `still_changing` in `<png>.warnings.json` instead of only printing to stderr, so
-  a consumer can fail its own build on it the way `CatalogRenderTest` already fails on blank
-  captures.
-
 What it still cannot do is separate a static preview from a reveal that has not begun. Both are
 `NEVER_CHANGED`, and both stay quiet: a preview's `delay` queue lives on the Compose test scheduler,
 which exposes no "is anything still scheduled" query for `DesktopSettleClock.hasScheduledWork` to be
 mirrored from, and a sample budget wide enough to out-wait a 200ms reveal would be paid by every
-static sticker in a catalog. `RevealCardUnsettledPreview` is the committed fixture for that case and
-is byte-identical before and after. `@SettledPreview` remains the way an author says "this one
-arrives late".
+static sticker in a catalog. A Robolectric `ShadowLooper` probe was tried for exactly that and fired
+**zero** times across 184 previews, because Compose's delays never reach that looper — so it was
+removed rather than shipped as a signal that never fires. `RevealCardUnsettledPreview` is the
+committed fixture for the case and is byte-identical before and after. `@SettledPreview` remains the
+way an author says "this one arrives late".
+
+## The baseline pass
+
+#4239 and #4247 both move published bytes, so `:samples:android` and `:samples:design-catalog-wear-m3`
+were rendered on the merge base and on the change. **Both sides with `--no-build-cache`**, which
+matters more than it sounds: a first attempt at this measurement was served stale entries from the
+Gradle build cache and produced a confident, wrong answer in both directions — it showed the Wear
+pressed specimen decaying to a focus-only capture, which sent a whole diagnosis down the wrong path
+before the cacheless re-run showed the Wear catalog unchanged. Treat a render A/B without
+`--no-build-cache` on **both** sides as no measurement at all.
+
+| module | outputs on `main` | byte-identical | moved | new |
+| --- | --- | --- | --- | --- |
+| `:samples:android` | 180 | 176 | 4 | 4 |
+| `:samples:design-catalog-wear-m3` | 86 | **86** | **0** | 7 |
+
+The four `:samples:android` files that moved are the three non-frame-aligned `_TIME_` captures #4247
+lands exactly, plus the `AsyncImageUnreachablePreview` warnings sidecar gaining its new (empty)
+`unsettledCaptures` array. **Nothing moved because of the probe change, on either module** — the
+Wear catalog, which is the one with the timing-sensitive pressed specimen, is byte-for-byte
+unchanged across all 86 outputs.
+
+### What #4247 deliberately leaves rounded
+
+`advanceMainClockBy` lands *every* hop on its requested coordinate, not only the ones a capture
+named. Scoping it to named coordinates only — an `advanceTimeMillis` snapshot or
+`@SettledPreview(afterMs = …)`, leaving an internal advance like the `@FocusedPreview` settle window
+on the plain rounded `advanceTimeBy` — was written and measured against the unscoped version, and it
+produced **277 of 277 outputs identical** across both modules. So the distinction makes no
+difference to anything either module renders, and the simpler unscoped form is what ships. Worth
+knowing if a future change to an internal advance ever does move a render: the scoping is a
+one-parameter change away, and `renders/settle-clock-bookkeeping` records why the focus and press
+settles are sensitive to it.
+
+The new files are `SettledPlusAnimatedPreview`'s `.png` and `.gif` (#4244) and nine warnings
+sidecars — every one of them a surface that genuinely never quiesces: two indeterminate progress
+indicators, a pressed-ripple specimen, three `ScalingListSticker` sizes and three
+`TimeTextScaffoldTemplate` sizes. That is the #4239 part-2 payoff working exactly as the issue
+predicted: "the same warning already fires on published stickers nobody flagged". They now say so in
+`<png>.warnings.json` rather than only on stderr.
+
+## Unrelated: `WearFocusedPressPixelTest`
+
+`:samples:design-catalog-wear-m3`'s `WearFocusedPressPixelTest` fails on `main` — verified in this
+repo's CI (run `32264453713`, commit `e09e33ad`, the merge base of PR #4260) and locally with the
+cache disabled, where base and change produce the identical `#D4C8EC` fill. Since every one of the
+86 wear renders is byte-identical between the two, nothing in #4260 can have changed its outcome. It
+is the gradual `PRESS_SETTLE_MS` degradation the test's own comment documents — "#C2B5DB with 3
+preview rows ahead of this one, #D5C8EC with 11, #D4C8EC behind the full catalog" — and it wants its
+own issue.
