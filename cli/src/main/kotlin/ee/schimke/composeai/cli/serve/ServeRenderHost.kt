@@ -476,6 +476,13 @@ internal constructor(
    * deferred [Companion.open] path leaves this false.
    */
   private val sessionAlreadyOpen: Boolean = false,
+  /**
+   * One extra sentence appended to a **fatal** breaker trip, given the failure text — see
+   * [RenderCircuitBreaker]'s parameter of the same name. The [Companion.open] path supplies the
+   * daemon's own launch descriptor, so a Skia link error is answered with the Skiko pair that
+   * classpath resolves (#4220) rather than leaving the symbol name to speak for itself.
+   */
+  private val linkageDiagnosis: (String) -> String? = { null },
 ) : ServeHost {
 
   /**
@@ -745,7 +752,7 @@ internal constructor(
    * [RenderCircuitBreaker] and issue #3448 (3794 retries of one `UnsatisfiedLinkError` in 14
    * minutes).
    */
-  private val breaker = RenderCircuitBreaker()
+  private val breaker = RenderCircuitBreaker(linkageDiagnosis = linkageDiagnosis)
 
   override fun renderPerfStats(): RenderPerfSnapshot =
     perfStats.snapshot().copy(breaker = breaker.snapshot())
@@ -1812,6 +1819,9 @@ internal constructor(
         label = label,
         declaredThemes = declaredThemes,
         onLog = onLog,
+        linkageDiagnosis = { reason ->
+          SkikoNativePairing.linkageDiagnosis(reason, descriptorPath)
+        },
       )
     }
   }

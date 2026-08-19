@@ -2805,7 +2805,14 @@ a single render a minute and closes itself as soon as one succeeds.
 While the breaker is open the host:
 
 - answers `/render` with the **underlying failure reason** as a terminal `409`, not
-  `503 render busy; retry shortly` (the daemon isn't busy, and retrying will never help);
+  `503 render busy; retry shortly` (the daemon isn't busy, and retrying will never help). A fatal
+  `org.jetbrains.ski…` link error additionally carries the **Skiko skew read off the daemon's own
+  launch descriptor** — `Skiko bindings 0.148.2 will link against libskiko 0.144.6 …` — so the
+  refusal names the cause and not only the symbol that went missing. The startup log has carried
+  that line since [the split-Skiko repair](#trusted-server-side-re-render---allow-render-trusted),
+  but nobody outside the box reads the log: #4220 was reported from this response body, which said
+  only which symbol was absent. A coherent classpath adds nothing, so a link error with some other
+  cause reads exactly as it did before;
 - reports `live: false` for the catalog and publishes a `render-lane-broken` `degradation`, instead
   of advertising a healthy live lane at a 95% failure rate;
 - **pauses background theme optimization** for that catalog — it is the largest consumer of the
