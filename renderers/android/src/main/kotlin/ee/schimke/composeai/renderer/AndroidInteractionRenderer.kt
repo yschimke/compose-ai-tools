@@ -63,6 +63,7 @@ internal fun handleInteractionCapture(
   padArgb: Int,
   measuredContent: () -> IntSize?,
   glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
+  onClockAdvanced: (Long) -> Unit = {},
 ): Boolean {
   val frameInterval = interaction.frameIntervalMs.coerceAtLeast(1)
   val timeline =
@@ -74,19 +75,24 @@ internal fun handleInteractionCapture(
       leadInMs = interaction.leadInMs,
     )
   val totalDuration = timeline.cappedDurationMs
+  // The cap truncates the *script*, not merely the frame budget. A script longer than the window
+  // has events beyond it, and the budget alone would not stop them being dispatched — a coarse
+  // interval deliberately samples past the last admitted event to show its effect, and a release
+  // scheduled past the cap would ride along on one of those frames. Filtering here means the
+  // recording can only ever contain gestures the window admits; anything still held when the
+  // window closes is released by the cleanup below.
+  val admittedEvents = timeline.events.filter { it.atMs <= totalDuration }
   // Enough samples to cover the window *and* to record the component's response to the last
   // scripted event. Flooring the duration alone is not enough: an interval as coarse as the script
   // itself yields a single sample at elapsed 0, which — with any lead-in at all — dispatches
   // nothing and publishes a resting frame documenting no interaction.
   //
-  // Only events the cap admits count, since a script long enough to be truncated has events beyond
-  // the window and one of those must not drag the recording past the bound the cap exists to
-  // enforce. The `+ 2` buys the frame *after* the one the last event lands on: a component
-  // responds to a release on the following frame, so stopping at the event's own frame would
-  // record the gesture having been dispatched and never its effect.
+  // The `+ 2` buys the frame *after* the one the last event lands on: a component responds to a
+  // release on the following frame, so stopping at the event's own frame would record the gesture
+  // having been dispatched and never its effect.
   //
   // For every ordinary frame rate the duration term is far larger and this floor never binds.
-  val lastEventMs = timeline.events.lastOrNull { it.atMs <= totalDuration }?.atMs ?: 0
+  val lastEventMs = admittedEvents.lastOrNull()?.atMs ?: 0
   val framesToLastEvent =
     if (lastEventMs <= 0) 1 else (lastEventMs + frameInterval - 1) / frameInterval + 2
   val frameCount = maxOf(totalDuration / frameInterval, framesToLastEvent).coerceAtLeast(1)
@@ -98,6 +104,12 @@ internal fun handleInteractionCapture(
   val frameOptions =
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
   val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
+
+  // Read off the clock rather than recomputed from the script: the settle tick, the per-frame
+  // advances and the frame count all move independently, and a caller's bookkeeping that
+  // re-derives any of them drifts the moment one changes. Reported in `finally`, so a capture that
+  // threw part-way still credits exactly the time it actually drove.
+  val clockBefore = rule.mainClock.currentTime
 
   try {
     // One tick so first composition + layout land: the target nodes have no bounds to aim at until
@@ -118,8 +130,8 @@ internal fun handleInteractionCapture(
     var nextEvent = 0
     var pointerDown = false
     repeat(frameCount) { index ->
-      while (nextEvent < timeline.events.size && timeline.events[nextEvent].atMs <= elapsed) {
-        val event = timeline.events[nextEvent]
+      while (nextEvent < admittedEvents.size && admittedEvents[nextEvent].atMs <= elapsed) {
+        val event = admittedEvents[nextEvent]
         // Non-null by construction: `resolveInteractionTargets` was given the same target list the
         // timeline was expanded from, and refuses the whole capture for an index it can't resolve.
         val centre = targetCentres.getValue(event.target)
@@ -191,28 +203,8 @@ internal fun handleInteractionCapture(
     return true
   } finally {
     framesDir.deleteRecursively()
+    onClockAdvanced(rule.mainClock.currentTime - clockBefore)
   }
-}
-
-/**
- * The virtual time [handleInteractionCapture] advances the shared paused clock by, so the caller's
- * bookkeeping stays in step with what was recorded.
- *
- * Derived by the same expansion the capture drives, rather than restated: a hand-kept figure that
- * drifted would leave a following still capture asserting a clock time that had already passed.
- */
-internal fun InteractionCapture.windowMs(): Long {
-  val frameInterval = frameIntervalMs.coerceAtLeast(1)
-  val timeline =
-    InteractionScript.timeline(
-      gesture = gesture.toMotionGesture(),
-      targets = targets,
-      holdMs = holdMs,
-      gapMs = gapMs,
-      leadInMs = leadInMs,
-    )
-  val frameCount = (timeline.cappedDurationMs / frameInterval).coerceAtLeast(1)
-  return frameCount.toLong() * frameInterval
 }
 
 /** The shared-script spelling of this gesture. */

@@ -17,6 +17,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.motion.MAX_INTERACTION_DURATION_MS
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -199,6 +200,13 @@ class AndroidInteractionCaptureTest {
 
     assertTrue("a truncated script still publishes what it recorded", handled)
     assertTrue(Apng.frames(out).isNotEmpty())
+    // The cap bounds the recording, not just the script: every frame is a full-size image in the
+    // output, so a script running twice the window must not encode twice the frames. The two-frame
+    // allowance is the response frame the sampler adds after the last admitted event.
+    assertTrue(
+      "a capped script must not record past its window",
+      Apng.declaredFrameCount(out) <= MAX_INTERACTION_DURATION_MS / 500 + 2,
+    )
   }
 
   @Test

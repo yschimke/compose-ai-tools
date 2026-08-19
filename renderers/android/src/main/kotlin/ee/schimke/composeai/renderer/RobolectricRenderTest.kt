@@ -1543,17 +1543,20 @@ abstract class RobolectricRenderTestBase(
             (preview.captures.map { CaptureRenderJob(it, outputFileFor(it, outputDir)) } +
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
               .sortedWith(
-                compareBy<RenderJob> { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
-                  // Animated and interaction captures consume a time window after their target.
-                  // Keep same-target still/product jobs before that window opens.
-                  .thenBy {
-                    if (
-                      it is CaptureRenderJob &&
-                        (it.capture.animation != null || it.capture.interaction != null)
-                    )
-                      1
-                    else 0
+                // An interaction capture sorts after EVERY other job, not merely after the ones
+                // sharing its timestamp. Every job of a preview replays through one composition,
+                // and a real tap mutates the component's remembered state — so a later
+                // `advanceTimeMillis` still, ordered ahead of the tap by time alone, would publish
+                // the post-interaction component under a timestamp that never saw it. Time is the
+                // right key for snapshots of one evolving composition; a capture that *changes*
+                // that composition belongs at the end of the list.
+                compareBy<RenderJob> {
+                    if (it is CaptureRenderJob && it.capture.interaction != null) 1 else 0
                   }
+                  .thenBy { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
+                  // An animated capture consumes a time window after its target. Keep same-target
+                  // still/product jobs before that window opens.
+                  .thenBy { if (it is CaptureRenderJob && it.capture.animation != null) 1 else 0 }
               )
           var captureIndex = 0
           jobs.forEachIndexed { jobIndex, job ->
@@ -1844,23 +1847,23 @@ abstract class RobolectricRenderTestBase(
                 job.capture.interaction != null &&
                 motionCaptureOrSidecar(outputFile, preview.id, "@InteractionPreview") {
                   handleInteractionCapture(
-                      rule = rule,
-                      interaction = job.capture.interaction,
-                      previewId = preview.id,
-                      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                      outputFile = outputFile,
-                      wrapWidth = wrapWidth,
-                      wrapHeight = wrapHeight,
-                      padArgb = resolveBackgroundColor(params).toArgb(),
-                      measuredContent = { measured },
-                      glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
-                    )
-                    .also { handled ->
-                      // Inside the guarded body — see the animated capture above. The gesture loop
-                      // drove the shared clock across its whole window, so the local marker only
-                      // earns that credit when the loop actually completed it.
-                      if (handled) currentTime += job.capture.interaction.windowMs()
-                    }
+                    rule = rule,
+                    interaction = job.capture.interaction,
+                    previewId = preview.id,
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                    outputFile = outputFile,
+                    wrapWidth = wrapWidth,
+                    wrapHeight = wrapHeight,
+                    padArgb = resolveBackgroundColor(params).toArgb(),
+                    measuredContent = { measured },
+                    glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                    // The handler reports what it actually drove, measured off `mainClock`
+                    // itself, so the marker cannot drift from the clock the way a re-derived
+                    // window does the moment the frame budget or the settle tick changes. It
+                    // reports on the failure path too, crediting exactly the time a capture that
+                    // threw part-way had already advanced.
+                    onClockAdvanced = { advanced -> currentTime += advanced },
+                  )
                 }
             if (forceLiveInspection) {
               rule.runOnUiThread {
