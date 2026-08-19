@@ -1065,7 +1065,18 @@ object FigmaLayeredSvg {
           )
             return true
         }
-        node.background?.let { if (overflows(it.left, it.top, it.right, it.bottom)) return true }
+        // A background box is trimmed by the same two conditions its owner's shape is — overflow,
+        // and simply reaching a rounded/cut corner. Testing only overflow lost the outer rounding
+        // of every Wear split button: each half's container paints flush inside the pill (no
+        // overflow) while its top-left/bottom-left square corner is exactly what the pill cuts, so
+        // the mask was never emitted and both halves exported square-ended.
+        node.background?.let {
+          if (
+            overflows(it.left, it.top, it.right, it.bottom) ||
+              reachesCorner(it.left, it.top, it.right, it.bottom)
+          )
+            return true
+        }
       }
       return node.children.any(::scan)
     }

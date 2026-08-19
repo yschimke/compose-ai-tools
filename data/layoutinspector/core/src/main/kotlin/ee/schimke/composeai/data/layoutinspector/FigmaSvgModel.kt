@@ -1802,10 +1802,15 @@ data class FigmaSvgModel(
      * a bare grouping `<g>` carries no transform/clip/opacity, so removing it moves nothing — while
      * flattening the tree down to the layers that actually stand for something in the design.
      *
-     * Two deliberate narrowings keep meaningful structure:
+     * Three deliberate narrowings keep meaningful structure:
      * - the **root** frame is never dropped (it anchors the canvas); only its descendants collapse.
      * - a grouping node with **2+ children** is kept — it genuinely groups siblings, so it's real
      *   structure, not a redundant nesting level.
+     * - a node that **clips its children** is kept, because it is not pass-through: the "removing
+     *   it moves nothing" argument above holds only for a `<g>` that carries no clip. Wear's
+     *   `Slider` is the case that proves it — its container is a `clip(RoundedCornerShape(26.dp))`
+     *   wrapper around the single node that fills it, so collapsing the wrapper threw the pill away
+     *   and exported a sharp-cornered bar.
      */
     private fun collapsePassthroughGroups(root: FigmaSvgLayer): FigmaSvgLayer =
       root.copy(children = root.children.map { it.collapseSubtree() })
@@ -1818,9 +1823,12 @@ data class FigmaSvgModel(
       return layer
     }
 
-    /** A layer that neither paints ([FigmaSvgLayer.paints]) nor casts a shadow — pure nesting. */
+    /**
+     * A layer that neither paints ([FigmaSvgLayer.paints]), casts a shadow, nor masks its children
+     * — pure nesting, and safe to drop.
+     */
     private val FigmaSvgLayer.isPassthroughGroup: Boolean
-      get() = !paints && elevationPx == 0.0
+      get() = !paints && elevationPx == 0.0 && !clipChildren
 
     /**
      * The node's captured [LayoutInspectorNode.bounds], or — only for the exact all-zero

@@ -62,6 +62,10 @@ internal object ModifierTokenResolver {
     var cornerRadiusPx: String? = null
     var shapePath: String? = null
     var shape: String? = null
+    // True once one shape-bearing modifier has supplied the shape family. Corner radii and the
+    // `shape` descriptor are two readings of the same geometry, so they are taken from the same
+    // modifier or not at all — see the commit block below.
+    var resolvedShape = false
     var padding: ComposeSemanticsInsets? = null
     var paintInset: ComposeSemanticsInsets? = null
     // Compose modifier order is outer→inner. A `padding` seen before any paint modifier
@@ -86,6 +90,9 @@ internal object ModifierTokenResolver {
       val name = inspectable?.nameFallback
       val elements = inspectable?.inspectableElements?.associate { it.name to it.value }.orEmpty()
       val simpleName = mod.javaClass.simpleName
+      // Assignments recorded from a lambda-form `graphicsLayer { … }`, filled in by the
+      // graphics-layer branch below and consulted by the shape/clip readers in the same iteration.
+      var blockProperties: Map<String, Any?>? = null
 
       // A scrolling modifier installs clipping at runtime on its coordinator rather than exposing
       // a static graphics-layer `clip` field. Treat the applied frame state as authoritative so a
@@ -101,10 +108,14 @@ internal object ModifierTokenResolver {
       // — a clip and the shadow). Skipped when zero (a clip-only graphicsLayer).
       if (name == "graphicsLayer" || simpleName.contains("GraphicsLayer")) {
         graphicsLayerAlpha(info)?.let { opacity *= it }
+        // The lambda form (`graphicsLayer { … }`) exposes none of its assignments as elements or
+        // fields, so evaluate the block once here and let the shape and clip readers below consult
+        // it. Null for the named-parameter form, which those readers already see directly.
+        blockProperties = evaluateLayerBlock(mod, nodeSize(info), nodeDensity(info))
         // `Modifier.clip(shape)` lowers to `graphicsLayer(shape, clip = true)`; the `clip` flag is
         // what tells a rounded/circle container to mask an overflowing child rather than let it
         // bleed past (issue #2852). A shadow/alpha-only graphicsLayer keeps `clip = false`.
-        if (!clipsContent && graphicsLayerClips(mod, elements)) clipsContent = true
+        if (!clipsContent && graphicsLayerClips(mod, elements, blockProperties)) clipsContent = true
         shadowElevationDp(mod, elements, density)?.let { dp ->
           // A positive elevation *paints* — unlike a clip, which only masks — so a padding behind
           // it does not inset what this modifier drew, and the layer keeps its pre-padding box
@@ -199,7 +210,7 @@ internal object ModifierTokenResolver {
       // projection, where it describes the placeholder block rather than the container (#2646).
       val nodeShape =
         if (PlaceholderModifiers.isPlaceholderModifier(name, simpleName)) null
-        else shapeOf(mod, elements)
+        else shapeOf(mod, elements, blockProperties)
       if (nodeShape != null) {
         // Deliberately NOT `sawPaint = true`. A shape alone paints nothing: a `clip(shape)` only
         // masks, so a `padding` behind it still insets the fill that follows —
@@ -210,24 +221,44 @@ internal object ModifierTokenResolver {
         // carrying a positive shadow elevation — which is what stops a trailing content `padding`
         // from being read as a paint inset (#2852).
         val effectiveShape = nodeShape.effectiveCornerShape()
-        if (cornerRadius == null) cornerRadius = effectiveShape.cornerRadiusWire(minSidePx, density)
+        // All four shape fields describe ONE shape, so they are read together from ONE modifier
+        // and committed together. Filling them independently let a node's corner come off the
+        // first shape-bearing modifier while its `shape` descriptor came off a later, different
+        // one — and the export prefers the descriptor, so the mismatch won. Wear's `AlertDialog`
+        // confirm button is the case that showed it: a 27dp rounded container followed by a
+        // `CircleShape` further down the chain published `cornerRadius = 27dp` *and*
+        // `shape = "circle"`, and the export drew the full circle (`rx = min(w, h) / 2 = 83px`)
+        // over a render rounded to 54px.
+        //
+        // A shape that describes nothing — a plain rectangle — commits nothing and leaves the
+        // next modifier its turn, which is the behaviour the skip above relies on.
+        val dpCorners = effectiveShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
-        // the
-        // figma-svg export can still round the corner instead of dropping to a sharp rect.
-        if (cornerRadius == null && cornerRadiusPx == null) {
-          cornerRadiusPx =
+        // the figma-svg export can still round the corner instead of dropping to a sharp rect.
+        val pxCorners =
+          if (dpCorners != null) null
+          else
             effectiveShape.cornerRadiusPxWire()
               ?: effectiveShape.outlineCornerRadiusPxWire(sizeWidthPx, sizeHeightPx, density)
-        }
         // Last resort for a shape no corner path could reduce — a bespoke morph/star/squircle, or
         // a wrapper neither `effectiveCornerShape` idiom unwraps. Ask it for its outline and carry
         // the raw geometry so the export can draw *that*, instead of silently degrading to a sharp
         // rectangle: an unresolved shape used to emit a plain `<rect>`, which is a confident wrong
         // answer painted over the correctly-shaped raster underneath (issue #3254).
-        if (cornerRadius == null && cornerRadiusPx == null && shapePath == null) {
-          shapePath = effectiveShape.outlineShapePathWire(sizeWidthPx, sizeHeightPx, density)
+        val outlinePath =
+          if (dpCorners != null || pxCorners != null) null
+          else effectiveShape.outlineShapePathWire(sizeWidthPx, sizeHeightPx, density)
+        val descriptor = effectiveShape.shapeDescriptor()
+        if (
+          !resolvedShape &&
+            (dpCorners != null || pxCorners != null || outlinePath != null || descriptor != null)
+        ) {
+          cornerRadius = dpCorners
+          cornerRadiusPx = pxCorners
+          shapePath = outlinePath
+          shape = descriptor
+          resolvedShape = true
         }
-        if (shape == null) shape = effectiveShape.shapeDescriptor()
       }
     }
     val gap = arrangementGapWire(measurePolicy)
@@ -278,14 +309,25 @@ internal object ModifierTokenResolver {
    * populate inspector info; issue #2852). A lambda-form `graphicsLayer { … }` carries no static
    * `clip` field and reads `false`, which is correct — it doesn't clip.
    */
-  private fun graphicsLayerClips(mod: Any, elements: Map<String, Any?>): Boolean {
+  private fun graphicsLayerClips(
+    mod: Any,
+    elements: Map<String, Any?>,
+    blockProperties: Map<String, Any?>? = null,
+  ): Boolean {
     (elements["clip"] as? Boolean)?.let {
       return it
     }
-    return runCatching {
+    runCatching {
       mod.javaClass.getDeclaredField("clip").apply { isAccessible = true }.getBoolean(mod)
     }
-      .getOrNull() ?: false
+      .getOrNull()
+      ?.let {
+        return it
+      }
+    // `graphicsLayer { clip = true }` keeps its flag in the block, same as its shape above. A
+    // block that never assigns `clip` records nothing and reads `false`, which is correct — it
+    // doesn't clip.
+    return blockProperties?.get("clip") as? Boolean ?: false
   }
 
   /**
@@ -483,7 +525,32 @@ internal object ModifierTokenResolver {
     modifier: Any,
     nodeSize: Long? = null,
     density: Density? = null,
-  ): Float? {
+  ): Float? =
+    // A block can still compute its way to a non-finite alpha — dividing by a dimension this scope
+    // could not supply, say. Decline instead of exporting it: `opacity="NaN"` is not a colour any
+    // consumer can read, and returning null lets the coordinator's applied value answer instead.
+    (evaluateLayerBlock(modifier, nodeSize, density)?.get("alpha") as? Float)?.takeIf {
+      it.isFinite()
+    }
+
+  /**
+   * Runs a lambda-form `graphicsLayer { … }` block against the recording scope and returns
+   * **every** property it assigned, or null when [modifier] carries no such block (or the block
+   * can't be run).
+   *
+   * The block is a series of property assignments, so the recorded map is the whole layer the frame
+   * was drawn with — not just its alpha. Wear M3's `SplitCheckboxButton`/`SplitRadioButton`/
+   * `SplitSwitchButton` is why that matters: each half's container shape is assigned inside such a
+   * block, and a lambda-form element carries no static `shape`/`clip` fields for [shapeOf] and
+   * [graphicsLayerClips] to reflect on. Reading them off the block is the only way to see a
+   * container whose outer corner is a full pill and whose inner corner is 4dp; without it both
+   * halves exported with the inner corner on all four.
+   */
+  internal fun evaluateLayerBlock(
+    modifier: Any,
+    nodeSize: Long? = null,
+    density: Density? = null,
+  ): Map<String, Any?>? {
     val block = layerBlock(modifier) ?: return null
     val recorded = HashMap<String, Any?>()
     // The node's own placed size, so a block that *derives* alpha from geometry evaluates against
@@ -555,10 +622,7 @@ internal object ModifierTokenResolver {
         .getOrNull() ?: return null
     @Suppress("UNCHECKED_CAST") val invoke = block as? Function1<Any?, Any?> ?: return null
     runCatching { invoke(scope) }.getOrNull() ?: return null
-    // A block can still compute its way to a non-finite alpha — dividing by a dimension this scope
-    // could not supply, say. Decline instead of exporting it: `opacity="NaN"` is not a colour any
-    // consumer can read, and returning null lets the coordinator's applied value answer instead.
-    return (recorded["alpha"] as? Float)?.takeIf { it.isFinite() }
+    return recorded
   }
 
   /**
@@ -1375,7 +1439,11 @@ internal object ModifierTokenResolver {
   }
 
   /** The inspector `shape` element, or a reflected `shape` field on the modifier element. */
-  private fun shapeOf(mod: Any, elements: Map<String, Any?>): Shape? {
+  private fun shapeOf(
+    mod: Any,
+    elements: Map<String, Any?>,
+    blockProperties: Map<String, Any?>? = null,
+  ): Shape? {
     (elements["shape"] as? Shape)?.let {
       return it
     }
@@ -1387,6 +1455,12 @@ internal object ModifierTokenResolver {
       ?.let {
         return it
       }
+    // A lambda-form `graphicsLayer { shape = … }` holds only the opaque block, so neither the
+    // inspector elements nor a `shape` field can see it — the shape has to be read back off the
+    // evaluated block (see [evaluateLayerBlock]).
+    (blockProperties?.get("shape") as? Shape)?.let {
+      return it
+    }
     // A Wear scaling card (`TransformingLazyColumn` + `SurfaceTransformation`) fills through a
     // `Modifier.paint(BackgroundPainter)` whose rounded/morphing shape rides on the *painter*
     // (`BackgroundPainter.shape`), not the modifier — so without this a vectorised card would draw
