@@ -3380,6 +3380,84 @@ cp-page-zoom button:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1rem;
 }
+/* ---- The motion browser (`/motion`) --------------------------------------------------------
+   One card per published capture. A card opens on its component's baked still and swaps to the
+   recording only when its stage button is pressed, so the page never autoplays and there is no
+   `prefers-reduced-motion` suppression to get wrong — see `ServeWeb.motionIndexPage`. */
+.cp-motion-toolbar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  margin: 0.9rem 0 1.4rem;
+}
+.cp-motion-all { cursor: pointer; font: inherit; font-size: 0.85rem; }
+.cp-motion-all[aria-pressed="true"] {
+  background: var(--md-sys-color-secondary-container, var(--cp-surface));
+  border-color: var(--cp-border-strong);
+}
+.cp-motion-hint { color: var(--cp-fg-muted); font-size: 0.8rem; flex: 1 1 18rem; }
+.cp-motion-section + .cp-motion-section { margin-top: 1.8rem; }
+.cp-motion-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1.1rem;
+}
+.cp-motion-card { margin: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+/* The stage is the button. Making the picture itself the control is what lets a reader press the
+   thing they are looking at, and keeps one tab stop per card rather than two. */
+.cp-motion-card-stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  cursor: pointer;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  overflow: hidden;
+}
+.cp-motion-card-stage:hover { border-color: var(--cp-border-strong); }
+.cp-motion-card-stage:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary, #6750a4);
+  outline-offset: 2px;
+}
+.cp-motion-card-img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  background: #fff;
+}
+/* The play cue, over the still. Hidden while the recording runs — a ▶ on something that is
+   already playing is the wrong instruction. */
+.cp-motion-card-cue {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-primary, #fff);
+  background: var(--md-sys-color-primary, #6750a4);
+}
+.cp-motion-card-stage[aria-pressed="true"] .cp-motion-card-cue { display: none; }
+.cp-motion-card-stage[aria-pressed="true"] { border-color: var(--md-sys-color-primary, #6750a4); }
+.cp-motion-card-meta { display: flex; flex-direction: column; gap: 0.15rem; }
+.cp-motion-card-name { font-weight: 600; font-size: 0.9rem; color: inherit; }
+.cp-motion-card-title { font-size: 0.82rem; }
+.cp-motion-card-kind {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cp-fg-muted);
+}
+.cp-motion-card-detail { color: var(--cp-fg-muted); font-size: 0.76rem; line-height: 1.35; }
+
 /* A hotspot is a bare rectangle, so its accessible name lives in a visually-hidden span rather
    than in the (decorative) outline itself. */
 .cp-visually-hidden {

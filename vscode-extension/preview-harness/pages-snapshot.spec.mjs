@@ -1460,6 +1460,42 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The MOTION BROWSER with every card running.
+    //
+    // Its committed HTML is the resting page — every card on its component's still, because the
+    // browser never autoplays — so the default shot is a grid of stills and says nothing about the
+    // one thing the page does. Pressing "Play all" is what swaps every card's `src` to its
+    // recording, and this is the only baseline where that swap is visible: a card that stopped
+    // swapping, or a "Play all" that stopped reaching the cards, would otherwise move no pixel.
+    //
+    // Same stub and the same reason as the viewer's lane above — the harness serves pages, not a
+    // catalog with a `motion/` directory behind it — and the stub's rest-on-last-frame behaviour
+    // is what keeps the shot deterministic across four cards at once.
+    fixture: "serve-motion-index",
+    suffix: "motion-index-playing",
+    apply: async (page) => {
+      await page.route("**/motion/**", (route) =>
+        route.fulfill({ path: motionPlaceholder, contentType: "image/apng" }),
+      );
+      await page.click("#cp-motion-all");
+      // Every card has to have LOADED its recording before the shot: a screenshot taken between
+      // the `src` assignment and the decode catches broken images and bakes them in. `complete`
+      // plus a non-zero natural width is the pair that says an image is actually on screen.
+      await page.waitForFunction(() => {
+        const imgs = Array.from(
+          document.querySelectorAll(".cp-motion-card-img"),
+        );
+        return (
+          imgs.length > 0 &&
+          imgs.every((i) => i.complete && i.naturalWidth > 0 && /\.apng/.test(i.getAttribute("src") || ""))
+        );
+      });
+      // The pointer is a means here, not the subject: left on the button it bakes a hover ring
+      // into a baseline about the cards.
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     // The Source panel open: the usage code on the stage, with its note, Copy button and the
     // links onward to the playground and the whole sticker. The committed HTML cannot hold any
     // of it — the panel is server-rendered EMPTY on purpose, and filled only once the chip is

@@ -81,6 +81,14 @@ The visual inventory and main navigation for one catalog.
 - [ ] Compare renderers action
 - [ ] Compare with Figma/design-reference action
 - [ ] Design-parity dashboard
+- [ ] Motion browser — every capture in the catalog on one page
+  A catalog-level destination (`/motion`), reached from the `⋯` actions menu beside the Theme
+  pill, and the only place a visitor can find out the catalog records anything at all: captures are
+  one-per-component and invisible until you open the component that has one. Unchecked for the same
+  reason every other entry in that menu is — Catalog mode strips the whole menu, and keeping this
+  one item would give the mode a `⋯` affordance that exists to hold a single link. The per-component
+  Motion control below stays checked; this is the collection view of it. See
+  `ServeWeb.motionIndexPage`.
 - [ ] Playground action
 - [ ] Download the entire catalog
 - [ ] Catalog provenance and generation details
