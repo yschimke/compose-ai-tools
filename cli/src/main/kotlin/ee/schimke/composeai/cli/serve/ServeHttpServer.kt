@@ -58,6 +58,7 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -1463,7 +1464,23 @@ class ServeHttpServer(
     try {
       block(lease.host)
     } finally {
-      withContext(Dispatchers.IO) { lease.close() }
+      // Called directly, NOT through `withContext` — the same rule [withLeasedSessionOrNull]
+      // already spells out, which this lane was missing.
+      //
+      // A `withContext` in a `finally` never runs once the job is cancelled: it checks the job on
+      // entry and throws straight back out. Cancellation is exactly when this matters — a visitor
+      // navigating away, a crawler abandoning a fetch, a socket dropped mid-render all cancel the
+      // request coroutine here — and a skipped release leaves the lease count permanently
+      // elevated. That is far worse than one resident daemon: `ServeSessionRegistry.idleMillis()`
+      // answers *busy* (`null`, not a number) while ANY session holds a lease, so a single leaked
+      // lease pins the whole server as busy for the life of the process, which silently stands the
+      // theme optimizer down — the deployed box sat at `turnsGranted 0` across 23 catalogs with no
+      // traffic to explain it.
+      //
+      // Safe to call inline: `Lease.close` is a non-suspending, idempotent compare-and-set.
+      // This helper backs the page and asset lanes — the routes an aborted browse actually hits —
+      // so it is the one that had to get this right.
+      lease.close()
     }
   }
 
@@ -7071,7 +7088,15 @@ class ServeHttpServer(
               }
             }
           } finally {
-            withContext(Dispatchers.IO) { live.close() }
+            // `NonCancellable`, because the whole point of this close is to run when the socket
+            // dies — and a socket dying cancels this coroutine, which would make a plain
+            // `withContext` throw on entry and skip the close entirely. A leaked live stream keeps
+            // `activeStreamCount()` above zero, and the reaper never suspends a session with an
+            // open stream, so the daemon and its live seat stay held for the life of the process.
+            //
+            // Unlike `Lease.close` this one genuinely blocks (it tears a render stream down), so
+            // it keeps its IO dispatch rather than being called inline.
+            withContext(Dispatchers.IO + NonCancellable) { live.close() }
           }
         } else {
           val session =
