@@ -2039,6 +2039,86 @@ class ServeWebFixtureTest {
       "…and its destination is THIS node in the catalog's design file",
     )
 
+    // The catalog-wide MOTION BROWSER: every recording this catalog publishes, on one page.
+    //
+    // Captured because the page is the only place a reader can compare one component's transition
+    // against its neighbour's, and because its resting state is load-bearing — every card opens on
+    // its component's still, and nothing animates until someone presses it. A baseline of that
+    // resting grid is what would catch the page starting to autoplay.
+    //
+    // Two sections and a component with TWO captures, deliberately: the section heads are the
+    // page's only structure, and a component whose recordings differ only in their caption's tail
+    // is exactly the case [MotionCaptureLabels] splits — one card per capture, distinguished in
+    // the title, explained underneath.
+    val motionPreviews =
+      listOf(
+        ServePreview(
+          "switch-on__ideal__default__light",
+          "Switch · On",
+          section = "Components",
+          catalogOrder = 1,
+          motion =
+            listOf(
+              ServeMotion(
+                id = "switch-on__ideal__default__light",
+                kind = "interaction",
+                caption =
+                  "Toggle on. The thumb travels the full width of the track and the container " +
+                    "recolours to the checked state as it lands.",
+              ),
+              ServeMotion(
+                id = "switch-on__ideal__default__light__anim",
+                kind = "animation",
+                caption =
+                  "Thumb settle. Released mid-travel, the thumb overshoots and settles back " +
+                    "through the theme's spatial spring rather than snapping to the stop.",
+              ),
+            ),
+        ),
+        ServePreview(
+          "card-filled__ideal__default__light",
+          "Card · Filled",
+          section = "Components",
+          catalogOrder = 2,
+          motion =
+            listOf(
+              ServeMotion(
+                id = "card-filled__press",
+                kind = "interaction",
+                caption =
+                  "Press and hold the card. The container lifts to its pressed elevation and " +
+                    "the ripple expands from the contact point.",
+              )
+            ),
+        ),
+        // A capture with NO caption, which the annotation defaults produce and which the page has
+        // to name honestly rather than leaving blank — the same fallback the viewer's picker uses.
+        ServePreview(
+          "profile__screen",
+          "Profile screen",
+          section = "Screens",
+          catalogOrder = 3,
+          motion = listOf(ServeMotion(id = "profile__scroll", kind = "interaction")),
+        ),
+        // …and a still-only component, which must NOT appear: the page is a list of recordings.
+        ServePreview(
+          "badge__ideal__default__light",
+          "Badge",
+          section = "Components",
+          catalogOrder = 4,
+        ),
+      )
+    val motionIndex =
+      ServeWeb.motionIndexPage(
+        moduleLabel = "compose-m3",
+        previews = motionPreviews,
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+      )
+
     val designPageIndex =
       ServeWeb.designPagesIndexPage(
         moduleLabel = "compose-m3",
@@ -2065,6 +2145,10 @@ class ServeWebFixtureTest {
         isPublic = true,
         hasHomeIndex = true,
         version = version,
+        // The motion browser's entry point, in the `⋯` menu with the catalog's other
+        // destinations. This fixture is the one the harness OPENS that menu on (`actions-menu`),
+        // so it is the only place the chip's pixels are ever captured.
+        motionCaptureCount = 4,
         declaredThemes =
           listOf(
             ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
@@ -2919,6 +3003,7 @@ class ServeWebFixtureTest {
         "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,
         "serve-design-page.html" to designPageHtml,
         "serve-design-page-index.html" to designPageIndex,
+        "serve-motion-index.html" to motionIndex,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
         "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,

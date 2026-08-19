@@ -1085,6 +1085,12 @@ class ServeHttpServer(
         // The motion lane, beside `/render` rather than inside it: a capture is not a render of a
         // preview, it is a second artifact about the same component, and folding it into the render
         // route would mean that route's suffix decided the content type from a fetched path.
+        // The motion browser: every capture this catalog publishes, on one page. A constant
+        // first segment like `/pages` and `/parity`, and a sibling of the per-capture asset route
+        // below — Ktor scores `/motion` and `/motion/{name}` as distinct paths, so the index does
+        // not shadow the bytes.
+        get("/motion") { handleMotionIndex(sessionInPath = false) }
+        get("/{system}/motion") { handleMotionIndex(sessionInPath = true) }
         get("/motion/{name}") { handleMotion(sessionInPath = false) }
         get("/{system}/motion/{name}") { handleMotion(sessionInPath = true) }
 
@@ -2246,6 +2252,8 @@ class ServeHttpServer(
               renderHost.parityIssues() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
           parityIssues = renderHost.parityIssues()?.issues.orEmpty(),
+          // Same count `handleMotionIndex` gates on, so the chip never leads to that route's 404.
+          motionCaptureCount = renderHost.previews.sumOf { it.motion.size },
           // Same condition `handleDesignPageIndex` serves on, for the same reason. Listed by name
           // in the navigation tree, so the landing has to know what they are called, not just how
           // many there are.
@@ -2691,6 +2699,47 @@ class ServeHttpServer(
   }
 
   /** The catalog's published design pages, or a 404 when it publishes none. */
+  /**
+   * The catalog-wide motion browser (see [ServeWeb.motionIndexPage]).
+   *
+   * 404s when the catalog records nothing, exactly as the design-page index does for a catalog that
+   * publishes no pages: the landing gates its chip on the same count, so a reader only reaches this
+   * by typing the URL, and a page reading "0 recordings" is a worse answer than "there are none".
+   */
+  private suspend fun RoutingContext.handleMotionIndex(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    withLeasedSession(
+      sessionId,
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
+      val previews = renderHost.previews
+      if (previews.none { it.motion.isNotEmpty() }) {
+        respondNotFoundHtml("This design system publishes no motion captures.")
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.motionIndexPage(
+          moduleLabel = renderHost.label,
+          previews = previews,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
+          displayTitle = catalogBundleHost(renderHost)?.title,
+          sessionInOrigin = siteSystem() != null,
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
   private suspend fun RoutingContext.handleDesignPageIndex(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)

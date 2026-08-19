@@ -354,6 +354,10 @@ internal object ServeBugReport {
       // report against it. Which catalog they belong to is recovered from the explicit session.
       "pages",
       "parity",
+      // `/motion?session=…` — the motion browser, and `/motion/<id>.apng` under it. Same reason
+      // as the two above: the catalog is named by `?session=`, so reading `motion` as a system id
+      // would file the report against a design system that does not exist.
+      "motion",
       "usage",
       "render",
       "reference",

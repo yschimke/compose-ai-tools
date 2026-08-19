@@ -171,6 +171,15 @@ class ServeBugReportTest {
     assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/pages/shape"))
     assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/parity"))
     assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/usage/Button"))
+    // …and the motion browser, which is the same shape: a catalog page at a constant top-level
+    // segment, plus the capture bytes one level under it.
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/motion"))
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/motion/switch-on.apng"))
+    // The path-mode form still names its catalog, exactly as `/m3-catalog/parity` does.
+    assertEquals(
+      ServeBugReport.PageRef(system = "m3-catalog"),
+      ServeBugReport.parsePath("/m3-catalog/motion"),
+    )
   }
 
   @Test

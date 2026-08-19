@@ -6479,6 +6479,15 @@ $noteBlock        <div class="cp-site-footer-links">
      */
     hasParityView: Boolean = false,
     /**
+     * How many motion captures this catalog publishes, across every preview — the count behind the
+     * "motion" action, and the gate on whether it appears at all. Zero (the default) omits it, so a
+     * catalog that records nothing is unchanged and no visitor is offered an empty page.
+     *
+     * A count rather than a boolean because one recording and thirty are different offers, the same
+     * reasoning the pages chip carries its count for.
+     */
+    motionCaptureCount: Int = 0,
+    /**
      * The design pages this catalog publishes ([ServeDesignPages]), in publication order. Listed by
      * name in the navigation tree ([pagesBranchHtml]); a catalog with no tree to put them in falls
      * back to a header action chip. Empty (the default) offers neither, so a catalog that publishes
@@ -6638,6 +6647,15 @@ $noteBlock        <div class="cp-site-footer-links">
     @Suppress("NAME_SHADOWING")
     val hasReferenceComparison = hasReferenceComparison && !componentBrowser
     @Suppress("NAME_SHADOWING") val hasParityView = hasParityView && !componentBrowser
+    // Suppressed in Catalog mode with the other destinations, and it is a close call rather than
+    // an obvious one. The motion browser is browsing surface, not tooling — it is the collection
+    // view of a control Catalog mode deliberately KEEPS per component — so the case for showing it
+    // there is real. What settles it is the affordance: every other entry in the `⋯` menu is
+    // stripped in that mode, so keeping this one would give Catalog mode a menu that exists to
+    // hold a single item. Flip this line (and the checklist entry it is recorded under) if the
+    // collection view turns out to be what streamlined visitors come for.
+    @Suppress("NAME_SHADOWING")
+    val motionCaptureCount = if (componentBrowser) 0 else motionCaptureCount
     @Suppress("NAME_SHADOWING") val playgroundHref = playgroundHref?.takeUnless { componentBrowser }
     @Suppress("NAME_SHADOWING")
     val degradations = if (componentBrowser) emptyList() else degradations
@@ -7108,6 +7126,20 @@ $noteBlock        <div class="cp-site-footer-links">
           // the design file have *moved*, and how far apart they are — so it keeps its own name
           // rather than borrowing the comparison's.
           actionChip("$basePath/parity$q", "design parity").takeIf { hasParityView },
+          // The motion browser. A destination like the comparisons and the parity view — captures
+          // are scattered one-per-component and invisible until you open the component that has
+          // one, so this is the only place a visitor can find out the catalog records anything at
+          // all. It is NOT gated on having a tree the way the pages chip is: there is no tree
+          // listing to fall back on, so without the chip the page would be published and
+          // unreachable on every catalog.
+          motionCaptureCount
+            .takeIf { it > 0 }
+            ?.let {
+              actionChip(
+                "$basePath/motion$q",
+                "$it motion ${if (it == 1) "capture" else "captures"}",
+              )
+            },
           // Pages live in the navigation tree, which is where this catalog's other *places* are.
           // This chip is the fallback for a catalog too small to have a tree at all: without it
           // the pages would be published and unreachable. The count is in the label because one
@@ -7939,6 +7971,203 @@ $rows
           .trimIndent(),
     )
   }
+
+  /**
+   * The **motion browser**: every recorded capture this catalog publishes, on one page.
+   *
+   * ### Why this is a page of its own
+   *
+   * A capture is per-preview surface — the viewer's Motion lane — and that is the right home for
+   * *reading one*. It is the wrong home for the question this page answers, which is a catalog-wide
+   * one: **does this design system move consistently?** Two containers that morph on the same
+   * spatial spring and a third that cross-fades is a system bug, and it is invisible from three
+   * separate component pages, each of which shows its own recording in isolation and says nothing
+   * about its neighbours. Putting the recordings side by side is the entire feature; a grid is what
+   * makes the odd one out obvious at a glance.
+   *
+   * It is also the only view that answers "what has motion at all". Captures are rare —
+   * [ServeMotion] exists precisely because most components publish only a still — so today a reader
+   * finds them by opening components one at a time and noticing a chip. That is not discovery, it
+   * is luck.
+   *
+   * ### Nothing plays until it is asked to
+   *
+   * Same posture as the viewer's lane, for the same reason: motion is the answer to a question most
+   * readers are not asking, and a page that starts thirty recordings at once is a page nobody can
+   * read. Each card opens on its component's **still** — the baked pixels, the same image the grid
+   * shows — and swaps to the capture only when someone presses it or presses **Play all**. That
+   * makes `prefers-reduced-motion` a non-question here: there is no autoplay to suppress. The
+   * per-card control is a button rather than a hover, so it works on a touch screen and from a
+   * keyboard, and its pressed state says which cards are running.
+   *
+   * ### One card per capture, not per component
+   *
+   * A component with two recordings has two things to compare and they are frequently the point —
+   * "Baseline swaps the shape, Expressive travels between them" is one component and two captures.
+   * Folding them onto one card would hide exactly the comparison the page exists for. The captures
+   * of one component are labelled by [MotionCaptureLabels] — the same split the viewer's picker
+   * uses, so a recording is called the same thing in both places — and each card deep-links to
+   * `?mode=motion&motion=<id>`, which opens the viewer already on that recording rather than on the
+   * component's first one.
+   */
+  fun motionIndexPage(
+    moduleLabel: String,
+    previews: List<ServePreview>,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    displayTitle: String? = null,
+    /** See [designPagesIndexPage]; a rooted site implies its session by the origin. */
+    sessionInOrigin: Boolean = false,
+  ): String {
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val query = linkQuery(token, linkSessionId, basePath, isPublic)
+    val q = querySuffix(query)
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = catalogHeading(displayTitle, moduleLabel)
+
+    // Authoring order where the catalog published one, so the sections read in the order the
+    // landing's tabs do rather than alphabetically by preview id.
+    val withMotion =
+      previews
+        .filter { it.motion.isNotEmpty() }
+        .sortedWith(compareBy({ it.catalogOrder ?: Int.MAX_VALUE }, { it.id }))
+    val captureCount = withMotion.sumOf { it.motion.size }
+
+    /**
+     * The viewer, opened on this exact recording — see [ServeMotion] and the viewer's `?motion=`.
+     */
+    fun viewerHref(preview: ServePreview, capture: ServeMotion): String {
+      val parts =
+        listOf(query, "mode=motion", "motion=" + WebEscaping.urlEncodeSegment(capture.id)).filter {
+          it.isNotEmpty()
+        }
+      return "$basePath/p/${WebEscaping.urlEncodeSegment(preview.id)}?" + parts.joinToString("&")
+    }
+
+    fun cardHtml(preview: ServePreview, capture: ServeMotion, label: MotionCaptureLabel): String {
+      val poster = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
+      val motionSrc =
+        "$basePath/motion/${WebEscaping.urlEncodeSegment(capture.id)}${capture.extension}$q"
+      val name = WebEscaping.htmlEscape(preview.label)
+      // The kind is what the annotation recorded, and it is a real distinction to a reader: a
+      // scripted gesture proves the component's own input plumbing drives the transition, a
+      // self-running animation proves only that the animation exists.
+      val kind =
+        when (capture.kind) {
+          "interaction" -> "Interaction"
+          "animation" -> "Animation"
+          else -> "Capture"
+        }
+      // The full caption, printed under the card. Blank for a capture whose annotation declared
+      // none — the title is then the kind, and a second line repeating it would say nothing.
+      val detail =
+        label.detail
+          .takeIf { it.isNotBlank() && it != label.title }
+          ?.let {
+            "\n          <span class=\"cp-motion-card-detail\">${WebEscaping.htmlEscape(it)}</span>"
+          } ?: ""
+      val play = WebEscaping.htmlEscape("Play the ${label.title} recording of ${preview.label}")
+      return """
+        <figure class="cp-motion-card">
+          <button type="button" class="cp-motion-card-stage" aria-pressed="false"
+            data-motion-src="${WebEscaping.htmlEscape(motionSrc)}"
+            data-motion-poster="${WebEscaping.htmlEscape(poster)}"
+            title="$play" aria-label="$play">
+            <img class="cp-motion-card-img" loading="lazy" alt=""
+              src="${WebEscaping.htmlEscape(poster)}">
+            <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
+          </button>
+          <figcaption class="cp-motion-card-meta">
+          <a class="cp-motion-card-name" href="${WebEscaping.htmlEscape(viewerHref(preview, capture))}">$name</a>
+          <span class="cp-motion-card-title">${WebEscaping.htmlEscape(label.title)}</span>
+          <span class="cp-motion-card-kind">$kind</span>$detail
+          </figcaption>
+        </figure>
+      """
+        .trimIndent()
+    }
+
+    // Grouped by the landing's own top-level section, so a reader who knows where a component lives
+    // in the catalog finds its recording in the same place here. A catalog with no sections (a
+    // plain bundle, an uploaded module) renders one unlabelled run of cards, exactly as its grid
+    // does.
+    val sections = withMotion.groupBy { it.section }
+    val body =
+      sections.entries.joinToString("\n") { (section, group) ->
+        val cards =
+          group.joinToString("\n") { preview ->
+            val labels = MotionCaptureLabels.of(preview.motion)
+            preview.motion
+              .mapIndexed { i, capture -> cardHtml(preview, capture, labels[i]) }
+              .joinToString("\n")
+          }
+        val head =
+          section
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "<h2 class=\"cp-section-head\">${WebEscaping.htmlEscape(it)}</h2>\n" } ?: ""
+        "<section class=\"cp-motion-section\">\n$head<div class=\"cp-motion-cards\">\n$cards\n</div>\n</section>"
+      }
+
+    val componentCount = withMotion.size
+    val componentWord = if (componentCount == 1) "component" else "components"
+    val captureWord = if (captureCount == 1) "recording" else "recordings"
+    return document(
+      title = "$heading — motion",
+      unfurlTitle = "$heading motion",
+      unfurlDescription =
+        "Every recorded interaction and animation this design system publishes, side by side",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Motion"),
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
+      siteName = heading,
+      body =
+        """
+        <h1 class="cp-head cp-catalog-head">Motion${compactTrustBadge(trust)}</h1>
+        <p class="cp-sub">Every recorded interaction and animation this catalog publishes, side by
+        side — so a transition that is shaped differently from its neighbours is visible without
+        opening each component in turn. $captureCount $captureWord across $componentCount $componentWord.</p>
+        <div class="cp-motion-toolbar">
+          <button type="button" id="cp-motion-all" class="cp-action-chip cp-motion-all"
+            aria-pressed="false" aria-controls="cp-motion-index">Play all</button>
+          <span class="cp-motion-hint">Nothing plays until you ask it to. Press a card to run one
+          recording, or open a component to scrub it frame by frame.</span>
+        </div>
+        <div class="cp-motion-index" id="cp-motion-index">
+        $body
+        </div>
+        <script>$MOTION_INDEX_SCRIPT</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * The motion browser's whole behaviour: swap a card between its still and its recording.
+   *
+   * Inline rather than an asset because it is the only page that has it and it is a dozen lines —
+   * the built bundles under `cli/serve-web/` exist for the surfaces with real state machines (the
+   * viewer, the comparison scorer), and adding a per-page file to that build to hold one `src`
+   * assignment would cost a round-trip on every visit to buy nothing.
+   *
+   * Swapping `src` is deliberately the entire mechanism. An `<img>` playing an APNG or a GIF cannot
+   * be paused, sought, or rate-controlled from script — that is what the viewer's canvas player is
+   * for, and why every card links to it. What an `<img>` *can* do is decode the format natively and
+   * start over from frame one each time its `src` is set, which is exactly the two things a
+   * browsing grid needs. Restoring the poster is what stops a recording, because a still that is no
+   * longer decoding costs nothing while thirty of them are on screen.
+   */
+  private const val MOTION_INDEX_SCRIPT =
+    """(function(){var stages=[].slice.call(document.querySelectorAll(".cp-motion-card-stage"));if(!stages.length)return;function set(b,on){var img=b.querySelector(".cp-motion-card-img");if(!img)return;var src=on?b.getAttribute("data-motion-src"):b.getAttribute("data-motion-poster");if(!src)return;b.setAttribute("aria-pressed",on?"true":"false");if(img.getAttribute("src")!==src||on)img.setAttribute("src",src);}stages.forEach(function(b){b.addEventListener("click",function(){set(b,b.getAttribute("aria-pressed")!=="true");sync();});});var all=document.getElementById("cp-motion-all");function playing(){return stages.filter(function(b){return b.getAttribute("aria-pressed")==="true";}).length;}function sync(){if(!all)return;var on=playing()===stages.length;all.setAttribute("aria-pressed",on?"true":"false");all.textContent=playing()?"Stop all":"Play all";}if(all)all.addEventListener("click",function(){var on=playing()!==stages.length;stages.forEach(function(b){set(b,on);});sync();});})();"""
 
   /**
    * One **design page**: the sheet itself as inlined SVG, an outline over every component node on
