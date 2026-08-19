@@ -192,11 +192,28 @@ jobs:
   # consumer resolving `v<version>` would get the wrong binary. The Swift tag points at the commit
   # made after the upload, which is the first commit where the two agree. Consumers depend on it.
   #
-  # It is a BARE `<version>` tag (`1.16.0`), not `swift/<version>`. SwiftPM only recognizes a tag as
-  # a semantic version when the whole ref is `X.Y.Z` or `vX.Y.Z`; a `swift/1.16.0` ref is invisible
-  # to `.package(..., from: "1.16.0")`, which is the only consumption syntax this repo documents. A
-  # bare tag is resolvable and cannot collide with the `v<version>` release tag, and `release.yml`'s
-  # own push trigger is `v*`, so tagging it here does not re-enter this workflow.
+  # It is a BARE `<version>` tag (`1.16.0`), not `swift/<version>`. SwiftPM reads a ref as a semantic
+  # version only when the whole ref is `X.Y.Z` or `vX.Y.Z`, so `swift/1.16.0` is invisible to
+  # `.package(..., from: "1.16.0")` — the only consumption syntax this repo documents.
+  #
+  # Note what that means for `v<version>`: it IS visible to SwiftPM, and its `Package.swift`
+  # necessarily still describes the PREVIOUS release. So `from:` did not resolve nothing — it
+  # resolved the WRONG framework. Measured against Swift 6.3: with both refs present SwiftPM picks
+  # the bare tag, in both tag orderings (bare older and bare newer), so once this job has run the
+  # bare tag governs. Two consequences worth stating plainly:
+  #
+  #   * There is a window. `v<version>` exists from the moment the release chain tags it until this
+  #     job pushes the bare tag, and a `from:` resolve inside that window gets the stale framework.
+  #     Minutes in the normal case, since both happen in one release run.
+  #   * If this job FAILS, the window never closes. That is the case to watch — the release chain
+  #     will have already written `v<version>`, and it is SwiftPM-visible and wrong. Re-run this
+  #     job; it is idempotent (see the tag step).
+  #
+  # Closing the window entirely needs `Package.swift` at `v<version>` to already be correct, which
+  # the checksum ordering forbids, or the Swift package to live in its own repository. #4068.
+  #
+  # `release.yml`'s own push trigger is `v*`, so tagging a bare version here does not re-enter this
+  # workflow.
   #
   # The BUILD comes from `TAG_NAME`, not from `main`. `main` can advance between the tag being cut
   # and this job starting, and an XCFramework built from a newer `main` would be attached to — and
@@ -259,9 +276,34 @@ jobs:
           checksum="$(cat rc-player/compose/build/distributions/RcComposePlayer.xcframework.zip.sha256)"
           url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/RcComposePlayer.xcframework.zip"
 
-          # The build above ran against $TAG_NAME; the commit has to land on main.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Bare `<version>`, which is what SwiftPM resolves. See the job comment.
+          swift_tag="${PLUGIN_VERSION}"
+
+          # THE EXISTING TAG IS CHECKED FIRST, before anything is written. A `workflow_dispatch`
+          # re-release of an older version runs against a `main` that has since advanced, so
+          # rewriting and pushing first would commit this release's (older) url and checksum over a
+          # newer `Package.swift` and only then discover the tag was already there. Deciding from
+          # the TAG's own `Package.swift` — not from `main`'s — is also what makes the idempotent
+          # case honest: "already released, and the file at that tag describes this exact asset."
+          # `--refs` drops the peeled `^{}` line, so a lightweight tag yields exactly one SHA.
+          existing="$(git ls-remote --refs --tags origin "refs/tags/${swift_tag}" | cut -f1)"
+          if [ -n "$existing" ]; then
+            git fetch --no-tags --depth 1 origin "$existing"
+            tagged="$(git show "${existing}:Package.swift")"
+            if printf '%s' "$tagged" | grep -qF "\"$url\"" &&
+              printf '%s' "$tagged" | grep -qF "checksum: \"$checksum\""; then
+              echo "tag ${swift_tag} already describes this asset; nothing to do"
+              exit 0
+            fi
+            echo "tag ${swift_tag} exists at ${existing} but its Package.swift describes a" >&2
+            echo "different asset than ${TAG_NAME}'s. Refusing to move it." >&2
+            exit 1
+          fi
+
+          # The build above ran against $TAG_NAME; the commit has to land on main.
           git fetch --no-tags origin main
           git checkout -B release-package-swift FETCH_HEAD
 
@@ -273,21 +315,8 @@ jobs:
             git commit -m "chore(release): point Package.swift at ${TAG_NAME}"
             git push origin HEAD:main
           fi
-
-          # Bare `<version>`: the only shape SwiftPM resolves. See the job comment.
-          swift_tag="${PLUGIN_VERSION}"
-          head="$(git rev-parse HEAD)"
-          # `--refs` drops the peeled `^{}` line, so a lightweight tag yields exactly one SHA.
-          existing="$(git ls-remote --refs --tags origin "refs/tags/${swift_tag}" | cut -f1)"
-          if [ -z "$existing" ]; then
-            git tag "$swift_tag"
-            git push origin "$swift_tag"
-          elif [ "$existing" = "$head" ]; then
-            echo "tag ${swift_tag} already points at ${head}"
-          else
-            echo "tag ${swift_tag} already exists at ${existing} but this release resolves to ${head}" >&2
-            exit 1
-          fi
+          git tag "$swift_tag"
+          git push origin "$swift_tag"
 
   # Build the runnable applications shipped on each GitHub Release: the CLI
   # (`compose-preview-*`) and the standalone MCP server (`compose-preview-mcp-*`).

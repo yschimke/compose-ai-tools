@@ -27,8 +27,17 @@ permissions:
   contents: read
 
 jobs:
-  publish-snapshot:
+  # The snapshot coordinate, computed ONCE and handed to both publishers.
+  #
+  # Sharing `scripts/snapshot-version.sh` was not enough: each job does its own full-depth checkout
+  # and its own `git describe`, so they see whatever tags exist at their own start time. Both this
+  # workflow and release-please fire on a release-PR merge to `main`, and a `v*` tag created between
+  # the two checkouts would have one job computing from the previous tag and the other from the new
+  # one — publishing half the stack under a coordinate nothing resolves. One job, one answer.
+  version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,18 +46,22 @@ jobs:
           persist-credentials: false
       - id: version
         name: Compute snapshot version
-        # Extracted to a script so this job and `publish-player-snapshot` compute the SAME version
-        # from the same code — two copies of this arithmetic would eventually disagree and publish
-        # half a stack under a different coordinate. `scripts/snapshot-version.sh --self-test`
-        # covers it, and CI runs that.
         env:
           REF_NAME: ${{ github.ref_name }}
           INPUT_SUFFIX: ${{ inputs.suffix || '' }}
         run: scripts/snapshot-version.sh
+
+  publish-snapshot:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Publish -SNAPSHOT to Maven Central snapshots
         env:
-          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |
@@ -78,19 +91,12 @@ jobs:
   # there: its Apple klibs only build on a Mac. Kept as its own job rather than moving the whole
   # snapshot to macOS, so the ordinary Linux publish stays on the cheaper, already-proven runner.
   publish-player-snapshot:
+    needs: version
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Need tags to compute the next snapshot version.
-          fetch-depth: 0
           persist-credentials: false
-      - id: version
-        name: Compute snapshot version
-        env:
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_SUFFIX: ${{ inputs.suffix || '' }}
-        run: scripts/snapshot-version.sh
       - uses: ./.github/actions/setup
       # See `release.yml`'s `publish-xcframework`: CMP 1.11's `ui-uikit` needs the iOS 26 SDK.
       - name: Select an Xcode with the iOS 26 SDK
@@ -104,7 +110,7 @@ jobs:
           sudo xcode-select --switch "$xcode/Contents/Developer"
       - name: Publish the rc-player stack -SNAPSHOT
         env:
-          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          PLUGIN_VERSION: ${{ needs.version.outputs.version }}
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
         run: |

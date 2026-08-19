@@ -8,11 +8,12 @@
 // hand is never right — they have to describe an asset that already exists, and SPM verifies the
 // checksum at resolve time.
 //
-// Consume a released version by its Swift tag — a BARE `<version>` (e.g. `1.16.0`), which is what
-// makes `from:` work. SwiftPM only reads a tag as a semantic version when the whole ref is `X.Y.Z`
-// or `vX.Y.Z`, so a prefixed ref such as `swift/1.16.0` is invisible to the syntax below. The bare
-// tag is distinct from the `v<version>` release tag, whose `Package.swift` still describes the
-// PREVIOUS release (see docs/design/RC_PLAYER_SWIFT.md):
+// Consume a released version by its Swift tag — a BARE `<version>` (e.g. `1.16.0`). SwiftPM only
+// reads a tag as a semantic version when the whole ref is `X.Y.Z` or `vX.Y.Z`, so a prefixed ref
+// such as `swift/1.16.0` is invisible to the syntax below. The `v<version>` release tag IS visible,
+// and its copy of this file still describes the PREVIOUS release — SwiftPM prefers the bare tag
+// once it exists, which is why the release job writes one. See docs/design/RC_PLAYER_SWIFT.md for
+// the window before it does:
 //
 //     .package(url: "https://github.com/yschimke/compose-ai-tools.git", from: "1.15.1")
 //
