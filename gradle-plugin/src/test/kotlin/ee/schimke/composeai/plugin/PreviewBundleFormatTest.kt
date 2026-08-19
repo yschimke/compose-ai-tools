@@ -23,8 +23,42 @@ class PreviewBundleFormatTest {
   }
 
   @Test
-  fun `current schema version is 8`() {
-    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(8)
+  fun `current schema version is 9`() {
+    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(9)
+  }
+
+  @Test
+  fun `v9 repositories round-trip and default empty on an older manifest`() {
+    val original =
+      BundleManifest(
+        schemaVersion = BUNDLE_SCHEMA_VERSION,
+        backend = "android",
+        previewIds = listOf("pkg.Foo"),
+        coverPreviewId = "pkg.Foo",
+        classpath = listOf(ClasspathEntry.Module(path = "classes/app.jar")),
+        modulePath = ":sample",
+        producedBy = "test",
+        repositories =
+          listOf("https://androidx.dev/snapshots/builds/16113093/artifacts/repository"),
+      )
+
+    val decoded =
+      json.decodeFromString(
+        BundleManifest.serializer(),
+        json.encodeToString(BundleManifest.serializer(), original),
+      )
+    assertThat(decoded).isEqualTo(original)
+
+    // A v8 manifest omits the field entirely — it must decode as "no extra repositories", which is
+    // exactly the pre-v9 resolution behaviour.
+    val v8 =
+      """
+      {"schemaVersion":8,"backend":"android","previewIds":["pkg.Foo"],"coverPreviewId":"pkg.Foo",
+       "classpath":[{"kind":"module","path":"classes/app.jar"}],"modulePath":":sample",
+       "producedBy":"test"}
+      """
+        .trimIndent()
+    assertThat(json.decodeFromString(BundleManifest.serializer(), v8).repositories).isEmpty()
   }
 
   @Test

@@ -191,18 +191,45 @@ internal object ServeBundleDaemon {
       onLog("catalog $system: ${SkikoNativePairing.repairLog(skikoNativeRepair)}")
     }
     val mavenCoords = recordedCoords + listOfNotNull(skikoNativeRepair)
-    val resolvedDependencies =
+    // (v9) The bundle names the repositories its own coordinates resolve from — a JitPack fork, an
+    // internal mirror, the androidx.dev snapshot build a Remote Compose catalog is built against.
+    // Consulted after the operator's `--extra-maven-repos`, so a box that pins a mirror still wins,
+    // and a pre-v9 bundle contributes nothing. The recorded `sha256` still decides whether the
+    // bytes that come back are the ones the producer packed.
+    val bundleRepositories = manifest.repositories.filter { it.isNotBlank() }
+    if (bundleRepositories.isNotEmpty()) {
+      onLog(
+        "catalog $system: bundle declares ${bundleRepositories.size} extra Maven " +
+          "repository(s) — ${bundleRepositories.joinToString()}"
+      )
+    }
+    val resolutions =
       CoordinateResolver(
           warn = { onLog("catalog $system: $it") },
           networkEnabled = if (offline) false else CoordinateResolver.defaultNetworkEnabled(),
           remoteRepositories =
             CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES +
-              extraMavenRepos.filter { it.isNotBlank() },
+              extraMavenRepos.filter { it.isNotBlank() } +
+              bundleRepositories,
         )
         .resolveAll(mavenCoords)
-        .mapNotNull { resolution ->
-          resolution.file?.let { file -> ResolvedBundleDependency(resolution.coordinate, file) }
-        }
+    val resolvedDependencies = resolutions.mapNotNull { resolution ->
+      resolution.file?.let { file -> ResolvedBundleDependency(resolution.coordinate, file) }
+    }
+    // A coordinate the resolver couldn't find is dropped with a per-coordinate warning and the
+    // daemon starts anyway — correct, because most misses are harmless (a dep nothing on the render
+    // path touches). What was missing is the *aggregate*: 13 unresolved coordinates read as 13
+    // unrelated warnings, and the consequence only surfaced later as an unattributable
+    // `NoClassDefFoundError` that tripped the breaker terminally (issues #4259 / #4265). Record the
+    // gap beside the launch descriptor so a linkage trip can name it — see [BundleClasspathGaps].
+    BundleClasspathGaps.record(
+      destDir = destDir,
+      unresolved = resolutions.filter { it.file == null }.map { it.coordinate },
+      total = mavenCoords.size,
+      system = system,
+      onLog = onLog,
+      fileSystem = fileSystem,
+    )
     // The resolver warns and returns null rather than throwing, so an unresolvable repair would
     // otherwise be indistinguishable from one that was never needed — and the daemon would launch
     // straight back into the split-Skiko classpath this repair exists to close.

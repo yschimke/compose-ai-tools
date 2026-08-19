@@ -145,8 +145,16 @@ fun loadBundle(bundleFile: Path): LoadedBundle {
   // Default (coordinate-mode) bundles reference their deps by `maven` coordinate rather than
   // carrying them; resolve those from the machine's local Maven / Gradle caches (warn-not-fail) so
   // the preview's own third-party deps are available the same way embedded `libs/` jars are.
+  // (v9) A bundle names any repository beyond Central + Google that its coordinates need — the
+  // producing build's JitPack fork, internal mirror, or androidx.dev snapshot build. Without it
+  // those coordinates resolve nowhere and the preview loads on an incomplete classpath.
   val resolvedCoordJars =
-    CoordinateResolver.resolve(bundleManifest.classpath.filterIsInstance<ClasspathEntry.Maven>())
+    CoordinateResolver.resolve(
+      bundleManifest.classpath.filterIsInstance<ClasspathEntry.Maven>(),
+      remoteRepositories =
+        CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES +
+          bundleManifest.repositories.filter { it.isNotBlank() },
+    )
 
   val parentLoader = LoadedBundle::class.java.classLoader
   // app.jar first, then embedded lib jars (path-sorted), then resolved coordinate jars. The

@@ -1806,8 +1806,13 @@ internal constructor(
         label = label,
         declaredThemes = declaredThemes,
         onLog = onLog,
+        // Two causes, tried in order of specificity: a split Skiko pair (which names the exact
+        // versions), then a classpath the bundle asked for and this server could not assemble.
+        // Either turns the open breaker's reason — the only report anyone outside the box reads —
+        // from a bare missing symbol into something that says what to do about it.
         linkageDiagnosis = { reason ->
           SkikoNativePairing.linkageDiagnosis(reason, descriptorPath)
+            ?: BundleClasspathGaps.linkageDiagnosis(reason, descriptorPath)
         },
       )
     }

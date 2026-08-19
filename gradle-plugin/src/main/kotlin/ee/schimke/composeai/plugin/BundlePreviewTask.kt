@@ -284,6 +284,20 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Input @get:Optional abstract val embedDeps: Property<Boolean>
 
   /**
+   * Maven repository base URLs the producing build resolves from **beyond** Maven Central and
+   * Google Maven, recorded into the manifest as [BundleManifest.repositories] so a player can
+   * re-resolve coordinates those two don't serve.
+   *
+   * A `coordinates` bundle is only re-renderable where its coordinates resolve, and a module that
+   * takes a dependency from a JitPack fork, an internal mirror, or an androidx.dev snapshot build
+   * records coordinates no player could find — it dropped them with a warning and rendered (or
+   * failed to) on an incomplete classpath. Populated by the plugin from the project's declared
+   * repositories; empty for the common all-Central/Google module, which keeps the manifest field
+   * absent-equivalent.
+   */
+  @get:Input @get:Optional abstract val extraMavenRepositories: ListProperty<String>
+
+  /**
    * Include-data-extensions mode (`-PbundleIncludeDataExtensions=true`, schema-v7
    * [BundleManifest.dataExtensions]). When true, the per-extension data reports (a11y findings,
    * theme tokens, drawn strings, …) — those named by `previews.json`'s `dataExtensionReports` plus
@@ -520,6 +534,12 @@ abstract class BundlePreviewTask : DefaultTask() {
         intermediateRepresentations = irEntries,
         androidResources = androidResources,
         dataExtensions = dataExtensionEntries,
+        // Only a coordinate needs a repository to come back from; an embed-mode pack carries the
+        // bytes and would just be publishing URLs nobody reads.
+        repositories =
+          if (classpathEntries.any { it is ClasspathEntry.Maven })
+            extraMavenRepositories.getOrElse(emptyList())
+          else emptyList(),
       )
 
     // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
@@ -653,6 +673,26 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  Project deps inlined: $projectInlined\n" +
         "  deps dropped:         $depsDropped (no reachable classes)"
     )
+
+    // A recorded coordinate is a promise the bytes can be re-attached later, and a snapshot
+    // version is the one coordinate that can quietly stop being true: publications age out of the
+    // repository that served them (androidx.dev keeps a build for a few weeks), so a bundle that
+    // outlives its snapshot build becomes unrenderable with no change on either side. The manifest
+    // now records where they came from, which is what makes them resolvable at all — say so, and
+    // name the escape hatch for a bundle meant to last.
+    val snapshotCoords =
+      classpathEntries.filterIsInstance<ClasspathEntry.Maven>().filter {
+        it.version.endsWith("-SNAPSHOT")
+      }
+    if (snapshotCoords.isNotEmpty()) {
+      logger.warn(
+        "composePreviewBundle: ${snapshotCoords.size} classpath coordinate(s) are -SNAPSHOT " +
+          "(${snapshotCoords.take(3).joinToString { "${it.group}:${it.artifact}" }}" +
+          "${if (snapshotCoords.size > 3) ", …" else ""}). The bundle records the repositories " +
+          "they resolve from, but a snapshot publication is perishable — pack with --embed-deps " +
+          "if this bundle has to keep rendering after the snapshot build ages out."
+      )
+    }
 
     // Bundles are meant to be small and shareable — a detached `coordinates` pack is typically
     // ~100 KB. Embedding (`--embed-deps`) trades that for offline self-containment, but a fat
