@@ -165,6 +165,63 @@ class ServePerPreviewLiveHost(
         ?.contains(ServeRenderHost.SCROLL_LONG_KIND) == true
 
   /**
+   * The inspection layers, advertised from [alias] membership — the same basis as
+   * [canRenderOverridesFor] and the live stream, and for the same reason: a per-preview daemon is a
+   * full [ServeRenderHost] once resolved, and asking it what it can produce would mean
+   * materialising one (a bundle fetch and a JVM) on every page render, for a checkbox nobody has
+   * ticked yet.
+   *
+   * An id that turns out not to resolve answers `NotFound` and the layer draws nothing, exactly as
+   * [renderScrollPng] and [subscribeStream] already behave for the same case.
+   */
+  override val hasA11yOverlay: Boolean = alias.isNotEmpty()
+
+  override fun hasA11yOverlayFor(previewId: String): Boolean = previewId in alias
+
+  override val hasDesignAnnotations: Boolean = alias.isNotEmpty()
+
+  override fun hasDesignAnnotationsFor(previewId: String): Boolean = previewId in alias
+
+  /** The baked half: a published catalog can inspect typography with no daemon at all. */
+  override fun hasPublishedTypographyFor(previewId: String): Boolean =
+    baked.hasPublishedTypographyFor(previewId)
+
+  /**
+   * Accessibility inspection routes to this preview's own daemon, carrying the viewer's overrides —
+   * the layer has to describe the composition on screen, not the catalog's original pixels. There
+   * is no baked fallback: a static sticker carries no semantics tree.
+   */
+  override fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome {
+    val daemonId = alias[previewId] ?: return A11yOutcome.NotFound
+    val live = resolveLive(daemonId) ?: return A11yOutcome.NotFound
+    return live.renderA11y(daemonId, overrides)
+  }
+
+  /**
+   * Typography + theme inspection follows [renderA11y] to the per-preview daemon, then falls back
+   * to the catalog's published annotations for anything the live lane can't answer — an unmapped
+   * id, a daemon that won't resolve, or one with no semantics lane.
+   *
+   * That fallback is gated on the request routing to baked pixels in the first place
+   * ([CatalogLiveRouting.overridesAffectRender], the predicate [render] uses): published bounds
+   * were measured over the baked frame, so under a font scale or a knob edit they would describe a
+   * frame the visitor is not being shown.
+   */
+  override fun renderAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome {
+    val live =
+      alias[previewId]?.let { daemonId ->
+        resolveLive(daemonId)?.renderAnnotations(daemonId, overrides)
+      }
+    if (live != null && live !is AnnotationsOutcome.NotFound) return live
+    if (CatalogLiveRouting.overridesAffectRender(previewId, overrides))
+      return AnnotationsOutcome.NotFound
+    return baked.renderAnnotations(previewId, overrides)
+  }
+
+  /**
    * Ordinary browsing serves the baked catalog PNG; an override the baked PNG can't represent
    * routes to that preview's own daemon. An unmapped id, or one whose per-preview daemon can't be
    * resolved, falls back to baked.

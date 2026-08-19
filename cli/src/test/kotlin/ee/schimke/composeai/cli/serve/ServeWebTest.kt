@@ -1009,6 +1009,44 @@ class ServeWebTest {
     )
   }
 
+  @Test
+  fun `a static catalog's published typography offers the Typography layer but not Theme`() {
+    // The two lanes behind one layer. A published bundle carries typography measured over its baked
+    // frame, so `.annotations` answers with no daemon at all — but theme attributes are projected
+    // live from a semantics tree and nothing authors them into a bundle, so that row must stay off.
+    // Folding the two into one flag would either hide a layer that works or offer one that cannot.
+    val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        hasDesignAnnotations = false,
+        hasPublishedTypography = true,
+      )
+    assertTrue(
+      html.contains("id=\"cp-inspect-typography\"") && html.contains("<cp-inspect-layers>"),
+      "published typography is inspectable without a daemon: $html",
+    )
+    assertFalse(
+      html.contains("id=\"cp-inspect-theme\""),
+      "no semantics lane ⇒ no Theme attributes row: $html",
+    )
+
+    // A daemon-backed session keeps both, unchanged.
+    val live =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        hasDesignAnnotations = true,
+      )
+    assertTrue(live.contains("id=\"cp-inspect-typography\""), live)
+    assertTrue(live.contains("id=\"cp-inspect-theme\""), live)
+  }
+
   /** A viewer page for one preview carrying a Figma reference with [match]. */
   private fun chipHtmlFor(match: DesignReferenceMatch?): String {
     val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")

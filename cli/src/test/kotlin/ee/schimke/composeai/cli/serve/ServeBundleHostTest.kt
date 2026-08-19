@@ -20,6 +20,85 @@ class ServeBundleHostTest {
     return dir
   }
 
+  /** A bundle carrying `annotations/index.json` — the published typography over its baked frame. */
+  private fun annotatedBundle(previewId: String, vararg records: String): File {
+    val dir = bundle(previewId to byteArrayOf(4, 2))
+    File(dir, ServeAnnotationStore.DIRECTORY).mkdirs()
+    File(dir, "${ServeAnnotationStore.DIRECTORY}/${ServeAnnotationStore.INDEX_FILE}")
+      .writeText(
+        """{"schema":"compose-preview-annotations/v1",
+           "previews":{"$previewId":[${records.joinToString(",")}]}}"""
+      )
+    return dir
+  }
+
+  private val typographyRecord =
+    """{"kind":"typography","bounds":{"x":4,"y":6,"width":40,"height":12},
+       "label":"bodyMedium 14sp/20","role":"Label"}"""
+
+  private val layoutRecord =
+    """{"kind":"layout","bounds":{"x":0,"y":0,"width":80,"height":32},"label":"pad 16dp"}"""
+
+  @Test
+  fun `published typography answers the annotations lane without a daemon`() {
+    // A static bundle has no semantics tree to capture — but a published catalog measured these
+    // facts over the very PNG this host serves, so the viewer's Typography layer has a source. The
+    // alternative shipped for a while: a checkbox that fetched a 404 and silently drew nothing.
+    val host = ServeBundleHost(annotatedBundle("button__light", typographyRecord), label = "b")
+
+    assertTrue(host.hasPublishedTypographyFor("button__light"))
+    val out = host.renderAnnotations("button__light", PreviewOverrides()) as AnnotationsOutcome.Ok
+    val json = out.json.decodeToString()
+    assertTrue(json.contains("\"previewId\":\"button__light\""))
+    assertTrue(json.contains("bodyMedium 14sp/20"))
+    assertTrue(json.contains("\"tags\""), "the tag index travels with the annotations")
+  }
+
+  @Test
+  fun `the annotations lane draws only the kinds the overlay has layers for`() {
+    // `layout` is published for the compare page, which reads the same manifest for a different
+    // surface. `<cp-inspect-layers>` groups by layer, and there is no layout layer — so a layout
+    // record would land in the legend under no heading at all.
+    val host =
+      ServeBundleHost(
+        annotatedBundle("button__light", typographyRecord, layoutRecord),
+        label = "b",
+      )
+
+    val json =
+      (host.renderAnnotations("button__light", PreviewOverrides()) as AnnotationsOutcome.Ok)
+        .json
+        .decodeToString()
+    assertTrue(json.contains("bodyMedium 14sp/20"))
+    assertFalse(json.contains("pad 16dp"))
+  }
+
+  @Test
+  fun `a bundle with nothing published keeps the annotations lane unavailable`() {
+    // Layout-only, an unannotated preview, and an id this host doesn't carry: all three must report
+    // NotFound so the viewer omits the control rather than offering one that draws an empty legend.
+    val layoutOnly = ServeBundleHost(annotatedBundle("button__light", layoutRecord), label = "b")
+    assertFalse(layoutOnly.hasPublishedTypographyFor("button__light"))
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      layoutOnly.renderAnnotations("button__light", PreviewOverrides()),
+    )
+
+    val plain = ServeBundleHost(bundle("com.example.Red" to byteArrayOf(4, 2)), label = "b")
+    assertFalse(plain.hasPublishedTypographyFor("com.example.Red"))
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      plain.renderAnnotations("com.example.Red", PreviewOverrides()),
+    )
+
+    val annotated = ServeBundleHost(annotatedBundle("button__light", typographyRecord), label = "b")
+    assertFalse(annotated.hasPublishedTypographyFor("no.such.Preview"))
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      annotated.renderAnnotations("no.such.Preview", PreviewOverrides()),
+    )
+  }
+
   @Test
   fun `a session with no staging lane is never waiting for a published comparison`() {
     // `pending` gates cacheability: the viewer and compare pages drop to `no-store` while the
