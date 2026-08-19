@@ -761,6 +761,44 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
   more than one background one. The permit is taken per render, so a catalog that parks for traffic
   hands it straight to the next one.
 
+**When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
+before it starts: the whole server has to have been untouched for
+`-Dcomposeai.serve.themeOptimizationIdleMillis` (60s by default). That gate reads
+`ServeSessionRegistry.idleMillis()`, which answers *busy* — not a number — while any session holds
+an open lease, so one long-lived WebSocket, or one lease leaked by a request cancelled mid-flight,
+stands the optimizer down for as long as it is held. The per-catalog `themeOptimization` rows cannot
+show this: they say `paused` whether the box is being politely quiet or the gate will never open
+again. Read `themeOptimizer` on `/status.json` instead:
+
+- `serverIdleMillis` — the gate's input, or `null` for busy — against `idleThresholdMillis`, the
+  quiet it must reach. The `/status` page prints the same comparison as **Theme optimiser gate**.
+- `idleBlockedBy` — why it reads busy: `session-lease` (a lease is held; `daemons.leasedSessions`
+  names the holders) or `catalog-load` (catalogs are still being fetched, which is the gate working
+  as designed).
+- Per catalog, `gateWaitMillis` accrues *while* a pass waits, not only once it is let through — so a
+  gate that has never opened shows a climbing wait beside `turnsGranted: 0`, rather than the zeros
+  that also describe a catalog with nothing left to do.
+
+**Waiting at that gate costs nothing but a sleeping thread, and it cannot last forever.** Two rules
+keep a shut gate from turning the feature off:
+
+- **A pass waits for quiet *before* it takes an optimizer lane, never while holding one.** Waiting
+  inside a lane converts "the box is busy" into "the first two catalogs own both lanes
+  indefinitely" — which is precisely what happened: two passes held the two lanes for a whole
+  uptime, blocked on quiet that a held lease meant could never arrive, while the other 16 catalogs
+  were refused every 20s. A pass that yields mid-slice and cannot get its turn back within 30s
+  (`OPTIMIZER_RESUME_WAIT_MILLIS`) also gives its lane back and re-parks at the gate, rather than
+  idling on a lane through a busy stretch.
+- **After ten minutes shut out, a catalog is granted one preview anyway**
+  (`-Dcomposeai.serve.themeOptimizationGateCeilingMillis`, non-positive to disable). The grant is
+  one preview wide and then the pass returns to the gate, so a genuinely busy box pays one preview
+  per catalog per ceiling period instead of never filling the cache at all. Forced turns are
+  counted separately as `turnsForced` (a subset of `turnsGranted`): a figure climbing there means
+  the box never looks quiet and every bit of progress is the forced kind — a working cache and a
+  broken idle clock. The ceiling does **not** override a pause, the pressure gate, or catalog
+  loading; a daemon start starved during loading is recorded as `livebundle-unavailable` and
+  degrades that catalog to baked PNGs for the whole process, which is much worse than a cold cache.
+
 The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
 60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
 the server's render-slot count. Other pages remain serial, queue completion/page exit releases the

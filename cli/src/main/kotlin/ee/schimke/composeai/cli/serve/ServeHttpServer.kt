@@ -4301,6 +4301,23 @@ class ServeHttpServer(
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
+
+    /**
+     * Cross-catalog optimizer admission, taken once and shared by the JSON and HTML projections so
+     * the two cannot disagree about the same instant. Whole-box only: the counters are server-wide
+     * and a single-system site has no business reading them.
+     */
+    val optimizerAdmission: ThemeOptimizerAdmissionSnapshot? =
+      if (onlySystem == null) themeOptimizerStats?.invoke() else null
+
+    /**
+     * Sessions holding an open lease — the reason the server-wide idle clock can read *busy* on a
+     * box serving nothing. Scoped like `knownSessions`: a top-level site names only its own.
+     */
+    val leasedSessions: List<String> =
+      sessions.leasedSessions().let { held ->
+        if (onlySystem == null) held else held.filter { it == onlySystem }
+      }
     val openRenderBreakerCount: Int = running.count { it.renderStats?.breaker?.open == true }
     val currentLiveRenderFailureCount: Int = running.count {
       it.renderStats?.let { stats -> stats.breaker?.open != true && stats.lastRenderFailed } == true
@@ -4316,6 +4333,37 @@ class ServeHttpServer(
 
     private fun countLabel(count: Int, singular: String): String =
       "$count $singular${if (count == 1) "" else "s"}"
+
+    /**
+     * One line saying whether the theme optimizer's quiet gate is open, and what is holding it shut
+     * when it isn't.
+     *
+     * Worth a row of its own because a shut gate is otherwise indistinguishable from an idle one:
+     * every catalog reports `theme optimization paused` either way, and the counters that would
+     * separate them are server-wide, not per-catalog. The threshold is printed beside the reading
+     * so "closed" always comes with the number it was compared against.
+     */
+    private fun optimizerGateText(admission: ThemeOptimizerAdmissionSnapshot): String {
+      val needs = "needs ${admission.idleThresholdMillis / 1000}s quiet"
+      if (admission.paused) {
+        return "paused" + (admission.pauseReason?.let { " · $it" } ?: "")
+      }
+      val idle =
+        admission.serverIdleMillis
+          ?: run {
+            val why =
+              when (admission.idleBlockedBy) {
+                ServeBackgroundWork.IDLE_BLOCKED_BY_SESSION_LEASE ->
+                  if (leasedSessions.isEmpty()) "session lease held"
+                  else "session lease held by ${leasedSessions.joinToString(", ")}"
+                ServeBackgroundWork.IDLE_BLOCKED_BY_CATALOG_LOAD -> "catalogs loading"
+                else -> "server busy"
+              }
+            return "closed · $why · $needs"
+          }
+      val open = idle >= admission.idleThresholdMillis
+      return "${if (open) "open" else "closed"} · idle ${idle / 1000}s · $needs"
+    }
 
     fun toResponse(): StatusResponse =
       StatusResponse(
@@ -4350,6 +4398,7 @@ class ServeHttpServer(
               if (liveSeats.unbounded) -1 else liveSeats.perPreviewPermitsAvailable(),
             liveSeatRefusals = liveSeats.refusalCount(),
             liveSeatRefusalsUnverified = liveSeats.unverifiedRefusalCount(),
+            leasedSessions = leasedSessions,
           ),
         config =
           ConfigDto(
@@ -4414,7 +4463,7 @@ class ServeHttpServer(
         branchFetch = if (onlySystem == null) branchFetchStats?.invoke() else null,
         // Box-wide and unattributed per system, so scoped out on a site host for the same reason
         // the branch counters are.
-        themeOptimizer = if (onlySystem == null) themeOptimizerStats?.invoke() else null,
+        themeOptimizer = optimizerAdmission,
         themeCache = if (onlySystem == null) themeCacheStats?.invoke() else null,
         renderStats =
           RenderPerfSnapshot.aggregate(
@@ -4540,6 +4589,12 @@ class ServeHttpServer(
         )
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
+        // The optimizer's *input*, next to the counters that describe its output. Every per-catalog
+        // row already says "theme optimization paused"; none of them says whether that is the box
+        // choosing to be polite or a gate that will never open, and those need different fixes.
+        optimizerAdmission?.let {
+          add(ServeWeb.Stat("Theme optimiser gate", optimizerGateText(it)))
+        }
         add(
           ServeWeb.Stat(
             "Live seats",
@@ -7770,6 +7825,15 @@ private data class DaemonSummaryDto(
    * first-request demand.
    */
   val liveSeatRefusalsUnverified: Long = 0,
+  /**
+   * Sessions holding an open lease — see [ServeSessionRegistry.leasedSessions].
+   *
+   * Non-empty means the server-wide idle clock reads *busy* whatever the render counters say, which
+   * is the state that silently stands the theme optimizer down. Normally this is short-lived (a
+   * WebSocket, an in-flight asset fetch); an entry that persists across polls on a box serving no
+   * traffic is a leaked lease.
+   */
+  val leasedSessions: List<String> = emptyList(),
 )
 
 @Serializable
