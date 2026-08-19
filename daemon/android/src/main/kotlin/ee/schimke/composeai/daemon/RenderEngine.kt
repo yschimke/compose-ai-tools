@@ -653,8 +653,22 @@ class RenderEngine(
             // `LaunchedEffect` pass; deterministic snapshot point for any infinite animation.
             // PROTOCOL.md § 5 (`renderNow.overrides.captureAdvanceMs`) — animation-heavy
             // previews can override.
+            //
+            // `@SettledPreview` widens that default so a live frame lands on the same settled
+            // state the published PNG does: the batch renderer applies the same window on top of
+            // the same base (see `RobolectricRenderTest`). An explicit `captureAdvanceMs` override
+            // still wins outright — the client asked for a coordinate, and quietly adding a window
+            // to it would make the protocol's number mean something else here than it does
+            // everywhere else.
+            val settleWindowMs =
+              spec.previewId
+                ?.let { loadPreviewIndexLazily().staticSettleFor(it) }
+                ?.windowMs
+                ?.toLong() ?: 0L
             trace.section("compose:advanceClock") {
-              rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+              rule.mainClock.advanceTimeBy(
+                spec.captureAdvanceMs ?: (CAPTURE_ADVANCE_MS + settleWindowMs)
+              )
             }
 
             // `@ScrollingPreview(END)`: drive the scrollable to its content end before shooting, so

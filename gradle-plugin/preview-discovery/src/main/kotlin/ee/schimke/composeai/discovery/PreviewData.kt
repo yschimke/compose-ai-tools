@@ -400,6 +400,45 @@ enum class AmbientCaptureState {
 }
 
 /**
+ * Pre-capture settle window discovered from a `@SettledPreview` annotation. Non-null when present;
+ * the renderer advances the preview's paused clock by this much virtual time before it captures the
+ * still, so a reveal driven by `LaunchedEffect { delay(…) }` (or a state transition that only
+ * starts once deferred state lands) is captured settled rather than at its first frame.
+ *
+ * Applies to still captures only. Scroll LONG/GIF products, `@AnimatedPreview` GIFs and
+ * `@InteractionPreview` recordings drive the clock themselves.
+ */
+@Serializable
+data class SettleCapture(
+  /**
+   * Exact virtual-time advance before capture, in milliseconds, or `0` for auto — advance until the
+   * composition quiesces, bounded by [maxMs]. Mirrors `SettledPreview.afterMs`.
+   */
+  val afterMs: Int = 0,
+  /** Bound on the auto walk, in milliseconds. Mirrors `SettledPreview.maxMs`. */
+  val maxMs: Int = DEFAULT_SETTLE_MAX_MS,
+) {
+  /**
+   * The longest window this settle can consume, whichever mode it is in — what a renderer without a
+   * quiescence signal advances, and what one with a signal bounds its walk by.
+   */
+  val windowMs: Int
+    get() = if (afterMs > 0) afterMs else maxMs
+}
+
+/** Default bound on `@SettledPreview`'s auto walk. Mirrors `preview-annotations`' constant. */
+const val DEFAULT_SETTLE_MAX_MS: Int = 1000
+
+/** Hard ceiling on any settle window. Mirrors `preview-annotations`' constant. */
+const val MAX_SETTLE_MS: Int = 5000
+
+/**
+ * One 60Hz frame, the step both renderers walk a settle in and the floor a settle window is clamped
+ * to — a window shorter than a frame can't advance anything.
+ */
+const val SETTLE_FRAME_MS: Int = 16
+
+/**
  * Tool-owned environment selected by `@GlimmerEnvironmentPreview`. The renderer captures normal
  * opaque RGB-on-black Glimmer UI first, then delegates ADD compositing to the environment connector.
  */
@@ -779,6 +818,12 @@ data class Capture(
    * `AmbientOverrideExtension` when present.
    */
   val ambient: AmbientCapture? = null,
+  /**
+   * `null` → capture at the renderer's default advance. Non-null → advance the paused clock by this
+   * settle window first, so a time-driven reveal is captured settled. Set when the preview carries
+   * a `@SettledPreview` annotation. Still captures only.
+   */
+  val settle: SettleCapture? = null,
   /**
    * `null` → keep the raw additive Glimmer capture. Non-null → preserve that capture beside
    * the output and ADD-composite the selected environment as a post-render step.

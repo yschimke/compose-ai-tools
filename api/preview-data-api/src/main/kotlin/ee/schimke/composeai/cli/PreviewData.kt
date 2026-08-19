@@ -114,6 +114,13 @@ data class Capture(
   val focusGif: JsonElement? = null,
   val hover: JsonElement? = null,
   val gestureHint: JsonElement? = null,
+  /**
+   * `@SettledPreview`'s pre-capture settle window. Same opaque-marker treatment as [focus] above:
+   * agent readers of `previews.json` need to see *that* a still was settled (and by how much, which
+   * is the whole content of the block) without `:preview-data-api` re-declaring discovery's type.
+   * Absent (null) on a capture rendered at the default advance.
+   */
+  val settle: JsonElement? = null,
 )
 
 /**

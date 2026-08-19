@@ -1556,7 +1556,23 @@ abstract class RobolectricRenderTestBase(
             // taking the max keeps the require's monotonicity check
             // satisfied without forcing every consumer to thread an
             // explicit `advanceTimeMillis` through.
-            val target = job.advanceTimeMillis ?: maxOf(CAPTURE_ADVANCE_MS, currentTime)
+            // `@SettledPreview` (issue #4202): a reveal driven by
+            // `LaunchedEffect { delay(…); animateTo(…) }` — or a field whose
+            // value is written after first composition — has not arrived at
+            // `CAPTURE_ADVANCE_MS`, so the still publishes an empty container or
+            // a label sitting on top of its own value. The settle window pushes
+            // the shutter past it.
+            //
+            // Expressed as a clock *coordinate* rather than an extra advance so
+            // it's idempotent: several settled captures on one composition
+            // (a `@FocusedPreview` fan-out, say) settle once and then find
+            // themselves already past the target, instead of each paying the
+            // window again. `advanceTimeBy` dispatches a frame per 16ms step, so
+            // one call runs the reveal rather than teleporting past its start.
+            val settleWindowMs =
+              ((job as? CaptureRenderJob)?.capture?.settle?.windowMs ?: 0).toLong()
+            val target =
+              job.advanceTimeMillis ?: maxOf(CAPTURE_ADVANCE_MS + settleWindowMs, currentTime)
             require(target >= currentTime) {
               "Preview ${preview.id}: output advanceTimeMillis must be ascending " +
                 "(got $target after clock was at $currentTime)"

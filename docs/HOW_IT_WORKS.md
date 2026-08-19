@@ -66,6 +66,71 @@ graphics (`graphicsMode=NATIVE`, `pixelCopyRenderMode=hardware`).
    compress as PNG, write to file.
 ```
 
+### Settling a preview that arrives late
+
+The mirror image of the section below: not "freeze this transition part-way"
+but "wait until it has finished". A component whose content is driven in by
+*time* rather than by a gesture — Wear's `ConfirmationDialogContent`, which
+starts its children at `alpha = 0` and animates them in from a
+`LaunchedEffect` after a delay, or a field whose value is written after the
+first composition — is captured at its first frame by both renderers' default
+advance, so the published still is an empty container or a resting label
+sitting on top of its own value (issue #4202).
+
+`@SettledPreview` moves the shutter past it:
+
+```kotlin
+@SettledPreview                  // advance until quiescent, up to 1000ms
+@SettledPreview(afterMs = 600)   // or: advance exactly 600ms, then capture
+```
+
+It applies to **still** captures only — a scroll drive runs its own settle, an
+`@AnimatedPreview` GIF and an `@InteractionPreview` recording drive the clock
+themselves, and an explicit `advanceTimeMillis` is a snapshot of a coordinate
+the author chose. It also targets `ANNOTATION_CLASS`, so a catalog whose
+stickers all wrap stock design-system composables can hoist it once onto its
+own multi-preview annotation instead of hunting for the affected components:
+the animation is usually internal to the component, and a sticker that merely
+calls `DatePicker()` has no way to know a label tween is running inside it.
+
+The two lanes reach the settled frame differently, and the difference is worth
+knowing:
+
+* **Android (Robolectric)** advances `mainClock` to `CAPTURE_ADVANCE_MS +
+  window`. `advanceTimeBy` dispatches a frame per 16ms step, so the reveal
+  actually runs rather than being teleported past. Expressed as a clock
+  coordinate rather than an extra advance, so several settled captures on one
+  composition settle once between them.
+* **Desktop (`ImageComposeScene`)** needs more than a raised frame clock:
+  `scene.render(nanoTime)` drives Compose's clock but not
+  `kotlinx.coroutines.delay`, which on the scene's default context resolves
+  against **wall time** — so a reveal gated behind `delay(200)` never arrives
+  inside a render that takes microseconds. Settled captures therefore run on
+  `DesktopSettleClock`, a dispatcher that owns the delay queue and puts it on
+  the same virtual timeline as the frame clock. Because it owns that queue it
+  can also answer the question pixels can't — *is something still scheduled?* —
+  so auto mode stops at the reveal's end (nothing scheduled, nothing
+  invalidated) instead of always paying the full window. Every unsettled still
+  keeps the scene's default context, and its bytes.
+
+Sampling pixels alone cannot decide this, which is why the existing
+quiescence probe doesn't already cover it: a reveal that hasn't started yet is
+pixel-identical to a settled one, so a frame-to-frame comparison latches onto
+the empty container and calls it stable.
+
+An animation with no end can't quiesce, so it captures at the `maxMs` bound —
+the annotation belongs on a reveal, not on a spinner.
+
+**Lane coverage.** The batch render honours the settle on both backends, and
+the **Android daemon** (`compose-preview serve` against a Robolectric module)
+folds the window into the same `captureAdvanceMs` base the batch renderer uses,
+so a live Wear/Android frame agrees with the published PNG. The **desktop
+daemon** does not yet: it holds a frame cursor across the two `render()` calls
+of a capture and reuses it for the interactive session, so installing a settle
+clock there is a change to that cursor's contract rather than a change to one
+render — tracked separately. A settled CMP preview served live therefore still
+shows its first frame; its published PNG is settled.
+
 ### Freezing a preview at an intermediate animation frame
 
 The paused clock is the only deterministic handle on "part-way through". A
