@@ -151,8 +151,11 @@ class ServeHttpServer(
    * [ServeSites] — it's a routing/presentation view over the same session, not a second tenant, so
    * it costs a map lookup per request and nothing else. Empty (the default) leaves every request
    * behaving exactly as it did before sites existed.
+   *
+   * The **live** map ([ServeSiteRegistry]) rather than a startup snapshot, so `/admin/sites` can
+   * publish a hostname on a running box ([ServeSiteAdmin]).
    */
-  private val sites: ServeSites = ServeSites.EMPTY,
+  private val sites: ServeSiteRegistry = ServeSiteRegistry.empty(),
   /**
    * Configured catalog availability shared with startup + refresh. When present, `/status` includes
    * failed/pending catalogs instead of silently omitting them. Catalog loading remains best-effort:
@@ -226,6 +229,12 @@ class ServeHttpServer(
    * trusting a branch there makes that producer's Compose eligible for server-side execution.
    */
   private val trustAdmin: ServeTrustAdmin? = null,
+  /**
+   * Runtime **site** administration ([ServeSiteAdmin]) — publishing and retiring the hostnames in
+   * [sites] without recreating the container, persisted to the same `catalogs.json`. Gated by the
+   * same [adminToken]; null ⇒ the `/admin/sites` routes are **not registered at all**.
+   */
+  private val siteAdmin: ServeSiteAdmin? = null,
   /**
    * Shared secret for the `/admin/catalogs` routes (`--admin-token`). Separate from the browsing
    * [token] on purpose: a public box hands its browse URL to everyone, so admin needs its own
@@ -456,6 +465,9 @@ class ServeHttpServer(
   /** As [adminEnabled], for the `/admin/trust` routes. Same token, separately supplied admin. */
   private val trustAdminEnabled: Boolean = trustAdmin != null && !adminToken.isNullOrBlank()
 
+  /** As [adminEnabled], for the `/admin/sites` routes. Same token, separately supplied admin. */
+  private val siteAdminEnabled: Boolean = siteAdmin != null && !adminToken.isNullOrBlank()
+
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
@@ -471,7 +483,12 @@ class ServeHttpServer(
       //     precisely what a top-level site exists not to be. Only ids this server actually serves
       //     are considered, so every constant route (`/p/…`, `/render/…`, `/assets/…`, `/healthz`)
       //     falls straight through untouched.
-      if (!sites.isEmpty) {
+      // Installed when a site is configured OR when one could be published at runtime: the
+      // interceptor is what makes a site host behave like a site at all, and a `/admin/sites`
+      // registration on a box that started with none would otherwise take effect only on the next
+      // restart — the exact staleness the route exists to remove. On a server with neither, there
+      // is still no interceptor at all.
+      if (!sites.isEmpty || siteAdminEnabled) {
         intercept(ApplicationCallPipeline.Plugins) {
           val current: ApplicationCall = context
           val system = current.siteSystem() ?: return@intercept
@@ -956,6 +973,28 @@ class ServeHttpServer(
             if (rejectBadAdminToken()) return@delete
             val id = call.parameters["id"].orEmpty()
             respondAdminResult(withContext(Dispatchers.IO) { admin.removeGroup(id) })
+          }
+        }
+
+        // Runtime site administration. `sites` was the last part of the deployment config with no
+        // runtime path: a hostname committed to catalogs.json could not reach a running box at all,
+        // so standing one up meant editing the host's untracked .env and recreating the container.
+        // Registered separately from the catalog routes so a server can opt into one without the
+        // other.
+        if (siteAdminEnabled) {
+          val admin = siteAdmin!!
+          get("/admin/sites") {
+            if (rejectBadAdminToken()) return@get
+            respondAdminSites(admin)
+          }
+          post("/admin/sites") {
+            if (rejectBadAdminToken()) return@post
+            handleAdminSiteAdd(admin)
+          }
+          delete("/admin/sites/{host}") {
+            if (rejectBadAdminToken()) return@delete
+            val host = call.parameters["host"].orEmpty()
+            respondAdminSiteResult(withContext(Dispatchers.IO) { admin.remove(host) })
           }
         }
 
@@ -3129,6 +3168,61 @@ class ServeHttpServer(
         return
       }
     respondAdminResult(withContext(Dispatchers.IO) { admin.upsertGroup(group) })
+  }
+
+  /** `GET /admin/sites`: the hostnames this server serves a single catalog on. */
+  private suspend fun RoutingContext.respondAdminSites(admin: ServeSiteAdmin) {
+    val sites = withContext(Dispatchers.IO) { admin.list() }
+    call.respondText(
+      JSON.encodeToString(
+        AdminSitesResponse.serializer(),
+        AdminSitesResponse(sites = sites.map { AdminSiteDto(it.host, it.system) }),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /** `POST /admin/sites`: publish a hostname from a [ServeCatalogsConfig.Site] JSON body. */
+  private suspend fun RoutingContext.handleAdminSiteAdd(admin: ServeSiteAdmin) {
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_ADMIN_BODY_BYTES) }
+      }
+    if (body == null) {
+      call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
+      return
+    }
+    val site = runCatching {
+      JSON.decodeFromString(ServeCatalogsConfig.Site.serializer(), body.decodeToString())
+    }
+      .getOrElse {
+        call.respondText("invalid site: ${it.message}", status = HttpStatusCode.BadRequest)
+        return
+      }
+    respondAdminSiteResult(withContext(Dispatchers.IO) { admin.add(site) })
+  }
+
+  /**
+   * Map a [ServeSiteAdmin.Result] onto its HTTP status + JSON body.
+   *
+   * A 409 for "already exactly this" is what makes the reconcile additive and re-runnable: the
+   * publish script treats it as success, so a config pushed twice converges instead of erroring.
+   */
+  private suspend fun RoutingContext.respondAdminSiteResult(result: ServeSiteAdmin.Result) {
+    when (result) {
+      is ServeSiteAdmin.Result.Ok ->
+        call.respondText(
+          JSON.encodeToString(
+            AdminSiteResult.serializer(),
+            AdminSiteResult(host = result.host, status = "ok", warning = result.warning),
+          ),
+          ContentType.Application.Json,
+        )
+      is ServeSiteAdmin.Result.Invalid ->
+        call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+      is ServeSiteAdmin.Result.Conflict ->
+        call.respondText(result.reason, status = HttpStatusCode.Conflict)
+    }
   }
 
   /**
@@ -8236,6 +8330,27 @@ private data class AdminGroupDto(val id: String, val heading: String, val noun: 
 private data class AdminGroupsResponse(
   val schema: String = "compose-preview-serve/admin-groups/v1",
   val groups: List<AdminGroupDto> = emptyList(),
+)
+
+/** One configured hostname on `GET /admin/sites`. */
+@Serializable private data class AdminSiteDto(val host: String, val system: String)
+
+@Serializable
+private data class AdminSitesResponse(
+  val schema: String = "compose-preview-serve/admin-sites/v1",
+  val sites: List<AdminSiteDto> = emptyList(),
+)
+
+/**
+ * The result of a site mutation. [warning] is set when the hostname is in force on the running
+ * server but couldn't be written back to catalogs.json — it will not survive a restart.
+ */
+@Serializable
+private data class AdminSiteResult(
+  val schema: String = "compose-preview-serve/admin-site-result/v1",
+  val host: String,
+  val status: String,
+  val warning: String? = null,
 )
 
 /** One trusted branch on `GET /admin/trust`. */

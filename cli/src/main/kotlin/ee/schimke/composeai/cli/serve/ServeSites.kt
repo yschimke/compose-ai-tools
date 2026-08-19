@@ -41,6 +41,15 @@ data class ServeSites(private val byHost: Map<String, String>) {
     get() = byHost.values.toSet()
 
   /**
+   * The configured `host to system` pairs, in configuration order — the map as [of] would take it
+   * back. What [ServeSiteAdmin] rebuilds a candidate map from, and what gets written to
+   * `catalogs.json`, so a runtime change round-trips through exactly the same validation a restart
+   * would apply.
+   */
+  val pairs: List<Pair<String, String>>
+    get() = byHost.entries.map { it.key to it.value }
+
+  /**
    * The system [rawHost] is a top-level site for, or null when it isn't one (the main host, an
    * IP/localhost dev origin, an unknown vhost). [rawHost] is taken straight from `X-Forwarded-Host`
    * / `Host`, so it may carry a port, a trailing dot, or bracketed IPv6 — [normalizeHost] deals

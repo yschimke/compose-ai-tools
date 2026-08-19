@@ -1257,6 +1257,13 @@ jobs:
       # false (issue #3211).
       - name: Run deploy sandbox tooling tests
         run: ./deploy/image/test-sandbox-tooling.sh
+      # The edge half of a top-level site: Caddy derives its site-address line from the same
+      # catalogs.json the app boots from, and both ways of getting that wrong are silent. A missed
+      # hostname is a site configured in the app and unreachable at the edge (no match, so no
+      # certificate is ever requested); an invented one blocks on an ACME challenge for a name that
+      # doesn't resolve. Neither shows up until someone points a browser at the domain.
+      - name: Run caddy site-domain tests
+        run: ./deploy/image/test-site-domains.sh
       # The seed-config reconcile POSTs to a live server's admin API during publish, so its
       # ordering (trust before catalogs) and payload-shape rules are gated rather than eyeballed —
       # a dropped `listed: false` or `group` silently moves a card on the front page.

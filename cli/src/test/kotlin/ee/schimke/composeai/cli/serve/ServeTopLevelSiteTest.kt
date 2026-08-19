@@ -103,7 +103,7 @@ class ServeTopLevelSiteTest {
         isPublic = true,
         catalogSessions = listOf("compose-m3", "wear-m3"),
         appCatalogSessions = listOf("cadence"),
-        sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+        sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
       )
       .also { it.start() }
   }
@@ -454,7 +454,7 @@ class ServeTopLevelSiteTest {
           defaultSessionId = "",
           isPublic = true,
           catalogSessions = listOf("compose-m3", "wear-m3"),
-          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+          sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
         )
         .also { it.start() }
 
@@ -491,7 +491,7 @@ class ServeTopLevelSiteTest {
           defaultSessionId = "",
           isPublic = false,
           catalogSessions = listOf("compose-m3"),
-          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+          sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
         )
         .also { it.start() }
 
@@ -531,7 +531,7 @@ class ServeTopLevelSiteTest {
           defaultSessionId = "",
           isPublic = true,
           catalogSessions = listOf("compose-m3"),
-          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+          sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
           branchFetchStats = { stats.snapshot() },
         )
         .also { it.start() }
@@ -569,7 +569,7 @@ class ServeTopLevelSiteTest {
           defaultSessionId = "",
           isPublic = false,
           catalogSessions = listOf("compose-m3"),
-          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+          sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
         )
         .also { it.start() }
     val (code, body, _) = get("/not-a-catalog/", host = siteHost)
@@ -693,7 +693,7 @@ class ServeTopLevelSiteTest {
         configFile = null,
         load = { _, _ -> null },
         unload = {},
-        sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+        sites = ServeSiteRegistry.of(listOf(siteHost to "compose-m3")),
       )
     val result = admin.unregister("compose-m3")
     assertTrue(result is ServeCatalogAdmin.Result.Conflict, "$result")

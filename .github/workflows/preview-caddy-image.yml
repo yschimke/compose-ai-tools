@@ -17,6 +17,11 @@ on:
     paths:
       - deploy/image/Caddyfile
       - deploy/image/caddy.Dockerfile
+      # The entrypoint that resolves SITE_DOMAINS from the deployment's catalogs.json, and the
+      # scanner it calls. Baked into the image like the Caddyfile, so a change to either has to
+      # publish a new one or the box keeps running the old edge config.
+      - deploy/image/caddy-entrypoint.sh
+      - deploy/image/site-domains.sh
       - .github/workflows/preview-caddy-image.yml
   workflow_dispatch:
 

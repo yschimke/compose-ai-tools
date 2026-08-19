@@ -258,6 +258,11 @@ COPY catalogs.json /etc/compose-preview/catalogs.default.json
 # missing ones across on every boot instead, which covers both fresh and long-lived volumes.
 COPY --from=fonts /opt/font-cache/fonts /opt/font-cache/fonts
 
+# The same site-hostname scanner the caddy image carries. Here it answers one question at boot:
+# does this deployment serve any top-level site? — which decides whether the GitHub auth cookies
+# need widening to the parent domain. Reading it from catalogs.json means a site that arrives
+# through the config file (or /admin/sites) counts, not only one spelled out in SERVE_SITES.
+COPY site-domains.sh /usr/local/bin/site-domains.sh
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

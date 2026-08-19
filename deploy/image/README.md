@@ -72,7 +72,7 @@ A published catalog can additionally be served on a hostname of its own, where i
 whole server — `m3.preview.coo.ee` shows what `preview.coo.ee/m3-catalog/` shows, with the catalog's
 landing at `/` and no front door. What that changes about the pages is
 [docs/public-preview-server.md](../../docs/public-preview-server.md#top-level-sites-one-catalog-on-a-hostname-of-its-own);
-what it takes to stand one up is three things, in two places.
+what it takes to stand one up is a DNS record, an entry in `catalogs.json`, and a caddy restart.
 
 **1. DNS.** A `CNAME` to the box's existing hostname is the simplest form and is what
 `m3.preview.coo.ee` uses — it is a subdomain, so there is no apex-CNAME problem, the IP stays in one
@@ -87,51 +87,59 @@ An `A` record straight to the host IP works identically; it is just a second cop
 in step. Let it resolve before the restart below — Caddy needs it to answer the HTTP-01 challenge,
 which follows the alias without caring that it is one.
 
-**2. `.env` on the box** — **both** variables, because they configure different processes:
+**2. `catalogs.json`** — one entry beside the catalog it names:
 
-```bash
-# the app: which catalog each Host means
-SERVE_SITES=m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3-catalog
-# Caddy: match the names AND get a cert for each
-SITE_DOMAINS=m3.preview.coo.ee wear.preview.coo.ee
+```json
+"sites": [
+  { "host": "m3.preview.coo.ee",   "system": "m3-catalog" },
+  { "host": "wear.preview.coo.ee", "system": "wear-m3-catalog" }
+]
 ```
 
-Multiple sites are comma-separated in `SERVE_SITES`, space- or comma-separated in `SITE_DOMAINS`.
-**Certificates need no configuration beyond that second line** — `SITE_DOMAINS` lands on the
-Caddyfile's site-address line beside `{$DOMAIN}`, and Caddy provisions and renews a Let's Encrypt
-cert per name from there. Omit it and the site is configured in the app and unreachable at the edge:
-Caddy never matches the hostname, so it never requests a cert for it. Keep the two in step — a name
-in one and not the other is either a site nothing routes to or a hostname the app doesn't recognise.
+That one list now configures **both** processes. The app learns which catalog a `Host` means, and
+the caddy container derives `SITE_DOMAINS` from the same file at start
+([`caddy-entrypoint.sh`](caddy-entrypoint.sh)), which is what makes Caddy match the name **and**
+provision its Let's Encrypt certificate. There is nothing else to configure for TLS, and no second
+list to keep in step — the failure this used to invite was a name in one place and not the other,
+which is either a site nothing routes to or a hostname the app doesn't recognise.
 
-**3. Recreate both services.** `./rollout.sh` won't do it: it rolls `preview` only when the *image*
-changes, and `caddy` isn't rollable at all (fixed 80/443 ports). An env change needs a recreate:
+It reaches a **running** box the same way a catalog does: `publish-config-to-box.sh` POSTs each
+entry to `/admin/sites` on every push to `main`, after the catalogs (a site may only name a catalog
+the box already serves). `SERVE_SITES` in `.env` still works — it adds any host the file doesn't
+already claim — but it is no longer how a site is added: it predates the admin route, and an
+untracked file is exactly where a hostname goes to drift from `main`. Same for `SITE_DOMAINS`: set
+it only for a name the app doesn't serve as a site.
+
+**3. Restart caddy.** The app needs no restart — the reconcile applies the site live. Caddy reads
+its config once at start, so the *edge* half lands on the next recreate. `./rollout.sh` won't do it:
+it rolls `preview` only when the *image* changes, and `caddy` isn't rollable at all (fixed 80/443
+ports).
 
 ```bash
-docker compose up -d          # preview picks up SERVE_SITES, caddy picks up SITE_DOMAINS
+docker compose up -d          # caddy re-reads catalogs.json and asks for any new certificate
 curl -sI https://m3.preview.coo.ee/ | head -1                            # 200 — catalog landing at /
 curl -sI https://m3.preview.coo.ee/m3-catalog/p/button-filled | head -1  # 308 → /p/button-filled
 curl -sI https://m3.preview.coo.ee/wear-m3/ | head -1                    # 404 — neighbours unreachable
 curl -sI https://wear.preview.coo.ee/ | head -1                          # 200 — the Wear catalog's landing
 ```
 
-Sites are read **at startup**, so this is a restart either way; the additive `/admin/catalogs`
-reconcile does not carry them. If this box uses GitHub sign-in, set `SERVE_GITHUB_AUTH_COOKIE_DOMAIN`
-as well — see *GitHub auth* below; without it sign-in is withheld on a site host and its live and
-playground surfaces stay snapshot-only.
+If this box uses GitHub sign-in, set `SERVE_GITHUB_AUTH_COOKIE_DOMAIN` as well — see *GitHub auth*
+below; without it sign-in is withheld on a site host and its live and playground surfaces stay
+snapshot-only. The entrypoint derives it from `DOMAIN` whenever the box has a site configured at
+all — `SERVE_SITES` or a `sites` entry in the catalogs file — so a site delivered by config gets the
+same treatment as one spelled out in `.env`.
 
-> `catalogs.json`'s `"sites"` key says the same thing as durable config — but on this image that
-> file is a volume the box seeds once and never overwrites, so committing a site to
-> `deploy/preview.coo.ee/catalogs.json` does **not** deliver it: `publish-config-to-box.sh`
-> reconciles catalogs, groups and producers, not `sites`. Either set `SERVE_SITES` as above and
-> accept that `.env` is untracked, or adopt the overlay below and let the committed file be the
-> source of truth.
+> On this image `/config/catalogs.json` is a volume the box seeds once and never overwrites, so the
+> file the *app* reads is the box's copy, not the one in git. `/admin/sites` is what bridges them —
+> it applies the committed entry live and rewrites the box's copy, so the two converge without the
+> overlay below. Adopt the overlay if you'd rather the committed file be authoritative outright.
 
 ### Config from version control (`docker-compose.deploy-config.yml`)
 
 `/config/catalogs.json` and `/config/producers.json` live on the `preview_config` **named volume**,
 seeded on first boot and never overwritten (#2879 / #2897) so an image roll can't stomp a runtime
 edit. The cost is that config the box has never seen cannot arrive by `git pull` — only by a
-hand-edit or by the additive admin reconcile, which is blind to `sites`.
+hand-edit or by the additive admin reconcile.
 
 The opt-in overlay in this directory makes the committed deployment config authoritative instead:
 
@@ -142,7 +150,7 @@ docker compose -f docker-compose.yml -f docker-compose.deploy-config.yml up -d
 or set `COMPOSE_FILE=docker-compose.yml:docker-compose.deploy-config.yml` in `.env` so every later
 `docker compose` here picks it up. It bind-mounts the two files read-only from `DEPLOY_CONFIG_DIR`
 (default `../preview.coo.ee`, the same variable `publish-config-to-box.sh` uses), so deploying
-config becomes `git pull && docker compose up -d` and `sites` rides along with everything else.
+config becomes `git pull && docker compose up -d`.
 
 Read-only does **not** break the admin API: `ServeCatalogAdmin.persist()` fails soft, so
 `POST /admin/catalogs` still registers and serves the catalog and only reports back
@@ -181,13 +189,13 @@ The compose profile derives the callback base URL from `DOMAIN`; set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL` to override.
 
 **With top-level sites configured, the cookies need a domain.** `SERVE_GITHUB_AUTH_COOKIE_DOMAIN`
-scopes both auth cookies to a parent domain, so one sign-in covers this host and every `SERVE_SITES`
+scopes both auth cookies to a parent domain, so one sign-in covers this host and every site
 hostname under it — sign in on `preview.coo.ee` and `m3.preview.coo.ee` is signed in too. Without it
 the cookies are host-only: a sign-in started on a site host writes its state cookie there while
 GitHub returns to the pinned callback origin, the callback sees no state, and the server withholds
 the sign-in affordance on every site (live and playground stay snapshot-only there). The entrypoint
-derives it from `DOMAIN` when `SERVE_SITES` is set; set it explicitly to narrow it, or to `none` to
-keep cookies host-only:
+derives it from `DOMAIN` when the box has any site configured — `SERVE_SITES`, or a `sites` entry in
+`catalogs.json`; set it explicitly to narrow it, or to `none` to keep cookies host-only:
 
 ```bash
 SERVE_GITHUB_AUTH_COOKIE_DOMAIN=preview.coo.ee

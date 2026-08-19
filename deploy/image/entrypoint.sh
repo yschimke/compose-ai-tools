@@ -149,9 +149,21 @@ if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" ||
   # override, or to `none` to keep cookies host-only. Note the derivation is only as narrow as
   # DOMAIN itself: on a box whose DOMAIN is an apex, set this to the subdomain the sites live under
   # rather than letting one session span the whole zone.
+  #
+  # "Configured" means SERVE_SITES **or** a `sites` entry in the catalogs file. Reading only the env
+  # var was right when that was the only way to declare a site; now that the committed config
+  # delivers them (and /admin/sites publishes them), a box with sites and no SERVE_SITES would have
+  # kept host-only cookies and silently withheld sign-in on every site host.
   github_auth_cookie_domain="${SERVE_GITHUB_AUTH_COOKIE_DOMAIN:-}"
-  if [[ -z "${github_auth_cookie_domain}" && -n "${SERVE_SITES:-}" && -n "${DOMAIN:-}" ]]; then
-    github_auth_cookie_domain="${DOMAIN}"
+  if [[ -z "${github_auth_cookie_domain}" && -n "${DOMAIN:-}" ]]; then
+    # `none` is this file's documented "explicitly off" spelling for SERVE_SITES, so it must not
+    # read as a configured site here either.
+    sites_configured="${SERVE_SITES:-}"
+    [[ "${sites_configured}" == "none" ]] && sites_configured=""
+    if [[ -z "${sites_configured}" && "${SERVE_CATALOGS_FILE}" != "none" ]]; then
+      sites_configured="$(sh /usr/local/bin/site-domains.sh "${SERVE_CATALOGS_FILE}" 2>/dev/null || true)"
+    fi
+    [[ -n "${sites_configured}" ]] && github_auth_cookie_domain="${DOMAIN}"
   fi
   [[ -n "${github_auth_cookie_domain}" && "${github_auth_cookie_domain}" != "none" ]] &&
     args+=(--github-auth-cookie-domain "${github_auth_cookie_domain}")
