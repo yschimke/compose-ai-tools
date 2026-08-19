@@ -20,7 +20,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.ceil
-import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 
 /**
@@ -246,9 +245,7 @@ private fun androidx.compose.ui.graphics.ImageBitmap.toPngBytes(): ByteArray {
   val bitmap = this
   val skiaImage = SkiaImage.makeFromBitmap(bitmap.asSkiaBitmap())
   try {
-    val pngData =
-      skiaImage.encodeToData(EncodedImageFormat.PNG)
-        ?: error("Failed to encode motion frame to PNG")
+    val pngData = skiaImage.encodePngData() ?: error("Failed to encode motion frame to PNG")
     try {
       return pngData.bytes
     } finally {

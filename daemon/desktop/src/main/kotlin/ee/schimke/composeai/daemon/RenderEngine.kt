@@ -56,6 +56,7 @@ import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.preview.lottie.LottiePreview
+import ee.schimke.composeai.renderer.encodePngData
 import java.io.File
 import java.util.Base64
 import java.util.Collections
@@ -68,7 +69,6 @@ import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.JvmResourceReader
 import org.jetbrains.compose.resources.LocalResourceReader
 import org.jetbrains.compose.resources.ResourceReader
-import org.jetbrains.skia.EncodedImageFormat
 
 /**
  * Compose-Desktop render body for the preview daemon — the per-preview inner loop that turns a
@@ -731,7 +731,7 @@ class RenderEngine(
 
     val pngData =
       trace.section("render:encodePng") {
-        image.encodeToData(EncodedImageFormat.PNG)
+        image.encodePngData()
           ?: error(
             "Failed to encode image to PNG for ${state.spec.className}.${state.spec.functionName}"
           )
