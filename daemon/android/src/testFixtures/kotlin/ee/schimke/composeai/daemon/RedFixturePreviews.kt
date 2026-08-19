@@ -709,6 +709,32 @@ fun TaggedClickTargetSquare() {
   }
 }
 
+/**
+ * Issue #4282 fixture — proves a held interactive session advances the **platform** animation clock
+ * and not only Compose's paused `mainClock`.
+ *
+ * Starts red and turns green from a `Handler.postDelayed` on the main looper, not from a Compose
+ * animation or a `LaunchedEffect`. That is deliberate: `mainClock.advanceTimeBy` drives Compose's
+ * frame clock and the test dispatcher, and moves Robolectric's looper clock not at all — so before
+ * the fix a held session rendered this square red forever, however long it ran, and no app timer
+ * scheduled onto the main looper ever came due inside a live preview.
+ */
+@Composable
+fun PostDelayedSquare() {
+  var elapsed by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+    android.os
+      .Handler(android.os.Looper.getMainLooper())
+      .postDelayed({ elapsed = true }, POST_DELAYED_SQUARE_DELAY_MS)
+  }
+  val color = if (elapsed) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color))
+}
+
+/** Looper delay [PostDelayedSquare] flips on. Well under one held render's auto-advance cap. */
+const val POST_DELAYED_SQUARE_DELAY_MS: Long = 100L
+
 @Composable
 fun ClickableToggleSquare() {
   var clicked by

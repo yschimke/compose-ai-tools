@@ -1257,8 +1257,86 @@ class AndroidInteractiveSessionTest {
     }
   }
 
+  /**
+   * Issue #4282 — a held render advances the **platform** animation clock, not only Compose's.
+   *
+   * [PostDelayedSquare] flips red→green from a `Handler.postDelayed` on the main looper. Only
+   * `ShadowLooper.idleFor` moves that clock; `mainClock.advanceTimeBy` — the one thing the held
+   * loop used to do — does not. So before the fix this square stayed red through any number of
+   * renders: a live preview never ran a single delayed callback, however long it was left open.
+   *
+   * The first render is deliberately asserted to still be RED. That half is what makes this a
+   * regression test rather than a tautology: it pins that the fix *steps* the clock in real time
+   * rather than settling every pending callback at once, which would make a live preview jump its
+   * animations to their end state instead of playing them.
+   */
+  @Test
+  fun heldRenderAdvancesThePlatformAnimationClock() {
+    val outputDir = tempFolder.newFolder("interactive-renders")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = POST_DELAYED_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        // Frame one covers the 32ms bootstrap settle — well short of the fixture's 100ms delay, so
+        // the callback is scheduled but not yet due.
+        val first = decode(File(session.render(requestId = RenderHost.nextRequestId()).pngPath!!))
+        val redFirst = pixelMatchPct(first, RED_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "the first held frame must still be red — a callback due at " +
+            "${POST_DELAYED_SQUARE_DELAY_MS}ms must not have run inside a 32ms settle " +
+            "(got ${"%.2f".format(redFirst * 100)}% red)",
+          redFirst >= 0.95,
+        )
+
+        // Now advance past the delay. Explicit `advanceTimeMs` rather than the wall-clock
+        // substitution so the test doesn't depend on how long the first render happened to take.
+        val second =
+          decode(
+            File(
+              session
+                .render(
+                  requestId = RenderHost.nextRequestId(),
+                  advanceTimeMs = POST_DELAYED_SQUARE_DELAY_MS * 2,
+                )
+                .pngPath!!
+            )
+          )
+        val greenSecond = pixelMatchPct(second, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "a held render advancing ${POST_DELAYED_SQUARE_DELAY_MS * 2}ms must run the looper " +
+            "callback due at ${POST_DELAYED_SQUARE_DELAY_MS}ms and paint green (got " +
+            "${"%.2f".format(greenSecond * 100)}%) — still red means the held loop advanced " +
+            "Compose's mainClock without advancing the platform animation clock (#4282)",
+          greenSecond >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun previewSpecResolver(): (String) -> RenderSpec? = { previewId ->
     when (previewId) {
+      POST_DELAYED_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "PostDelayedSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-post-delayed",
+        )
       MISSING_RESOURCE_PREVIEW_ID ->
         RenderSpec(
           className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
@@ -1455,6 +1533,7 @@ class AndroidInteractiveSessionTest {
     private const val NOTIFICATION_PREVIEW_ID = "interactive-notification"
     private const val WRAPPER_REQUIRED_PREVIEW_ID = "interactive-wrapper-required"
     private const val MISSING_RESOURCE_PREVIEW_ID = "interactive-missing-resource"
+    private const val POST_DELAYED_PREVIEW_ID = "interactive-post-delayed"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96
     private const val RED_RGB = 0xEF5350
