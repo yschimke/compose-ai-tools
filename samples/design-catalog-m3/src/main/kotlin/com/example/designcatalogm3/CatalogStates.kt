@@ -1,12 +1,10 @@
 package com.example.designcatalogm3
 
 import androidx.compose.runtime.Composable
-import com.example.designcatalogm3.shared.CatalogComponent
-import ee.schimke.composeai.preview.CatalogComponent
 import ee.schimke.composeai.preview.CatalogVariant
 import ee.schimke.composeai.preview.FocusedPreview
 
-// --- States — interaction (pressed / focused), disabled, and toggle off↔on. ---
+// --- States — interaction (pressed / focused) and the content axis, all on `Button/Filled`. ---
 //
 // The two interaction states are captured through **real input** (issue #3672). Both stickers
 // compose a plain `Button` — see the note in `:samples:design-catalog-m3-shared`'s
@@ -55,13 +53,5 @@ fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
 
 // (`SwitchOff`, `CheckboxUnchecked`, `FilterChipUnselected`, `RadioUnselected` removed — those
 // states now ride their primary selection control via `@OverrideVariant`, seeding the shared
-// `checked` / `selected` knob.)
-
-@CatalogComponent(
-  id = "SegmentedButton",
-  group = "Selection",
-  caption = "Single-choice toggle: selected + unselected segments.",
-)
-@CatalogModes
-@Composable
-fun SegmentedToggle() = Sticker("segmentedbutton")
+// `checked` / `selected` knob. `SegmentedToggle` went with the by-component slimming: a
+// single-choice toggle proved no pipeline feature the checkbox doesn't.)

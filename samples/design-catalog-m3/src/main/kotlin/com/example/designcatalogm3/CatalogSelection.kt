@@ -6,12 +6,18 @@ import ee.schimke.composeai.preview.CatalogComponent
 import ee.schimke.composeai.preview.InteractionPreview
 import ee.schimke.composeai.preview.OverrideVariant
 
-// --- Selection controls — checked/selected states (the primary mode to show). ---
+// --- Selection controls — three, by knob TYPE rather than by Material coverage. ---
+//
+// The unchecked/unselected/off state rides its primary control as an `@OverrideVariant` (seeding
+// the shared `checked` / `selected` knob) rather than a duplicated `*Unchecked` / `*Off` wrapper —
+// the render emits a `_VARIANT_<state>` capture that folds under the primary sticker.
+//
+// The radio button, filter chip, assist chip and segmented button used to sit here too. The first
+// two were a third and fourth spelling of "an `@OverrideVariant` seeding a `Boolean`", and the last
+// two carried no pipeline feature at all — so what's left is one `Boolean` carrier (the checkbox),
+// one `Boolean` carrier that also hosts the motion and i18n/a11y axes (the switch), and the one
+// `Float` knob on the sheet (the slider).
 
-// Selection controls carry their unchecked/unselected/off state as an `@OverrideVariant` (seeding
-// the shared `checked` / `selected` knob) rather than a duplicated `*Unchecked` / `*Off` /
-// `*Unselected`
-// wrapper — the render emits a `_VARIANT_<state>` capture that folds under the primary sticker.
 @CatalogComponent(
   id = "Checkbox/Checked",
   group = "Selection",
@@ -43,31 +49,10 @@ fun CheckboxChecked() = Sticker("checkbox-checked")
 fun SwitchOn() = Sticker("switch-on")
 
 @CatalogComponent(
-  id = "RadioButton/Selected",
+  id = "Slider",
   group = "Selection",
-  caption = "Selected; the unselected state folds in as an @OverrideVariant (selected = false).",
+  caption = "The sheet's Float knob (`value`).",
 )
-@CatalogModes
-@OverrideVariant(name = "unselected", booleans = ["selected=false"])
-@Composable
-fun RadioSelected() = Sticker("radiobutton-selected")
-
-@CatalogComponent(id = "Slider", group = "Selection")
 @CatalogModes
 @Composable
 fun SliderMid() = Sticker("slider")
-
-@CatalogComponent(
-  id = "Chip/Filter-Selected",
-  group = "Selection",
-  caption = "Selected; the unselected state folds in as an @OverrideVariant (selected = false).",
-)
-@CatalogModes
-@OverrideVariant(name = "unselected", booleans = ["selected=false"])
-@Composable
-fun FilterChipSelected() = Sticker("chip-filter-selected")
-
-@CatalogComponent(id = "Chip/Assist", group = "Selection")
-@CatalogModes
-@Composable
-fun AssistChipSticker() = Sticker("chip-assist")

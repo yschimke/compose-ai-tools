@@ -5,6 +5,14 @@ import com.example.designcatalogm3.shared.CatalogComponent
 import ee.schimke.composeai.preview.CatalogComponent
 
 // The M3 catalog sticker sheet: one `@Preview` per component, in light + dark (`@CatalogModes`).
+//
+// The inventory is scoped to the preview PIPELINE's features, not to Material 3's component
+// surface — m3-catalog is the exhaustive Material reference and this sheet is compose-ai-tools'
+// own harness, so every entry earns its place by being the one or two carriers of some pipeline
+// capability (slots, override-knob types, focus/press capture, interaction motion, i18n and a11y
+// axes, generic + named font resolution, full-screen device capture). A component that only
+// re-proved a capability another sticker already carries is not here.
+//
 // Each is a thin wrapper — `CatalogSticker { CatalogComponent("<slug>") }` — over the shared
 // component set in `:samples:design-catalog-m3-shared`, so the bodies live in one place (also
 // mounted live by the in-browser wasm tier).

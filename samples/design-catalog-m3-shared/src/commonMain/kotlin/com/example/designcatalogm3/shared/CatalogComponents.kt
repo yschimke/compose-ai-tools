@@ -8,37 +8,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,24 +47,13 @@ import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.star
 import com.example.designcatalogm3.shared.generated.resources.Res
-import com.example.designcatalogm3.shared.generated.resources.card_elevated
-import com.example.designcatalogm3.shared.generated.resources.card_filled
-import com.example.designcatalogm3.shared.generated.resources.card_outlined
-import com.example.designcatalogm3.shared.generated.resources.label_assist
-import com.example.designcatalogm3.shared.generated.resources.label_elevated
 import com.example.designcatalogm3.shared.generated.resources.label_filled
-import com.example.designcatalogm3.shared.generated.resources.label_filter
 import com.example.designcatalogm3.shared.generated.resources.label_focused
-import com.example.designcatalogm3.shared.generated.resources.label_outlined
 import com.example.designcatalogm3.shared.generated.resources.label_pressed
-import com.example.designcatalogm3.shared.generated.resources.label_text
-import com.example.designcatalogm3.shared.generated.resources.label_tonal
 import com.example.designcatalogm3.shared.generated.resources.m3_body_overflow
 import com.example.designcatalogm3.shared.generated.resources.slot_headline
 import com.example.designcatalogm3.shared.generated.resources.slot_supporting
 import com.example.designcatalogm3.shared.generated.resources.textfield_label
-import com.example.designcatalogm3.shared.generated.resources.toggle_off
-import com.example.designcatalogm3.shared.generated.resources.toggle_on
 import ee.schimke.composeai.preview.slots.PreviewSlot
 import org.jetbrains.compose.resources.stringResource
 
@@ -104,16 +77,23 @@ import org.jetbrains.compose.resources.stringResource
  * first composed frame is byte-identical to the frame the inert branch used to produce, while a
  * click in a live lane actually moves it.
  *
- * **Almost every component responds to a click.** The ones that carry state — switch, checkbox,
- * radio, filter chip, slider, segmented button, text fields — own it and mutate it. The ones that
- * don't (the button family, the FAB, the assist chip) route their click through [counted], which
- * tallies it into the label, so a click is never a silent no-op. The counter starts at `0` and
- * [counted] draws the bare label at `0`, so a never-clicked render is unchanged.
+ * **Coverage is by FEATURE, not by component.** This set is deliberately not an exhaustive Material
+ * 3 inventory — [m3-catalog](https://github.com/yschimke/m3-catalog) is that, and this catalog
+ * exists to exercise the preview pipeline. So each pipeline feature keeps one or two carriers and
+ * no more: one emphasis level of button (which also hosts the pressed / focused / disabled /
+ * icon-label captures), one card (the slotted one), one text field, one progress indicator, and
+ * three selection controls chosen for their knob *types* — `Boolean` (checkbox), `Boolean` +
+ * `@InteractionPreview` + the i18n/a11y axes (switch), `Float` (slider). The emphasis-level
+ * buttons, plain cards, outlined text field, circular progress, radio button, chips and segmented
+ * button were each a second spelling of a feature already covered.
  *
- * Three deliberate exceptions: the **disabled** button stickers (staying inert is the state they
- * document), `card-slots` (a slot host — see its branch), and the three plain **cards**, which
- * compose M3's non-clickable overload on every surface because their semantics tree is itself a
- * published artifact (see the comment on `card-elevated`).
+ * **Almost every component responds to a click.** The ones that carry state — switch, checkbox,
+ * slider, text field — own it and mutate it. The button family routes its click through [counted],
+ * which tallies it into the label, so a click is never a silent no-op. The counter starts at `0`
+ * and [counted] draws the bare label at `0`, so a never-clicked render is unchanged.
+ *
+ * Two deliberate exceptions: the **disabled** button variant (staying inert is the state it
+ * documents) and `card-slots` (a slot host — see its branch).
  *
  * **The pressed / focused button states are driven by real input, not forged here.** Both compose a
  * plain `Button`; the state comes from `@FocusedPreview` on the sticker preview (a real focus
@@ -121,23 +101,26 @@ import org.jetbrains.compose.resources.stringResource
  * receives the interaction instead of proving its state layer can be painted (issue #3672).
  *
  * **Editable knobs.** Each component's author-facing values — labels, the entered text-field value,
- * selection/toggle flags, slider & progress values, the badge count, the slotted card's accent —
- * are declared through the `catalogOverride*` wrappers, the catalog's bridge to the opt-in
- * `previewOverride*` surface (see [catalogOverrideString]). Every knob returns its author default
- * when nothing is seeded, so the baked sticker sheet is pixel-unchanged; a daemon-backed render can
- * seed replacements and the `compose/overrides` producer can enumerate what's editable per sticker.
+ * toggle flags, slider & progress values, the badge count, the slotted card's accent — are declared
+ * through the `catalogOverride*` wrappers, the catalog's bridge to the opt-in `previewOverride*`
+ * surface (see [catalogOverrideString]). Every knob returns its author default when nothing is
+ * seeded, so the baked sticker sheet is pixel-unchanged; a daemon-backed render can seed
+ * replacements and the `compose/overrides` producer can enumerate what's editable per sticker.
  *
- * **Fillable slots.** The content region of each card is wrapped in a `PreviewSlot(name)` marker
- * (the Figma slot placeholder added for the structured-screen builder): a no-op in a normal render,
- * it swaps to a labelled placeholder under `LocalSlotMode` so a designer sees exactly where a child
+ * **Fillable slots.** Each region of `card-slots` is wrapped in a `PreviewSlot(name)` marker (the
+ * Figma slot placeholder added for the structured-screen builder): a no-op in a normal render, it
+ * swaps to a labelled placeholder under `LocalSlotMode` so a designer sees exactly where a child
  * drops in.
  */
 @Composable
 fun CatalogComponent(id: String) {
   when (id) {
-    // Buttons — the five M3 emphasis levels, plus disabled. The label of each is an editable
-    // `catalogOverrideString("label", …)` knob, so a daemon-backed render can retitle the button
-    // from the `compose/overrides` surface; with no seed the author default renders unchanged.
+    // The filled button — one emphasis level, not five. This catalog covers the preview
+    // pipeline's FEATURES, not Material's component surface (m3-catalog is the exhaustive
+    // reference), and the four other emphasis levels re-proved nothing this one doesn't: the label
+    // is an editable `catalogOverrideString("label", …)` knob so a daemon-backed render can retitle
+    // it from the `compose/overrides` surface, `enabled` is the `@OverrideVariant` knob, and the
+    // pressed / focused / icon-label ids below hang off this same button.
     //
     // A plain button has no intrinsic state to show, so its click is made visible by [counted]: the
     // label picks up a click tally. A never-clicked render is unaffected — see [counted] for why
@@ -149,97 +132,34 @@ fun CatalogComponent(id: String) {
       // rather than a second slug — the same shape the selection controls use for `checked`.
       Button(onClick = onClick, enabled = catalogOverrideBoolean("enabled", true)) { Text(label) }
     }
-    "button-tonal" -> {
-      val (label, onClick) =
-        counted(catalogOverrideString("label", stringResource(Res.string.label_tonal)))
-      FilledTonalButton(onClick = onClick) { Text(label) }
-    }
-    "button-outlined" -> {
-      val (label, onClick) =
-        counted(catalogOverrideString("label", stringResource(Res.string.label_outlined)))
-      OutlinedButton(onClick = onClick, enabled = catalogOverrideBoolean("enabled", true)) {
-        Text(label)
-      }
-    }
-    "button-elevated" -> {
-      val (label, onClick) =
-        counted(catalogOverrideString("label", stringResource(Res.string.label_elevated)))
-      ElevatedButton(onClick = onClick) { Text(label) }
-    }
-    "button-text" -> {
-      val (label, onClick) =
-        counted(catalogOverrideString("label", stringResource(Res.string.label_text)))
-      TextButton(onClick = onClick) { Text(label) }
-    }
-    // Deliberately NOT counted: a disabled button must stay inert on every surface — that
-    // unresponsiveness is the state this sticker documents.
+
     // Selection controls — primary (checked/selected) state. The checked/selected flag is a
     // `catalogOverrideBoolean` knob: it is what the `@OverrideVariant` folds (`off`, `unchecked`)
     // seed, and it is the control's **initial** value, so the first composed frame is exactly the
     // seeded state on every surface. A tap then moves it from there.
+    //
+    // Two controls carry that knob, not five: the radio button and the filter chip were a third
+    // and fourth spelling of the same `@OverrideVariant`-seeds-a-boolean feature, and the
+    // segmented button and assist chip carried no feature at all. The slider stays because its
+    // knob is a `Float` rather than a `Boolean`.
     "checkbox-checked" -> StatefulCheckbox(catalogOverrideBoolean("checked", true))
     "switch-on" -> StatefulSwitch(catalogOverrideBoolean("checked", true))
-    "radiobutton-selected" -> StatefulRadioButton(catalogOverrideBoolean("selected", true))
     "slider" -> Box(Modifier.width(220.dp)) { StatefulSlider(catalogOverrideFloat("value", 0.5f)) }
     "shape-morph" -> ShapeMorphViewer()
-    "chip-filter-selected" ->
-      StatefulFilterChip(
-        catalogOverrideBoolean("selected", true),
-        catalogOverrideString("label", stringResource(Res.string.label_filter)),
-      )
-    // An assist chip is an action, not a selection — like the plain buttons it carries no state of
-    // its own, so [counted] gives its click a visible result.
-    "chip-assist" -> {
-      val (label, onClick) =
-        counted(catalogOverrideString("label", stringResource(Res.string.label_assist)))
-      AssistChip(onClick = onClick, label = { Text(label) })
-    }
 
-    // Containment — cards and the FAB. Each card's body is wrapped in a `PreviewSlot("content")`
-    // filling the fixed 160×80 box: a no-op in a normal render (draws the — now editable — label,
-    // tagged `dp-slot:content`), it swaps to a labelled placeholder under slot mode so a
-    // structured-screen builder can drop a child into that exact box.
-    // M3's cards — unlike Wear's and Remote's, whose APIs take a required `onClick` — ship both a
-    // plain and a clickable overload. The catalog composes the **clickable** one everywhere: a card
-    // is an interactive surface in the design system, and picking the overload per-lane was exactly
-    // the "the capture isn't the composable" split issue #3674 removed. The resting pixels are the
-    // plain card's (no interaction is held, so no state layer draws), but the node tree gains the
-    // clickable node — which is the honest description of the sticker, and is what the
-    // `a11y/touchTargets` greenlines and the layout wireframe now report.
-    // M3's cards are the one family shipping both a plain and a clickable overload, and the
-    // catalog deliberately composes the **plain** one on every surface. Picking the clickable
-    // overload would add a clickable node to the sticker's semantics tree, which the published
-    // `a11y/touchTargets` greenlines and the `compose/semantics-wireframe` layout variant both
-    // describe — so the node tree, not just the pixels, is a published artifact here. A card
-    // click tally isn't worth invalidating it. Unlike the old arrangement, the choice is now a
-    // constant rather than a `LocalInspectionMode` branch: both lanes compose this same overload
-    // (issue #3674).
-    "card-elevated" -> {
-      ElevatedCard {
-        CardContentSlot(catalogOverrideString("label", stringResource(Res.string.card_elevated)))
-      }
-    }
-    "card-outlined" -> {
-      OutlinedCard {
-        CardContentSlot(catalogOverrideString("label", stringResource(Res.string.card_outlined)))
-      }
-    }
-    "card-filled" -> {
-      Card {
-        CardContentSlot(catalogOverrideString("label", stringResource(Res.string.card_filled)))
-      }
-    }
-    // A **slotted** card: each region is wrapped in `PreviewSlot(name) { … }`, a no-op in a normal
-    // render (draws the content, tagged `dp-slot:<name>`) that swaps to a labelled placeholder
-    // under
-    // slot mode. Each slot carries an explicit size, so the box a child fills — and the placeholder
-    // shown under slot mode — is well-defined. The structured-screen builder reads these slots from
-    // `/render/card-slots.slots` and fills each by rendering another component to that size.
+    // Containment — one card, and it is the SLOTTED one. The three plain cards (elevated /
+    // outlined / filled) differed only in Material's own surface treatment, which is m3-catalog's
+    // job; this one is here for a pipeline feature the others don't touch. Each region is wrapped
+    // in `PreviewSlot(name) { … }`, a no-op in a normal render (draws the content, tagged
+    // `dp-slot:<name>`) that swaps to a labelled placeholder under slot mode. Each slot carries an
+    // explicit size, so the box a child fills — and the placeholder shown under slot mode — is
+    // well-defined. The structured-screen builder reads these slots from `/render/card-slots.slots`
+    // and fills each by rendering another component to that size.
     //
-    // Deliberately NOT clickable, unlike the three plain cards above. This one is a slot **host**:
-    // the builder drops real components into those regions, and a card-wide click target sitting
-    // over them would swallow the taps meant for the children — making the filled card less
-    // interactive, not more. The slots' own contents carry whatever click behaviour they came with.
+    // Deliberately NOT clickable. This one is a slot **host**: the builder drops real components
+    // into those regions, and a card-wide click target sitting over them would swallow the taps
+    // meant for the children — making the filled card less interactive, not more. The slots' own
+    // contents carry whatever click behaviour they came with.
     "card-slots" ->
       ElevatedCard {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -258,41 +178,31 @@ fun CatalogComponent(id: String) {
           }
         }
       }
-    "fab" -> {
-      val (label, onClick) = counted(catalogOverrideString("label", "+"))
-      FloatingActionButton(onClick = onClick) { Text(label) }
-    }
 
-    // Communication — progress + badge. Both indicators are **determinate**, driven by the
-    // `progress` knob, on every surface. This is the one place where dropping the `interactive`
-    // axis (issue #3674) genuinely removed behaviour rather than a redundant branch: the in-browser
-    // tier used to compose the no-`progress` (indeterminate, animated) overload, which is a
-    // different composable drawing different pixels from the sticker the catalog publishes — the
-    // exact "the capture isn't what runs live" split the issue is about. The animated ring belongs
-    // to its own catalog id rather than to a hidden lane flag; the Wear sheet already models that
-    // (`Progress/Circular` + `Progress/Circular/Indeterminate`), and adding the M3 twin is a
-    // catalog-inventory change, not a lane flag.
+    // Communication — one progress indicator (the `Float` `progress` knob) and the badge (the
+    // `Int` `count` knob). The circular indicator drew the same knob as the linear one, so it went;
+    // the badge stays because it is the only `catalogOverrideInt` on the sheet.
+    //
+    // The indicator is **determinate** on every surface. This is the one place where dropping the
+    // `interactive` axis (issue #3674) genuinely removed behaviour rather than a redundant branch:
+    // the in-browser tier used to compose the no-`progress` (indeterminate, animated) overload,
+    // which is a different composable drawing different pixels from the sticker the catalog
+    // publishes — the exact "the capture isn't what runs live" split the issue is about. The
+    // animated ring lives on the Wear sheet, which models it as its own catalog id
+    // (`Progress/Circular/Indeterminate`) rather than as a hidden lane flag.
     "progress-linear" -> {
       val progress = catalogOverrideFloat("progress", 0.6f)
       Box(Modifier.width(220.dp)) { LinearProgressIndicator(progress = { progress }) }
     }
-    "progress-circular" -> {
-      val progress = catalogOverrideFloat("progress", 0.6f)
-      CircularProgressIndicator(progress = { progress })
-    }
     "badge" -> Badge { Text(catalogOverrideInt("count", 8).toString()) }
 
-    // Text fields — both the entered value and the floating label are editable knobs. The field
-    // owns its value everywhere, seeded from the `value` knob, so a visitor can actually type into
-    // it and an un-typed render still shows exactly the seeded text.
+    // Text field — the entered value and the floating label are both editable knobs, and this is
+    // the sheet's only component that owns *text* state. It owns its value everywhere, seeded from
+    // the `value` knob, so a visitor can actually type into it and an un-typed render still shows
+    // exactly the seeded text. (The outlined twin was the same knobs behind a different border.)
     "textfield-filled" ->
       StatefulTextField(
         catalogOverrideString("value", stringResource(Res.string.label_filled)),
-        catalogOverrideString("label", stringResource(Res.string.textfield_label)),
-      )
-    "textfield-outlined" ->
-      StatefulOutlinedTextField(
-        catalogOverrideString("value", stringResource(Res.string.label_outlined)),
         catalogOverrideString("label", stringResource(Res.string.textfield_label)),
       )
 
@@ -331,15 +241,6 @@ fun CatalogComponent(id: String) {
         Text(label)
       }
     }
-    "switch-off" -> StatefulSwitch(catalogOverrideBoolean("checked", false))
-    "checkbox-unchecked" -> StatefulCheckbox(catalogOverrideBoolean("checked", false))
-    "chip-filter-unselected" ->
-      StatefulFilterChip(
-        catalogOverrideBoolean("selected", false),
-        catalogOverrideString("label", stringResource(Res.string.label_filter)),
-      )
-    "radiobutton-unselected" -> StatefulRadioButton(catalogOverrideBoolean("selected", false))
-    "segmentedbutton" -> SegmentedToggle()
 
     // Text options — maxLines + ellipsis overflow. The 128dp box reproduces the wrap/truncation
     // point the Android sticker got from its 160dp preview canvas minus the sticker's 16dp padding
@@ -376,41 +277,25 @@ fun CatalogComponent(id: String) {
 }
 
 /**
- * Every catalog component id, in sticker-sheet order — 1:1 with `catalog.spec.json`. The wasm app
- * uses it to tell a known id from the "unknown component" diagnostic branch.
+ * Every catalog component id, in sticker-sheet order. The wasm app uses it to tell a known id from
+ * the "unknown component" diagnostic branch. All but `text-branded` carry a `@CatalogComponent` /
+ * `@CatalogVariant` next door in `:samples:design-catalog-m3`; that one renders and mounts but is
+ * deliberately absent from the published inventory.
  */
 val catalogComponentIds: List<String> =
   listOf(
     "button-filled",
-    "button-tonal",
-    "button-outlined",
-    "button-elevated",
-    "button-text",
     "checkbox-checked",
     "switch-on",
-    "radiobutton-selected",
     "slider",
     "shape-morph",
-    "chip-filter-selected",
-    "chip-assist",
-    "card-elevated",
-    "card-outlined",
-    "card-filled",
     "card-slots",
-    "fab",
     "progress-linear",
-    "progress-circular",
     "badge",
     "textfield-filled",
-    "textfield-outlined",
     "button-filled-pressed",
     "button-filled-focused",
     "button-filled-icon-label",
-    "switch-off",
-    "checkbox-unchecked",
-    "chip-filter-unselected",
-    "radiobutton-unselected",
-    "segmentedbutton",
     "text-maxlines-truncated",
     "text-serif",
     "text-monospace",
@@ -536,50 +421,14 @@ private fun Morph.toComposePath(progress: Float): Path =
   }
 
 @Composable
-fun StatefulFilterChip(initial: Boolean, label: String = "Filter") {
-  var selected by remember { mutableStateOf(initial) }
-  FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text(label) })
-}
-
-/**
- * The fixed 160×80 content box the three plain cards share, wrapped in its `PreviewSlot("content")`
- * marker. Factored out so each card can compose the identical body through either its plain or its
- * clickable overload without the body being written twice per card.
- */
-@Composable
-private fun CardContentSlot(label: String) {
-  Box(Modifier.size(160.dp, 80.dp)) {
-    PreviewSlot("content", Modifier.fillMaxSize()) { Text(label) }
-  }
-}
-
-/**
- * A radio button that flips its own selection. A real radio is one of a group and can't be
- * deselected by tapping it again — but a catalog sticker *is* the single control, and both of its
- * states are what a viewer came to see, so here the tap toggles. Un-tapped it draws exactly its
- * seeded `selected` knob, which is what the `radiobutton-unselected` sticker captures.
- */
-@Composable
-fun StatefulRadioButton(initial: Boolean) {
-  var selected by remember { mutableStateOf(initial) }
-  RadioButton(selected = selected, onClick = { selected = !selected })
-}
-
-@Composable
 fun StatefulTextField(initial: String, label: String) {
   var value by remember { mutableStateOf(initial) }
   TextField(value = value, onValueChange = { value = it }, label = { Text(label) })
 }
 
-@Composable
-fun StatefulOutlinedTextField(initial: String, label: String) {
-  var value by remember { mutableStateOf(initial) }
-  OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text(label) })
-}
-
 /**
- * Gives a stateless action component — a button, a FAB, an assist chip — something visible to do
- * when clicked, by tallying clicks into its label: `Filled` → `Filled (1)` → `Filled (2)`.
+ * Gives a stateless action component — a button — something visible to do when clicked, by tallying
+ * clicks into its label: `Filled` → `Filled (1)` → `Filled (2)`.
  *
  * Returns the label to draw and the `onClick` to wire. The counter starts at `0` and the `0` case
  * draws [base] verbatim, so a render that nothing has clicked — the baked sticker sheet and every
@@ -593,33 +442,6 @@ fun StatefulOutlinedTextField(initial: String, label: String) {
 fun counted(base: String): Pair<String, () -> Unit> {
   var clicks by remember { mutableIntStateOf(0) }
   return (if (clicks == 0) base else "$base ($clicks)") to { clicks++ }
-}
-
-/**
- * The single-choice segmented toggle. Starts on the "On" segment — the selection the published
- * sticker captures — and a tap moves it, on every surface.
- */
-@Composable
-fun SegmentedToggle() {
-  var selected by remember { mutableStateOf(0) }
-  val onLabel = catalogOverrideString("onLabel", stringResource(Res.string.toggle_on))
-  val offLabel = catalogOverrideString("offLabel", stringResource(Res.string.toggle_off))
-  SingleChoiceSegmentedButtonRow {
-    SegmentedButton(
-      selected = selected == 0,
-      onClick = { selected = 0 },
-      shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-    ) {
-      Text(onLabel)
-    }
-    SegmentedButton(
-      selected = selected == 1,
-      onClick = { selected = 1 },
-      shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-    ) {
-      Text(offLabel)
-    }
-  }
 }
 
 // --- No held interaction sources live here any more (issue #3672). ---

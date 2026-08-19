@@ -85,22 +85,6 @@ class CatalogInteractivityTest {
   }
 
   @Test
-  fun `checkbox button toggles on the live lane`() {
-    rule.setLane(inspection = false) { CheckboxButtonChecked() }
-
-    rule.onNode(isToggleable()).assertIsOn().performClick()
-    rule.onNode(isToggleable()).assertIsOff()
-  }
-
-  @Test
-  fun `checkbox button toggles identically on the baked lane`() {
-    rule.setLane(inspection = true) { CheckboxButtonChecked() }
-
-    rule.onNode(isToggleable()).assertIsOn().performClick()
-    rule.onNode(isToggleable()).assertIsOff()
-  }
-
-  @Test
   fun `filled button tallies its clicks on the live lane`() {
     rule.setLane(inspection = false) { FilledButton() }
 

@@ -674,11 +674,13 @@ class ServeBundleDaemonTest {
       )
 
       // Slug-sharing state pairs that the baked per-slug SVG collapses; each must now differ.
+      // The `off` / `disabled` halves are `@OverrideVariant` captures riding the primary function,
+      // so they are `<fn>_VARIANT_<name>` rather than separate `*Off` / `*Disabled` functions —
+      // naming those long-deleted wrappers made every pair `continue` past its assertion.
       val pairs =
         listOf(
-          "CatalogPreviewsKt.FilledButton" to "CatalogPreviewsKt.ButtonDisabled",
-          "CatalogPreviewsKt.SwitchButtonOn" to "CatalogPreviewsKt.SwitchButtonOff",
-          "CatalogPreviewsKt.CheckboxButtonChecked" to "CatalogPreviewsKt.CheckboxButtonUnchecked",
+          "CatalogPreviewsKt.FilledButton" to "CatalogPreviewsKt.FilledButton_VARIANT_disabled",
+          "CatalogPreviewsKt.SwitchButtonOn" to "CatalogPreviewsKt.SwitchButtonOn_VARIANT_off",
         )
       var checked = 0
       for ((aSuffix, bSuffix) in pairs) {
