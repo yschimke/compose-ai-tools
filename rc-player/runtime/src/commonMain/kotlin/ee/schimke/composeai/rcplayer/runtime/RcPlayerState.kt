@@ -187,7 +187,17 @@ public class RcPlayerState(
     // Snapshot what the *document* recorded for each named variable, before any host override is
     // applied. `setNamedValue` has no inverse, so without this a host that stops supplying a value
     // has no way back — see [clearNamedValue].
-    variableNames.keys.forEach { name -> documentNamedValues[name] = readNamedValue(name) }
+    //
+    // Only the types `RcNamedValue` can represent. `RcNamedVariable` also defines `IMAGE_TYPE` and
+    // `FLOAT_ARRAY_TYPE`, which no `RcNamedValue` case models, so `readNamedValue` throws for them
+    // — and doing that here would fail *construction* of every document that merely declares such a
+    // variable, override or not, turning a renderable document into a hard error. There is nothing
+    // to restore for a variable a host cannot set in the first place.
+    variableNames.forEach { (name, variable) ->
+      if (variable.type.namedVariableCarriesHostValue()) {
+        documentNamedValues[name] = readNamedValue(name)
+      }
+    }
     namedValues.forEach { (name, value) -> setNamedValue(name, value) }
     beginFrame()
   }
@@ -1106,6 +1116,21 @@ public class RcPlayerState(
     }
     documentNamedValues[name]?.let { setNamedValue(name, it) }
   }
+
+  /**
+   * Whether an `RcNamedVariable.type` is one [RcNamedValue] models, and therefore one a host can
+   * read or override.
+   *
+   * `IMAGE_TYPE` and `FLOAT_ARRAY_TYPE` are valid AndroidX types with no host-value counterpart.
+   * They stay loadable — a document declaring one renders — but neither [namedValue] nor
+   * [setNamedValue] can speak about them.
+   */
+  private fun Int.namedVariableCarriesHostValue(): Boolean =
+    this == RcNamedVariable.STRING_TYPE ||
+      this == RcNamedVariable.FLOAT_TYPE ||
+      this == RcNamedVariable.COLOR_TYPE ||
+      this == RcNamedVariable.INT_TYPE ||
+      this == RcNamedVariable.LONG_TYPE
 
   private fun readNamedValue(name: String): RcNamedValue {
     val variable = requireNotNull(variableNames[name]) { "Unknown named variable '$name'" }

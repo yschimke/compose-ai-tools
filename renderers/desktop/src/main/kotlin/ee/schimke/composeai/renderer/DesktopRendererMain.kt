@@ -34,7 +34,6 @@ import javax.imageio.ImageIO
 import kotlin.system.exitProcess
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import org.jetbrains.skia.EncodedImageFormat
 
 /**
  * Standalone entry point for rendering Compose Desktop previews to PNG.
@@ -771,12 +770,23 @@ fun main(args: Array<String>) {
       // Errors (e.g. AssertionError from a misused require) and the user
       // wants those surfaced too. We won't catch JVM-fatal throwables in
       // practice (those already terminated the JVM before we got here).
-      System.err.println("Render failed for $className.$functionName: ${e.message}")
+      System.err.println("Render failed for $className.$functionName: ${e.message}${skewNote(e)}")
       writeErrorSidecar(targetFile, className, functionName, e)
       // Continue with the next value — keep exit code 0 below.
     }
   }
 }
+
+/**
+ * The classpath note a [LinkageError] earns, and nothing else does.
+ *
+ * A missing method on a Skia/Compose class is not a fact about the preview — it is a fact about the
+ * versions the consumer resolved, and reporting only the JVM's bare signature string sends whoever
+ * reads it looking at their composable. Naming the resolved skiko and the encode signature bound
+ * against it turns the same line into the answer (compose-ai-tools#4190).
+ */
+private fun skewNote(e: Throwable): String =
+  if (e is LinkageError) " — classpath: ${SkiaPngEncoder.diagnostic}" else ""
 
 /**
  * Resolve the previews-root `data/` dir for a post-capture data producer (display filters, device
@@ -1334,8 +1344,7 @@ internal fun renderPreview(
     val image = scene.render()
 
     val pngData =
-      image.encodeToData(EncodedImageFormat.PNG)
-        ?: throw IllegalStateException("Failed to encode image to PNG")
+      image.encodePngData() ?: throw IllegalStateException("Failed to encode image to PNG")
 
     outputFile.parentFile?.mkdirs()
 
@@ -1478,8 +1487,7 @@ private fun renderLottieAsset(
     scene.render()
     val image = scene.render()
     val pngData =
-      image.encodeToData(EncodedImageFormat.PNG)
-        ?: throw IllegalStateException("Failed to encode Lottie frame to PNG")
+      image.encodePngData() ?: throw IllegalStateException("Failed to encode Lottie frame to PNG")
     outputFile.parentFile?.mkdirs()
     fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
   } finally {
@@ -1530,8 +1538,7 @@ internal fun renderSvgAsset(
     scene.render()
     val image = scene.render()
     val pngData =
-      image.encodeToData(EncodedImageFormat.PNG)
-        ?: throw IllegalStateException("Failed to encode SVG frame to PNG")
+      image.encodePngData() ?: throw IllegalStateException("Failed to encode SVG frame to PNG")
     outputFile.parentFile?.mkdirs()
     fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
   } finally {

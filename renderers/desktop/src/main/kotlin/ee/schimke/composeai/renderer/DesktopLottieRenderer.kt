@@ -15,7 +15,6 @@ import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.preview.lottie.lottieIntrinsicDurationMillis
 import java.io.File
 import kotlin.math.roundToInt
-import org.jetbrains.skia.EncodedImageFormat
 
 /** Default per-frame interval (≈25fps) for an animated Lottie capture. */
 const val DEFAULT_LOTTIE_FRAME_INTERVAL_MS: Int = 40
@@ -174,7 +173,7 @@ private fun renderSettledFrame(
   var last: ByteArray? = null
   repeat(MAX_LOTTIE_SETTLE_PASSES) {
     val bytes =
-      scene.render().encodeToData(EncodedImageFormat.PNG)?.bytes
+      scene.render().encodePngData()?.bytes
         ?: error("Failed to encode Lottie APNG frame $frameIndex to PNG")
     val stable = last?.contentEquals(bytes) == true
     val advanced = previousFrame == null || !bytes.contentEquals(previousFrame)
