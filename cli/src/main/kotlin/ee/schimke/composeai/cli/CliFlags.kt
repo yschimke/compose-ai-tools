@@ -107,6 +107,8 @@ internal object CliFlags {
       "--catalog-max-images",
       "--catalog-feed-idle-timeout",
       "--catalog-feed-cache",
+      "--catalog-cache-dir",
+      "--catalog-cache-max-bytes",
       "--theme-cache-dir",
       "--theme-cache-max-bytes",
       "--theme-optimizer-coordination-dir",

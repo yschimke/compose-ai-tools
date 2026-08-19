@@ -136,6 +136,8 @@ internal object CliFlagValidation {
             "--bundles",
             "--catalog-branch-prefix",
             "--catalog-feed-cache",
+            "--catalog-cache-dir",
+            "--catalog-cache-max-bytes",
             "--theme-cache-dir",
             "--theme-cache-max-bytes",
             "--theme-optimizer-coordination-dir",
