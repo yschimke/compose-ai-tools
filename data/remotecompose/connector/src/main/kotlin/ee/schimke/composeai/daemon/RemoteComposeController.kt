@@ -77,6 +77,13 @@ object RemoteComposeController {
    */
   @Volatile private var acceptedActionPayloads: Set<String>? = null
 
+  /**
+   * The override [set] last applied, kept so [clearSeed] can tell "this render still owns the
+   * state" from "a newer render has replaced it". Deliberately *not* snapshot state: nothing reads
+   * it from composition, and a plain field can't invalidate a pass that writes it.
+   */
+  @Volatile private var activeSeed: RemoteComposeOverride? = null
+
   /** Hooks notified whenever the named-value map or host-action buffer changes. */
   private val listeners: MutableList<() -> Unit> = CopyOnWriteArrayList()
 
@@ -228,16 +235,53 @@ object RemoteComposeController {
    * Matches `KeyboardController.seed` / `PermissionsController.set` semantics. `null` clears
    * everything (empty map / no profile / accept-all filter).
    *
+   * **Idempotent**, like [setNamedValue] / [setProfile] / [setPlayer]: when every facet already
+   * holds the requested value this writes no snapshot state and notifies no listener. That is what
+   * makes the call safe from *inside* composition, which is where [RemoteComposeOverrideExtension]
+   * applies the seed — an unconditional write there would dirty state the same pass reads and could
+   * recompose forever.
+   *
    * Does NOT clear the host-action buffer — captured events persist across overrides so a panel
    * pushing a new seed mid-session keeps the audit trail of what fired before. Use
    * [resetForNewSession] to drop both state and buffer.
    */
   fun set(override: RemoteComposeOverride?) {
-    namedValuesState.value = override?.namedValues ?: emptyMap()
-    profileState.value = override?.profile
-    playerState.value = override?.player
-    acceptedActionPayloads = override?.acceptedHostActions?.toSet()
+    // Remember the identity even when nothing changed: [clearSeed] compares against it to decide
+    // whether a disposing render still owns the state it is about to clear.
+    activeSeed = override
+    val namedValues = override?.namedValues ?: emptyMap()
+    val profile = override?.profile
+    val player = override?.player
+    val accepted = override?.acceptedHostActions?.toSet()
+    val changed =
+      namedValuesState.value != namedValues ||
+        profileState.value != profile ||
+        playerState.value != player ||
+        acceptedActionPayloads != accepted
+    if (!changed) return
+    namedValuesState.value = namedValues
+    profileState.value = profile
+    playerState.value = player
+    acceptedActionPayloads = accepted
     listeners.toList().forEach { it() }
+  }
+
+  /**
+   * Clear the seed **only if [seed] is still the one that's applied** — the on-dispose counterpart
+   * to [set] for [RemoteComposeOverrideExtension].
+   *
+   * Ordering is the whole point. The extension applies its seed *during* composition (so the first
+   * pass is seeded) but disposes through a `DisposableEffect`, whose `onDispose` runs in the
+   * **apply** phase — after the composition that already installed the *next* seed. A plain
+   * `set(null)` there would wipe the seed the pass just applied; comparing identities makes the
+   * stale render's clear a no-op and leaves the live one alone.
+   *
+   * A render disposing while it still owns the state clears it as before, so a preview leaving the
+   * tree doesn't leak its named values into the next one.
+   */
+  fun clearSeed(seed: RemoteComposeOverride?) {
+    if (activeSeed != seed) return
+    set(null)
   }
 
   /**
@@ -321,6 +365,7 @@ object RemoteComposeController {
     declarationsState.value = emptyMap()
     activePreviewId = null
     acceptedActionPayloads = null
+    activeSeed = null
     bridgeForwarder?.reset(scope)
   }
 

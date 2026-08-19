@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
@@ -236,15 +237,47 @@ fun RemoteHostAction.toHostAction(): Action = hostAction(payload.rs, handlerId.r
  * Lifecycle:
  *
  * * On enter — [RemoteComposeController.set] is called with the seed (clears the map / profile when
- *   null). `DisposableEffect(seed)` re-runs only when the override identity changes, so a
+ *   null) **during composition, ahead of `content()`**, keyed on the override identity so a
  *   subsequent `renderNow.overrides.remoteCompose` with the same shape doesn't churn.
  * * On dispose — clears only the seed (named values / profile / accepted-action filter) via
- *   [RemoteComposeController.set]`(null)`, **not** the recorded declarations or the sandbox bridge.
+ *   [RemoteComposeController.clearSeed], **not** the recorded declarations or the sandbox bridge.
  *   On Android the Compose test rule disposes the activity *before* `JsonRpcServer` calls
  *   [RemoteComposeDataProductRegistry.onRender] → `declarationsFor`, so resetting the bridge here
  *   would wipe the knobs before the host snapshots them. Declarations drop at the *next* render's
  *   start via [RemoteComposeController.clearDeclarations] (after the host captured this render).
- *   Mirrors `PreviewOverridesOverrideExtension`'s `onDispose { set(null) }`.
+ *   Mirrors `PreviewOverridesOverrideExtension`'s `onDispose { set(null) }`, with the identity
+ *   guard the earlier apply phase requires (below).
+ *
+ * **The seed is applied during composition, not from the [DisposableEffect]** — the same fix
+ * `PreviewOverridesOverrideExtension` carries for the plain-Compose knobs, and the same reason
+ * `PermissionsOverrideExtension` seeds from its constructor. A `DisposableEffect` block runs
+ * *after* the composition pass that registered it, so seeding there left the **first** pass reading
+ * the previous render's values (or none) and only corrected them on the recomposition the snapshot
+ * write triggered. A named value read straight into the composition survives that — it re-reads on
+ * the recomposition — which is why the bug hid. A value captured by a **keyless `remember`** does
+ * not: the initializer runs once, on the first pass, and keeps what it saw. Nor does an animated
+ * one: it takes its initial value from the first pass and *animates* toward the late seed, so a
+ * render that captures a frame or two publishes the value the seed was meant to replace. Those are
+ * issues #4209 / #4210 on the plain-Compose side; here the same shape would silently drop the
+ * `rc.<role>=color:…` seeds `ServeThemeReplay.expand` produces for a replayed themed preview.
+ *
+ * Two differences from the plain-Compose sibling make this more than a moved line, and both are why
+ * [RemoteComposeController] grew API for it:
+ *
+ * 1. [RemoteComposeController.set] used to write its snapshot state unconditionally, which from
+ *    inside composition would dirty state the same pass reads. It now returns early when every
+ *    facet already holds the requested value.
+ * 2. The seed shares the named-value map with [RemoteComposeHost.setNamedValue], which user code
+ *    calls from inside a `RemotePreview` block *during composition* — and which
+ *    `interactive/setRemoteCompose` uses for live single-value edits. Re-applying the seed on every
+ *    recomposition would clobber those write-backs (and ping-pong with user code that rewrites on
+ *    each pass), so the seed is applied through a `remember(seed)` — once per override identity,
+ *    exactly the cadence the old `DisposableEffect(seed)` had, just a phase earlier.
+ *
+ * Because the apply moved ahead of the dispose, the on-dispose clear can no longer be a blind
+ * `set(null)`: when the override changes, the new seed lands during composition and only *then*
+ * does the old effect's `onDispose` run. [RemoteComposeController.clearSeed] compares identities so
+ * the stale render's clear is a no-op.
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the composition local is in place before the
  * user-environment phase reaches preview content — `RemotePreview` blocks composed by user code see
@@ -271,8 +304,16 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
     // Plain call (not a SideEffect) so it runs during composition, ahead of any `named*` read in
     // `content()`. Mirrors PreviewOverridesOverrideExtension.
     RemoteComposeController.beginRender(context.previewId)
+    // Seed here, not from the DisposableEffect below: a `remember` calculation runs *during*
+    // composition, ahead of every `named*` read in `content()`, so the very first pass sees the
+    // daemon's values. Seeding from the effect left that pass unseeded and only fixed it on a
+    // recomposition, which a keyless `remember` never sees and an in-flight animation resolves the
+    // wrong way. Keyed on `seed` rather than called plainly (the plain-Compose sibling's shape)
+    // because this controller's named-value map is also written back by user code's
+    // `setNamedValue` during composition — re-applying the seed every pass would clobber those.
+    // See the class KDoc.
+    remember(seed) { RemoteComposeController.set(seed) }
     DisposableEffect(seed) {
-      RemoteComposeController.set(seed)
       // Clear declarations at render start (mirrors PreviewOverridesOverrideExtension): a held
       // session re-rendering with a shrunk knob set must not carry stale controls. A
       // DisposableEffect
@@ -282,8 +323,9 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
       RemoteComposeController.clearDeclarations()
       // Dispose clears only the seed — NOT declarations or the bridge — so the host's post-dispose
       // onRender snapshot still sees this render's knobs (see the lifecycle KDoc above). Mirrors
-      // PreviewOverridesOverrideExtension's `onDispose { set(null) }`.
-      onDispose { RemoteComposeController.set(null) }
+      // PreviewOverridesOverrideExtension's `onDispose { set(null) }`, but identity-guarded: the
+      // next render's seed is already applied by the time this runs when the override changed.
+      onDispose { RemoteComposeController.clearSeed(seed) }
     }
     CompositionLocalProvider(LocalRemoteComposeHost provides ControllerRemoteComposeHost) {
       content()
