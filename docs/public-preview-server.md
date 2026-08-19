@@ -2530,7 +2530,18 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    back to baked PNGs (`livebundle-unavailable`), or — when the missing class is only linked at
    render time rather than at daemon bootstrap — every render fails with `NoClassDefFoundError`
    while the daemon itself stays up. Only list repos you trust; the server fetches
-   artifacts from them when resolving a trusted catalog's live bundle. Both backends are supported
+   artifacts from them when resolving a trusted catalog's live bundle.
+   **Since schema v9 a bundle carries its own repository list** (`BundleManifest.repositories` —
+   the extra repos its producing build declared), consulted after `--extra-maven-repos`, so a
+   catalog whose deps live elsewhere no longer needs the box reconfigured to match it. That is what
+   `remote-m3` needed: its whole Remote Compose runtime resolves from a pinned androidx.dev
+   **snapshot** build, and a `-SNAPSHOT` coordinate was doubly unreachable — not declared anywhere
+   the box knew about, and constructed as `<artifact>-<version>-SNAPSHOT.<ext>`, which no real
+   snapshot repo serves (they publish the timestamped `<artifact>-<version>-<yyyyMMdd.HHmmss>-<n>`
+   name via the version directory's `maven-metadata.xml`). Both are fixed; issues #4259 / #4265.
+   When coordinates still don't resolve, the count and the list are logged at materialization and
+   appended to the render circuit breaker's reason, so the `409` a dead lane answers with names the
+   unresolved artifacts instead of only the class the JVM couldn't find. Both backends are supported
    ([`ServeBundleDaemon.materialize`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)):
    a **desktop** bundle spawns the Skiko desktop daemon, and an **android** bundle spawns the
    Robolectric daemon **on a box that carries the Android sidecar + SDK** — the prebuilt `deploy/image`

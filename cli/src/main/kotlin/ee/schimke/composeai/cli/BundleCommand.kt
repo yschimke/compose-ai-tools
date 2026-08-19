@@ -1976,6 +1976,13 @@ internal object BundleReader {
     val externalResources: List<ExternalResource> = emptyList(),
     /** Whole classpath entries supplied by the sibling content-addressed pool. */
     val externalClasspath: List<ExternalClasspath> = emptyList(),
+    /**
+     * v9+: extra Maven repository base URLs (beyond Maven Central / Google Maven) needed to
+     * re-resolve this bundle's [ClasspathEntry.Maven] coordinates — a JitPack fork, an internal
+     * mirror, an androidx.dev snapshot build. Empty on a pre-v9 bundle and on any module whose deps
+     * all live on the two defaults. See `BundleManifest.repositories` in `PreviewBundleFormat.kt`.
+     */
+    val repositories: List<String> = emptyList(),
   )
 
   /** v8 mirror of `BundleExternalResource` in `PreviewBundleFormat.kt`. */

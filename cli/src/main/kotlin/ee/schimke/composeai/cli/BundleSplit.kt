@@ -414,6 +414,11 @@ private fun perPreviewManifest(
       "coverPreviewId" -> put(key, JsonPrimitive(id))
       // View-only carries no re-render classpath, so record that honestly.
       "classpath" -> put(key, if (fullMode) value else JsonArray(emptyList()))
+      // (v9) The repositories exist to re-resolve `classpath` coordinates. A FULL split keeps them
+      // — that is the live lane a per-preview bundle serves, and dropping them is what leaves the
+      // daemon on an incomplete classpath. A view-only bundle has no coordinates to resolve, so
+      // carrying URLs would advertise a lane it doesn't have.
+      "repositories" -> if (fullMode) put(key, value)
       "resolution" -> put(key, if (fullMode) value else JsonPrimitive("view-only"))
       // The Android app-resource carriage rides the FULL re-render set (the `android/` entries
       // copied above); a VIEW_ONLY bundle ships none of it, so drop the manifest pointer too
