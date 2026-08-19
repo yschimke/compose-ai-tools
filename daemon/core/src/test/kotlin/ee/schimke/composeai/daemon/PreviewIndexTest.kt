@@ -486,6 +486,100 @@ class PreviewIndexTest {
     }
   }
 
+  /**
+   * `@SettledPreview` has to reach the daemon too, or a live `compose-preview serve` frame shows
+   * the empty container the batch render stopped publishing — the exact disagreement issue #4202 is
+   * about, moved one lane over.
+   */
+  @Test
+  fun `staticSettleFor resolves the settle window from captures`() {
+    val tmp = Files.createTempFile("previews-settle", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "previews": [
+          {
+            "id": "AutoPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Auto",
+            "captures": [
+              {
+                "renderOutput": "renders/Auto.png",
+                "settle": { "afterMs": 0, "maxMs": 1000 }
+              }
+            ]
+          },
+          {
+            "id": "ExactPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Exact",
+            "captures": [
+              {
+                "renderOutput": "renders/Exact.png",
+                "settle": { "afterMs": 600, "maxMs": 1000 }
+              }
+            ]
+          },
+          {
+            "id": "PlainPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Plain",
+            "captures": [{ "renderOutput": "renders/Plain.png" }]
+          },
+          {
+            "id": "FanoutPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Fanout",
+            "captures": [
+              {
+                "renderOutput": "renders/Fanout_FOCUS_0.png",
+                "settle": { "afterMs": 0, "maxMs": 800 }
+              },
+              {
+                "renderOutput": "renders/Fanout_FOCUS_1.png",
+                "settle": { "afterMs": 0, "maxMs": 800 }
+              }
+            ]
+          },
+          {
+            "id": "SplitPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Split",
+            "captures": [
+              {
+                "renderOutput": "renders/Split_a.png",
+                "settle": { "afterMs": 0, "maxMs": 800 }
+              },
+              {
+                "renderOutput": "renders/Split_b.png",
+                "settle": { "afterMs": 300, "maxMs": 800 }
+              }
+            ]
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    try {
+      val index = PreviewIndex.loadFromFile(tmp)
+      // Auto mode: the window the daemon must advance is the bound.
+      assertEquals(1000, index.staticSettleFor("AutoPreview_1")?.windowMs)
+      // Exact mode: the coordinate wins over the bound.
+      assertEquals(600, index.staticSettleFor("ExactPreview_1")?.windowMs)
+      assertNull(index.staticSettleFor("PlainPreview_1"))
+      assertNull(index.staticSettleFor("DoesNotExist"))
+      // A fan-out repeats the SAME settle across captures — unanimous, so it resolves.
+      assertEquals(800, index.staticSettleFor("FanoutPreview_1")?.windowMs)
+      // Two different settles under one id: the daemon renders one frame per id and has no honest
+      // way to pick, so it declines rather than guessing.
+      assertNull(index.staticSettleFor("SplitPreview_1"))
+    } finally {
+      Files.deleteIfExists(tmp)
+    }
+  }
+
   @Test
   fun `loadFromFile ignores unknown dataProducts fields so plugin-side schema additions don't break`() {
     val tmp = Files.createTempFile("previews-scroll-extra", ".json")

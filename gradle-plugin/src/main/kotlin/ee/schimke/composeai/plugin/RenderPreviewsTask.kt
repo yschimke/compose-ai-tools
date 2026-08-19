@@ -599,6 +599,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           interaction = capture.interaction,
           focus = capture.focus,
           hover = capture.hover,
+          settle = capture.settle,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
           lane = lane,
         )
@@ -643,6 +644,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     interaction: ee.schimke.composeai.discovery.InteractionCapture? = null,
     focus: FocusCapture? = null,
     hover: ee.schimke.composeai.discovery.HoverCapture? = null,
+    settle: ee.schimke.composeai.discovery.SettleCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
     lane: RenderLane,
   ) {
@@ -659,6 +661,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         interaction = interaction,
         focus = focus,
         hover = hover,
+        settle = settle,
         fanoutSiblingStems = fanoutSiblingStems,
       )
     val overridesSeed =
@@ -894,6 +897,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     interaction: ee.schimke.composeai.discovery.InteractionCapture?,
     focus: FocusCapture?,
     hover: ee.schimke.composeai.discovery.HoverCapture?,
+    settle: ee.schimke.composeai.discovery.SettleCapture?,
     fanoutSiblingStems: List<String>,
   ): List<String> =
     listOf(
@@ -1024,6 +1028,13 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // historical GIF, so an older plugin driving a newer renderer publishes exactly the bytes it
       // did before the format axis existed.
       (animation?.format?.name).orEmpty(),
+      // 48th/49th — `@SettledPreview` (issue #4202). Desktop-only, like the focus and interaction
+      // tails above: the Android lane reads the settle off the manifest it already loads. `-1`
+      // means "no settle intent", which is what every preview without the annotation sends, so
+      // those captures stay byte-identical on the untouched two-`render()` path — and an older
+      // renderer that never reads these positions ignores them entirely.
+      (settle?.afterMs ?: -1).toString(),
+      (settle?.maxMs ?: 0).toString(),
     )
 }
 

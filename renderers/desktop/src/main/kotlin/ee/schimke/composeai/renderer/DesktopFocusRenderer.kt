@@ -165,6 +165,18 @@ fun renderFocusPreview(
   minHeightPx: Int? = null,
   maxWidthPx: Int? = null,
   maxHeightPx: Int? = null,
+  /**
+   * `@SettledPreview`'s window, in milliseconds, or `0` for none. Discovery attaches a settle to a
+   * focused *still* row just as it does to a plain one, so a focused capture of a component whose
+   * content arrives on a timer needs the same wait — without it the focus walk runs against an
+   * empty container and the capture publishes one.
+   *
+   * Spent on `mainClock` before the walk rather than after it: content that has not arrived yet has
+   * nothing focusable in it, so settling first is what gives the walk something to land on. This
+   * path drives a real `mainClock`, so `delay` is already on virtual time and no
+   * [DesktopSettleClock] is needed here.
+   */
+  settleWindowMs: Long = 0L,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
   require(focus != null || hoverIndex != null) { "focus or hover intent required" }
@@ -285,6 +297,9 @@ fun renderFocusPreview(
       // `scene.render()` calls on the single-frame path.
       mainClock.advanceTimeByFrame()
       mainClock.advanceTimeByFrame()
+
+      // `@SettledPreview` on a focused capture — see [settleWindowMs].
+      if (settleWindowMs > 0) mainClock.advanceTimeBy(settleWindowMs)
 
       // `@ScrollingPreview(END)` + `@FocusedPreview` on one capture: land the scroll first, then
       // walk focus in the same scene. Order matters — focus first would be undone by the scroll

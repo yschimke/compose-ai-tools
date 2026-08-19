@@ -1043,6 +1043,21 @@ abstract class RobolectricRenderTestBase(
     val advanceTimeMillis: Long?
     val scroll: ScrollCapture?
     val outputFile: File
+
+    /**
+     * Virtual-time coordinate `@SettledPreview` asks this job to capture at, or `null` when it
+     * carries no settle and the default [CAPTURE_ADVANCE_MS] applies.
+     *
+     * Exact mode (`afterMs > 0`) **replaces** the default advance rather than extending it, so the
+     * annotation's number means the same instant on both backends — the desktop renderer captures
+     * at exactly `afterMs`, and adding the default 32ms here would put Android 32ms further along a
+     * tween than desktop for the same source. Auto mode has no coordinate to honour, only a bound
+     * to walk, so it keeps the default advance underneath it.
+     *
+     * Lives on the job so the ordering below and the advance itself read one definition.
+     */
+    val settleTargetMs: Long?
+      get() = null
   }
 
   private data class CaptureRenderJob(
@@ -1051,6 +1066,8 @@ abstract class RobolectricRenderTestBase(
   ) : RenderJob {
     override val advanceTimeMillis: Long? = capture.advanceTimeMillis
     override val scroll: ScrollCapture? = capture.scroll
+    override val settleTargetMs: Long? =
+      capture.settle?.let { settleCaptureTargetMs(it.afterMs, it.maxMs, CAPTURE_ADVANCE_MS) }
   }
 
   private data class ProductRenderJob(
@@ -1553,7 +1570,12 @@ abstract class RobolectricRenderTestBase(
                 compareBy<RenderJob> {
                     if (it is CaptureRenderJob && it.capture.interaction != null) 1 else 0
                   }
-                  .thenBy { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
+                  // Then by the target each job actually advances the shared clock to, settle
+                  // window included. A `@SettledPreview` still asks for a *later* coordinate than
+                  // the default advance, so ordering it by the bare default would put its advance
+                  // ahead of a peer `advanceTimeMillis` snapshot — leaving that snapshot's target
+                  // behind the clock, which trips the ascending-order `require` below.
+                  .thenBy { it.advanceTimeMillis ?: it.settleTargetMs ?: CAPTURE_ADVANCE_MS }
                   // An animated capture consumes a time window after its target. Keep same-target
                   // still/product jobs before that window opens.
                   .thenBy { if (it is CaptureRenderJob && it.capture.animation != null) 1 else 0 }
@@ -1576,7 +1598,23 @@ abstract class RobolectricRenderTestBase(
             // taking the max keeps the require's monotonicity check
             // satisfied without forcing every consumer to thread an
             // explicit `advanceTimeMillis` through.
-            val target = job.advanceTimeMillis ?: maxOf(CAPTURE_ADVANCE_MS, currentTime)
+            // `@SettledPreview` (issue #4202): a reveal driven by
+            // `LaunchedEffect { delay(…); animateTo(…) }` — or a field whose
+            // value is written after first composition — has not arrived at
+            // `CAPTURE_ADVANCE_MS`, so the still publishes an empty container or
+            // a label sitting on top of its own value. The settle window pushes
+            // the shutter past it.
+            //
+            // Expressed as a clock *coordinate* rather than an extra advance so
+            // it's idempotent: several settled captures on one composition
+            // (a `@FocusedPreview` fan-out, say) settle once and then find
+            // themselves already past the target, instead of each paying the
+            // window again. `advanceTimeBy` dispatches a frame per 16ms step, so
+            // one call runs the reveal rather than teleporting past its start.
+            // See [RenderJob.settleTargetMs] for why exact mode replaces the
+            // default advance instead of extending it.
+            val target =
+              job.advanceTimeMillis ?: maxOf(job.settleTargetMs ?: CAPTURE_ADVANCE_MS, currentTime)
             require(target >= currentTime) {
               "Preview ${preview.id}: output advanceTimeMillis must be ascending " +
                 "(got $target after clock was at $currentTime)"
@@ -2764,6 +2802,18 @@ internal const val VISUAL_SETTLE_FRAME_MS = 16L
  * Whether visual settling may advance a preview's paused clock without changing another requested
  * output. Timed captures are exact snapshots, and any following job shares this same clock.
  */
+/**
+ * The paused-clock coordinate a `@SettledPreview` capture is taken at.
+ *
+ * Exact mode (`afterMs > 0`) is the coordinate itself — the annotation says "advance exactly this
+ * far, then capture", and the desktop renderer captures at exactly `afterMs`, so adding
+ * [captureAdvanceMs] on top here would put the two backends on different frames of the same tween
+ * for identical source (issue #4202 review). Auto mode has no coordinate to honour, only a bound to
+ * walk, so it keeps the default advance underneath it.
+ */
+public fun settleCaptureTargetMs(afterMs: Int, maxMs: Int, captureAdvanceMs: Long): Long =
+  if (afterMs > 0) afterMs.toLong() else captureAdvanceMs + maxMs.toLong()
+
 internal fun shouldAdvanceClockForVisualSettling(
   advanceTimeMillis: Long?,
   hasFollowingJobs: Boolean,

@@ -68,6 +68,7 @@ import ee.schimke.composeai.renderer.FontResolutionDiagnostics
 import ee.schimke.composeai.renderer.PixelSystemFontAliases
 import ee.schimke.composeai.renderer.RenderWarningsSidecar
 import ee.schimke.composeai.renderer.WearScrollSvgAssembler
+import ee.schimke.composeai.renderer.settleCaptureTargetMs
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyContextKeys
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtension
@@ -653,8 +654,31 @@ class RenderEngine(
             // `LaunchedEffect` pass; deterministic snapshot point for any infinite animation.
             // PROTOCOL.md § 5 (`renderNow.overrides.captureAdvanceMs`) — animation-heavy
             // previews can override.
+            //
+            // `@SettledPreview` widens that default so a live frame lands on the same settled
+            // state the published PNG does: the batch renderer applies the same window on top of
+            // the same base (see `RobolectricRenderTest`). An explicit `captureAdvanceMs` override
+            // still wins outright — the client asked for a coordinate, and quietly adding a window
+            // to it would make the protocol's number mean something else here than it does
+            // everywhere else.
+            // Exact mode names the coordinate to land on, so it replaces the default advance
+            // rather than extending it — otherwise the same `afterMs` would mean one instant on
+            // desktop, another 32ms later here. Auto mode has only a bound to walk, so it keeps
+            // the default underneath. Mirrors `RobolectricRenderTest`'s `settleTargetMs`.
+            val settleTargetMs =
+              spec.previewId
+                ?.let { loadPreviewIndexLazily().staticSettleFor(it) }
+                ?.let {
+                  settleCaptureTargetMs(
+                    afterMs = it.afterMs,
+                    maxMs = it.maxMs,
+                    captureAdvanceMs = CAPTURE_ADVANCE_MS,
+                  )
+                }
             trace.section("compose:advanceClock") {
-              rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+              rule.mainClock.advanceTimeBy(
+                spec.captureAdvanceMs ?: settleTargetMs ?: CAPTURE_ADVANCE_MS
+              )
             }
 
             // `@ScrollingPreview(END)`: drive the scrollable to its content end before shooting, so

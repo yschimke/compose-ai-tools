@@ -219,6 +219,18 @@ enum class GlimmerEnvironmentCapture {
   VeniceCanalCats,
 }
 
+/**
+ * Renderer-side mirror of the plugin's `SettleCapture` — `@SettledPreview`'s pre-capture settle
+ * window. [afterMs] `> 0` is an exact advance; `0` asks for auto (advance until quiescent, bounded
+ * by [maxMs]).
+ */
+@Serializable
+data class SettleCapture(val afterMs: Int = 0, val maxMs: Int = 1000) {
+  /** The longest virtual-time window this settle can consume, whichever mode it is in. */
+  val windowMs: Int
+    get() = if (afterMs > 0) afterMs else maxMs
+}
+
 /** Renderer-side mirror of the plugin's `GestureHintCapture`. */
 @Serializable data class GestureHintCapture(val showHints: Boolean = true)
 
@@ -381,6 +393,12 @@ data class RenderPreviewCapture(
   val interaction: InteractionCapture? = null,
   val ambient: AmbientCapture? = null,
   val glimmerEnvironment: GlimmerEnvironmentCapture? = null,
+  /**
+   * `null` → capture at the renderer's default advance. Set when the preview carries
+   * `@SettledPreview`: the paused clock is advanced by this window before the still is captured, so
+   * a `LaunchedEffect`-driven reveal lands before the shutter rather than after it.
+   */
+  val settle: SettleCapture? = null,
   val gestureHint: GestureHintCapture? = null,
   /**
    * `null` → no runtime-permission override. Set when the preview carries `@PermissionPreview`.

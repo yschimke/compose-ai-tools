@@ -304,6 +304,13 @@ fun main(args: Array<String>) {
   // 47th (index 46) — `@AnimatedPreview(format = …)`. Absent / unrecognised keeps the historical
   // GIF, so an older plugin driving a newer renderer publishes exactly the bytes it always did.
   val animFormat = motionFormatArg(args.getOrNull(46), default = MotionFormatKind.GIF)
+  // 48th/49th (index 47/48) — `@SettledPreview` (issue #4202). `-1` (and a missing arg, which
+  // decodes to the same) means the annotation is absent, so every preview an older plugin sends
+  // stays on the untouched two-`render()` still path and keeps its bytes. `0` is the auto
+  // sentinel — advance until the composition quiesces, bounded by the 49th — and a positive value
+  // is the exact coordinate to capture at.
+  val settleAfterMs = args.getOrNull(47)?.toIntOrNull()?.coerceAtLeast(-1) ?: -1
+  val settleMaxMs = args.getOrNull(48)?.toIntOrNull()?.coerceIn(0, MAX_SETTLE_MS) ?: 0
   val focusIntent: DesktopFocusIntent? =
     when {
       focusDirections.isNotEmpty() ->
@@ -599,6 +606,11 @@ fun main(args: Array<String>) {
             minHeightPx = minHeightPx,
             maxWidthPx = maxWidthPx,
             maxHeightPx = maxHeightPx,
+            // Discovery attaches a settle to a focused still just as it does to a plain one, so
+            // the succeeding focus path has to honour it too — not only the fallback below.
+            settleWindowMs =
+              if (settleAfterMs < 0) 0L
+              else if (settleAfterMs > 0) settleAfterMs.toLong() else settleMaxMs.toLong(),
           )
         if (!didCapture) {
           renderPreview(
@@ -623,6 +635,8 @@ fun main(args: Array<String>) {
             minHeightPx = minHeightPx,
             maxWidthPx = maxWidthPx,
             maxHeightPx = maxHeightPx,
+            settleAfterMs = settleAfterMs,
+            settleMaxMs = settleMaxMs,
           )
         }
       } else if (scrollDispatchMode != null) {
@@ -695,6 +709,8 @@ fun main(args: Array<String>) {
             minHeightPx = minHeightPx,
             maxWidthPx = maxWidthPx,
             maxHeightPx = maxHeightPx,
+            settleAfterMs = settleAfterMs,
+            settleMaxMs = settleMaxMs,
           )
         }
       } else {
@@ -720,6 +736,8 @@ fun main(args: Array<String>) {
           minHeightPx = minHeightPx,
           maxWidthPx = maxWidthPx,
           maxHeightPx = maxHeightPx,
+          settleAfterMs = settleAfterMs,
+          settleMaxMs = settleMaxMs,
         )
       }
       // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
@@ -1186,6 +1204,11 @@ internal fun renderPreview(
   minHeightPx: Int? = null,
   maxWidthPx: Int? = null,
   maxHeightPx: Int? = null,
+  // `@SettledPreview` (issue #4202). `-1` = the annotation is absent, and the render stays on the
+  // untouched two-`render()` path. `0` = auto (advance until quiescent, bounded by [settleMaxMs]);
+  // a positive value is the exact virtual-time coordinate to capture at.
+  settleAfterMs: Int = -1,
+  settleMaxMs: Int = 0,
   fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
@@ -1239,10 +1262,28 @@ internal fun renderPreview(
     val sceneSize = composePreviewSceneSize(widthPx, heightPx, wrapWidth, wrapHeight, sizeBounds)
     val sceneWidthPx = sceneSize.width
     val sceneHeightPx = sceneSize.height
+    // A settled capture needs `delay` on the same virtual timeline as the frame clock, which the
+    // scene's default coroutine context does not give it — see [DesktopSettleClock]. Built only
+    // when a settle was actually requested so every other still keeps the default context, and its
+    // bytes, exactly as they were.
+    // A zero-length window is "no settle", not "settle for no time": discovery floors both knobs
+    // at a frame, so only a hand-built argv can produce one, and falling through keeps that case on
+    // the ordinary two-`render()` path instead of capturing a single frame at nanoTime zero.
+    val settleWindowMs = if (settleAfterMs > 0) settleAfterMs else settleMaxMs
+    val settleRequested = settleAfterMs >= 0 && settleWindowMs > 0
+    val settleClock = if (settleRequested) DesktopSettleClock() else null
     val scene =
-      ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity).also {
-        sceneToRelease = it
-      }
+      (if (settleClock != null) {
+          ImageComposeScene(
+            width = sceneWidthPx,
+            height = sceneHeightPx,
+            density = sceneDensity,
+            coroutineContext = settleClock,
+          )
+        } else {
+          ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity)
+        })
+        .also { sceneToRelease = it }
 
     // Measured content size in pixels, captured from the wrapping Box via
     // onGloballyPositioned. Only read when at least one axis wraps.
@@ -1339,9 +1380,24 @@ internal fun renderPreview(
       }
     }
 
-    // Render two frames for animations/effects to settle
-    scene.render()
-    val image = scene.render()
+    val image =
+      if (settleClock != null) {
+        // Walk the settle window first, then capture at the coordinate the walk stopped on — the
+        // same nanoTime, so the captured frame is the one the quiescence check passed on rather
+        // than a fresh frame that could restart a paused-and-resumed animation.
+        val settledAtMs =
+          settleScene(
+            scene = scene,
+            clock = settleClock,
+            windowMs = settleWindowMs,
+            autoDetect = settleAfterMs == 0,
+          )
+        scene.render(settledAtMs * 1_000_000L)
+      } else {
+        // Render two frames for animations/effects to settle.
+        scene.render()
+        scene.render()
+      }
 
     val pngData =
       image.encodePngData() ?: throw IllegalStateException("Failed to encode image to PNG")
