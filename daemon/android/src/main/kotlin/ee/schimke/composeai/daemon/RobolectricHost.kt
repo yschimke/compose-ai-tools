@@ -1872,32 +1872,34 @@ open class RobolectricHost(
       mergePreviewOverrides(
         base =
           PreviewOverrideBaseSpec(
-            widthPx = base.widthPx,
-            heightPx = base.heightPx,
-            density = base.density,
-            device = base.device,
-            localeTag = base.localeTag,
-            fontScale = base.fontScale,
-            uiMode =
-              when (base.uiMode) {
-                RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
-                RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
-                null -> null
-              },
-            orientation =
-              when (base.orientation) {
-                RenderSpec.SpecOrientation.PORTRAIT ->
-                  ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
-                RenderSpec.SpecOrientation.LANDSCAPE ->
-                  ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
-                null -> null
-              },
-            inspectionMode = base.inspectionMode,
-            material3Theme = base.overrides?.material3Theme,
-            wallpaper = base.overrides?.wallpaper,
-            ambient = base.overrides?.ambient,
-            gestures = base.overrides?.gestures,
-          ),
+              widthPx = base.widthPx,
+              heightPx = base.heightPx,
+              density = base.density,
+              device = base.device,
+              localeTag = base.localeTag,
+              fontScale = base.fontScale,
+              uiMode =
+                when (base.uiMode) {
+                  RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
+                  RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
+                  null -> null
+                },
+              orientation =
+                when (base.orientation) {
+                  RenderSpec.SpecOrientation.PORTRAIT ->
+                    ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
+                  RenderSpec.SpecOrientation.LANDSCAPE ->
+                    ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
+                  null -> null
+                },
+              inspectionMode = base.inspectionMode,
+            )
+            // Every extension-consumed field the resolved spec already carries — the baked
+            // `@OverrideVariant` seed above all, but also focus / talkBack / permissions / … —
+            // becomes the floor the per-render overlay lands on. Copied wholesale rather than
+            // named here, so this adapter can't fall behind the protocol (see
+            // `withCarriedOverrides`; yschimke/wear-m3-catalog#33).
+            .withCarriedOverrides(base.overrides),
         overrides = overrides,
       )
     return base.copy(
