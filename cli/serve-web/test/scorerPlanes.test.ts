@@ -13,12 +13,16 @@
 
 import assert from "node:assert/strict";
 import {
-    directedMismatch,
+    contentMask,
+    directedCosts,
     edgeMask,
+    meanCost,
+    pixelCost,
     scorePlanes,
 } from "../src/scorer/planes.js";
 import {
     EDGE_GRADIENT_THRESHOLD,
+    FULL_DIFFERENCE_DELTA,
     LUMA_TOLERANCE,
 } from "../src/scorer/tuning.js";
 
@@ -31,6 +35,24 @@ function plane(rows: string[]) {
         .split("")
         .map((c) => (c === "#" ? 0 : 255));
     return { values, width, height };
+}
+
+/** The same grid centred on a larger sheet of paper — how much blank canvas surrounds a mark. */
+function pad(rows: string[], width: number, height: number): string[] {
+    const insetX = Math.floor((width - rows[0].length) / 2);
+    const insetY = Math.floor((height - rows.length) / 2);
+    const out: string[] = [];
+    for (let y = 0; y < height; y++) {
+        const row = rows[y - insetY];
+        out.push(
+            row === undefined
+                ? ".".repeat(width)
+                : ".".repeat(insetX) +
+                      row +
+                      ".".repeat(width - insetX - row.length),
+        );
+    }
+    return out;
 }
 
 const noYield = async () => {};
@@ -78,6 +100,60 @@ describe("edgeMask", () => {
         const subtle = [0, EDGE_GRADIENT_THRESHOLD - 1, 0];
         assert.equal(
             edgeMask(subtle, width, 1).reduce((a, b) => a + b, 0),
+            0,
+        );
+    });
+});
+
+describe("pixelCost", () => {
+    it("is free inside the tolerance and full price from a clearly different tone", () => {
+        assert.equal(pixelCost(0), 0);
+        assert.equal(pixelCost(LUMA_TOLERANCE), 0);
+        assert.equal(pixelCost(FULL_DIFFERENCE_DELTA), 1);
+        assert.equal(pixelCost(255), 1);
+        // Ramping between them, so a fill that drifted a shade still reads as mostly right.
+        const half = (FULL_DIFFERENCE_DELTA + LUMA_TOLERANCE) / 2;
+        assert.ok(Math.abs(pixelCost(half) - 0.5) < 1e-6, `${pixelCost(half)}`);
+    });
+
+    it("charges a mid-tone mark on paper as heavily as a black one", () => {
+        // The old cost divided the gap by 255, so a mark whose own tone was mid-grey cost half of
+        // what an identical black mark cost — the metric graded the ink rather than the absence.
+        assert.equal(
+            pixelCost(255 - FULL_DIFFERENCE_DELTA + 1),
+            pixelCost(255),
+        );
+    });
+});
+
+describe("contentMask", () => {
+    it("takes both frames' detail, widened by one pixel, and nothing else", () => {
+        const left = plane(["....", ".##.", ".##.", "...."]);
+        const right = plane(["....", "....", "....", "...."]);
+        const mask = contentMask(
+            edgeMask(left.values, left.width, left.height),
+            edgeMask(right.values, right.width, right.height),
+            left.width,
+            left.height,
+        );
+        // The mark, the ring of paper its step is visible from, and the widening — which on a 4x4
+        // reaches every pixel. A blank partner contributes nothing, which is the point: an empty
+        // frame is not evidence about anything.
+        assert.equal(
+            mask.reduce((a: number, b: number) => a + b, 0),
+            16,
+        );
+
+        const blank = plane(["....", "....", "....", "...."]);
+        const blankEdges = edgeMask(blank.values, blank.width, blank.height);
+        const empty = contentMask(
+            blankEdges,
+            blankEdges,
+            blank.width,
+            blank.height,
+        );
+        assert.equal(
+            empty.reduce((a: number, b: number) => a + b, 0),
             0,
         );
     });
@@ -149,23 +225,27 @@ describe("scorePlanes", () => {
         const right = plane(EXTRA);
         const leftEdges = edgeMask(left.values, left.width, left.height);
         const rightEdges = edgeMask(right.values, right.width, right.height);
-        const forwards = await directedMismatch(
-            left.values,
-            right.values,
-            leftEdges,
-            rightEdges,
-            left.width,
-            left.height,
-            noYield,
+        const forwards = meanCost(
+            await directedCosts(
+                left.values,
+                right.values,
+                leftEdges,
+                rightEdges,
+                left.width,
+                left.height,
+                noYield,
+            ),
         );
-        const backwards = await directedMismatch(
-            right.values,
-            left.values,
-            rightEdges,
-            leftEdges,
-            right.width,
-            right.height,
-            noYield,
+        const backwards = meanCost(
+            await directedCosts(
+                right.values,
+                left.values,
+                rightEdges,
+                leftEdges,
+                right.width,
+                right.height,
+                noYield,
+            ),
         );
         assert.ok(
             forwards > backwards * 2,
@@ -177,7 +257,42 @@ describe("scorePlanes", () => {
         );
     });
 
+    it("does not let blank canvas dilute a missing mark — issue #4290", async () => {
+        // THE bug this metric was rebuilt for. The cost used to be averaged over every pixel of the
+        // canvas, so the same absent mark answered 85.7% on a 9x7 frame, 97.1% on 21x15 and 99.3%
+        // on 41x31 — the number described how much empty room the component was rendered into. Two
+        // watch screens that shared nothing but their black background scored 93%.
+        //
+        // Measured over content, the answer is the same one three times, because the finding is the
+        // same finding three times.
+        const sizes: Array<[number, number]> = [
+            [9, 7],
+            [21, 15],
+            [41, 31],
+        ];
+        const scores = [];
+        for (const [width, height] of sizes) {
+            scores.push(
+                await score(
+                    pad(MARK, width, height),
+                    pad(ABSENT, width, height),
+                ),
+            );
+        }
+        for (const scored of scores) {
+            assert.equal(scored, scores[0], `${scores.join(" / ")}`);
+            assert.ok(scored < 90, `a missing mark scored ${scored}`);
+        }
+    });
+
+    it("still answers 100 for two frames that are blank together", async () => {
+        // No content and no disagreement is a match by definition — and, less philosophically, the
+        // only answer that is not a division by zero.
+        assert.equal(await score(ABSENT, ABSENT), 100);
+    });
+
     it("is symmetric — swapping the two sides answers the same number", async () => {
+        "";
         assert.equal(await score(MARK, SHIFTED), await score(SHIFTED, MARK));
     });
 

@@ -68,15 +68,21 @@ async function scorePairs(page) {
             card(c, 40, 30, w - 80, h - 60);
         });
 
-        // Both near-empty: one small mark each, plus a faint full-bleed hairline on the reference
-        // that makes its content box the whole canvas while the preview's is a few percent of it.
+        // Both near-empty: the SAME small mark in both, plus a faint full-bleed hairline on the
+        // reference that makes its content box the whole canvas while the preview's is a few
+        // percent of it. The mark used to sit 16px away in the reference, back when the score was
+        // averaged over the canvas and a blank page could absorb that; the pair still read as a
+        // match. It no longer can — a shifted mark on an otherwise empty page IS the whole picture
+        // disagreeing — and the shift was never what this fixture is about. What it is about is the
+        // crop: box the preview to its few percent and stretch that across the reference and two
+        // agreeing captures report a total mismatch, which is what the fallback exists to stop.
         const emptyReference = make(400, 320, (c, w, h) => {
             c.fillStyle = "#fff";
             c.fillRect(0, 0, w, h);
             c.strokeStyle = "#eee";
             c.strokeRect(0.5, 0.5, w - 1, h - 1);
             c.fillStyle = "#111";
-            c.fillRect(4, 6, 90, 16);
+            c.fillRect(20, 22, 90, 16);
         });
         const emptyPreview = make(400, 320, (c, w, h) => {
             c.fillStyle = "#fff";
@@ -157,7 +163,8 @@ test.describe("format-compare · design reference scorer", () => {
     }) => {
         const { nearEmpty } = await scorePairs(page);
         // Cropping here would stretch a 90x16 mark across the whole comparison and report a total
-        // mismatch for two captures that plainly agree.
+        // mismatch for two captures that plainly agree — the fallback to whole-canvas is the only
+        // reason this pair can score at all.
         expect(nearEmpty.percent).toBeGreaterThan(90);
         // The framing difference is real and still reported, just kept out of the match score.
         expect(nearEmpty.geometry).toBeGreaterThan(50);

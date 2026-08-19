@@ -20,11 +20,14 @@ import {
 
 describe("matchBand", () => {
     it("colours the chip by how close the pair is", () => {
+        // 95/85, not the 99.5/97 these bands used to carry: the score they read is measured over
+        // drawn content now, so a real catalog spreads across the range instead of piling into the
+        // high nineties. Mirrored in `ServeWeb.specMatchBand` and the export driver's `matchBand`.
         assert.equal(matchBand(100), "match");
-        assert.equal(matchBand(99.5), "match");
-        assert.equal(matchBand(99.49), "close");
-        assert.equal(matchBand(97), "close");
-        assert.equal(matchBand(96.99), "off");
+        assert.equal(matchBand(95), "match");
+        assert.equal(matchBand(94.99), "close");
+        assert.equal(matchBand(85), "close");
+        assert.equal(matchBand(84.99), "off");
         assert.equal(matchBand(0), "off");
     });
 });

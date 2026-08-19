@@ -1129,8 +1129,9 @@ class ServeWebTest {
   @Test
   fun `the match band colours the chip without deciding whether the number shows`() {
     // Bands are read off the distribution a real catalog produces, not off round numbers: across
-    // m3-catalog's 120 published pairs the median is 99.70%, so `match` is the quiet majority.
-    listOf(100.0 to "match", 99.5 to "match", 99.49 to "close", 97.0 to "close", 96.99 to "off")
+    // wear-m3-catalog's 186 published pairs the median is 91, scored over drawn content rather
+    // than over the whole canvas (issue #4290), so `match` is the quiet majority from 95 up.
+    listOf(100.0 to "match", 95.0 to "match", 94.99 to "close", 85.0 to "close", 84.99 to "off")
       .forEach { (percent, band) ->
         val html = chipHtmlFor(DesignReferenceMatch(percent = percent))
         assertTrue(

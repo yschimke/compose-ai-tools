@@ -17,9 +17,19 @@ export { GEOMETRY_REPORT_THRESHOLD };
 /** How close counts as which. Mirrors `ServeWeb.specMatchBand` and the export driver's `matchBand`. */
 export type MatchBand = "match" | "close" | "off";
 
+/**
+ * The bands read the distribution a real catalog produces, so they moved when the metric did.
+ *
+ * They used to be 99.5 / 97, taken over a score that averaged its cost across every pixel of the
+ * canvas — which put nearly every pair in the high nineties whatever it looked like. Now that the
+ * score is measured over drawn content (`scorer/planes.ts`), wear-m3-catalog's 186 published pairs
+ * run from 4% to 100% with a median of 91: 63 sit at or above 95, and the 59 below 85 are the
+ * divergences a reader would name on sight — a 4% scroll indicator, a 52% picker, a 70% stepper
+ * that lost its button fills.
+ */
 export function matchBand(percent: number): MatchBand {
-    if (percent >= 99.5) return "match";
-    if (percent >= 97) return "close";
+    if (percent >= 95) return "match";
+    if (percent >= 85) return "close";
     return "off";
 }
 

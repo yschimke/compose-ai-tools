@@ -118,17 +118,19 @@ object ServeWeb {
    *
    * Restates `matchBand` in `scripts/design-artifacts/design-reference-score.mjs`, where the number
    * is minted. The thresholds come from the distribution a real catalog produces rather than from
-   * round numbers: across m3-catalog's 120 published pairs the median is 99.70% and 72 sit at or
-   * above 99.5, so `match` is the "nothing to look at" majority, while the 8 below 97 are the
-   * genuine divergences — a 57.98% corner-radius sheet, a 72.80% colour grid, an 85.75% type scale.
+   * round numbers, so they moved with the metric (issue #4290): the score is now measured over the
+   * pixels the two frames actually drew on rather than over the whole canvas, and across
+   * wear-m3-catalog's 186 published pairs that runs 4%..100% with a median of 91. 63 sit at or
+   * above 95, and the 59 below 85 are the genuine divergences — a 4% scroll indicator, a 52%
+   * picker, a 70% stepper that lost its button fills.
    *
    * A band never decides whether the number is SHOWN, only how it is coloured, so a drift between
    * the two copies costs a hue and can never hide a finding.
    */
   private fun specMatchBand(percent: Double): String =
     when {
-      percent >= 99.5 -> "match"
-      percent >= 97.0 -> "close"
+      percent >= 95.0 -> "match"
+      percent >= 85.0 -> "close"
       else -> "off"
     }
 
@@ -7821,7 +7823,7 @@ ${captureControlsHtml().prependIndent("          ")}
         """
         <div id="cp-compare" $rootAttrs>
           <h1 class="cp-head">Format comparison${compactTrustBadge(trust)}</h1>
-          <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span>${
+          <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores measure the drawn content on a fixed backdrop</span>${
           if (rcLanes != null)
             "<span class=\"cp-sub-rc\">Every Remote Compose player side by side · pixel diffs from the published parity run</span>"
           else ""
