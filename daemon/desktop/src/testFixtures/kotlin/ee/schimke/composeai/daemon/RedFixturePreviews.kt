@@ -97,6 +97,56 @@ fun OverridableSquare() {
 }
 
 /**
+ * The same `fill` knob as [OverridableSquare], but read **through a keyless `remember`** — the
+ * shape every androidx `remember*State` factory has (`rememberTimePickerState`,
+ * `rememberDatePickerState`, …), each of which saves through a keyless `rememberSaveable` whose
+ * initializer runs once and ignores later argument changes *by design*.
+ *
+ * That makes this fixture the one that can tell "the seed arrived on the first composition pass"
+ * apart from "the seed arrived one pass late": a knob read straight into the composition (as in
+ * [OverridableSquare]) is corrected by the recomposition a late seed triggers, so it renders
+ * correctly either way; a knob captured by a keyless `remember` keeps whatever the *first* pass
+ * saw, forever. Issue #4210 is exactly this — an `@OverrideVariant` seed silently lost on the live
+ * daemon lane while the same variant's baked PNG (which seeds before composing) was right.
+ *
+ * Pinned by [OverrideIntegrationTest.namedOverrideReachesAKeylessRememberOnTheFirstComposition].
+ */
+@Composable
+fun RememberedOverridableSquare() {
+  val fill =
+    ee.schimke.composeai.overrides.previewOverrideColor("fill", default = Color(0xFFEF5350))
+  // Keyless on purpose — see the KDoc. Do not add `fill` as a key.
+  val captured = remember { fill }
+  Box(modifier = Modifier.fillMaxSize().background(captured))
+}
+
+/**
+ * The same `fill` knob as [OverridableSquare], but driving an **animated** value.
+ *
+ * The second half of the late-seed failure (#4209). An animation's initial value is captured on the
+ * first composition pass; retargeting it on a later pass starts an animation rather than jumping,
+ * and a render captures only the first frame or two — so a seed that arrives one pass late paints
+ * the *unseeded* value while reporting the seeded render. That is what drew `ToggleButton`'s
+ * unchecked container as its checked (or a bare rectangular) shape on the live lane while the baked
+ * PNG for the same preview and theme was a correct pill: the affected cells were exactly the ones
+ * whose resting shape differs from their checked shape, i.e. the ones where the shape is animated.
+ *
+ * A colour animation stands in for that shape animation because the mechanism is the property under
+ * test, not the property being animated: `animateColorAsState` and Material3's shape animation both
+ * seed their initial value from the first composition and animate away from it afterwards.
+ *
+ * Pinned by
+ * [OverrideIntegrationTest.namedOverrideSettlesAnAnimatedValueWithoutAnimatingFromTheDefault].
+ */
+@Composable
+fun AnimatedOverridableSquare() {
+  val fill =
+    ee.schimke.composeai.overrides.previewOverrideColor("fill", default = Color(0xFFEF5350))
+  val animated by androidx.compose.animation.animateColorAsState(targetValue = fill)
+  Box(modifier = Modifier.fillMaxSize().background(animated))
+}
+
+/**
  * Identical fill to [RedSquare] but declared `private`, so it compiles to a JVM-private static
  * method on `RedFixturePreviewsKt`. Kotlin `private fun` previews are a real, supported shape
  * (`samples/android/.../Previews.kt`'s `RedBoxPreview` ships one on purpose). [RenderEngine]

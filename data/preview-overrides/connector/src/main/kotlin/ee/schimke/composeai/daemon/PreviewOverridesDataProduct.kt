@@ -43,6 +43,26 @@ import kotlinx.serialization.json.JsonElement
  * when a held interactive session re-renders with a smaller list (stale indexed knobs drop). On
  * dispose it resets the controller so the next preview starts fresh.
  *
+ * **The seed is applied during composition, ahead of `content()`, not from that
+ * [DisposableEffect]** — the same reason `PermissionsOverrideExtension`'s seed moved out of one. A
+ * `DisposableEffect` block runs *after* the composition pass that registered it, so seeding there
+ * left the **first** pass reading the previous render's values (or none) and only corrected them on
+ * the recomposition the snapshot write triggered. A knob read straight into the composition
+ * survives that — it re-reads on the recomposition — which is why the bug hid for so long. A knob
+ * captured by a **keyless `remember`** does not: the initializer runs once, on the first pass, and
+ * keeps what it saw. Every androidx `remember*State` factory is that shape
+ * (`rememberTimePickerState`, `rememberDatePickerState`, `rememberDateRangePickerState` all save
+ * through a keyless `rememberSaveable`), so an `@OverrideVariant` cell seeding one of those
+ * published its unseeded sibling's pixels — silently, with no error and no diff (#4210). The same
+ * late correction restarted shape/size animations from the unseeded target mid-render, capturing a
+ * `ToggleButton` part-way through its shape animation (#4209). The baked `:renderer-desktop` lane
+ * never had either, because `DesktopRendererMain` seeds the controller before it composes anything
+ * — hence the reported "baked is right, live is wrong" shape.
+ *
+ * Writing snapshot state during composition is safe here because [PreviewOverrideController.set] is
+ * a no-op when the value is unchanged: the write happens on the first pass only, before any
+ * `previewOverride*` read, so it cannot loop.
+ *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the composition local is in place before user
  * preview content reaches a `previewOverride*` call.
  */
@@ -67,8 +87,13 @@ class PreviewOverridesOverrideExtension(
     // Plain call (not a SideEffect) so it runs during composition, ahead of any `previewOverride*`
     // lookup in `content()`.
     PreviewOverrideController.beginRender(context.previewId)
+    // Seed here, not from the DisposableEffect below: a plain call runs *during* composition, ahead
+    // of every `previewOverride*` lookup in `content()`, so the very first pass sees the daemon's
+    // values. Seeding from the effect left that pass unseeded and only fixed it on a recomposition,
+    // which a keyless `remember` never sees (#4210) and an in-flight shape animation resolves the
+    // wrong way (#4209). See the class KDoc.
+    PreviewOverrideController.set(seed)
     DisposableEffect(seed) {
-      PreviewOverrideController.set(seed)
       // Reset the bridge scope at render *start* (not on dispose): a render's declarations must
       // survive until the host-side registry reads them post-render. `clearDeclarations` resets
       // this
