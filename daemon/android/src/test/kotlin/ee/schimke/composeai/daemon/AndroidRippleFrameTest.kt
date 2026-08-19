@@ -34,10 +34,10 @@ import org.junit.rules.TemporaryFolder
  * changes have to preserve. Re-run it after either one lands and the numbers above are the baseline
  * to compare against.
  *
- * **Why a filled `Button` and nothing else on screen.** A filled button's elevation is 0 dp both
- * pressed and unpressed, so it has no shadow to animate; the surface behind it is a flat white
- * `Surface`. The ripple is therefore the only thing in the frame that can move, and a pixel delta
- * between two frames cannot be credited to something else that happened to be animating.
+ * Shares [RippleOnlySquare] with `LivePressRippleTest` rather than adding a second ripple fixture.
+ * That one asks whether a live click produces press feedback *at all*; this one asks how that
+ * feedback behaves over time, which is the question the cadence has to answer. Its inert handler
+ * and full-bounds ripple are what make both questions decidable from pixels alone.
  *
  * Frames are written to `build/ripple-frames/` as a filmstrip — that is where the measurements
  * above came from, and re-running with [STEP_MS] retimed is how to take them again.
@@ -178,7 +178,7 @@ class AndroidRippleFrameTest {
     if (previewId == RIPPLE_PREVIEW_ID) {
       RenderSpec(
         className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
-        functionName = "RippleButtonSurface",
+        functionName = "RippleOnlySquare",
         widthPx = FRAME_WIDTH_PX,
         heightPx = FRAME_HEIGHT_PX,
         density = 1.0f,
