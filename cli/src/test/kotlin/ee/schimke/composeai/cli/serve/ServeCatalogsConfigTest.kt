@@ -42,6 +42,32 @@ class ServeCatalogsConfigTest {
   }
 
   @Test
+  fun `load priority defaults to zero and survives a round trip`() {
+    val config =
+      ServeCatalogsConfig.parse(
+        """
+        {
+          "catalogs": [
+            { "system": "m3-catalog", "loadPriority": 20 },
+            { "system": "cadence" }
+          ]
+        }
+        """
+          .trimIndent()
+      )
+
+    assertEquals(listOf(20, 0), config.catalogs.map { it.loadPriority })
+    assertEquals(emptyList(), config.problems())
+    // The admin API rewrites this file, so a priority an operator declared has to survive that.
+    assertEquals(
+      listOf(20, 0),
+      ServeCatalogsConfig.parse(ServeCatalogsConfig.encode(config)).catalogs.map {
+        it.loadPriority
+      },
+    )
+  }
+
+  @Test
   fun `unknown keys are ignored so a newer config still boots an older server`() {
     val config =
       ServeCatalogsConfig.parse(

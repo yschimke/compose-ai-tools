@@ -125,6 +125,23 @@ class ServeCatalogAdminTest {
   }
 
   @Test
+  fun `re-publishing with a new load priority converges it instead of conflicting`() {
+    seedConfig(ServeCatalogsConfig(catalogs = listOf(ServeCatalogsConfig.Entry("m3-catalog"))))
+    val tracker =
+      tracker(CatalogLoadTracker.Config("m3-catalog", true, "yschimke/compose-ai-tools", "b"))
+    tracker.recordSuccess("m3-catalog")
+
+    val result = admin(tracker).register(ServeCatalogsConfig.Entry("m3-catalog", loadPriority = 20))
+
+    assertTrue(result is ServeCatalogAdmin.Result.Ok, "$result")
+    assertEquals(emptyList(), loaded, "the running catalog is never re-fetched behind its back")
+    assertTrue(tracker.snapshot().single().available, "and keeps its load state")
+    assertEquals(20, tracker.configFor("m3-catalog")?.loadPriority)
+    // The point of the write-back: it is the NEXT boot's fetch order that changes.
+    assertEquals(20, file.load().catalogs.single().loadPriority)
+  }
+
+  @Test
   fun `a catalog that will not fetch is not left half-published`() {
     val tracker = tracker()
     val result =
