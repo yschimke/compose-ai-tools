@@ -1180,7 +1180,7 @@
     "functionName": "SpinnerTimelinePreview",
     "module": "samples:android",
     "renderBasename": "SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_500ms.png",
-    "sha256": "28beae1409398defd2a4b14c6b3b2bb6eea2884031a05497ccaa9627bef89844",
+    "sha256": "e5adaf41eec6dfce27ca656e6bc19142e095101cb9719785aad12738b9fd764e",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline#2": {
@@ -1188,7 +1188,7 @@
     "functionName": "SpinnerTimelinePreview",
     "module": "samples:android",
     "renderBasename": "SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_1500ms.png",
-    "sha256": "ee6ee223fb1a231c9e18b83d5f5a845be25d179325054b60db4489f3b902c2bf",
+    "sha256": "0ccf834705e335ca0188f451c5cba9fe8776ba89864140cef921a32255f8f59b",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt"
   },
   "samples:android/com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleAccent_accent": {
@@ -1351,6 +1351,22 @@
     "sha256": "df68891277ac18120738fcbc3413df1f0d682ab53ae5ae2b7458be1aec05f26f",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.SettledPreviewsKt.SettledPlusAnimatedPreview_Settled + animated": {
+    "captureLabel": "",
+    "functionName": "SettledPlusAnimatedPreview",
+    "module": "samples:android",
+    "renderBasename": "SettledPlusAnimatedPreview_Settled_animated-6b39dfe0.png",
+    "sha256": "a73290fe05f8d1eb3a58710de9d8f01c1d302de03352bbdddb4fb55cd2b999fb",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SettledPreviewsKt.SettledPlusAnimatedPreview_Settled + animated#1": {
+    "captureLabel": "",
+    "functionName": "SettledPlusAnimatedPreview",
+    "module": "samples:android",
+    "renderBasename": "SettledPlusAnimatedPreview_Settled_animated-6b39dfe0.gif",
+    "sha256": "584fab1cb9cb656224a83524f569d452b50b93be5882d18cbf0c1a7545d0e1ae",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery \u2014 fBm Clouds (animated, AGSL)": {
     "captureLabel": "",
     "functionName": "ShaderFbmAnimatedPreview",
@@ -1444,7 +1460,7 @@
     "functionName": "SharedElementFilmstripPreview",
     "module": "samples:android",
     "renderBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.png",
-    "sha256": "a906e9b4531685af3680fd9a7ec6b46f2813e851bf212d336fae52e3092499c6",
+    "sha256": "b1e26f3e80ebcbeb5924513056567b566560980bb35137519e894cd6f3862746",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt"
   },
   "samples:android/com.example.sampleandroid.SharedElementPreviewsKt.ContainerTransformAnimatedPreview_Container Transform": {
@@ -4092,7 +4108,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round-5304b86a.png",
-    "sha256": "65d2caa2784131e8fe4e829e12e67753654f1a2a6cc875f07c0e476e08c7b2de",
+    "sha256": "082fe730f68127d9d34338aa40e25e6240da22b67aa895abb9cd22f9b956c48c",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
