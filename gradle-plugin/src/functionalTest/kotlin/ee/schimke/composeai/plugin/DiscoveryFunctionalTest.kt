@@ -2274,6 +2274,17 @@ class DiscoveryFunctionalTest {
         """
           .trimIndent()
       )
+    File(settledFqnDir, "AnimatedPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class AnimatedPreview(val durationMs: Int = 0, val frameIntervalMs: Int = 33)
+        """
+          .trimIndent()
+      )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
     srcFile.writeText(
@@ -2288,6 +2299,7 @@ class DiscoveryFunctionalTest {
       import androidx.compose.ui.graphics.Color
       import androidx.compose.ui.tooling.preview.Preview
       import androidx.compose.ui.unit.dp
+      import ee.schimke.composeai.preview.AnimatedPreview
       import ee.schimke.composeai.preview.SettledPreview
 
       // Hoisted onto a multi-preview annotation — the shape a catalog uses to settle every
@@ -2323,6 +2335,16 @@ class DiscoveryFunctionalTest {
       @Composable
       fun UnsettledPreview() {
           Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
+      }
+
+      // A settle and a motion capture on ONE function want opposite ends of the same paused
+      // clock, and virtual time does not rewind — so the settle is dropped rather than faked.
+      @Preview
+      @SettledPreview
+      @AnimatedPreview(durationMs = 400)
+      @Composable
+      fun SettledPlusAnimatedPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Cyan))
       }
       """
         .trimIndent()
@@ -2364,6 +2386,13 @@ class DiscoveryFunctionalTest {
 
     val unsettled = manifest.previews.single { it.functionName == "UnsettledPreview" }
     assertThat(unsettled.captures.single().settle).isNull()
+
+    // @SettledPreview + @AnimatedPreview on one function: the motion capture still ships, and NO
+    // capture carries a settle — the still keeps its unsettled behaviour rather than being
+    // captured at a coordinate the shared clock cannot honour.
+    val collided = manifest.previews.single { it.functionName == "SettledPlusAnimatedPreview" }
+    assertThat(collided.captures.none { it.settle != null }).isTrue()
+    assertThat(collided.captures.any { it.animation != null }).isTrue()
   }
 
   @Test

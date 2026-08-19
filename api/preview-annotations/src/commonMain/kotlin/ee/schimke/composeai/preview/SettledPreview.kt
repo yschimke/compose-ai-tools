@@ -45,6 +45,13 @@ package ee.schimke.composeai.preview
  * Only still captures are settled — a `@ScrollingPreview` LONG/GIF product, an `@AnimatedPreview`
  * GIF and an `@InteractionPreview` recording all drive the clock themselves and are left alone.
  *
+ * Pairing this with `@AnimatedPreview` on the **same function** is reported and ignored, rather
+ * than half-honoured. Both products render from one composition against one paused clock and want
+ * opposite things from it: the GIF needs the timeline from its start, the settled still needs a
+ * coordinate near the end, and virtual time does not rewind. Put them on separate preview functions
+ * — each then owns its own composition — and both get what they asked for. Serving both from one
+ * function is tracked in issue #4244.
+ *
  * Auto mode walks the window in frame-sized steps, so it is proportional to [maxMs]: keep the
  * default unless a reveal genuinely runs longer, and prefer an explicit [afterMs] on a component
  * whose timing you know. An animation that never ends (an `InfiniteTransition`, an indeterminate

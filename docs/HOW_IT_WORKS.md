@@ -87,7 +87,18 @@ sitting on top of its own value (issue #4202).
 It applies to **still** captures only — a scroll drive runs its own settle, an
 `@AnimatedPreview` GIF and an `@InteractionPreview` recording drive the clock
 themselves, and an explicit `advanceTimeMillis` is a snapshot of a coordinate
-the author chose. It also targets `ANNOTATION_CLASS`, so a catalog whose
+the author chose.
+
+Pairing it with `@AnimatedPreview` on the *same function* is reported as a
+discovery warning and the settle is dropped, rather than half-honoured. Both
+products render from one composition against one paused clock and want opposite
+things from it: the GIF needs the timeline from its start, the settled still
+needs a coordinate near the end, and virtual time does not rewind — whichever
+runs first spoils the other. Separate preview functions each own a composition,
+so splitting them gives both what they asked for; serving both from one function
+needs a second composition for the still, tracked in issue #4244.
+
+It also targets `ANNOTATION_CLASS`, so a catalog whose
 stickers all wrap stock design-system composables can hoist it once onto its
 own multi-preview annotation instead of hunting for the affected components:
 the animation is usually internal to the component, and a sticker that merely

@@ -1916,7 +1916,27 @@ object PreviewDiscovery {
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val glimmerEnvironmentSpec = extractGlimmerEnvironmentSpec(annotations)
-    val settleSpec = extractSettleSpec(annotations)
+    // `@SettledPreview` and a motion capture on ONE function cannot both be honoured: both
+    // products render from one composition against one paused clock, and they want opposite things
+    // from it. The GIF needs the timeline from its start; the settled still needs a coordinate near
+    // the end. Shoot the still first and it eats the frames the GIF was going to record; shoot the
+    // GIF first and it leaves the clock past the coordinate the still asked for — which the
+    // renderer then cannot honour, because virtual time does not rewind. Serving both needs a
+    // second composition for the still, a change to the render loop rather than to this plan, so
+    // the still keeps its unsettled behaviour here and the pairing is reported rather than faked.
+    val rawSettleSpec = extractSettleSpec(annotations)
+    val settleSpec =
+      if (rawSettleSpec != null && animationSpec != null) {
+        warnings.add(
+          "@SettledPreview on '${classInfo.name}.${method.name}' is ignored: @AnimatedPreview on " +
+            "the same function drives the same paused clock, and the still and the motion capture " +
+            "cannot both own one timeline. Split them onto separate preview functions to settle " +
+            "the still."
+        )
+        null
+      } else {
+        rawSettleSpec
+      }
     val gestureHintSpec = extractGestureHintSpec(annotations)
     val permissionSpec =
       extractPermissionSpec(annotations, "${classInfo.name}.${method.name}", warnings)
@@ -2902,7 +2922,11 @@ object PreviewDiscovery {
     val effectiveGlimmerEnvironment = if (nonComposable) null else glimmerEnvironment
     // `@SettledPreview` advances the composition's paused clock, which a non-composable preview
     // (Lottie / SVG / tile asset) has nothing to spend — same reasoning as ambient above.
-    val effectiveSettle = if (nonComposable) null else settle
+    //
+    // A settle that collides with a motion capture on the same function has already been dropped
+    // by `extractSettleSpec`'s caller, which owns the warning; the `effectiveAnimation` guard here
+    // is only a backstop so a future caller cannot reintroduce the pairing silently.
+    val effectiveSettle = if (nonComposable || effectiveAnimation != null) null else settle
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
