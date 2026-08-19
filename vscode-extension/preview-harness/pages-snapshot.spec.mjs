@@ -1589,6 +1589,23 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The VIEWER's Theme menu open, on the fixture that carries eight choices. The landing's
+    // `theme-menu` state below shoots the same panel, but only ever with five rows and never
+    // beside a stage — and the menu is the one control on this page whose contents no other shot
+    // reaches, since the pill it hangs off says nothing but the theme in force. Both schemes, on
+    // purpose: the rows resolve their colours from whichever one the page is painted in, and a
+    // regression that pins them to one is legible only when the two shots disagree.
+    fixture: "serve-viewer-theme-overflow",
+    suffix: "theme-menu",
+    apply: async (page) => {
+      await page.click("#cp-theme-toggle");
+      await page.waitForSelector(".cp-theme-menu[open] .cp-theme-menu-panel");
+    },
+    // The pointer rests on the summary otherwise, which is a hover state on the toggle and not
+    // part of what this shot is about.
+    parkPointer: true,
+  },
+  {
     // The page theme following the SELECTED PREVIEW THEME (the "Page theme" setting, on by
     // default). Picking Dark repaints the chrome as well as the grid, and the claim is
     // invisible to the two ordinary shots: they are captured under an emulated OS preference,

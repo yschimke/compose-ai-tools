@@ -5206,6 +5206,54 @@ class ServeWebFixtureTest {
     assertTrue(rendererRow.contains("<cp-bg-toggle") && rendererRow.contains("Fit width"))
   }
 
+  /**
+   * The Theme dropdown's ROWS, which were unreadable on every dark page: on `/wear-m3/` — a
+   * dark-first catalog whose declared themes all carry `data-theme-mode="dark"`, so every row
+   * matched — the menu opened as six invisible labels on a near-black panel.
+   *
+   * Two independent faults, both of them cascade accidents rather than colour choices, so both are
+   * held here rather than left to a screenshot:
+   *
+   * 1. `color-scheme: normal` on a menu row. `normal` is not "whatever the page is" — it is the UA
+   *    default, light — so it re-resolved every `light-dark()` in the token layer for those rows
+   *    alone and painted `on-surface`'s LIGHT value (#1d1b20) on the dark surface the panel is
+   *    filled with. `inherit` is the value that means what the rule intended.
+   * 2. The rows are `.cp-theme-btn` inside `.cp-theme-bar`, and `.cp-theme-bar .cp-theme-btn` — the
+   *    horizontal scroller's rule, for the bar this menu REPLACED — is declared later in the sheet
+   *    at equal specificity. So `.cp-theme-menu-panel .cp-theme-btn` lost `display` to the
+   *    scroller's `inline-block`, and `width`/`height` do not apply to the inline box that leaves
+   *    the swatch pseudo-element in: the 16px circle drew as a 2px sliver of its own border. Every
+   *    menu-row rule therefore has to name `.cp-theme-bar` too, which is what this asserts.
+   */
+  @Test
+  fun `theme menu rows keep the page's colour scheme and the menu's own box`() {
+    val css = assetText("serve.css")
+    assertFalse(
+      css.contains("color-scheme: normal"),
+      "no rule resets a subtree to the UA's light default; `inherit` is what follows the page",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-theme-menu-panel .cp-theme-bar .cp-theme-btn { display: flex; min-width: 12em;"
+      ),
+      "menu rows out-specify the scroller's `inline-block`, so the swatch gets a real box",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-theme-menu-panel .cp-theme-bar .cp-theme-btn[data-theme-mode] { color-scheme: inherit;"
+      ),
+      "…and resolve their label colour in the scheme the page is actually painted in",
+    )
+    // Every rule that dresses a menu row has to clear the scroller the same way, or the next one
+    // added without `.cp-theme-bar` silently loses whatever the scroller also declares.
+    val menuRules =
+      css.lines().filter { it.trimStart().startsWith(".cp-theme-menu-panel .cp-theme-btn") }
+    assertTrue(
+      menuRules.isEmpty(),
+      "unqualified menu-row rules lose to `.cp-theme-bar`: $menuRules",
+    )
+  }
+
   @Test
   fun `viewer defaults to fit screen and offers an explicit fit width mode`() {
     val view = ServeWeb.viewerPage(previews.first(), token)
