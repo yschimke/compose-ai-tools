@@ -1621,10 +1621,95 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // "report an issue" OPEN. Closed, the affordance is one link in the provenance row, which
+    // every other viewer shot already holds — so the part worth diffing is what the click
+    // reveals: the Summary field the reporter now has to fill in, on a floating M3 menu surface
+    // that must not shove the render down the page or fall off the fold. A `<details>` ships
+    // closed, so without this state the panel would be captured by nothing and the whole change
+    // this fixture exists to prove would look identical to the link it replaced.
+    //
+    // Opened through the summary rather than by setting `.open`, so the shot is a state a reader
+    // can actually produce — same reasoning (and shape) as `serve-viewer-history-menu-open`.
+    // Shot BEFORE `connecting` below, so the page under the panel is the resting viewer.
+    fixture: "serve-viewer",
+    suffix: "report-open",
+    apply: async (page) => {
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // The panel is the subject; a cursor left resting on the toggle would be a second change
+      // in the same frame.
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
+    // The same panel ON A PHONE, which is the width that decides whether it is usable at all.
+    // The toggle is the THIRD entry in a wrapping provenance row, so its containing block starts
+    // well inside the viewport — and a `max-width` caps how wide a panel is while saying nothing
+    // about where it starts, which is how the landing's Theme menu once ended up starting at
+    // -14px (see `.cp-catalog-theme` in serve.css). Here the offset runs the other way and pushes
+    // the right edge off screen, so this shot is the one that would catch a clipped Summary field
+    // and the horizontal page scroll that comes with it.
+    fixture: "serve-viewer",
+    suffix: "report-open-mobile",
+    viewport: PHONE_VIEWPORT,
+    apply: async (page) => {
+      // The state above left it OPEN and clicking a `<details>` toggles, so opening it again with
+      // a bare click would shut it. Closed first, then opened with the same gesture a reader
+      // uses, so this state does not depend on the order it runs in.
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
+    // The provenance row with an EXECUTABLE BUNDLE in it, at the tablet width this used to break
+    // at. No committed fixture carries `download executable bundle` — it needs a live viewer with
+    // a bundle — which is exactly why the panel could be clipped by 160px here with every check
+    // green. The link is injected rather than fixtured because what is under test is the panel's
+    // independence from the row's contents, not the link itself: with the panel anchored to the
+    // toggle, a fourth entry pushed it to x=420 and `html { overflow-x: clip }` cut it off with no
+    // scrollbar to reveal it; anchored to the row, its position does not move at all.
+    fixture: "serve-viewer",
+    suffix: "report-open-bundle",
+    viewport: { width: 760, height: 800 },
+    apply: async (page) => {
+      await page.evaluate(() => {
+        const report = document.getElementById("cp-report");
+        report.removeAttribute("open");
+        // The markup `ServeWeb.executableBundleLinkHtml` emits, in the place
+        // `previewLinksHtml` puts it: after playground, before the report toggle.
+        const link = document.createElement("a");
+        link.href = "/bundle/fixture.jar";
+        link.setAttribute("download", "");
+        link.textContent = "download executable bundle";
+        report.closest(".cp-preview-links").insertBefore(link, report);
+      });
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // Geometry, not just pixels: a panel clipped by `overflow-x: clip` still screenshots as a
+      // plausible-looking page, so assert it is inside the viewport rather than trusting the eye.
+      const box = await page.evaluate(() => {
+        const r = document
+          .querySelector("#cp-report .cp-report-panel")
+          .getBoundingClientRect();
+        return { left: r.left, right: r.right, width: innerWidth };
+      });
+      expect(box.left).toBeGreaterThanOrEqual(0);
+      expect(box.right).toBeLessThanOrEqual(box.width);
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     fixture: "serve-viewer",
     suffix: "connecting",
     apply: async (page) => {
+      // States run in order against the SAME page, so this also puts the report panel above
+      // away again — the same housekeeping the landing's states do via `closeLandingMenus`.
       await page.evaluate(() => {
+        document.getElementById("cp-report")?.removeAttribute("open");
         const root = document.querySelector(".cp-viewer");
         root.setAttribute("data-mode", "live");
         root.setAttribute("data-pending", "connecting…");
@@ -2008,6 +2093,37 @@ const FIXTURE_STATES = [
       await page.waitForFunction(
         () => !document.querySelector('[aria-busy="true"]'),
       );
+    },
+  },
+  {
+    // The comparison page's OWN report panel, on a phone. Same affordance as the viewer's, but
+    // this page renders it with no `.cp-preview-links` around it — which is precisely how the
+    // viewer's narrow-viewport fix once dropped this panel 619px above its own toggle, with
+    // nothing shooting this surface to catch it. Shot at phone width because that is the band
+    // the positioning rules differ in; above the breakpoint both pages take the base rule.
+    fixture: "serve-reference-compare",
+    suffix: "report-open-mobile",
+    viewport: PHONE_VIEWPORT,
+    apply: async (page) => {
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // The panel must hang off ITS OWN toggle, not float to wherever an ancestor puts it —
+      // which a screenshot alone would not tell you if the panel landed off the captured
+      // viewport entirely. Asserted here so the geometry fails loudly rather than silently
+      // producing a shot with no panel in it.
+      const gap = await page.evaluate(() => {
+        const d = document.getElementById("cp-report");
+        return (
+          d.querySelector(".cp-report-panel").getBoundingClientRect().top -
+          d.querySelector("summary").getBoundingClientRect().top
+        );
+      });
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThan(80);
+      await page.mouse.move(0, 0);
     },
   },
   {

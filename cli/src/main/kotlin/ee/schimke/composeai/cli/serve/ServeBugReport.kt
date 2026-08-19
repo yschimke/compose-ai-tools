@@ -113,18 +113,6 @@ internal object ServeBugReport {
   fun action(): String = "https://github.com/$REPO/issues/new"
 
   /**
-   * Issue title. Names the page the visitor was on when there is one, because "the front door" and
-   * "a wear-m3 viewer" are different bugs before anyone reads a word of the body; the reporter
-   * still edits it on GitHub's form.
-   */
-  fun title(page: Page): String {
-    val where =
-      page.system?.trim()?.takeIf { it.isNotEmpty() }
-        ?: page.path?.trim()?.takeIf { it.isNotEmpty() && it != "/" }
-    return if (where == null) "Preview server issue" else "Preview server issue: $where"
-  }
-
-  /**
    * Issue body, in markdown.
    *
    * [clientPlaceholder] leaves [CLIENT_PLACEHOLDER] where the browser block goes, for the hidden

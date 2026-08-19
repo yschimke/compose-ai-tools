@@ -127,13 +127,6 @@ internal object ServeIssueReport {
       ?: provenance?.repo?.trim()?.takeIf { it.isNotEmpty() }
       ?: FALLBACK_REPO
 
-  /** Issue title — identifies the preview; the reporter writes the actual complaint. */
-  fun title(ctx: Context): String {
-    val what = ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() } ?: ctx.previewId
-    val where = ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { " ($it)" } ?: ""
-    return "Preview issue: $what$where"
-  }
-
   /**
    * Issue body, in markdown. [renderPlaceholder] swaps the render link for [RENDER_PLACEHOLDER] so
    * the viewer JS can substitute the live URL; the server-rendered `href` uses the real one, which
@@ -357,13 +350,13 @@ internal object ServeIssueReport {
    * The GitHub new-issue form for [repo], used as a `<form action>` rather than a link the JS
    * rewrites.
    *
-   * The viewer surfaces this as a **GET form** whose `title` / `body` are hidden inputs. That is
-   * not a styling preference: keeping the prefilled report current as the knobs change means
-   * writing page state into it, and writing a page-derived string into an anchor's `href` is a
-   * navigation sink (a `javascript:` URL there would execute) — CodeQL flags it, correctly, no
-   * matter how the value is guarded afterwards. A form has no such sink: the action is a
-   * server-rendered literal the JS never touches, the live render URL only ever lands in an input
-   * value, and the browser does the query encoding on submit.
+   * The viewer surfaces this as a **GET form**: the reporter's `title` is a typed-in input and
+   * `body` is a hidden one. That is not a styling preference: keeping the prefilled report current
+   * as the knobs change means writing page state into it, and writing a page-derived string into an
+   * anchor's `href` is a navigation sink (a `javascript:` URL there would execute) — CodeQL flags
+   * it, correctly, no matter how the value is guarded afterwards. A form has no such sink: the
+   * action is a server-rendered literal the JS never touches, the live render URL only ever lands
+   * in an input value, and the browser does the query encoding on submit.
    */
   fun action(repo: String): String = "https://github.com/$repo/issues/new"
 

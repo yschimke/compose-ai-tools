@@ -120,9 +120,24 @@ class ServeViewerIssueReportRouteTest {
   fun `the report names the preview and the catalog build it came from`() {
     server = newServer()
     val (_, body) = get("/compose-m3/p/button-filled")
-    assertTrue(body.contains("Preview issue: button-filled"), body)
+    // The preview's identity is a row of the body's "Which preview" table, not a server-written
+    // title — the title is the reporter's to write.
+    assertTrue(body.contains("| Preview | `button-filled` |"), body)
     assertTrue(body.contains("design-artifacts/compose-m3"), body)
     assertTrue(body.contains("compose-ai-tools 0.16.54"), body)
+  }
+
+  @Test
+  fun `the served page asks the reporter for a title and will not take a blank one`() {
+    server = newServer()
+    val (_, body) = get("/compose-m3/p/button-filled")
+    assertTrue(
+      body.contains(
+        "<input class=\"cp-report-summary-input\" type=\"text\" name=\"title\" required"
+      ),
+      body,
+    )
+    assertFalse(body.contains("type=\"hidden\" name=\"title\""), body)
   }
 
   @Test
