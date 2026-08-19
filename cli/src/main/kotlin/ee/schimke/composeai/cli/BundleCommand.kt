@@ -106,7 +106,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       Usage:
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics]
         compose-preview bundle pack --per-preview [--module <name>] [--id <preview>...] [-o <dir>]
-        compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only | --shared-classpath-out <pool>]
+        compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only | --shared-classpath-out <pool>] [--carriage-report <file.json>]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
@@ -197,6 +197,11 @@ class BundleCommand(args: List<String>) : Command(args) {
                             server hydrates it for daemon execution and executable downloads. The
                             existing full mode remains self-contained. Cannot combine with
                             --view-only.
+        --carriage-report <file.json>
+                            Write the measured shared carriage — bytes repeated in every bundle,
+                            and its share of the whole split — as JSON, for a publisher that gates
+                            on it. The same numbers are printed either way, and reported loudly
+                            once the repetition is at least half the output.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.

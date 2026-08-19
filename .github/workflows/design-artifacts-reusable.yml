@@ -128,15 +128,15 @@ on:
         type: boolean
         default: false
       split-per-preview:
-        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only unless extra-split-mode says otherwise. full mode requires publish-live-bundle (see split-mode).'
+        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only unless extra-split-mode says otherwise. Live modes require publish-live-bundle (see split-mode).'
         required: false
         type: boolean
         default: false
       split-mode:
-        description: "Per-preview split mode when split-per-preview is set: 'full' (self-contained), 'full-shared-classpath' (opt-in: app.jar once in bundle/res and server-hydrated), or 'view-only' (baked, no classpath). Live modes require publish-live-bundle."
+        description: "Per-preview split mode when split-per-preview is set: 'auto' (the default — renders as 'full', and FAILS the publish, naming both options with the measured numbers, once the repeated shared carriage crosses half the split output; a small catalog never sees it), 'full' (self-contained, and a deliberate acceptance of the N× carriage at any size), 'full-shared-classpath' (app.jar once in bundle/res, server-hydrated, live lane intact), or 'view-only' (baked, no classpath). Live modes require publish-live-bundle."
         required: false
         type: string
-        default: 'full'
+        default: 'auto'
       extra-split-mode:
         description: "Per-preview split mode for the extra-module render: 'view-only' (the default — its previews are pixels-only, with no live lane) or 'full' (the extra bundle is split per preview WITH its re-render classpath, self-contained, and the driver aliases its extra-ONLY functions to daemon ids so the viewer offers real overrides on them instead of the 'Pre-rendered snapshot' note). 'full' requires publish-live-bundle and split-per-preview. Functions the extra bundle OVERRIDES rather than adds stay baked-only either way — the primary daemon would draw them differently."
         required: false
@@ -412,6 +412,27 @@ jobs:
     outputs:
       ref: ${{ steps.driver.outputs.ref }}
     steps:
+      # Typo'd modes used to be discovered by the `else` branch of the split step — after the render
+      # — where an unknown value silently meant `full`. Every job needs this one, so rejecting it
+      # here costs seconds and gates the whole pipeline.
+      - name: Validate split-mode
+        run: |
+          set -euo pipefail
+          case "$INPUT_SPLIT_MODE" in
+            auto|full|full-shared-classpath|view-only) ;;
+            *)
+              echo "::error title=split-mode::unknown split-mode '$INPUT_SPLIT_MODE' — use auto, full, full-shared-classpath or view-only."
+              exit 1
+              ;;
+          esac
+          case "$INPUT_EXTRA_SPLIT_MODE" in
+            full|view-only) ;;
+            *)
+              echo "::error title=extra-split-mode::unknown extra-split-mode '$INPUT_EXTRA_SPLIT_MODE' — use full or view-only."
+              exit 1
+              ;;
+          esac
+
       - id: driver
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1348,15 +1369,24 @@ jobs:
           JAVA_OPTS: -XX:MaxRAMPercentage=75
         run: |
           set -euo pipefail
+          # The carriage report is what the next step gates on. It is written for every mode (a
+          # view-only split reports zero), so the gate reads one shape and the number is on the log
+          # of a green run either way.
+          carriage_report="$GITHUB_WORKSPACE/split-carriage.json"
           if [ "$INPUT_SPLIT_MODE" = "view-only" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" --view-only \
+              --carriage-report "$carriage_report" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           elif [ "$INPUT_SPLIT_MODE" = "full-shared-classpath" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" \
               --shared-classpath-out "$GITHUB_WORKSPACE/out/bundle/res" \
+              --carriage-report "$carriage_report" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           else
+            # `auto` and `full` split identically; they differ only in whether the carriage bound
+            # below is a failure or a recorded, deliberate cost.
             compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/bundle.png" \
+              --carriage-report "$carriage_report" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           fi
           if [ -d "$GITHUB_WORKSPACE/module-bundles" ]; then
@@ -1383,6 +1413,34 @@ jobs:
                 -o "$GITHUB_WORKSPACE/out/bundle/previews"
             fi
           fi
+
+      # The silent half of #4211. A FULL split pays the shared carriage once per preview, so its
+      # cost scales with the preview COUNT — and because any catalog edit rewrites `app.jar`, every
+      # publish rewrites all N copies and lays down a fresh delta chain. The delivery branch grows
+      # by the repeated size forever, while the branch tip (which git deltas near-identical
+      # polyglots well within one snapshot) keeps looking fine. m3-catalog took the default for 76
+      # green publishes and reached a 2.52 GiB clone.
+      #
+      # `auto` splits exactly as `full` always did, so no existing delivery branch changes shape
+      # underneath its consumers — pooled bundles are not offline-executable from a bare download,
+      # and trading that away is the catalog owner's call, not a threshold's. What the bound buys is
+      # that above it the call has to be *made*: the publish fails with the measured numbers until
+      # someone writes `full` or `full-shared-classpath` into the inputs. An explicit mode is never
+      # failed, only reported.
+      #
+      # Measured on the PRIMARY split, which is the one that scales: the additional/extra-module
+      # splits are self-contained by design (they owe nothing to the primary's resource pool) and
+      # carry a fraction of the previews.
+      - name: Check the split carriage bound
+        if: ${{ inputs.split-per-preview }}
+        env:
+          SYSTEM: ${{ inputs.system }}
+        run: |
+          set -euo pipefail
+          node compose-ai-tools/scripts/design-artifacts/split-carriage-gate.mjs \
+            --report "$GITHUB_WORKSPACE/split-carriage.json" \
+            --mode "$INPUT_SPLIT_MODE" \
+            --system "$SYSTEM"
 
       - name: Download section bundle to fold in
         if: ${{ inputs.fold-artifact != '' }}
