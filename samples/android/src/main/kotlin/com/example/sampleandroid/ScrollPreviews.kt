@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.github.takahirom.roborazzi.annotations.ManualClockOptions
+import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
 
@@ -82,5 +84,29 @@ fun RedToBlueScrollGifPreview() {
 @ScrollingPreview(modes = [ScrollMode.END, ScrollMode.GIF])
 @Composable
 fun RedToBlueEndThenGifPreview() {
+  RedToBlueList(count = 16)
+}
+
+/**
+ * Regression fixture for [#4247](https://github.com/yschimke/compose-ai-tools/issues/4247): a
+ * **non-frame-aligned** `advanceTimeMillis` on a preview that also emits a scroll *data product*.
+ *
+ * Discovery crosses the timing rows into both the capture list and `dataProducts`, so this one
+ * function produces two jobs that sit at the *same* coordinate — 500ms, which is not a multiple of
+ * the 16ms frame. `advanceTimeBy` rounds up, so the first of them leaves the physical clock at
+ * 512. A render loop that measured the next hop from the requested 500 would either spend those
+ *      12ms twice (drift) or, if it recorded the rounded position in the requested coordinate
+ *      space, decide time had run backwards and abort the whole preview with `output
+ *      advanceTimeMillis must be ascending`.
+ *
+ * Nothing about the pixels is interesting here; the fixture exists so the pairing is *rendered* on
+ * every run rather than reasoned about. If the two coordinate spaces are ever conflated again, this
+ * preview stops producing output.
+ */
+@Preview(name = "ScrollTimed", showBackground = true, widthDp = 160, heightDp = 320)
+@ScrollingPreview(modes = [ScrollMode.LONG])
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 500L)])
+@Composable
+fun RedToBlueScrollTimedPreview() {
   RedToBlueList(count = 16)
 }
