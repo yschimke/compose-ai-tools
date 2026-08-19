@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.17.0](https://github.com/yschimke/compose-ai-tools/compare/v1.16.0...v1.17.0) (2026-08-19)
+
+
+### Features
+
+* **renderer:** implement @InteractionPreview on Robolectric, and stop a motion failure taking the still ([#4240](https://github.com/yschimke/compose-ai-tools/issues/4240)) ([0b26f81](https://github.com/yschimke/compose-ai-tools/commit/0b26f81b6efa2fea8e58c7d6916c5d4905467386))
+* **serve:** make catalog startup load order configurable ([#4233](https://github.com/yschimke/compose-ai-tools/issues/4233)) ([df13f8d](https://github.com/yschimke/compose-ai-tools/commit/df13f8dcd14258ea48c486bad99e7ef0e6c640df))
+
+
+### Bug Fixes
+
+* **daemon:** seed the Remote Compose override before the first composition pass ([#4241](https://github.com/yschimke/compose-ai-tools/issues/4241)) ([ba14c3c](https://github.com/yschimke/compose-ai-tools/commit/ba14c3c0fb37597841b4ce22e748a452a0bbd269))
+* **plugin:** scope the skiko skew check to one resolved classpath ([#4235](https://github.com/yschimke/compose-ai-tools/issues/4235)) ([9b7199b](https://github.com/yschimke/compose-ai-tools/commit/9b7199b5c931aa7a8e0ddcc6fda87b88e79f51f7))
+* **serve:** ask the reporter for a title on the catalog issue report ([#4237](https://github.com/yschimke/compose-ai-tools/issues/4237)) ([67c1589](https://github.com/yschimke/compose-ai-tools/commit/67c1589441747b198ed49c158c8e1bb5662c90ab))
+* **serve:** keep a shared-line scaffold annotation's declaration, and index extensions by callable name ([#4227](https://github.com/yschimke/compose-ai-tools/issues/4227)) ([7b6fcd9](https://github.com/yschimke/compose-ai-tools/commit/7b6fcd92da6c08c66e36a729f16b45b5bbd123dc))
+* **serve:** name the Skiko skew in the 409 a dead render lane returns ([#4243](https://github.com/yschimke/compose-ai-tools/issues/4243)) ([55d5652](https://github.com/yschimke/compose-ai-tools/commit/55d5652e8b6409b6cdef9e206546ec25e32ae107))
+* **serve:** pair a bundle's Skiko bindings with its native, and stop a tripped lane blacking out baked pixels ([#4236](https://github.com/yschimke/compose-ai-tools/issues/4236)) ([e49413c](https://github.com/yschimke/compose-ai-tools/commit/e49413cd904eef181db9b6c540291b38fba6d764))
+* **serve:** stop a sectioned catalog spending a row on its `⋯` menu ([#4232](https://github.com/yschimke/compose-ai-tools/issues/4232)) ([bc447f1](https://github.com/yschimke/compose-ai-tools/commit/bc447f1d5e98dbaa669f7376b85b4a903f5adba2))
+
 ## [1.16.0](https://github.com/yschimke/compose-ai-tools/compare/v1.15.0...v1.16.0) (2026-08-19)
 
 
