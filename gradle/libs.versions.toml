@@ -210,6 +210,19 @@ mcp-kotlin-sdk = "0.15.0"
 okio = "3.18.1"
 fontbox = "3.0.8"
 junit = "4.13.2"
+# A skiko resolved ONLY into `:renderer-desktop`'s `skikoEncodeProbe` configuration — never onto a
+# compile, runtime or test classpath — so `SkikoBridgeShapeTest` can bind against the real
+# `Image.encodeToData` shape of a version this repo does not otherwise resolve.
+#
+# 0.150.0 is where that shape changed (`(format, quality)` → `(format, quality, compressionLevel)`),
+# which is what stopped every desktop capture encoding against Compose Multiplatform 1.12.0-beta01+
+# (#4190). `compose-multiplatform` above cannot be raised to reach it: that ref is a CEILING on every
+# catalog the serve host renders live, so bumping it is a serve-host release decision. Probing the
+# jar in isolation gets the coverage without touching what anything actually runs against.
+#
+# A Renovate bump here is WELCOME and is the point: it re-points the probe at the newest skiko, and
+# the test then says whether the late binding still holds against it.
+skiko-encode-probe = "0.150.1"
 truth = "1.4.5"
 maven-publish = "0.37.0"
 # Google's host-side screenshot testing plugin (Layoutlib-backed). Used only
@@ -421,6 +434,7 @@ roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:robora
 checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
 roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version.ref = "roborazzi" }
 junit = { module = "junit:junit", version.ref = "junit" }
+skiko-awt-encode-probe = { module = "org.jetbrains.skiko:skiko-awt", version.ref = "skiko-encode-probe" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # ASM — used by `:daemon:harness`'s `S3_5RecompileSaveLoopRealModeTest` to mint two
 # `.class` files with the same FQN (`ee.schimke.composeai.daemon.MutableSquare`) but different
