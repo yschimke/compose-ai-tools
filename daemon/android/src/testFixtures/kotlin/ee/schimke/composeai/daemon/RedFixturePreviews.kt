@@ -717,6 +717,36 @@ fun ClickableToggleSquare() {
   Box(modifier = Modifier.fillMaxSize().clickable { clicked = true }.background(color))
 }
 
+/**
+ * wear-m3-catalog#32 fixture — a square whose **only** answer to a click is Material's ripple.
+ *
+ * The handler is deliberately inert and no state is remembered, so nothing in this composable can
+ * change a pixel except the press feedback. That makes "does a live click ripple?" a question about
+ * two captures rather than about a heuristic: identical frames mean the press never reached the
+ * component, which is exactly what the node's `OnClick` semantics action used to produce.
+ *
+ * The ripple is drawn in blue over a red fill, at the full bounds, so the difference between a
+ * pressed frame and a resting one is a whole-frame colour shift rather than a few edge pixels.
+ */
+@Composable
+fun RippleOnlySquare() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    val interactionSource =
+      androidx.compose.runtime.remember {
+        androidx.compose.foundation.interaction.MutableInteractionSource()
+      }
+    Box(
+      modifier =
+        Modifier.fillMaxSize().background(Color(0xFFEF5350)).clickable(
+          interactionSource = interactionSource,
+          indication = androidx.compose.material3.ripple(color = Color(0xFF0000FF)),
+        ) {
+          // Inert on purpose — see the KDoc.
+        }
+    )
+  }
+}
+
 @Composable
 fun DragScrollableSquare() {
   val scrollState = rememberScrollState()
