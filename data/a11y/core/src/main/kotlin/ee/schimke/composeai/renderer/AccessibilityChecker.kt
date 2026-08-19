@@ -172,6 +172,9 @@ object AccessibilityChecker {
       override val ownLabel: String
         get() = ownLabel(element)
 
+      override val isFocusStop: Boolean
+        get() = element.isScreenReaderFocusable
+
       override val mergesDescendants: Boolean
         get() = mergesDescendants(element.isScreenReaderFocusable, element.isScrollable == true)
 

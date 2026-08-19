@@ -115,6 +115,7 @@ class AccessibilityLabelDemoRender {
   ): AccessibilityLabels.Element =
     object : AccessibilityLabels.Element {
       override val ownLabel = own
+      override val isFocusStop = merges
       override val mergesDescendants = merges
       override val children = children
     }

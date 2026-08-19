@@ -29,20 +29,34 @@ package ee.schimke.composeai.renderer
 object AccessibilityLabels {
 
   /**
-   * The slice of a hierarchy element the roll-up reads. Kept to three members so the rule can be
-   * exercised against hand-built trees — ATF's own `ViewHierarchyElement` needs a real `View` graph
-   * to construct, which is why the projection used to be tested against flat node lists that could
+   * The slice of a hierarchy element the roll-up reads. Kept small so the rule can be exercised
+   * against hand-built trees — ATF's own `ViewHierarchyElement` needs a real `View` graph to
+   * construct, which is why the projection used to be tested against flat node lists that could
    * only prove its arithmetic, never its reading of the tree.
+   *
+   * [isFocusStop] and [mergesDescendants] are **not** the same question, and the roll-up asks each
+   * of them exactly once. A scrollable container is a stop a screen reader lands on, but it does
+   * not fold its rows into one announcement — each row stays independently reachable
+   * ([#1565](https://github.com/yschimke/compose-ai-tools/issues/1565)). Collapsing the two would
+   * let a clickable card that happens to contain a carousel announce every row in it.
    */
   interface Element {
     /** The copy this element carries itself: `contentDescription` else `text`. */
     val ownLabel: String
 
     /**
+     * `true` when a screen reader stops on this element in its own right — ATF's
+     * `isScreenReaderFocusable`. What an ancestor's announcement must stop at, whether or not this
+     * element goes on to fold anything of its own.
+     */
+    val isFocusStop: Boolean
+
+    /**
      * `true` when this element folds its descendants into a single announcement — ATF's
-     * `isScreenReaderFocusable` on a non-scrollable element
+     * `isScreenReaderFocusable` on a **non-scrollable** element
      * ([AccessibilityChecker.mergesDescendants]), the analogue of Compose's
-     * `isMergingSemanticsOfDescendants`.
+     * `isMergingSemanticsOfDescendants`. What decides whether this element has an announcement to
+     * roll up at all.
      */
     val mergesDescendants: Boolean
 
@@ -63,9 +77,11 @@ object AccessibilityLabels {
     if (!element.mergesDescendants) return ""
     val parts = mutableListOf<String>()
     fun collect(node: Element, isRoot: Boolean) {
-      // A nested stop is read as its own announcement, so its subtree is not part of this one —
-      // but what follows it still is.
-      if (!isRoot && node.mergesDescendants) return
+      // A nested stop is reached on its own, so neither it nor its subtree is part of this
+      // announcement — but what follows it still is. The test is "is it a stop", not "does it
+      // merge": a scrollable list is the case where those differ, and absorbing its rows here would
+      // announce the whole list as this element's name.
+      if (!isRoot && node.isFocusStop) return
       node.ownLabel.trim().takeIf { it.isNotEmpty() }?.let { parts += it }
       for (child in node.children) collect(child, isRoot = false)
     }

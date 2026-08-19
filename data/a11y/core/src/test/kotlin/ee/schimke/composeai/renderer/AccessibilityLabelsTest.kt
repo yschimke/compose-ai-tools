@@ -18,6 +18,9 @@ class AccessibilityLabelsTest {
     override val ownLabel: String = "",
     override val mergesDescendants: Boolean = false,
     override val children: List<AccessibilityLabels.Element> = emptyList(),
+    // Every merging element is a stop; the interesting case is the stop that does NOT merge, which
+    // is why this is settable on its own.
+    override val isFocusStop: Boolean = mergesDescendants,
   ) : AccessibilityLabels.Element
 
   @Test
@@ -89,6 +92,26 @@ class AccessibilityLabelsTest {
       )
 
     assertEquals("Title Subtitle", AccessibilityLabels.announcement(row))
+  }
+
+  @Test
+  fun `a nested scrollable stop is left to announce its own rows`() {
+    // A clickable card holding a carousel. The carousel is a stop a screen reader lands on, but it
+    // folds nothing — each row stays independently reachable (#1565) — so the card must stop at it
+    // rather than announcing every row as its own name.
+    val carousel =
+      Node(
+        isFocusStop = true,
+        mergesDescendants = false,
+        children = listOf(Node(ownLabel = "Row one"), Node(ownLabel = "Row two")),
+      )
+    val card =
+      Node(
+        mergesDescendants = true,
+        children = listOf(Node(ownLabel = "Recently played"), carousel),
+      )
+
+    assertEquals("Recently played", AccessibilityLabels.announcement(card))
   }
 
   @Test
