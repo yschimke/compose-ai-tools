@@ -1361,8 +1361,13 @@ abstract class RobolectricRenderTestBase(
             ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(params.locale)?.let {
               ee.schimke.composeai.daemon.PseudolocaleOverrideExtension(it)
             }
+          // State-backed rather than a constant so an `@InteractionPreview` can record in live mode
+          // without the preview's stills losing their Studio-parity default — the same seam, and
+          // the
+          // same reason, as [reduceMotionState]. Nothing flips it unless an interaction capture is
+          // present, so every other preview composes exactly as before.
+          val inspectionModeState = androidx.compose.runtime.mutableStateOf(inspectionMode)
           val providedValues = buildList {
-            add(LocalInspectionMode provides inspectionMode)
             LocaleCompositionLocals.providedValue(
                 RuntimeEnvironment.getApplication().resources.configuration
               )
@@ -1414,101 +1419,106 @@ abstract class RobolectricRenderTestBase(
               }
             }
             withReduceMotion {
-              CompositionLocalProvider(values = providedValues) {
-                if (focusExtension != null) {
-                  capturedView = androidx.compose.ui.platform.LocalView.current
-                }
-                val previewBody: @Composable () -> Unit = {
-                  val core: @Composable () -> Unit = {
-                    MeasuredWrapBox(
-                      wrapWidth = wrapWidth,
-                      wrapHeight = wrapHeight,
-                      onMeasured = { measured = it },
-                    ) {
-                      strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+              // Provided here rather than in [providedValues] because the value is state-backed:
+              // that array is built once, outside composition, so a flip in it would never be
+              // observed. Innermost wins, and nothing else provides this local on the render path.
+              CompositionLocalProvider(LocalInspectionMode provides inspectionModeState.value) {
+                CompositionLocalProvider(values = providedValues) {
+                  if (focusExtension != null) {
+                    capturedView = androidx.compose.ui.platform.LocalView.current
+                  }
+                  val previewBody: @Composable () -> Unit = {
+                    val core: @Composable () -> Unit = {
+                      MeasuredWrapBox(
+                        wrapWidth = wrapWidth,
+                        wrapHeight = wrapHeight,
+                        onMeasured = { measured = it },
+                      ) {
+                        strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                      }
+                    }
+                    if (applySystemBars) {
+                      SystemBarsFrame(uiMode = params.uiMode) { core() }
+                    } else {
+                      core()
                     }
                   }
-                  if (applySystemBars) {
-                    SystemBarsFrame(uiMode = params.uiMode) { core() }
-                  } else {
-                    core()
+                  val curveOrPlain: @Composable () -> Unit = {
+                    if (animationCurveCapture != null) {
+                      InspectablePreviewContent(animationCurveCapture, previewBody)
+                    } else {
+                      previewBody()
+                    }
                   }
-                }
-                val curveOrPlain: @Composable () -> Unit = {
-                  if (animationCurveCapture != null) {
-                    InspectablePreviewContent(animationCurveCapture, previewBody)
-                  } else {
-                    previewBody()
+                  val focusOrPlain: @Composable () -> Unit = {
+                    if (focusExtension != null) {
+                      focusExtension.AroundComposable { curveOrPlain() }
+                    } else {
+                      curveOrPlain()
+                    }
                   }
-                }
-                val focusOrPlain: @Composable () -> Unit = {
-                  if (focusExtension != null) {
-                    focusExtension.AroundComposable { curveOrPlain() }
-                  } else {
-                    curveOrPlain()
+                  // `@GestureHintPreview` — installs `LocalGestureRegistry` /
+                  // `LocalOneHandedGestureEnabled` and force-shows the hint, same
+                  // `DataExtensionPhase.OuterEnvironment` seam as ambient.
+                  val gestureHintOrPlain: @Composable () -> Unit = {
+                    if (gestureHintExtension != null) {
+                      gestureHintExtension.AroundComposable { focusOrPlain() }
+                    } else {
+                      focusOrPlain()
+                    }
                   }
-                }
-                // `@GestureHintPreview` — installs `LocalGestureRegistry` /
-                // `LocalOneHandedGestureEnabled` and force-shows the hint, same
-                // `DataExtensionPhase.OuterEnvironment` seam as ambient.
-                val gestureHintOrPlain: @Composable () -> Unit = {
-                  if (gestureHintExtension != null) {
-                    gestureHintExtension.AroundComposable { focusOrPlain() }
-                  } else {
-                    focusOrPlain()
+                  val ambientOrPlain: @Composable () -> Unit = {
+                    if (ambientExtension != null) {
+                      ambientExtension.AroundComposable { gestureHintOrPlain() }
+                    } else {
+                      gestureHintOrPlain()
+                    }
                   }
-                }
-                val ambientOrPlain: @Composable () -> Unit = {
-                  if (ambientExtension != null) {
-                    ambientExtension.AroundComposable { gestureHintOrPlain() }
-                  } else {
-                    gestureHintOrPlain()
+                  // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
+                  // `Box.size(...)` constrains the visible viewport before any inner
+                  // override applies — the cell footprint is the launcher chrome, not
+                  // the preview's own surface chemistry. Matches the connector's
+                  // `DataExtensionPhase.OuterEnvironment` ordering.
+                  val launcherWidgetOrPlain: @Composable () -> Unit = {
+                    if (launcherWidgetExtension != null) {
+                      launcherWidgetExtension.AroundComposable { ambientOrPlain() }
+                    } else {
+                      ambientOrPlain()
+                    }
                   }
-                }
-                // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
-                // `Box.size(...)` constrains the visible viewport before any inner
-                // override applies — the cell footprint is the launcher chrome, not
-                // the preview's own surface chemistry. Matches the connector's
-                // `DataExtensionPhase.OuterEnvironment` ordering.
-                val launcherWidgetOrPlain: @Composable () -> Unit = {
-                  if (launcherWidgetExtension != null) {
-                    launcherWidgetExtension.AroundComposable { ambientOrPlain() }
-                  } else {
-                    ambientOrPlain()
-                  }
-                }
-                // `@PermissionPreview` — the grants were already seeded into Robolectric when the
-                // extension was constructed above; this wrap is what scopes the connector's
-                // query tracking to this preview (`PermissionsController.beginRender`) and clears
-                // the override on dispose so the next preview in the sandbox starts clean. Same
-                // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
-                val permissionsOrPlain: @Composable () -> Unit = {
-                  if (permissionsExtension != null) {
-                    // `Around` (not `AroundComposable`): the permissions extension implements the
-                    // raw `AroundComposableHook`, because it needs the context's `previewId` to
-                    // scope query tracking — the convenience `AroundComposableExtension` base the
-                    // gesture / launcher-widget extensions use drops the context.
-                    permissionsExtension.Around(
-                      ExtensionComposeContext(
-                        extensionId = PermissionsOverrideExtension.ID,
-                        previewId = preview.id,
-                        renderMode = null,
-                      )
-                    ) {
+                  // `@PermissionPreview` — the grants were already seeded into Robolectric when the
+                  // extension was constructed above; this wrap is what scopes the connector's
+                  // query tracking to this preview (`PermissionsController.beginRender`) and clears
+                  // the override on dispose so the next preview in the sandbox starts clean. Same
+                  // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
+                  val permissionsOrPlain: @Composable () -> Unit = {
+                    if (permissionsExtension != null) {
+                      // `Around` (not `AroundComposable`): the permissions extension implements the
+                      // raw `AroundComposableHook`, because it needs the context's `previewId` to
+                      // scope query tracking — the convenience `AroundComposableExtension` base the
+                      // gesture / launcher-widget extensions use drops the context.
+                      permissionsExtension.Around(
+                        ExtensionComposeContext(
+                          extensionId = PermissionsOverrideExtension.ID,
+                          previewId = preview.id,
+                          renderMode = null,
+                        )
+                      ) {
+                        launcherWidgetOrPlain()
+                      }
+                    } else {
                       launcherWidgetOrPlain()
                     }
-                  } else {
-                    launcherWidgetOrPlain()
                   }
-                }
-                val pseudoOrPlain: @Composable () -> Unit = {
-                  if (pseudolocaleExtension != null) {
-                    pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
-                  } else {
-                    permissionsOrPlain()
+                  val pseudoOrPlain: @Composable () -> Unit = {
+                    if (pseudolocaleExtension != null) {
+                      pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
+                    } else {
+                      permissionsOrPlain()
+                    }
                   }
+                  keyboardExtension.AroundComposable { pseudoOrPlain() }
                 }
-                keyboardExtension.AroundComposable { pseudoOrPlain() }
               }
             }
           }
@@ -1745,7 +1755,7 @@ abstract class RobolectricRenderTestBase(
                 job is CaptureRenderJob &&
                 job.capture.animation != null &&
                 motionCaptureOrSidecar(outputFile, preview.id, "@AnimatedPreview") {
-                    handleAnimatedCapture(
+                  handleAnimatedCapture(
                       rule = rule,
                       animation = job.capture.animation,
                       previewId = preview.id,
@@ -1754,14 +1764,18 @@ abstract class RobolectricRenderTestBase(
                       curveCapture = animationCurveCapture,
                       glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                     )
-                  }
-                  .also { handled ->
-                    // The clock has been driven well past `currentTime`
-                    // by the animation pass — keep our local marker in
-                    // sync so any subsequent capture in the same
-                    // composition asserts ascending time correctly.
-                    if (handled) currentTime += job.capture.animation.durationMs.toLong()
-                  }
+                    .also { handled ->
+                      // The clock has been driven well past `currentTime`
+                      // by the animation pass — keep our local marker in
+                      // sync so any subsequent capture in the same
+                      // composition asserts ascending time correctly.
+                      // Inside the guarded body on purpose: a handler that threw part-way left
+                      // `mainClock` wherever it failed, so crediting the whole window here would
+                      // make a following timed capture compute too small a delta and silently
+                      // sample at the wrong virtual time.
+                      if (handled) currentTime += job.capture.animation.durationMs.toLong()
+                    }
+                }
 
             // @FocusedPreview(gif = true): drive `FocusController` through each step
             // and stitch the captured frames into a single GIF. Inside-composition
@@ -1776,7 +1790,7 @@ abstract class RobolectricRenderTestBase(
                 job is CaptureRenderJob &&
                 job.capture.focusGif != null &&
                 motionCaptureOrSidecar(outputFile, preview.id, "@FocusedPreview(gif=true)") {
-                    handleFocusGifCapture(
+                  handleFocusGifCapture(
                       rule = rule,
                       focusGif = job.capture.focusGif,
                       previewId = preview.id,
@@ -1784,14 +1798,15 @@ abstract class RobolectricRenderTestBase(
                       outputFile = outputFile,
                       glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                     )
-                  }
-                  .also { handled ->
-                    if (handled) {
-                      val perStep =
-                        (job.capture.focusGif.frameDelayMs.toLong() + FocusController.SETTLE_MS)
-                      currentTime += perStep * job.capture.focusGif.steps.size
+                    .also { handled ->
+                      // Inside the guarded body — see the animated capture above.
+                      if (handled) {
+                        val perStep =
+                          (job.capture.focusGif.frameDelayMs.toLong() + FocusController.SETTLE_MS)
+                        currentTime += perStep * job.capture.focusGif.steps.size
+                      }
                     }
-                  }
+                }
 
             // @InteractionPreview: resolve the script's targets against the resting layout, then
             // dispatch a real pointer gesture at each while sampling the paused clock frame by
@@ -1799,6 +1814,27 @@ abstract class RobolectricRenderTestBase(
             // the desktop lane does — before issue #4215 the renderer simply dropped
             // `Capture.interaction` as an unknown key, so an annotated preview on this backend
             // produced no capture at all and then took its own still down with it.
+            // An interaction capture records the composition in its LIVE configuration, never the
+            // inspection one — the desktop path provides `LocalInspectionMode = false` for exactly
+            // this reason. Components short-circuit animations under inspection, and a catalog
+            // sticker commonly goes further and freezes its own state there so that a baked PNG
+            // cannot depend on having been tapped. A gesture recorded in that branch would show a
+            // component refusing to move, which is indistinguishable from one that cannot — the
+            // single question the artifact exists to answer. Flipped on the same state-backed seam
+            // `reduceMotionState` uses, around this capture only, and restored after so the
+            // preview's own stills keep their Android-Studio-parity default.
+            val forceLiveInspection =
+              job is CaptureRenderJob &&
+                job.capture.interaction != null &&
+                inspectionModeState.value
+            if (forceLiveInspection) {
+              rule.runOnUiThread {
+                inspectionModeState.value = false
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
             val interactionHandled =
               !longHandled &&
                 !gifHandled &&
@@ -1807,7 +1843,7 @@ abstract class RobolectricRenderTestBase(
                 job is CaptureRenderJob &&
                 job.capture.interaction != null &&
                 motionCaptureOrSidecar(outputFile, preview.id, "@InteractionPreview") {
-                    handleInteractionCapture(
+                  handleInteractionCapture(
                       rule = rule,
                       interaction = job.capture.interaction,
                       previewId = preview.id,
@@ -1817,13 +1853,23 @@ abstract class RobolectricRenderTestBase(
                       wrapHeight = wrapHeight,
                       padArgb = resolveBackgroundColor(params).toArgb(),
                       measuredContent = { measured },
+                      glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
                     )
-                  }
-                  .also { handled ->
-                    // The gesture loop drove the shared clock across its whole window — keep the
-                    // local marker in step so any following capture's monotonicity check holds.
-                    if (handled) currentTime += job.capture.interaction.windowMs()
-                  }
+                    .also { handled ->
+                      // Inside the guarded body — see the animated capture above. The gesture loop
+                      // drove the shared clock across its whole window, so the local marker only
+                      // earns that credit when the loop actually completed it.
+                      if (handled) currentTime += job.capture.interaction.windowMs()
+                    }
+                }
+            if (forceLiveInspection) {
+              rule.runOnUiThread {
+                inspectionModeState.value = true
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
 
             // `handleLongCapture` / `handleGifCapture` returned false
             // (e.g. `NoScrollable` — no scrollable on the requested

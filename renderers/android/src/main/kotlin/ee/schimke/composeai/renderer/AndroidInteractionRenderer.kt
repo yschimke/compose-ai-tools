@@ -9,6 +9,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.IntSize
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
+import ee.schimke.composeai.glimmer.GlimmerEnvironment as ConnectorGlimmerEnvironment
+import ee.schimke.composeai.glimmer.GlimmerEnvironmentCompositor
 import ee.schimke.composeai.motion.ApngEncoder
 import ee.schimke.composeai.motion.InteractionScript
 import ee.schimke.composeai.motion.MotionGesture
@@ -60,6 +62,7 @@ internal fun handleInteractionCapture(
   wrapHeight: Boolean,
   padArgb: Int,
   measuredContent: () -> IntSize?,
+  glimmerEnvironment: ConnectorGlimmerEnvironment? = null,
 ): Boolean {
   val frameInterval = interaction.frameIntervalMs.coerceAtLeast(1)
   val timeline =
@@ -71,7 +74,22 @@ internal fun handleInteractionCapture(
       leadInMs = interaction.leadInMs,
     )
   val totalDuration = timeline.cappedDurationMs
-  val frameCount = (totalDuration / frameInterval).coerceAtLeast(1)
+  // Enough samples to cover the window *and* to record the component's response to the last
+  // scripted event. Flooring the duration alone is not enough: an interval as coarse as the script
+  // itself yields a single sample at elapsed 0, which — with any lead-in at all — dispatches
+  // nothing and publishes a resting frame documenting no interaction.
+  //
+  // Only events the cap admits count, since a script long enough to be truncated has events beyond
+  // the window and one of those must not drag the recording past the bound the cap exists to
+  // enforce. The `+ 2` buys the frame *after* the one the last event lands on: a component
+  // responds to a release on the following frame, so stopping at the event's own frame would
+  // record the gesture having been dispatched and never its effect.
+  //
+  // For every ordinary frame rate the duration term is far larger and this floor never binds.
+  val lastEventMs = timeline.events.lastOrNull { it.atMs <= totalDuration }?.atMs ?: 0
+  val framesToLastEvent =
+    if (lastEventMs <= 0) 1 else (lastEventMs + frameInterval - 1) / frameInterval + 2
+  val frameCount = maxOf(totalDuration / frameInterval, framesToLastEvent).coerceAtLeast(1)
 
   val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_gesture_frames")
   framesDir.deleteRecursively()
@@ -98,6 +116,7 @@ internal fun handleInteractionCapture(
 
     var elapsed = 0
     var nextEvent = 0
+    var pointerDown = false
     repeat(frameCount) { index ->
       while (nextEvent < timeline.events.size && timeline.events[nextEvent].atMs <= elapsed) {
         val event = timeline.events[nextEvent]
@@ -107,6 +126,7 @@ internal fun handleInteractionCapture(
         DialogWindowCapture.resolveCaptureRoot(rule).interaction.performTouchInput {
           if (event.down) down(centre) else up()
         }
+        pointerDown = event.down
         nextEvent++
       }
       val frameFile = File(framesDir, "frame_%05d.png".format(index))
@@ -133,7 +153,12 @@ internal fun handleInteractionCapture(
     // Release anything still held. A capture that ends mid-press leaves the pointer down when the
     // composition is torn down, and a reader looping the file would see the component stuck in its
     // pressed state at the loop point with no release to explain it.
-    if (nextEvent < timeline.events.size) {
+    //
+    // Keyed on the pointer's actual state, not on whether timeline events remain: a script the
+    // duration cap truncates *between* gestures has both a released pointer and pending events, and
+    // an `up()` with nothing down is rejected by the injector — which would fail an otherwise
+    // complete recording at the last step.
+    if (pointerDown) {
       DialogWindowCapture.resolveCaptureRoot(rule).interaction.performTouchInput { up() }
     }
 
@@ -154,6 +179,7 @@ internal fun handleInteractionCapture(
         frameIntervalMs = frameInterval,
         crop = crop,
         padArgb = padArgb,
+        glimmerEnvironment = glimmerEnvironment,
       ) ?: return false
 
     System.err.println(
@@ -294,35 +320,62 @@ private fun encodeInteractionFrames(
   frameIntervalMs: Int,
   crop: IntSize,
   padArgb: Int,
+  glimmerEnvironment: ConnectorGlimmerEnvironment?,
 ): File? {
   outputFile.parentFile?.mkdirs()
-  return when (format) {
+  // Normalised in place, one frame at a time: the APNG encoder copies each frame's `IDAT` through
+  // verbatim, so a frame already at the crop size never gets decoded at all — which is every frame
+  // of the fixed-size case and nearly every frame of the wrapped one.
+  frameFiles.forEach { file -> padOrTrimFramePng(file, crop, padArgb) }
+
+  if (glimmerEnvironment != null) {
+    // Glimmer is captured as ordinary opaque RGB on black; only once the complete raw frame exists
+    // does the connector ADD-composite the selected world. The still path does this post-capture on
+    // the PNG, but that pass is `.png`-only — a motion container has to composite per frame before
+    // encoding, exactly as the animated and focus-GIF handlers do, and preserve the raw capture
+    // beside the output.
+    val raw =
+      outputFile.resolveSibling("${outputFile.nameWithoutExtension}.raw.${outputFile.extension}")
+    encodeFrameFiles(frameFiles, raw, format, frameIntervalMs) ?: return null
+    frameFiles.forEach { file ->
+      val composited =
+        GlimmerEnvironmentCompositor.composite(
+          FramePngReader.decode(file, role = "interaction"),
+          glimmerEnvironment,
+        )
+      ImageIO.write(composited, "PNG", file)
+    }
+  }
+
+  return encodeFrameFiles(frameFiles, outputFile, format, frameIntervalMs)
+}
+
+/** Stitches already-normalised [frameFiles] into [out]'s container. */
+private fun encodeFrameFiles(
+  frameFiles: List<File>,
+  out: File,
+  format: MotionFormat,
+  frameIntervalMs: Int,
+): File? =
+  when (format) {
     MotionFormat.APNG -> {
-      // Re-written in place, one frame at a time: the encoder copies each frame's `IDAT` through
-      // verbatim, so a frame already at the crop size never gets decoded at all — which is every
-      // frame of the fixed-size case and nearly every frame of the wrapped one.
-      frameFiles.forEach { file -> padOrTrimFramePng(file, crop, padArgb) }
       val (num, den) = apngDelayFor(frameIntervalMs)
       ApngEncoder.encodeFromPngFrames(
         frames = frameFiles,
         delayNumerator = num,
         delayDenominator = den,
         loopCount = 0,
-        out = outputFile,
+        out = out,
       )
-      outputFile
+      out
     }
     MotionFormat.GIF ->
       ScrollGifEncoder.encode(
-        frames =
-          frameFiles.map { file ->
-            padOrTrimFrame(FramePngReader.decode(file, role = "interaction"), crop, padArgb)
-          },
-        outputFile = outputFile,
+        frames = frameFiles.map { FramePngReader.decode(it, role = "interaction") },
+        outputFile = out,
         frameDelaysMs = IntArray(frameFiles.size) { frameIntervalMs },
       )
   }
-}
 
 /** Rewrites [file] at exactly [target], or leaves it untouched when it already is. */
 private fun padOrTrimFramePng(file: File, target: IntSize, padArgb: Int) {

@@ -160,6 +160,48 @@ class AndroidInteractionCaptureTest {
   }
 
   @Test
+  fun `a frame interval coarser than the whole script still dispatches it`() {
+    setToggleRow(cells = 1)
+    val out = File(rootDir, "coarse.apng")
+
+    // Flooring duration-by-interval alone would give a single sample at elapsed 0 — nothing
+    // dispatched, and a "motion" capture of a component at rest.
+    val handled = capture(out, script(targets = listOf(0), frameIntervalMs = 5000))
+
+    assertTrue(handled)
+    val frames = Apng.frames(out)
+    assertTrue("the script must be sampled past its lead-in", frames.size >= 2)
+    assertEquals(ON_ARGB, frames.last().cell(0, cellWidth(frames.last())))
+  }
+
+  @Test
+  fun `a script the cap truncates between gestures releases nothing`() {
+    setToggleRow(cells = 1)
+    val out = File(rootDir, "capped.apng")
+
+    // 11 taps at this timing run past MAX_INTERACTION_DURATION_MS, and the cap lands in a gap:
+    // the last admitted event is a release, so the pointer is already up. Inferring "still held"
+    // from the pending events would issue a second `up()`, which the injector rejects — failing an
+    // otherwise complete recording at its very last step.
+    val handled =
+      capture(
+        out,
+        InteractionCapture(
+          gesture = InteractionGesture.TAP,
+          targets = List(11) { 0 },
+          holdMs = 600,
+          gapMs = 901,
+          leadInMs = 100,
+          frameIntervalMs = 500,
+          format = MotionFormat.APNG,
+        ),
+      )
+
+    assertTrue("a truncated script still publishes what it recorded", handled)
+    assertTrue(Apng.frames(out).isNotEmpty())
+  }
+
+  @Test
   fun `a target index that resolves to nothing fails loudly`() {
     setToggleRow(cells = 3)
     val out = File(rootDir, "out-of-range.apng")
