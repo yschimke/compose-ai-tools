@@ -249,8 +249,29 @@ object PlaygroundSourceCleaner {
    * annotation's continuation lines (` id = "Button/Filled",`) look like neither an annotation nor
    * a declaration.
    */
+  /**
+   * An EXTENSION declaration, captured by its callable name rather than its receiver.
+   *
+   * [DECLARATION] takes the first identifier after `fun`, which for `private fun
+   * Morph.toComposePath(...)` is `Morph` — the receiver type. Indexing the helper under that name
+   * meant a body calling `morph.toComposePath(progress)` never matched it: the checked-in
+   * `shape-morph` component does exactly that, so its cleaned snippet brought `ShapeMorphViewer`
+   * along and left `toComposePath` behind — an unresolved call, and not in residue either, because
+   * the residue check reads the same index.
+   *
+   * Tried before [DECLARATION] and only for `fun`, since only a function can be an extension here;
+   * a declaration with no receiver does not match (there is no `.`) and falls through unchanged.
+   */
+  private val EXTENSION_DECLARATION =
+    Regex(
+      """^$ANNOTATION_RUN(?:[a-z]+\s+)*fun\s+(?:<[^>]*>\s+)?[A-Za-z_][A-Za-z0-9_]*(?:<[^>]*>)?\??\.([A-Za-z_][A-Za-z0-9_]*)\s*\("""
+    )
+
   private fun declaredName(text: String): String? =
-    text.lines().firstNotNullOfOrNull { DECLARATION.find(it)?.groupValues?.get(1) }
+    text.lines().firstNotNullOfOrNull { line ->
+      EXTENSION_DECLARATION.find(line)?.groupValues?.get(1)
+        ?: DECLARATION.find(line)?.groupValues?.get(1)
+    }
 
   // ---------------------------------------------------------------------------------------------
   // Header
@@ -523,10 +544,62 @@ object PlaygroundSourceCleaner {
       val end = annotationEnd(lines, i)
       if (!isScaffoldAnnotation(annotationName(line), imports, rules)) {
         for (j in i..end) out.add(lines[j])
+      } else if (end == i) {
+        // A scaffold annotation can SHARE its line with the rest of the declaration — legal Kotlin,
+        // and checked in: `CatalogText.kt:42` is
+        // `@CatalogModes @Composable fun TextBrandedSpecimen() = Sticker("text-branded")`.
+        // Dropping the whole line took `@Composable` and the function with it, leaving the cleaner
+        // nothing to emit and falling back to the verbatim wrapper — the exact snippet this class
+        // exists to replace. Remove only the matched annotation's own span; whatever the line
+        // carries after it survives. Single-line only: a wrapped annotation owns every line of its
+        // argument list, so the old whole-span drop is right there.
+        val remainder = lineWithoutLeadingAnnotation(line)
+        if (remainder.isNotBlank()) out.add(remainder)
       }
       i = end + 1
     }
     return out.joinToString("\n")
+  }
+
+  /**
+   * [line] with its leading `@Annotation(...)` removed, indentation preserved.
+   *
+   * Returns blank when the annotation was the whole line, which is the ordinary case — the caller
+   * then drops it as before.
+   */
+  private fun lineWithoutLeadingAnnotation(line: String): String {
+    val indent = line.takeWhile { it.isWhitespace() }
+    val body = line.substring(indent.length)
+    if (!body.startsWith("@")) return line
+    var index = 1
+    if (body.startsWith("@file:")) index = "@file:".length
+    while (index < body.length && (body[index].isLetterOrDigit() || body[index] == '_')) index++
+    // Skip a balanced argument list, if any. Nesting and string literals both matter: an argument
+    // can itself be an annotation (`@OptIn(A::class, B::class)`) and a string can hold a bracket.
+    if (index < body.length && body[index] == '(') {
+      var depth = 0
+      var inString = false
+      while (index < body.length) {
+        val char = body[index]
+        when {
+          inString && char == '\\' -> index++
+          char == '"' -> inString = !inString
+          !inString && char == '(' -> depth++
+          !inString && char == ')' -> {
+            depth--
+            if (depth == 0) {
+              index++
+              break
+            }
+          }
+        }
+        index++
+      }
+      // Unbalanced — not something to guess at. Leave the line to the caller's whole-span drop.
+      if (depth != 0) return ""
+    }
+    val rest = body.substring(index).trimStart()
+    return if (rest.isEmpty()) "" else indent + rest
   }
 
   /** `@file:OptIn(...)` / `@CatalogComponent(...)` → `OptIn` / `CatalogComponent`. */
@@ -1098,7 +1171,11 @@ object PlaygroundSourceCleaner {
     fun enqueue(text: String) {
       for (name in helpers.keys) {
         if (name in skip || name in queued) continue
-        if (mentionsWord(text, name)) {
+        // `mentionsWord` rejects a name preceded by `.`, which is right for a plain call — a
+        // receiver chain must not be mistaken for a reference — and exactly wrong for an EXTENSION,
+        // whose only call shape is `receiver.name(...)`. Both are checked, so an extension helper
+        // is pulled in by the call that actually appears.
+        if (mentionsWord(text, name) || mentionsExtensionCall(text, name)) {
           queued.add(name)
           queue.addLast(name)
         }
@@ -1679,6 +1756,34 @@ object PlaygroundSourceCleaner {
 
   internal fun mentionsWord(text: String, word: String): Boolean =
     wordOccurrences(text, word).isNotEmpty()
+
+  /**
+   * Whether [text] calls [name] as an extension — `receiver.name(`, at any depth of receiver chain.
+   *
+   * Deliberately narrow: it requires the call parentheses, so a plain property read on an unrelated
+   * receiver (`state.morph`) does not drag a same-named function in. Over-matching here costs a
+   * helper the snippet did not need; under-matching costs an unresolved call reported as clean,
+   * which is the failure this class exists to prevent.
+   */
+  internal fun mentionsExtensionCall(text: String, name: String): Boolean {
+    val mask = codeMask(text)
+    var from = 0
+    while (true) {
+      val at = text.indexOf(name, from).takeIf { it >= 0 } ?: return false
+      from = at + 1
+      if (!mask[at]) continue
+      if (text.getOrNull(at - 1) != '.') continue
+      // The character before the `.` has to end an expression, or this is a package qualifier.
+      val beforeDot = text.getOrNull(at - 2)
+      if (
+        beforeDot != null && !isIdentifierChar(beforeDot) && beforeDot != ')' && beforeDot != ']'
+      ) {
+        continue
+      }
+      val gap = text.drop(at + name.length).takeWhile { it.isWhitespace() }
+      if (text.getOrNull(at + name.length + gap.length) == '(') return true
+    }
+  }
 
   /**
    * Whether [text] still calls [name] through **any** qualifier — `com.acme.counted(…)`.
