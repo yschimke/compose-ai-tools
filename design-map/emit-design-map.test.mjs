@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -40,7 +41,16 @@ function run(previews, ...flags) {
       ],
       { encoding: "utf8" },
     );
-    return { ...result, all: `${result.stdout}${result.stderr}` };
+    const read = (name) => {
+      const at = path.join(dir, name);
+      return fs.existsSync(at) ? JSON.parse(fs.readFileSync(at, "utf8")) : null;
+    };
+    return {
+      ...result,
+      all: `${result.stdout}${result.stderr}`,
+      map: read("design-map.json"),
+      variants: read("design-map-variants.json"),
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -144,4 +154,48 @@ test("an ambiguous mode is still fatal when the component HAS a reference to pai
   );
   assert.equal(status, 1);
   assert.match(all, /none of them Light/);
+});
+
+// The breakpoint arm through the CLI, because `--base-breakpoint` is what a catalog's wrapper
+// script passes and `--strict` is what decides whether its build goes red.
+const atWidth = (name, widthDp, catalog = {}) => ({
+  id: `com.example.CatalogKt.${name}_wearos_${widthDp}`,
+  functionName: name,
+  sourceFile: "Catalog.kt",
+  params: { device: `id:wearos_${widthDp}`, widthDp },
+  catalog: { role: "COMPONENT", componentId: name, ...catalog },
+});
+
+test("--strict passes a breakpoint fan-out, which is a size axis rather than a missing mode", () => {
+  const { status, all } = run(
+    [atWidth("Picker", 192, { reference: `figma:${FILE}/1:1` }), atWidth("Picker", 240, { reference: `figma:${FILE}/1:1` })],
+    "--strict",
+  );
+  assert.equal(status, 0, all);
+  assert.match(all, /1 mapped component\(s\)/);
+  assert.doesNotMatch(all, /none of them Light/);
+});
+
+test("--base-breakpoint picks the capture the kit's own artwork is drawn at", () => {
+  const previews = [
+    atWidth("Picker", 192, { reference: `figma:${FILE}/1:1` }),
+    atWidth("Picker", 225, { reference: `figma:${FILE}/1:1` }),
+  ];
+  const narrowest = run(previews, "--strict");
+  assert.equal(narrowest.status, 0, narrowest.all);
+  assert.match(narrowest.map.components[0].previewId, /_wearos_192$/);
+  assert.deepEqual(
+    narrowest.variants.components[0].renders.map((r) => r.name),
+    ["225dp"],
+  );
+
+  // The flag has to MOVE the base, not merely be accepted — an ignored flag would pass an
+  // exit-code assertion unchanged.
+  const named = run(previews, "--strict", "--base-breakpoint", "225");
+  assert.equal(named.status, 0, named.all);
+  assert.match(named.map.components[0].previewId, /_wearos_225$/);
+  assert.deepEqual(
+    named.variants.components[0].renders.map((r) => r.name),
+    ["192dp"],
+  );
 });

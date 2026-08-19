@@ -5,6 +5,7 @@
  *     npx @yschimke/compose-design-map [--previews <path>] [--out design-map.json]
  *                                      [--variants design-map-variants.json] [--prefix catalog]
  *                                      [--check] [--strict] [--allow-stated-absence]
+ *                                      [--base-breakpoint <dp>]
  *
  * Run `./gradlew :<module>:composePreviewDiscover` first so the manifest exists.
  *
@@ -60,6 +61,15 @@ const PREFIX = arg("prefix", "catalog");
 const CHECK = process.argv.includes("--check");
 const STRICT = process.argv.includes("--strict");
 const ALLOW_STATED_ABSENCE = process.argv.includes("--allow-stated-absence");
+/**
+ * The screen width, in dp, whose capture is the BASE of a breakpoint fan-out.
+ *
+ * A multipreview that draws one composable at several screen sizes publishes several captures of
+ * it, and exactly one can carry the component's design reference — the rest fold under it as size
+ * cells. Absent this flag the narrowest wins, which is the size a kit usually draws. Pass it when
+ * the kit draws somewhere else, so the base capture and the base reference are the same width.
+ */
+const BASE_BREAKPOINT = Number(arg("base-breakpoint", ""));
 
 if (!fs.existsSync(PREVIEWS)) {
   console.error(
@@ -72,6 +82,9 @@ if (!fs.existsSync(PREVIEWS)) {
 const manifest = JSON.parse(fs.readFileSync(PREVIEWS, "utf8"));
 const { map, variants, diagnostics } = projectDesignMap(manifest.previews ?? [], {
   prefix: PREFIX,
+  ...(Number.isFinite(BASE_BREAKPOINT) && BASE_BREAKPOINT > 0
+    ? { baseBreakpointDp: BASE_BREAKPOINT }
+    : {}),
 });
 
 // Gate BEFORE writing, not after. A run that fails should leave the committed map intact rather
