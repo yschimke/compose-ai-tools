@@ -1040,6 +1040,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-theme-overflow/dark](renders/serve-viewer-theme-overflow.dark.png) |
 | `light` | ![serve-viewer-theme-overflow/light](renders/serve-viewer-theme-overflow.light.png) |
 
+## serve-viewer-theme-overflow-theme-menu
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-theme-overflow-theme-menu/dark](renders/serve-viewer-theme-overflow-theme-menu.dark.png) |
+| `light` | ![serve-viewer-theme-overflow-theme-menu/light](renders/serve-viewer-theme-overflow-theme-menu.light.png) |
+
 ## serve-viewer-themes
 
 | Theme | Capture |
