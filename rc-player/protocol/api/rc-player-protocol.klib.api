@@ -4241,6 +4241,40 @@ final object ee.schimke.composeai.rcplayer.protocol/RcRunAction : ee.schimke.com
     final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.protocol/RcRunAction.toString|toString(){}[0]
 }
 
+final object ee.schimke.composeai.rcplayer.protocol/RcSystemVariables { // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables|null[0]
+    final const val ANIMATION_DELTA_TIME // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ANIMATION_DELTA_TIME|{}ANIMATION_DELTA_TIME[0]
+        final fun <get-ANIMATION_DELTA_TIME>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ANIMATION_DELTA_TIME.<get-ANIMATION_DELTA_TIME>|<get-ANIMATION_DELTA_TIME>(){}[0]
+    final const val ANIMATION_TIME // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ANIMATION_TIME|{}ANIMATION_TIME[0]
+        final fun <get-ANIMATION_TIME>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ANIMATION_TIME.<get-ANIMATION_TIME>|<get-ANIMATION_TIME>(){}[0]
+    final const val CALENDAR_MONTH // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.CALENDAR_MONTH|{}CALENDAR_MONTH[0]
+        final fun <get-CALENDAR_MONTH>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.CALENDAR_MONTH.<get-CALENDAR_MONTH>|<get-CALENDAR_MONTH>(){}[0]
+    final const val CONTINUOUS_SEC // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.CONTINUOUS_SEC|{}CONTINUOUS_SEC[0]
+        final fun <get-CONTINUOUS_SEC>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.CONTINUOUS_SEC.<get-CONTINUOUS_SEC>|<get-CONTINUOUS_SEC>(){}[0]
+    final const val DAY_OF_MONTH // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.DAY_OF_MONTH|{}DAY_OF_MONTH[0]
+        final fun <get-DAY_OF_MONTH>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.DAY_OF_MONTH.<get-DAY_OF_MONTH>|<get-DAY_OF_MONTH>(){}[0]
+    final const val DAY_OF_YEAR // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.DAY_OF_YEAR|{}DAY_OF_YEAR[0]
+        final fun <get-DAY_OF_YEAR>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.DAY_OF_YEAR.<get-DAY_OF_YEAR>|<get-DAY_OF_YEAR>(){}[0]
+    final const val EPOCH_SECOND // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.EPOCH_SECOND|{}EPOCH_SECOND[0]
+        final fun <get-EPOCH_SECOND>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.EPOCH_SECOND.<get-EPOCH_SECOND>|<get-EPOCH_SECOND>(){}[0]
+    final const val OFFSET_TO_UTC // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.OFFSET_TO_UTC|{}OFFSET_TO_UTC[0]
+        final fun <get-OFFSET_TO_UTC>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.OFFSET_TO_UTC.<get-OFFSET_TO_UTC>|<get-OFFSET_TO_UTC>(){}[0]
+    final const val TIME_IN_HR // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.TIME_IN_HR|{}TIME_IN_HR[0]
+        final fun <get-TIME_IN_HR>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.TIME_IN_HR.<get-TIME_IN_HR>|<get-TIME_IN_HR>(){}[0]
+    final const val TIME_IN_MIN // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.TIME_IN_MIN|{}TIME_IN_MIN[0]
+        final fun <get-TIME_IN_MIN>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.TIME_IN_MIN.<get-TIME_IN_MIN>|<get-TIME_IN_MIN>(){}[0]
+    final const val TIME_IN_SEC // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.TIME_IN_SEC|{}TIME_IN_SEC[0]
+        final fun <get-TIME_IN_SEC>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.TIME_IN_SEC.<get-TIME_IN_SEC>|<get-TIME_IN_SEC>(){}[0]
+    final const val WEEK_DAY // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.WEEK_DAY|{}WEEK_DAY[0]
+        final fun <get-WEEK_DAY>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.WEEK_DAY.<get-WEEK_DAY>|<get-WEEK_DAY>(){}[0]
+    final const val YEAR // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.YEAR|{}YEAR[0]
+        final fun <get-YEAR>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.YEAR.<get-YEAR>|<get-YEAR>(){}[0]
+
+    final val ALL // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ALL|{}ALL[0]
+        final fun <get-ALL>(): kotlin.collections/Set<kotlin/Int> // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ALL.<get-ALL>|<get-ALL>(){}[0]
+    final val MOVING // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.MOVING|{}MOVING[0]
+        final fun <get-MOVING>(): kotlin.collections/Set<kotlin/Int> // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.MOVING.<get-MOVING>|<get-MOVING>(){}[0]
+}
+
 final object ee.schimke.composeai.rcplayer.protocol/RcTouchCancelModifier : ee.schimke.composeai.rcplayer.protocol/RcOperation { // ee.schimke.composeai.rcplayer.protocol/RcTouchCancelModifier|null[0]
     final val opcode // ee.schimke.composeai.rcplayer.protocol/RcTouchCancelModifier.opcode|{}opcode[0]
         final fun <get-opcode>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcTouchCancelModifier.opcode.<get-opcode>|<get-opcode>(){}[0]
@@ -4268,4 +4302,5 @@ final object ee.schimke.composeai.rcplayer.protocol/RcTouchUpModifier : ee.schim
     final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.protocol/RcTouchUpModifier.toString|toString(){}[0]
 }
 
+final fun (ee.schimke.composeai.rcplayer.protocol/RcDocument).ee.schimke.composeai.rcplayer.protocol/referencesMovingSystemVariable(): kotlin/Boolean // ee.schimke.composeai.rcplayer.protocol/referencesMovingSystemVariable|referencesMovingSystemVariable@ee.schimke.composeai.rcplayer.protocol.RcDocument(){}[0]
 final fun (ee.schimke.composeai.rcplayer.protocol/RcDocument).ee.schimke.composeai.rcplayer.protocol/supportReport(): ee.schimke.composeai.rcplayer.protocol/RcDocumentSupport // ee.schimke.composeai.rcplayer.protocol/supportReport|supportReport@ee.schimke.composeai.rcplayer.protocol.RcDocument(){}[0]

@@ -2438,6 +2438,29 @@ public final class ee/schimke/composeai/rcplayer/protocol/RcStateLayout : ee/sch
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class ee/schimke/composeai/rcplayer/protocol/RcSystemVariables {
+	public static final field ANIMATION_DELTA_TIME I
+	public static final field ANIMATION_TIME I
+	public static final field CALENDAR_MONTH I
+	public static final field CONTINUOUS_SEC I
+	public static final field DAY_OF_MONTH I
+	public static final field DAY_OF_YEAR I
+	public static final field EPOCH_SECOND I
+	public static final field INSTANCE Lee/schimke/composeai/rcplayer/protocol/RcSystemVariables;
+	public static final field OFFSET_TO_UTC I
+	public static final field TIME_IN_HR I
+	public static final field TIME_IN_MIN I
+	public static final field TIME_IN_SEC I
+	public static final field WEEK_DAY I
+	public static final field YEAR I
+	public final fun getALL ()Ljava/util/Set;
+	public final fun getMOVING ()Ljava/util/Set;
+}
+
+public final class ee/schimke/composeai/rcplayer/protocol/RcSystemVariablesKt {
+	public static final fun referencesMovingSystemVariable (Lee/schimke/composeai/rcplayer/protocol/RcDocument;)Z
+}
+
 public final class ee/schimke/composeai/rcplayer/protocol/RcTextAttribute : ee/schimke/composeai/rcplayer/protocol/RcOperation {
 	public static final field Companion Lee/schimke/composeai/rcplayer/protocol/RcTextAttribute$Companion;
 	public static final field TEXT_LENGTH I
