@@ -83,14 +83,20 @@ const namedValues = [
 const src = `player.html?src=doc.rc&namedValues=${encodeURIComponent(JSON.stringify(namedValues))}`;
 ```
 
-`value` is stringified, so a number or boolean may be passed unquoted. `bool` is `true`/`false`;
-`color` accepts `#RRGGBB`/`#AARRGGBB` with or without the leading `#`.
+`value` is stringified, so a number or boolean may be passed unquoted. `color` accepts
+`#RRGGBB`/`#AARRGGBB` with or without the leading `#`.
 
-**A malformed array is silently ignored, not reported.** The player's parser returns no overrides on
-any JSON error, and an element whose `kind` is unrecognized or whose `value` does not parse as its
-kind is dropped on its own — the document still renders, with its own defaults. Nothing appears in
-`data-rc-player-error`, because failing to *style* a document is not failing to *load* one. A host
-that cannot tolerate a silently-defaulted override should validate before building the URL.
+**`bool` is `"true"` or nothing.** It is the one kind that does not validate: the parser tests for
+the exact string `true` and maps *everything else* — `"1"`, `"TRUE"`, `"yes"`, a typo — to `false`.
+So a malformed boolean does not fall back to the document's own value, it actively overrides the
+variable to false. Send `true`/`false` and nothing else.
+
+**Otherwise, a malformed array is silently ignored rather than reported.** The parser returns no
+overrides at all on any JSON error, and an element whose `kind` is unrecognized or whose `value`
+does not parse as its kind is dropped on its own — the document still renders, with its own
+defaults. Nothing appears in `data-rc-player-error`, because failing to *style* a document is not
+failing to *load* one. A host that cannot tolerate a silently-defaulted (or, for `bool`, silently
+falsified) override should validate before building the URL.
 
 (The NUL-and-`\u0001`-delimited rows in `Main.kt`'s `flattenNamedValuesFromLocation` are an internal
 shape used to hand the parsed array across the JS/Wasm boundary. They are not the wire format, and

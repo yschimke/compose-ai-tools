@@ -86,11 +86,28 @@ points at the commit made after the upload, which is the first commit where the 
 agree.
 
 **Why the Swift tag is bare `1.16.0` and not `swift/1.16.0`.** SwiftPM reads a ref as a semantic
-version only when the *entire* ref is `X.Y.Z` or `vX.Y.Z`; a leading `v` is the only decoration
-it strips. A `swift/1.16.0` ref is therefore not a version at all: `.package(..., from: "1.16.0")`
-reports that no versions match the requirement, and the only consumption syntax this document
-advertises resolves nothing. A bare tag is a version SwiftPM accepts, does not collide with the
-`v<version>` release tag, and does not re-enter `release.yml`, whose push trigger is `v*`.
+version only when the *entire* ref is `X.Y.Z` or `vX.Y.Z`; a leading `v` is the only decoration it
+strips. A `swift/1.16.0` ref is therefore not a version at all, and `.package(..., from: "1.16.0")`
+never saw it.
+
+It did, however, see **`v1.16.0`** — the release tag, whose `Package.swift` describes the *previous*
+release by construction. So the old scheme did not make `from:` resolve nothing; it made it resolve
+the **wrong framework**, which is worse and quieter. Measured against Swift 6.3: with both refs
+present SwiftPM selects the bare tag, in both orderings (bare on the older commit and on the newer),
+so once `publish-xcframework` has run the bare tag governs.
+
+Two things follow, and they are the reason this is a mitigation rather than a cure:
+
+- **There is a window.** `v<version>` exists from the moment the release chain writes it until
+  `publish-xcframework` pushes the bare tag. A `from:` resolve inside it gets the stale framework.
+  Normally minutes, since both happen in one release run.
+- **A failed `publish-xcframework` leaves the window open indefinitely**, with a SwiftPM-visible
+  `v<version>` pointing at the wrong binary. Re-run the job — it is idempotent, and it refuses to
+  move an existing Swift tag that describes a different asset.
+
+Closing it properly needs `Package.swift` at `v<version>` to be correct *already*, which the
+checksum-after-upload ordering forbids, or the Swift package to live in its own repository where the
+version tags are its own. Tracked on [#4068](https://github.com/yschimke/compose-ai-tools/issues/4068).
 
 **And the binary is built from `v<version>`, not from `main`.** `main` can advance between the tag
 being cut and `publish-xcframework` starting; building from the branch would attach a framework of
