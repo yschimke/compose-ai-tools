@@ -2867,7 +2867,6 @@ class ServeHttpServer(
       val reportIssue =
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(reportContext.repo),
-          title = ServeIssueReport.title(reportContext),
           body = ServeIssueReport.body(reportContext),
           bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
           repo = reportContext.repo,
@@ -3689,7 +3688,6 @@ class ServeHttpServer(
     val report =
       ServeWeb.BugReport(
         action = ServeBugReport.action(),
-        title = ServeBugReport.title(page),
         body = ServeBugReport.body(server, page),
         bodyTemplate = ServeBugReport.body(server, page, clientPlaceholder = true),
         repo = ServeBugReport.REPO,
@@ -5414,7 +5412,6 @@ class ServeHttpServer(
       val reportIssue =
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(reportContext.repo),
-          title = ServeIssueReport.title(reportContext),
           body = ServeIssueReport.body(reportContext),
           bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
           repo = reportContext.repo,

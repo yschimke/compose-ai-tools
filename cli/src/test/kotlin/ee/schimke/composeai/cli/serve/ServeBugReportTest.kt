@@ -40,18 +40,6 @@ class ServeBugReportTest {
   }
 
   @Test
-  fun `the title names where the visitor was, so two reports are told apart before reading them`() {
-    assertEquals("Preview server issue: jetnews", ServeBugReport.title(page))
-    assertEquals(
-      "Preview server issue: /status",
-      ServeBugReport.title(ServeBugReport.Page(path = "/status")),
-    )
-    // The front door has neither, and gets the bare title rather than one naming "/".
-    assertEquals("Preview server issue", ServeBugReport.title(ServeBugReport.Page(path = "/")))
-    assertEquals("Preview server issue", ServeBugReport.title(ServeBugReport.Page()))
-  }
-
-  @Test
   fun `the body carries the deployment facts a triager would otherwise have to ask for`() {
     val body = ServeBugReport.body(server, page)
     assertTrue(body.contains("### What went wrong"), body)

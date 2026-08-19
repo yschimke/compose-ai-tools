@@ -57,16 +57,6 @@ class ServeIssueReportTest {
   }
 
   @Test
-  fun `the title names the preview and the system it was served from`() {
-    assertEquals("Preview issue: Article (jetnews)", ServeIssueReport.title(full))
-    // No label recorded ⇒ the id, which is always present.
-    assertEquals(
-      "Preview issue: Article__dark",
-      ServeIssueReport.title(ServeIssueReport.Context(repo = "o/r", previewId = "Article__dark")),
-    )
-  }
-
-  @Test
   fun `the body carries the facts a triager would otherwise have to ask for`() {
     val body = ServeIssueReport.body(full)
     assertTrue(body.contains("| Design system | `jetnews` |"), body)

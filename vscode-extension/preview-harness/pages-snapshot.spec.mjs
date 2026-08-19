@@ -1621,10 +1621,34 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // "report an issue" OPEN. Closed, the affordance is one link in the provenance row, which
+    // every other viewer shot already holds — so the part worth diffing is what the click
+    // reveals: the Summary field the reporter now has to fill in, on a floating M3 menu surface
+    // that must not shove the render down the page or fall off the fold. A `<details>` ships
+    // closed, so without this state the panel would be captured by nothing and the whole change
+    // this fixture exists to prove would look identical to the link it replaced.
+    //
+    // Opened through the summary rather than by setting `.open`, so the shot is a state a reader
+    // can actually produce — same reasoning (and shape) as `serve-viewer-history-menu-open`.
+    // Shot BEFORE `connecting` below, so the page under the panel is the resting viewer.
+    fixture: "serve-viewer",
+    suffix: "report-open",
+    apply: async (page) => {
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // The panel is the subject; a cursor left resting on the toggle would be a second change
+      // in the same frame.
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     fixture: "serve-viewer",
     suffix: "connecting",
     apply: async (page) => {
+      // States run in order against the SAME page, so this also puts the report panel above
+      // away again — the same housekeeping the landing's states do via `closeLandingMenus`.
       await page.evaluate(() => {
+        document.getElementById("cp-report")?.removeAttribute("open");
         const root = document.querySelector(".cp-viewer");
         root.setAttribute("data-mode", "live");
         root.setAttribute("data-pending", "connecting…");

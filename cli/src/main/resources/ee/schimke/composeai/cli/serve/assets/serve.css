@@ -482,13 +482,44 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-preview-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
   margin: 0 0 8px; }
 .cp-source, .cp-report, .cp-figma { margin: 0; font-size: 0.8rem; }
-/* The report affordance is a GET form (its action is the GitHub issue form, its title/body are
-   hidden inputs) so no page state ever reaches a navigation sink — but it reads as a link, so the
-   submit button is stripped of its button chrome and styled as one. */
+/* The report affordance is a disclosure whose panel holds a GET form (its action is the GitHub
+   issue form, its body a hidden input) so no page state ever reaches a navigation sink — but its
+   toggle reads as a link, so the <summary> is stripped of its marker and styled as one. */
 .cp-source-link, .cp-report-link, .cp-figma-link { display: inline-flex; align-items: center; gap: 5px;
   color: var(--cp-fg-muted); text-decoration: none; }
-.cp-report-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.cp-report-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+  list-style: none; }
+.cp-report-link::-webkit-details-marker { display: none; }
 .cp-source-link:hover, .cp-report-link:hover, .cp-figma-link:hover { text-decoration: underline; }
+/* The panel the toggle opens: the same M3 menu surface, offset and elevation `.cp-theme-menu-panel`
+   uses, because it is the same gesture — a small overlay hanging off a control in a dense row. It
+   floats rather than pushing the render down the page, and resets font-size because the provenance
+   row it hangs from is 0.8rem and a form the reporter types into should not be. */
+.cp-report { position: relative; }
+.cp-report-panel { position: absolute; left: 0; top: calc(100% + 6px); z-index: 50;
+  width: max-content; max-width: min(420px, calc(100vw - 32px)); padding: 12px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level2); }
+.cp-report-form { display: grid; gap: 10px; justify-items: start; }
+.cp-report-summary { display: grid; gap: 6px; width: 100%; font-weight: 500; }
+.cp-report-summary-input { width: 100%; min-height: 40px; box-sizing: border-box;
+  padding: 8px 12px; font: inherit; border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); color: inherit; }
+.cp-report-submit { display: inline-flex; align-items: center; gap: 8px; font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  min-height: 40px; padding: 10px 20px; border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+  cursor: pointer;
+  transition: box-shadow var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-report-submit:hover { box-shadow: var(--md-sys-elevation-level1); }
+.cp-report-note { font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); color: var(--cp-fg-muted); }
 /* The Figma mark is 2:3, not square like the GitHub one — size it by height so it isn't squashed. */
 .cp-figma-mark { width: auto; height: 14px; }
 /* M3 *filled* card: a container-role fill with no outline and no shadow. The border this used to
