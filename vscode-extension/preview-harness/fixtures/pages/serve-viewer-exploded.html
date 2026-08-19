@@ -128,7 +128,7 @@
                it on every render and Back/Forward hydration writes to it — so it has to remain in
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           <span class="cp-modes-inputs" aria-hidden="true">
-  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1">
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-default-theme="" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1">
     <option value="light" selected>Light (Default)</option>
     <option value="dark">Dark (Default)</option>
   </select>
@@ -303,9 +303,16 @@
     : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
   var urlOption = null;
   Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+  // A choice that merely names the preview's baked theme is DISPLAYED but not marked active:
+  // it asks for nothing, so it must not read as a pinned override. `?uiMode=light` on a
+  // light-baked preview is the case that mattered — the light/dark toggle leaves the parameter
+  // behind on the way back to light, and treating it as a pin suppressed the Figma comparison
+  // for a visitor who had made no net choice. Mirrors `pinsTheme` in viewer/themeChoice.ts.
+  var bakedTheme = el.getAttribute("data-default-theme") || "";
+  function pinsTheme(choice) { return !!choice && choice !== bakedTheme; }
   if (urlOption) {
     el.value = urlChoice;
-    el.setAttribute("data-theme-active", "1");
+    if (pinsTheme(urlChoice)) el.setAttribute("data-theme-active", "1");
   }
   try {
     var stored = localStorage.getItem("cp-theme:compose-m3");
@@ -314,7 +321,7 @@
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
     if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
       el.value = stored;
-      el.setAttribute("data-theme-active", "1");
+      if (pinsTheme(stored)) el.setAttribute("data-theme-active", "1");
     }
   } catch (e) {}
   // Publish the design-score baseline before the component bundle upgrades the comparison

@@ -1117,6 +1117,33 @@ class ServeWebFixtureTest {
             ),
           ),
       )
+    // The **default-value deep link** (#4218), captured because the bug it records is invisible
+    // in the markup and lives entirely in what the page does with its own query string.
+    //
+    // Same catalog and same imported reference as [viewerPath], on a preview whose id NAMES its
+    // theme (`…__light`) — which is what makes `?uiMode=light` a value that spells out the
+    // default rather than an override. `pages-snapshot` navigates it at exactly the reported URL
+    // (`?uiMode=light&mode=spec&specView=diff`), so the capture holds the state a visitor reaches
+    // by toggling to dark and back: the spec lane up, the diff drawn, and — the part that
+    // regressed — the live match on the chip and in the readout rather than the "baseline-only"
+    // fallback that a pinned theme correctly produces. [viewerPath] keeps the untokened case, so
+    // the pair covers both sides of the rule.
+    val viewerSpecDefaultTheme =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "profile-screen__ideal__default__light",
+          "Profile screen",
+          section = "Screens",
+          componentId = "ProfileScreen",
+        ),
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        basePath = "/meshcore-mobile",
+        siblings = previews,
+        figmaSpec = fixtureFigmaSpec,
+        designReference = fixtureDesignReference,
+      )
     // A **Remote Compose** viewer, the shape preview.coo.ee serves for `remote-m3`: the same
     // captured `.rc` document is drawable by five different players, so this is the page the
     // renderer picker exists for. Captured because it is the ONLY fixture that carries the picker
@@ -2877,6 +2904,7 @@ class ServeWebFixtureTest {
         "serve-landing-path.html" to landingPath,
         "serve-landing-site.html" to landingSite,
         "serve-viewer-path.html" to viewerPath,
+        "serve-viewer-spec-default-theme.html" to viewerSpecDefaultTheme,
         "serve-viewer-rc-players.html" to viewerRcPlayers,
         "serve-viewer-wear-screen.html" to viewerWearScreen,
         "serve-landing-themed.html" to landingThemed,

@@ -3900,9 +3900,16 @@ $noteBlock        <div class="cp-site-footer-links">
         : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
       var urlOption = null;
       Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+      // A choice that merely names the preview's baked theme is DISPLAYED but not marked active:
+      // it asks for nothing, so it must not read as a pinned override. `?uiMode=light` on a
+      // light-baked preview is the case that mattered — the light/dark toggle leaves the parameter
+      // behind on the way back to light, and treating it as a pin suppressed the Figma comparison
+      // for a visitor who had made no net choice. Mirrors `pinsTheme` in viewer/themeChoice.ts.
+      var bakedTheme = el.getAttribute("data-default-theme") || "";
+      function pinsTheme(choice) { return !!choice && choice !== bakedTheme; }
       if (urlOption) {
         el.value = urlChoice;
-        el.setAttribute("data-theme-active", "1");
+        if (pinsTheme(urlChoice)) el.setAttribute("data-theme-active", "1");
       }
       try {
         var stored = localStorage.getItem("$themeStorageKey");
@@ -3911,7 +3918,7 @@ $noteBlock        <div class="cp-site-footer-links">
         Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
         if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
           el.value = stored;
-          el.setAttribute("data-theme-active", "1");
+          if (pinsTheme(stored)) el.setAttribute("data-theme-active", "1");
         }
       } catch (e) {}
       // Publish the design-score baseline before the component bundle upgrades the comparison
@@ -10029,11 +10036,19 @@ $rows
       // the axis's single state holder: viewer.js reads it for every render (`activeThemeChoice`),
       // the sticky script seeds it from the URL + localStorage, and Back/Forward hydration writes
       // to it. Two visible controls for one value is worse than one, so only the chips are shown.
+      //
+      // `data-default-theme` is the theme this preview is BAKED in — what the select shows with
+      // nothing picked. It rides as its own attribute because the `selected` option stops
+      // answering for it the moment the sticky script writes `el.value`, and every consumer that
+      // asks "has the visitor actually pinned a theme?" (`pinsTheme`) reads it after that point.
+      // Empty when the catalog names no theme for the preview, which is deliberately NOT the same
+      // as "light": the select falls back to displaying Light, but a `uiMode=light` there is a
+      // real request the baked pixels may not answer, so it stays an override.
       // `tabindex="-1"` keeps the hidden select out of the tab order, which is what makes the
       // `aria-hidden` wrapper legitimate.
       """
         <span class="cp-modes-inputs" aria-hidden="true">
-          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed" tabindex="-1"$themeDis>
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-default-theme="${viewerTheme.orEmpty()}" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed" tabindex="-1"$themeDis>
             $defaults$providerOptions
           </select>
         </span>
