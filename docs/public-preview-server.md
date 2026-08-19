@@ -1277,6 +1277,20 @@ something other than what the reporter was looking at, filed in a tracker that m
 - *Something is wrong with the **preview server*** — the page, a control, a render that failed. It
   goes to `yschimke/compose-ai-tools`, and opens `/report-bug`.
 
+**The comparison wall files against the catalog too, page-scoped**
+([#4289](https://github.com/yschimke/compose-ai-tools/issues/4289)). `/<system>/compare` carried no
+per-preview affordance, so the launcher's catalog half had nothing to point at — and, because
+`.cp-fab-choice`'s `display: grid` out-specified the UA's `[hidden]` rule, the entry was drawn
+anyway: an offer that named no repository and did nothing when pressed, on a page whose whole
+subject is a catalog's fidelity. The rule is now `[hidden]`-aware, so a page with no catalog report
+shows the server half alone, and the wall has a report of its own. It names the **page** rather than
+a preview — the wall shows every comparable component and singles out none — so the body carries the
+page URL with the lane its `?format=` selects, the catalog build and the tool version, under a
+*Which page* table with no `| Preview |` row and no parity-locator fence. One row's own defect keeps
+the better route it already had: its reference opens the focused Reference / Diff / Actual page,
+whose report names that exact preview and reference. Before/after in
+[`docs/design/evidence/compare-wall-catalog-report`](design/evidence/compare-wall-catalog-report/README.md).
+
 The footer entry stays where it was, renamed **report a server bug**, and the per-preview link is
 now **report a catalog issue**: both used to be called "report an issue" / "report a bug", a click
 apart, with nothing on either saying which tracker it meant. The launcher floats because the

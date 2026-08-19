@@ -219,6 +219,57 @@ class ServeIssueReportTest {
   }
 
   @Test
+  fun `a page-scoped report names the page rather than inventing a preview`() {
+    // The comparison wall shows every comparable component and singles out none, so its report
+    // carries the page — with the lane its query names — and drops the preview-shaped rows the
+    // same way every other unknown fact is dropped (issue #4289).
+    val wall =
+      ServeIssueReport.Context(
+        repo = "yschimke/wear-m3-catalog",
+        system = "wear-m3-catalog",
+        catalog = "yschimke/wear-m3-catalog@design-artifacts/wear-m3-catalog",
+        toolVersion = "1.18.0",
+        pageUrl = "https://preview.coo.ee/wear-m3-catalog/compare?format=reference",
+        publicRender = true,
+      )
+    val body = ServeIssueReport.body(wall)
+    assertTrue(body.contains("### Which page"), body)
+    assertFalse(body.contains("### Which preview"), body)
+    assertFalse(body.contains("| Preview |"), body)
+    assertTrue(body.contains("| Design system | `wear-m3-catalog` |"), body)
+    assertTrue(
+      body.contains("| Catalog | `yschimke/wear-m3-catalog@design-artifacts/wear-m3-catalog` |"),
+      body,
+    )
+    // The lane is in the query, and it is the whole of what "which comparison" means here.
+    assertTrue(
+      body.contains(
+        "[Open this page](https://preview.coo.ee/wear-m3-catalog/compare?format=reference)"
+      ),
+      body,
+    )
+    // No preview, no parity locator: the fence keys a report to one preview/reference pair, and
+    // this report is about neither.
+    assertNull(ServeIssueReport.locator(wall))
+    assertFalse(body.contains("compose-parity-locator/v1"), body)
+    // And no advice to press a Copy PNG button that only exists in the viewer's export panel.
+    assertFalse(body.contains("Export & direct links"), body)
+    assertTrue(body.contains("Report a problem"), body)
+  }
+
+  @Test
+  fun `a report with no render leaves no placeholder for a substitution that never comes`() {
+    // The wall runs no script over its report body, so a `{{render}}` in the template would be
+    // filed verbatim. The placeholder stands in for a render URL the report actually has.
+    val wall =
+      ServeIssueReport.Context(repo = "o/r", system = "wear-m3-catalog", pageUrl = "https://host/c")
+    val template = ServeIssueReport.body(wall, renderPlaceholder = true)
+    assertFalse(template.contains("{{render}}"), template)
+    assertFalse(template.contains("{{rawScores}}"), template)
+    assertEquals(ServeIssueReport.body(wall), template)
+  }
+
+  @Test
   fun `a session token never rides along into an issue body`() {
     // The token IS the capability to drive a token-gated server; an issue is public.
     assertEquals(

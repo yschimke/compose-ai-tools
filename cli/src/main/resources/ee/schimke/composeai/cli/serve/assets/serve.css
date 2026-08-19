@@ -485,6 +485,13 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   background: var(--md-sys-color-surface-container-low);
   transition: border-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
 .cp-fab-choice:hover { border-color: var(--md-sys-color-primary); }
+/* `display: grid` above out-specifies the UA's `[hidden] { display: none }`, so without this the
+   catalog half — server-rendered `hidden` and unhidden by `reportLauncher.ts` only where there is
+   an affordance to point at — was on EVERY page, including the ones with no catalog report at all.
+   There it is a dead entry: no handler is wired, and its `href="#cp-report"` names nothing, so
+   pressing "something is wrong with this preview" did nothing at all and the only route that
+   answered was the preview server's (issue #4289). */
+.cp-fab-choice[hidden] { display: none; }
 .cp-fab-what { font-weight: 500; }
 .cp-fab-choice code { font-family: var(--md-sys-typescale-mono-font); font-size: 0.92em; }
 .cp-fab .cp-report-bug { display: block; margin: 0; }
@@ -2229,6 +2236,10 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   margin: 0 0 14px; }
 .cp-compare-control-label { color: var(--cp-fg-muted); font-size: 0.75rem; }
 .cp-compare-searchbar { max-width: 720px; }
+/* The wall's catalog-report row, under the filter. Same provenance row the viewer puts under its
+   title — so the panel is anchored to the row and stays on screen at every width — with the top
+   margin the filter above it does not provide. */
+.cp-compare-links { margin: 10px 0 0; }
 .cp-compare-table-wrap { overflow-x: auto; margin-top: 14px; }
 .cp-compare-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .cp-compare-table th, .cp-compare-table td { padding: 10px 12px; text-align: left;

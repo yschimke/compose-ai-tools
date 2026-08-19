@@ -888,7 +888,10 @@ class ServeWebTest {
     // server-rendered literal and the prefill rides in a hidden input the browser encodes on
     // submit. The link-styled toggle is the disclosure's own <summary>, so it works with JS off.
     assertTrue(
-      html.contains("<details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"o/r\">") &&
+      html.contains(
+        "<details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"o/r\"" +
+          " data-cp-subject=\"this preview\">"
+      ) &&
         html.contains("<summary class=\"cp-report-link\"") &&
         html.contains("<form class=\"cp-report-form\" method=\"get\"") &&
         html.contains("action=\"https://github.com/o/r/issues/new\""),
@@ -1591,5 +1594,54 @@ class ServeWebTest {
       ids[1].contains("direction-rtl"),
       "and onto that row only: $html",
     )
+  }
+
+  @Test
+  fun `the comparison wall carries the catalog report the launcher's catalog half needs`() {
+    // The floating launcher unhides its catalog choice only on a page carrying `#cp-report`, so
+    // without one this page offered the SERVER tracker as its only route — which is how a
+    // comparison that looked wrong got filed against the preview server (issue #4289).
+    val preview = ServePreview(id = "button-elevated__ideal__default", label = "Button")
+    val html =
+      ServeWeb.comparisonPage(
+        "wear-m3-catalog",
+        listOf(preview),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+        reportIssue =
+          ServeWeb.ReportIssue(
+            action = "https://github.com/yschimke/wear-m3-catalog/issues/new",
+            body = "### Which page",
+            bodyTemplate = "### Which page",
+            repo = "yschimke/wear-m3-catalog",
+            subject = "these comparisons",
+          ),
+      )
+    assertTrue(
+      html.contains(
+        "<details class=\"cp-report\" id=\"cp-report\"" +
+          " data-cp-repo=\"yschimke/wear-m3-catalog\" data-cp-subject=\"these comparisons\">"
+      ),
+      "the launcher reads both the repo and what the report is about: $html",
+    )
+    // The wall names no single preview, so neither does the offer.
+    assertTrue(html.contains("code declares these comparisons"), html)
+    assertFalse(html.contains("code declares this preview"), html)
+    // Wrapped in the viewer's provenance row: `.cp-report`'s panel is anchored to that row rather
+    // than to its own toggle, which is what keeps it on screen at every width.
+    assertTrue(html.contains("class=\"cp-preview-links cp-compare-links\""), html)
+  }
+
+  @Test
+  fun `a comparison wall with no catalog to file against renders no report affordance`() {
+    val html =
+      ServeWeb.comparisonPage(
+        "m3-catalog",
+        listOf(ServePreview(id = "button", label = "Button")),
+        token = "t",
+        referencesFor = { listOf(referenceFor(it)) },
+      )
+    assertFalse(html.contains("id=\"cp-report\""), html)
+    assertFalse(html.contains("cp-compare-links"), html)
   }
 }
