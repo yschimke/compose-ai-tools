@@ -6,7 +6,7 @@
 # which is why `release.yml` calls this after uploading the zip, not before.
 #
 # It rewrites exactly the two values and nothing else, so the comments in `Package.swift` (which
-# explain the Intel-simulator gap and the `swift/<version>` tag scheme) survive a release.
+# explain the Intel-simulator gap and the bare `<version>` Swift tag scheme) survive a release.
 #
 # Usage: scripts/update-package-swift.sh <url> <sha256> [package-swift-path]
 #        scripts/update-package-swift.sh --self-test
@@ -16,6 +16,16 @@ rewrite() {
   local file="$1" url="$2" checksum="$3"
   local before after
   before="$(cat "$file")"
+  # Already describing this exact asset. A `workflow_dispatch` re-release of an existing tag hits
+  # this every time — the zip is built reproducibly, so the second run computes the same checksum
+  # for the same URL and there is nothing to change. That is success, not the "no binaryTarget to
+  # rewrite" failure below; conflating the two aborts the recovery path precisely when it is
+  # working. Checked before the rewrite so the distinction does not depend on the regexes.
+  if printf '%s' "$before" | grep -qF "\"$url\"" &&
+    printf '%s' "$before" | grep -qF "checksum: \"$checksum\""; then
+    echo "$file already points at $url; nothing to rewrite"
+    return 0
+  fi
   # `url:` may sit on its own line (swift-format wraps long URLs), so match across the newline.
   after="$(
     printf '%s' "$before" |
@@ -52,6 +62,13 @@ FIXTURE
     { echo "self-test: the file was clobbered rather than edited" >&2; return 1; }
   grep -q 'old/RcComposePlayer' "$dir/Package.swift" &&
     { echo "self-test: the previous url is still present" >&2; return 1; }
+
+  # Rewriting to the values already present is the `workflow_dispatch` re-release path, and it must
+  # succeed rather than trip the "nothing to rewrite" failure below.
+  rewrite "$dir/Package.swift" "https://example.invalid/new/RcComposePlayer.xcframework.zip" "abc123" ||
+    { echo "self-test: a no-op rewrite should have succeeded" >&2; return 1; }
+  grep -q 'checksum: "abc123"' "$dir/Package.swift" ||
+    { echo "self-test: the no-op rewrite changed the checksum" >&2; return 1; }
 
   # A file with nothing to rewrite must fail loudly: a release that silently left the placeholder
   # checksum in place would publish a Package.swift no consumer can resolve.

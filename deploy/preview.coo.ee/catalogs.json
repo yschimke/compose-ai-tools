@@ -1,5 +1,5 @@
 {
-  "_comment": "preview.coo.ee's PUBLISHED CATALOG SET \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/ deliberately: baking it there made every adopter of the prebuilt image open on these catalogs (see the seed's comment). Changes on main are applied directly by publish-preview-config.yml; image publishes reconcile the same file as a fallback. Both paths use .github/scripts/publish-config-to-box.sh additively over POST /admin/catalogs, so this never needs an image rebuild. Another deployment adopting the preview server keeps its own copy of this shape and points DEPLOY_CONFIG_DIR at it. Every entry's design-artifacts/<system> branch must be trusted by producers.json beside this file. cadence is listed:false \u2014 reachable at /cadence/ but off the front-page index.",
+  "_comment": "preview.coo.ee's PUBLISHED CATALOG SET \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/ deliberately: baking it there made every adopter of the prebuilt image open on these catalogs (see the seed's comment). Changes on main are applied directly by publish-preview-config.yml; image publishes reconcile the same file as a fallback. Both paths use .github/scripts/publish-config-to-box.sh additively over POST /admin/catalogs, so this never needs an image rebuild. Another deployment adopting the preview server keeps its own copy of this shape and points DEPLOY_CONFIG_DIR at it. Every entry's design-artifacts/<system> branch must be trusted by producers.json beside this file. cadence is listed:false \u2014 reachable at /cadence/ but off the front-page index. compose-m3 and wear-m3 are listed:false for the same reason from the other direction: they are compose-ai-tools' own in-repo harness catalogs \u2014 they exist to exercise the preview pipeline's features, not to be a design system. m3-catalog is the real Material 3 reference and wear-m3-catalog will be the Wear one, so the two harness catalogs stay reachable at /compose-m3/ and /wear-m3/ as a live smoke target without presenting as design systems on the front page. NOTE the reconcile is additive (see publish-config-to-box.sh): a system already registered on the box comes back 409, so flipping listed here does NOT relist/unlist a live entry on its own \u2014 DELETE /admin/catalogs/<system> on the box and let the next publish re-add it from this file.",
   "groups": [
     {
       "id": "design-systems",
@@ -31,13 +31,13 @@
     {
       "system": "compose-m3",
       "repo": "yschimke/compose-ai-tools",
-      "listed": true,
+      "listed": false,
       "group": "design-systems"
     },
     {
       "system": "wear-m3",
       "repo": "yschimke/compose-ai-tools",
-      "listed": true,
+      "listed": false,
       "group": "design-systems"
     },
     {

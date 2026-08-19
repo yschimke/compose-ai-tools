@@ -37,47 +37,14 @@ jobs:
           persist-credentials: false
       - id: version
         name: Compute snapshot version
-        # Take the latest `v*` tag, strip leading `v`, bump the patch digit,
-        # append `-SNAPSHOT`. Main keeps the stable next-patch coordinate
-        # documented for downstream consumers. Manual runs on branches get a
-        # ref+SHA suffix by default so PR snapshots can be tested without
-        # overwriting the main snapshot coordinate.
+        # Extracted to a script so this job and `publish-player-snapshot` compute the SAME version
+        # from the same code — two copies of this arithmetic would eventually disagree and publish
+        # half a stack under a different coordinate. `scripts/snapshot-version.sh --self-test`
+        # covers it, and CI runs that.
         env:
           REF_NAME: ${{ github.ref_name }}
           INPUT_SUFFIX: ${{ inputs.suffix || '' }}
-        run: |
-          last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0)"
-          base="${last_tag#v}"
-          major="${base%%.*}"
-          rest="${base#*.}"
-          minor="${rest%%.*}"
-          patch="${rest#*.}"
-          patch="${patch%%-*}"                    # drop any pre-release suffix
-          next_base="${major}.${minor}.$((patch + 1))"
-
-          suffix="$INPUT_SUFFIX"
-          if [[ -z "$suffix" && "$REF_NAME" != "main" ]]; then
-            suffix="${REF_NAME}-${GITHUB_SHA::7}"
-          fi
-          if [[ -n "$suffix" ]]; then
-            suffix="$(
-              printf '%s' "$suffix" |
-                tr '[:upper:]' '[:lower:]' |
-                sed -E 's/[^a-z0-9.-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
-            )"
-            if [[ -z "$suffix" ]]; then
-              echo "Snapshot suffix resolved to empty after sanitization." >&2
-              exit 1
-            fi
-            next="${next_base}-${suffix}-SNAPSHOT"
-          else
-            next="${next_base}-SNAPSHOT"
-          fi
-
-          echo "Last tag: $last_tag -> snapshot version: $next"
-          echo "version=$next" >> "$GITHUB_OUTPUT"
-          echo "### Maven snapshot" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`$next\`" >> "$GITHUB_STEP_SUMMARY"
+        run: scripts/snapshot-version.sh
       - uses: ./.github/actions/setup
       - name: Publish -SNAPSHOT to Maven Central snapshots
         env:
@@ -92,9 +59,57 @@ jobs:
           # publish list that previously drifted out of sync (PR #724 added
           # `:data-a11y-hierarchy-android` here but missed adding it to this list, leaving
           # consumers' `renderer-android` POM resolution broken at snapshot time).
-          ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral
+          #
+          # The four `:rc-player-*` modules are excluded and published by `publish-player-snapshot`
+          # on macOS: they declare `iosArm64`/`iosSimulatorArm64`, which Kotlin/Native cannot build
+          # on Linux. Same split as `release.yml`; keep the two exclusion lists in step.
+          ./gradlew :gradle-plugin:publishToMavenCentral publishToMavenCentral \
+            -x :rc-player-trace:publishToMavenCentral \
+            -x :rc-player-protocol:publishToMavenCentral \
+            -x :rc-player-runtime:publishToMavenCentral \
+            -x :rc-player-compose:publishToMavenCentral
           # Note: `--no-configuration-cache` is incompatible with
           # `org.gradle.unsafe.isolated-projects=true` set in gradle.properties
           # (Gradle fails with "Configuration Cache cannot be disabled when
           # Isolated Projects is enabled"). Vanniktech's publish tasks work
           # with config-cache, so just let it run normally.
+
+  # The `:rc-player-*` stack, snapshotted from macOS for the same reason `release.yml` publishes it
+  # there: its Apple klibs only build on a Mac. Kept as its own job rather than moving the whole
+  # snapshot to macOS, so the ordinary Linux publish stays on the cheaper, already-proven runner.
+  publish-player-snapshot:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Need tags to compute the next snapshot version.
+          fetch-depth: 0
+          persist-credentials: false
+      - id: version
+        name: Compute snapshot version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_SUFFIX: ${{ inputs.suffix || '' }}
+        run: scripts/snapshot-version.sh
+      - uses: ./.github/actions/setup
+      # See `release.yml`'s `publish-xcframework`: CMP 1.11's `ui-uikit` needs the iOS 26 SDK.
+      - name: Select an Xcode with the iOS 26 SDK
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$xcode" ]; then
+            echo "No Xcode 26 on this image; Compose Multiplatform's iOS targets need its SDK." >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+      - name: Publish the rc-player stack -SNAPSHOT
+        env:
+          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          ./gradlew \
+            :rc-player-trace:publishToMavenCentral \
+            :rc-player-protocol:publishToMavenCentral \
+            :rc-player-runtime:publishToMavenCentral \
+            :rc-player-compose:publishToMavenCentral

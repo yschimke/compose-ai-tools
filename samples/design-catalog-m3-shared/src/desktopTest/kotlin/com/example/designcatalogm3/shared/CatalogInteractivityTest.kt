@@ -8,9 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -98,17 +96,6 @@ class CatalogInteractivityTest {
     }
 
   @Test
-  fun `every stateless action component responds to a click`() {
-    // The FAB and the assist chip route their clicks through `counted` exactly as the buttons do.
-    for ((id, label) in listOf("fab" to "+", "chip-assist" to "Assist", "button-text" to "Text")) {
-      onBothLanes(id) {
-        onNodeWithText(label).performClick()
-        onNodeWithText("$label (1)").assertExists()
-      }
-    }
-  }
-
-  @Test
   fun `a disabled button stays inert on both lanes`() {
     // The disabled state is no longer a slug of its own — it rides `button-filled` with the
     // `enabled` knob seeded false, which is what `@OverrideVariant(name = "disabled")` bakes. So
@@ -129,21 +116,23 @@ class CatalogInteractivityTest {
   }
 
   @Test
-  fun `the plain cards compose the non-clickable overload on both lanes`() {
+  fun `the slotted card composes the non-clickable overload on both lanes`() {
     // M3 cards ship both a plain and a clickable overload, and the catalog composes the **plain**
     // one on every surface — the same constant in both lanes, rather than the old
     // `LocalInspectionMode` branch that picked clickable live and plain when baked (issue #3674).
     //
-    // Plain is the deliberate choice: the clickable overload would add a clickable node to the
-    // sticker's semantics tree, and that tree is published — `a11y/touchTargets` greenlines and the
-    // `compose/semantics-wireframe` layout variant are both derived from it. So the assertion is
-    // the absence of a click action, on both lanes; a regression that "upgrades" these to the
+    // Plain is the deliberate choice twice over here: `card-slots` is a slot HOST, so a card-wide
+    // click target would swallow the taps meant for the children a structured-screen builder drops
+    // in — and the clickable overload would add a clickable node to the sticker's semantics tree,
+    // which is itself published (`a11y/touchTargets` greenlines and the
+    // `compose/semantics-wireframe` layout variant are both derived from it). So the assertion is
+    // the absence of a click action, on both lanes; a regression that "upgrades" this to the
     // clickable overload silently changes two published data products and must fail here.
     //
-    // `card-slots` is deliberately absent — see its branch for why a slot host stays inert.
-    for (id in listOf("card-elevated", "card-outlined", "card-filled")) {
-      onBothLanes(id) { onNode(hasClickAction()).assertDoesNotExist() }
-    }
+    // This used to sweep the three plain cards (`card-elevated` / `-outlined` / `-filled`). They
+    // were by-component duplicates of Material's own surface treatments — m3-catalog's job, not
+    // this harness's — so the slot host is the card that remains.
+    onBothLanes("card-slots") { onNode(hasClickAction()).assertDoesNotExist() }
   }
 
   @Test
@@ -155,23 +144,25 @@ class CatalogInteractivityTest {
 
   @Test
   fun `the off switch variant renders its seeded value`() =
-    // `switch-off` is the same control with `checked` seeded false — the shape the
-    // `@OverrideVariant`
-    // folds depend on. Untouched it must draw the seed, not some remembered default.
-    onBothLanes("switch-off") { onNode(isToggleable()).assertIsOff() }
-
-  @Test
-  fun `a checkbox toggles on both lanes`() =
-    onBothLanes("checkbox-unchecked") {
-      onNode(isToggleable()).assertIsOff().performClick()
-      onNode(isToggleable()).assertIsOn()
+    // The off state is `switch-on` with `checked` seeded false — exactly what
+    // `@OverrideVariant(name = "off")` bakes, seeded here through the same controller the renderer
+    // uses. Untouched it must draw the seed, not some remembered default. (It used to be a
+    // `switch-off` id of its own; the duplicate slug is gone, so the test seeds the knob.)
+    onBothLanesSeeded(
+      "switch-on",
+      mapOf("checked" to PreviewOverrideValue.BooleanValue(false)),
+    ) {
+      onNode(isToggleable()).assertIsOff()
     }
 
   @Test
-  fun `a radio button flips its selection on both lanes`() =
-    onBothLanes("radiobutton-unselected") {
-      onNode(isSelectable()).performClick()
-      onNode(isSelectable()).assertIsSelected()
+  fun `a checkbox toggles on both lanes`() =
+    onBothLanesSeeded(
+      "checkbox-checked",
+      mapOf("checked" to PreviewOverrideValue.BooleanValue(false)),
+    ) {
+      onNode(isToggleable()).assertIsOff().performClick()
+      onNode(isToggleable()).assertIsOn()
     }
 
   @Test
