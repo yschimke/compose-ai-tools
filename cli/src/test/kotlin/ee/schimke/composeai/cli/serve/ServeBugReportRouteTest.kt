@@ -285,4 +285,46 @@ class ServeBugReportRouteTest {
       "the report page is where the footer entry leads",
     )
   }
+
+  @Test
+  fun `the floating launcher rides every page, names both trackers, and is absent where it leads`() {
+    server = newServer(public = true, token = "unused")
+    for (path in listOf("/", "/status", "/compose-m3/", "/compose-m3/p/button-filled")) {
+      val body = get(path).second
+      assertTrue(body.contains("class=\"cp-fab\""), "$path: no launcher")
+      // The whole point of the panel: the two destinations, told apart before the choice.
+      assertTrue(body.contains("cp-fab-catalog"), "$path: no catalog half")
+      assertTrue(body.contains("preview server</strong>"), "$path: no server half")
+      assertTrue(body.contains("<code>yschimke/compose-ai-tools</code>"), "$path: unnamed repo")
+      // The capture controls ship hidden; `report-capture.js` unhides them only where the browser
+      // can actually grab a frame.
+      assertTrue(body.contains("<div class=\"cp-shot\" hidden>"), "$path: capture not hidden")
+      assertTrue(body.contains("data-cp-capture=\"element\""), "$path: no element mode")
+    }
+    assertFalse(
+      get("/report-bug").second.contains("class=\"cp-fab\""),
+      "the launcher is a button back to the page you are already on",
+    )
+  }
+
+  @Test
+  fun `the report page carries the mount its captures arrive in`() {
+    // They travel in `sessionStorage` from the page being reported; the page renders whatever came.
+    server = newServer(public = true, token = "unused")
+    val body = get("/report-bug").second
+    assertTrue(body.contains("class=\"cp-shots\""), body)
+    assertTrue(body.contains("report-capture.js"), body)
+  }
+
+  @Test
+  fun `a report from a browser-composed view says which view, and labels the render as the base one`() {
+    // Issue #4261: the embedded PNG is the only picture of a preview this server can make, and on
+    // the spec lane it is not what the reporter was looking at.
+    server = newServer(public = true, token = "unused")
+    val (_, body) =
+      get("/report-bug?from=%2Fcompose-m3%2Fp%2Fbutton-filled%3Fmode%3Dspec%26specView%3Dtriptych")
+    assertTrue(body.contains("<th scope=\"row\">View</th>"), body)
+    assertTrue(body.contains("design spec (triptych)"), body)
+    assertTrue(body.contains("The base render of that preview"), body)
+  }
 }

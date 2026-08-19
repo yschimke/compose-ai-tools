@@ -97,6 +97,22 @@ internal object ServeBugReport {
     val trust: String? = null,
     /** How this session renders: a live daemon, baked PNGs, … */
     val renderLane: String? = null,
+    /**
+     * Which of the viewer's lanes and views the page was actually showing, as [viewLabel] reads it
+     * out of the reporter's own query — `design spec — triptych`, `motion`, `exploded layers`.
+     *
+     * Load-bearing for issue #4261. The [renderUrl] this report embeds is always the plain
+     * `/render` PNG, because that is the only image of a preview the server can *produce*: the spec
+     * lane's triptych, the wipe, the exploded stack and the Remote Compose canvas are all composed
+     * in the browser out of several artefacts, and none of them has a URL. So a report filed from
+     * the triptych used to arrive showing a single ordinary render, with nothing anywhere in it
+     * admitting that the reporter had been looking at something else — the triager saw a picture
+     * that contradicted the complaint. This row is the honest half of the fix: it names the view,
+     * so the embedded PNG reads as "the base render at these settings" rather than as "what they
+     * saw". The other half is the browser-side capture the report page offers, which is the only
+     * way to get the actual pixels.
+     */
+    val view: String? = null,
     /** Why the session is degraded, when it is — `<code> — <detail>` lines. */
     val degradations: List<String> = emptyList(),
     /** `/render/<id>.png` at the overrides in force, token-stripped. */
@@ -128,7 +144,16 @@ internal object ServeBugReport {
       append("### What went wrong\n\n")
       append("<!-- What were you doing, what did you expect, and what happened instead? -->\n\n\n")
       append("### Screenshot\n\n")
+      append("<!-- Paste your capture of the page here. -->\n\n\n")
+      // The base render goes BELOW the paste slot and says what it is, rather than standing in as
+      // "the screenshot" — see [Page.view] and issue #4261. It is the plain `/render` PNG at the
+      // overrides in force, which is the right evidence for "this button is the wrong colour" and
+      // the wrong evidence for "the triptych draws its middle panel twice": the server has no URL
+      // for a browser-composed view, so the only honest thing it can do is label what it does have
+      // and let the reporter paste the rest.
+      val onView = view(page)
       if (embed) {
+        append("### Base render").append(onView).append("\n\n")
         append("![render](").append(render).append(")\n\n")
         append(
           "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
@@ -136,13 +161,9 @@ internal object ServeBugReport {
             "source URL; it does not make a versioned snapshot. A pasted screenshot of the " +
             "page stays put because GitHub hosts those pixels itself. -->\n\n\n"
         )
-      } else {
-        append(
-          "<!-- Paste one here. A screenshot of the whole page is the most useful thing you " +
-            "can add to a server bug: it carries the browser chrome, the controls, and any " +
-            "error text alongside the render. -->\n\n\n"
-        )
-        render?.let { append("[PNG at these settings]($it)\n\n") }
+      } else if (render != null) {
+        append("### Base render").append(onView).append("\n\n")
+        append("[PNG at these settings](").append(render).append(")\n\n\n")
       }
       append("### Server\n\n")
       append(table(serverRows(server)))
@@ -161,6 +182,14 @@ internal object ServeBugReport {
         ?.let { append("\n### Recent failures\n\n").append(fence(it)) }
     }
   }
+
+  /**
+   * The parenthetical that keeps the "Base render" heading from over-claiming: on a page that was
+   * showing a browser-composed view, it says which one, so the single PNG under the heading is not
+   * mistaken for the thing the reporter is complaining about.
+   */
+  private fun view(page: Page): String =
+    page.view?.trim()?.takeIf { it.isNotEmpty() }?.let { " — you were on the ${text(it)}" } ?: ""
 
   /** The browser half of the report, filled client-side and spliced over [CLIENT_PLACEHOLDER]. */
   fun clientBlock(rows: List<Pair<String, String>>): String =
@@ -198,6 +227,7 @@ internal object ServeBugReport {
       ?.let { add("Catalog rendered by" to "compose-ai-tools ${text(it)}") }
     page.trust?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Trust" to text(it)) }
     page.renderLane?.trim()?.takeIf { it.isNotEmpty() }?.let { add("Render lane" to text(it)) }
+    page.view?.trim()?.takeIf { it.isNotEmpty() }?.let { add("View" to text(it)) }
     page.degradations
       .map { it.trim() }
       .filter { it.isNotEmpty() }
@@ -325,6 +355,85 @@ internal object ServeBugReport {
       else -> PageRef()
     }
   }
+
+  /**
+   * What the viewer was **showing** when the report was filed, read out of the reporter's own query
+   * — `design spec (triptych)`, `motion`, `exploded layers`, `Remote Compose (wasm player)`.
+   *
+   * The point of this, and of issue #4261: every one of those views is composed in the BROWSER out
+   * of artefacts the server serves separately — a render plus an imported reference plus a diff, a
+   * frame sequence, a stack of layers — so none of them has a URL, and the `/render` PNG the report
+   * embeds is not what the reporter was looking at. Naming the view is the one thing the server can
+   * do about that from the query alone, and it is worth doing on its own: "the triptych's middle
+   * panel is blank" filed against a picture of a perfectly good button is a report a triager cannot
+   * even parse.
+   *
+   * Strictly an **allowlist of values this server's own viewer writes**. The query arrives from the
+   * browser via `from` and lands in a public issue body, so an unrecognised `mode` is dropped
+   * rather than echoed — the same rule the browser block's `?scheme=` follows in `bugReport.ts`,
+   * and for the same reason: there are finitely many real answers, and anything else is not a
+   * mangled view but a value that was never a view at all.
+   *
+   * Null — the plain render lane, and every page that is not a viewer — adds no row at all, rather
+   * than a "View | default" that says nothing.
+   */
+  fun viewLabel(from: String?): String? {
+    val params = queryParams(from)
+    val explode = params["exploded"]?.lowercase()?.let { it in EXPLODE_ON } == true
+    val lane = LANES[params["mode"]?.lowercase()]
+    // The spec lane's four views are one lane with four presentations, and the difference between
+    // them is exactly what a spec-lane bug is usually about — so the view qualifies the lane rather
+    // than replacing it. `spec` itself is the lane's default and adds nothing.
+    val spec =
+      if (params["mode"]?.lowercase() != "spec") null
+      else params["specView"]?.lowercase()?.takeIf { it in SPEC_VIEWS && it != "spec" }
+    val laneLabel = lane?.let { if (spec == null) it else "$it ($spec)" }
+    return when {
+      laneLabel != null && explode -> "$laneLabel, exploded layers"
+      laneLabel != null -> laneLabel
+      explode -> "exploded layers"
+      else -> null
+    }
+  }
+
+  /**
+   * The reporter's query as a map, last value winning — which is what a browser's own
+   * `URLSearchParams.get` returns, and this string was written by one.
+   *
+   * Values are left percent-encoded on purpose. Every value this reads is matched against a fixed
+   * allowlist of ASCII tokens the viewer writes, so decoding could only ever turn a value that is
+   * not on the list into a different value that is not on the list — while `URLDecoder` would also
+   * turn a `+` into a space, which is the decoding bug [PageRef.previewSegment] documents.
+   */
+  private fun queryParams(from: String?): Map<String, String> {
+    val query = from?.substringAfter('?', missingDelimiterValue = "").orEmpty()
+    if (query.isEmpty()) return emptyMap()
+    return query
+      .split('&')
+      .filter { it.isNotEmpty() }
+      .associate { pair ->
+        pair.substringBefore('=') to pair.substringAfter('=', missingDelimiterValue = "")
+      }
+  }
+
+  /** `?mode=` values the viewer writes, as a reader of the issue would say them. */
+  private val LANES =
+    mapOf(
+      // `png` is the static render lane — the default, and what the embedded PNG already is.
+      "spec" to "design spec",
+      "source" to "source view",
+      "motion" to "motion playback",
+      "rc" to "Remote Compose (canvas player)",
+      "rc-wasm" to "Remote Compose (wasm player)",
+      "wasm" to "wasm lane",
+      "live" to "live daemon lane",
+    )
+
+  /** The spec lane's presentations — mirrors `spec/views.ts`, whose `spec` is the default. */
+  private val SPEC_VIEWS = setOf("spec", "diff", "triptych", "slider")
+
+  /** Truthy `?exploded=` spellings — mirrors `explodeParamOn` in `viewer/renderQuery.ts`. */
+  private val EXPLODE_ON = setOf("", "1", "true", "on", "yes")
 
   /** Route prefixes whose next segment is a preview id. */
   private val PREVIEW_SEGMENTS = setOf("p", "compare")

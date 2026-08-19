@@ -438,6 +438,124 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-report-bug-link { display: inline-flex; align-items: center; gap: 4px; background: none;
   border: 0; padding: 0; font: inherit; color: var(--cp-accent); cursor: pointer; }
 .cp-report-bug-link:hover { text-decoration: underline; }
+/* ── The floating report launcher ─────────────────────────────────────────────────────────────
+   A fixed, low-key affordance in the bottom-right of every page. It is deliberately quiet at rest
+   — outline and surface-container, not the primary fill a call to action gets — because it sits
+   over content on every surface this server has, and the thing it offers is not something anybody
+   came here to do. It grows into an M3 menu surface once open, the same one the per-preview report
+   panel and the theme menu use, so the three overlays on these pages read as one family. */
+.cp-fab { position: fixed; right: 16px; bottom: 16px; z-index: 60; }
+.cp-fab-menu { position: relative; }
+.cp-fab-btn { display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--cp-border); background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant); cursor: pointer; list-style: none;
+  box-shadow: var(--md-sys-elevation-level1);
+  transition: box-shadow var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-fab-btn::-webkit-details-marker { display: none; }
+.cp-fab-btn:hover, .cp-fab-menu[open] .cp-fab-btn { box-shadow: var(--md-sys-elevation-level2);
+  color: var(--md-sys-color-primary); }
+.cp-fab-mark { width: 20px; height: 20px; }
+/* Anchored to the button's own corner and opening UPWARD and LEFT, because the button is in the
+   page's bottom-right: a panel hanging below it would be off-screen, and one hanging right would be
+   clipped by `html { overflow-x: clip }` — the same failure the per-preview panel hit at narrow
+   widths. `max-width` keeps it inside a phone viewport without a media query. */
+.cp-fab-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 60;
+  width: max-content; max-width: min(400px, calc(100vw - 32px));
+  max-height: min(72vh, 640px); overflow-y: auto; padding: 14px;
+  display: grid; gap: 10px; justify-items: stretch; text-align: left;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--cp-fg); box-shadow: var(--md-sys-elevation-level2);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line); }
+.cp-fab-head { margin: 0; font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line); font-weight: 500; }
+.cp-fab-sub, .cp-fab-who { margin: 0; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); }
+/* The two destinations. Rendered as one shape whether the entry is an anchor (the catalog half,
+   which scrolls to the affordance already on the page) or a submit button (the server half, which
+   is a GET form — see ServeWeb.reportBugForm), so the choice reads as a choice rather than as a
+   link next to a button. Two lines each, on purpose: the first says what is wrong, the second says
+   which repository that means, which is the whole distinction this panel exists to draw. */
+.cp-fab-choice { display: grid; gap: 3px; width: 100%; padding: 10px 12px; text-align: left;
+  font: inherit; color: inherit; text-decoration: none; cursor: pointer;
+  border: 1px solid var(--cp-border); border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+  transition: border-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-fab-choice:hover { border-color: var(--md-sys-color-primary); }
+.cp-fab-what { font-weight: 500; }
+.cp-fab-choice code { font-family: var(--md-sys-typescale-mono-font); font-size: 0.92em; }
+.cp-fab .cp-report-bug { display: block; margin: 0; }
+/* ── The capture tool ────────────────────────────────────────────────────────────────────────
+   Shared by the launcher panel and `/report-bug`. Server-rendered `hidden`; `report-capture.js`
+   unhides it only once it knows the browser can actually grab a frame. */
+.cp-shot { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--cp-border); }
+.cp-shot-head { margin: 0; font-weight: 500; }
+.cp-shot-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-shot-mode, .cp-shot-action { font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking);
+  min-height: 32px; padding: 5px 12px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--cp-border); border-radius: var(--md-sys-shape-corner-full);
+  background: transparent; color: var(--cp-accent); }
+.cp-shot-mode:hover, .cp-shot-action:hover { background: var(--md-sys-color-surface-container-highest); }
+.cp-shot-note { margin: 0; min-height: 1.2em; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); }
+.cp-shot-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.cp-shot-item { display: grid; grid-template-columns: 72px 1fr; gap: 4px 10px; align-items: start;
+  padding: 8px; border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low); }
+/* The thumbnail is a proof, not a preview: it exists so a reporter can tell one capture from
+   another before pasting it. `contain` rather than `cover` because a cropped table and a whole
+   viewport have wildly different aspect ratios and cropping the thumbnail would make them
+   indistinguishable — which is the one thing it has to do. */
+.cp-shot-thumb { grid-row: span 2; width: 72px; height: 56px; object-fit: contain;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-highest); }
+.cp-shot-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.cp-shot-label { font-weight: 500; overflow-wrap: anywhere; }
+.cp-shot-size { color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-family: var(--md-sys-typescale-mono-font); }
+.cp-shot-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-shots { display: grid; gap: 10px; margin: 0 0 20px; }
+.cp-shots .cp-shot-list { max-width: 640px; }
+.cp-shots-empty { margin: 0; }
+/* ── The selection overlay ───────────────────────────────────────────────────────────────────
+   Built by `report/select.ts` for the few seconds a selection takes, and never present in a
+   capture: the frame is already in memory before any of this is added to the document.
+
+   Transparent to the pointer by DEFAULT, because the element picker needs `elementFromPoint` to
+   reach the page underneath it; the region picker turns that off (`--drag`), since a drawing
+   surface has to receive its own drag. */
+.cp-shot-overlay { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none;
+  cursor: crosshair; background: light-dark(rgb(0 0 0 / 12%), rgb(0 0 0 / 32%)); }
+.cp-shot-overlay--drag { pointer-events: auto; }
+/* The selection itself is a hole in the dim rather than a box drawn on top of it: a huge outward
+   shadow paints everything outside the marquee and leaves the chosen pixels at full contrast,
+   which is what makes a selection legible over a page that is itself mostly light. */
+.cp-shot-marquee { position: absolute; box-sizing: border-box;
+  border: 1px solid var(--md-sys-color-primary);
+  box-shadow: 0 0 0 100vmax light-dark(rgb(0 0 0 / 24%), rgb(0 0 0 / 46%));
+  background: transparent; pointer-events: none; }
+.cp-shot-hint { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); margin: 0;
+  max-width: calc(100vw - 32px); padding: 8px 14px; pointer-events: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  box-shadow: var(--md-sys-elevation-level3);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line); }
+/* The report page's "this is the other tracker" paragraph. Set apart from the intro above it,
+   because a reader who is on the wrong page needs to notice it before filling in a Summary. */
+.cp-report-elsewhere { padding: 10px 14px; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); }
+/* A fixed control has no meaning on paper, and neither does an overlay. */
+@media print { .cp-fab, .cp-shot-overlay { display: none !important; } }
 /* Page + section headings ride the M3 type scale rather than ad-hoc rem sizes. */
 .cp-head { margin: 0 0 4px; font-size: var(--md-sys-typescale-title-large-size);
   line-height: var(--md-sys-typescale-title-large-line); font-weight: 400; }

@@ -364,6 +364,13 @@ const STYLED_FIXTURES = new Set([
   // default shot IS the swap; its `design-lane` and `selected` states below are the flip it
   // exists to support and the affordance that replaced the resting outlines.
   "serve-design-page",
+  // The server bug report. Two of its claims are pure styling and one is drawn at runtime: the
+  // "that is the catalog's tracker, not this one" panel that now sets the routing apart from the
+  // intro above it (issue #4261's other half — a report in the wrong tracker reaches people who
+  // cannot act on it), and the list of captures `report-capture.js` renders from whatever came
+  // across from the reported page. Captured bare, the panel is an ordinary paragraph and the
+  // capture list does not exist at all, so neither would move a baseline.
+  "serve-report-bug",
 ]);
 const SERVE_ASSETS = [
   ["serve.css", "text/css"],
@@ -374,6 +381,10 @@ const SERVE_ASSETS = [
   ["codemirror.js", "text/javascript"],
   ["viewer.js", "text/javascript"],
   ["format-compare.js", "text/javascript"],
+  // Fetched by `chrome/reportLauncher.ts` when the report launcher's panel is first opened, and
+  // immediately on `/report-bug`. Routed here so the `report-menu` state below shoots the real
+  // capture controls rather than a panel with the block still `hidden`.
+  ["report-capture.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -536,6 +547,39 @@ async function filterTo(page, query) {
 }
 
 const FIXTURE_STATES = [
+  {
+    // The report launcher OPEN, which is the only state in which it says anything. Closed it is a
+    // 40px button, and everything the affordance is for — that there are two trackers, which one
+    // owns a wrong-looking preview versus a wrong-behaving page, which repository each files
+    // against, and the three capture modes under them — lives in the panel. A `<details>` ships
+    // closed, so without this shot the entire surface would be diffed by nothing.
+    //
+    // Shot on the viewer because that is the page with BOTH halves: the catalog entry is offered
+    // only where a per-preview report exists to point at (`#cp-report`), and its label is filled
+    // in from that report's own derived repository. On the front door the same panel would show
+    // the server half alone, which is the degenerate case.
+    fixture: "serve-viewer",
+    suffix: "report-menu",
+    apply: async (page) => {
+      await page.addStyleTag({
+        content:
+          "*, *::before, *::after { transition-duration: 0ms !important; }",
+      });
+      // Opened through the summary rather than by setting `.open`, so the shot is a state a
+      // reader can actually produce — and so the `toggle` handler that fetches the capture
+      // bundle really runs, which is what unhides the capture controls in the panel.
+      await page.click(".cp-fab-btn");
+      await page.waitForSelector(".cp-fab-menu[open] .cp-fab-panel");
+      // The catalog half is unhidden by the launcher's own wiring; waiting on it keeps the shot
+      // from racing the script that fills in the repository name.
+      await page.waitForSelector(".cp-fab-catalog:not([hidden])");
+      // Waits on the capture bundle having RUN, not on the capture controls being visible: the
+      // controls are unhidden only where the browser can actually grab a frame, and whether this
+      // headless engine can is its business rather than this shot's claim. Waiting on readiness
+      // means the baseline records whichever answer it gives, instead of failing on it.
+      await page.waitForSelector("html[data-cp-capture-ready]");
+    },
+  },
   {
     // A component under the POINTER. The sheet carries no resting marks, so this is the whole
     // discovery story: the outline appears where you point, and it appears whether or not the

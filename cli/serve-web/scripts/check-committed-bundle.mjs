@@ -28,11 +28,10 @@ const tracked = [
     "serve-components.js",
     "serve-chrome.js",
     "keyboard-navigation.js",
+    "report-capture.js",
     "format-compare.js",
     "viewer.js",
-].map((name) =>
-    relative(repoRoot, resolve(assets, name)),
-);
+].map((name) => relative(repoRoot, resolve(assets, name)));
 
 const status = execFileSync(
     "git",
