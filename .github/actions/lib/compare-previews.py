@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import shutil
 from pathlib import Path
@@ -704,6 +705,84 @@ def _render_url(repo: str, ref: str, module: str, basename: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Figma reference column
+#
+# "Did these pixels move?" is what a preview diff answers. A design catalog
+# exists to answer "do these pixels match the design?", and until now the
+# comment left that to a reviewer with the kit open in another tab. The
+# manifest read here is written by `lib/figma-reference`, which cuts the mapped
+# node out of the repo's *committed* Figma page cache and pushes the PNG
+# alongside the PR renders — so the column is commit-pinned like every other
+# image in the comment, needs no Figma credential, and works on a fork.
+#
+# Every step degrades to nothing: no manifest, no entry for this preview, no
+# column. A repo without a design map sees the two-column comment it always saw.
+# ---------------------------------------------------------------------------
+
+# What a manifest field may contain before it is interpolated into the comment.
+#
+# The fork-safe split hands this file over from a job that ran the PR's own
+# build (see "Everything below treats the handoff as hostile input" in
+# `apply/action.yml`), and every value here lands inside an `<img src>` or a
+# markdown link in a comment posted with a write-scoped token. A `"` or a `)`
+# in a basename would close the attribute or the link and let the rest be
+# authored by whoever opened the PR, so the shapes are checked rather than
+# escaped — these are a Gradle module path and a preview-derived filename, both
+# of which are narrow by construction.
+_FIGMA_PATH_SEGMENT = re.compile(r"^[A-Za-z0-9._:-]+$")
+_FIGMA_NODE_URL = re.compile(r"^https://www\.figma\.com/[A-Za-z0-9/_.:%=?&-]*$")
+
+
+def _load_figma_refs(path: str | None) -> dict[str, dict]:
+    """Read the Figma reference manifest; ``{}`` for absent / malformed.
+
+    Entries that fail the shape check are dropped individually — one odd row
+    costs its own column cell, not the whole comment.
+    """
+    if not path:
+        return {}
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    entries = data.get("entries")
+    if not isinstance(entries, dict):
+        return {}
+
+    safe: dict[str, dict] = {}
+    for preview_id, entry in entries.items():
+        if not isinstance(entry, dict):
+            continue
+        module = entry.get("module") or ""
+        basename = entry.get("basename") or ""
+        if not (isinstance(module, str) and _FIGMA_PATH_SEGMENT.match(module)):
+            continue
+        if not (isinstance(basename, str) and _FIGMA_PATH_SEGMENT.match(basename)):
+            continue
+        url = entry.get("url") or ""
+        if not (isinstance(url, str) and _FIGMA_NODE_URL.match(url)):
+            url = ""
+        safe[preview_id] = {"module": module, "basename": basename, "url": url}
+    return safe
+
+
+def _figma_url(repo: str, ref: str, entry: dict) -> str:
+    return (
+        f"https://raw.githubusercontent.com/{repo}/{ref}"
+        f"/figma/{entry['module']}/{entry['basename']}"
+    )
+
+
+def _figma_cell(repo: str, ref: str, entry: dict | None) -> str | None:
+    """The ``<img>`` for a preview's design reference, or None when unmapped."""
+    if not entry or not entry.get("basename") or not entry.get("module"):
+        return None
+    img = f"<img src=\"{_figma_url(repo, ref, entry)}\" width=\"200\" />"
+    link = entry.get("url")  # already shape-checked by _load_figma_refs
+    return f"[{img}]({link})" if link else img
+
+
+# ---------------------------------------------------------------------------
 # A/B comparison config
 #
 # Lets a project nominate specific preview *variants* of a single function for
@@ -1037,6 +1116,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         Path(args.baseline_renders) if getattr(args, "baseline_renders", None) else None
     )
     scope_modules = _parse_scope_modules(args)
+    figma_refs = _load_figma_refs(getattr(args, "figma_refs", None))
 
     current = load_cli_output(cli_json)
     baselines = _load_baselines(baselines_path)
@@ -1187,12 +1267,25 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
             lines.append(f"**`{fn}`** ({module})")
             lines.append("")
-            lines.append("| Before | After |")
-            lines.append("|--------|-------|")
-            lines.append(
-                f"| <img src=\"{before}\" width=\"200\" /> "
-                f"| <img src=\"{after}\" width=\"200\" /> |"
-            )
+            # The design reference goes FIRST, when there is one: the catalog's
+            # job is to reproduce it, so it reads left-to-right as "what it
+            # should look like → what it looked like → what it looks like now".
+            figma = _figma_cell(repo, head_ref, figma_refs.get(hero_cur["previewId"]))
+            if figma:
+                lines.append("| Figma | Before | After |")
+                lines.append("|-------|--------|-------|")
+                lines.append(
+                    f"| {figma} "
+                    f"| <img src=\"{before}\" width=\"200\" /> "
+                    f"| <img src=\"{after}\" width=\"200\" /> |"
+                )
+            else:
+                lines.append("| Before | After |")
+                lines.append("|--------|-------|")
+                lines.append(
+                    f"| <img src=\"{before}\" width=\"200\" /> "
+                    f"| <img src=\"{after}\" width=\"200\" /> |"
+                )
 
             # Link remaining variants
             if len(entries) > 1:
@@ -1219,10 +1312,19 @@ def cmd_compare(args: argparse.Namespace) -> int:
             hero_key, hero_info = entries[0]
             after = _render_url(repo, head_ref, module, hero_info["renderBasename"])
 
-            lines.append(
-                f"**`{fn}`** ({module}) "
-                f"<img src=\"{after}\" width=\"200\" />"
-            )
+            figma = _figma_cell(repo, head_ref, figma_refs.get(hero_info["previewId"]))
+            if figma:
+                lines.append(f"**`{fn}`** ({module})")
+                lines.append("")
+                lines.append("| Figma | New |")
+                lines.append("|-------|-----|")
+                lines.append(f"| {figma} | <img src=\"{after}\" width=\"200\" /> |")
+                lines.append("")
+            else:
+                lines.append(
+                    f"**`{fn}`** ({module}) "
+                    f"<img src=\"{after}\" width=\"200\" />"
+                )
 
             if len(entries) > 1:
                 variant_links = []
@@ -1291,6 +1393,17 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
         lines.append("</details>")
 
+    # Only when a cell actually landed: a manifest can cover previews none of
+    # which changed in this PR, and a footnote about a column nobody can see is
+    # noise on every comment the repo posts.
+    if figma_refs and any("/figma/" in line for line in lines):
+        lines.append("")
+        lines.append(
+            "_Figma column: the mapped node from this repo's committed design cache "
+            "(`design-map.json` + the imported pages), as of this PR's merge base — "
+            "not a live read of the design file. Click it to open the node._"
+        )
+
     print("\n".join(lines))
     return 0
 
@@ -1312,6 +1425,8 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
     baselines = _load_baselines(baselines_path)
 
     copied = 0
+    changed_ids: list[dict] = []
+    seen_ids: set[tuple[str, str]] = set()
     for key, info in current.items():
         if not info["sha256"]:
             continue
@@ -1329,6 +1444,15 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(png, dest)
             copied += 1
+            # Deduped on (module, previewId): a preview's captures fan out into
+            # several rows, and they all picture the same design node.
+            ident = (info["module"], info["previewId"])
+            if ident not in seen_ids:
+                seen_ids.add(ident)
+                changed_ids.append({"previewId": info["previewId"], "module": info["module"]})
+
+    if getattr(args, "changed_ids", None):
+        Path(args.changed_ids).write_text(json.dumps(changed_ids, indent=2) + "\n")
 
     print(f"Copied {copied} changed/new preview(s) to {out_dir}", file=sys.stderr)
     return 0
@@ -2090,6 +2214,14 @@ def main() -> int:
     cmp.add_argument("--rerun-checkbox", action="store_true",
                      help="Add the task-list control consumed by a repository's "
                           "issue_comment rerun workflow.")
+    # Optional. Manifest written by `lib/figma-reference` — the design node each
+    # changed preview is *meant* to look like, rasterised out of the repo's
+    # committed Figma page cache and pushed alongside the PR renders. Present =
+    # the changed/new tables gain a Figma column; absent = the historical
+    # two-column layout, which is what every repo without a design map gets.
+    cmp.add_argument("--figma-refs",
+                     help="Path to the Figma reference manifest "
+                          "({entries: {previewId: {module, basename, ref, url}}}).")
 
     cp = sub.add_parser("copy-changed", help="Copy new/changed PNGs to output dir")
     cp.add_argument("cli_json", help="Path to compose-preview show --json output")
@@ -2097,6 +2229,10 @@ def main() -> int:
     cp.add_argument("--output-dir", required=True)
     cp.add_argument("--baseline-renders",
                     help="Directory containing baseline PNGs (renders/<module>/<basename>)")
+    cp.add_argument("--changed-ids",
+                    help="Write the copied previews as [{previewId, module}] JSON here. "
+                         "The Figma reference stager illustrates exactly this set — the "
+                         "handful the comment will show, not the catalog.")
 
     sh = sub.add_parser(
         "stage-handoff",

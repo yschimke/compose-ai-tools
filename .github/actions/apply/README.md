@@ -535,6 +535,55 @@ A group is only surfaced when at least one of its variants actually changed
 non-nominated variants of the same function keep the historical "Other
 variants" treatment.
 
+## Figma column — the design each preview is meant to match
+
+A preview diff answers "did these pixels move?". A design catalog exists to
+answer "do these pixels match the design?", and the reviewer used to answer that
+one by hand with the kit open in another tab. When a repo carries both halves of
+the join, the changed / new tables grow a third column showing the design node
+itself:
+
+| Figma | Before | After |
+|---|---|---|
+| the kit's drawing of `Button/Compact` | last render on `compose-preview/main` | this PR's render |
+
+Both halves are already committed artefacts, and **nothing here talks to Figma**:
+
+- `design-map.json` — which design node a preview implements. Produced by
+  [`@yschimke/compose-design-map`](../../../design-map) from
+  `@CatalogComponent(reference = …)`, with per-variant nodes resolved onto it by
+  a kit resolver. Both the base (`ref`/`previewId` as strings) and the resolved
+  (arrays tagged by `state`) shapes are read.
+- `design/pages/pages.json` + its SVGs — the imported kit pages, one SVG per
+  page with `data-node-id` on every element (the v2 design-pages manifest, see
+  `DesignPages.kt`). The column is cut straight out of that markup: the node's
+  subtree, re-wrapped in the ancestors that carry its transform and clipping,
+  rasterised, then cropped to the ink it draws and backed with the colour the
+  sheet paints behind it.
+
+Reading the cache rather than the API is the point. A fork PR gets no
+`FIGMA_TOKEN`, so a live column would go missing on exactly the PRs an outside
+contributor opens; the reference is pinned to what the PR's own checkout carries,
+so a designer's mid-review edit can't silently rewrite what a reviewer is judging
+against; and Figma sees no per-push traffic. The cost is freshness — the column
+is as current as the last run of the repo's page import, and *drift* is
+design-parity's job to report, on its own schedule.
+
+Every part of it degrades to nothing. No design map, no page import, a node the
+export skipped (the M3 kit's Stickersheet page is excluded for size), no
+rasteriser: the comment falls back to the two-column layout it always had. So
+there is nothing to switch on — commit the two files and the column appears.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `figma-references` | `true` | Set `false` to suppress the column even where the cache exists. |
+| `design-map` | `design-map.json` | Path to the design map. |
+| `design-pages` | `design/pages/pages.json` | Path to the imported page manifest. |
+
+The reference PNGs are pushed to `compose-preview/pr` alongside the PR renders
+(`figma/<module>/<previewId>.png`), so they are commit-pinned like every other
+image in the comment.
+
 ## Downloadable-font cache
 
 Previews that use `Font(GoogleFont(...))` resolve their faces through a
