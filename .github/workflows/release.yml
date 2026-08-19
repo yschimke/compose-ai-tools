@@ -226,6 +226,23 @@ jobs:
   # the iOS *test* targets — so treat a failure here as real rather than flaky, and see the Xcode
   # selection step, which exists because CMP 1.11's `ui-uikit` needs the iOS 26 SDK.
   publish-xcframework:
+    # DISABLED pending #4222. The Kotlin/Native release link this job drives
+    # (`linkReleaseFramework{IosArm64,IosSimulatorArm64}`, via `rcPlayerXcframeworkChecksum`) runs
+    # out of heap on `macos-15`, and a failure here takes all of `release.yml` down with it. That
+    # matters more than losing the asset: `finalize-release` gates on `needs.release.result ==
+    # 'success'`, so the GitHub Release stays a draft *after* `publish-gradle-plugin` and
+    # `publish-player-stack` have already published to Maven Central — half-published, and the npm
+    # job's Trusted Publisher binding means a `workflow_dispatch` re-run cannot finish the job it
+    # skipped. Skipping keeps `release.yml` green; a skipped job does not fail the workflow.
+    #
+    # Nothing regresses by skipping it. This job landed in #4193, after `v1.15.0`, and has never
+    # completed a release: `Package.swift` still carries its `v0.0.0` / all-zero-checksum
+    # placeholder and no bare `X.Y.Z` tag exists on the remote, so the Swift distribution has never
+    # shipped. The iOS klibs are untouched — `publish-player-stack` still puts them on Central.
+    #
+    # Re-enable by deleting this one `if:`, once the link is proven to complete in CI. A literal
+    # rather than a flag because a job-level `if:` cannot read the `env` context.
+    if: ${{ false }}
     needs: [build-applications, build-vscode-extension]
     runs-on: macos-15
     permissions:
