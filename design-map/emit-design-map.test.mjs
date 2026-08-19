@@ -84,3 +84,64 @@ test("a dark-only catalog maps under --strict, having no Light capture to pair w
   assert.equal(status, 0, all);
   assert.match(all, /1 mapped component\(s\)/);
 });
+
+// A component publishing several modes with none of them Light is `ambiguousMode`, and
+// `participates()` is false for every one of its captures. Absence used to be read inside that
+// filter, so such a component fell out of the absence diagnostics entirely and was reported only as
+// an ambiguous mode — making a STATED absence fatal under the flag that exists to accept it.
+const statedTwoModes = (mode) => ({
+  id: `com.example.CatalogKt.ButtonGroup_${mode}`,
+  functionName: "ButtonGroup",
+  sourceFile: "Catalog.kt",
+  catalog: {
+    role: "COMPONENT",
+    componentId: "ButtonGroup",
+    noReference: "The kit publishes no button-group set.",
+  },
+});
+
+test("a stated absence survives an ambiguous mode, and the flag still accepts it", () => {
+  const previews = [MAPPED, statedTwoModes("Dark"), statedTwoModes("Coral")];
+
+  const strict = run(previews, "--strict");
+  assert.equal(strict.status, 1);
+  assert.match(strict.all, /ButtonGroup — The kit publishes no button-group set\./);
+  // Reported ONCE, as the absence it is — not a second time as an unpairable capture.
+  assert.doesNotMatch(strict.all, /none of them Light/);
+
+  const allowed = run(previews, "--strict", "--allow-stated-absence");
+  assert.equal(allowed.status, 0, allowed.all);
+});
+
+test("an unexplained absence is unmapped, not ambiguous, however many modes it draws", () => {
+  const silentTwoModes = (mode) => ({
+    id: `com.example.CatalogKt.Mystery_${mode}`,
+    functionName: "Mystery",
+    sourceFile: "Catalog.kt",
+    catalog: { role: "COMPONENT", componentId: "Mystery" },
+  });
+  const { status, all } = run(
+    [MAPPED, silentTwoModes("Dark"), silentTwoModes("Coral")],
+    "--strict",
+    "--allow-stated-absence",
+  );
+  assert.equal(status, 1);
+  assert.match(all, /Mystery — no reference, and no reason given/);
+  assert.doesNotMatch(all, /none of them Light/);
+});
+
+test("an ambiguous mode is still fatal when the component HAS a reference to pair", () => {
+  const themed = (mode) => ({
+    id: `com.example.CatalogKt.Themed_${mode}`,
+    functionName: "Themed",
+    sourceFile: "Catalog.kt",
+    catalog: { role: "COMPONENT", componentId: "Themed", reference: `figma:${FILE}/2:2` },
+  });
+  const { status, all } = run(
+    [MAPPED, themed("Dark"), themed("Coral")],
+    "--strict",
+    "--allow-stated-absence",
+  );
+  assert.equal(status, 1);
+  assert.match(all, /none of them Light/);
+});
