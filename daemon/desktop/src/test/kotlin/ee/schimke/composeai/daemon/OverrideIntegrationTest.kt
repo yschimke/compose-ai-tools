@@ -1138,6 +1138,198 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * Regression for yschimke/wear-m3-catalog#33 — the **held** (Live stream) lane has to seed a
+   * variant too, not only the one-shot `renderNow` lane.
+   *
+   * `renderSpecFromInfo` resolves a synthetic `@OverrideVariant` preview's `previews.json` seed
+   * into `RenderSpec.overrides.namedOverrides`, and `specFromPreviewIdPayload` layers a per-render
+   * bag over it — that is the path [discoveredOverrideVariantKeepsItsOwnFigmaSvgAndState] covers.
+   * `interactive/start` (what the viewer's **Live (stream)** toggle opens) goes through
+   * `applyOverrides` instead, which adapted the spec into a [PreviewOverrideBaseSpec] naming only a
+   * couple of the bag's fields. The seed was not among them, so the held scene composed the
+   * variant's *base* state while the baked PNG beside it showed the variant:
+   * `switchbutton__ideal__split` drew the un-split switch the moment a reader ticked Live.
+   *
+   * Renders both ids through a held session and asserts the pixels differ the way the seed says
+   * they should — the base red, the variant its seeded blue.
+   */
+  @Test
+  fun heldSessionSeedsAnOverrideVariantWithNoPerRenderBag() {
+    val outputDir = tempFolder.newFolder("renders-held-override-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseId = "OverridableSquare_Light"
+    val variantId = "OverridableSquare_Light_VARIANT_blue"
+    fun info(id: String, overrides: OverrideVariantSpec? = null) =
+      PreviewInfoDto(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        methodName = "OverridableSquare",
+        params = PreviewParamsDto(widthDp = 32, heightDp = 32, density = 1.0f),
+        overrides = overrides,
+      )
+    val byId =
+      listOf(
+          info(baseId),
+          info(
+            variantId,
+            OverrideVariantSpec(
+              name = "blue",
+              seeds =
+                listOf(
+                  OverrideSeed(key = "fill", kind = OverrideSeedKind.COLOR, raw = "#FF42A5F5")
+                ),
+            ),
+          ),
+        )
+        .associate { it.id to renderSpecFromInfo(it) }
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            outputDir = outputDir,
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension())),
+          ),
+        previewSpecResolver = byId::get,
+      )
+    host.start()
+    try {
+      // The viewer opens Live with the display fields only — no `knob.*` in the bag at all, which
+      // is precisely the case the dropped seed made indistinguishable from the primary.
+      val base = heldRender(host, baseId, "held-base")
+      val variant = heldRender(host, variantId, "held-variant")
+
+      val basePct = pixelMatchPct(base, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "the un-seeded base must hold its author-default red; got ${"%.2f".format(basePct * 100)}%",
+        basePct >= 0.95,
+      )
+      val variantPct = pixelMatchPct(variant, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "the held variant must compose its baked seed (blue), not the base state; got " +
+          "${"%.2f".format(variantPct * 100)}%",
+        variantPct >= 0.95,
+      )
+      assertNotEquals(
+        "a variant browsed live must not render identically to its primary",
+        base.getRGB(base.width / 2, base.height / 2),
+        variant.getRGB(variant.width / 2, variant.height / 2),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * The reported shape of yschimke/wear-m3-catalog#33, on a fixture whose two states differ
+   * *structurally*: [SplittableSwitchRow] draws one tap target unseeded and two when `split` is
+   * seeded true.
+   *
+   * [heldSessionSeedsAnOverrideVariantWithNoPerRenderBag] above is the rigorous assertion (a flat
+   * fill, matched per-pixel); this one is the legible one — the frames a reader compares. With the
+   * seed dropped, the variant's held frame was **byte-identical** to its primary's, which is why
+   * the bug read as "in Live mode the split switch becomes the normal one" rather than as an error.
+   *
+   * Set `HELD_VARIANT_DEMO_DIR` to write both frames out; that is how
+   * `docs/evidence/live-variant-seed/` is regenerated.
+   */
+  @Test
+  fun heldSessionSeedsTheSplitVariantTheIssueReported() {
+    val outputDir = tempFolder.newFolder("renders-held-split-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseId = "SplittableSwitchRow_Light"
+    val variantId = "SplittableSwitchRow_Light_VARIANT_split"
+    fun info(id: String, overrides: OverrideVariantSpec? = null) =
+      PreviewInfoDto(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        methodName = "SplittableSwitchRow",
+        params = PreviewParamsDto(widthDp = 200, heightDp = 64, density = 2.0f),
+        overrides = overrides,
+      )
+    val byId =
+      listOf(
+          info(baseId),
+          info(
+            variantId,
+            OverrideVariantSpec(
+              name = "split",
+              seeds =
+                listOf(OverrideSeed(key = "split", kind = OverrideSeedKind.BOOLEAN, raw = "true")),
+            ),
+          ),
+        )
+        .associate { it.id to renderSpecFromInfo(it) }
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            outputDir = outputDir,
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension())),
+          ),
+        previewSpecResolver = byId::get,
+      )
+    host.start()
+    try {
+      val primary = heldRender(host, baseId, "held-split-primary")
+      val variant = heldRender(host, variantId, "held-split-variant")
+
+      System.getenv("HELD_VARIANT_DEMO_DIR")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { dir ->
+          val target = File(dir).also { it.mkdirs() }
+          ImageIO.write(primary, "png", File(target, "primary.png"))
+          ImageIO.write(variant, "png", File(target, "variant.png"))
+        }
+
+      assertNotEquals(
+        "a variant whose seed changes the component's structure must not render as its primary",
+        pixelSignature(primary),
+        pixelSignature(variant),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /** Cheap whole-frame identity — enough to say "these two renders are the same picture". */
+  private fun pixelSignature(img: java.awt.image.BufferedImage): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    for (y in 0 until img.height) {
+      for (x in 0 until img.width) {
+        val rgb = img.getRGB(x, y)
+        digest.update(byteArrayOf((rgb shr 16).toByte(), (rgb shr 8).toByte(), rgb.toByte()))
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+  }
+
+  /** One frame off a held ([DesktopHost.acquireInteractiveSession]) session — the Live lane. */
+  private fun heldRender(
+    host: DesktopHost,
+    previewId: String,
+    label: String,
+  ): java.awt.image.BufferedImage {
+    val session =
+      host.acquireInteractiveSession(
+        previewId = previewId,
+        classLoader =
+          OverrideIntegrationTest::class.java.classLoader ?: ClassLoader.getSystemClassLoader(),
+      )
+    try {
+      val result = session.render(requestId = RenderHost.nextRequestId())
+      assertNotNull("$label: pngPath must be populated", result.pngPath)
+      val pngFile = File(result.pngPath!!)
+      assertTrue("$label: rendered PNG must exist", pngFile.exists())
+      return ByteArrayInputStream(pngFile.readBytes()).use { ImageIO.read(it) }
+        ?: error("$label: PNG failed to decode")
+    } finally {
+      session.close()
+    }
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,
