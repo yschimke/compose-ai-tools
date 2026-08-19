@@ -623,7 +623,7 @@ _No findings._
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
-| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "Aurora ridge" is identical to that of 4 other item(s). |
+| 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "Aurora ridge" is identical to that of 8 other item(s). |
 
 ### `SoftKeyboardAnimatedPreview`
 
