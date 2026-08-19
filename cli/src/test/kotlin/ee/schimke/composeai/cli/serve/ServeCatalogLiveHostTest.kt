@@ -53,7 +53,24 @@ class ServeCatalogLiveHostTest {
     override val liveOnlyPreviewIds: Set<String> = emptySet(),
     /** Published captures this host can serve, keyed `<motionId><extension>`. */
     private val motion: Map<String, ByteArray> = emptyMap(),
+    /** An open circuit breaker's reason, as [ServeRenderHost] reports one after a linkage fault. */
+    private val breakerReason: String? = null,
+    /**
+     * False models a **catalog** baked host whose published PNGs are fetched from the delivery
+     * branch on first use: `bakedRender` answers only from local pixels (it must never trigger the
+     * fetch), while `render` fetches and serves. The distinction is what turned an open breaker
+     * into a catalog-wide 409 in #4220.
+     */
+    private val bakedPixelsLocal: Boolean = true,
   ) : ServeHost {
+
+    override fun renderBreaker(): RenderBreakerSnapshot? = breakerReason?.let {
+      RenderBreakerSnapshot(open = true, fatal = true, reason = it)
+    }
+
+    override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
+      breakerReason
+
     override fun motionRead(motionId: String, extension: String): BranchFetch =
       motion["$motionId$extension"]?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
 
@@ -84,7 +101,7 @@ class ServeCatalogLiveHostTest {
     // Local pixels, served without admission. Deliberately does NOT count as a render call, so a
     // test can assert the daemon was never reached.
     override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
-      if (previewId in liveOnlyPreviewIds) null
+      if (previewId in liveOnlyPreviewIds || !bakedPixelsLocal) null
       else RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
 
     override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
@@ -2094,5 +2111,91 @@ class ServeCatalogLiveHostTest {
 
     val snapshot = awaitOk(10_000) { cache.snapshot().takeIf { it.cached >= 2 } }
     assertEquals(2, snapshot.cached, "both themes cached without re-earning the entry window")
+  }
+
+  /**
+   * #4220: one broken daemon must not black out the pixels it was never the source of.
+   *
+   * A catalog fetches its published PNGs from the delivery branch on first use, so `bakedRender`
+   * (deliberately local-only) says null for a preview nobody has asked for yet — and the HTTP layer
+   * consults [renderFailureLatch] the moment it does. Latching every id in the alias therefore
+   * answered `409` to a plain override-free browse whose pixels `render` would have fetched
+   * happily, breaking every `<img>` on every page of the catalog while the degradation banner
+   * promised those very snapshots. Only requests the daemon was the answer to may be refused.
+   */
+  @Test
+  fun `an open breaker does not latch a browse the baked lane can answer`() {
+    val brokenLane =
+      "render lane disabled after a non-recoverable UnsatisfiedLinkError \u2014 retrying cannot help."
+    val baked =
+      RecordingHost(
+        previews =
+          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+        // The production shape: published, but not yet pulled onto this box.
+        bakedPixelsLocal = false,
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "live",
+        streaming = true,
+        breakerReason = brokenLane,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // The browse the baked PNG answers truthfully: no latch, and the pixels arrive through
+    // `render`, which is the lane that fetches them.
+    assertNull(composite.renderFailureLatch(catalogId, PreviewOverrides()))
+    val outcome = composite.render(catalogId, PreviewOverrides()) as RenderOutcome.Ok
+    assertEquals("baked:$catalogId", outcome.png.decodeToString())
+    assertEquals(0, live.renderCalls, "a broken daemon must not be asked to serve a baked browse")
+
+    // An unmapped (Android-only) variant never had a live twin, so it was never latched.
+    assertNull(composite.renderFailureLatch(androidOnlyId, PreviewOverrides()))
+
+    // A `uiMode` restating the variant's own baked theme is a no-op, so it stays baked too.
+    assertNull(composite.renderFailureLatch(catalogId, PreviewOverrides(uiMode = UiMode.DARK)))
+  }
+
+  /**
+   * The other half of the same rule: a request the baked pixels cannot answer still gets the
+   * terminal `409` naming the linkage error, rather than a dishonest `200` of the un-overridden
+   * snapshot or a `503` that invites the viewer to retry a lane that will never come back.
+   */
+  @Test
+  fun `an open breaker still latches the renders only the daemon could serve`() {
+    val brokenLane =
+      "render lane disabled after a non-recoverable UnsatisfiedLinkError \u2014 retrying cannot help."
+    val liveOnlyId = "chip-assist__ideal__deferred__light"
+    val liveOnlyDaemonId = "AssistChip_Deferred_Light"
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId), ServePreview(liveOnlyId, liveOnlyId)),
+        tag = "baked",
+        liveOnlyPreviewIds = setOf(liveOnlyId),
+      )
+    val live =
+      RecordingHost(
+        previews =
+          listOf(
+            ServePreview(daemonId, daemonId, overrides = listOf(labelKnob)),
+            ServePreview(liveOnlyDaemonId, liveOnlyDaemonId),
+          ),
+        tag = "live",
+        streaming = true,
+        breakerReason = brokenLane,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        mapOf(catalogId to daemonId, liveOnlyId to liveOnlyDaemonId),
+        live,
+        baked,
+      )
+
+    // A knob the baked PNG cannot represent — the daemon was the only lane, and it is broken.
+    assertEquals(brokenLane, composite.renderFailureLatch(catalogId, knobOverride()))
+    // A deferred (live-only) preview has no baked pixels at all, so even a bare browse is latched.
+    assertEquals(brokenLane, composite.renderFailureLatch(liveOnlyId, PreviewOverrides()))
   }
 }
