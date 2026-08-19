@@ -254,6 +254,7 @@ class ServeHttpRoutingTest {
     rcDoc: ByteArray? = null,
     designReference: Boolean = false,
     parityFeed: Boolean = false,
+    stagesRcCompare: Boolean = false,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -361,7 +362,13 @@ class ServeHttpRoutingTest {
         )
       File(dir, "previews/$previewId.remotecompose.json").writeText(sidecar)
     }
-    return ServeBundleHost(dir, label = label, title = title, degradations = degradations)
+    return ServeBundleHost(
+      dir,
+      label = label,
+      title = title,
+      degradations = degradations,
+      stagesRcCompare = stagesRcCompare,
+    )
   }
 
   /**
@@ -423,6 +430,14 @@ class ServeHttpRoutingTest {
     registry.register(
       "baked-only",
       host = bundle("baked-only", degradations = listOf(ServeDegradation.catalogBakedOnly())),
+      pinned = true,
+    )
+    // A catalog whose background lane WILL stage a published player comparison, but has not yet —
+    // the only shape `rcComparePending()` is true for. Kept off `catalogSessions` like `baked-only`
+    // so the home-index test is unaffected.
+    registry.register(
+      "staging-rc",
+      host = bundle("staging-rc", rcDoc = rcDocBytes, stagesRcCompare = true),
       pinned = true,
     )
     registry.register("burst", host = burstHost, pinned = true)
@@ -1645,11 +1660,26 @@ class ServeHttpRoutingTest {
       )
     }
 
-    // compose-m3 carries an RC document without a published comparison manifest. Its viewer can
-    // gain capabilities asynchronously, so serving it from a cache while staging is pending would
-    // preserve an incomplete page after those capabilities arrive.
-    val pendingViewerReq =
+    // compose-m3 carries an RC document and no published comparison manifest — but no background
+    // lane is going to bring it one either, and a host with nothing to wait for is fully baked.
+    // Dropping it to `no-store` is what `stagesRcCompare` was introduced to stop: gating on the
+    // absent file alone made `pending()` permanently true for every laneless session and kept its
+    // viewer pages out of the edge cache for the life of the host.
+    val settledViewerReq =
       Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/p/$previewId").build()
+    client.newCall(settledViewerReq).execute().use { response ->
+      assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertTrue(
+        response.header("Cache-Control")?.startsWith("public, max-age=60") == true,
+        "laneless viewer ${response.code} cache-control was ${response.header("Cache-Control")}",
+      )
+    }
+
+    // …and the case that IS uncacheable: a catalog whose lane will stage a comparison and has not
+    // yet. The page's shape depends on a manifest that lands asynchronously, so a short edge cache
+    // would serve the pre-manifest shape for minutes after the lanes were ready.
+    val pendingViewerReq =
+      Request.Builder().url("http://127.0.0.1:${server.port}/staging-rc/p/$previewId").build()
     client.newCall(pendingViewerReq).execute().use { response ->
       assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
       assertEquals("no-store", response.header("Cache-Control"))
