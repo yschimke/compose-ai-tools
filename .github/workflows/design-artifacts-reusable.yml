@@ -210,6 +210,12 @@ on:
           and the row reports the missing ground instead of the component. Applied only to stickers
           whose alpha channel is the whole frame or the inscribed device disc; a transparent
           component sticker is left alone and counted in the step's summary.
+
+          Needs a driver that carries the flag. An EXTERNAL caller runs the release-pinned driver
+          from design-artifacts-driver-pin.txt, not this repo's main, so this input takes effect
+          only once a release has moved that pin past the commit adding it (compose-ai-tools' own
+          catalogs get it immediately). Setting it against an older driver publishes unchanged
+          references and says so with a warning rather than failing the catalog's render.
         required: false
         type: string
         default: ''
@@ -1529,9 +1535,29 @@ jobs:
             echo "::warning title=Chromium install failed::HTML design references will be skipped and references will publish without a match score."
             tail -n 40 "$install_log" >&2
           fi
+          # An unknown flag is INERT here, not an error: the emitter reads argv by name, so a driver
+          # older than a flag ignores it and the run goes green having done exactly nothing the
+          # caller asked for. That matters more than usual for `reference-backdrop`, because an
+          # EXTERNAL caller does not execute this repo's `main` — it executes the release-pinned
+          # driver in design-artifacts-driver-pin.txt, so a freshly merged flag reaches it only
+          # after the next release moves the pin. wear-m3-catalog#43 hit exactly that: the input was
+          # set, the step was green, and the references published unchanged.
+          #
+          # So say so, out loud, rather than leaving it to be inferred from a missing log line.
+          # A warning and not a failure: the references published are byte-for-byte what this
+          # catalog would have published with no input at all — stale against the caller's intent,
+          # never wrong — and a reference lane must not cost a catalog its render.
+          emitter=compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs
+          if [ -n "$REFERENCE_BACKDROP" ] && ! grep -q 'reference-backdrop' "$emitter"; then
+            echo "::warning title=Driver too old for reference-backdrop::This run's export driver \
+          predates the --reference-backdrop flag, so '$REFERENCE_BACKDROP' was ignored and the \
+          references published exactly as they would have with no backdrop. External callers run \
+          the driver pinned in compose-ai-tools/.github/design-artifacts-driver-pin.txt; it reaches \
+          them when the next release moves that pin."
+          fi
           # `--spec` must be the caller's configured path, not the emitter's root default:
           # this repo's own catalogs live at samples/design-catalog-*/catalog.spec.json.
-          node compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs \
+          node "$emitter" \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
             --spec "$INPUT_SPEC" \
