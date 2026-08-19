@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "6fa8c0cb803145f1db98445866a927fec33e08aa",
+    "generatedFrom": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2240,6 +2240,13 @@
             "path": "renders/samples:android/SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_1500ms.png",
             "versions": [
                 {
+                    "blob": "6ed5384c8925fdc9244a27ee7902409d0b7bea1e",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                },
+                {
                     "blob": "d3779e08f110a34e1a487d54e46e9c193f924fd3",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -2247,7 +2254,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -2386,6 +2393,21 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollTimedPreview_ScrollTimed#1": {
+            "path": "renders/samples:android/RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
+            "versions": [
+                {
+                    "blob": "96f74b09de45d8683b18238303c89142354b8c5c",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview": {
             "path": "renders/samples:android/SemanticsClickableButtonPreview-aa893247.png",
             "versions": [
@@ -2454,6 +2476,66 @@
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
                     "sourceSha": "5b91ca7c",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SettledPreviewsKt.DeferredValueSettledPreview_Deferred value": {
+            "path": "renders/samples:android/DeferredValueSettledPreview_Deferred_value-a8cd1a6d.png",
+            "versions": [
+                {
+                    "blob": "6edcb400077c08b107d21e2b49dde93b19a0a563",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SettledPreviewsKt.DeferredValueUnsettledPreview_Deferred unsettled": {
+            "path": "renders/samples:android/DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.png",
+            "versions": [
+                {
+                    "blob": "3cc306eb5106ead686d97e489d37fb7fb23577d0",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SettledPreviewsKt.RevealCardSettledPreview_Reveal settled": {
+            "path": "renders/samples:android/RevealCardSettledPreview_Reveal_settled-c7245802.png",
+            "versions": [
+                {
+                    "blob": "7b7e66434814a7c053b3f42d7b375bb7b5f53111",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SettledPreviewsKt.RevealCardUnsettledPreview_Reveal unsettled": {
+            "path": "renders/samples:android/RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.png",
+            "versions": [
+                {
+                    "blob": "e705e5c92741b52234334802a8a717783b5d7b22",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
                     "commits": 1
                 }
             ],
@@ -4155,6 +4237,36 @@
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
                     "sourceSha": "39fa6d74",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.SettledPreviewsKt.DesktopRevealSettledPreview_Reveal settled": {
+            "path": "renders/samples:cmp/DesktopRevealSettledPreview_Reveal_settled-fd6af239.png",
+            "versions": [
+                {
+                    "blob": "b0f2c536d22b46f12ca85a8a093764791a3c404e",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.SettledPreviewsKt.DesktopRevealUnsettledPreview_Reveal unsettled": {
+            "path": "renders/samples:cmp/DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.png",
+            "versions": [
+                {
+                    "blob": "e705e5c92741b52234334802a8a717783b5d7b22",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
                     "commits": 1
                 }
             ],
@@ -6460,6 +6572,13 @@
             "path": "renders/samples:design-catalog-wear-m3/ButtonPressed-2ae1b0cc.png",
             "versions": [
                 {
+                    "blob": "3206534c3bf4e0ce006004094193a7f00024fb55",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
+                    "commits": 1
+                },
+                {
                     "blob": "7076b56b8ae939b7fb78d3b4341fd798cd4740a0",
                     "commit": "4b6a460d9ddfaf903c668ff8addcc0b35efc790e",
                     "date": "2026-08-17T08:47:20Z",
@@ -6481,7 +6600,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 3,
+            "observations": 4,
             "unstable": false,
             "flapCount": 0
         },
@@ -6838,6 +6957,21 @@
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
                     "sourceSha": "02b540ff",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn#1": {
+            "path": "renders/samples:design-catalog-wear-m3/SwitchButtonOn-3f3536cc.apng",
+            "versions": [
+                {
+                    "blob": "7d99d348dc35d7635af2fbf5448bbacd8e1bbe87",
+                    "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+                    "date": "2026-08-19T13:30:14Z",
+                    "sourceSha": "103dd5ee",
                     "commits": 1
                 }
             ],
