@@ -832,10 +832,25 @@ one axis. The export warns when it sees one. A Wear catalog that declares no
 `breakpoints` inherits the standard round table (`smallRound` / `largeRound` /
 `xlRound` / `smallSquare`, by device id and width).
 
+A folded component is **one card** wherever it is browsed. The published `catalog.json`
+carries one image per size, each tagged with the `size` it rendered at, and the serve
+host folds the non-primary ones onto that component's single card — the same treatment a
+non-default `state` or props variant gets — with every other breakpoint one hop away in
+the viewer's component subtree. The card is drawn at the component's **first declared**
+breakpoint, which is also the size a design catalog's references are mapped against.
+
+That fold is what the `size` tag buys, and it is worth stating because its absence was
+visible: before the host read the tag, wear-m3-catalog's five kit sizes published five
+identically-named cards for every full-screen component — 14 components as 70 rows
+([wear-m3-catalog#41](https://github.com/yschimke/wear-m3-catalog/issues/41)). A catalog
+published before the export recorded `size` still shows a card per render, because
+folding on the id alone would leave those renders with no switcher to be reached from;
+re-exporting it is what collapses them.
+
 Folding every size onto one entry is right when the entry means "this component, at
 every breakpoint we document". When a catalog wants a **card per breakpoint** — its
-own id and caption — use `select` rather than splitting the `@Preview` function in
-the module:
+own id and caption, listed side by side in the grid — use `select` rather than splitting
+the `@Preview` function in the module:
 
 ```jsonc
 { "componentId": "Home/SmallRound", "preview": "HomeListViewPreview",
