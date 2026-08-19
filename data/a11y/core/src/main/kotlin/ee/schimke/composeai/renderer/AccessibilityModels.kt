@@ -80,7 +80,12 @@ data class AccessibilityEntry(
  */
 @Serializable
 data class AccessibilityNode(
-  /** Visible text or contentDescription. Always non-empty for emitted nodes. */
+  /**
+   * What a screen reader announces for this node: its own contentDescription / text, or — for a
+   * focus stop that holds neither — the copy rolled up from the descendants it merges
+   * (issue #4253, [AccessibilityLabels]). Empty only when nothing under the stop supplies a name,
+   * which is a labelling bug worth surfacing rather than hiding.
+   */
   val label: String,
   /**
    * Stable, content-independent handle assigned by [AccessibilityRefs] (issue #1784) — the a11y

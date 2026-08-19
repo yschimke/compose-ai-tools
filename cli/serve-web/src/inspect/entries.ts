@@ -122,6 +122,28 @@ const boundsKey = (wire: string | null | undefined): string =>
     (wire ?? "").trim();
 
 /**
+ * The announcement a focus stop gets from the nodes it merges.
+ *
+ * A stop whose copy lives on its descendants — a Wear `Button(label = { Text(…) })`, an icon button
+ * whose `contentDescription` sits on the inner icon — reaches the wire with an empty `label` on
+ * every hierarchy produced before the extractor started rolling those up. Reading that literally
+ * prints `(unlabelled)` over a button with the word "Filled" plainly on it, which is worse than
+ * useless: it reports a labelling bug that is not there and hides the one that would be.
+ *
+ * The wire is flat, so emission order is the only handle on parent/child: the non-stop nodes
+ * immediately following a stop are the descendants it folds in. Same rule the daemon's overlay
+ * legend and the VS Code bundle presenter group on.
+ */
+function mergedDescendantLabel(nodes: A11yNode[], index: number): string {
+    const parts: string[] = [];
+    for (let i = index + 1; i < nodes.length && !isFocusStop(nodes[i]); i++) {
+        const label = (nodes[i].label ?? "").trim();
+        if (label) parts.push(label);
+    }
+    return parts.join(" ");
+}
+
+/**
  * One entry per screen-reader stop, carrying the findings and touch-target size whose bounds match
  * it — plus any finding the hierarchy has no node for.
  *
@@ -177,10 +199,16 @@ export function a11yEntries(payload: A11yPayload | null): Entry[] {
             detail.push(`${finding.type}: ${finding.message}`);
         for (const note of target?.findings ?? []) detail.push(note);
 
+        // A stop with no label of its own still announces its descendants' copy, so show that
+        // rather than `(unlabelled)`. Only reached on hierarchies whose producer did not roll the
+        // label up itself — a freshly rendered one arrives with it already on the node.
+        const label =
+            (node.label ?? "").trim() || mergedDescendantLabel(nodes, index);
+
         out.push({
             kind: "a11y",
             bounds,
-            title: node.label || "(unlabelled)",
+            title: label || "(unlabelled)",
             detail: detail.join(" · "),
             level: level ?? "info",
             // A flagged stop takes its colour from its level; only the rest need telling apart.

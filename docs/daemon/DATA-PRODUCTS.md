@@ -378,6 +378,17 @@ The first kind to ship; mirrors the renderer-side type:
 }
 ```
 
+`label` is what a screen reader **announces** for the node, not only the
+copy the node itself holds: a focus stop whose text lives on the
+descendants it merges — a Wear `Button(label = { Text("Filled") })`, an
+icon button whose `contentDescription` sits on the inner `Icon` — carries
+that rolled-up copy (issue #4253). Both producers do this: the desktop
+extractor walks the merged subtree, and the ATF side rolls it up over the
+flattened list in `AccessibilityLabels`, since a hierarchy that reports
+each element's own text leaves the stop blank and every consumer then
+prints `(unlabelled)` over a plainly labelled button. A stop that stays
+blank after the roll-up genuinely has no name — that one is a finding.
+
 When subscribed, the renderer runs the existing a11y pass and writes
 JSON to `build/compose-previews/data/<id>/a11y-hierarchy.json`. When
 not requested, daemon-driven renders skip
