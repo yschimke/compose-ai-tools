@@ -1011,6 +1011,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
      * publisher, so its card is grouped by its source repo's owner.
      */
     val group: ServeWeb.HomeGroup? = null,
+    /**
+     * Startup fetch order, highest first ([ServeCatalogsConfig.Entry.loadPriority]). Only a
+     * `--catalogs-file` entry can raise it; a bare flag entry takes the default, which is the order
+     * it was named in.
+     */
+    val loadPriority: Int = 0,
   )
 
   /**
@@ -1043,6 +1049,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           repo = repo,
           listed = entry.listed,
           group = ServeCatalogAdmin.homeGroup(entry, repo, catalogsConfig.groups),
+          loadPriority = entry.loadPriority,
         )
       }
 
@@ -3032,7 +3039,9 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       executor.execute {
         val loaded = linkedSetOf<String>()
         try {
-          for (seed in loads.snapshot().map { it.config }) {
+          // Fetch order, not front-page order: a box's load-bearing catalogs come back first
+          // after a restart even though their cards stay where the operator put them (#4231).
+          for (seed in loads.loadOrder().map { it.config }) {
             if (closed.get()) return@execute
             val (config, result) =
               synchronized(catalogRegistrationLock) {
@@ -3100,6 +3109,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
             repo = ref.repo,
             branch = "$catalogBranchPrefix${ref.system}",
             group = ref.group,
+            loadPriority = ref.loadPriority,
           )
         }
       )

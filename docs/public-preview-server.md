@@ -2263,6 +2263,28 @@ the **front-page section** it appears under. Nothing in the server knows any par
 grouping is entirely this config, and a catalog that declares no group is sectioned by its source
 repo's owner (`joreilly org`), with unattributed catalogs in `Other`.
 
+#### Which catalogs come back first
+
+`"loadPriority": 20` on an entry moves it up the **startup fetch queue** — highest first, ties in
+list order, default `0`. The initial load is one sequential pass, and a big catalog takes minutes to
+fetch, verify and register, so on a rollout the queue's tail is unavailable for a while. Order used
+to be positional only, which meant a catalog published through the admin API loaded *last* (a
+runtime registration is appended), and on `preview.coo.ee` that was `m3-catalog` and
+`wear-m3-catalog` — the two reference design systems the box most exists to serve (#4231). They now
+lead the queue:
+
+```json
+{ "system": "m3-catalog", "repo": "yschimke/m3-catalog", "group": "design-systems",
+  "loadPriority": 20 }
+```
+
+It changes **fetch order only** — not what is served, and not where a card renders: the list order
+above is still the front page's, and the landing session `/` resolves to is still the first *listed*
+entry in it. Loading stays best-effort per catalog too, so a prioritised catalog that can't be
+fetched just fails earlier. `GET /admin/catalogs` reports each entry's `loadPriority` alongside its
+load state, and re-POSTing an already-published entry with a changed priority converges it (see
+below), so the deployment reconcile can change the order of a live box without a retire.
+
 A `group` is a **claim checked against provenance**. The section applies only when the fetched bytes
 really came from the entry's `repo` (or one of its `attributionRepos` — which is how Android's
 samples, fetched from preview branches in the `yschimke/compose-samples` fork, are still credited to
@@ -2339,8 +2361,10 @@ defining a section after its catalogs were published would collect nothing, and 
 under the owner fallback until a restart.
 
 For the same reason `POST /admin/catalogs` on an id that's already published **converges its
-listing** rather than refusing: re-posting an entry whose `group` or `listed` has changed updates it
-in place, with no re-fetch and no dropped load state. Re-posting an *unchanged* entry is still `409`,
+listing** rather than refusing: re-posting an entry whose `group`, `listed` or `loadPriority` has
+changed updates it in place, with no re-fetch and no dropped load state. (A changed `loadPriority`
+does nothing to the running catalog — it is written back so the *next* boot fetches in the declared
+order, which is the only way an additive reconcile can reorder a live box.) Re-posting an *unchanged* entry is still `409`,
 so a duplicate stays visible, and a changed `repo` is still refused — that decides what bytes get
 served, so re-pointing a catalog is a retire plus a publish.
 

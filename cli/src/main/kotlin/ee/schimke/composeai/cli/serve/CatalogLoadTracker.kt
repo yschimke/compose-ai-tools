@@ -36,6 +36,12 @@ class CatalogLoadTracker(
      * including the home index, which needs the grouping to be config rather than code.
      */
     val group: ServeWeb.HomeGroup? = null,
+    /**
+     * Startup fetch order, highest first ([ServeCatalogsConfig.Entry.loadPriority]). Kept beside
+     * the rest of the configured entry because [loadOrder] is the one consumer, and it reads the
+     * same snapshot every other consumer does.
+     */
+    val loadPriority: Int = 0,
   )
 
   /** Immutable snapshot of one catalog's current availability and latest attempt. */
@@ -85,8 +91,9 @@ class CatalogLoadTracker(
     }
 
   /**
-   * Replace [system]'s **listing** metadata — where it appears, not where it comes from — keeping
-   * its load state and its registered content untouched. Returns false when it isn't tracked.
+   * Replace [system]'s **listing** metadata — where it appears and when it is fetched, not where it
+   * comes from — keeping its load state and its registered content untouched. Returns false when it
+   * isn't tracked.
    *
    * Needed because a catalog's front-page placement is resolved once, at registration, into a
    * [ServeWeb.HomeGroup] snapshot. So a group defined *after* a catalog was published would never
@@ -100,10 +107,17 @@ class CatalogLoadTracker(
    * with its own provenance (and its trust verdict). Re-pointing a catalog is a retire plus a
    * publish.
    */
-  fun relist(system: String, listed: Boolean, group: ServeWeb.HomeGroup?): Boolean =
+  fun relist(
+    system: String,
+    listed: Boolean,
+    group: ServeWeb.HomeGroup?,
+    // Deliberately not defaulted: every caller states it, so none can silently reset it to 0.
+    loadPriority: Int,
+  ): Boolean =
     synchronized(lock) {
       val existing = states[system] ?: return false
-      val updated = existing.config.copy(listed = listed, group = group)
+      val updated =
+        existing.config.copy(listed = listed, group = group, loadPriority = loadPriority)
       states[system] = existing.copy(config = updated)
       val at = ordered.indexOfFirst { it.system == system }
       if (at >= 0) ordered[at] = updated
@@ -158,6 +172,18 @@ class CatalogLoadTracker(
    */
   fun snapshot(): List<State> =
     synchronized(lock) { ordered.toList() }.mapNotNull { states[it.system] }
+
+  /**
+   * The same catalogs as [snapshot], in the order the **initial fetch** should walk them: highest
+   * [Config.loadPriority] first, ties keeping configured order (the sort is stable).
+   *
+   * Separate from [snapshot] on purpose. Configured order is the front page's, and the two wants
+   * genuinely differ: the queue wants the box's load-bearing catalogs back first after a restart,
+   * while the index wants sections and cards where the operator put them. Sorting the tracker
+   * itself would have moved the cards — and moved [firstAvailableSystem], which is the session the
+   * readiness probe renders — as a side effect of a fetch-order preference (issue #4231).
+   */
+  fun loadOrder(): List<State> = snapshot().sortedByDescending { it.config.loadPriority }
 
   /** Catalogs with a usable registered copy; used to seed only successful branch heads. */
   /**

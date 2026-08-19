@@ -150,9 +150,11 @@ echo "Reconciling catalogs from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
 while IFS= read -r entry; do
   [[ -n "${entry}" ]] || continue
   system=$(printf '%s' "${entry}" | jq -r '.system')
-  # Preserve the declared shape — an unlisted catalog must stay off the front page, and a group
-  # claim has to survive or the card lands under the owner fallback instead of its section.
-  body=$(printf '%s' "${entry}" | jq -c '{system, repo, listed, group, attributionRepos}
+  # Preserve the declared shape — an unlisted catalog must stay off the front page, a group
+  # claim has to survive or the card lands under the owner fallback instead of its section, and
+  # loadPriority has to reach the box or the committed startup fetch order never takes effect
+  # there (the box boots from its own /config/catalogs.json, which this is what rewrites).
+  body=$(printf '%s' "${entry}" | jq -c '{system, repo, listed, group, attributionRepos, loadPriority}
     | with_entries(select(.value != null))')
   post /admin/catalogs "${body}" "catalog ${system}" || {
     if [[ $? == 2 ]]; then

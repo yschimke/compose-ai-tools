@@ -1,5 +1,5 @@
 {
-  "_comment": "preview.coo.ee's PUBLISHED CATALOG SET \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/ deliberately: baking it there made every adopter of the prebuilt image open on these catalogs (see the seed's comment). Changes on main are applied directly by publish-preview-config.yml; image publishes reconcile the same file as a fallback. Both paths use .github/scripts/publish-config-to-box.sh additively over POST /admin/catalogs, so this never needs an image rebuild. Another deployment adopting the preview server keeps its own copy of this shape and points DEPLOY_CONFIG_DIR at it. Every entry's design-artifacts/<system> branch must be trusted by producers.json beside this file. cadence is listed:false \u2014 reachable at /cadence/ but off the front-page index. compose-m3 and wear-m3 are listed:false for the same reason from the other direction: they are compose-ai-tools' own in-repo harness catalogs \u2014 they exist to exercise the preview pipeline's features, not to be a design system. m3-catalog is the real Material 3 reference and wear-m3-catalog will be the Wear one, so the two harness catalogs stay reachable at /compose-m3/ and /wear-m3/ as a live smoke target without presenting as design systems on the front page. NOTE the reconcile is additive (see publish-config-to-box.sh): a system already registered on the box comes back 409, so flipping listed here does NOT relist/unlist a live entry on its own \u2014 DELETE /admin/catalogs/<system> on the box and let the next publish re-add it from this file.",
+  "_comment": "preview.coo.ee's PUBLISHED CATALOG SET \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/ deliberately: baking it there made every adopter of the prebuilt image open on these catalogs (see the seed's comment). Changes on main are applied directly by publish-preview-config.yml; image publishes reconcile the same file as a fallback. Both paths use .github/scripts/publish-config-to-box.sh additively over POST /admin/catalogs, so this never needs an image rebuild. Another deployment adopting the preview server keeps its own copy of this shape and points DEPLOY_CONFIG_DIR at it. Every entry's design-artifacts/<system> branch must be trusted by producers.json beside this file. cadence is listed:false \u2014 reachable at /cadence/ but off the front-page index. compose-m3 and wear-m3 are listed:false for the same reason from the other direction: they are compose-ai-tools' own in-repo harness catalogs \u2014 they exist to exercise the preview pipeline's features, not to be a design system. m3-catalog is the real Material 3 reference and wear-m3-catalog will be the Wear one, so the two harness catalogs stay reachable at /compose-m3/ and /wear-m3/ as a live smoke target without presenting as design systems on the front page. loadPriority (default 0, highest first) is the startup FETCH order and nothing else \u2014 the list order above still decides the front page. m3-catalog and wear-m3-catalog are the two reference design systems this box exists to serve, and being published late left them last in the queue (a runtime registration is appended), so a rollout served everything else first; they now lead it (#4231). NOTE the reconcile is additive (see publish-config-to-box.sh): it never deletes. Re-posting an entry whose listed, group or loadPriority changed converges it in place; an otherwise-unchanged one comes back 409. What it cannot change is repo \u2014 that decides what bytes get served, so re-pointing a catalog is DELETE /admin/catalogs/<system> on the box, then let the next publish re-add it from this file.",
   "groups": [
     {
       "id": "design-systems",
@@ -50,13 +50,15 @@
       "system": "m3-catalog",
       "repo": "yschimke/m3-catalog",
       "listed": true,
-      "group": "design-systems"
+      "group": "design-systems",
+      "loadPriority": 20
     },
     {
       "system": "wear-m3-catalog",
       "repo": "yschimke/wear-m3-catalog",
       "listed": true,
-      "group": "design-systems"
+      "group": "design-systems",
+      "loadPriority": 10
     },
     {
       "system": "meshcore-mobile",

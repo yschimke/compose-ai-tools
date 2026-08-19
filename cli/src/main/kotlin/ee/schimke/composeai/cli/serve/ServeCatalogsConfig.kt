@@ -75,6 +75,23 @@ data class ServeCatalogsConfig(
      * under the heading.
      */
     val attributionRepos: List<String> = emptyList(),
+    /**
+     * **Startup load order**, highest first; ties keep the order they appear in here. Default 0, so
+     * a config that says nothing loads exactly as it always did — front-page order.
+     *
+     * The initial fetch is one sequential pass over the configured set, and a big catalog takes
+     * minutes to fetch, verify and register. Which catalog that pass reaches first is therefore
+     * what a rollout's first few minutes serve — and the order was purely positional, which for a
+     * catalog published through the admin API means *last*, since a runtime registration is
+     * appended ([CatalogLoadTracker.add]). So the catalogs a box most wants back after a restart
+     * were reliably the ones it got back last (issue #4231). This decouples the two orders: the
+     * list stays the front page's, this decides the queue.
+     *
+     * It does **not** change what is served, or where a card renders — only what gets fetched
+     * first. Nothing here is a guarantee of availability either: loading stays best-effort per
+     * catalog, and a prioritised catalog that fails to fetch just fails earlier.
+     */
+    val loadPriority: Int = 0,
   )
 
   /**
