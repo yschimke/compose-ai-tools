@@ -22,6 +22,43 @@ There is **no published artifact** for this player. Upstream declares the module
 `SoftwareType.TEST_APPLICATION` — an integration-test app — so the player ships only as sources
 inside it. Vendoring is the only way to depend on it.
 
+### That premise has expired, and the collision is live
+
+`androidx.compose.remote:remote-player-compose:1.0.0-SNAPSHOT` — which this module takes as an
+`implementation` dependency, and which every Android consumer of it resolves since the catalog moved
+to the androidx.dev snapshot line — **now ships the embedded player itself**: 138 class files under
+`androidx/compose/remote/player/compose/embedded/`, the very package these sources are vendored into.
+
+Eight of them collide by fully-qualified name with the vendored copies:
+
+```
+AndroidColorThemeResolver     GraphContext         RcImageLoader
+DrawablePainter               GraphPaintContext    RemoteImageSupport
+EmbeddedPlayerTypefaceResolver                     SnapshotRemoteComposeState
+```
+
+**`AndroidColorThemeResolver` is on that list, and it is one of the local modifications below** —
+the theme-fallback fix. So which bytes run is decided by classpath ordering, not by this directory:
+if the upstream class wins, the local delta silently is not there, and the embedded lane's pixels
+change with nothing in any log to say why. `:samples:remotecompose:assembleDebug` still *builds*
+(measured), so there is no error to notice either.
+
+Reproduce the overlap:
+
+```bash
+./gradlew :third-party-rc-embedded-player:assembleDebug
+jar=$(find ~/.gradle/caches -path '*remote-player-compose-1.0.0-SNAPSHOT*' -name classes.jar | head -1)
+unzip -l "$jar" | grep -c 'compose/embedded'
+```
+
+**This needs a decision, and it is not a small one.** Upstream publishing the player is exactly the
+condition under which vendoring stops being justified — but the local modifications listed below are
+rendering fixes, so adopting upstream wholesale changes the embedded lane's output. The three ways
+out: retire this module for the published artifact (and re-baseline `rc-compare`), relocate the
+vendored package (which costs the verbatim `diff -r` refresh this file is built around), or strip
+the upstream `embedded/` package from the dependency. Tracked as a follow-up to
+[#4184](https://github.com/yschimke/compose-ai-tools/pull/4184).
+
 ## What is vendored
 
 The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 upstream files,
