@@ -4269,6 +4269,8 @@ final object ee.schimke.composeai.rcplayer.protocol/RcSystemVariables { // ee.sc
     final const val YEAR // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.YEAR|{}YEAR[0]
         final fun <get-YEAR>(): kotlin/Int // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.YEAR.<get-YEAR>|<get-YEAR>(){}[0]
 
+    final val ALL // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ALL|{}ALL[0]
+        final fun <get-ALL>(): kotlin.collections/Set<kotlin/Int> // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.ALL.<get-ALL>|<get-ALL>(){}[0]
     final val MOVING // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.MOVING|{}MOVING[0]
         final fun <get-MOVING>(): kotlin.collections/Set<kotlin/Int> // ee.schimke.composeai.rcplayer.protocol/RcSystemVariables.MOVING.<get-MOVING>|<get-MOVING>(){}[0]
 }

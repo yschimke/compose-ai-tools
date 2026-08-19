@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
@@ -112,6 +113,38 @@ class RcSystemVariableTest {
       state.resolve(RcFloatWord(NAN_REFERENCE or 100)) != first,
       "the expression did not move when the clock did",
     )
+  }
+
+  @Test
+  fun aDocumentsOwnDeclarationOutranksTheSystemVariableAtTheSameId() {
+    // No conforming writer reaches here — `RemoteComposeState.START_ID` is 42 and everything below
+    // belongs to `RemoteContext` — but a hand-built document can, and its own constant standing is
+    // less surprising than the clock silently replacing it.
+    val constant = RcFloatConstant(RcSystemVariables.WEEK_DAY, RcFloatWord.literal(20f))
+    val state =
+      RcPlayerState(
+        RcDocument(RcHeader(RcVersion(1, 0, 0)), listOf(constant)),
+        timeSource = clock,
+      )
+
+    state.beginFrame(timeSeconds = 0f, epochMillis = EPOCH_MILLIS)
+
+    assertEquals(20f, state.system(RcSystemVariables.WEEK_DAY))
+    // Every id it did *not* claim is still the player's to supply.
+    assertEquals(1845.25f, state.system(RcSystemVariables.CONTINUOUS_SEC))
+  }
+
+  @Test
+  fun aHostWriteToASystemIdClaimsItForGood() {
+    val state =
+      RcPlayerState(RcDocument(RcHeader(RcVersion(1, 0, 0)), emptyList()), timeSource = clock)
+
+    state.setFloat(RcSystemVariables.OFFSET_TO_UTC, 2f)
+    state.beginFrame(timeSeconds = 0f, epochMillis = EPOCH_MILLIS)
+
+    // The write survives the next frame rather than being silently replaced by the zone offset.
+    assertEquals(2f, state.system(RcSystemVariables.OFFSET_TO_UTC))
+    assertEquals(1845.25f, state.system(RcSystemVariables.CONTINUOUS_SEC))
   }
 
   @Test

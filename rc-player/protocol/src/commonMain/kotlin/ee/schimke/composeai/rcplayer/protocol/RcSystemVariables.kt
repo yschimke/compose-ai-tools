@@ -53,6 +53,24 @@ public object RcSystemVariables {
 
   public const val YEAR: Int = 35
 
+  /** Every id this player supplies, so a value store can tell one from a document's own. */
+  public val ALL: Set<Int> =
+    setOf(
+      CONTINUOUS_SEC,
+      TIME_IN_SEC,
+      TIME_IN_MIN,
+      TIME_IN_HR,
+      CALENDAR_MONTH,
+      OFFSET_TO_UTC,
+      WEEK_DAY,
+      DAY_OF_MONTH,
+      ANIMATION_TIME,
+      ANIMATION_DELTA_TIME,
+      EPOCH_SECOND,
+      DAY_OF_YEAR,
+      YEAR,
+    )
+
   /**
    * The subset whose value moves while a document is on screen, so a reference to one of them means
    * the player has to keep drawing frames rather than paint once and stop.

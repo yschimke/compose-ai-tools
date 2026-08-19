@@ -2453,6 +2453,7 @@ public final class ee/schimke/composeai/rcplayer/protocol/RcSystemVariables {
 	public static final field TIME_IN_SEC I
 	public static final field WEEK_DAY I
 	public static final field YEAR I
+	public final fun getALL ()Ljava/util/Set;
 	public final fun getMOVING ()Ljava/util/Set;
 }
 

@@ -129,6 +129,34 @@ public class RcPlayerState(
   private val impulseTimelines = mutableListOf<Pair<RcImpulseStart, RcImpulseTimeline>>()
   private val conditionalPreviousValues =
     mutableListOf<Pair<RcConditionalOperations, Pair<Float, Float>>>()
+  /**
+   * System ids something *else* has claimed, which [loadSystemVariables] must therefore not drive.
+   *
+   * The player owns 1..37 — `RemoteComposeState.START_ID` is 42 and everything below it belongs to
+   * `RemoteContext` — so a conforming document cannot collide and this set is empty for every
+   * document that has ever been published. Hand-built ones do collide: several of this repo's own
+   * test documents allocate in the reserved range, and so does a host that pokes [setFloat] at a
+   * low id. For those, the claim standing is far less surprising than the clock silently replacing
+   * a value the caller can see it set — and it costs one set lookup per variable per frame.
+   *
+   * Seeded from the document's *declarations* and extended by [setFloat]; only values loaded once
+   * need the guard, because anything recomputed during a frame runs after [beginFrame] and
+   * overwrites the system value on its own.
+   */
+  private val claimedSystemIds: MutableSet<Int> = buildSet {
+    document.operations.forEach { operation ->
+      when (operation) {
+        is RcFloatConstant -> add(operation.id)
+        is RcIntegerConstant -> add(operation.id)
+        is RcTouchExpression -> add(operation.id)
+        is RcNamedVariable -> add(operation.id)
+        is RcComponentValue -> add(operation.valueId)
+        else -> Unit
+      }
+    }
+  }
+    .intersect(RcSystemVariables.ALL)
+    .toMutableSet()
   private val documentLoadTimeMillis = timeSource.currentTimeMillis()
   private var frameTimeSeconds: Float = 0f
   private var frameEpochMillis: Long = documentLoadTimeMillis
@@ -252,6 +280,8 @@ public class RcPlayerState(
    * reference costs is the same either way, and a conditional load would have to keep its own list
    * of which operations can name a variable, which is the thing that went stale here in the first
    * place.
+   *
+   * An id the document or the host has claimed for itself is left alone — see [claimedSystemIds].
    */
   private fun loadSystemVariables() {
     val snapshot = timeSource.snapshot(frameEpochMillis)
@@ -260,24 +290,32 @@ public class RcPlayerState(
     // than `%` so a pre-epoch instant stays in 0..999 instead of going negative.
     val millisOfSecond = frameEpochMillis.mod(1000L)
     val secondsIntoTheHour = snapshot.minute * 60f + snapshot.second
-    floats[RcSystemVariables.CONTINUOUS_SEC] = secondsIntoTheHour + millisOfSecond * 0.001f
-    floats[RcSystemVariables.TIME_IN_SEC] = secondsIntoTheHour
-    floats[RcSystemVariables.TIME_IN_MIN] = snapshot.hour * 60f + snapshot.minute
-    floats[RcSystemVariables.TIME_IN_HR] = snapshot.hour.toFloat()
-    floats[RcSystemVariables.CALENDAR_MONTH] = snapshot.month.toFloat()
-    floats[RcSystemVariables.OFFSET_TO_UTC] = snapshot.offsetSeconds.toFloat()
-    floats[RcSystemVariables.WEEK_DAY] = snapshot.isoDayOfWeek.toFloat()
-    floats[RcSystemVariables.DAY_OF_MONTH] = snapshot.dayOfMonth.toFloat()
-    floats[RcSystemVariables.DAY_OF_YEAR] = snapshot.dayOfYear.toFloat()
-    floats[RcSystemVariables.YEAR] = snapshot.year.toFloat()
+    loadSystem(RcSystemVariables.CONTINUOUS_SEC, secondsIntoTheHour + millisOfSecond * 0.001f)
+    loadSystem(RcSystemVariables.TIME_IN_SEC, secondsIntoTheHour)
+    loadSystem(RcSystemVariables.TIME_IN_MIN, snapshot.hour * 60f + snapshot.minute)
+    loadSystem(RcSystemVariables.TIME_IN_HR, snapshot.hour.toFloat())
+    loadSystem(RcSystemVariables.CALENDAR_MONTH, snapshot.month.toFloat())
+    loadSystem(RcSystemVariables.OFFSET_TO_UTC, snapshot.offsetSeconds.toFloat())
+    loadSystem(RcSystemVariables.WEEK_DAY, snapshot.isoDayOfWeek.toFloat())
+    loadSystem(RcSystemVariables.DAY_OF_MONTH, snapshot.dayOfMonth.toFloat())
+    loadSystem(RcSystemVariables.DAY_OF_YEAR, snapshot.dayOfYear.toFloat())
+    loadSystem(RcSystemVariables.YEAR, snapshot.year.toFloat())
     // The animation clock is the *frame* time, not the wall clock: it is what the host advances
     // (and what a test can hold still), and it is already zeroed at the document's first frame.
     val previous = lastAnimationTimeSeconds
-    floats[RcSystemVariables.ANIMATION_TIME] = frameTimeSeconds
-    floats[RcSystemVariables.ANIMATION_DELTA_TIME] =
-      if (previous.isNaN()) 0f else frameTimeSeconds - previous
+    loadSystem(RcSystemVariables.ANIMATION_TIME, frameTimeSeconds)
+    loadSystem(
+      RcSystemVariables.ANIMATION_DELTA_TIME,
+      if (previous.isNaN()) 0f else frameTimeSeconds - previous,
+    )
     lastAnimationTimeSeconds = frameTimeSeconds
-    setInteger(RcSystemVariables.EPOCH_SECOND, frameEpochMillis.floorDiv(1000L).toInt())
+    if (RcSystemVariables.EPOCH_SECOND !in claimedSystemIds) {
+      setInteger(RcSystemVariables.EPOCH_SECOND, frameEpochMillis.floorDiv(1000L).toInt())
+    }
+  }
+
+  private fun loadSystem(id: Int, value: Float) {
+    if (id !in claimedSystemIds) floats[id] = value
   }
 
   /** Evaluates AndroidX `TimeAttribute.paint` against one wall-clock snapshot for this frame. */
@@ -1066,6 +1104,10 @@ public class RcPlayerState(
   public fun long(id: Int): Long? = longs[id]
 
   public fun setFloat(id: Int, value: Float) {
+    // A write to a system id claims it — see [claimedSystemIds]. No conforming caller does this
+    // (the reserved range is not addressable as a named value), so this only ever fires for a
+    // hand-built document or a test.
+    if (id in RcSystemVariables.ALL) claimedSystemIds.add(id)
     floats[id] = value
   }
 
