@@ -137,6 +137,31 @@ class ServeWebFixtureTest {
 
   private val fixtureFigmaSpec = ServeFigmaSpec.of(fixtureDesignReference)
 
+  /**
+   * The comparison wall's **page-scoped** report — the launcher's catalog half on a page that shows
+   * every component and singles out none (issue #4289). No preview, no render, no reference: the
+   * golden pins the shape a report filed from the wall actually has.
+   */
+  private fun fixtureWallReportIssue(): ServeWeb.ReportIssue {
+    val context =
+      ServeIssueReport.Context(
+        repo = "yschimke/compose-ai-tools",
+        system = "compose-m3",
+        catalog = "yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        toolVersion = provenance.toolVersion,
+        pageUrl = "https://preview.coo.ee/compose-m3/compare?format=reference",
+        publicRender = true,
+      )
+    return ServeWeb.ReportIssue(
+      action = ServeIssueReport.action(context.repo),
+      body = ServeIssueReport.body(context),
+      bodyTemplate = ServeIssueReport.body(context, renderPlaceholder = true),
+      repo = context.repo,
+      login = "yschimke",
+      subject = "these comparisons",
+    )
+  }
+
   private fun fixtureReportIssue(
     previewId: String,
     label: String,
@@ -1544,6 +1569,7 @@ class ServeWebFixtureTest {
             )
           else emptyList()
         },
+        reportIssue = fixtureWallReportIssue(),
       )
     // The Remote Compose PLAYER WALL: the same compare page in `?format=rc`, backed by a catalog's
     // published `rc-compare` manifest instead of by an in-browser render. Only the rc format is
@@ -5064,9 +5090,11 @@ class ServeWebFixtureTest {
       viewerSource().contains("(boxW - w) / 2") && viewerSource().contains("(boxH - h) / 2"),
       "the fitted frame is centred within the snapshot box",
     )
-    // drawFrame caches the buffer dims and re-fits on each frame; a resize re-fits too.
+    // The painter caches the buffer dims and re-fits on every frame; a resize re-fits too. Reads
+    // the decoded bitmap rather than an <img>'s natural size since #4285 moved the lane onto
+    // `createImageBitmap` for the ordering guarantees.
     assertTrue(
-      viewerSource().contains("liveW = im.naturalWidth;") &&
+      viewerSource().contains("liveW = bitmap.width;") &&
         viewerSource().contains("fitLiveCanvas();"),
       "each frame caches its dims and re-fits",
     )

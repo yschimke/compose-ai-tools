@@ -976,6 +976,11 @@ ${captureControlsHtml().prependIndent("          ")}
    * reporter types it (see [reportIssueHtml]). [repo] names the target so nobody files against a
    * repo they didn't mean to, and [login] — present only when the visitor has a GitHub session on
    * this server — says whose account will author it.
+   *
+   * [subject] names what the report is *about*, in the affordance's own prose. The default suits
+   * the per-preview case this started as; the comparison wall — which shows every component and
+   * singles out none — files a page-scoped report and says so instead of claiming a preview the
+   * visitor never picked.
    */
   data class ReportIssue(
     val action: String,
@@ -983,6 +988,7 @@ ${captureControlsHtml().prependIndent("          ")}
     val bodyTemplate: String,
     val repo: String,
     val login: String? = null,
+    val subject: String = "this preview",
   )
 
   /**
@@ -1121,12 +1127,16 @@ ${captureControlsHtml().prependIndent("          ")}
     val who =
       r.login?.takeIf { it.isNotBlank() }?.let { " as @${WebEscaping.htmlEscape(it)}" } ?: ""
     val repo = WebEscaping.htmlEscape(r.repo)
-    val tip = "Something wrong with this preview — files against $repo$who"
+    val subject = WebEscaping.htmlEscape(r.subject)
+    val tip = "Something wrong with $subject — files against $repo$who"
     // `data-cp-repo` is read by the floating launcher, which offers this affordance as its catalog
     // half and has to name the repo in the offer. Taken from an attribute rather than scraped out
     // of the note's prose below, so rewording the note cannot silently change where the launcher
-    // says a report goes.
-    return "\n      <details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"$repo\">" +
+    // says a report goes. `data-cp-subject` is there for the same reason and answers the other half
+    // of the offer — what the report is about — so the wall's launcher says "these comparisons"
+    // rather than claiming a preview on a page that shows every one of them.
+    return "\n      <details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"$repo\"" +
+      " data-cp-subject=\"$subject\">" +
       "<summary class=\"cp-report-link\" title=\"$tip\">" +
       "$GITHUB_ICON report a catalog issue</summary>" +
       "\n        <div class=\"cp-report-panel\">" +
@@ -1141,8 +1151,8 @@ ${captureControlsHtml().prependIndent("          ")}
       "<button type=\"submit\" class=\"cp-report-submit\">" +
       "$GITHUB_ICON Open a prefilled issue</button>" +
       "<span class=\"cp-report-note\">Files against <code>$repo</code>$who — the project whose " +
-      "code declares this preview, <em>not</em> the preview server. The rest of the report — " +
-      "which preview, which build, the links — is filled in for you on GitHub.</span>" +
+      "code declares $subject, <em>not</em> the preview server. The rest of the report — " +
+      "what you were looking at, which build, the links — is filled in for you on GitHub.</span>" +
       "</form></div></details>"
   }
 
@@ -7589,6 +7599,21 @@ ${captureControlsHtml().prependIndent("          ")}
     referencesFor: (String) -> List<DesignReference> = { emptyList() },
     unfurl: UnfurlMetadata? = null,
     /**
+     * The **page-scoped** report this wall files against the catalog's own repo — the launcher's
+     * catalog half, which is hidden on any page carrying no `#cp-report` (issue #4289).
+     *
+     * Page-scoped rather than per-preview because that is what this page honestly knows: it shows
+     * every comparable component at once, and the thing that goes wrong here — a lane that scores
+     * everything at zero, references paired with the wrong render, a whole catalog drawn in the
+     * wrong palette — is about the wall, not about one row. A row's *own* defect already has a
+     * better route: the reference opens the focused Reference / Diff / Actual page, which files a
+     * report naming that exact preview and reference.
+     *
+     * Null (a session with no catalog to file against) renders nothing, and the launcher keeps
+     * offering the server half alone — the behaviour every page had before.
+     */
+    reportIssue: ReportIssue? = null,
+    /**
      * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
      * span.
      */
@@ -7795,6 +7820,15 @@ ${captureControlsHtml().prependIndent("          ")}
     val rcLanes = rcCompare?.let {
       rcLanesSection(it, previews, previewIdsByCard, token, linkSessionId, basePath, isPublic)
     }
+    // Reuses the viewer's provenance row wholesale, and not only for the styling: `.cp-report`'s
+    // panel is anchored to `.cp-preview-links` rather than to its own toggle, which is what keeps
+    // it on screen at every width (see the comment block in `serve.css`).
+    val reportRow =
+      reportIssueHtml(reportIssue)
+        .takeIf { it.isNotBlank() }
+        ?.let {
+          "\n          <div class=\"cp-preview-links cp-compare-links\">$it\n          </div>"
+        } ?: ""
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
@@ -7835,7 +7869,7 @@ ${captureControlsHtml().prependIndent("          ")}
           <div class="cp-searchbar cp-compare-searchbar">
             <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
             <span id="cp-compare-count" class="cp-count" role="status"></span>
-          </div>
+          </div>$reportRow
           <div id="cp-compare-formats">$empty</div>
           ${rcLanes.orEmpty()}
         </div>

@@ -47,15 +47,22 @@ internal object ServeIssueReport {
   const val FALLBACK_REPO: String = "yschimke/compose-ai-tools"
 
   /**
-   * The facts a report carries. Everything but [repo] and [previewId] is optional: a plain local
-   * session knows neither its catalog nor a source file, and simply drops those rows rather than
-   * filing a half-empty template.
+   * The facts a report carries. Everything but [repo] is optional: a plain local session knows
+   * neither its catalog nor a source file, and simply drops those rows rather than filing a
+   * half-empty template.
    */
   data class Context(
     /** `owner/name` the issue is filed against — see [repoFor]. */
     val repo: String,
-    /** The preview's flattened id (`Button__filled__dark`), the one unambiguous handle. */
-    val previewId: String,
+    /**
+     * The preview's flattened id (`Button__filled__dark`), the one unambiguous handle.
+     *
+     * Null on a **page-scoped** report — the comparison wall shows every component in the catalog
+     * and singles out none, so a report filed from it names the page and the lane rather than
+     * inventing a preview the visitor never picked. The body then drops its `| Preview |` row and
+     * [locator] returns null, exactly as it already does for the optional rows below.
+     */
+    val previewId: String? = null,
     /** Human label, when the manifest recorded one; the title falls back to [previewId]. */
     val previewLabel: String? = null,
     /** The served design system (`wear-m3`), when this session is a catalog. */
@@ -80,6 +87,12 @@ internal object ServeIssueReport {
     val viewerUrl: String? = null,
     /** Absolute focused comparison URL for this preview/reference pair. */
     val comparisonUrl: String? = null,
+    /**
+     * Absolute URL of the **page** the report was filed from, for a report that names no preview.
+     * Carries the page's own query — which lane the comparison wall was showing, for instance —
+     * because that is the whole of what a page-scoped report can point a triager at.
+     */
+    val pageUrl: String? = null,
     /** Absolute `/render/<id>.png` URL at the overrides in force when the page was served. */
     val renderUrl: String? = null,
     /**
@@ -135,7 +148,7 @@ internal object ServeIssueReport {
   fun body(ctx: Context, renderPlaceholder: Boolean = false): String {
     val rows = buildList {
       ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Design system | `$it` |") }
-      add("| Preview | `${ctx.previewId}` |")
+      ctx.previewId?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Preview | `$it` |") }
       withoutToken(ctx.sourceUrl)?.takeIf { it.isNotBlank() }?.let { add("| Source | $it |") }
       ctx.catalog?.takeIf { it.isNotBlank() }?.let { add("| Catalog | `$it` |") }
       ctx.toolVersion
@@ -146,8 +159,12 @@ internal object ServeIssueReport {
         else ctx.rawScores?.let(::formatRawScores)
       scores?.let { add("| Raw comparison | `$it` |") }
     }
+    // The placeholder stands in for a render URL this body HAS; a report that names no render (a
+    // page-scoped one) must not grow a `{{render}}` nothing will ever substitute — the wall runs no
+    // script over its report body, so the placeholder would be filed verbatim.
+    val hasRender = !withoutToken(ctx.renderUrl).isNullOrBlank()
     val render =
-      if (renderPlaceholder) RENDER_PLACEHOLDER
+      if (renderPlaceholder) RENDER_PLACEHOLDER.takeIf { hasRender }
       else withoutToken(ctx.renderUrl)?.takeIf { it.isNotBlank() }
     // Whether the render can be *embedded* is decided by the real URL even when the body is the
     // JS template, so both forms of the body have the same shape and the placeholder swap can't
@@ -156,6 +173,7 @@ internal object ServeIssueReport {
     // body strips.
     val embed = render != null && ctx.publicRender && isEmbeddable(ctx.renderUrl)
     val links = buildList {
+      withoutToken(ctx.pageUrl)?.takeIf { it.isNotBlank() }?.let { add("[Open this page]($it)") }
       withoutToken(ctx.viewerUrl)
         ?.takeIf { it.isNotBlank() }
         ?.let { add("[Open this preview]($it)") }
@@ -178,6 +196,15 @@ internal object ServeIssueReport {
             "Copy PNG in the viewer's \"Export & direct links\" panel and paste it here — " +
             "GitHub then hosts the pixels itself. -->\n\n\n"
         )
+      } else if (ctx.previewId.isNullOrBlank()) {
+        // No preview means no "Export & direct links" panel to point at: what a page-scoped report
+        // wants attached is the page, and the capture control in the report launcher is the tool
+        // that grabs it.
+        append(
+          "<!-- Paste it here. The \"Report a problem\" launcher on the page has a capture " +
+            "control that copies the whole view, a region, or one element to your clipboard, so " +
+            "Ctrl-V / Cmd-V lands it in this issue. -->\n\n\n"
+        )
       } else {
         append(
           "<!-- Paste it here. The viewer's \"Export & direct links\" panel has a Copy PNG " +
@@ -185,7 +212,7 @@ internal object ServeIssueReport {
             "exact render in this issue. -->\n\n\n"
         )
       }
-      append("### Which preview\n\n")
+      append(if (ctx.previewId.isNullOrBlank()) "### Which page\n\n" else "### Which preview\n\n")
       append("| | |\n| --- | --- |\n")
       append(rows.joinToString("\n"))
       if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
@@ -205,6 +232,7 @@ internal object ServeIssueReport {
   }
 
   fun locator(ctx: Context): Locator? {
+    val preview = ctx.previewId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val system = ctx.system?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val component = ctx.componentId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val reference = ctx.referenceId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -212,7 +240,7 @@ internal object ServeIssueReport {
       repository = ctx.repo,
       system = system,
       componentId = component,
-      previewId = ctx.previewId,
+      previewId = preview,
       referenceId = reference,
       variant = ctx.variant,
       overrides = ctx.overrides,
@@ -308,7 +336,10 @@ internal object ServeIssueReport {
 
   /** Markdown-safe alt text: the preview's label or id, with `]` and `[` stripped. */
   private fun altText(ctx: Context): String {
-    val what = ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() } ?: ctx.previewId
+    val what =
+      ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() }
+        ?: ctx.previewId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: "render"
     return what.replace('[', ' ').replace(']', ' ').trim()
   }
 

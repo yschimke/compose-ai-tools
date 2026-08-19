@@ -204,6 +204,10 @@
     {
       "host": "m3.preview.coo.ee",
       "system": "m3-catalog"
+    },
+    {
+      "host": "wear.preview.coo.ee",
+      "system": "wear-m3-catalog"
     }
   ]
 }

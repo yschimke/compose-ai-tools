@@ -28,6 +28,12 @@ private constructor(
   @Volatile private var handle: StreamHandle? = null
 
   /**
+   * Monotonic frame counter for the life of this socket. See [onFrame] for why it isn't the
+   * daemon's.
+   */
+  private val seq = java.util.concurrent.atomic.AtomicLong(0)
+
+  /**
    * This catalog's always-dark (and any future per-system) override policy, applied to every
    * client-supplied override map before it is parsed. Resolved from [system] rather than injected,
    * so a socket lane can't be wired up without it — see [ServeWeb.SystemDisplay].
@@ -158,7 +164,28 @@ private constructor(
     // `unchanged` heartbeats carry no payload — nothing to paint.
     val payload = frame.payloadBase64 ?: return
     val codec = frame.codec?.name?.lowercase() ?: "png"
-    send(ServeStreamProtocol.frameMessage(frame.seq, frame.widthPx, frame.heightPx, payload, codec))
+    // This connection's own sequence, NOT the daemon's `frame.seq`.
+    //
+    // The daemon numbers per *stream* and starts each one at zero, and one socket outlives several
+    // of them: every `setOverrides` restarts the held session ([restart]) and every `switch` opens
+    // a replacement ([switchTo]), each with a fresh `frameStreamId` counting from scratch. Relaying
+    // those numbers made the socket's sequence jump backwards on any knob change.
+    //
+    // Nothing noticed while the browser painted every frame it received. It stops being harmless
+    // the moment the client uses `seq` to order paints (issue #4285): a viewer forty frames into a
+    // session that then restarts at 1 would reject every subsequent frame as stale and freeze the
+    // lane for good. The socket is one logical stream to the browser and has to be numbered like
+    // one — the same thing [ServeStreamSession] already does with its own counter on the snapshot
+    // lane.
+    send(
+      ServeStreamProtocol.frameMessage(
+        seq.getAndIncrement(),
+        frame.widthPx,
+        frame.heightPx,
+        payload,
+        codec,
+      )
+    )
   }
 
   companion object {

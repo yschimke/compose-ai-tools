@@ -33,10 +33,17 @@ function page(extra = ""): void {
 
 /** The per-preview affordance the catalog half points at. */
 const REPORT = `
-  <details class="cp-report" id="cp-report" data-cp-repo="acme/widgets">
+  <details class="cp-report" id="cp-report" data-cp-repo="acme/widgets"
+    data-cp-subject="this preview">
     <summary class="cp-report-link">report a catalog issue</summary>
     <form class="cp-report-form"><input class="cp-report-summary-input" type="text"></form>
   </details>`;
+
+/** The same affordance as the comparison wall emits it: page-scoped, so it names no preview. */
+const WALL_REPORT = REPORT.replace(
+    'data-cp-subject="this preview"',
+    'data-cp-subject="these comparisons"',
+);
 
 function catalogChoice(): HTMLAnchorElement {
     return document.querySelector(".cp-fab-catalog") as HTMLAnchorElement;
@@ -58,6 +65,22 @@ describe("the report launcher's catalog half", () => {
         installReportLauncher();
         assert.equal(catalogChoice().hidden, false);
         assert.match(catalogChoice().textContent ?? "", /acme\/widgets/);
+    });
+
+    it("says what the report is about, as the affordance itself declares it", () => {
+        // "Something is wrong with this preview" is true on the viewer and false on the comparison
+        // wall, which shows every component at once and files a page-scoped report (issue #4289).
+        // The affordance publishes its own subject rather than the launcher guessing from the URL.
+        page(WALL_REPORT);
+        installReportLauncher();
+        assert.match(
+            catalogChoice().textContent ?? "",
+            /Something is wrong with these comparisons/,
+        );
+        assert.equal(
+            catalogChoice().querySelector("strong")?.textContent,
+            "these comparisons",
+        );
     });
 
     it("opens the preview's report in place instead of navigating", () => {

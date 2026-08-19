@@ -13,6 +13,12 @@
 
 // Types only: the player bundle is script-injected at runtime, never imported.
 import type { RcPlayer, RemoteContext } from "./rc/player.js";
+import {
+    FrameQueue,
+    frameBlob,
+    shouldPaintDecodedFrame,
+    type ServeFrame,
+} from "./live/framePainter.js";
 import * as rules from "./viewer/rules.js";
 
 // Typed handles onto the server-rendered markup this file drives.
@@ -1196,21 +1202,69 @@ document.querySelectorAll<HTMLElement>(".cp-copyimg").forEach(function (btn) {
         copyAsText();
     });
 });
-function drawFrame(b64: string, codec: string) {
-    var im = new Image();
-    im.onload = function () {
-        canvas.width = im.naturalWidth;
-        canvas.height = im.naturalHeight;
-        canvas.getContext("2d")!.drawImage(im, 0, 0);
-        // A <canvas> stretches its buffer to fill its CSS box, so a daemon frame whose aspect
-        // differs from the pinned snapshot box would squish. Cache the buffer dims and re-fit the
-        // element (contain, centred) so the frame letterboxes within the snapshot footprint
-        // instead of distorting to fill it.
-        liveW = im.naturalWidth;
-        liveH = im.naturalHeight;
-        fitLiveCanvas();
+// --- Live frame painting.
+//
+// Frames land on `frameQueue` and are drained one per animation frame, never straight from the
+// socket handler. Two watermarks keep the stage moving forwards: the queue drops anything at or
+// below the last frame it released, and `paintedSeq` drops anything whose decode resolved out of
+// order. Without the second one a heavier frame N can still be decoding when a lighter N+1
+// resolves, then paint over it and sit there for a whole tick — see `live/framePainter.ts`.
+var frameQueue = new FrameQueue();
+var paintedSeq = -1;
+var frameLoopRunning = false;
+
+/**
+ * Begin painting for a freshly-opened socket. Called once per connection, so it resets the
+ * per-stream state unconditionally: a reconnect restarts `seq` at 0, and the previous stream's
+ * floor would otherwise reject every frame of the new one.
+ */
+function startFrameLoop() {
+    frameQueue = new FrameQueue();
+    paintedSeq = -1;
+    if (frameLoopRunning) return;
+    frameLoopRunning = true;
+    var tick = function () {
+        if (!frameLoopRunning) return;
+        var frame = frameQueue.dispatch();
+        if (frame) decodeAndPaint(frame);
+        requestAnimationFrame(tick);
     };
-    im.src = "data:image/" + (codec || "png") + ";base64," + b64;
+    requestAnimationFrame(tick);
+}
+
+function stopFrameLoop() {
+    frameLoopRunning = false;
+    frameQueue = new FrameQueue();
+    paintedSeq = -1;
+}
+
+function decodeAndPaint(frame: ServeFrame) {
+    var blob = frameBlob(frame);
+    if (!blob) return; // heartbeat — the daemon says the pixels are unchanged
+    createImageBitmap(blob).then(
+        function (bitmap) {
+            // The decode may have resolved after a newer frame already painted.
+            if (!shouldPaintDecodedFrame(paintedSeq, frame.seq)) {
+                bitmap.close();
+                return;
+            }
+            paintedSeq = frame.seq;
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            // A <canvas> stretches its buffer to fill its CSS box, so a daemon frame whose aspect
+            // differs from the pinned snapshot box would squish. Cache the buffer dims and re-fit
+            // the element (contain, centred) so the frame letterboxes within the snapshot
+            // footprint instead of distorting to fill it.
+            liveW = bitmap.width;
+            liveH = bitmap.height;
+            fitLiveCanvas();
+        },
+        function () {
+            // A frame that won't decode is dropped; the next one repaints the stage.
+        },
+    );
 }
 // --- Live input forwarding (no-op on the snapshot lane). Coordinates are image-natural
 // pixels; pointer events are grouped by pointerId so Compose's gesture pipeline tracks drags
@@ -1379,8 +1433,8 @@ function openStream() {
     // Mount the canvas as an absolute overlay on the snapshot's slot — the same fixed box the
     // Wasm tier locks to. The img stays in flow (visibility:hidden keeps its slot), so the stage
     // geometry is defined once by the snapshot and a live frame whose pixel dims differ from the
-    // baked PNG scales into this box instead of resizing the stage (drawFrame only touches the
-    // buffer now, never the layout). Input mapping reads the buffer size, so it's unaffected.
+    // baked PNG scales into this box instead of resizing the stage (the frame painter only touches
+    // the buffer, never the layout). Input mapping reads the buffer size, so it's unaffected.
     canvas.classList.add("cp-canvas-live");
     positionOverlay(canvas);
     img.style.visibility = "hidden";
@@ -1409,6 +1463,7 @@ function openStream() {
             (qs ? qs + "&codec=webp" : "codec=webp"),
     );
     ws = sock;
+    startFrameLoop();
     sock.onopen = function () {
         // The connect URL seeds only query()'s fields — the display axes, the overlays, and changed
         // knobs — so every knob, and anything toggled during the connecting window, isn't in it.
@@ -1435,7 +1490,7 @@ function openStream() {
         if (m.type === "frame") {
             liveGotFrame = true;
             clearModeError();
-            drawFrame(m.dataBase64, m.codec);
+            frameQueue.submit(m as ServeFrame);
             setPending(null);
         } else if (m.type === "error") {
             showModeError(m.message || "Live preview error.");
@@ -1464,6 +1519,9 @@ function openStream() {
 }
 function closeStream() {
     root.setAttribute("data-mode", "snapshot");
+    // Drop any frame still queued or mid-decode, and reset both watermarks: a reconnect starts a
+    // fresh stream whose `seq` restarts at 0, which the old floor would otherwise reject wholesale.
+    stopFrameLoop();
     // Toggling Live off mid-connect must not leave the badge stuck on "connecting…".
     setPending(null);
     if (ws) {

@@ -2456,6 +2456,32 @@ class ServeHttpServer(
         "static-page",
         if (renderHost.rcComparePending()) DYNAMIC_RESOURCE_CACHE_CONTROL else pageCacheControl(),
       )
+      // The wall's own "report a catalog issue" — the launcher's catalog half, which stays hidden
+      // on a page that carries no `#cp-report` and left this page offering the SERVER tracker as
+      // its only route (issue #4289). Page-scoped: the wall names no single preview, so neither
+      // does the report — it carries the page (with the lane its query names), the catalog build
+      // and the tool version, and drops the preview-shaped rows the way every other optional fact
+      // is dropped. A row's own defect keeps the better route it already had: opening the focused
+      // comparison, which files against that exact preview and reference.
+      val bundleHost = catalogBundleHost(renderHost)
+      val reportContext =
+        ServeIssueReport.Context(
+          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+          system = basePath.trim('/').takeIf { it.isNotEmpty() } ?: sessionId,
+          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
+          toolVersion = bundleHost?.provenance?.toolVersion,
+          pageUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+          publicRender = isPublic,
+        )
+      val reportIssue =
+        ServeWeb.ReportIssue(
+          action = ServeIssueReport.action(reportContext.repo),
+          body = ServeIssueReport.body(reportContext),
+          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
+          repo = reportContext.repo,
+          login = githubAuth?.currentLogin(call),
+          subject = "these comparisons",
+        )
       call.respondText(
         ServeWeb.comparisonPage(
           moduleLabel = renderHost.label,
@@ -2473,6 +2499,7 @@ class ServeHttpServer(
           rcCompare = rcCompare,
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          reportIssue = reportIssue,
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           // A top-level site's pages carry their session in the ORIGIN, so same-session links
