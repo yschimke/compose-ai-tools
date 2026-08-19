@@ -84,7 +84,16 @@ const motionPlaceholder = resolve(pagesDir, "_motion-placeholder.apng");
 // Fixtures navigated with a query string, because the state they capture lives in the URL rather
 // than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
 // what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
-const FIXTURE_QUERY = { "serve-viewer-exploded": "?exploded=1" };
+// …and the design-spec lane reached at the URL #4218 was reported at. Every part of it is
+// load-bearing: `uiMode=light` on a `…__light` preview is a value that spells out the DEFAULT,
+// `mode=spec` opens the lane, and `specView=diff` picks the comparison. The state under test is
+// the one a visitor reaches by toggling to dark and back — the toggle leaves `uiMode` behind —
+// and what regressed is legible only in the capture: a live match on the chip and in the readout,
+// where a genuinely pinned theme instead (correctly) gets the "baseline-only" fallback.
+const FIXTURE_QUERY = {
+  "serve-viewer-exploded": "?exploded=1",
+  "serve-viewer-spec-default-theme": "?uiMode=light&mode=spec&specView=diff",
+};
 const IMAGE_LANES = [
   "**/render/**",
   "**/hero/**",
@@ -310,6 +319,12 @@ const STYLED_FIXTURES = new Set([
   // beside it. Captured bare, the row is an unstyled select and the `spec-lane` state below
   // could not even be entered (the lane needs `viewer.js`).
   "serve-viewer-path",
+  // Its default-valued-deep-link twin (#4218). Everything this fixture claims is painted at
+  // runtime by scripts — the lane is entered from `?mode=spec`, the delta map and the readout are
+  // drawn by `<cp-spec-compare>`, and whether a percentage appears there at all is decided by the
+  // sticky bootstrap reading `?uiMode=light` against the preview's baked theme. Captured bare
+  // there is no lane, no diff and no readout, so the regression it exists for would move nothing.
+  "serve-viewer-spec-default-theme",
   // The inspection layers (accessibility / typography / theme attributes). The whole surface is
   // painted at runtime by `<cp-inspect-layers>` — boxes over the stage, a legend beside it — so
   // captured bare there is nothing to see at all. Its `layers` state below is what draws them.
@@ -2528,6 +2543,27 @@ for (const fixture of listPageFixtures()) {
             return status && !/^Check/.test(status.textContent.trim());
           })
           .catch(() => {});
+      }
+      // The default-value deep link opens its own lane and scores its own pair, both
+      // asynchronously and both after the snapshot underneath has landed — so without a wait the
+      // shot is the plain render with no lane up at all, which looks the same whether the fix
+      // holds or the comparison was suppressed. Held to the settled readout, exactly as the
+      // `spec-*` states below are.
+      if (fixture === "serve-viewer-spec-default-theme") {
+        await page
+          .waitForFunction(() => {
+            const score = document.getElementById("cp-spec-score");
+            return (
+              !document.getElementById("cp-spec-img")?.hidden &&
+              score &&
+              score.textContent &&
+              score.textContent !== "comparing…"
+            );
+          })
+          .catch(() => {});
+        // The delta map is painted a frame after the readout settles, as the `spec-diff` state's
+        // own hold records.
+        await page.waitForTimeout(500);
       }
       if (fixture === "serve-reference-compare") {
         await page

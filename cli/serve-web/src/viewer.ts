@@ -346,12 +346,22 @@ function onFixedFrameLane(): boolean {
     var mode = root.getAttribute("data-mode") || "";
     return mode === "spec" || mode === "motion";
 }
+// The theme this preview is baked in, as the server named it (`data-default-theme`), or "" on a
+// catalog that publishes no theme for it. Read from the DOM on each call rather than captured at
+// module init: it is a server-set attribute nothing rewrites, and a stale copy is one more thing
+// that could disagree with the select beside it.
+function defaultThemeValue() {
+    return (
+        (themeChoice && themeChoice.getAttribute("data-default-theme")) || ""
+    );
+}
 function activeThemeChoice() {
     return rules.activeThemeChoice(
         themeChoice && {
             value: themeChoice.value,
             disabled: themeChoice.disabled,
             active: themeChoice.getAttribute("data-theme-active") === "1",
+            defaultValue: defaultThemeValue(),
         },
         onFixedFrameLane(),
     );
@@ -4079,9 +4089,17 @@ function syncUrl() {
     // the visitor's theme even though the disabled Theme control plainly explains it is unapplied.
     if (pinnedAt) {
         var pinnedParams = new URLSearchParams(location.search);
+        var pinnedDefault = defaultThemeValue();
         ["themeProvider", "uiMode"].forEach(function (name) {
             var value = pinnedParams.get(name);
-            if (value) values[name] = value;
+            // …but not a `uiMode` that merely spells out the baked theme. Carrying that forward
+            // would re-pin, on every sync, exactly the redundant parameter the rest of this
+            // function exists to drop.
+            if (
+                value &&
+                (name !== "uiMode" || rules.pinsTheme(value, pinnedDefault))
+            )
+                values[name] = value;
         });
     }
     if (scrollLong && scrollLong.checked) values.scroll = "long";
@@ -4282,9 +4300,17 @@ function hydrateFromUrl(popped: boolean) {
             if (choice && o.value === choice) offered = true;
         });
         themeChoice.value = (offered ? choice : initialTheme) || "";
+        // Restoring an entry whose theme IS the baked default restores "nobody has picked", not a
+        // pick that happens to agree with the default — otherwise stepping Back through a
+        // dark→light round trip lands on a page that reads as pinned and drops the spec baseline
+        // all over again, this time with no parameter left in the URL to explain it.
         themeChoice.setAttribute(
             "data-theme-active",
-            offered ? "1" : initialThemeActive || "0",
+            offered
+                ? rules.pinsTheme(choice, defaultThemeValue())
+                    ? "1"
+                    : "0"
+                : initialThemeActive || "0",
         );
         syncThemeBar();
         // …and the page around the stage, when the Page theme setting says to follow the choice.

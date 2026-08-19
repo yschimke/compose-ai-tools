@@ -8,15 +8,24 @@ import {
     activeThemeChoice,
     chosenThemeProvider,
     chosenUiMode,
+    pinsTheme,
     themeBarButton,
 } from "../src/viewer/themeChoice.js";
 
 const select = (
-    over: Partial<{ value: string; disabled: boolean; active: boolean }> = {},
+    over: Partial<{
+        value: string;
+        disabled: boolean;
+        active: boolean;
+        defaultValue: string;
+    }> = {},
 ) => ({
     value: "dark",
     disabled: false,
     active: true,
+    // The preview under test is baked light unless a case says otherwise, so the default `value`
+    // above is a genuine override.
+    defaultValue: "light",
     ...over,
 });
 
@@ -60,6 +69,75 @@ describe("activeThemeChoice", () => {
 
     it("answers nothing on a page with no theme control at all", () => {
         assert.equal(activeThemeChoice(null), "");
+    });
+
+    it("answers nothing for a pick that lands back on the baked theme", () => {
+        // #4218. The light/dark toggle writes `uiMode` into the URL on the way through, so
+        // clicking dark and back to light leaves the select active with `light` in it. The visitor
+        // has made no net choice, and answering "light" here pinned `?uiMode=light` in the address
+        // bar — which then read as an override and suppressed the Figma comparison on pixels that
+        // are exactly the ones it was scored against.
+        assert.equal(
+            activeThemeChoice(
+                select({ value: "light", defaultValue: "light" }),
+            ),
+            "",
+        );
+    });
+
+    it("keeps a frozen frame from naming a theme it did not deviate to", () => {
+        // The frozen-frame carve-out exists so the URL goes on describing the pinned picture. A
+        // default-valued choice describes it just as well by saying nothing.
+        assert.equal(
+            activeThemeChoice(
+                select({ value: "dark", defaultValue: "dark", disabled: true }),
+                true,
+            ),
+            "",
+        );
+    });
+
+    it("still names the opposite appearance on a dark-baked preview", () => {
+        // The forgiveness is per-preview, not "light is always free": on a `__dark` variant it is
+        // `dark` that asks for nothing and `light` that is a real override.
+        assert.equal(
+            activeThemeChoice(select({ value: "light", defaultValue: "dark" })),
+            "light",
+        );
+    });
+
+    it("treats every choice as a pin when the catalog names no baked theme", () => {
+        // An empty `data-default-theme` is "the server could not say", not "light". The select
+        // still displays Light, but the baked pixels may not be a light render, so a `uiMode`
+        // there is a request that has to travel.
+        assert.equal(
+            activeThemeChoice(select({ value: "light", defaultValue: "" })),
+            "light",
+        );
+    });
+});
+
+describe("pinsTheme", () => {
+    it("forgives only the value the preview would have shown anyway", () => {
+        assert.equal(pinsTheme("light", "light"), false);
+        assert.equal(pinsTheme("dark", "dark"), false);
+        assert.equal(pinsTheme("light", "dark"), true);
+        assert.equal(pinsTheme("dark", "light"), true);
+    });
+
+    it("never forgives a declared provider", () => {
+        // A provider is always something someone asked for — no preview is baked in one, so the
+        // default it would be compared against cannot match it.
+        assert.equal(pinsTheme("theme:com.example.BrandTheme", "light"), true);
+    });
+
+    it("is not a pin when there is no choice at all", () => {
+        assert.equal(pinsTheme("", "light"), false);
+        assert.equal(pinsTheme("", ""), false);
+    });
+
+    it("pins whatever it is given when no default is known", () => {
+        assert.equal(pinsTheme("light", ""), true);
     });
 });
 

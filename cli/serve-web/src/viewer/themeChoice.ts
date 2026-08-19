@@ -21,6 +21,34 @@ export interface ThemeSelectState {
     disabled: boolean;
     /** The select's `data-theme-active` — `"1"` once the visitor has actually picked. */
     active: boolean;
+    /**
+     * The theme this preview is BAKED in, spelled as the select spells it (`light` / `dark`), or
+     * `""` when the server could not name one.
+     *
+     * Not the same thing as `value`'s initial contents, which is why it arrives separately: the
+     * sticky bootstrap and Back/Forward hydration both write `value` before anything here reads
+     * it, so by the time a choice is examined the select no longer remembers what it opened on.
+     */
+    defaultValue: string;
+}
+
+/**
+ * Whether [choice] is a theme the visitor actually PINNED, as opposed to the one they were going
+ * to get anyway.
+ *
+ * `light` on a preview baked light is the second kind. It reads like a selection — it is a value,
+ * spelled out, in the same parameter a real override uses — but it names the default, so it asks
+ * for nothing. Treating it as a pin is what made `?uiMode=light` suppress the Figma comparison on
+ * a page showing exactly the pixels that comparison was scored against (#4218): the light/dark
+ * toggle writes `uiMode` on the way through, so clicking dark and back to light left the
+ * parameter behind, and a visitor who had made no net choice landed in a state that looked like
+ * one.
+ *
+ * A `theme:<provider>` choice is never the default — a declared provider is always something
+ * someone asked for — so this only ever forgives the two system appearances.
+ */
+export function pinsTheme(choice: string, defaultValue: string): boolean {
+    return !!choice && choice !== defaultValue;
 }
 
 /**
@@ -43,6 +71,9 @@ export interface ThemeSelectState {
  * So a frozen frame keeps naming its theme. Nothing is re-rendered by it — every control that
  * would is disabled anyway — but the URL, the copyable link and the spec lane's baseline test all
  * go on describing the frame that is actually on the stage.
+ *
+ * The third empty case is {@link pinsTheme}: a pick that lands on the preview's own baked theme
+ * describes the same frame an absent parameter does, so it is not named either.
  */
 export function activeThemeChoice(
     select: ThemeSelectState | null,
@@ -50,7 +81,12 @@ export function activeThemeChoice(
 ): string {
     if (!select || !select.active) return "";
     if (select.disabled && !frozenFrame) return "";
-    return select.value;
+    // A choice that lands back on the baked theme is not an override, however it got there — a
+    // chip click, a URL that spells the default out, a remembered value that agrees with it. The
+    // server already treats such a `uiMode` as a baked no-op (`CatalogLiveRouting.withoutBakedNoOps`),
+    // so answering "" here changes no pixels; what it changes is the URL, which stops pinning a
+    // parameter nobody chose, and the spec baseline, which stops reading a default as a deviation.
+    return pinsTheme(select.value, select.defaultValue) ? select.value : "";
 }
 
 /** The `uiMode` override — only the two system appearances, never a provider. */

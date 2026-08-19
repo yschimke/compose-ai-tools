@@ -460,6 +460,18 @@ the browser already has, and no re-render the visitor didn't ask for. Params the
 (`token`, `session`, …) are never touched, and a control back at its default **clears** its param
 rather than pinning a redundant value, so an untouched page keeps the clean URL it was opened with.
 
+That rule has a second half, because clearing a param on the way out does nothing for the links
+already in circulation: **where a default value is present anyway, it is recognised as the
+default.** A `uiMode=light` on a `…__light` preview names the theme the page would have shown
+regardless, so it is displayed and not treated as a pinned override — the theme select shows Light
+with `data-theme-active="0"`, the param clears on the next sync, and the features gated on *not*
+having pinned a theme stay available. The Figma comparison is the one that made this visible
+(#4218): the light/dark toggle writes `uiMode` on the way through, so clicking dark and back to
+light left `?uiMode=light` behind, and a visitor who had made no net choice lost the match score on
+pixels that were exactly the ones it was measured against. Which theme counts as the default is the
+server's answer, published on the select as `data-default-theme`; a preview the catalog names no
+theme for claims none, so every `uiMode` there stays a real override.
+
 | Surface | Carried in the URL |
 | --- | --- |
 | Catalog landing | `tab` (section), `theme` (a baked chip or `theme:<providerFqn>`), `q` (filter), `bg` |
