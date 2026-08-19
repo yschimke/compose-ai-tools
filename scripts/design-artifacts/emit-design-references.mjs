@@ -4,7 +4,8 @@
  *
  *     node emit-design-references.mjs --out <bundle dir> --repo <repo root> \
  *       [--design-map design-map.json] [--spec catalog.spec.json] \
- *       [--reference-images <dir>] [--chromium <path>] [--strict]
+ *       [--reference-images <dir>] [--reference-backdrop '#000000'] \
+ *       [--chromium <path>] [--strict]
  *
  * `--out` is the staged bundle the workflow is about to force-push to `design-artifacts/<system>`;
  * this adds `references/index.json` plus one normalised PNG per reference and leaves the rest of it
@@ -34,6 +35,16 @@
  * resampled, while genuinely different proportions are fitted and letterboxed. See
  * png-resample.mjs for why those distinctions matter.
  *
+ * ## The ground under them
+ *
+ * `--reference-backdrop '#000000'` publishes each reference on the stage its sticker was drawn on —
+ * the watch face a round Wear `showBackground` preview paints, or a square preview's full frame.
+ * Off by default; a catalog whose kit cells already carry their own ground needs nothing. It exists
+ * because the scorer crops both sides to their content box, so a node export of a clock strip on
+ * transparency is enlarged to the size of a watch face before being compared with one, and every
+ * full-screen row then reports the missing ground rather than the component. Only stickers whose
+ * alpha channel *is* one of those two shapes get it; see reference-backdrop.mjs.
+ *
  * ## Failure posture
  *
  * Fail-soft by default, like the server's own reader: an entry that can't be rasterised is dropped
@@ -55,6 +66,7 @@ import {
   referenceManifest,
 } from "./design-references.mjs";
 import { fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
+import { applyBackdrop, parseBackdrop, stageOf } from "./reference-backdrop.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
@@ -74,6 +86,18 @@ const REFERENCE_IMAGES = arg("reference-images");
 const EXEC = arg("chromium", process.env.DESIGN_REFERENCES_CHROMIUM || undefined);
 const STRICT = process.argv.includes("--strict");
 const FIGMA_CONTENTS_ONLY = arg("figma-contents-only", "true") !== "false";
+
+// The ground a `showBackground` preview was drawn on, laid under the reference so both sides of the
+// comparison stand on the same stage. Off unless the catalog names a colour; see
+// reference-backdrop.mjs for why the colour is declared and the shape is not. A bad colour is fatal
+// rather than "off": the whole catalog would publish unchanged and read as the flag not working.
+let BACKDROP;
+try {
+  BACKDROP = parseBackdrop(arg("reference-backdrop", ""));
+} catch (error) {
+  console.error(`design-references: ${error.message}`);
+  process.exit(2);
+}
 
 const FIGMA_TOKEN =
   process.env.FIGMA_TOKEN || process.env.FIGMA_PAT || process.env.FIGMA_ACCESS_TOKEN || "";
@@ -321,10 +345,44 @@ function referenceDensity(record) {
   return density;
 }
 
+/**
+ * The stage this record's sticker was drawn on, or null when it has none — a transparent component
+ * sticker, or a ground shaped like neither of the two [stageOf] recognises.
+ *
+ * Read from the published sticker rather than declared per record, because it is the sticker's own
+ * device mask that decides the shape and nothing in the catalog restates it. Cached per image path:
+ * the whole-frame and disc tests walk every pixel, and a component's size cells share no sticker but
+ * a re-run of the same record (a second reference on one preview) would otherwise pay twice.
+ */
+const stageCache = new Map();
+function stickerStage(record, target) {
+  const imagePath = record.origin?.imagePath;
+  if (typeof imagePath !== "string" || imagePath === "") return null;
+  if (!stageCache.has(imagePath)) {
+    const file = path.join(OUT, imagePath);
+    let stage = null;
+    try {
+      const sticker = readPng(file);
+      // The reference is published at the sticker's dimensions, so a disagreement means the two are
+      // not the pair this mask describes. Bail rather than mask a reference with a stranger's shape.
+      stage =
+        sticker.width === target.width && sticker.height === target.height
+          ? stageOf(sticker.data, sticker.width, sticker.height)
+          : null;
+    } catch (error) {
+      note(`${record.id}: could not read ${imagePath} for its backdrop (${error.message})`);
+    }
+    stageCache.set(imagePath, stage);
+  }
+  return stageCache.get(imagePath);
+}
+
 const referencesDir = path.join(OUT, REFERENCES_DIR);
 fs.mkdirSync(referencesDir, { recursive: true });
 
 let written = 0;
+/** How the backdrop landed, for the summary — silence would read as "every reference got one". */
+const backdropTally = { disc: 0, frame: 0, skipped: 0 };
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
 const annotatedReferences = {};
 if (FIGMA_TOKEN) {
@@ -419,6 +477,22 @@ for (const record of records) {
     }
   }
 
+  // Lay the sticker's own ground under the artwork, last, so it covers the letterboxing the fit may
+  // just have added: the scorer crops to the content box, and a reference whose box is the artwork
+  // alone gets blown up to the size of a watch face before it is compared with one.
+  if (BACKDROP) {
+    const stage = stickerStage(record, target);
+    if (stage) {
+      raster = {
+        ...raster,
+        data: applyBackdrop(raster.data, raster.width, raster.height, stage, BACKDROP),
+      };
+      backdropTally[stage.kind]++;
+    } else {
+      backdropTally.skipped++;
+    }
+  }
+
   const bytes = writePng(raster);
   fs.writeFileSync(path.join(OUT, record.raster.path), bytes);
   // The server verifies this before advertising the reference, so a corrupted fetch on the box
@@ -430,6 +504,17 @@ for (const record of records) {
     ? scaleTree(capturedLayout, placement.width, placement.x, placement.y)
     : undefined;
   if (scaled) annotatedReferences[record.id] = { layout: scaled };
+}
+
+if (BACKDROP) {
+  const hex = `#${[BACKDROP.r, BACKDROP.g, BACKDROP.b]
+    .map((c) => c.toString(16).padStart(2, "0"))
+    .join("")}`;
+  console.log(
+    `design-references: backdrop ${hex} laid under ${backdropTally.disc} device-mask and ` +
+      `${backdropTally.frame} full-frame reference(s); ${backdropTally.skipped} sticker(s) ` +
+      `declare no ground and were left transparent`,
+  );
 }
 
 // ---- The published verdict ---------------------------------------------------------------------

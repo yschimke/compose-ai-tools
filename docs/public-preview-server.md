@@ -1473,6 +1473,64 @@ a catalog must never lose its render to a reference lane. Pass `--strict` to gat
 A repo with no `design-map.json` is a clean no-op, so the step runs unconditionally for every
 catalog.
 
+#### The ground a reference stands on
+
+A `@Preview` that declares `showBackground` is drawn on an opaque ground — a full frame, or, on a
+round Wear device, the watch face inscribed in it. A Figma node export carries only the node. Since
+both sides are cropped to their content box before scoring, a node export of a clock strip on
+transparency is enlarged to the size of a watch face and then compared with one, and the row reports
+the missing ground rather than the component.
+
+`reference-backdrop` (workflow input; `--reference-backdrop` on the driver) takes a hex colour and
+publishes each reference on that ground. Empty is the default and changes nothing, which is right
+wherever the kit's own cells already carry a background.
+
+The colour is **declared** and the shape is **recognised**. Only the catalog knows what its previews
+asked for, and a colour read off the sticker would be read off the very image the reference is about
+to be compared with — so the caller names it (`reference-backdrop: '#000000'` for a dark-first Wear
+sheet). The shape comes from the sticker's alpha channel, and
+[`reference-backdrop.mjs`](../scripts/design-artifacts/reference-backdrop.mjs) recognises exactly
+the two shapes `showBackground` produces — the whole frame, and the disc inscribed in a square frame
+— rather than accepting whatever it finds. Anything else, including the Wear scroll capsule's
+vertical stadium, is skipped and counted.
+
+That test is the safety argument, not a detail. A *component* sticker (`showBackground = false`, the
+transparent kind a designer drops onto their own canvas) has an alpha channel shaped like the
+component and matches neither, so it is left exactly as it was. Across wear-m3-catalog's 380
+published stickers the split is clean and unanimous: 215 device discs — every breakpoint of every
+full-screen component — and 165 left alone, with no full-screen sticker missed and no component
+sticker touched. The step says which way each went, because silence would read as "every reference
+got one":
+
+```
+design-references: backdrop #000000 laid under 35 device-mask and 0 full-frame reference(s);
+  151 sticker(s) declare no ground and were left transparent
+```
+
+The ground contributes **only the coverage the reference lacks**, not a source-over fill. The two
+sides describe the same silhouette, so `over` would stack a coincident edge against itself — a
+reference that already carries its own watch face has a rim alpha of 47 where the sticker's is 27,
+and `over` promotes that to 69, a harder edge than either image has. Filling only what is missing
+leaves those references where they were, which is what a catalog whose kit cells already draw the
+ground should get. Where the ground does contribute, the colour mixes under the reference's own
+pixel by coverage, so an antialiased glyph edge keeps its softness; and the corners outside a round
+mask stay bare, because they are bare on the sticker too.
+
+Scored with the same publish-time scorer, over wear-m3-catalog's 35 device-mask references:
+
+| | before | after |
+|---|---|---|
+| 17 whose kit cell already draws the face | 82.31 – 98.50% | **unchanged, ±0.00** |
+| 18 whose kit cell does not | 21.87 – 35.66%, every one `off` | 96.48 – 100%: 13 `match`, 4 `close`, 1 `off` |
+
+The second row is the whole point: those are the components the kit draws as a cell on a specimen
+board — `TimeText`, `ScrollIndicator`, `LevelIndicator`, both `PageIndicator`s,
+`CircularProgressIndicator` — and their published verdict was measuring the absent watch face. The
+one that stays `off` is `CircularProgressIndicator`'s default cell at 96.48%, which is now a
+statement about the ring rather than about the ground it was missing.
+
+![Reference backdrop, before and after, with the published match score under each pair](design/evidence/reference-backdrop/reference-backdrop-before-after.png)
+
 The same step also writes the **reference side of the annotation layers** — the numbered spec boxes
 the compare page draws over each column. Two things decide whether those numbers can be read against
 the render's:
