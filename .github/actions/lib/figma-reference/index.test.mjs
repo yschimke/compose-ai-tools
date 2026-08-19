@@ -15,6 +15,7 @@ import test from 'node:test'
 
 import {
   backgroundAt,
+  collectDefs,
   figmaUrl,
   loadResvg,
   pageFiles,
@@ -124,6 +125,40 @@ test('sliceNode is not fooled by a node id that is a prefix of another', () => {
 </svg>`
   assert.match(sliceNode(svg, '1:1'), /data-node-id="1:2"/)
   assert.equal(sliceNode(svg, '1:1').includes('1:11'), false)
+})
+
+test('the scanner is not confused by markup that looks like a tag', () => {
+  // Every one of these is a token the tag scanner has to step over rather than parse: a comment
+  // holding a `<g>`, a processing instruction, an attribute value holding a `>`, and a stray `<`
+  // in text. Getting any of them wrong takes the wrong subtree, silently.
+  const svg = `<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+<?xml-stylesheet href="x.css"?>
+<!-- <g data-node-id="1:1"><rect width="9" height="9"/></g> -->
+<g data-node-id="1:1" aria-label="a > b">
+<rect data-node-id="1:2" width="2" height="2" fill="#f00"/>
+</g>
+</svg>`
+  const doc = sliceNode(svg, '1:1')
+  assert.match(doc, /aria-label="a > b"/)
+  assert.match(doc, /data-node-id="1:2"/)
+  assert.equal(doc.includes('width="9"'), false, 'the commented-out copy must not be taken')
+})
+
+test('sliceNode closes the subtree at its own depth, not the first close tag', () => {
+  const svg = `<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+<g data-node-id="1:1"><g><rect data-node-id="1:2" width="1" height="1" fill="#f00"/></g></g>
+<g data-node-id="1:3"><rect width="3" height="3" fill="#0f0"/></g>
+</svg>`
+  const doc = sliceNode(svg, '1:1')
+  assert.match(doc, /data-node-id="1:2"/)
+  assert.equal(doc.includes('#0f0'), false, 'the following sibling is a different node')
+})
+
+test('collectDefs takes every definition block, once', () => {
+  assert.match(collectDefs(PAGE), /<clipPath id="clip0">/)
+  const twice = collectDefs(`<svg><defs><a/></defs><g/><defs><b/></defs></svg>`)
+  assert.equal(twice, '<defs><a/></defs>\n<defs><b/></defs>')
+  assert.equal(collectDefs('<svg><g/></svg>'), '')
 })
 
 test('viewBoxOf reads the page space the slice is drawn in', () => {

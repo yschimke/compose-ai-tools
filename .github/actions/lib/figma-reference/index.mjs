@@ -48,18 +48,89 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /**
- * Matches one markup token: an element open/close tag, a comment, or a processing instruction.
+ * Read the next markup token at or after `pos`: an element's open or close tag.
  *
- * A regex rather than an XML parser because the input is a machine-written export (no CDATA, no
- * unquoted attributes, always well-formed) that runs to tens of megabytes, and because the slice
- * this produces must be **byte-identical** markup rather than a re-serialisation — a DOM round-trip
- * is where namespaces and numeric precision quietly change. The attribute group swallows quoted
- * strings so a `>` inside an attribute value cannot end a tag early.
+ * Hand-written rather than either an XML parser or a regex, and both halves of that are deliberate.
+ * Not a parser, because the slice this produces must be **byte-identical** markup — a DOM
+ * round-trip is where namespaces and numeric precision quietly change, and the whole trick here is
+ * that Figma's own bytes come out the other side. Not a regex, because a tag pattern that swallows
+ * quoted attribute values is ambiguous by construction: on an unterminated `<g` the engine
+ * backtracks over every following character, which is quadratic on input measured in megabytes and
+ * supplied by whoever last ran the page import (CodeQL flags exactly this, and it is right to).
+ *
+ * This scan is linear and allocation-free until a tag is actually returned: `indexOf` to the next
+ * `<`, then a character walk to the matching `>` that tracks quoting so a `>` inside an attribute
+ * value cannot end the tag early. Comments, processing instructions and doctypes are skipped whole.
+ * A `<` that starts no valid name is text, and is stepped over.
+ *
+ * Returns `{ name, attrs, closing, selfClosing, start, end }` — `end` is the index of the `>` — or
+ * null at the end of the document.
  */
-const TOKEN = /<(\/?)([A-Za-z_][-\w.:]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>/g
+function nextTag(svg, pos) {
+  const length = svg.length
+  while (pos < length) {
+    const lt = svg.indexOf('<', pos)
+    if (lt < 0) return null
+    if (svg.startsWith('<!--', lt)) {
+      const close = svg.indexOf('-->', lt + 4)
+      if (close < 0) return null
+      pos = close + 3
+      continue
+    }
+    if (svg.startsWith('<?', lt) || svg.startsWith('<!', lt)) {
+      const close = svg.indexOf('>', lt + 2)
+      if (close < 0) return null
+      pos = close + 1
+      continue
+    }
+    let i = lt + 1
+    const closing = svg.charCodeAt(i) === 47 /* / */
+    if (closing) i += 1
+    const nameStart = i
+    while (i < length && !isNameBreak(svg.charCodeAt(i))) i += 1
+    if (i === nameStart) {
+      // Not a tag at all — a stray `<` in text. Step past it and keep looking.
+      pos = lt + 1
+      continue
+    }
+    const name = svg.slice(nameStart, i)
+    const attrStart = i
+    let quote = 0
+    while (i < length) {
+      const c = svg.charCodeAt(i)
+      if (quote) {
+        if (c === quote) quote = 0
+      } else if (c === 34 /* " */ || c === 39 /* ' */) {
+        quote = c
+      } else if (c === 62 /* > */) {
+        break
+      }
+      i += 1
+    }
+    if (i >= length) return null // unterminated tag: nothing further is parseable
+    const attrs = svg.slice(attrStart, i)
+    let last = i - 1
+    while (last >= attrStart && isSpace(svg.charCodeAt(last))) last -= 1
+    return {
+      name,
+      attrs,
+      closing,
+      selfClosing: svg.charCodeAt(last) === 47 /* / */,
+      start: lt,
+      end: i,
+    }
+  }
+  return null
+}
 
-/** Elements that only ever carry definitions, and must be reproduced whole in a slice. */
-const DEFS = /<defs[\s>][\s\S]*?<\/defs>/g
+/** Whitespace, `/` or `>` — anything that ends an element name. */
+function isNameBreak(code) {
+  return isSpace(code) || code === 47 || code === 62
+}
+
+function isSpace(code) {
+  return code === 32 || code === 9 || code === 10 || code === 13
+}
 
 /**
  * Read `design-map.json` into `previewId → { ref, fileKey, nodeId, code }`.
@@ -141,53 +212,79 @@ export function pageFiles(manifest, dir) {
  * reference lives on a page the cache excludes (the kit's Stickersheet, for one, is too large to
  * commit), and the reason every caller treats a miss as "no column" rather than an error.
  */
-export function sliceNode(svg, nodeId) {
+export function sliceNode(svg, nodeId, defs = collectDefs(svg)) {
   const needle = `data-node-id="${nodeId}"`
   // Cheap reject first: these documents run to megabytes and most pages hold no given node.
   if (!svg.includes(needle)) return null
 
   const stack = []
-  let match
-  TOKEN.lastIndex = 0
-  while ((match = TOKEN.exec(svg))) {
-    const [full, closing, name, attrs, selfClosing] = match
-    if (name === undefined) continue // comment / processing instruction
-    if (closing) {
+  let pos = 0
+  let tag
+  while ((tag = nextTag(svg, pos))) {
+    pos = tag.end + 1
+    if (tag.closing) {
       stack.pop()
       continue
     }
-    const hit = attrs.includes(needle)
-    if (selfClosing) {
-      if (hit) return wrap(svg, stack, full)
+    const hit = tag.attrs.includes(needle)
+    if (tag.selfClosing) {
+      if (hit) return wrap(stack, svg.slice(tag.start, tag.end + 1), defs)
       continue
     }
     if (hit) {
-      const end = closeOf(svg, TOKEN.lastIndex, name)
+      const end = closeOf(svg, tag.end + 1)
       if (end < 0) return null
-      return wrap(svg, stack, svg.slice(match.index, end))
+      return wrap(stack, svg.slice(tag.start, end), defs)
     }
-    stack.push({ name, text: full })
+    stack.push({ name: tag.name, text: svg.slice(tag.start, tag.end + 1) })
   }
   return null
 }
 
-/** Index of the end of the tag that closes an element opened just before `from`. */
-function closeOf(svg, from, name) {
-  const scan = new RegExp(TOKEN.source, 'g')
-  scan.lastIndex = from
+/**
+ * Index just past the tag that closes the element whose open tag ends just before `from`.
+ *
+ * Depth is counted over every element rather than over same-named ones: a `<g>` closed by its own
+ * `</g>` is the common case, but counting only matching names would walk straight past a
+ * malformed-but-balanced subtree and take the wrong closing tag.
+ */
+function closeOf(svg, from) {
   let depth = 1
-  let match
-  while ((match = scan.exec(svg))) {
-    const [full, closing, tag, , selfClosing] = match
-    if (tag === undefined || selfClosing) continue
-    if (closing) {
-      if (tag === name) depth -= 1
-      if (depth === 0) return match.index + full.length
-    } else if (tag === name) {
+  let pos = from
+  let tag
+  while ((tag = nextTag(svg, pos))) {
+    pos = tag.end + 1
+    if (tag.selfClosing) continue
+    if (tag.closing) {
+      depth -= 1
+      if (depth === 0) return tag.end + 1
+    } else {
       depth += 1
     }
   }
   return -1
+}
+
+/**
+ * Every `<defs>` block in the document, verbatim.
+ *
+ * Collected once per page and handed to each slice: a page's definitions are the same for every
+ * node on it, and re-scanning a multi-megabyte export per node is the difference between a column
+ * that costs milliseconds and one that costs seconds.
+ */
+export function collectDefs(svg) {
+  const blocks = []
+  let pos = 0
+  let tag
+  while ((tag = nextTag(svg, pos))) {
+    pos = tag.end + 1
+    if (tag.closing || tag.selfClosing || tag.name !== 'defs') continue
+    const end = closeOf(svg, tag.end + 1)
+    if (end < 0) break
+    blocks.push(svg.slice(tag.start, end))
+    pos = end
+  }
+  return blocks.join('\n')
 }
 
 /**
@@ -199,9 +296,8 @@ function closeOf(svg, from, name) {
  * cannot know which `url(#…)` its subtree reaches; they cost bytes, and resvg drops what nothing
  * references.
  */
-function wrap(svg, stack, inner) {
+function wrap(stack, inner, defs) {
   if (!stack.length || stack[0].name !== 'svg') return null
-  const defs = svg.match(DEFS)?.join('\n') ?? ''
   const open = stack.map((element) => element.text).join('\n')
   // Every wrapper except the root closes as its own tag name; the root closes the document.
   const close = stack
@@ -314,11 +410,26 @@ export function rasterisePage(Resvg, svg, { maxPixels = 4_000_000 } = {}) {
   }
 }
 
-/** `viewBox="minX minY width height"` off the root element; null when the export declares none. */
+/**
+ * `viewBox="minX minY width height"` off the root element; null when the export declares none.
+ *
+ * Read off the parsed root tag rather than by matching `<svg …viewBox="…"` against the whole
+ * document: that pattern rescans from every `<svg` when the attribute is absent, which is quadratic
+ * on an export this size — and the tag itself is a few hundred bytes, so there is nothing to gain.
+ */
 export function viewBoxOf(svg) {
-  const match = /<svg[^>]*\sviewBox="([-\d.\s]+)"/.exec(svg)
-  if (!match) return null
-  const [minX, minY, width, height] = match[1].trim().split(/\s+/).map(Number)
+  const root = nextTag(svg, 0)
+  if (!root || root.name !== 'svg' || root.closing) return null
+  const at = root.attrs.indexOf('viewBox="')
+  if (at < 0) return null
+  const from = at + 'viewBox="'.length
+  const to = root.attrs.indexOf('"', from)
+  if (to < 0) return null
+  const [minX, minY, width, height] = root.attrs
+    .slice(from, to)
+    .trim()
+    .split(/\s+/)
+    .map(Number)
   if (!(width > 0) || !(height > 0)) return null
   return { minX, minY, width, height }
 }
@@ -359,11 +470,13 @@ export async function stage({ designMap, pagesManifest, pagesDir, previews, outp
     } catch {
       continue
     }
-    // Rendered lazily and at most once per page: only pages that actually carry a wanted node pay
-    // for it, and a page whose nodes all fail to slice never rasterises at all.
+    // Both of these are per-page work done at most once, and only when a node on this page is
+    // actually wanted: the definitions every slice carries, and the backdrop raster every slice
+    // samples its background from.
+    const defs = collectDefs(svg)
     let backdrop
     for (const [previewId, target] of outstanding) {
-      const doc = sliceNode(svg, target.nodeId)
+      const doc = sliceNode(svg, target.nodeId, defs)
       if (!doc) continue
       let png
       try {
