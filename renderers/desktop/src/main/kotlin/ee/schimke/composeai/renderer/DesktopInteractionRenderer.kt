@@ -12,6 +12,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
+import ee.schimke.composeai.motion.InteractionScript
+import ee.schimke.composeai.motion.InteractionTimeline
+import ee.schimke.composeai.motion.MotionGesture
 import java.io.File
 
 /**
@@ -75,7 +78,7 @@ fun renderInteractionPreview(
 
   val frameInterval = spec.frameIntervalMs.coerceAtLeast(1)
   val timeline = spec.timeline()
-  val totalDuration = timeline.durationMs.coerceAtMost(MAX_INTERACTION_DURATION_MS)
+  val totalDuration = timeline.cappedDurationMs
   val frameCount = (totalDuration / frameInterval).coerceAtLeast(1)
 
   val rtl = rendersRightToLeft(localeTag)
@@ -227,29 +230,21 @@ data class InteractionSpec(
   /**
    * Expands the script into an ordered event list plus the total window to capture.
    *
-   * The duration is *derived* here rather than declared anywhere: it is the lead-in plus, per
-   * target, one press and one settle window. That keeps a script and its recording from disagreeing
-   * about how long the component was given to respond — a hand-set duration that fell short would
-   * cut the last spring off mid-flight, which is the exact thing being documented.
+   * The expansion itself lives in `:data-motion-core` because the Robolectric backend performs the
+   * same one, and the window is *derived* rather than declared: it is the lead-in plus, per target,
+   * one press and one settle window. Deriving it twice is how a script and its recording start
+   * disagreeing about how long the component was given to respond — and a window that fell short
+   * would cut the last spring off mid-flight, which is the exact thing being documented.
    */
-  fun timeline(): InteractionTimeline {
-    val pressMs = if (gesture == InteractionGestureKind.PRESS_AND_HOLD) holdMs else TAP_PRESS_MS
-    val events = mutableListOf<InteractionEvent>()
-    var cursor = leadInMs
-    for (target in targets) {
-      events += InteractionEvent(atMs = cursor, target = target, down = true)
-      events += InteractionEvent(atMs = cursor + pressMs, target = target, down = false)
-      cursor += pressMs + gapMs
-    }
-    return InteractionTimeline(events = events, durationMs = cursor)
-  }
+  fun timeline(): InteractionTimeline =
+    InteractionScript.timeline(
+      gesture = gesture.toMotionGesture(),
+      targets = targets,
+      holdMs = holdMs,
+      gapMs = gapMs,
+      leadInMs = leadInMs,
+    )
 }
-
-/** One pointer transition on the virtual timeline. */
-data class InteractionEvent(val atMs: Int, val target: Int, val down: Boolean)
-
-/** The expanded script: what to dispatch when, and how long to keep capturing. */
-data class InteractionTimeline(val events: List<InteractionEvent>, val durationMs: Int)
 
 /** Mirrors `ee.schimke.composeai.preview.InteractionGesture` on the renderer side. */
 enum class InteractionGestureKind {
@@ -257,26 +252,15 @@ enum class InteractionGestureKind {
   PRESS_AND_HOLD,
 }
 
+/** The shared-script spelling of this gesture. */
+private fun InteractionGestureKind.toMotionGesture(): MotionGesture =
+  when (this) {
+    InteractionGestureKind.TAP -> MotionGesture.TAP
+    InteractionGestureKind.PRESS_AND_HOLD -> MotionGesture.PRESS_AND_HOLD
+  }
+
 /** Mirrors `ee.schimke.composeai.preview.MotionFormat` on the renderer side. */
 enum class MotionFormatKind {
   APNG,
   GIF,
 }
-
-/**
- * Pointer-down dwell for a [InteractionGestureKind.TAP], in ms.
- *
- * Long enough that the press is a real, observable state — Compose's ripple and Material's state
- * layer both start on `down`, and a `down`/`up` inside one frame would document a component that
- * changed state without ever appearing to be touched. Short enough to stay a tap: it sits well
- * under the long-press threshold, so a component that distinguishes the two takes the tap branch.
- */
-private const val TAP_PRESS_MS = 90
-
-/**
- * Hard cap on a captured interaction window. Higher than the animation path's 5s because an
- * interaction is inherently a sequence — five taps with a settle window each is legitimately longer
- * than any single animation — but still bounded, since every frame is a full-size PNG in the
- * output.
- */
-private const val MAX_INTERACTION_DURATION_MS = 10_000

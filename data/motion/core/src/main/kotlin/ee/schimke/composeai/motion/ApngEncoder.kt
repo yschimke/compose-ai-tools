@@ -1,4 +1,4 @@
-package ee.schimke.composeai.renderer
+package ee.schimke.composeai.motion
 
 import java.io.File
 import java.io.RandomAccessFile
@@ -6,16 +6,22 @@ import java.nio.ByteBuffer
 import java.util.zip.CRC32
 
 /**
- * Minimal pure-JVM Animated PNG encoder, local to `:renderer-desktop` so [renderLottieApng] can
- * stitch the per-frame PNGs Skiko emits into a single looping APNG without depending on a
- * higher-level module (the daemon ships a sibling `ApngEncoder` for its recording path; this copy
- * keeps the renderer's dependency graph flat and pulls no extra classpath resources in — a
- * `:daemon:core` dependency shadowed the renderer's own Lottie test fixtures).
+ * Minimal pure-JVM Animated PNG encoder.
  *
- * **Why APNG here.** The discovered-Lottie animated companion renders against a transparent
- * background; GIF's 1-bit alpha can't carry the anti-aliased edge, so it churned run-to-run. APNG
- * is a standard PNG container with full 8-bit alpha, so the RGBA frames Skiko encodes travel
- * through unchanged.
+ * Lives here rather than in a renderer because both renderers need it and neither can see the
+ * other: the desktop backend stitches Skiko's per-frame PNGs (`renderLottieApng`, the motion
+ * captures), and the Robolectric backend stitches Roborazzi's (`handleInteractionCapture`). An
+ * `@InteractionPreview` is published from whichever backend the module happens to build with, so
+ * two copies of this encoder would mean one component's capture could differ in container bytes
+ * from its sibling's for no reason a reader could see. `:daemon:core` keeps its own separate copy
+ * on purpose — it is a different lane, and depending on a render module from there shadowed the
+ * renderer's own test fixtures.
+ *
+ * **Why APNG.** These captures carry anti-aliased edges over transparency — a Lottie companion
+ * against no background, a state layer mid-fade, a shape mid-morph. GIF's 1-bit alpha cannot hold
+ * that edge (it churned run-to-run) and its 1/100s delay quantisation cannot express 60fps. APNG is
+ * a standard PNG container with full 8-bit alpha and rational frame delays, so the RGBA frames
+ * travel through unchanged at the rate they were authored for.
  *
  * **Wire shape** (per the [APNG spec](https://wiki.mozilla.org/APNG_Specification)): the standard
  * PNG stream plus `acTL` (once, after IHDR), and per frame an `fcTL`; frame 0's pixels stay in
@@ -23,7 +29,7 @@ import java.util.zip.CRC32
  * frame's `IDAT` bytes verbatim rather than re-deflating — so all frames must share an IHDR (same
  * width × height × colour type), which the fixed-size capture surface guarantees.
  */
-internal object ApngEncoder {
+object ApngEncoder {
 
   private val PNG_SIGNATURE = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10) // 0x89 PNG\r\n SUB \n
   private const val CHUNK_TYPE_IHDR = "IHDR"

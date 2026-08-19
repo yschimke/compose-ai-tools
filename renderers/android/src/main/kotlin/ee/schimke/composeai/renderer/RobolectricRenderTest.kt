@@ -1534,9 +1534,16 @@ abstract class RobolectricRenderTestBase(
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
               .sortedWith(
                 compareBy<RenderJob> { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
-                  // Animated captures consume a time window after their target.
+                  // Animated and interaction captures consume a time window after their target.
                   // Keep same-target still/product jobs before that window opens.
-                  .thenBy { if (it is CaptureRenderJob && it.capture.animation != null) 1 else 0 }
+                  .thenBy {
+                    if (
+                      it is CaptureRenderJob &&
+                        (it.capture.animation != null || it.capture.interaction != null)
+                    )
+                      1
+                    else 0
+                  }
               )
           var captureIndex = 0
           jobs.forEachIndexed { jobIndex, job ->
@@ -1659,15 +1666,17 @@ abstract class RobolectricRenderTestBase(
               scroll != null &&
                 scroll.mode == ScrollMode.LONG &&
                 scroll.axis == ScrollAxis.VERTICAL &&
-                handleLongCaptureInternal(
-                  rule = rule,
-                  scroll = scroll,
-                  previewId = preview.id,
-                  heightDp = heightDp,
-                  isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                  outputFile = outputFile,
-                  settleFrames = settleStillFrame,
-                )
+                motionCaptureOrSidecar(outputFile, preview.id, "@ScrollingPreview(LONG)") {
+                  handleLongCaptureInternal(
+                    rule = rule,
+                    scroll = scroll,
+                    previewId = preview.id,
+                    heightDp = heightDp,
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                    outputFile = outputFile,
+                    settleFrames = settleStillFrame,
+                  )
+                }
             if (forceLongFlatten) {
               rule.runOnUiThread {
                 reduceMotionState.value = false
@@ -1704,14 +1713,16 @@ abstract class RobolectricRenderTestBase(
                 scroll != null &&
                 scroll.mode == ScrollMode.GIF &&
                 scroll.axis == ScrollAxis.VERTICAL &&
-                handleGifCapture(
-                  rule = rule,
-                  scroll = scroll,
-                  previewId = preview.id,
-                  heightDp = heightDp,
-                  isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                  outputFile = outputFile,
-                )
+                motionCaptureOrSidecar(outputFile, preview.id, "@ScrollingPreview(GIF)") {
+                  handleGifCapture(
+                    rule = rule,
+                    scroll = scroll,
+                    previewId = preview.id,
+                    heightDp = heightDp,
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                    outputFile = outputFile,
+                  )
+                }
             if (forceGifMotion) {
               rule.runOnUiThread {
                 reduceMotionState.value = true
@@ -1733,15 +1744,17 @@ abstract class RobolectricRenderTestBase(
                 !gifHandled &&
                 job is CaptureRenderJob &&
                 job.capture.animation != null &&
-                handleAnimatedCapture(
-                    rule = rule,
-                    animation = job.capture.animation,
-                    previewId = preview.id,
-                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                    outputFile = outputFile,
-                    curveCapture = animationCurveCapture,
-                    glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
-                  )
+                motionCaptureOrSidecar(outputFile, preview.id, "@AnimatedPreview") {
+                    handleAnimatedCapture(
+                      rule = rule,
+                      animation = job.capture.animation,
+                      previewId = preview.id,
+                      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                      outputFile = outputFile,
+                      curveCapture = animationCurveCapture,
+                      glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                    )
+                  }
                   .also { handled ->
                     // The clock has been driven well past `currentTime`
                     // by the animation pass — keep our local marker in
@@ -1762,20 +1775,54 @@ abstract class RobolectricRenderTestBase(
                 !animationHandled &&
                 job is CaptureRenderJob &&
                 job.capture.focusGif != null &&
-                handleFocusGifCapture(
-                    rule = rule,
-                    focusGif = job.capture.focusGif,
-                    previewId = preview.id,
-                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                    outputFile = outputFile,
-                    glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
-                  )
+                motionCaptureOrSidecar(outputFile, preview.id, "@FocusedPreview(gif=true)") {
+                    handleFocusGifCapture(
+                      rule = rule,
+                      focusGif = job.capture.focusGif,
+                      previewId = preview.id,
+                      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                      outputFile = outputFile,
+                      glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                    )
+                  }
                   .also { handled ->
                     if (handled) {
                       val perStep =
                         (job.capture.focusGif.frameDelayMs.toLong() + FocusController.SETTLE_MS)
                       currentTime += perStep * job.capture.focusGif.steps.size
                     }
+                  }
+
+            // @InteractionPreview: resolve the script's targets against the resting layout, then
+            // dispatch a real pointer gesture at each while sampling the paused clock frame by
+            // frame, encoded as an APNG (or GIF). The Android lane reads the same `previews.json`
+            // the desktop lane does — before issue #4215 the renderer simply dropped
+            // `Capture.interaction` as an unknown key, so an annotated preview on this backend
+            // produced no capture at all and then took its own still down with it.
+            val interactionHandled =
+              !longHandled &&
+                !gifHandled &&
+                !animationHandled &&
+                !focusGifHandled &&
+                job is CaptureRenderJob &&
+                job.capture.interaction != null &&
+                motionCaptureOrSidecar(outputFile, preview.id, "@InteractionPreview") {
+                    handleInteractionCapture(
+                      rule = rule,
+                      interaction = job.capture.interaction,
+                      previewId = preview.id,
+                      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                      outputFile = outputFile,
+                      wrapWidth = wrapWidth,
+                      wrapHeight = wrapHeight,
+                      padArgb = resolveBackgroundColor(params).toArgb(),
+                      measuredContent = { measured },
+                    )
+                  }
+                  .also { handled ->
+                    // The gesture loop drove the shared clock across its whole window — keep the
+                    // local marker in step so any following capture's monotonicity check holds.
+                    if (handled) currentTime += job.capture.interaction.windowMs()
                   }
 
             // `handleLongCapture` / `handleGifCapture` returned false
@@ -1790,28 +1837,46 @@ abstract class RobolectricRenderTestBase(
             // Write a structured error sidecar instead so the panel
             // surfaces the real failure.
             val productFellThrough = job is ProductRenderJob && !longHandled && !gifHandled
-            // The same reasoning applies to a CAPTURE job that targets a GIF —
-            // `@AnimatedPreview`, or `@FocusedPreview(gif = true)`. Those are
-            // CaptureRenderJobs, so the guard above never covered them: when the
-            // animated pass bailed (no frames, encoder refused, …) they fell
-            // through to the single `captureRoboImage` below and wrote PNG bytes
-            // to a `.gif` path. Nothing failed, the file looked plausible, and
-            // the extension lied to every consumer that trusts it — browser,
-            // Figma import, the preview server. Decide on the output extension,
-            // not the job type, so a still can never land under a `.gif` name.
-            val animatedCaptureFellThrough =
+            // The same reasoning applies to a CAPTURE job that targets a motion container —
+            // `@AnimatedPreview`, `@FocusedPreview(gif = true)`, or `@InteractionPreview`. Those
+            // are CaptureRenderJobs, so the guard above never covered them: when the motion pass
+            // bailed (no frames, encoder refused, …) they fell through to the single
+            // `captureRoboImage` below and wrote PNG bytes to a `.gif` / `.apng` path. Nothing
+            // failed, the file looked plausible, and the extension lied to every consumer that
+            // trusts it — browser, Figma import, the preview server. Decide on the output
+            // extension, not the job type, so a still can never land under a motion name. An
+            // `@InteractionPreview` is why this now keys on a set rather than on `"gif"`: its
+            // default container is APNG, so before issue #4215 an unhandled interaction capture
+            // fell straight past this guard.
+            val motionCaptureFellThrough =
               job is CaptureRenderJob &&
                 !animationHandled &&
                 !focusGifHandled &&
-                outputFile.extension.equals("gif", ignoreCase = true)
-            if (animatedCaptureFellThrough) {
+                !interactionHandled &&
+                outputFile.extension.lowercase() in MOTION_OUTPUT_EXTENSIONS
+            if (motionCaptureFellThrough) {
+              val interaction = (job as CaptureRenderJob).capture.interaction
               RenderErrorSidecar.write(
                 outputFile,
                 IllegalStateException(
-                  "Animated capture on '${preview.id}' produced no GIF — refusing to " +
-                    "write a single-frame PNG into the .gif output path. Most often the " +
-                    "preview has an unbounded axis: pin widthDp AND heightDp on an " +
-                    "@AnimatedPreview so the frames share one fixed size."
+                  if (interaction != null) {
+                    // An interaction capture that produced nothing is almost never a sizing
+                    // problem — it is a script that found nothing to press, which the target
+                    // resolution normally catches loudly. Name the script rather than repeating
+                    // the animated path's advice.
+                    "@InteractionPreview on '${preview.id}' produced no " +
+                      "${outputFile.extension.lowercase()} — the scripted " +
+                      "${interaction.gesture} on target(s) " +
+                      "${interaction.targets.joinToString()} recorded no frames, and a " +
+                      "single-frame PNG must not be written into the " +
+                      ".${outputFile.extension.lowercase()} output path."
+                  } else {
+                    "Animated capture on '${preview.id}' produced no " +
+                      "${outputFile.extension.lowercase()} — refusing to " +
+                      "write a single-frame PNG into the .${outputFile.extension.lowercase()} " +
+                      "output path. Most often the preview has an unbounded axis: pin widthDp " +
+                      "AND heightDp on an @AnimatedPreview so the frames share one fixed size."
+                  }
                 ),
               )
             } else if (productFellThrough) {
@@ -1825,7 +1890,13 @@ abstract class RobolectricRenderTestBase(
                     "single-frame capture into the data product path."
                 ),
               )
-            } else if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled) {
+            } else if (
+              !longHandled &&
+                !gifHandled &&
+                !animationHandled &&
+                !focusGifHandled &&
+                !interactionHandled
+            ) {
               // TOP mode is the unscrolled initial frame — no
               // drive, just a capture. END mode drives the first
               // scrollable on the requested axis to its content
@@ -1878,11 +1949,12 @@ abstract class RobolectricRenderTestBase(
             val capturedDialogWindow =
               if (
                 !productFellThrough &&
-                  !animatedCaptureFellThrough &&
+                  !motionCaptureFellThrough &&
                   !longHandled &&
                   !gifHandled &&
                   !animationHandled &&
-                  !focusGifHandled
+                  !focusGifHandled &&
+                  !interactionHandled
               ) {
                 // Re-resolved rather than reusing the capture's value: the clock has not moved
                 // since, so this sees the same roots, and it keeps the selection out of a mutable
@@ -1907,11 +1979,12 @@ abstract class RobolectricRenderTestBase(
             if (
               capturedDialogWindow == null &&
                 !productFellThrough &&
-                !animatedCaptureFellThrough &&
+                !motionCaptureFellThrough &&
                 !longHandled &&
                 !gifHandled &&
                 !animationHandled &&
                 !focusGifHandled &&
+                !interactionHandled &&
                 (wrapWidth || wrapHeight) &&
                 measured != null
             ) {
@@ -1925,11 +1998,12 @@ abstract class RobolectricRenderTestBase(
             if (
               capturedDialogWindow == null &&
                 !productFellThrough &&
-                !animatedCaptureFellThrough &&
+                !motionCaptureFellThrough &&
                 !longHandled &&
                 !gifHandled &&
                 !animationHandled &&
-                !focusGifHandled
+                !focusGifHandled &&
+                !interactionHandled
             ) {
               val resizeDensity = params.density ?: 2.0f
               resizeFixedAxesPng(
@@ -2923,6 +2997,49 @@ private const val TAIL_FLING_EPSILON_PX = 1f
  * the written PNG won't decode — one initial attempt plus retries.
  */
 internal const val FRAME_CAPTURE_ATTEMPTS = 3
+
+/**
+ * Output extensions a motion capture owns. A still must never be written under one of these names —
+ * see the `motionCaptureFellThrough` guard.
+ */
+internal val MOTION_OUTPUT_EXTENSIONS: Set<String> = setOf("gif", "apng")
+
+/**
+ * Runs one motion capture, keeping a failure inside the slot the capture owns.
+ *
+ * Every multi-frame handler ([handleLongCapture], [handleGifCapture], `handleAnimatedCapture`,
+ * `handleFocusGifCapture`, [handleInteractionCapture]) used to throw straight out to the
+ * per-preview `catch`, which writes `<pngFile>.error.json` — and `RenderErrorSidecar.write`
+ * *deletes the file at that path*. `pngFile` is the preview's **first** capture, i.e. its ordinary
+ * still. So a component whose GIF encoder declined, or whose interaction script found nothing to
+ * press, lost the perfectly good PNG sitting beside it, and a catalog gained a broken card while
+ * every other check stayed green (issue #4215 — two components in the Wear catalog lost their
+ * stills exactly this way).
+ *
+ * The still is independent and useful. Reporting the motion failure *beside the motion output* is
+ * what makes it a one-line diagnosis instead of an archaeology exercise: the sidecar names the slot
+ * that actually failed, and the still stays on disk.
+ *
+ * Returns `true` on a throw as well as on success — "this slot is owned by the motion capture" — so
+ * the caller cannot fall through and stamp a single-frame PNG into a `.gif` / `.apng` path.
+ *
+ * Catching [Throwable] rather than [Exception] for the same reason the per-preview handler does:
+ * `check` / `require` in a capture (or in the composable it drives) raise `AssertionError`, and an
+ * out-of-range `targets` index — the interaction path's loud failure — is exactly that.
+ */
+private inline fun motionCaptureOrSidecar(
+  outputFile: File,
+  previewId: String,
+  label: String,
+  capture: () -> Boolean,
+): Boolean =
+  try {
+    capture()
+  } catch (e: Throwable) {
+    System.err.println("$label on '$previewId' failed: ${e.message}")
+    RenderErrorSidecar.write(outputFile, e)
+    true
+  }
 
 /**
  * Capture one GIF frame to [file] and re-capture if the written PNG won't decode.

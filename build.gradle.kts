@@ -73,6 +73,7 @@ tasks.register("ktfmtFormatAll") {
 //     api :data-a11y-core
 //       api :data-render-core
 //     implementation :data-render-core
+//     implementation :data-motion-core
 //     implementation :data-scroll-core
 //       api :data-render-core
 //       api :data-render-compose
@@ -85,6 +86,8 @@ val androidFunctionalTestPublishTargets =
     ":data-a11y-core",
     ":data-render-core",
     ":data-render-compose",
+    // The `@InteractionPreview` script expansion + APNG encoder, shared with the desktop renderer.
+    ":data-motion-core",
     ":data-scroll-core",
     ":data-scroll-android",
     // The renderer + data modules read/write files through Okio's `:common-io` (its file-IO
@@ -121,6 +124,7 @@ tasks.register("functionalTestWithAndroid") {
 // `~/.m2` to resolve. The list is the closure of `:renderer-desktop`'s `implementation`/`api`
 // project deps:
 //   :renderer-desktop
+//     implementation :data-motion-core
 //     implementation :data-scroll-core
 //       api :data-render-core
 //       api :data-render-compose
@@ -157,6 +161,7 @@ val bundleRenderFunctionalTestPublishTargets =
     ":renderer-desktop",
     ":data-render-core",
     ":data-render-compose",
+    ":data-motion-core",
     ":data-scroll-core",
     ":data-pseudolocale-core",
     ":data-displayfilter-connector",

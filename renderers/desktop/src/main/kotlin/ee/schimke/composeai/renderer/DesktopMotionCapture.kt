@@ -14,6 +14,8 @@ import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import ee.schimke.composeai.motion.ApngEncoder
+import ee.schimke.composeai.motion.apngDelayFor
 import ee.schimke.composeai.scroll.ScrollGifEncoder
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -130,31 +132,6 @@ internal class MotionFrameCollector(
     }
   }
 }
-
-/**
- * The APNG frame delay for a capture authored at [frameIntervalMs] milliseconds per frame, as the
- * exact `numerator / denominator` fraction of a second that APNG stores.
- *
- * The canonical frame rates are snapped to their exact rational form rather than being carried as
- * `ms/1000`, because the millisecond is an *authoring* unit and the rate is what the reader sees.
- * 60fps is the case that forces this: it is 16.67ms, which no integer number of milliseconds names,
- * so a literal `16/1000` plays at 62.5fps and `17/1000` at 58.8fps. `1/60` is what the author meant
- * and what APNG can hold — and holding it is the reason a 60fps capture is worth having here at
- * all, since a GIF's 1/100s delay quantisation cannot express any of these rates.
- *
- * Anything else is carried literally as `ms/1000`, which is exact for every rate a millisecond can
- * name.
- */
-internal fun apngDelayFor(frameIntervalMs: Int): Pair<Short, Short> =
-  when (frameIntervalMs) {
-    16,
-    17 -> 1.toShort() to 60.toShort() // 60fps
-    20 -> 1.toShort() to 50.toShort() // 50fps
-    33,
-    34 -> 1.toShort() to 30.toShort() // 30fps
-    40 -> 1.toShort() to 25.toShort() // 25fps
-    else -> frameIntervalMs.toShort() to 1000.toShort()
-  }
 
 /**
  * Decodes a `MotionFormat` name off the renderer's positional argv, falling back to [default] for
