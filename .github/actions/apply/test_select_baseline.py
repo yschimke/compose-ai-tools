@@ -78,6 +78,23 @@ class SelectBaselineTest(unittest.TestCase):
         picked = sb.select_baseline(self.ENTRIES, self._ancestors("m3", "m1"))
         self.assertEqual(picked, ("bl3", "m3"))
 
+    def test_an_unjudgeable_entry_abandons_the_walk(self):
+        # `m4`'s object isn't local, so we cannot know whether it is in the
+        # PR's base. Stepping over it to `bl3` would pin Before to an older
+        # baseline than the newest valid one — more phantom entries than the
+        # tip we were trying to improve on. Unknown means keep the tip.
+        def oracle(source):
+            return None if source == "m4" else source in ("m3", "m1")
+
+        self.assertIsNone(sb.select_baseline(self.ENTRIES, oracle))
+
+    def test_an_unjudgeable_entry_below_the_answer_is_harmless(self):
+        # `m4` answers cleanly, so the walk never has to judge `m3`/`m1`.
+        def oracle(source):
+            return True if source == "m4" else None
+
+        self.assertEqual(sb.select_baseline(self.ENTRIES, oracle), ("bl4", "m4"))
+
     def test_falls_back_to_the_tip_when_nothing_qualifies(self):
         # None means "keep the branch tip" — the historical behaviour, which is
         # what this replaces, so it can never be a regression.
@@ -231,6 +248,29 @@ class SelectBaselineGitTest(unittest.TestCase):
         sha, skew, _ = self._select(clone, base_sha=self.main_shas[1])
         self.assertEqual(sha, self.baselines["m2"])
         self.assertEqual(skew["drift"], 0)
+
+    def test_a_baseline_source_missing_from_the_checkout_keeps_the_tip(self):
+        # A shallow checkout whose deepen fell back leaves older source commits
+        # unresolvable. Walking past them would select something older than the
+        # tip; the run must decline instead.
+        clone = self._clone("missing-source", "feature", depth=1)
+        proc = subprocess.run(
+            ["git", "commit", "-q", "--allow-empty", "-m",
+             "Update preview baselines from deadbeef"],
+            cwd=str(self.root / "work"), env=self.env, capture_output=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self._git("push", "-q", str(self.remote), "compose-preview/main",
+                  cwd=self.root / "work")
+        self.addCleanup(self._reset_baseline_branch)
+        sha, skew, stderr = self._select(clone, base_sha=self.main_shas[2])
+        self.assertIsNone(sha)
+        self.assertIsNone(skew)
+        self.assertIn("deadbeef", stderr)
+
+    def _reset_baseline_branch(self):
+        self._git("push", "-q", "-f", str(self.remote),
+                  f"{self.baselines['m4']}:refs/heads/compose-preview/main",
+                  cwd=self.root / "work")
 
     def test_unknown_base_writes_nothing_and_succeeds(self):
         # Caller falls back to the branch tip. Never a hard failure: a preview

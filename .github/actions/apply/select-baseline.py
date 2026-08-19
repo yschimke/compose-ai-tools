@@ -73,16 +73,27 @@ def parse_baseline_source(subject: str) -> str | None:
 
 def select_baseline(
     entries: Iterable[tuple[str, str]],
-    is_ancestor: Callable[[str], bool],
+    is_ancestor: Callable[[str], bool | None],
 ) -> tuple[str, str] | None:
     """Newest entry whose source commit is an ancestor-or-equal of the target.
 
     ``entries`` is (baseline commit, source main commit), newest first — the
-    order `git log` emits. Returns None when nothing qualifies, which the
-    caller reads as "keep the tip".
+    order `git log` emits. Returns None when nothing qualifies, which the caller
+    reads as "keep the tip".
+
+    ``is_ancestor`` is deliberately tri-state: True (in the target's history),
+    False (genuinely not), or **None** (can't tell — the object isn't local).
+    None must not be collapsed into False. Walking *past* an entry we couldn't
+    judge would hand back a baseline older than the newest valid one, which is
+    strictly worse than the tip it replaces: an older baseline means *more*
+    phantom entries in the diff, not fewer. So an unknown short-circuits the
+    whole walk and the caller keeps the tip.
     """
     for commit, source in entries:
-        if is_ancestor(source):
+        verdict = is_ancestor(source)
+        if verdict is None:
+            return None
+        if verdict:
             return commit, source
     return None
 
@@ -191,10 +202,16 @@ def main() -> int:
     if not entries:
         return bail(f"no baseline commits found on {args.branch}")
 
-    def is_ancestor(source: str) -> bool:
+    unresolved: list[str] = []
+
+    def is_ancestor(source: str) -> bool | None:
         resolved = _resolve(source)
         if resolved is None:
-            return False
+            # Not "not an ancestor" — unknown. A partially-deepened history
+            # (the fetch fell back, or the branch records a commit that never
+            # reached this remote) must abandon the walk, not step over it.
+            unresolved.append(source)
+            return None
         return subprocess.run(
             ["git", "merge-base", "--is-ancestor", resolved, target],
             capture_output=True,
@@ -202,6 +219,11 @@ def main() -> int:
 
     picked = select_baseline(entries, is_ancestor)
     if picked is None:
+        if unresolved:
+            return bail(
+                f"baseline source {unresolved[-1][:8]} is not in this checkout, "
+                f"so the newest in-base baseline can't be identified"
+            )
         return bail("no published baseline is an ancestor of this PR's base")
     commit, source = picked
 
