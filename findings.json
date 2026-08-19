@@ -1382,13 +1382,13 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.a11y.png",
-      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8.png",
+      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.a11y.png",
+      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.png",
       "findings": [
         {
           "boundsInScreen": "179,132,383,185",
           "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 5 other item(s).",
+          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 4 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
           "viewDescription": "android.widget.TextView"
         }
@@ -2545,20 +2545,6 @@
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        },
-        {
-          "boundsInScreen": "36,198,312,281",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        },
-        {
-          "boundsInScreen": "328,198,604,281",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "ButtonGroupRemote",
@@ -3288,13 +3274,6 @@
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        },
-        {
-          "boundsInScreen": "106,158,294,241",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "TonalRemoteButton",
