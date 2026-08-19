@@ -42,6 +42,12 @@ internal object ServeWebAssets {
       // Opt-in site-wide power-user navigation. Separate from the Lit bundle because Settings is
       // on every page while only pages with Lit controls currently load serve-components.js.
       "keyboard-navigation.js" to "text/javascript; charset=utf-8",
+      // The report capture tool: grab a frame of the current tab, crop it to a dragged region or a
+      // pointed-at element, and hand the PNG to the clipboard. Its own bundle, and fetched only
+      // when someone opens the report launcher — it is several kilobytes that matter to the
+      // fraction of visits that file something, and `serve-chrome.js` is on every page including
+      // the front door.
+      "report-capture.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
     )

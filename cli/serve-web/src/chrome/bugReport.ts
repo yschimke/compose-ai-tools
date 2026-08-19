@@ -9,28 +9,10 @@
 // server-rendered forms whose `action` is a literal the script never touches — the rule the serve
 // UI follows everywhere it puts page-derived state into a link (see `ServeIssueReport.action`).
 
+import { whenReady } from "../dom/whenReady.js";
+
 /** Params the report page needs from the visitor's current URL, and nothing else. */
 const CARRIED = ["token"];
-
-/**
- * Run [fn] once the document has a body to query.
- *
- * Load-bearing, not defensive. `ServeWeb.document` emits `serve-chrome.js` as the FIRST element in
- * `<body>`, ahead of every surface's own scripts, and the tag carries no `defer` — so at evaluation
- * time neither the footer nor this page's own content has been parsed. Installing eagerly found no
- * elements and no-opped permanently: the footer submitted an empty `from` (losing all page context,
- * and on a token-gated host losing the token too, so `/report-bug` 404'd), and the report page never
- * added its browser section. Both failures were silent — the affordance still looked right.
- *
- * The same shape `installPageTheme` uses for its own DOM wiring, and for the same reason.
- */
-function whenReady(fn: () => void): void {
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", fn, { once: true });
-    } else {
-        fn();
-    }
-}
 
 /**
  * Fill the footer form's hidden inputs so pressing "report a bug" arrives at `/report-bug` knowing
@@ -57,15 +39,29 @@ export function installBugReportLink(): void {
         // something was wrong. That would report and re-render the wrong overrides through the
         // server's own override propagation, which is the whole point of carrying `from`.
         document
-            .querySelector<HTMLFormElement>(".cp-report-bug")
-            ?.addEventListener("submit", fillBugReportLink);
+            .querySelectorAll<HTMLFormElement>(".cp-report-bug")
+            .forEach((form) =>
+                form.addEventListener("submit", fillBugReportLink),
+            );
     });
 }
 
-/** The fill itself, separated from the scheduling so tests can drive it against a built DOM. */
+/**
+ * The fill itself, separated from the scheduling so tests can drive it against a built DOM.
+ *
+ * Fills EVERY copy of the form on the page. There are two entry points to `/report-bug` — the
+ * footer link and the floating launcher — and they are the same three hidden inputs twice.
+ * `querySelector` filled whichever came first in the document, so the launcher submitted an empty
+ * `from` (losing the page, and on a gated host the token with it) while the footer beside it worked
+ * perfectly: a failure invisible from either end.
+ */
 export function fillBugReportLink(): void {
-    const form = document.querySelector<HTMLFormElement>(".cp-report-bug");
-    if (!form) return;
+    document
+        .querySelectorAll<HTMLFormElement>(".cp-report-bug")
+        .forEach(fillOne);
+}
+
+function fillOne(form: HTMLFormElement): void {
     const from = form.querySelector<HTMLInputElement>('input[name="from"]');
     const token = form.querySelector<HTMLInputElement>('input[name="token"]');
     const scheme = form.querySelector<HTMLInputElement>('input[name="scheme"]');

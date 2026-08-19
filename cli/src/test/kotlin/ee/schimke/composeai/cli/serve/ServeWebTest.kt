@@ -888,7 +888,7 @@ class ServeWebTest {
     // server-rendered literal and the prefill rides in a hidden input the browser encodes on
     // submit. The link-styled toggle is the disclosure's own <summary>, so it works with JS off.
     assertTrue(
-      html.contains("<details class=\"cp-report\" id=\"cp-report\">") &&
+      html.contains("<details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"o/r\">") &&
         html.contains("<summary class=\"cp-report-link\"") &&
         html.contains("<form class=\"cp-report-form\" method=\"get\"") &&
         html.contains("action=\"https://github.com/o/r/issues/new\""),
@@ -916,9 +916,15 @@ class ServeWebTest {
       "carries the template the viewer JS re-substitutes at the current overrides",
     )
     // The toggle's tooltip and the panel's note both name the repo the issue lands on, and — when
-    // this box knows the visitor's GitHub session — whose account will author it.
-    assertTrue(html.contains("title=\"File an issue on o/r as @octocat\""), html)
-    assertTrue(html.contains("Files against o/r as @octocat."), html)
+    // this box knows the visitor's GitHub session — whose account will author it. Both also say
+    // what the report is ABOUT: this server has a second one a click away in the footer, and the
+    // two used to be distinguishable only by where they sat on the page.
+    assertTrue(
+      html.contains("title=\"Something wrong with this preview — files against o/r as @octocat\""),
+      html,
+    )
+    assertTrue(html.contains("Files against <code>o/r</code> as @octocat"), html)
+    assertTrue(html.contains("<em>not</em> the preview server"), html)
   }
 
   @Test
