@@ -22,6 +22,12 @@ import { LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { sameOriginNavigation } from "../dom/sameOrigin.js";
 import { whenParsed } from "../dom/whenParsed.js";
+import {
+    FrameQueue,
+    frameBlob,
+    shouldPaintDecodedFrame,
+    type ServeFrame,
+} from "../live/framePainter.js";
 import { drifted, framePixel } from "../live/pointerMap.js";
 import {
     closeReason,
@@ -45,6 +51,10 @@ interface Session {
     chip: HTMLElement;
     socket: WebSocket | null;
     pointers: Map<number, { x: number; y: number; moved: boolean }>;
+    /** Newest-wins frame queue + the highest `seq` actually painted. See `live/framePainter.ts`. */
+    frames: FrameQueue;
+    paintedSeq: number;
+    painting: boolean;
 }
 
 interface Press {
@@ -250,8 +260,12 @@ export class CatalogLive extends LitElement {
             chip,
             socket: null,
             pointers: new Map(),
+            frames: new FrameQueue(),
+            paintedSeq: -1,
+            painting: false,
         };
         this.active = session;
+        this.runFrameLoop(session);
 
         let socket: WebSocket;
         try {
@@ -274,6 +288,7 @@ export class CatalogLive extends LitElement {
             if (this.active !== session) return;
             let message: {
                 type?: string;
+                seq?: number;
                 dataBase64?: string;
                 codec?: string;
                 message?: string;
@@ -286,11 +301,7 @@ export class CatalogLive extends LitElement {
             if (message.type === "frame") {
                 gotFrame = true;
                 session.chip.textContent = "live";
-                this.drawFrame(
-                    session,
-                    message.dataBase64 ?? "",
-                    message.codec,
-                );
+                session.frames.submit(message as ServeFrame);
             } else if (message.type === "error") {
                 session.chip.textContent = message.message || "error";
             }
@@ -304,15 +315,53 @@ export class CatalogLive extends LitElement {
         this.wireInput(session);
     }
 
-    private drawFrame(session: Session, b64: string, codec?: string): void {
-        const image = new Image();
-        image.onload = () => {
-            if (this.active !== session) return;
-            session.canvas.width = image.naturalWidth;
-            session.canvas.height = image.naturalHeight;
-            session.canvas.getContext("2d")?.drawImage(image, 0, 0);
+    /**
+     * Drain one queued frame per animation frame, for as long as this session is the live one.
+     *
+     * Frames are never painted straight from the socket handler. Two watermarks keep the card
+     * moving forwards: the queue drops anything at or below the last frame it released, and
+     * `paintedSeq` drops anything whose decode resolved out of order — see `live/framePainter.ts`
+     * for why the second one is load-bearing and not belt-and-braces.
+     */
+    private runFrameLoop(session: Session): void {
+        if (session.painting) return;
+        session.painting = true;
+        const tick = (): void => {
+            if (this.active !== session) {
+                session.painting = false;
+                return;
+            }
+            const frame = session.frames.dispatch();
+            if (frame) this.decodeAndPaint(session, frame);
+            requestAnimationFrame(tick);
         };
-        image.src = `data:image/${codec || "png"};base64,${b64}`;
+        requestAnimationFrame(tick);
+    }
+
+    private decodeAndPaint(session: Session, frame: ServeFrame): void {
+        const blob = frameBlob(frame);
+        if (!blob) return; // heartbeat — the daemon says the pixels are unchanged
+        createImageBitmap(blob).then(
+            (bitmap) => {
+                // The decode may have resolved after a newer frame already painted, and the card
+                // may have stopped streaming entirely while it was in flight.
+                if (
+                    this.active !== session ||
+                    !shouldPaintDecodedFrame(session.paintedSeq, frame.seq)
+                ) {
+                    bitmap.close();
+                    return;
+                }
+                session.paintedSeq = frame.seq;
+                session.canvas.width = bitmap.width;
+                session.canvas.height = bitmap.height;
+                session.canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+                bitmap.close();
+            },
+            () => {
+                // A frame that won't decode is dropped; the next one repaints the card.
+            },
+        );
     }
 
     // ---- input forwarding ----------------------------------------------------
