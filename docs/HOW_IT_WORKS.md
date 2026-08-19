@@ -136,15 +136,31 @@ budget somewhere a consumer's build can fail on — is issue #4239.
 An animation with no end can't quiesce, so it captures at the `maxMs` bound —
 the annotation belongs on a reveal, not on a spinner.
 
-**Lane coverage.** The batch render honours the settle on both backends, and
-the **Android daemon** (`compose-preview serve` against a Robolectric module)
-folds the window into the same `captureAdvanceMs` base the batch renderer uses,
-so a live Wear/Android frame agrees with the published PNG. The **desktop
-daemon** does not yet: it holds a frame cursor across the two `render()` calls
-of a capture and reuses it for the interactive session, so installing a settle
-clock there is a change to that cursor's contract rather than a change to one
-render — tracked in issue #4238. A settled CMP preview served live therefore
-still shows its first frame; its published PNG is settled.
+**Lane coverage.** Every still lane honours the settle. The batch render does on
+both backends; the **Android daemon** (`compose-preview serve` against a
+Robolectric module) folds the window into the same `captureAdvanceMs` base the
+batch renderer uses; and the **desktop daemon** builds its scene on a
+`DesktopSettleClock` when the preview carries one, walks the window once per
+composition, and pins the capture frame to the coordinate the walk stopped on
+(issue #4238). So a live frame agrees with the published PNG on all four.
+
+The one place a settle is deliberately *not* installed is a held
+**interactive or recording** session. Those scenes are driven by wall time, and
+a dispatcher that only advances when the engine calls `advanceTo` would freeze
+every `delay` the user's own clicks start — and once a human is driving the
+preview, "the settled frame" has stopped being a well-defined thing to show.
+
+**Pairing a settle with a motion product.** `@SettledPreview` alongside
+`@AnimatedPreview`, `@InteractionPreview` or `@FocusedPreview(gif = true)` on
+one function used to be reported and dropped: both products render from one
+composition against one paused clock, the GIF needs the timeline from its start
+and the settled still a coordinate near the end, and virtual time does not
+rewind. Both are served now (issue #4244), because the settled still gets a
+composition of its own — the desktop lane always had one per output, since every
+capture is a separate `ImageComposeScene`, and the Android lane runs a second
+`setContent` pass for the settled row. Discovery also stops suppressing the
+static capture a motion product would otherwise own outright: a `@SettledPreview`
+*is* a request for a still.
 
 ### Freezing a preview at an intermediate animation frame
 

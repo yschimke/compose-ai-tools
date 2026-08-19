@@ -675,9 +675,14 @@ class RenderEngine(
                     captureAdvanceMs = CAPTURE_ADVANCE_MS,
                   )
                 }
+            // Through the same frame split the batch renderer uses, so a coordinate that is not a
+            // multiple of 16ms lands on the coordinate here too rather than a frame past it —
+            // otherwise a live `compose-preview serve` frame and the published PNG would disagree
+            // by one frame for exactly the previews that named an exact instant (issue #4247).
             trace.section("compose:advanceClock") {
-              rule.mainClock.advanceTimeBy(
-                spec.captureAdvanceMs ?: settleTargetMs ?: CAPTURE_ADVANCE_MS
+              ee.schimke.composeai.renderer.advanceMainClockBy(
+                rule,
+                spec.captureAdvanceMs ?: settleTargetMs ?: CAPTURE_ADVANCE_MS,
               )
             }
 
@@ -766,13 +771,12 @@ class RenderEngine(
                     advanceFrame = { rule.mainClock.advanceTimeByFrame() },
                     capture = ::capture,
                   )
-                if (!visuallySettled) {
-                  System.err.println(
-                    "compose-ai-daemon: [render] frame did not become visually quiescent after " +
-                      "${ee.schimke.composeai.renderer.VISUAL_SETTLE_MAX_SAMPLES} samples; " +
-                      "using the latest frame."
-                  )
-                }
+                // Recorded rather than merely printed, so the live lane's sidecar says the same
+                // thing the batch lane's does (issue #4239).
+                ee.schimke.composeai.renderer.VisualSettleDiagnostics.record(
+                  "compose-ai-daemon still '${spec.outputBaseName}'",
+                  visuallySettled,
+                )
               } else {
                 capture(outputFile)
               }
@@ -1081,6 +1085,9 @@ class RenderEngine(
     // render lands in this preview's warnings sidecar. The loader swap itself happens inside the
     // statement below, next to the composition it has to precede.
     CoilLoadDiagnostics.beginPreview()
+    // And for the still-capture quiescence probe, so an unsettled daemon still is attributed to
+    // this render rather than leaking into the next one (issue #4239).
+    ee.schimke.composeai.renderer.VisualSettleDiagnostics.beginPreview()
     // B2.0 — install the child classloader as the context classloader for the duration of the
     // render dispatch. Compose's reflection paths (notably PreviewParameter providers — see
     // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would
@@ -1127,6 +1134,7 @@ class RenderEngine(
       outputFile,
       fontFallbacks,
       CoilLoadDiagnostics.drainPreview(),
+      ee.schimke.composeai.renderer.VisualSettleDiagnostics.drainPreview(),
     )
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L

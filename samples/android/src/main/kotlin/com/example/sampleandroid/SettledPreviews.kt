@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.preview.AnimatedPreview
 import ee.schimke.composeai.preview.SettledPreview
 import kotlinx.coroutines.delay
 
@@ -109,4 +110,26 @@ fun DeferredValueUnsettledPreview() {
 @Composable
 fun DeferredValueSettledPreview() {
   DeferredValueField()
+}
+
+/**
+ * `@SettledPreview` **and** `@AnimatedPreview` on one function (issue #4244).
+ *
+ * The two want opposite things from a paused clock — the GIF records the reveal from its start, the
+ * settled still wants the coordinate where it has finished — and virtual time does not rewind. So
+ * discovery used to drop the settle and emit a warning naming the collision, which was circular:
+ * the still it was meant to fix had already been suppressed by the GIF owning the function.
+ *
+ * Both ship now. The renderers give the settled still a composition of its own — the desktop lane
+ * always had one per output, the Android lane runs a second `setContent` pass — so this preview
+ * publishes `renders/SettledPlusAnimatedPreview.png` at the end of the reveal *and*
+ * `renders/SettledPlusAnimatedPreview.gif` covering it from the beginning. Committed as the
+ * regression pin: if the two ever share a timeline again, one of the pair goes wrong visibly.
+ */
+@SettledPreview
+@AnimatedPreview
+@Preview(name = "Settled + animated", showBackground = true, widthDp = 200, heightDp = 200)
+@Composable
+fun SettledPlusAnimatedPreview() {
+  RevealCard()
 }

@@ -46,12 +46,17 @@ package ee.schimke.composeai.preview
  * GIF and an `@InteractionPreview` recording all drive the clock themselves and are left alone.
  *
  * Pairing this with a motion product on the **same function** — `@AnimatedPreview`,
- * `@InteractionPreview`, or `@FocusedPreview(gif = true)` — is reported and ignored, rather than
- * half-honoured. Both products render from one composition against one paused clock and want
- * opposite things from it: the GIF needs the timeline from its start, the settled still needs a
- * coordinate near the end, and virtual time does not rewind. Put them on separate preview functions
- * — each then owns its own composition — and both get what they asked for. Serving both from one
- * function is tracked in issue #4244.
+ * `@InteractionPreview`, or `@FocusedPreview(gif = true)` — works, and produces both: the motion
+ * artefact recorded from the start of the timeline, and a settled still beside it. They cannot
+ * share a timeline (the GIF needs it from its start, the settled still needs a coordinate near the
+ * end, and virtual time does not rewind), so the renderer composes the preview a second time for
+ * the still rather than picking a winner. That second composition is the cost — a paired function
+ * renders twice.
+ *
+ * On a `@FocusedPreview` an [afterMs] below `32` is raised to `32` with a warning: a focused
+ * capture spends its first two frames laying out the tree the focus walk searches, so nothing
+ * focusable exists before then and a shorter coordinate would mean two different instants on the
+ * two backends.
  *
  * Auto mode walks the window in frame-sized steps, so it is proportional to [maxMs]: keep the
  * default unless a reveal genuinely runs longer, and prefer an explicit [afterMs] on a component
@@ -72,6 +77,9 @@ annotation class SettledPreview(
    * says in the source what the component is waiting for.
    *
    * Negative values are clamped to `0` (auto).
+   *
+   * "Exact" is as exact as a 16ms frame clock allows: the renderer lands the clock on this
+   * coordinate, and the composition state captured is the last frame at or before it.
    */
   val afterMs: Int = AUTO_SETTLE_MS,
   /**
