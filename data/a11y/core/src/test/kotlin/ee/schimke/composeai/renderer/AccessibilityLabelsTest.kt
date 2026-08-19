@@ -1,212 +1,157 @@
 package ee.schimke.composeai.renderer
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
- * Pure-JVM coverage of [AccessibilityLabels.rollUpMergedLabels] — the pass that gives a focus stop
- * the announcement its merged descendants carry (issue #4253). ATF itself needs a real `View`
- * graph, so the shapes it produces are written out here as the flat node list the walk emits,
- * bounds and all: which nodes a stop folded in is reconstructed from emission order **and** those
- * bounds.
+ * Pure-JVM coverage of [AccessibilityLabels.announcement] — what a screen reader says for an
+ * element, given the copy it carries and the copy of the descendants it folds in (issue #4253).
+ *
+ * ATF's own `ViewHierarchyElement` needs a real `View` graph to construct, so the trees here are
+ * hand-built through [AccessibilityLabels.Element]. That the shapes are the ones ATF really
+ * produces is measured separately, against a rendered Wear button, by `:renderer-android`'s
+ * `WearButtonA11yHierarchyProbeTest`.
  */
 class AccessibilityLabelsTest {
 
-  private fun node(
-    label: String,
-    bounds: String,
-    role: String? = null,
-    states: List<String> = emptyList(),
-    merged: Boolean = true,
-  ) =
-    AccessibilityNode(
-      label = label,
-      role = role,
-      states = states,
-      merged = merged,
-      boundsInScreen = bounds,
-    )
+  private class Node(
+    override val ownLabel: String = "",
+    override val mergesDescendants: Boolean = false,
+    override val children: List<AccessibilityLabels.Element> = emptyList(),
+    // Every merging element is a stop; the interesting case is the stop that does NOT merge, which
+    // is why this is settable on its own.
+    override val isFocusStop: Boolean = mergesDescendants,
+  ) : AccessibilityLabels.Element
 
   @Test
-  fun `blank stop takes the label of the descendants it merges`() {
-    // A Wear `Button(icon = …, label = { Text("Filled") })`: the click lands on the merging
-    // surface, the copy on an unmerged Text child. The hierarchy issue #4253 reported, verbatim.
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "16,16,209,120", states = listOf("clickable")),
-          node("Filled", "104,50,181,86", role = "TextView", merged = false),
-        )
+  fun `a merging stop announces the copy of the child holding it`() {
+    // A Wear `Button(icon = …, label = { Text("Filled") })`: the click and the focus stop are on
+    // the merging surface, the word on a child. The shape issue #4253 reported.
+    val button =
+      Node(
+        mergesDescendants = true,
+        children = listOf(Node(/* the decorative icon */ ), Node(ownLabel = "Filled")),
       )
 
-    assertEquals(listOf("Filled", "Filled"), rolled.map { it.label })
-    // Only the label moves — the stop keeps its own role, states and bounds.
-    assertEquals(listOf("clickable"), rolled[0].states)
-    assertEquals(null, rolled[0].role)
-    assertEquals("16,16,209,120", rolled[0].boundsInScreen)
+    assertEquals("Filled", AccessibilityLabels.announcement(button))
   }
 
   @Test
-  fun `a stop that already announces itself is untouched`() {
-    val nodes =
-      listOf(
-        node("Add to cart", "0,0,200,80", role = "Button", states = listOf("clickable")),
-        node("Add to cart", "20,20,180,60", role = "TextView", merged = false),
+  fun `an element that carries its own copy keeps it`() {
+    val button =
+      Node(
+        ownLabel = "Add to cart",
+        mergesDescendants = true,
+        children = listOf(Node(ownLabel = "Add to cart")),
       )
 
-    assertSame(nodes, AccessibilityLabels.rollUpMergedLabels(nodes))
+    assertEquals("Add to cart", AccessibilityLabels.announcement(button))
   }
 
   @Test
   fun `descendant copy is joined in traversal order`() {
-    // A clickable row folding a title + subtitle into one announcement.
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,400,100", states = listOf("clickable")),
-          node("Jetnews", "8,8,200,40", merged = false),
-          node("3 min read", "8,50,200,90", merged = false),
-        )
+    val row =
+      Node(
+        mergesDescendants = true,
+        children =
+          listOf(
+            Node(children = listOf(Node(ownLabel = "Jetnews"))),
+            Node(ownLabel = "3 min read"),
+          ),
       )
 
-    assertEquals("Jetnews 3 min read", rolled[0].label)
+    assertEquals("Jetnews 3 min read", AccessibilityLabels.announcement(row))
   }
 
   @Test
-  fun `roll-up carries on past a nested focus stop`() {
-    // A row that folds in a title, then a button of its own, then a subtitle: the button owns its
-    // announcement ("Go"), but the subtitle after it is still the row's. Stopping at the nested
-    // stop would drop the subtitle; ignoring it would swallow "Go" into the row.
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,400,100", states = listOf("clickable")),
-          node("Title", "8,8,200,40", merged = false),
-          node("", "300,10,390,90", states = listOf("clickable")),
-          node("Go", "310,20,380,80", role = "TextView", merged = false),
-          node("Subtitle", "8,50,200,90", merged = false),
-        )
+  fun `a nested stop's copy stays its own, and the walk carries on past it`() {
+    // A row folding in a title, a button of its own, then a subtitle. The button announces "Go";
+    // the subtitle after it is still the row's. Ending the walk at the nested stop would drop the
+    // subtitle, descending into it would swallow "Go" into the row.
+    val nested = Node(mergesDescendants = true, children = listOf(Node(ownLabel = "Go")))
+    val row =
+      Node(
+        mergesDescendants = true,
+        children = listOf(Node(ownLabel = "Title"), nested, Node(ownLabel = "Subtitle")),
       )
 
-    assertEquals("Title Subtitle", rolled[0].label)
-    assertEquals("Go", rolled[2].label)
+    assertEquals("Title Subtitle", AccessibilityLabels.announcement(row))
+    assertEquals("Go", AccessibilityLabels.announcement(nested))
   }
 
   @Test
-  fun `roll-up stops when the walk leaves the stop's box`() {
-    // Two sibling icon buttons: the second one's copy must not leak into the first.
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,48,48", states = listOf("clickable")),
-          node("Open navigation drawer", "8,8,40,40", merged = false),
-          node("", "60,0,108,48", states = listOf("clickable")),
-          node("Search", "68,8,100,40", merged = false),
-        )
+  fun `a nested stop is pruned by ancestry, not by where it is drawn`() {
+    // The same shape with the nested stop covering the whole row — the case bounds cannot answer,
+    // because the subtitle's rectangle falls inside the nested action's. Ancestry has no such
+    // ambiguity: the subtitle is not underneath it.
+    val fullBleed = Node(mergesDescendants = true, children = listOf(Node(ownLabel = "Dismiss")))
+    val row =
+      Node(
+        mergesDescendants = true,
+        children = listOf(Node(ownLabel = "Title"), fullBleed, Node(ownLabel = "Subtitle")),
       )
 
-    assertEquals(
-      listOf("Open navigation drawer", "Open navigation drawer", "Search", "Search"),
-      rolled.map { it.label },
-    )
+    assertEquals("Title Subtitle", AccessibilityLabels.announcement(row))
   }
 
   @Test
-  fun `copy outside the stop's box is not its own`() {
-    // The unmerged node after the stop sits beside it, not inside it — a sibling text run the walk
-    // reached after leaving the button, and not something the button announces.
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,48,48", role = "Button", states = listOf("clickable")),
-          node("Caption", "0,60,200,90", merged = false),
-        )
+  fun `a nested scrollable stop is left to announce its own rows`() {
+    // A clickable card holding a carousel. The carousel is a stop a screen reader lands on, but it
+    // folds nothing — each row stays independently reachable (#1565) — so the card must stop at it
+    // rather than announcing every row as its own name.
+    val carousel =
+      Node(
+        isFocusStop = true,
+        mergesDescendants = false,
+        children = listOf(Node(ownLabel = "Row one"), Node(ownLabel = "Row two")),
+      )
+    val card =
+      Node(
+        mergesDescendants = true,
+        children = listOf(Node(ownLabel = "Recently played"), carousel),
       )
 
-    assertEquals(listOf("", "Caption"), rolled.map { it.label })
+    assertEquals("Recently played", AccessibilityLabels.announcement(card))
+  }
+
+  @Test
+  fun `an element that merges nothing borrows nothing`() {
+    // Not a merging element: its children are their own focus stops and it announces nothing of
+    // theirs, however much copy sits underneath.
+    val column = Node(children = listOf(Node(ownLabel = "First"), Node(ownLabel = "Second")))
+
+    assertEquals("", AccessibilityLabels.announcement(column))
   }
 
   @Test
   fun `a stop with nothing under it stays unlabelled`() {
     // An unlabelled clickable really is unlabelled — that is a finding worth seeing.
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,48,48", role = "Button", states = listOf("clickable")),
-          node("Next", "0,60,120,90"),
-        )
-      )
+    val iconButton = Node(mergesDescendants = true, children = listOf(Node()))
 
-    assertEquals(listOf("", "Next"), rolled.map { it.label })
+    assertEquals("", AccessibilityLabels.announcement(iconButton))
   }
 
   @Test
-  fun `blank descendants contribute nothing`() {
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,200,80", states = listOf("clickable")),
-          node("   ", "8,8,60,40", merged = false),
-          node("Play", "70,8,190,40", merged = false),
-        )
+  fun `blank copy contributes nothing`() {
+    val row =
+      Node(
+        ownLabel = "   ",
+        mergesDescendants = true,
+        children = listOf(Node(ownLabel = " "), Node(ownLabel = " Play ")),
       )
 
-    assertEquals("Play", rolled[0].label)
+    assertEquals("Play", AccessibilityLabels.announcement(row))
   }
 
   @Test
-  fun `a descendant with unreadable bounds does not truncate the announcement`() {
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "0,0,400,100", states = listOf("clickable")),
-          node("Title", "not,a,box", merged = false),
-          node("Subtitle", "8,50,200,90", merged = false),
-        )
+  fun `copy nested several levels deep still rolls up`() {
+    val card =
+      Node(
+        mergesDescendants = true,
+        children =
+          listOf(Node(children = listOf(Node(children = listOf(Node(ownLabel = "Buy now")))))),
       )
 
-    assertEquals("Subtitle", rolled[0].label)
-  }
-
-  @Test
-  fun `a stop with unreadable bounds falls back to the following run`() {
-    val rolled =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "", states = listOf("clickable")),
-          node("Filled", "104,50,181,86", merged = false),
-          node("Elsewhere", "0,200,100,260"),
-        )
-      )
-
-    assertEquals(listOf("Filled", "Filled", "Elsewhere"), rolled.map { it.label })
-  }
-
-  @Test
-  fun `running twice changes nothing`() {
-    val once =
-      AccessibilityLabels.rollUpMergedLabels(
-        listOf(
-          node("", "16,16,209,120", states = listOf("clickable")),
-          node("Filled", "104,50,181,86", merged = false),
-        )
-      )
-
-    assertEquals(once, AccessibilityLabels.rollUpMergedLabels(once))
-  }
-
-  @Test
-  fun `an unmerged run before any stop is left alone`() {
-    val nodes =
-      listOf(
-        node("Heading", "0,0,200,40", merged = false),
-        node("", "0,50,48,98", role = "Button", states = listOf("clickable")),
-      )
-
-    assertEquals(
-      listOf("Heading", ""),
-      AccessibilityLabels.rollUpMergedLabels(nodes).map { it.label },
-    )
+    assertEquals("Buy now", AccessibilityLabels.announcement(card))
   }
 }

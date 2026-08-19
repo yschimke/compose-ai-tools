@@ -93,10 +93,14 @@ object AccessibilityChecker {
       // Prefer contentDescription (what TalkBack actually announces);
       // fall back to visible text. Both are SpannableStrings — toString()
       // strips ATF's spans so we get plain UI copy.
-      val label =
-        (v.contentDescription?.toString()?.trim().orEmpty()).ifEmpty {
-          v.text?.toString()?.trim().orEmpty()
-        }
+      val ownLabel = ownLabel(v)
+      // What the element ANNOUNCES, which for a merging stop whose copy sits
+      // on the descendants it folds in (a Wear `Button(label = { Text(…) })`,
+      // an `IconButton` whose contentDescription is on the inner `Icon`) is
+      // not the copy it carries itself — issue #4253. Done here, where the
+      // walk still holds the ancestry: the wire format is flat, so a consumer
+      // reading it back can only approximate the subtree.
+      val label = AccessibilityLabels.announcement(v.rollUpElement())
       val role = simplifyRole(v.accessibilityClassName?.toString() ?: v.className?.toString())
       val states =
         buildStates(
@@ -123,16 +127,20 @@ object AccessibilityChecker {
       // a role beyond plain View, an actionable state, or clickability
       // is enough to keep them. Clickable-but-empty containers (a card
       // with text inside it that's already its own node) drop out.
+      // Deliberately the element's OWN copy, not its rolled-up announcement:
+      // the roll-up decides what a kept node says, never which nodes are
+      // kept, so it cannot quietly grow the legend with containers that used
+      // to fall out of it.
       val keep =
-        label.isNotEmpty() ||
+        ownLabel.isNotEmpty() ||
           states.isNotEmpty() ||
           (role != null && (v.isClickable || v.isLongClickable))
       if (!keep) continue
-      // The label is what reviewers scan for first. It can still be empty
-      // here — either the copy lives on merged descendants (rolled up
-      // below) or the element genuinely has no name, which is exactly the
-      // problem the legend should show; the overlay caller decides how to
-      // render that (we draw the role on its own line in the legend).
+      // The label is what reviewers scan for first. It can still be empty —
+      // an unlabelled clickable element with a known role, and nothing under
+      // it to borrow a name from, still surfaces with an empty `label` field.
+      // That is the problem the legend should show; the overlay caller
+      // decides how to render it (we draw the role on its own line).
       out +=
         AccessibilityNode(
           label = label,
@@ -142,13 +150,37 @@ object AccessibilityChecker {
           boundsInScreen = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}",
         )
     }
-    // ATF reports each element's own contentDescription / text, so a focus stop whose copy lives on
-    // the descendants it merges (a Wear `Button(label = { Text(...) })`, an `IconButton` whose
-    // contentDescription sits on the inner `Icon`) comes out of the walk blank. Roll those up so
-    // the
-    // node carries what TalkBack actually announces — issue #4253. Runs over the flat list rather
-    // than inside the walk because that is where the parent/child run is still legible.
-    return AccessibilityLabels.rollUpMergedLabels(out)
+    return out
+  }
+
+  /**
+   * The copy [v] carries itself — `contentDescription` else visible `text`, trimmed. Read twice per
+   * element (once by the keep filter, once by the roll-up), so it lives here rather than inline.
+   */
+  private fun ownLabel(v: ViewHierarchyElement): String =
+    (v.contentDescription?.toString()?.trim().orEmpty()).ifEmpty {
+      v.text?.toString()?.trim().orEmpty()
+    }
+
+  /**
+   * Adapts an ATF element to the three members [AccessibilityLabels] reads. Children are wrapped
+   * lazily, so an element that carries its own copy costs no traversal at all.
+   */
+  private fun ViewHierarchyElement.rollUpElement(): AccessibilityLabels.Element {
+    val element = this
+    return object : AccessibilityLabels.Element {
+      override val ownLabel: String
+        get() = ownLabel(element)
+
+      override val isFocusStop: Boolean
+        get() = element.isScreenReaderFocusable
+
+      override val mergesDescendants: Boolean
+        get() = mergesDescendants(element.isScreenReaderFocusable, element.isScrollable == true)
+
+      override val children: List<AccessibilityLabels.Element>
+        get() = (0 until element.childViewCount).map { element.getChildView(it).rollUpElement() }
+    }
   }
 
   /**
