@@ -216,7 +216,29 @@ else
   python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed _previews.json \
     --baselines _baselines/baselines.json \
     --baseline-renders _baselines/renders \
-    --output-dir _pr_renders
+    --output-dir _pr_renders \
+    --changed-ids _changed_previews.json
+
+  # The design reference each changed preview is meant to match, cut out of the
+  # repo's own committed Figma page cache and staged into the same push, so the
+  # comment can show it commit-pinned beside Before/After. Entirely offline: no
+  # FIGMA_TOKEN, so it works on a fork, and no per-push API traffic.
+  #
+  # Every part of this is optional — a repo with no design map, no imported
+  # pages, no node, or no `node` on the runner gets the two-column comment it
+  # always got. Hence the `|| true`: this is a review aid, and a review aid must
+  # never be the reason a preview diff fails.
+  if [ "${FIGMA_REFERENCES:-true}" = "true" ] \
+     && [ -f "${DESIGN_MAP:-design-map.json}" ] \
+     && [ -f "${DESIGN_PAGES:-design/pages/pages.json}" ] \
+     && command -v node >/dev/null 2>&1; then
+    bash "$ACTION_PATH/../lib/figma-reference/stage.sh" \
+      "${DESIGN_MAP:-design-map.json}" \
+      "${DESIGN_PAGES:-design/pages/pages.json}" \
+      _changed_previews.json \
+      _pr_renders/figma \
+      "$GITHUB_WORKSPACE/_figma_refs.json" || true
+  fi
 
   # Stage push metadata for the post-wait push step.
   if [ -d _pr_renders/renders ] && [ -n "$(ls -A _pr_renders/renders 2>/dev/null)" ]; then
