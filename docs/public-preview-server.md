@@ -76,18 +76,26 @@
 ## Top-level sites: one catalog on a hostname of its own
 
 A published catalog can additionally be served on **its own hostname**, where it presents as the
-only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves:
+only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves, and
+`wear.preview.coo.ee` serves what `preview.coo.ee/wear-m3-catalog/` serves — the deployment's two
+reference design systems, one hostname each:
 
 ```
---sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3
+--sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3-catalog
 ```
 
 or, durably, beside the catalog set in `catalogs.json` (the form the deployment uses):
 
 ```json
 {
-  "catalogs": [{ "system": "m3-catalog", "repo": "yschimke/m3-catalog" }],
-  "sites": [{ "host": "m3.preview.coo.ee", "system": "m3-catalog" }]
+  "catalogs": [
+    { "system": "m3-catalog", "repo": "yschimke/m3-catalog" },
+    { "system": "wear-m3-catalog", "repo": "yschimke/wear-m3-catalog" }
+  ],
+  "sites": [
+    { "host": "m3.preview.coo.ee", "system": "m3-catalog" },
+    { "host": "wear.preview.coo.ee", "system": "wear-m3-catalog" }
+  ]
 }
 ```
 
