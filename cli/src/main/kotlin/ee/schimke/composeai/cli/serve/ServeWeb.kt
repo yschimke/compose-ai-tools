@@ -1447,6 +1447,107 @@ ${captureControlsHtml().prependIndent("          ")}
   private fun hasNonDefaultProps(p: ServePreview): Boolean = !p.props.isNullOrEmpty()
 
   /**
+   * Whether [p] is a render at a **non-primary breakpoint** — one of the component's other declared
+   * sizes, which the grid folds onto its single card exactly as it folds a non-default
+   * [state][isNonDefaultState] or [props variant][hasNonDefaultProps].
+   *
+   * A size is a different *rendering* of one component, not a different component: `AlertDialog` at
+   * 204dp is the same dialog the 192dp card shows, drawn on a wider watch. Left unfolded, a catalog
+   * that documents five breakpoints publishes five cards under one name — 14 components became 70
+   * rows in wear-m3-catalog, all of them called things like "Alert Dialog"
+   * ([wear-m3-catalog#41](https://github.com/yschimke/wear-m3-catalog/issues/41)).
+   *
+   * [primary] is the component's primary size from [primarySizeByComponent]. A preview with no
+   * declared size, or whose component resolved none, is never folded — an older catalog (or a plain
+   * bundle) whose size lives only in the id keeps a card per size, because there is no metadata to
+   * build a switcher from and folding would make those renders unreachable.
+   */
+  private fun isNonPrimarySize(p: ServePreview, primary: Map<String, String>): Boolean {
+    val size = p.size?.takeIf { it.isNotBlank() } ?: return false
+    val componentPrimary = primary[componentKey(p)] ?: return false
+    return size != componentPrimary
+  }
+
+  /**
+   * Each component's **primary** breakpoint — the size its one card is drawn at — keyed by
+   * [componentKey].
+   *
+   * The catalog's own order decides it: the first size a component publishes, read in authored
+   * order ([ServePreview.catalogOrder], falling back to list order for a catalog that records
+   * none). The export writes a component's images in the order the spec's `breakpoints` table
+   * declares them, so this is the first *declared* breakpoint — the one a catalog leads with, and
+   * for a design catalog the one its design references are mapped against.
+   *
+   * Only the component's DEFAULT renders are consulted: a component may publish a state or props
+   * variant at some sizes and not others, and letting those vote could pick a primary that the
+   * default render never rendered at, folding the whole component's card out of the grid.
+   */
+  private fun primarySizeByComponent(previews: List<ServePreview>): Map<String, String> {
+    val primary = LinkedHashMap<String, String>()
+    previews
+      .filter { it.size != null && !isNonDefaultState(it) && !hasNonDefaultProps(it) }
+      .sortedBy { it.catalogOrder ?: Int.MAX_VALUE }
+      .forEach { primary.putIfAbsent(componentKey(it), it.size!!) }
+    return primary
+  }
+
+  /**
+   * A preview id with only its **size** segment removed — the key that groups renders differing
+   * *only* in breakpoint while holding every other axis fixed, so the viewer's size switcher offers
+   * `AlertDialog` at 204dp from its 192dp render without dragging the reader off the state or props
+   * variant they are looking at.
+   *
+   * The exporter names a sticker `<slug>__<variant>__<state>[__theme][__size][__props…]`
+   * (`catalog-image-path.mjs`), so the size sits after the theme and before the props segments —
+   * hence [propsCount] trailing segments are held out of the search rather than the token simply
+   * being matched from the end, which a props value spelling the same word would otherwise win. The
+   * token is the slug of the render's own declared [ServePreview.size] rather than anything from a
+   * fixed vocabulary: a catalog is free to name its breakpoints `192dp`, `smallRound` or `wide`,
+   * and only the catalog knows which.
+   *
+   * Returns [id] unchanged when the render declares no size or the token isn't in it — the props
+   * axis it may already have been folded on is preserved either way, so a caller can compose the
+   * two without a size-less preview quietly losing the other fold.
+   */
+  private fun sizeInvariantKey(id: String, size: String?, propsCount: Int): String {
+    val token = size?.takeIf { it.isNotBlank() }?.let(::catalogSlug) ?: return id
+    val parts = id.split("__")
+    val limit = (parts.size - propsCount).coerceAtLeast(0)
+    val idx = (1 until limit).lastOrNull { parts[it] == token } ?: return id
+    return parts.filterIndexed { i, _ -> i != idx }.joinToString("__")
+  }
+
+  /** [sizeInvariantKey] over a render's own id, holding its state and props segments in place. */
+  private fun sizeInvariantKey(p: ServePreview): String =
+    sizeInvariantKey(p.id, p.size, p.props?.size ?: 0)
+
+  /**
+   * The size-switcher grouping key: [sizeInvariantKey] with the theme dropped too, for the same
+   * reason [switcherStateKey] drops it — an untagged render has to group with its themed siblings,
+   * and [themeLane] is what keeps the lanes apart.
+   */
+  private fun switcherSizeKey(p: ServePreview): String =
+    themeStrippedKey(sizeInvariantKey(p), p.theme)
+
+  /**
+   * The exporter's slug for one id segment: non-`[a-zA-Z0-9._-]` runs collapse to `-`, trimmed and
+   * lowercased. The Kotlin twin of `catalogSlug` in `catalog-image-path.mjs` (and of
+   * [ServeBundleHost.heroSlug]) — a declared size of `Small Round` is `smallround` in the id it
+   * named, so matching one against the other has to go through the same rule.
+   */
+  private fun catalogSlug(value: String): String =
+    value.replace(Regex("[^a-zA-Z0-9._-]+"), "-").trim('-').lowercase()
+
+  /**
+   * Human label for a declared breakpoint: the catalog's own name for it ([ServePreview.size]),
+   * else the token vocabulary [previewSizeVariantLabel] can recognise in the id. The catalog's name
+   * leads because it is the one the spec's `breakpoints` table authored and the one the reader sees
+   * everywhere else the axis is named.
+   */
+  private fun sizeLabel(p: ServePreview): String? =
+    p.size?.takeIf { it.isNotBlank() } ?: previewSizeVariantLabel(p.id)
+
+  /**
    * Human label for a component [state] token: the default render reads "Default"; a hyphenated
    * token like `keyboard-focus` becomes "Keyboard focus" (dashes → spaces, first letter
    * capitalised). Used for the viewer's state-switcher buttons.
@@ -1607,12 +1708,18 @@ ${captureControlsHtml().prependIndent("          ")}
   }
 
   /**
-   * The comparison-table card family for [p]: fold state, props, and the baked light/dark pair,
-   * while preserving independent axes such as size. This mirrors the default-card grouping used by
-   * [groupPreviews] without broadening aliases to every render of the same [componentKey].
+   * The comparison-table card family for [p]: fold state, props, size and the baked light/dark
+   * pair. This mirrors the default-card grouping used by [groupPreviews] without broadening aliases
+   * to every render of the same [componentKey].
+   *
+   * The size is folded here so a viewer deep-link naming a breakpoint the gallery left out still
+   * selects that component's row rather than landing on an empty comparison — the same job the key
+   * already does for a folded-out state. A component whose second size DOES carry a reference keeps
+   * its own row (rows are keyed by [baseKey], not by this); the two rows then share one alias set,
+   * exactly as two reference-bearing states of one component already do.
    */
   private fun comparisonCardKey(p: ServePreview): String =
-    baseKey(stateInvariantKey(propsFamilyKey(p), p.state))
+    baseKey(stateInvariantKey(sizeInvariantKey(propsFamilyKey(p), p.size, propsCount = 0), p.state))
 
   /**
    * How a comparison row names the variant it shows — `Hovered`, `Xl square`, `RTL · Font 2.0×` —
@@ -2263,12 +2370,17 @@ ${captureControlsHtml().prependIndent("          ")}
   ): ServePreview {
     val key = componentKey(current)
     val lane = themeLane(current, darkFirst)
-    return all.firstOrNull {
-      componentKey(it) == key &&
-        themeLane(it, darkFirst) == lane &&
-        !isNonDefaultState(it) &&
-        !hasNonDefaultProps(it)
-    } ?: current
+    return all
+      .filter {
+        componentKey(it) == key &&
+          themeLane(it, darkFirst) == lane &&
+          !isNonDefaultState(it) &&
+          !hasNonDefaultProps(it)
+      }
+      // Authored order decides, not list order: the host lists previews sorted by id, so a
+      // component documented at several breakpoints would otherwise root its subtree at whichever
+      // size sorts first (`204dp` before `92dp`) rather than at the size its card is drawn at.
+      .minByOrNull { it.catalogOrder ?: Int.MAX_VALUE } ?: current
   }
 
   /**
@@ -2313,6 +2425,15 @@ ${captureControlsHtml().prependIndent("          ")}
       if ((p.state ?: "default") != curState) continue
       byProps.putIfAbsent(propsSignature(p.props), p)
     }
+    // …and its size axis, holding state and props fixed — [sizeInvariantKey] strips only the size,
+    // so a reader on `no-buttons` is offered the other breakpoints OF `no-buttons`.
+    val sizeKey = switcherSizeKey(current)
+    val bySize = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (p.size == null) continue
+      if (switcherSizeKey(p) != sizeKey || themeLane(p, darkFirst) != lane) continue
+      bySize.putIfAbsent(p.size, p)
+    }
     if (byState.size > 1) {
       byState.entries
         .sortedBy { if (it.key == "default") 0 else 1 }
@@ -2322,6 +2443,12 @@ ${captureControlsHtml().prependIndent("          ")}
       byProps.entries
         .sortedBy { if (it.key == "") 0 else 1 }
         .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "props") }
+    }
+    // Sizes last, and in the catalog's declared order rather than sorted: the export writes a
+    // component's images in `breakpoints` order, so first-seen IS smallest-to-largest as the
+    // catalog declares it, and re-sorting here would invent an ordering the spec did not ask for.
+    if (bySize.size > 1) {
+      bySize.forEach { (_, p) -> rows.putIfAbsent(href(p), p to "size") }
     }
     // Then the component's canonical set, for everything the two axes above did not already reach.
     primaryVariantPreviews(componentDefault(current, all, darkFirst), all, darkFirst).forEach {
@@ -2466,7 +2593,11 @@ ${captureControlsHtml().prependIndent("          ")}
    * reach it first.
    */
   private fun variantLabel(p: ServePreview, axis: String, crossProduct: Boolean): String =
-    if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
+    // A size row names its breakpoint whatever else is in play: it moves along neither of the two
+    // axes [crossProduct] disambiguates, and the size is the only thing that tells it from the row
+    // the reader is standing on.
+    if (axis == "size") sizeLabel(p) ?: stateLabel(p.state)
+    else if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
     else "${stateLabel(p.state)} · ${propsLabel(p.props)}"
 
   /** [primaryVariants] as previews paired with the axis each varies, before they are labelled. */
@@ -6814,16 +6945,21 @@ ${captureControlsHtml().prependIndent("          ")}
     // Collapse per-theme variants into one card each so the Light/Dark control swaps a card between
     // its baked light/dark render *in place*, rather than filtering two cards. A single-theme /
     // theme-neutral card carries no swap data and the toggle leaves it alone.
-    // Fold non-default component states (unchecked/pressed/disabled/…) AND props-axis variants
-    // (locale/direction-rtl/fontScale/content) out of the grid first, so a component shows ONE card
-    // (its default render) instead of a card per state or per variant; the folded renders stay
-    // reachable through the viewer's state + variant switchers. Plain bundle screens (no state, no
-    // props) pass straight through.
+    // Fold non-default component states (unchecked/pressed/disabled/…), props-axis variants
+    // (locale/direction-rtl/fontScale/content) AND non-primary breakpoints out of the grid first,
+    // so a component shows ONE card (its default render at its first declared size) instead of a
+    // card per state, per variant or per screen size; the folded renders stay reachable through the
+    // viewer's state + variant + size switchers. Plain bundle screens (no state, no props, no
+    // declared size) pass straight through.
+    val primarySizes = primarySizeByComponent(previews)
     val groups =
       groupPreviews(
         previews.filterNot {
           (componentBrowser && it.renderFailure != null) ||
-            (it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it)))
+            (it.renderFailure == null &&
+              (isNonDefaultState(it) ||
+                hasNonDefaultProps(it) ||
+                isNonPrimarySize(it, primarySizes)))
         }
       )
     val cardAnchors = mintCardAnchors(groups)
@@ -6852,15 +6988,18 @@ ${captureControlsHtml().prependIndent("          ")}
               append("</ul></aside>\n")
             }
           } ?: ""
-    // Size/breakpoint variants intentionally remain separate cards, but catalog-authored labels
-    // often omit that axis (for example three "Edgebutton" cards at Small/Large/XL Round). Add a
-    // qualifier only when the base label actually collides, keeping ordinary one-card labels terse.
+    // A catalog whose breakpoints reach the server as metadata has just been folded to one card per
+    // component above, so its labels no longer collide on the size axis. This is the fallback for
+    // one whose sizes live only in the id — an older export, or a plain bundle's device fan-out —
+    // where each size is still a card of its own (for example three "Edgebutton" cards at
+    // Small/Large/XL Round). Add a qualifier only when the base label actually collides, keeping
+    // ordinary one-card labels terse.
     val duplicateGridLabels =
       groups.groupingBy { previewDisplayName(it.default) }.eachCount().filterValues { it > 1 }.keys
     fun gridDisplayName(preview: ServePreview): String {
       val label = previewDisplayName(preview)
       if (label !in duplicateGridLabels) return label
-      val size = previewSizeVariantLabel(preview.id) ?: return label
+      val size = sizeLabel(preview) ?: return label
       return "$label · $size"
     }
     // A card's pixel URL. With a prebaked thumbnail it carries `?thumb=<hash>`, which the render
@@ -7438,11 +7577,19 @@ ${captureControlsHtml().prependIndent("          ")}
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
     // Native-format rows retain the catalog's one-default-card presentation. A design reference,
-    // however, names one exact preview state/props mapping, so that referenced variant must remain
-    // independently visible instead of being folded out with the landing-page variants.
+    // however, names one exact preview state/props/size mapping, so that referenced variant must
+    // remain independently visible instead of being folded out with the landing-page variants.
+    //
+    // The size axis is folded on exactly that condition and no other. A kit draws its screen cells
+    // at one size, so the other breakpoints of a component carry no reference of their own and a
+    // row for each is four rows saying "no reference" under one name; but a kit that DOES publish a
+    // second size (Wear's `Picker`, at its `Larger Screen (BP)` cell) maps a reference to it, and
+    // that row is the whole point of the page.
+    val comparablePrimarySizes = primarySizeByComponent(previews)
     val comparablePreviews = previews.filterNot { preview ->
-      (isNonDefaultState(preview) || hasNonDefaultProps(preview)) &&
-        referencesFor(preview.id).isEmpty()
+      (isNonDefaultState(preview) ||
+        hasNonDefaultProps(preview) ||
+        isNonPrimarySize(preview, comparablePrimarySizes)) && referencesFor(preview.id).isEmpty()
     }
     val cards = groupPreviews(comparablePreviews)
     val hasSvg = comparablePreviews.any { hasSvgFor(it.id) }
