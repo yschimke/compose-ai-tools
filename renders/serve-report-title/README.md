@@ -17,6 +17,19 @@ automatically rather than needing a hand-taken screenshot.
 | before — one click, no questions asked | `viewer-report-before.light.png` | `viewer-report-before.dark.png` |
 | after — the panel that click now opens | `viewer-report-open-after.light.png` | `viewer-report-open-after.dark.png` |
 
+## On a phone
+
+The panel's first cut floated off the right of the screen at every width up to ~636px: its
+toggle is the third entry in the provenance row, that row does not wrap until far below phone
+width, and a `max-width` caps how wide a panel is while saying nothing about where it starts.
+Measured on this fixture at 360px, it ran from x=191 to x=519 and took the document's
+scrollWidth with it. The panel is now handed to the row, which spans the full content width,
+so it is anchored at both ends — the same remedy `.cp-catalog-theme` already uses for the
+landing's Theme menu.
+
+`viewer-report-open-mobile.light.png` / `viewer-report-open-mobile.dark.png`, captured at
+412x800 by the `report-open-mobile` harness state.
+
 The closed row is unchanged: "report an issue" still reads as a link beside "source" and
 "playground". What changed is what the click does — and the preview's identity is not lost,
 it moved to the `| Preview |` row of the issue body's "Which preview" table.

@@ -1642,6 +1642,29 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The same panel ON A PHONE, which is the width that decides whether it is usable at all.
+    // The toggle is the THIRD entry in a wrapping provenance row, so its containing block starts
+    // well inside the viewport — and a `max-width` caps how wide a panel is while saying nothing
+    // about where it starts, which is how the landing's Theme menu once ended up starting at
+    // -14px (see `.cp-catalog-theme` in serve.css). Here the offset runs the other way and pushes
+    // the right edge off screen, so this shot is the one that would catch a clipped Summary field
+    // and the horizontal page scroll that comes with it.
+    fixture: "serve-viewer",
+    suffix: "report-open-mobile",
+    viewport: PHONE_VIEWPORT,
+    apply: async (page) => {
+      // The state above left it OPEN and clicking a `<details>` toggles, so opening it again with
+      // a bare click would shut it. Closed first, then opened with the same gesture a reader
+      // uses, so this state does not depend on the order it runs in.
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     fixture: "serve-viewer",
     suffix: "connecting",
     apply: async (page) => {

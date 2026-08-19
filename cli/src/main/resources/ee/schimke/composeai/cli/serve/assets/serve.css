@@ -2565,6 +2565,20 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
      catalog calls its themes. */
   .cp-catalog-theme { position: static; }
   .cp-catalog-theme .cp-theme-menu-panel { left: 0; right: auto; }
+  /* The viewer's report panel has the same shape of problem, one row down and pointing the other
+     way. Its toggle is the THIRD entry in the provenance row (`source`, `playground`, then this),
+     and that row does not wrap until far below phone width — so the panel's containing block
+     starts ~190px inside the viewport while its cap only says how WIDE it may be. Measured on the
+     `serve-viewer` fixture at 360px: the panel ran from x=191 to x=519 and took the document's
+     scrollWidth with it, so the Summary field was half off screen and the whole page scrolled
+     sideways. Broken at every width up to ~636px, i.e. exactly this block's band.
+     Same remedy as the Theme panel above: hand the panel to the row, which spans the full content
+     width, so `left: 0` anchors it to the row's left edge instead of the toggle's. `top: 100%` is
+     then measured against the row — one line tall — so it still opens just under the link it
+     belongs to. The cap keeps the right edge on screen, so both ends are inside the viewport. */
+  .cp-preview-links { position: relative; }
+  .cp-report { position: static; }
+  .cp-report-panel { left: 0; right: auto; max-width: calc(100vw - 32px); }
   /* The heading is the catalog's name and the bar three rows above it is already the catalog's
      name. Hidden rather than removed — `clip` keeps it in the accessibility tree, so the document
      still has its `<h1>` and the page still announces what it is. Only when the bar really is
