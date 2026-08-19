@@ -856,6 +856,7 @@ runs:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         A11Y_MODULES: ${{ inputs.a11y-module }}
         A11Y_SKIP_MODULES: ${{ inputs.a11y-skip-modules }}
         NOTIFY_MODULES: ${{ inputs.notifications-module }}
@@ -1106,7 +1107,7 @@ runs:
         # BASE branch: it has neither the design map nor the page cache as this
         # PR sees them, and re-deriving there would grade a PR that updates the
         # cached design against the old import.
-        for f in _baselines _base_sha _pr_renders _figma_refs.json \
+        for f in _baselines _base_sha _baseline_skew.json _pr_renders _figma_refs.json \
                  _resources.json _resource_baselines _resource_base_sha _pr_resource_renders \
                  _a11y_renders _a11y_comment.md \
                  _notification_renders _notification_comment.md \
@@ -1441,6 +1442,14 @@ runs:
           RERUN_ARGS=(--rerun-checkbox)
         fi
 
+        # How far the baseline this diff used trails the PR's base, when the
+        # compose pipeline could work it out. Absent = no skew line, which is
+        # also what every pre-selection caller produces.
+        SKEW_ARGS=()
+        if [ -s _baseline_skew.json ]; then
+          SKEW_ARGS=(--baseline-skew _baseline_skew.json)
+        fi
+
         # The Figma reference manifest, when the compose pipeline staged one
         # (repo has a design map + a committed page import). Absent = the
         # historical two-column comment.
@@ -1458,6 +1467,7 @@ runs:
           "${AB_ARGS[@]}" \
           "${SCOPE_ARGS[@]}" \
           "${RERUN_ARGS[@]}" \
+          "${SKEW_ARGS[@]}" \
           "${FIGMA_ARGS[@]}" \
           > _comment_body.md
 

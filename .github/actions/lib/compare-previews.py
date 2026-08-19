@@ -1077,6 +1077,48 @@ PARTIAL_RENDER_REMOVAL_FRACTION = 0.5
 PARTIAL_RENDER_MIN_BASELINE = 8
 
 
+def _load_baseline_skew(path: Path | None) -> dict:
+    """Read the skew descriptor `select-baseline.py` wrote, tolerating absence.
+
+    Every failure mode of the selector leaves this file unwritten, and callers
+    that predate it never pass one at all — both mean "no skew information",
+    not an error. Same permissive contract as `_load_baselines`.
+    """
+    if path is None or not path.exists():
+        return {}
+    try:
+        parsed = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _baseline_skew_note(skew: dict) -> str | None:
+    """The NOTE block for a baseline that trails the commit this PR renders on.
+
+    A baseline lands minutes after the merge that produced it, so a PR that
+    renders inside that window is compared against a main state older than its
+    own. Whatever those commits changed is then attributed to this PR —
+    silently, and indistinguishably from its real diff. Git alone can't say
+    whether the gap is harmless (baseline pushes skipped as unchanged) or not
+    (baselines still rendering), so state the gap and let the reader discount
+    the diff accordingly rather than guessing on their behalf.
+    """
+    drift = skew.get("drift")
+    if not isinstance(drift, int) or drift <= 0:
+        return None
+    source = str(skew.get("source") or "")[:8]
+    target = str(skew.get("target") or "")[:8]
+    return (
+        "> [!NOTE]\n"
+        f"> Compared against the baseline rendered from `{source}`, which is **{drift} "
+        f"commit(s) behind** this PR's base (`{target}`) — the newest baseline published "
+        f"when this ran. Any preview those commits changed is attributed to this PR "
+        f"below. Re-run this check once the baseline for `{target}` has published to see "
+        f"only this PR's own changes."
+    )
+
+
 def _suspected_partial_render(removed_count: int, in_scope_total: int) -> bool:
     """True when the removal set is large enough, relative to the in-scope
     baseline, to look like a truncated render rather than real deletions."""
@@ -1117,6 +1159,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
     )
     scope_modules = _parse_scope_modules(args)
     figma_refs = _load_figma_refs(getattr(args, "figma_refs", None))
+    baseline_skew = _load_baseline_skew(
+        Path(args.baseline_skew) if getattr(args, "baseline_skew", None) else None
+    )
 
     current = load_cli_output(cli_json)
     baselines = _load_baselines(baselines_path)
@@ -1231,6 +1276,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     if scope_modules is not None:
         lines.append(_scope_note(scope_modules))
+        lines.append("")
+
+    skew_note = _baseline_skew_note(baseline_skew)
+    if skew_note:
+        lines.append(skew_note)
         lines.append("")
 
     if partial_render:
@@ -2205,6 +2255,10 @@ def main() -> int:
                      help="Path to the A/B comparison config JSON "
                           "(default off; the apply action passes "
                           ".github/preview-abtest.json when present).")
+    cmp.add_argument("--baseline-skew",
+                     help="JSON from select-baseline.py describing how far the "
+                          "chosen baseline trails this PR's base. Absent = no "
+                          "skew reported.")
     cmp.add_argument("--scope-modules",
                      help="Comma-separated Gradle module paths the render was "
                           "scoped to (change-scoped PR runs). Baseline entries "

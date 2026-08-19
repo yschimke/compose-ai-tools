@@ -2852,5 +2852,93 @@ class ChangedIdsHandoffTest(unittest.TestCase):
         )
 
 
+class BaselineSkewNoteTest(unittest.TestCase):
+    """The comment has to declare a baseline that trails the PR's base.
+
+    Without it a reader can't tell this PR's diff from the diff of whatever
+    merged while its baseline was still rendering — the two are identical in
+    the comment (wear-m3-catalog#24 reported 16 new / 9 changed / 4 removed
+    for a one-file change).
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, skew) -> str:
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+        skew_path = None
+        if skew is not None:
+            skew_path = self.tmp / "skew.json"
+            skew_path.write_text(skew if isinstance(skew, str) else json.dumps(skew))
+
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                baseline_skew=str(skew_path) if skew_path else None,
+            ))
+        return buf.getvalue()
+
+    _CHANGED = ({"previews": [_entry(id="X", sha="new", png="/p.png")]},
+                {"app/X": {"sha256": "old", "functionName": "Fn"}})
+
+    def test_drift_is_declared_with_both_commits(self):
+        out = self._run(*self._CHANGED,
+                        skew={"selected": "b" * 40, "source": "abc12345",
+                              "target": "def67890", "drift": 3})
+        self.assertIn("[!NOTE]", out)
+        self.assertIn("3 commit(s) behind", out)
+        self.assertIn("`abc12345`", out)
+        self.assertIn("`def67890`", out)
+
+    def test_no_note_when_baseline_is_the_prs_own_base(self):
+        out = self._run(*self._CHANGED,
+                        skew={"selected": "b" * 40, "source": "abc12345",
+                              "target": "abc12345", "drift": 0})
+        self.assertNotIn("[!NOTE]", out)
+
+    def test_no_note_without_a_skew_file(self):
+        # Every caller that predates baseline selection, plus every run where
+        # the selector couldn't establish an answer.
+        out = self._run(*self._CHANGED, skew=None)
+        self.assertNotIn("[!NOTE]", out)
+
+    def test_unwritable_or_malformed_skew_is_not_fatal(self):
+        # The selector writes this file last; a truncated or half-written one
+        # must degrade to "no skew known", never break the comment.
+        out = self._run(*self._CHANGED, skew="{not json")
+        self.assertNotIn("[!NOTE]", out)
+        self.assertIn("### Changed", out)
+
+    def test_note_precedes_the_sections_it_qualifies(self):
+        out = self._run(*self._CHANGED,
+                        skew={"selected": "b" * 40, "source": "abc12345",
+                              "target": "def67890", "drift": 1})
+        self.assertLess(out.index("[!NOTE]"), out.index("### Changed"))
+
+    def test_silent_on_a_clean_diff(self):
+        # Nothing was attributed to this PR, so there is nothing to qualify.
+        out = self._run(
+            {"previews": [_entry(id="X", sha="s1", png="/p.png")]},
+            {"app/X": {"sha256": "s1", "functionName": "Fn"}},
+            skew={"selected": "b" * 40, "source": "abc12345",
+                  "target": "def67890", "drift": 4},
+        )
+        self.assertIn("No visual changes detected.", out)
+        self.assertNotIn("[!NOTE]", out)
+
+
 if __name__ == "__main__":
     unittest.main()
