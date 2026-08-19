@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.20.0](https://github.com/yschimke/compose-ai-tools/compare/v1.19.0...v1.20.0) (2026-08-19)
+
+
+### Features
+
+* **design-map:** read a breakpoint fan-out as a size axis, not an ambiguous mode ([#4262](https://github.com/yschimke/compose-ai-tools/issues/4262)) ([77d469e](https://github.com/yschimke/compose-ai-tools/commit/77d469e251073c528f88b118ce92abb56e6a7332))
+
+
+### Bug Fixes
+
+* **a11y:** announce the label a focus stop merges ([#4255](https://github.com/yschimke/compose-ai-tools/issues/4255)) ([bcd9ca0](https://github.com/yschimke/compose-ai-tools/commit/bcd9ca0ba1fe0012205924d624a63c0502601748))
+* **a11y:** roll a stop's label up by ancestry, not by geometry ([#4258](https://github.com/yschimke/compose-ai-tools/issues/4258)) ([8d9282d](https://github.com/yschimke/compose-ai-tools/commit/8d9282db5cacedf29f6b2d1d1456c12488c8a075))
+* **preview:** settle the desktop daemon, serve settle+motion pairs, land exact coordinates ([#4260](https://github.com/yschimke/compose-ai-tools/issues/4260)) ([276818c](https://github.com/yschimke/compose-ai-tools/commit/276818cb6bad7fb5a9bd9858cb40ecd92859ac23))
+* **serve:** route typography inspection to the catalog's live daemon ([#4256](https://github.com/yschimke/compose-ai-tools/issues/4256)) ([e09e33a](https://github.com/yschimke/compose-ai-tools/commit/e09e33ad4921a5320f5bccabcecce0d4d30b6ff8))
+
 ## [1.19.0](https://github.com/yschimke/compose-ai-tools/compare/v1.18.0...v1.19.0) (2026-08-19)
 
 
