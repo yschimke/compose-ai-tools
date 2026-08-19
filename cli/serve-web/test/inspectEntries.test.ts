@@ -183,6 +183,64 @@ describe("a11yEntries", () => {
         );
     });
 
+    it("carries a stop's inherited copy on past a nested stop", () => {
+        // A row that folds in a title, then a button of its own, then a subtitle: the button owns
+        // "Go", but the subtitle after it is still the row's. Stopping at the nested stop drops the
+        // subtitle; ignoring it swallows "Go" into the row.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    { boundsInScreen: "0,0,400,100", states: ["clickable"] },
+                    {
+                        boundsInScreen: "8,8,200,40",
+                        label: "Title",
+                        merged: false,
+                    },
+                    { boundsInScreen: "300,10,390,90", states: ["clickable"] },
+                    {
+                        boundsInScreen: "310,20,380,80",
+                        label: "Go",
+                        merged: false,
+                    },
+                    {
+                        boundsInScreen: "8,50,200,90",
+                        label: "Subtitle",
+                        merged: false,
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["Title Subtitle", "Go"],
+        );
+    });
+
+    it("does not claim copy that sits outside the stop's box", () => {
+        // The text after the button is beside it, not inside it — a sibling the walk reached after
+        // leaving the button, and not something the button announces.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    {
+                        boundsInScreen: "0,0,48,48",
+                        role: "Button",
+                        states: ["clickable"],
+                    },
+                    {
+                        boundsInScreen: "0,60,200,90",
+                        label: "Caption",
+                        merged: false,
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["(unlabelled)"],
+        );
+    });
+
     it("still says unlabelled when nothing underneath supplies a name", () => {
         // An unlabelled clickable really is unlabelled — that is the finding, not noise to hide.
         const entries = a11yEntries(
