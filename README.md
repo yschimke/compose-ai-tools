@@ -648,6 +648,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-pinned/dark](renders/serve-reference-compare-pinned.dark.png) |
 | `light` | ![serve-reference-compare-pinned/light](renders/serve-reference-compare-pinned.light.png) |
 
+## serve-reference-compare-report-open-mobile
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-report-open-mobile/dark](renders/serve-reference-compare-report-open-mobile.dark.png) |
+| `light` | ![serve-reference-compare-report-open-mobile/light](renders/serve-reference-compare-report-open-mobile.light.png) |
+
 ## serve-report-bug
 
 | Theme | Capture |
@@ -899,6 +906,27 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-rc-players-player-java/dark](renders/serve-viewer-rc-players-player-java.dark.png) |
 | `light` | ![serve-viewer-rc-players-player-java/light](renders/serve-viewer-rc-players-player-java.light.png) |
+
+## serve-viewer-report-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-report-open/dark](renders/serve-viewer-report-open.dark.png) |
+| `light` | ![serve-viewer-report-open/light](renders/serve-viewer-report-open.light.png) |
+
+## serve-viewer-report-open-bundle
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-report-open-bundle/dark](renders/serve-viewer-report-open-bundle.dark.png) |
+| `light` | ![serve-viewer-report-open-bundle/light](renders/serve-viewer-report-open-bundle.light.png) |
+
+## serve-viewer-report-open-mobile
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-report-open-mobile/dark](renders/serve-viewer-report-open-mobile.dark.png) |
+| `light` | ![serve-viewer-report-open-mobile/light](renders/serve-viewer-report-open-mobile.light.png) |
 
 ## serve-viewer-revisions
 
