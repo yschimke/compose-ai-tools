@@ -1553,7 +1553,16 @@ abstract class RobolectricRenderTestBase(
           // virtual time is a matter of advancing the delta.
           // `DiscoverPreviewsTask` guarantees `captures` is ordered by
           // ascending `advanceTimeMillis`, so we accumulate forward-only.
+          //
+          // Two clocks, deliberately. `currentTime` is the **requested** coordinate space — what
+          // the manifest asked for — and is what the ascending-order `require` below and every
+          // internal `+=` reason about. `clockBase` anchors the **physical** clock, which
+          // `advanceTimeBy` rounds up to whole frames. Keeping them apart is what lets a rounded
+          // advance stop compounding without making two jobs that legitimately share a coordinate
+          // (a timed still and its `@ScrollingPreview(LONG/GIF)` data product both sit at the same
+          // `advanceTimeMillis`) look like time running backwards. See issue #4247.
           var currentTime = 0L
+          val clockBase = rule.mainClock.currentTime
           // A preview whose content is a `Dialog` / `ModalBottomSheet` installs a second Compose
           // owner, and the activity's own root stays present but empty — so `isRoot()` matches two
           // nodes and `onRoot()` is ambiguous (issue #3048). Resolve the subject deliberately in
@@ -1629,18 +1638,16 @@ abstract class RobolectricRenderTestBase(
               "Preview ${preview.id}: output advanceTimeMillis must be ascending " +
                 "(got $target after clock was at $currentTime)"
             }
-            val delta = target - currentTime
-            if (delta > 0) {
-              // `advanceTimeBy` aligns to the frame duration and rounds *up*: it steps whole
-              // frames until it reaches at least the requested amount, so asking for 500ms from
-              // zero leaves the clock at 512. Recording `target` here would therefore write down a
-              // time the clock never sat at, and every later job would compute its own delta from
-              // that fiction — the error accumulating across a timed fan-out rather than cancelling
-              // (issue #4247). Read back what the clock actually reached instead; the same
-              // before/after measurement `AndroidInteractionRenderer` already uses.
-              val clockBefore = rule.mainClock.currentTime
-              rule.mainClock.advanceTimeBy(delta)
-              currentTime += rule.mainClock.currentTime - clockBefore
+            if (target > currentTime) {
+              // Advance by what the *physical* clock still owes, not by the difference between two
+              // requested coordinates. `advanceTimeBy` rounds up to whole frames, so asking for
+              // 500ms from zero leaves the clock at 512; measuring the next hop from 500 would
+              // spend those 12ms twice, and the error compounds across a fan-out instead of
+              // cancelling (issue #4247). A job whose coordinate the clock has already passed is
+              // owed nothing and captures where it stands.
+              val owed = (clockBase + target) - rule.mainClock.currentTime
+              if (owed > 0) rule.mainClock.advanceTimeBy(owed)
+              currentTime = target
             }
 
             // `@FocusedPreview` per-capture focus walk. Discovery sorts focus indices
