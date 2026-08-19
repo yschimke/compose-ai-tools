@@ -42,6 +42,13 @@ cat > "${work}/bin/docker" <<'STUB'
 case "$1" in
   inspect)
     id="${!#}"
+    # $DAEMON_DOWN stands in for the daemon or socket having gone away — the same condition that
+    # would have failed the stop/rm a moment earlier. Inspect cannot answer, and must not be read
+    # as an answer.
+    if [ -n "${DAEMON_DOWN:-}" ]; then
+      echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock." >&2
+      exit 1
+    fi
     for survivor in ${SURVIVORS:-}; do
       if [ "$survivor" = "$id" ]; then echo "$id"; exit 0; fi
     done
@@ -67,13 +74,20 @@ cleanup_tail() {
   docker rm $OLD_CONTAINER_IDS || true
 
   SURVIVING_CONTAINER_IDS=""
+  UNVERIFIED_CONTAINER_IDS=""
   for OLD_CONTAINER_ID in $OLD_CONTAINER_IDS; do
-    if docker inspect --format='{{.Id}}' "$OLD_CONTAINER_ID" >/dev/null 2>&1; then
+    if INSPECT_ERROR="$(docker inspect --format='{{.Id}}' "$OLD_CONTAINER_ID" 2>&1 >/dev/null)"; then
       SURVIVING_CONTAINER_IDS="$SURVIVING_CONTAINER_IDS $OLD_CONTAINER_ID"
+    elif ! echo "$INSPECT_ERROR" | grep -qiE 'no such (object|container)'; then
+      UNVERIFIED_CONTAINER_IDS="$UNVERIFIED_CONTAINER_IDS $OLD_CONTAINER_ID"
     fi
   done
   if [ -n "$SURVIVING_CONTAINER_IDS" ]; then
     echo "==> ERROR: old containers survived cleanup:$SURVIVING_CONTAINER_IDS" >&2
+    exit 1
+  fi
+  if [ -n "$UNVERIFIED_CONTAINER_IDS" ]; then
+    echo "==> ERROR: could not confirm removal:$UNVERIFIED_CONTAINER_IDS" >&2
     exit 1
   fi
 }
@@ -93,9 +107,21 @@ status=0
 ( cleanup_tail ) >/dev/null 2>&1 || status=$?
 check "a surviving old container fails the cleanup" "1" "$status"
 
+# A daemon that cannot answer is not a daemon saying "gone". Reading a failed inspect as absence
+# reinstates exactly the clean bill of health the survivor check exists to withhold.
+export SURVIVORS="" DAEMON_DOWN=1
+status=0
+( cleanup_tail ) >/dev/null 2>&1 || status=$?
+check "an unverifiable inspect fails rather than passing" "1" "$status"
+unset DAEMON_DOWN
+
 grep -q 'SURVIVING_CONTAINER_IDS' "${here}/docker-rollout" &&
   survivor_check=present || survivor_check=missing
 check "docker-rollout still carries the survivor check" "present" "$survivor_check"
+
+grep -q 'UNVERIFIED_CONTAINER_IDS' "${here}/docker-rollout" &&
+  unverified_check=present || unverified_check=missing
+check "docker-rollout distinguishes unverifiable from gone" "present" "$unverified_check"
 
 # --- 2. rollout.sh's signal traps ------------------------------------------------------------
 # A shell that installs the same traps, then signals itself mid-"rollout". The marker file stands
@@ -124,6 +150,62 @@ LOG="${work}/signal.log" status=0
 LOG="$LOG" "${work}/signal-case.sh" || status=$?
 check "a signalled runner exits rather than resuming" "released" "$(cat "${work}/signal.log")"
 check "and reports 128 + SIGTERM" "143" "$status"
+
+# The PID-1 case the plain self-signal above does NOT cover: a POSIX shell defers a trapped signal
+# until the running FOREGROUND child returns, and this script blocks on `docker rollout` (up to its
+# 300s health timeout) and on the poll `sleep` (1200s by default). Backgrounding and `wait`ing is
+# what lets the handler run at once — otherwise `docker stop` on the rollout service SIGKILLs the
+# shell before cleanup, stranding the lock container for its whole TTL.
+cat > "${work}/interruptible-case.sh" <<'CASE'
+#!/bin/sh
+set -eu
+rollout_child=""
+release_rollout_lock() { echo released >> "$LOG"; }
+on_rollout_signal() {
+  if [ -n "${rollout_child:-}" ]; then
+    kill -TERM "$rollout_child" 2>/dev/null || true
+    wait "$rollout_child" 2>/dev/null || true
+    rollout_child=""
+  fi
+  release_rollout_lock
+  trap - EXIT
+  exit "$((128 + $1))"
+}
+run_interruptible() {
+  "$@" &
+  rollout_child=$!
+  rc=0
+  wait "$rollout_child" || rc=$?
+  rollout_child=""
+  return "$rc"
+}
+trap release_rollout_lock EXIT
+trap 'on_rollout_signal 2' INT
+trap 'on_rollout_signal 15' TERM
+
+# Signal ourselves from a detached child, then block on a long "rollout". `self` is captured
+# before backgrounding: in a POSIX subshell `$PPID` still names THIS script's parent, so using it
+# would signal the test harness instead.
+self=$$
+(sleep 0.3; kill -TERM "$self") &
+run_interruptible sleep 30 || true
+echo resumed >> "$LOG"
+CASE
+chmod +x "${work}/interruptible-case.sh"
+
+LOG="${work}/interruptible.log" status=0
+start=$(date +%s)
+LOG="$LOG" "${work}/interruptible-case.sh" || status=$?
+elapsed=$(( $(date +%s) - start ))
+check "a signal during a long child is handled at once" "released" "$(cat "${work}/interruptible.log")"
+check "and still reports 128 + SIGTERM" "143" "$status"
+[ "$elapsed" -lt 10 ] && promptly=yes || promptly=no
+check "without waiting out the child (${elapsed}s)" "yes" "$promptly"
+
+grep -q 'run_interruptible docker rollout' "${here}/rollout.sh" && rolls=present || rolls=missing
+check "rollout.sh runs the rollout interruptibly" "present" "$rolls"
+grep -q 'run_interruptible sleep' "${here}/rollout.sh" && sleeps=present || sleeps=missing
+check "rollout.sh sleeps interruptibly" "present" "$sleeps"
 
 # The real script must arm the traps this way, and never re-introduce the resuming form.
 grep -q "trap 'on_rollout_signal 15' TERM" "${here}/rollout.sh" && armed=present || armed=missing

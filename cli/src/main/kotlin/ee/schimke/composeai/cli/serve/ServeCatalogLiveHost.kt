@@ -591,6 +591,17 @@ class ServeCatalogLiveHost(
           "dropped the generation and re-warming from scratch"
       )
     }
+    // Deliberately NOT latched. The mismatch was detected but the generation is still on disk (its
+    // write lock stayed held), so the question is not answered and the next pass must ask again.
+    // Latching here would quarantine the adopted entries for the life of the process — withheld
+    // from reads, still reported by `contains`, so the optimizer skips re-warming them — with
+    // nothing left that would ever try the discard again.
+    if (outcome == CatalogThemeCache.VerifyOutcome.MISMATCH_UNDISCARDED) {
+      System.err.println(
+        "serve: catalog $label — persisted theme renders no longer match this renderer, and the " +
+          "generation could not be discarded (write lock held); withholding them and retrying"
+      )
+    }
   }
 
   /**
