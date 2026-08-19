@@ -1,8 +1,10 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.ui.text.font.FontFamily
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -137,6 +139,84 @@ class RcManifestTypefaceLoaderTest {
       )
 
     assertEquals(listOf("ok.ttf"), faces.map { it.file })
+  }
+
+  /**
+   * The `/`-only, undecoded check above let two shapes through that a real fetcher still resolves
+   * as a parent segment: a Windows filesystem fetcher walks out of `..\secret.ttf`, and the browser
+   * normalizes `%2e%2e/` as a parent *after* this check has already passed the name.
+   */
+  @Test
+  fun aFaceEscapingByBackslashOrPercentEncodingIsAlsoDropped() {
+    val faces =
+      parseFontManifest(
+        """
+        {"families":[{"name":"Escape","role":"named","fonts":[
+          {"file":"..\\secret.ttf"},
+          {"file":"sub\\..\\..\\secret.ttf"},
+          {"file":"%2e%2e/secret.ttf"},
+          {"file":"%2E%2E/secret.ttf"},
+          {"file":"ok.ttf"},
+          {"file":"sub/ok.ttf"},
+          {"file":"not%2Ea%2Eparent.ttf"}
+        ]}]}
+        """
+          .trimIndent()
+      )
+
+    // The last two are legitimate: a subdirectory, and a name whose decoded form is not `..` at
+    // all. Rejecting every `%` outright would cost a catalog faces it is entitled to ship.
+    assertEquals(listOf("ok.ttf", "sub/ok.ttf", "not%2Ea%2Eparent.ttf"), faces.map { it.file })
+  }
+
+  /**
+   * Compose's font cache keys on the identity, so a filename-only identity made two catalogs that
+   * both ship `Roboto-Regular.ttf` share one cached typeface — the second silently rendering the
+   * first's bytes even though the loader had refetched the right ones. `RcFontFaces` already
+   * appends the variation axes for exactly this reason.
+   */
+  @Test
+  fun facesFromDifferentBasesGetDifferentIdentities() = runTest {
+    val shared =
+      """{"families":[{"name":"Shared","role":"default","fonts":[""" +
+        """{"file":"Roboto-Regular.ttf","weight":400}]}]}"""
+    val fetcher: suspend (String) -> ByteArray = { url ->
+      if (url.endsWith("fonts.json")) shared.encodeToByteArray() else ByteArray(4)
+    }
+    val a = RcManifestTypefaceLoader(fetcher).load("./catalog-a/fonts/")
+    val b = RcManifestTypefaceLoader(fetcher).load("./catalog-b/fonts/")
+
+    assertEquals(
+      listOf("./catalog-a/fonts/Roboto-Regular.ttf"),
+      (a as RcBundledTypefaceLoader).facesFor("shared")?.identities,
+    )
+    assertEquals(
+      listOf("./catalog-b/fonts/Roboto-Regular.ttf"),
+      (b as RcBundledTypefaceLoader).facesFor("shared")?.identities,
+    )
+  }
+
+  /**
+   * `runCatching` catches `CancellationException` too, so a host cancelling a screen load mid-fetch
+   * used to come back as "this manifest has no fonts" — the caller then carrying on with post-load
+   * state updates inside an already-cancelled coroutine.
+   */
+  @Test
+  fun cancellingTheManifestFetchPropagatesRatherThanYieldingAnEmptyLoader() = runTest {
+    val loader = RcManifestTypefaceLoader { throw CancellationException("host navigated away") }
+
+    assertFailsWith<CancellationException> { loader.load("./fonts/") }
+  }
+
+  /** Same for a *face* fetch, whose ordinary failures deliberately drop only one family. */
+  @Test
+  fun cancellingAFaceFetchPropagatesRatherThanDroppingTheFamily() = runTest {
+    val loader = RcManifestTypefaceLoader { url ->
+      if (url.endsWith("fonts.json")) manifest.encodeToByteArray()
+      else throw CancellationException("host navigated away")
+    }
+
+    assertFailsWith<CancellationException> { loader.load("./fonts/") }
   }
 
   @Test
