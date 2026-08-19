@@ -216,10 +216,28 @@ main() {
 
   echo "==> Stopping and removing old containers"
 
+  # `|| true` tolerates the benign race: a container that has already exited and been reaped is a
+  # successful outcome spelled as a non-zero exit. It must NOT tolerate a container that is still
+  # standing — that leaves the old replicas running alongside the healthy new ones, which is the
+  # doubled replica count and resource pressure this whole script exists to avoid, and the caller
+  # would log the rollout as complete. So swallow the status, then check the actual state.
   # shellcheck disable=SC2086 # DOCKER_ARGS and OLD_CONTAINER_IDS must be unquoted to allow multiple arguments
   docker $DOCKER_ARGS stop $OLD_CONTAINER_IDS || true
   # shellcheck disable=SC2086 # DOCKER_ARGS and OLD_CONTAINER_IDS must be unquoted to allow multiple arguments
   docker $DOCKER_ARGS rm $OLD_CONTAINER_IDS || true
+
+  SURVIVING_CONTAINER_IDS=""
+  for OLD_CONTAINER_ID in $OLD_CONTAINER_IDS; do
+    # shellcheck disable=SC2086 # DOCKER_ARGS must be unquoted to allow multiple arguments
+    if docker $DOCKER_ARGS inspect --format='{{.Id}}' "$OLD_CONTAINER_ID" >/dev/null 2>&1; then
+      SURVIVING_CONTAINER_IDS="$SURVIVING_CONTAINER_IDS $OLD_CONTAINER_ID"
+    fi
+  done
+  if [ -n "$SURVIVING_CONTAINER_IDS" ]; then
+    echo "==> ERROR: old containers survived cleanup:$SURVIVING_CONTAINER_IDS" >&2
+    echo "==> The new replicas are healthy but the old ones are still running. Remove them by hand." >&2
+    exit 1
+  fi
 }
 
 while [ $# -gt 0 ]; do

@@ -416,15 +416,20 @@ class CatalogThemeCache(
       val fresh = render(key) ?: continue
       compared++
       if (!fresh.contentEquals(cached)) {
-        store.discard()
+        val discarded = store.discard()
         synchronized(renderLock) {
           renders.clear()
           byteCount.set(0)
         }
         state.set("paused")
         completedAt.set(0)
-        // The suspect bytes are gone, so what the cache holds from here is this renderer's own.
-        persistenceTrusted.set(true)
+        // Trust follows the DISCARD, not the detection. `discard` can fail — its generation write
+        // lock is held by a concurrent foreground render, and it retries but does not block
+        // forever — and trusting persistence anyway would leave the very PNGs just proved wrong on
+        // disk and immediately serve them as verified. While `persistenceTrusted` stays false the
+        // adopted entries are withheld from the read path (see [get]) and the next verification
+        // pass tries again, which is the quarantine this case needs.
+        if (discarded) persistenceTrusted.set(true)
         return VerifyOutcome.MISMATCH
       }
     }

@@ -1213,6 +1213,11 @@ jobs:
       # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.
       - name: Run preview-image font-prewarm tests
         run: deploy/image/test-prewarm-fonts.sh
+      # Both rollout failure modes report SUCCESS while leaving the state the rollout exists to
+      # prevent: old replicas still running beside the new ones, or a released lock held by a
+      # runner that carried on rolling. Neither shows up in any log.
+      - name: Run rollout cleanup tests
+        run: deploy/image/test-rollout-cleanup.sh
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
       # The android-all cache-key script DELETES ~200 MB coordinate directories

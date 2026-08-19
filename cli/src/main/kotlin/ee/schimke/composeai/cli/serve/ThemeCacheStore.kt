@@ -384,7 +384,20 @@ class ThemeCacheStore(
      * the same broken identity that just proved untrustworthy.
      */
     fun discard(): Boolean {
-      val generationWriteLock = tryGenerationWriteLock() ?: return false
+      // Retried, because the contended case is transient and the consequence of giving up is not.
+      // The lock is held only for the length of one PNG write, so a foreground render that happens
+      // to be publishing right now clears in milliseconds; the caller, on the other hand, has just
+      // proved this generation's bytes wrong, and a `false` it does not act on leaves those bytes
+      // on disk to be served. See `CatalogThemeCache.verifySample`, which now keeps the generation
+      // quarantined when this still fails.
+      var generationWriteLock = tryGenerationWriteLock()
+      var attempt = 0
+      while (generationWriteLock == null && attempt < DISCARD_LOCK_ATTEMPTS) {
+        attempt++
+        runCatching { Thread.sleep(DISCARD_LOCK_BACKOFF_MILLIS) }
+        generationWriteLock = tryGenerationWriteLock()
+      }
+      if (generationWriteLock == null) return false
       try {
         present.clear()
         adopted.clear()
@@ -482,6 +495,16 @@ class ThemeCacheStore(
     private const val PNG_SUFFIX = ".png"
     private const val TEMP_SUFFIX = ".png.tmp"
     private const val GENERATION_WRITE_LOCK = ".write.lock"
+    /**
+     * Bounded retry for [Generation.discard]'s write lock.
+     *
+     * The lock is held for one PNG write, so ~1s of retries covers a foreground render that happens
+     * to be mid-publish many times over. Bounded rather than blocking because the caller is the
+     * idle verification task, not a request: it must not wedge behind a pathologically stuck
+     * writer, and a genuine failure has a correct handling (keep the generation quarantined).
+     */
+    private const val DISCARD_LOCK_ATTEMPTS = 20
+    private const val DISCARD_LOCK_BACKOFF_MILLIS = 50L
 
     /**
      * Names that may become a directory under the store root.

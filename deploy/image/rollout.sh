@@ -40,10 +40,30 @@ release_rollout_lock() {
   docker rm -f "$LOCK_NAME" >/dev/null 2>&1 || true
 }
 
+# A POSIX shell RESUMES after a trap handler returns unless the handler exits. Releasing the lock
+# from a plain `trap ... INT TERM` therefore advertised the lock as free while this runner carried
+# on with the rest of the rollout — another runner could acquire it and overlap the remaining work,
+# which is the exact concurrency the lock exists to prevent. Signals get handlers that clean up and
+# terminate; EXIT keeps the plain cleanup, and `trap - EXIT` stops it running twice (harmless, since
+# the release is idempotent, but it would log a second removal attempt).
+on_rollout_signal() {
+  release_rollout_lock
+  trap - EXIT
+  # 128 + signal number: the conventional status for a signal-terminated process, so a supervisor
+  # can tell an interrupted rollout from a failed one.
+  exit "$((128 + $1))"
+}
+
+arm_rollout_lock_traps() {
+  trap release_rollout_lock EXIT
+  trap 'on_rollout_signal 2' INT
+  trap 'on_rollout_signal 15' TERM
+}
+
 acquire_rollout_lock() {
   if docker run -d --name "$LOCK_NAME" --entrypoint sleep docker:29-cli "$LOCK_TTL" \
     >/dev/null 2>&1; then
-    trap release_rollout_lock EXIT INT TERM
+    arm_rollout_lock_traps
     return 0
   fi
   state="$(docker inspect --format '{{.State.Status}}' "$LOCK_NAME" 2>/dev/null || true)"
@@ -51,7 +71,7 @@ acquire_rollout_lock() {
     docker rm -f "$LOCK_NAME" >/dev/null 2>&1 || true
     if docker run -d --name "$LOCK_NAME" --entrypoint sleep docker:29-cli "$LOCK_TTL" \
       >/dev/null 2>&1; then
-      trap release_rollout_lock EXIT INT TERM
+      arm_rollout_lock_traps
       return 0
     fi
   fi

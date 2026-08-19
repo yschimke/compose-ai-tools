@@ -1,7 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -108,5 +110,98 @@ class HostOptimizerAdmissionTest {
     assertTrue(snapshot.paused)
     assertTrue(snapshot.pressure?.constrained == true)
     assertTrue(snapshot.pauseReason.orEmpty().contains("load"))
+  }
+
+  /**
+   * `/proc/meminfo` inside a container reports the HOST's memory. The deployed profiles cap preview
+   * at 3 GiB and 6 GiB on far larger hosts, so a replica already near its own OOM limit read as
+   * having plenty of headroom and the gate kept admitting optimizer work.
+   */
+  @Test
+  fun `memory headroom is the smaller of the host and the cgroup`() {
+    val root = Files.createTempDirectory("host-sampler").toFile()
+    val proc = File(root, "proc").apply { mkdirs() }
+    // 32 GiB host, 24 GiB of it available: 75%, comfortably unconstrained on its own.
+    File(proc, "meminfo").writeText("MemTotal:       33554432 kB\nMemAvailable:   25165824 kB\n")
+
+    val hostOnly = LinuxHostResourceSampler(proc, File(root, "absent")).sample()
+    assertEquals(0.75, assertNotNull(hostOnly?.memoryAvailableFraction), 0.001)
+
+    // Same host, but this process is in a 3 GiB cgroup with 2.9 GiB charged to it.
+    val cgroupV2 = File(root, "cgroup2").apply { mkdirs() }
+    File(cgroupV2, "memory.max").writeText("${3L * 1024 * 1024 * 1024}\n")
+    File(cgroupV2, "memory.current").writeText("${(2.9 * 1024 * 1024 * 1024).toLong()}\n")
+
+    val constrained = LinuxHostResourceSampler(proc, cgroupV2).sample()
+    assertTrue(
+      assertNotNull(constrained?.memoryAvailableFraction) < 0.05,
+      "the container's own ceiling has to win over the host's spare memory",
+    )
+  }
+
+  @Test
+  fun `page cache charged to the cgroup is not counted as used`() {
+    val root = Files.createTempDirectory("host-sampler-cache").toFile()
+    val proc = File(root, "proc").apply { mkdirs() }
+    File(proc, "meminfo").writeText("MemTotal:       33554432 kB\nMemAvailable:   25165824 kB\n")
+    val cgroup = File(root, "cgroup2").apply { mkdirs() }
+    val limit = 4L * 1024 * 1024 * 1024
+    File(cgroup, "memory.max").writeText("$limit\n")
+    File(cgroup, "memory.current").writeText("${limit / 2}\n")
+    // Half of what is charged is reclaimable page cache, so the real headroom is 75%, not 50%.
+    File(cgroup, "memory.stat").writeText("anon 1\ninactive_file ${limit / 4}\nslab 2\n")
+
+    val sample = LinuxHostResourceSampler(proc, cgroup).sample()
+
+    assertEquals(0.75, assertNotNull(sample?.memoryAvailableFraction), 0.001)
+  }
+
+  @Test
+  fun `an unlimited cgroup leaves the host reading untouched`() {
+    val root = Files.createTempDirectory("host-sampler-unlimited").toFile()
+    val proc = File(root, "proc").apply { mkdirs() }
+    File(proc, "meminfo").writeText("MemTotal:       33554432 kB\nMemAvailable:   25165824 kB\n")
+
+    // cgroup v2 spells it as a word...
+    val v2 = File(root, "cgroup2").apply { mkdirs() }
+    File(v2, "memory.max").writeText("max\n")
+    File(v2, "memory.current").writeText("1024\n")
+    assertEquals(
+      0.75,
+      assertNotNull(LinuxHostResourceSampler(proc, v2).sample()?.memoryAvailableFraction),
+      0.001,
+    )
+
+    // ...cgroup v1 as a sentinel near Long.MAX_VALUE, which must not be read as a real ceiling.
+    val v1 = File(root, "cgroup1").apply { mkdirs() }
+    File(v1, "memory").apply {
+      mkdirs()
+      File(this, "memory.limit_in_bytes").writeText("9223372036854771712\n")
+      File(this, "memory.usage_in_bytes").writeText("1024\n")
+    }
+    assertEquals(
+      0.75,
+      assertNotNull(LinuxHostResourceSampler(proc, v1).sample()?.memoryAvailableFraction),
+      0.001,
+    )
+  }
+
+  @Test
+  fun `a cgroup v1 limit is honoured`() {
+    val root = Files.createTempDirectory("host-sampler-v1").toFile()
+    val proc = File(root, "proc").apply { mkdirs() }
+    File(proc, "meminfo").writeText("MemTotal:       33554432 kB\nMemAvailable:   25165824 kB\n")
+    val cgroup = File(root, "cgroup1").apply { mkdirs() }
+    File(cgroup, "memory").apply {
+      mkdirs()
+      val limit = 6L * 1024 * 1024 * 1024
+      File(this, "memory.limit_in_bytes").writeText("$limit\n")
+      File(this, "memory.usage_in_bytes").writeText("${limit - limit / 10}\n")
+      File(this, "memory.stat").writeText("total_inactive_file 0\n")
+    }
+
+    val sample = LinuxHostResourceSampler(proc, cgroup).sample()
+
+    assertEquals(0.1, assertNotNull(sample?.memoryAvailableFraction), 0.001)
   }
 }
