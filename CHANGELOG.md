@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.19.0](https://github.com/yschimke/compose-ai-tools/compare/v1.18.0...v1.19.0) (2026-08-19)
+
+
+### Features
+
+* **design-map:** let --strict accept an absence somebody wrote down ([#4250](https://github.com/yschimke/compose-ai-tools/issues/4250)) ([9eabefa](https://github.com/yschimke/compose-ai-tools/commit/9eabefa2234dd2ee33e2174194db45384cd98ae9))
+
+
+### Bug Fixes
+
+* **preview:** record the clock position the render loop actually reached ([#4248](https://github.com/yschimke/compose-ai-tools/issues/4248)) ([6bbb744](https://github.com/yschimke/compose-ai-tools/commit/6bbb744aa11beca03feef1b27ce88733a20112b0))
+
 ## [1.18.0](https://github.com/yschimke/compose-ai-tools/compare/v1.17.0...v1.18.0) (2026-08-19)
 
 
