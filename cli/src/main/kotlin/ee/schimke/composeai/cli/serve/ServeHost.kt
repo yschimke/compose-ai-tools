@@ -632,6 +632,14 @@ interface ServeHost : AutoCloseable {
     get() = canApplyOverrides
 
   /**
+   * Per-preview annotation availability, the twin of [hasA11yOverlayFor]: a composite host may
+   * front a whole catalog while only part of it has a daemon twin to capture semantics from, and
+   * offering the Typography / Theme layers on a preview whose fetch can only 404 is exactly the
+   * dead control [hasDesignAnnotations] exists to avoid.
+   */
+  fun hasDesignAnnotationsFor(previewId: String): Boolean = hasDesignAnnotations
+
+  /**
    * Render [previewId] at [overrides] and return its typography + theme inspection layers as JSON
    * (`{previewId, annotations, tags}`), or [AnnotationsOutcome.NotFound] when this host has no
    * daemon. See [ServeRenderHost.renderAnnotations].

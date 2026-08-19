@@ -1321,6 +1321,13 @@ internal constructor(
   ): AnnotationsOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return AnnotationsOutcome.NotFound
+    // Same precondition as the lanes above: `compose/semantics` (and the theme product below) are
+    // registered inactive, and the capability read further down forces the enable through a lazy
+    // that throws when the daemon can't be opened at all. Doing it here turns that into this
+    // request's failure instead of an exception escaping past the route's 500-with-reason.
+    ensureExtensionsEnabled()?.let {
+      return AnnotationsOutcome.Failed(it)
+    }
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     annotationsCache.get(key)?.let {
