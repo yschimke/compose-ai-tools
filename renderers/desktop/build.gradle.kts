@@ -38,6 +38,11 @@ dependencies {
   // dependency — invoked from production main code (the function name is misleading; it's an
   // entry-point for the test API, not a JUnit-only construct).
   implementation(libs.jetbrains.compose.ui.test)
+  // The `@InteractionPreview` script expansion (`InteractionScript.timeline`, the `TAP_PRESS_MS` /
+  // `MAX_INTERACTION_DURATION_MS` bounds) and the APNG encoder + frame-delay rationals, shared with
+  // the Robolectric renderer so one component's capture can't disagree with its sibling's about how
+  // long the gesture ran or how fast the file plays back.
+  implementation(project(":data-motion-core"))
   // Pure-JVM scroll primitives: `ScrollAxis` enum, `ScrollLongFramePlan` /
   // `ScrollGifFramePlan` planners, `ScrollSliceStitcher.stitchSlices`, `ScrollGifEncoder.encode`,
   // plus the `buildGifScrollScript` shape function. The Android driver

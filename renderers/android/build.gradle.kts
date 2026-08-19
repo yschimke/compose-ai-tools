@@ -59,6 +59,10 @@ dependencies {
   // `compose-preview a11y`, MCP) drive a11y through the daemon, never through this Test task.
   api(project(":data-a11y-core"))
   implementation(project(":data-render-core"))
+  // Backend-agnostic motion-capture primitives: the `@InteractionPreview` script expansion the
+  // desktop renderer also derives its recording window from, plus the APNG encoder and frame-delay
+  // rationals `handleInteractionCapture` stitches its frames with.
+  implementation(project(":data-motion-core"))
   implementation(project(":data-scroll-core"))
   // `:data-scroll-android` carries the `AndroidComposeTestRule`-bound drivers
   // (`driveScrollToEnd`, `driveScrollByViewport`, `driveScrollToStart`, `driveScrollBy`,

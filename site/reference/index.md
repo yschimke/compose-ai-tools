@@ -42,6 +42,7 @@ the Compose runtime, daemon, or AndroidX. The matching
 | [Fonts](./fonts) | `fonts/used` | default | Font families with weight/style fallback chain. |
 | [History diff](./history) | `history/diff/regions` | default | Per-pixel bounding boxes of changed regions vs. another history entry. |
 | [Layout inspector](./layout-inspector) | `layout/inspector`, `compose/semantics` | default | Compose layout/component hierarchy with bounds, modifiers, source refs. |
+| [Motion captures](./motion) | `render/motion/apng`, `render/motion/gif` | default | Paused-clock recordings of a component in motion — `@AnimatedPreview` (self-driven) and `@InteractionPreview` (scripted pointer gesture). |
 | [Pseudolocale](./pseudolocale) | `localeTag = en-XA`/`ar-XB` | default | Runtime accent / bidi pseudolocalisation. Android: text + layout direction. CMP Desktop: layout direction. |
 | [Recomposition](./recomposition) | `compose/recomposition` | instrumented | Per-node recomposition counts; heat-map source. |
 | [Render trace](./render) | `render/composeAiTrace`, `render/trace`, `render/deviceBackground`, `render/deviceClip` | default | Pipeline timing, device clip / background derivation. |
