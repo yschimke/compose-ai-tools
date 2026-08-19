@@ -258,6 +258,32 @@ data class BundleManifest(
    * shared-classpath split mode populates this field.
    */
   val externalClasspath: List<BundleExternalClasspath> = emptyList(),
+  /**
+   * (v9) Extra Maven repository base URLs a player needs to re-resolve this bundle's
+   * [ClasspathEntry.Maven] coordinates — the repositories the producing build declared beyond Maven
+   * Central and Google Maven, which every player already tries.
+   *
+   * A coordinate is only a promise that the bytes can be re-attached from *somewhere*, and that
+   * promise silently breaks the moment a module resolves a dependency from anywhere else: a JitPack
+   * fork, an internal mirror, or — the case that produced this field — the androidx.dev snapshot
+   * build `:samples:design-catalog-remote-m3` takes its entire Remote Compose runtime from. The
+   * player found nothing for those coordinates, dropped them with a warning, and stood a daemon up
+   * on an incomplete classpath; the first render then died with `NoClassDefFoundError:
+   * androidx/compose/remote/player/view/RemoteComposePlayer` and the catalog fell back to baked
+   * PNGs (issues #4259 / #4265). Recording the repositories makes the bundle say where its bytes
+   * live instead of leaving a server operator to guess it into `--extra-maven-repos`, and keeps a
+   * pinned snapshot build id correct by construction: bump it in the producing build and the next
+   * pack carries the new URL.
+   *
+   * Only *extra* repositories are recorded — the two defaults are omitted so a bundle whose deps
+   * are all on Central/Google keeps an empty list, and so does a pre-v9 bundle. Purely additive: a
+   * player that ignores the field resolves exactly as it did before.
+   *
+   * These URLs are producer-declared, so a player must treat them with the trust it already extends
+   * to the bundle's executable classes — the recorded [ClasspathEntry.Maven.sha256] still governs
+   * whether the fetched bytes are the ones the producer packed.
+   */
+  val repositories: List<String> = emptyList(),
 )
 
 /** One whole bundle classpath entry stored at `bundle/res/<sha256>` instead of inline. */
@@ -648,6 +674,13 @@ val CONVENTIONAL_DATA_EXTENSION_REPORTS: Map<String, String> = mapOf("a11y" to "
  *   field), present only for previews that opted in. Additive — the sidecar is ignored by older
  *   readers and absent for previews that declare no knobs, so a v7 reader opening a v8 bundle still
  *   works; only a reader that wants the editable knobs needs to be v8-aware.
+ * - v9 — adds [BundleManifest.repositories]: the extra Maven repository base URLs (beyond Maven
+ *   Central and Google Maven) a player must consult to re-resolve this bundle's coordinates. A
+ *   coordinate resolved from a JitPack fork, an internal mirror, or an androidx.dev snapshot build
+ *   was unfindable to every player before this, so the bundle stood a daemon up on an incomplete
+ *   classpath and the first render died with a linkage error (issues #4259 / #4265). Additive — the
+ *   field defaults to empty (which is also what a v8 bundle and any all-Central module carry), so a
+ *   v8 reader opening a v9 bundle resolves exactly as it did before.
  *
  * Orthogonal to the version sequence above, the optional `signatures.json`
  * ([BUNDLE_SIGNATURES_PATH], [BundleSignatures]) carries detached producer signatures over the
@@ -656,7 +689,7 @@ val CONVENTIONAL_DATA_EXTENSION_REPORTS: Map<String, String> = mapOf("a11y" to "
  * **not** bump [schemaVersion] (signing is a post-pack step, like `bundle embed`); an unsigned
  * bundle has no such entry and an unaware reader ignores it.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 8
+const val BUNDLE_SCHEMA_VERSION: Int = 9
 
 /**
  * File extension of the per-preview override sidecar the render step writes next to the PNG

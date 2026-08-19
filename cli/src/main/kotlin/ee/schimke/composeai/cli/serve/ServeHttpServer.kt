@@ -5485,6 +5485,9 @@ class ServeHttpServer(
           // than offer ones whose fetch can only 404.
           hasA11yOverlay = renderHost.hasA11yOverlayFor(preview.id),
           hasDesignAnnotations = renderHost.hasDesignAnnotationsFor(preview.id),
+          // The baked half of the same Typography layer: a published catalog measured it off the
+          // frame it also published, so the overlay works on a host with no daemon at all.
+          hasPublishedTypography = renderHost.hasPublishedTypographyFor(preview.id),
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           // Per-preview: offer the in-browser Remote Compose canvas lane only when this preview

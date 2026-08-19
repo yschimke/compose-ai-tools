@@ -380,6 +380,127 @@ class CoordinateResolverTest {
     assertTrue(File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar").isFile)
   }
 
+  @Test
+  fun `snapshot metadata yields the timestamped file name for the matching extension`() {
+    val metadata =
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <metadata modelVersion="1.1.0">
+        <versioning>
+          <snapshotVersions>
+            <snapshotVersion>
+              <extension>aar</extension>
+              <value>1.0.0-20260818.194125-1</value>
+            </snapshotVersion>
+            <snapshotVersion>
+              <classifier>sources</classifier>
+              <extension>jar</extension>
+              <value>1.0.0-20260818.194125-1</value>
+            </snapshotVersion>
+            <snapshotVersion>
+              <extension>pom</extension>
+              <value>1.0.0-20260818.194125-1</value>
+            </snapshotVersion>
+          </snapshotVersions>
+        </versioning>
+      </metadata>
+      """
+        .trimIndent()
+
+    assertEquals("1.0.0-20260818.194125-1", CoordinateResolver.snapshotVersion(metadata, "aar"))
+    assertEquals("1.0.0-20260818.194125-1", CoordinateResolver.snapshotVersion(metadata, "pom"))
+    // The only `jar` block carries a `sources` classifier, so it must NOT be taken for the
+    // artifact.
+    assertNull(CoordinateResolver.snapshotVersion(metadata, "jar"))
+    assertNull(CoordinateResolver.snapshotVersion("<metadata/>", "aar"))
+  }
+
+  @Test
+  fun `isSnapshot only trips on a SNAPSHOT version`() {
+    assertTrue(CoordinateResolver.isSnapshot("1.0.0-SNAPSHOT"))
+    assertFalse(CoordinateResolver.isSnapshot("1.0.0"))
+    assertFalse(CoordinateResolver.isSnapshot("1.0.0-alpha10"))
+    // An already-resolved unique snapshot is a concrete version, not a `-SNAPSHOT` request.
+    assertFalse(CoordinateResolver.isSnapshot("1.0.0-20260818.194125-1"))
+  }
+
+  @Test
+  fun `a SNAPSHOT coordinate resolves through the version metadata`() {
+    // Regression for #4259 / #4265: a real snapshot repo serves
+    // `widgets-1.0.0-<timestamp>-1.jar`, never `widgets-1.0.0-SNAPSHOT.jar`. Constructing the
+    // literal name 404'd, so every `-SNAPSHOT` coordinate a bundle recorded was unresolvable and
+    // the live daemon came up without it. This repo serves ONLY what a real one serves.
+    val jar = byteArrayOf(7, 7, 7)
+    val timestamped = "1.0.0-20260818.194125-1"
+    val base =
+      startRoutedRepo(
+        mapOf(
+          "/com/example/foo/widgets/1.0.0-SNAPSHOT/maven-metadata.xml" to
+            snapshotMetadata(timestamped, "jar").toByteArray(),
+          "/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-$timestamped.jar" to jar,
+        )
+      )
+
+    val r = networkResolver(base).resolve(snapshotCoord())
+
+    val file = assertNotNull(r.file, "a snapshot coordinate must resolve from its metadata")
+    assertEquals(jar.toList(), file.readBytes().toList())
+    // Cached under the LITERAL coordinate name so the next (possibly offline) run finds it in
+    // `locate`, which only ever looks for `<artifact>-<version>.<ext>`.
+    assertTrue(
+      File(cacheDir, "com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar").isFile
+    )
+  }
+
+  @Test
+  fun `a snapshot repo with no metadata falls back to the literal file name`() {
+    // Non-unique snapshots (and any repo that just publishes the literal name) must keep working —
+    // the metadata lookup is a best-effort addition, not a new requirement.
+    val jar = byteArrayOf(1, 2, 3)
+    val base =
+      startRoutedRepo(
+        mapOf("/com/example/foo/widgets/1.0.0-SNAPSHOT/widgets-1.0.0-SNAPSHOT.jar" to jar)
+      )
+
+    val file = assertNotNull(networkResolver(base).resolve(snapshotCoord()).file)
+    assertEquals(jar.toList(), file.readBytes().toList())
+  }
+
+  private fun snapshotCoord() =
+    BundleReader.ClasspathEntry.Maven(
+      group = "com.example.foo",
+      artifact = "widgets",
+      version = "1.0.0-SNAPSHOT",
+      type = "jar",
+      sha256 = null,
+    )
+
+  private fun snapshotMetadata(value: String, extension: String) =
+    """
+    <metadata modelVersion="1.1.0"><versioning><snapshotVersions>
+      <snapshotVersion><extension>$extension</extension><value>$value</value></snapshotVersion>
+    </snapshotVersions></versioning></metadata>
+    """
+      .trimIndent()
+
+  /** A loopback Maven repo that serves [routes] by exact path and 404s everything else. */
+  private fun startRoutedRepo(routes: Map<String, ByteArray>): String {
+    val s = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    s.createContext("/") { exchange ->
+      val body = routes[exchange.requestURI.path]
+      if (body == null) {
+        exchange.sendResponseHeaders(404, -1)
+      } else {
+        exchange.sendResponseHeaders(200, body.size.toLong())
+        exchange.responseBody.use { it.write(body) }
+      }
+      exchange.close()
+    }
+    s.start()
+    server = s
+    return "http://127.0.0.1:${s.address.port}"
+  }
+
   private fun assertNotNullFile(f: File?) =
     assertTrue(f != null && f.isFile, "expected a resolved jar")
 }

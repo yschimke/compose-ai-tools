@@ -48,6 +48,8 @@ class ServeCatalogLiveHostTest {
     override val hasA11yOverlay: Boolean = false,
     /** Whether this host can project the typography / theme layers off a semantics tree. */
     override val hasDesignAnnotations: Boolean = false,
+    /** Published typography this host can replay over its baked frame, keyed by preview id. */
+    private val publishedTypography: Set<String> = emptySet(),
     /**
      * Ids this host lists but has no pixels for (a catalog's deferred previews) — `render` reports
      * `NotFound` for them, exactly as the real baked host does.
@@ -127,13 +129,17 @@ class ServeCatalogLiveHostTest {
       )
     }
 
+    override fun hasPublishedTypographyFor(previewId: String): Boolean =
+      previewId in publishedTypography
+
     override fun renderAnnotations(
       previewId: String,
       overrides: PreviewOverrides,
     ): AnnotationsOutcome {
       lastAnnotationsId = previewId
       lastRenderOverrides = overrides
-      if (!hasDesignAnnotations) return AnnotationsOutcome.NotFound
+      if (!hasDesignAnnotations && previewId !in publishedTypography)
+        return AnnotationsOutcome.NotFound
       return AnnotationsOutcome.Ok(
         """{"previewId":"$previewId","annotations":[],"tags":{}}""".encodeToByteArray()
       )
@@ -510,12 +516,74 @@ class ServeCatalogLiveHostTest {
       )
     val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
 
+    // No daemon twin AND nothing published for it — the layer has no source at all.
     assertFalse(composite.hasDesignAnnotationsFor(androidOnlyId))
+    assertFalse(composite.hasPublishedTypographyFor(androidOnlyId))
     assertEquals(
       AnnotationsOutcome.NotFound,
       composite.renderAnnotations(androidOnlyId, PreviewOverrides()),
     )
     assertNull(live.lastAnnotationsId)
+  }
+
+  @Test
+  fun `a catalog preview with no daemon twin inspects the published typography instead`() {
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+        publishedTypography = setOf(androidOnlyId),
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasDesignAnnotations = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // Browsing an unmapped id serves the baked PNG, and the published annotations were measured
+    // over exactly that frame — so the layer is answerable without any daemon.
+    assertTrue(composite.hasPublishedTypographyFor(androidOnlyId))
+    val out =
+      composite.renderAnnotations(androidOnlyId, PreviewOverrides()) as AnnotationsOutcome.Ok
+    assertEquals(androidOnlyId, baked.lastAnnotationsId)
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$androidOnlyId\""))
+    assertNull(live.lastAnnotationsId, "an unmapped id must never wake the daemon")
+
+    // …but only while the baked pixels are what the request asks for. A font scale would be
+    // reported as a dropped override and answered with the baked PNG, yet the published bounds
+    // were measured at the baked scale, so drawing them would misplace every box.
+    baked.lastAnnotationsId = null
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      composite.renderAnnotations(androidOnlyId, PreviewOverrides(fontScale = 1.5f)),
+    )
+    assertNull(baked.lastAnnotationsId)
+  }
+
+  @Test
+  fun `a mapped preview whose daemon has no semantics lane falls back to published typography`() {
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId)),
+        tag = "baked",
+        publishedTypography = setOf(catalogId),
+      )
+    // hasDesignAnnotations = false: a daemon backend carrying no `compose/semantics` lane.
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    val out = composite.renderAnnotations(catalogId, PreviewOverrides()) as AnnotationsOutcome.Ok
+    assertEquals(daemonId, live.lastAnnotationsId, "the daemon is asked first")
+    assertEquals(catalogId, baked.lastAnnotationsId, "…then the catalog's published layer")
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$catalogId\""))
   }
 
   @Test

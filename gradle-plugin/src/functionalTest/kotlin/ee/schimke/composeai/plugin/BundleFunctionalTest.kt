@@ -907,6 +907,49 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `bundle manifest records the extra repositories its coordinates need`() {
+    // A coordinate is only re-resolvable where its repository is known, and until v9 a bundle
+    // carried no way to say. `remote-m3`'s Remote Compose runtime resolves from an androidx.dev
+    // snapshot build, so every player looked for it on Central/Google, found nothing, and rendered
+    // on an incomplete classpath (#4259 / #4265). Scoped by `content { includeGroup }` to a group
+    // nothing here depends on, so the repository is *declared* (and therefore recorded) without
+    // ever being consulted during resolution.
+    val projectDir = createTestProject()
+    val settings = File(projectDir, "settings.gradle.kts")
+    settings.appendText(
+      """
+
+      dependencyResolutionManagement {
+          repositories {
+              maven {
+                  url = uri("https://androidx.dev/snapshots/builds/16113093/artifacts/repository")
+                  content { includeGroup("com.example.nothing") }
+              }
+          }
+      }
+      """
+        .trimIndent()
+    )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewBundle", "-PbundlePreviewIds=test.RedKt.RedBoxPreview")
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    val manifest =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+        .jsonObject
+    val repositories = manifest["repositories"]!!.jsonArray.map { it.jsonPrimitive.content }
+
+    // Only the extra one: Central and Google are what every player already tries.
+    assertThat(repositories)
+      .containsExactly("https://androidx.dev/snapshots/builds/16113093/artifacts/repository")
+  }
+
+  @Test
   fun `embed-deps pack carries reachable jars in libs and marks resolution embedded`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"

@@ -6,6 +6,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
@@ -202,17 +203,66 @@ internal class CoordinateResolver(
    * bytes didn't match the bundle's hash and we want fresh bytes (which overwrite the stale copy).
    */
   private fun download(coord: BundleReader.ClasspathEntry.Maven): File? {
+    val versionDir = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}"
     // Try the recorded type, then `.aar` — same fallback as [locate], for the same reasons.
     for (fileName in candidateFileNames(coord)) {
-      val rel = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
+      val rel = "$versionDir/$fileName"
+      // The cache always keys on the LITERAL `<artifact>-<version>.<ext>` name, even when the
+      // remote served a timestamped snapshot file, so [locate] finds the download next time.
       val dest = File(downloadCacheDir, rel)
       for (base in remoteRepositories) {
-        val url = base.trimEnd('/') + "/" + rel
+        val remoteName = remoteFileName(base, coord, versionDir, fileName)
+        val url = base.trimEnd('/') + "/" + versionDir + "/" + remoteName
         if (fetchTo(url, dest)) return materialize(dest)
       }
     }
     return null
   }
+
+  /**
+   * The file name [base] actually serves for [coord] — [fileName] itself for a release, and for a
+   * **unique snapshot** the timestamped name its `maven-metadata.xml` names.
+   *
+   * A Maven snapshot repository does not serve `<artifact>-1.0.0-SNAPSHOT.aar`: it stores each
+   * publication under `<artifact>-1.0.0-<yyyyMMdd.HHmmss>-<n>.<ext>` and points at the current one
+   * from the version directory's `maven-metadata.xml`. Constructing the literal name — which is
+   * what this resolver did before — therefore 404s against every real snapshot repo, so a bundle
+   * carrying a `-SNAPSHOT` coordinate could never be rehydrated from the network at all. That is
+   * what stranded `remote-m3`, whose whole Remote Compose runtime resolves from an androidx.dev
+   * snapshot build (issues #4259 / #4265): the live daemon came up with no
+   * `androidx.compose.remote:remote-player-view` on its classpath and every render died with
+   * `NoClassDefFoundError: androidx/compose/remote/player/view/RemoteComposePlayer`.
+   *
+   * Falls back to [fileName] on anything unexpected (no metadata, unparseable metadata, transport
+   * error, or a repo publishing non-unique snapshots under the literal name) — the caller then just
+   * tries that URL, which is exactly the old behaviour.
+   */
+  private fun remoteFileName(
+    base: String,
+    coord: BundleReader.ClasspathEntry.Maven,
+    versionDir: String,
+    fileName: String,
+  ): String {
+    if (!isSnapshot(coord.version)) return fileName
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "")
+    val metadata = fetchText(base.trimEnd('/') + "/" + versionDir + "/maven-metadata.xml")
+    val timestamped = metadata?.let { snapshotVersion(it, extension) } ?: return fileName
+    return "${coord.artifact}-$timestamped.$extension"
+  }
+
+  /** GET [url] as text, or null on a non-2xx / transport error. */
+  private fun fetchText(url: String): String? =
+    try {
+      HttpClient(OkHttp).use { client ->
+        runBlocking {
+          client.prepareGet(url).execute { response ->
+            if (response.status.isSuccess()) response.bodyAsText() else null
+          }
+        }
+      }
+    } catch (_: Exception) {
+      null
+    }
 
   /**
    * An `.aar` isn't classpath-loadable, so extract its `classes.jar` to a stable cache path and
@@ -301,6 +351,37 @@ internal class CoordinateResolver(
       listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
         "${coord.artifact}-${coord.version}.$it"
       }
+
+    /** A Maven snapshot version — the only kind whose artifact file name isn't the version. */
+    internal fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")
+
+    /**
+     * The unique-snapshot version (`1.0.0-20260818.194125-1`) a version-level `maven-metadata.xml`
+     * publishes for [extension], or null when the document names none.
+     *
+     * Read with a scan rather than an XML parser to keep `:cli` free of one: each
+     * `<snapshotVersion>` block is matched whole, blocks carrying a `<classifier>` are skipped (the
+     * `sources` / `javadoc` siblings publish the same extension), and the first remaining block
+     * whose `<extension>` matches wins — a version-level metadata document carries one classifier-
+     * free entry per extension, the current publication.
+     */
+    internal fun snapshotVersion(metadataXml: String, extension: String): String? =
+      SNAPSHOT_VERSION_BLOCK.findAll(metadataXml)
+        .map { it.groupValues[1] }
+        .filterNot { "<classifier>" in it }
+        .firstOrNull { tagValue(it, "extension").equals(extension, ignoreCase = true) }
+        ?.let { tagValue(it, "value") }
+        ?.takeIf { it.isNotBlank() }
+
+    private val SNAPSHOT_VERSION_BLOCK =
+      Regex("""<snapshotVersion>(.*?)</snapshotVersion>""", RegexOption.DOT_MATCHES_ALL)
+
+    private fun tagValue(block: String, tag: String): String? =
+      Regex("""<$tag>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL)
+        .find(block)
+        ?.groupValues
+        ?.get(1)
+        ?.trim()
 
     /**
      * Default local repositories searched when a caller doesn't pass its own. Honours the standard
