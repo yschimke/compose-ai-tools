@@ -171,8 +171,13 @@ jar. Idempotent — re-running finds the fonts already gone and changes nothing.
 ### Shared per-preview classpath (opt-in)
 
 The ordinary `bundle split` full mode remains self-contained: every per-preview
-bundle carries `classes/app.jar`. For delivery trees where that repetition is
-too expensive, the explicitly opt-in form
+bundle carries `classes/app.jar`. That repetition costs the carriage once per
+preview, so it scales with the preview count rather than the backend — `bundle
+split` measures it and says so, and above 50% of the split's output the design
+catalog workflow refuses to take it by default (see
+[DESIGN_CATALOGS.md — Per-preview split modes](design/DESIGN_CATALOGS.md#per-preview-split-modes)).
+For delivery trees where the repetition is too expensive, the explicitly opt-in
+form
 
 ```
 compose-preview bundle split sheet.png -o bundle/previews \

@@ -159,6 +159,8 @@ internal object CliFlags {
       "--ext",
       // bundle split — content-addressed pool dir for the opt-in shared app classpath
       "--shared-classpath-out",
+      // bundle split — where to write the measured shared-carriage report a publisher gates on
+      "--carriage-report",
       // bundle render — repeatable theme override (theme.colors=scheme:…) applied via the daemon
       "--knob",
       // bundle render — content-addressed pool dir for a published bundle's externalized resources

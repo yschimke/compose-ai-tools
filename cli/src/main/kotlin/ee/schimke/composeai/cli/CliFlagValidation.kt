@@ -227,6 +227,7 @@ internal object CliFlagValidation {
             "--json",
             "--key",
             "--key-id",
+            "--carriage-report",
             "--knob",
             "--no-crop",
             "--no-render",

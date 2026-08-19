@@ -272,4 +272,136 @@ class BundleSplitTest {
     assertEquals(viaList.map { it.id }, seen, "in the same order")
     assertTrue(everyBundleCarriedItsZip, "each emitted bundle is complete when handed over")
   }
+
+  private fun carriageOf(zip: ByteArray, mode: SplitMode): SplitCarriage {
+    var carriage = SplitCarriage.NONE
+    forEachSplitPreview(zip, mode, onCarriage = { carriage = it }) {}
+    return carriage
+  }
+
+  /**
+   * The size of a FULL split is a function of the **preview count**, not of the backend — the
+   * carriage is a fixed per-bundle cost paid N times. Nothing measured that, so the growth was
+   * invisible on a green run; the split now reports it before it writes anything.
+   */
+  @Test
+  fun `full split measures the carriage it copies into every bundle`() {
+    val carriage = carriageOf(sheetZip(), SplitMode.FULL)
+
+    assertEquals(
+      listOf("libs/dep.jar", "classes/app.jar", "report.json"),
+      carriage.entries.map { it.path },
+      "every shared entry is reported, largest first",
+    )
+    assertEquals(4096L, carriage.entries.first().bytes)
+    assertTrue(carriage.bytesPerBundle > 0, "the carriage costs something in each bundle")
+    // Measured as written (deflated), so it must not exceed what a whole bundle carrying it weighs.
+    val fullBundle = splitBundleZip(sheetZip(), SplitMode.FULL).first()
+    assertTrue(
+      carriage.bytesPerBundle <= fullBundle.zipBytes.size,
+      "carriage ${carriage.bytesPerBundle} exceeds the bundle that carries it " +
+        "(${fullBundle.zipBytes.size})",
+    )
+  }
+
+  @Test
+  fun `view-only split carries nothing, so its carriage is zero`() {
+    assertEquals(SplitCarriage.NONE, carriageOf(sheetZip(), SplitMode.VIEW_ONLY))
+  }
+
+  @Test
+  fun `pooling app jar takes it out of the per-bundle carriage`() {
+    val carriage = carriageOf(sheetZip(), SplitMode.FULL_SHARED_CLASSPATH)
+
+    assertFalse(
+      carriage.entries.any { it.path == "classes/app.jar" },
+      "the pooled jar is published once, not carried per bundle",
+    )
+    assertTrue(carriage.entries.any { it.path == "libs/dep.jar" }, "libs/ still repeats")
+    assertTrue(
+      carriage.bytesPerBundle < carriageOf(sheetZip(), SplitMode.FULL).bytesPerBundle,
+      "pooling lowers the per-bundle carriage",
+    )
+  }
+
+  /**
+   * The old warning fired on bundle size and named `--view-only`, which a tier that exists to
+   * re-render cannot take — so it was noise on exactly the catalogs it should have caught. The
+   * signal now fires on the carriage share and names the remedy that fits the mode.
+   */
+  @Test
+  fun `a dominant carriage is reported with the remedy for its mode`() {
+    val carriage = SplitCarriage(625_114L, listOf(SplitCarriageEntry("classes/app.jar", 620_000L)))
+    val summary =
+      SplitCarriageSummary(SplitMode.FULL, carriage, bundles = 1296, totalBytes = 828_091_478L)
+
+    assertTrue(summary.dominates)
+    assertEquals(810_147_744L, summary.repeatedBytes)
+    val warning = summary.warning()!!
+    assertTrue(warning.contains("625114 bytes in each of 1296 bundle(s)"), warning)
+    assertTrue(warning.contains("--shared-classpath-out"), warning)
+    assertTrue(warning.contains("classes/app.jar (620000 bytes)"), warning)
+
+    val pooled =
+      SplitCarriageSummary(
+        SplitMode.FULL_SHARED_CLASSPATH,
+        carriage,
+        bundles = 1296,
+        totalBytes = 828_091_478L,
+      )
+    assertTrue(pooled.warning()!!.contains("already pooled"), "the remedy fits the mode")
+  }
+
+  @Test
+  fun `a carriage that is not the story stays quiet`() {
+    val summary =
+      SplitCarriageSummary(
+        SplitMode.FULL,
+        SplitCarriage(1_000L, listOf(SplitCarriageEntry("classes/app.jar", 900L))),
+        bundles = 40,
+        totalBytes = 10_000_000L,
+      )
+
+    assertFalse(summary.dominates)
+    assertEquals(null, summary.warning())
+  }
+
+  /** A single-bundle split repeats nothing by definition, whatever the share arithmetic says. */
+  @Test
+  fun `one bundle never counts as repetition`() {
+    val summary =
+      SplitCarriageSummary(
+        SplitMode.FULL,
+        SplitCarriage(900_000L, listOf(SplitCarriageEntry("classes/app.jar", 900_000L))),
+        bundles = 1,
+        totalBytes = 1_000_000L,
+      )
+
+    assertFalse(summary.dominates)
+  }
+
+  /** The publisher gates on this JSON, so its shape is part of the contract. */
+  @Test
+  fun `the carriage report carries the numbers a publisher gates on`() {
+    val summary =
+      SplitCarriageSummary(
+        SplitMode.FULL,
+        SplitCarriage(625_114L, listOf(SplitCarriageEntry("classes/app.jar", 620_000L))),
+        bundles = 1296,
+        totalBytes = 828_091_478L,
+      )
+
+    val report = json.parseToJsonElement(summary.toJson()).jsonObject
+    assertEquals("full", report["mode"]!!.jsonPrimitive.content)
+    assertEquals(1296, report["bundles"]!!.jsonPrimitive.content.toInt())
+    assertEquals(625_114L, report["carriageBytesPerBundle"]!!.jsonPrimitive.content.toLong())
+    assertEquals(810_147_744L, report["repeatedBytes"]!!.jsonPrimitive.content.toLong())
+    assertEquals(828_091_478L, report["totalBytes"]!!.jsonPrimitive.content.toLong())
+    assertEquals(97.8, report["sharePercent"]!!.jsonPrimitive.content.toDouble())
+    assertEquals(true, report["dominates"]!!.jsonPrimitive.content.toBoolean())
+    assertEquals(
+      "classes/app.jar",
+      report["carriageEntries"]!!.jsonArray.single().jsonObject["path"]!!.jsonPrimitive.content,
+    )
+  }
 }

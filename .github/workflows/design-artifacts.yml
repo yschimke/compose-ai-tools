@@ -481,9 +481,18 @@ jobs:
       # The CMP tier (a `wasmModule` ⇒ a carried desktop `liveBundle`) splits **FULL**: each
       # per-preview bundle carries its re-render classpath so `serve` can re-render that preview from
       # its OWN bundle (ServePerPreviewLiveHost) — a `?knob.<key>=…` edit re-renders per preview
-      # instead of routing through one monolithic catalog daemon. Because the classpath is
-      # maven-coordinate (re-resolved at serve time) and fonts resolve from the shared `bundle/res`
-      # pool, a FULL split bundle stays small — only `classes/app.jar` repeats per preview.
+      # instead of routing through one monolithic catalog daemon.
+      #
+      # This block used to conclude that a FULL split "stays small — only `classes/app.jar` repeats
+      # per preview", because the classpath is maven-coordinate (re-resolved at serve time) and
+      # fonts resolve from the shared `bundle/res` pool. Both premises are true and the conclusion
+      # was not: "only app.jar repeats" is ~600 KB *per preview*, so the bound is a function of the
+      # PREVIEW COUNT, not of the backend. At 88 previews that is 17 MB; m3-catalog's ~1,300 made it
+      # 790 MB, and since any catalog edit rewrites app.jar every publish re-wrote all of them
+      # (#4211). That is why this tier splits `full-shared-classpath` — app.jar published once into
+      # `bundle/res`, each manifest carrying a hash-verified `externalClasspath`, live lane intact —
+      # and why the reusable workflow's `split-mode: auto` now fails a publish that would take the
+      # `full` cost at scale without saying so.
       #
       # An Android tier without `androidLiveBundle` has no runnable desktop daemon, so it stays
       # `--view-only`: the re-render classpath is dropped, keeping the baked image + every captured

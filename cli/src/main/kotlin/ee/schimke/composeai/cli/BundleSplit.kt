@@ -38,10 +38,17 @@ import kotlinx.serialization.json.jsonPrimitive
  * semantics with **no daemon and no re-render**.
  *
  * [SplitMode.FULL] copies the shared re-render classpath (`classes/app.jar` + `libs/`) into every
- * bundle so each can live-re-render — correct but heavier (the shared jars repeat N times).
- * [SplitMode.VIEW_ONLY] drops that classpath: the result is a baked, self-describing sticker
- * (image + sidecars + manifest) that any PNG viewer / detached reader opens, typically tens of KB.
- * View-only is the right unit for a delivery branch of addressable stickers.
+ * bundle so each can live-re-render — correct, and heavier by a factor of the **preview count**:
+ * the carriage is a fixed per-bundle cost, so the output grows N× with it and every catalog edit
+ * rewrites all N copies. [SplitMode.FULL_SHARED_CLASSPATH] keeps the live lane and publishes
+ * `classes/app.jar` once into a content-addressed pool, with each manifest carrying a hash-verified
+ * `externalClasspath`. [SplitMode.VIEW_ONLY] drops the classpath entirely: the result is a baked,
+ * self-describing sticker (image + sidecars + manifest) that any PNG viewer / detached reader
+ * opens, typically tens of KB. View-only is the right unit for a delivery branch of addressable
+ * stickers that never re-render.
+ *
+ * Whichever mode is chosen, the split measures the carriage and says so ([SplitCarriageSummary]) —
+ * `--carriage-report <file.json>` writes the same numbers for a publisher that gates on them.
  */
 internal enum class SplitMode {
   FULL,
@@ -51,6 +58,131 @@ internal enum class SplitMode {
 
 /** One whole bundle entry published once into the split output's content-addressed pool. */
 internal data class SharedClasspathEntry(val path: String, val sha256: String, val size: Long)
+
+/** One entry of the shared re-render carriage, sized as it sits in the source sheet. */
+internal data class SplitCarriageEntry(val path: String, val bytes: Long)
+
+/**
+ * The shared re-render payload a live split copies into **every** per-preview bundle:
+ * `classes/app.jar` (unless pooled), `libs/`, `report.json`, and the Android `android/` payload.
+ *
+ * [bytesPerBundle] is what it costs *as written* — the same entries deflated into one zip — not the
+ * sum of their raw sizes, because the written number is the one that lands on a delivery branch.
+ */
+internal data class SplitCarriage(
+  val bytesPerBundle: Long,
+  val entries: List<SplitCarriageEntry>,
+) {
+  companion object {
+    val NONE = SplitCarriage(0L, emptyList())
+  }
+}
+
+/** A zip with no entries: end-of-central-directory record only. */
+private const val EMPTY_ZIP_BYTES = 22L
+
+/**
+ * One decimal place, locale-independent — a runner in a comma-decimal locale must not print 97,8.
+ */
+private fun formatPercent(value: Double): String =
+  String.format(java.util.Locale.ROOT, "%.1f", value)
+
+/**
+ * Report the carriage once it is at least this share of everything the split wrote.
+ *
+ * Half is already the point where publishing the payload once is a bigger lever than every other
+ * byte in the output combined, and the failure mode this guards is unbounded rather than
+ * proportional: any catalog edit rewrites `classes/app.jar`, so a FULL split re-writes all N copies
+ * and the delivery branch grows by the *repeated* size on every publish. m3-catalog sat at 97.8%
+ * for 76 publishes and reached a 2.52 GiB clone.
+ */
+internal const val SPLIT_CARRIAGE_REPORT_PERCENT = 50.0
+
+/**
+ * What the shared carriage cost, measured against what the split actually wrote — the number that
+ * decides whether a delivery branch is publishing one payload or N copies of it.
+ */
+internal class SplitCarriageSummary(
+  val mode: SplitMode,
+  val carriage: SplitCarriage,
+  val bundles: Int,
+  val totalBytes: Long,
+) {
+  /** Bytes of the output that are the same payload repeated. */
+  val repeatedBytes: Long = carriage.bytesPerBundle * bundles
+
+  /** [repeatedBytes] as a percentage of [totalBytes], 0 when nothing was written. */
+  val sharePercent: Double = if (totalBytes <= 0L) 0.0 else repeatedBytes * 100.0 / totalBytes
+
+  /** True once the carriage dominates the output enough to be worth saying out loud. */
+  val dominates: Boolean = bundles > 1 && sharePercent >= SPLIT_CARRIAGE_REPORT_PERCENT
+
+  /**
+   * The loud line, or null when the carriage is not the story. It names the remedy that fits **this
+   * mode** — the previous size warning always suggested `--view-only`, which is no remedy at all
+   * for a tier whose whole point is a live re-render, so every run of a live catalog printed advice
+   * it could not take and the signal was learned as noise.
+   */
+  fun warning(): String? {
+    if (!dominates) return null
+    val largest = carriage.entries.firstOrNull()
+    val remedy =
+      when (mode) {
+        SplitMode.FULL ->
+          "publish it once with --shared-classpath-out <pool-dir> — each bundle keeps a " +
+            "hash-verified externalClasspath, so the live re-render lane survives — or " +
+            "--view-only if this tier never re-renders"
+        SplitMode.FULL_SHARED_CLASSPATH ->
+          "classes/app.jar is already pooled; what repeats is libs/ + android/, which only " +
+            "--view-only drops (at the cost of the live re-render lane)"
+        // VIEW_ONLY carries nothing, so it can never dominate; kept exhaustive rather than
+        // reachable.
+        SplitMode.VIEW_ONLY -> "--view-only already carries nothing"
+      }
+    return "bundle split: shared carriage is ${carriage.bytesPerBundle} bytes in each of " +
+      "$bundles bundle(s) — $repeatedBytes of $totalBytes total bytes " +
+      "(${formatPercent(sharePercent)}%) is the same payload repeated; $remedy." +
+      (largest?.let { " Largest carried entry: ${it.path} (${it.bytes} bytes)." } ?: "")
+  }
+
+  /** Machine-readable form, for a publisher that gates on the measurement. */
+  fun toJson(): String =
+    SPLIT_JSON.encodeToString(
+      JsonObject.serializer(),
+      buildJsonObject {
+        put(
+          "mode",
+          JsonPrimitive(
+            when (mode) {
+              SplitMode.VIEW_ONLY -> "view-only"
+              SplitMode.FULL -> "full"
+              SplitMode.FULL_SHARED_CLASSPATH -> "full-shared-classpath"
+            }
+          ),
+        )
+        put("bundles", JsonPrimitive(bundles))
+        put("carriageBytesPerBundle", JsonPrimitive(carriage.bytesPerBundle))
+        put("repeatedBytes", JsonPrimitive(repeatedBytes))
+        put("totalBytes", JsonPrimitive(totalBytes))
+        put("sharePercent", JsonPrimitive(kotlin.math.round(sharePercent * 10.0) / 10.0))
+        put("reportThresholdPercent", JsonPrimitive(SPLIT_CARRIAGE_REPORT_PERCENT))
+        put("dominates", JsonPrimitive(dominates))
+        put(
+          "carriageEntries",
+          buildJsonArray {
+            for (entry in carriage.entries) {
+              add(
+                buildJsonObject {
+                  put("path", JsonPrimitive(entry.path))
+                  put("bytes", JsonPrimitive(entry.bytes))
+                }
+              )
+            }
+          },
+        )
+      },
+    )
+}
 
 /**
  * One split output: the preview id, its cover PNG (polyglot leading bytes), and the appended zip.
@@ -118,6 +250,7 @@ internal fun forEachSplitPreview(
   mode: SplitMode,
   crop: Boolean = true,
   onSharedClasspath: (SharedClasspathEntry, ByteArray) -> Unit = { _, _ -> },
+  onCarriage: (SplitCarriage) -> Unit = {},
   onPreview: (SplitPreview) -> Unit,
 ): Int {
   val entries = readZipEntries(sheetZip)
@@ -175,6 +308,23 @@ internal fun forEachSplitPreview(
         if (mode == SplitMode.FULL_SHARED_CLASSPATH) carriage - "classes/app.jar" else carriage
       }
   val fullMode = mode != SplitMode.VIEW_ONLY
+
+  // Measure what the carriage costs per bundle before writing any of them, deflated exactly as it
+  // will land, so the caller can report (or gate on) the repetition rather than discovering it as a
+  // delivery-branch size months later. VIEW_ONLY copies none of it, so its carriage is zero.
+  onCarriage(
+    if (fullMode) {
+      SplitCarriage(
+        bytesPerBundle = writeDeterministicZip(shared).size.toLong() - EMPTY_ZIP_BYTES,
+        entries =
+          shared
+            .map { (path, bytes) -> SplitCarriageEntry(path, bytes.size.toLong()) }
+            .sortedByDescending { it.bytes },
+      )
+    } else {
+      SplitCarriage.NONE
+    }
+  )
 
   var emitted = 0
   for (id in ids) {
@@ -480,9 +630,13 @@ private fun writeDeterministicZip(entries: Map<String, ByteArray>): ByteArray {
 
 internal class SplitSubcommand(private val args: List<String>) {
   fun run() {
-    val path = args.firstOrNull { !it.startsWith("-") }
+    // The bare token that is not some flag's value — `-o <dir>` / `--carriage-report <file>` write
+    // paths that do not start with `-`, so a naive "first non-flag token" reads whichever came
+    // first as the sheet.
+    val path = CliFlags.firstPositional(args)
     val outDirArg = args.flagValue("--output") ?: args.flagValue("-o")
     val sharedClasspathOut = args.flagValue("--shared-classpath-out")
+    val carriageReportOut = args.flagValue("--carriage-report")
     if ("--view-only" in args && sharedClasspathOut != null) {
       System.err.println("bundle split: --view-only cannot be combined with --shared-classpath-out")
       exitProcess(64)
@@ -499,7 +653,8 @@ internal class SplitSubcommand(private val args: List<String>) {
     if (path == null) {
       System.err.println(
         "Usage: compose-preview bundle split <bundle.png | URL> -o <dir> " +
-          "[--view-only | --shared-classpath-out <pool-dir>] [--no-crop]"
+          "[--view-only | --shared-classpath-out <pool-dir>] [--no-crop] " +
+          "[--carriage-report <file.json>]"
       )
       exitProcess(64)
     }
@@ -524,6 +679,7 @@ internal class SplitSubcommand(private val args: List<String>) {
     val usedStems = HashSet<String>()
     val written = ArrayList<File>()
     val sharedPool = sharedClasspathOut?.let(::File)?.absoluteFile
+    var carriage = SplitCarriage.NONE
     // Write each bundle as it is produced and let it go. Collecting them first meant holding every
     // per-preview bundle — each carrying the shared classpath + Android resource table — in memory
     // simultaneously, which OOM'd on a 181-preview catalog. Only the File handles are kept, for the
@@ -546,6 +702,7 @@ internal class SplitSubcommand(private val args: List<String>) {
               target.writeBytes(bytes)
             }
           },
+          onCarriage = { carriage = it },
         ) { preview ->
           val base = sanitizeSplitFileName(preview.id)
           var stem = base
@@ -581,13 +738,28 @@ internal class SplitSubcommand(private val args: List<String>) {
         "  total:   $total bytes\n" +
         "  size:    min ${sizes.minOrNull() ?: 0} / avg ${if (written.isNotEmpty()) total / written.size else 0} / max ${sizes.maxOrNull() ?: 0} bytes"
     )
-    val over = written.filter { it.length() > 100 * 1024 }
-    if (over.isNotEmpty()) {
-      System.err.println(
-        "bundle split: ${over.size} bundle(s) exceed 100 KB " +
-          "(largest ${over.maxByOrNull { it.length() }!!.length()} bytes) — usually a full-screen " +
-          "render, or --view-only was not set so the shared classpath repeats in each bundle."
-      )
+    val summary = SplitCarriageSummary(mode, carriage, bundles = written.size, totalBytes = total)
+    if (carriageReportOut != null) {
+      val reportFile = File(carriageReportOut).absoluteFile
+      reportFile.parentFile?.mkdirs()
+      reportFile.writeText(summary.toJson())
+    }
+    // The carriage, when it dominates, IS the explanation for the size — say that instead of the
+    // generic "some bundles are big", which named `--view-only` as the only remedy and so was
+    // unactionable (hence ignorable) on every live catalog. Only when the carriage is NOT the story
+    // does an outsized bundle mean what the old warning claimed: a genuinely large render.
+    val carriageWarning = summary.warning()
+    if (carriageWarning != null) {
+      System.err.println(carriageWarning)
+    } else {
+      val over = written.filter { it.length() > 100 * 1024 }
+      if (over.isNotEmpty()) {
+        System.err.println(
+          "bundle split: ${over.size} bundle(s) exceed 100 KB " +
+            "(largest ${over.maxByOrNull { it.length() }!!.length()} bytes) — usually a full-screen " +
+            "render; the shared carriage is only ${formatPercent(summary.sharePercent)}% of the output."
+        )
+      }
     }
   }
 

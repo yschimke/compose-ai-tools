@@ -331,9 +331,10 @@ Module artifacts use a Gradle-path-derived key (for example `:tv` → `module_3a
 discovery-list index, so adding or reordering an unrelated module does not move existing bundle or
 per-preview URLs.
 
-`split-per-preview: true` may use `full` or `full-shared-classpath` for this mode. Each additional
-module's split remains self-contained—the primary module's external-resource pool is not a shared
-classpath. Static repository-wide publication still supports `split-mode: view-only` without live
+`split-per-preview: true` may use `full` or `full-shared-classpath` for this mode (see
+[Per-preview split modes](#per-preview-split-modes) for what each costs, and the bound the default
+enforces). Each additional module's split remains self-contained—the primary module's
+external-resource pool is not a shared classpath. Static repository-wide publication still supports `split-mode: view-only` without live
 bundles. Repository-wide mode continues to require `render-shards: 1` and does not combine with
 `extra-module`, since both are separate fan-out mechanisms.
 
@@ -350,6 +351,51 @@ top-level section after generate. A caller runs its bespoke lane (e.g. re-themin
 a sibling catalog) in a prior job that uploads the bundle artifact, then passes it
 to the reusable workflow — so the render/generate/publish stays shared while the
 bespoke step lives in the caller. A Wasm tier still needs a bespoke workflow.
+
+### Per-preview split modes
+
+`split-per-preview: true` writes one addressable bundle per preview under
+`bundle/previews/<id>.png`. `split-mode` decides what each of them carries:
+
+| mode | each bundle carries | live re-render | cost |
+| --- | --- | --- | --- |
+| `auto` (default) | as `full` | yes | as `full`, but the publish **fails** above the carriage bound (below) |
+| `full` | its own copy of the shared re-render carriage | yes | carriage × preview count |
+| `full-shared-classpath` | a hash-verified `externalClasspath` pointer; `classes/app.jar` is published once into `bundle/res/` | yes, server-hydrated | carriage once |
+| `view-only` | baked image + sidecars, no classpath | no | tens of KB per bundle |
+
+The live modes require `publish-live-bundle: true`.
+
+**Why the default fails instead of adapting.** A `full` split copies the shared carriage —
+`classes/app.jar`, `libs/`, the Android `resources.ap_` payload — into every bundle, so its size is
+a function of the **preview count**, not of the backend. "Only `app.jar` repeats" is ~600 KB per
+preview: 17 MB at 88 previews, 790 MB at ~1,300. And because any catalog edit rewrites `app.jar`,
+each publish rewrites all N copies and lays down a fresh git delta chain, so the delivery branch
+grows by the repeated size *every time* — while the branch tip keeps looking fine, because git
+deltas near-identical polyglots well within one snapshot. m3-catalog took the default for 76 green
+publishes and reached a 2.52 GiB clone (#4211).
+
+So `bundle split` measures the carriage and the workflow gates on it: once the repeated payload is
+**≥ 50% of everything the split wrote**, `split-mode: auto` fails the publish with the numbers and
+the two options. `auto` splits exactly as `full` always did — nothing about an existing delivery
+branch changes shape underneath its consumers — and an explicit mode is never failed, only
+reported. What the bound buys is that a large catalog cannot take the expensive default without
+someone deciding to.
+
+The decision is genuinely the catalog owner's, which is why it is forced rather than made: pooled
+per-preview bundles are **not offline-executable from a bare download** (see
+`docs/portable-bundles.md`, "Shared per-preview classpath"), so a consumer that fetches one preview
+and expects it to run would break on a threshold crossing it never opted into. On m3-catalog the
+trade was 15.7× (789.7 MB → 50.4 MB) with the live lane intact.
+
+Measure it yourself on any packed sheet:
+
+```bash
+compose-preview bundle split sheet.png -o /tmp/split --carriage-report /tmp/carriage.json
+```
+
+The command prints the carriage share and names the remedy for the mode it ran in; the JSON is what
+the workflow gate reads.
 
 #### Giving `extra-module` its own live lane
 
