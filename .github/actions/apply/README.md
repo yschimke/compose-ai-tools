@@ -301,6 +301,7 @@ Two values are in there because the publish job cannot recover them itself:
 | `_scope_modules` | The publish job never checked the PR out, so it can't classify the diff. Without the render job's scope, [change-scoped runs](#change-scoped-rendering) would report every unrendered module's baseline as a *Removed* preview. |
 | `_pipelines` | The resolved `only` / `skip` set. Re-resolving from the publish call's own inputs would default all four on, and the upsert for a pipeline that never ran would patch its existing sticky comment to "no changes". |
 | `_ab_config` | Read from the checkout, which on the publish side is the *base* branch — so a PR that adds or edits an [A/B config](#ab-comparison-of-preview-variants) would otherwise be graded against the old grouping. |
+| `_baseline_skew.json` | Which baseline the diff was taken against, and how far it trails the PR's base. Only the render job knows — it holds the PR's merge ref and the event's `base.sha`; the publish job has neither. See [Which baseline a PR diff compares against](#which-baseline-a-pr-diff-compares-against). |
 
 Both sides of every comparison travel, not just the new renders: the
 comparators fail closed on a missing baseline, so an absent
@@ -340,6 +341,61 @@ It does **not** make the render itself trusted. A fork PR still runs its own
 code on the render runner; that job just has nothing worth stealing (read-only
 token, no secrets). Keep `persist-credentials: false` on its checkout so the
 token isn't left in `.git/config` for the build to find.
+
+## Which baseline a PR diff compares against
+
+*Before* is not the baseline branch's tip. It's the newest commit on
+`compose-preview/main` whose **source** commit — the `main` commit recorded in
+its `Update preview baselines from <sha>` subject — is an ancestor of the state
+this PR's render was built on.
+
+That distinction is the whole point. A baseline lands 5–20 minutes after the
+merge that produced it, and `main` keeps moving while a PR is open, so the tip
+is routinely a different point in history than the PR. Diffing across that gap
+attributes everything inside it to whichever PR happened to render there:
+
+- **Baseline behind the PR's base** — the previews a just-merged PR changed are
+  replayed as the *next* PR's own New/Changed entries. Observed on
+  `wear-m3-catalog#24`: a one-file change reported 16 new / 9 changed / 4
+  removed, which was exactly the union of #20, #21 and #23 — all merged 13
+  minutes earlier with their baseline still rendering.
+- **Baseline ahead of the PR's base** — previews `main` gained after the PR
+  branched are missing from its render, so they surface as *Removed*
+  (`wear-m3-catalog#38` reported 36 deletions it never made).
+
+Walking back to the newest in-base baseline removes the second case entirely
+and bounds the first. Whatever gap is left is real: the baseline for this PR's
+base genuinely hasn't been published yet. That residual is measured, not
+guessed at, and the comment says so:
+
+> [!NOTE]
+> Compared against the baseline rendered from `abc12345`, which is **2
+> commit(s) behind** this PR's base (`def67890`) — the newest baseline
+> published when this ran. Any preview those commits changed is attributed to
+> this PR below. Re-run this check once the baseline for `def67890` has
+> published to see only this PR's own changes.
+
+Selection lives in [`select-baseline.py`](select-baseline.py) and is
+**best-effort by construction**. Anything it can't establish — no `main`
+history in a shallow checkout, an unparseable commit subject, a source commit
+whose object isn't local — leaves its outputs unwritten and the pipeline falls
+back to the branch tip, which is exactly the behaviour it replaces. It can
+therefore never do worse than not running.
+
+Two things it depends on, both of which hold for the branches this action
+publishes but are worth knowing if you point it at your own:
+
+- The baseline branch is **append-only** (see `lib/push-branch.sh`), so older
+  baseline commits — and the `renders/` trees the *Before* images are pinned
+  to — are still resolvable. An orphan force-push per baseline would leave
+  nothing to walk back to.
+- The `Update preview baselines from <sha>` subject is the **only** record of
+  which `main` commit a baseline came from. The `Update preview history from
+  <sha>` commits that follow each push share its tree but are not
+  publications, and are deliberately not selectable.
+
+The resource / a11y / notification comments still compare against their own
+branch tips; the same skew applies to them and is not yet corrected.
 
 ## Version skew
 
