@@ -12,21 +12,15 @@ import assert from "node:assert/strict";
 import { flush, resetDom } from "./setup.js";
 import "../src/components/CatalogToolbar.js";
 
-/** The catalog's actions, as the server nests them in the toolbar's toggle group. */
+/** The catalog's actions, as the server nests them in the toggle group. */
 const ACTIONS = `
     <div class="cp-catalog-actions">
       <details class="cp-actions-menu"><summary>⋯</summary></details>
       <div class="cp-actions-panel"><a class="cp-action-chip" href="/compare">compare SVG</a><button class="cp-bg-btn">Transparent</button></div>
     </div>`;
 
-/** A sectioned catalog: the filter lives in the tree's sidebar, not the toolbar. */
-const SECTIONED = `
-  <div class="cp-catalog-head-row">
-    <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Kit</h1></div>
-    <p class="cp-sub">9 preview(s)</p>
-  </div>
-  <div class="cp-catalog-tools">
-    <div class="cp-head-toggles">
+/** The Theme pill, as the server nests it beside them. */
+const THEME = `
     <div class="cp-toolbar">
       <details class="cp-theme-menu cp-catalog-theme">
         <summary><span class="cp-toggle-value" id="cp-catalog-theme-value">Light</span></summary>
@@ -37,7 +31,17 @@ const SECTIONED = `
           </span>
         </div>
       </details>
-    </div>${ACTIONS}
+    </div>`;
+
+/**
+ * A sectioned catalog: the filter lives in the tree's sidebar, so the server emits NO toolbar row
+ * and its pills ride at the trailing edge of the identity row (issue #4224).
+ */
+const SECTIONED = `
+  <div class="cp-catalog-head-row">
+    <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Kit</h1></div>
+    <p class="cp-sub">9 preview(s)</p>
+    <div class="cp-head-toggles">${THEME}${ACTIONS}
     </div>
   </div>
   <div class="cp-catalog-body">
@@ -49,9 +53,10 @@ const SECTIONED = `
   </div>
   <div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>`;
 
-/** A catalog with one theme: no Theme control, so the toolbar carries the actions alone. */
+/** The same, for a catalog with one theme: no Theme control, so the `⋯` stands alone. */
 const NO_THEME = `
-  <div class="cp-catalog-tools">
+  <div class="cp-catalog-head-row">
+    <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Kit</h1></div>
     <div class="cp-head-toggles">${ACTIONS}
     </div>
   </div>
@@ -61,6 +66,20 @@ const NO_THEME = `
     </aside>
     <div class="cp-grid"></div>
   </div>`;
+
+/** A flat catalog: the filter is IN the toolbar, so the pills stay there with it. */
+const FLAT = `
+  <div class="cp-catalog-head-row">
+    <div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">Kit</h1></div>
+    <p class="cp-sub">6 preview(s)</p>
+  </div>
+  <div class="cp-catalog-tools">
+    <div class="cp-searchbar"><input class="cp-search"></div>
+    <div class="cp-head-toggles">${THEME}${ACTIONS}
+    </div>
+  </div>
+  <div class="cp-grid"></div>
+  <div class="cp-catalog-download"><a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a></div>`;
 
 /**
  * A controllable `(max-width: 640px)`. happy-dom has no layout, so the real query would answer
@@ -100,10 +119,32 @@ function row(selector = ".cp-catalog-tools"): string[] {
 describe("<cp-catalog-toolbar>", () => {
     afterEach(() => resetDom());
 
-    it("puts the filter in front of the toolbar's menus on a phone", async () => {
+    it("builds the phone's one row: the filter, then the menus", async () => {
+        // The server emits no toolbar for a sectioned catalog — its row would carry the pills and
+        // nothing else, which is the empty band of issue #4224 — so the phone row is built here,
+        // and it reads exactly as the served one did: filter first, menus at the trailing edge.
         stubBreakpoint(true);
         await mount(SECTIONED);
         assert.deepEqual(row(), ["cp-searchbar", "cp-head-toggles"]);
+        // Directly under the identity row, where the served toolbar stood.
+        const bar = document.querySelector(".cp-catalog-tools")!;
+        assert.equal(
+            bar.previousElementSibling?.className,
+            "cp-catalog-head-row",
+        );
+    });
+
+    it("leaves a served toolbar to carry its own filter and menus", async () => {
+        // A flat catalog's filter IS in the toolbar, so that row is a toolbar rather than a band of
+        // pills — nothing is built and nothing moves into it.
+        stubBreakpoint(true);
+        await mount(FLAT);
+        assert.deepEqual(row(), ["cp-searchbar", "cp-head-toggles"]);
+        assert.equal(
+            document.querySelectorAll(".cp-catalog-tools").length,
+            1,
+            "no second row is built for one the server already emitted",
+        );
     });
 
     it("does not touch the DOM at all above the breakpoint", async () => {
@@ -133,32 +174,43 @@ describe("<cp-catalog-toolbar>", () => {
     it("leaves the served layout alone above the breakpoint", async () => {
         stubBreakpoint(false);
         await mount(SECTIONED);
-        assert.deepEqual(row(), ["cp-head-toggles"]);
+        assert.equal(
+            document.querySelector(".cp-catalog-tools"),
+            null,
+            "no row is built at a width that never asked for one",
+        );
         assert.ok(
             document.querySelector(".cp-catalog-menu > .cp-searchbar"),
             "the filter stays in the tree's sidebar",
         );
         assert.ok(
-            document.querySelector(".cp-catalog-tools .cp-catalog-actions"),
-            "the actions ride in the toolbar at every width",
+            document.querySelector(".cp-catalog-head-row .cp-catalog-actions"),
+            "and the actions stay on the identity row",
         );
     });
 
-    it("puts the filter back exactly where the server had it when the window widens", async () => {
+    it("puts everything back exactly where the server had it when the window widens", async () => {
         const set = stubBreakpoint(true);
         await mount(SECTIONED);
         set(false);
-        assert.deepEqual(row(), ["cp-head-toggles"]);
+        // The built row goes with them: left behind, it would be the empty band again.
+        assert.equal(document.querySelector(".cp-catalog-tools"), null);
         // Position, not merely parent: the filter is the sidebar's FIRST child, above the tree.
         const sidebar = document.querySelector(".cp-catalog-menu")!;
         assert.equal(sidebar.children[0].className, "cp-searchbar");
         assert.equal(sidebar.children[1].className, "cp-tree");
+        // …and the pills are back at the trailing edge of the identity row, after the tally.
+        assert.deepEqual(row(".cp-catalog-head-row"), [
+            "cp-catalog-title",
+            "cp-sub",
+            "cp-head-toggles",
+        ]);
     });
 
-    it("still fills the toolbar when the catalog has no Theme control", async () => {
+    it("still builds the row when the catalog has no Theme control", async () => {
         stubBreakpoint(true);
         await mount(NO_THEME);
-        // The `⋯` menu is the toolbar's only pill here, and the filter still leads it.
+        // The `⋯` menu is the row's only pill here, and the filter still leads it.
         assert.deepEqual(row(), ["cp-searchbar", "cp-head-toggles"]);
     });
 
