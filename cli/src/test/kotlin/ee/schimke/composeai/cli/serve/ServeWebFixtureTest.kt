@@ -2587,6 +2587,15 @@ class ServeWebFixtureTest {
                 ),
                 ServeWeb.Stat("Live daemons running", "1"),
                 ServeWeb.Stat("Active streams", "2"),
+                // Captured in the state that used to be invisible: a quiet gate held shut by a
+                // session lease, which stands the theme optimizer down indefinitely while every
+                // per-catalog row says only "paused". The fixture keeps the awkward case — the
+                // longest of the four wordings, with a holder named — so the row's wrapping is
+                // covered rather than the tidy "open · idle 90s" one.
+                ServeWeb.Stat(
+                  "Theme optimiser gate",
+                  "closed · session lease held by compose-m3 · needs 60s quiet",
+                ),
                 ServeWeb.Stat(
                   "Live seats",
                   "3 free / 5",
