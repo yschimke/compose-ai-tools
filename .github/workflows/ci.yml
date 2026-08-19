@@ -431,6 +431,16 @@ jobs:
           ./gradlew :rc-player-compose:rcPlayerXcframeworkChecksum
           ./gradlew :cli:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
           ./gradlew ktfmtCheck
+      # The Swift usage sample in `docs/design/RC_PLAYER_SWIFT.md` is the only documentation of how
+      # to call the player from Swift, and everything awkward in it — the `…Kt.` file facade, all
+      # five arguments being required, `Data` not bridging to `ByteArray` — is a property of
+      # Kotlin/Native's Objective-C export rather than a choice. So it drifts silently whenever the
+      # export changes, and the first person to notice is a consumer whose project will not build.
+      # This compiles the doc's own code blocks against the framework the step above just
+      # assembled. macOS-only by nature, which is why it lives in this job; it skips loudly and
+      # passes anywhere the framework or Xcode is missing.
+      - name: Type-check the Swift usage sample against the framework
+        run: scripts/check-swift-sample.sh
       - name: Upload player test reports on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
