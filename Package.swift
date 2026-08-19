@@ -4,11 +4,15 @@
 //
 // This file is REWRITTEN BY `release.yml` on every release: the job assembles
 // `RcComposePlayer.xcframework.zip`, attaches it to the GitHub Release, and commits the new `url`
-// and `checksum` back to `main` before tagging `swift/<version>`. Editing the two values by hand is
-// never right — they have to describe an asset that already exists, and SPM verifies the checksum
-// at resolve time.
+// and `checksum` back to `main` before tagging that commit `<version>`. Editing the two values by
+// hand is never right — they have to describe an asset that already exists, and SPM verifies the
+// checksum at resolve time.
 //
-// Consume a released version by its Swift tag:
+// Consume a released version by its Swift tag — a BARE `<version>` (e.g. `1.16.0`), which is what
+// makes `from:` work. SwiftPM only reads a tag as a semantic version when the whole ref is `X.Y.Z`
+// or `vX.Y.Z`, so a prefixed ref such as `swift/1.16.0` is invisible to the syntax below. The bare
+// tag is distinct from the `v<version>` release tag, whose `Package.swift` still describes the
+// PREVIOUS release (see docs/design/RC_PLAYER_SWIFT.md):
 //
 //     .package(url: "https://github.com/yschimke/compose-ai-tools.git", from: "1.15.1")
 //

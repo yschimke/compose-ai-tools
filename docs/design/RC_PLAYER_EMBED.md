@@ -65,10 +65,36 @@ Current version: **1**.
 | `src` | URL of the `.rc` document. **Required**; absent is an `error` state, not an empty render. |
 | `theme` | `light` or `dark` forces a mode. Any other value, or none, follows the browser's `prefers-color-scheme`. |
 | `fontsBase` | Directory holding `fonts.json` and its faces. Default `./fonts/`. Rejected unless relative or `http(s):` — a page-supplied parameter must not become an arbitrary scheme. |
-| `namedValues` | Host overrides for the document's named variables, as `type\0name\0value` rows. Types: `string`, `float`, `dp`, `int`, `bool`, `color`, `long`. Names are prefixed `USER:` internally. |
+| `namedValues` | Host overrides for the document's named variables, as a URL-encoded **JSON array** of `{"kind", "name", "value"}` objects — see below. Kinds: `string`, `float`, `dp`, `int`, `bool`, `color`, `long`. Names are prefixed `USER:` internally. |
 | `rcTrace` | `1` emits User Timing marks, so the player's spans land in a DevTools performance profile under the same names the desktop player writes to Perfetto. Off by default: `performance`'s entry buffer is finite and shared with the embedding page. |
 | `allowExternalImagePlaceholders` | `1` renders a placeholder instead of refusing a document that names an external image. |
 | `handoffDelayMs` | Cold-start tail before `ready`, clamped to 0–10 000, default 1 500. **Only lower it if you composite the result yourself** — the default guards a human seeing a blank frame, and the failure it guards against cannot be reproduced under CDP capture. |
+
+### `namedValues` in detail
+
+The value is a JSON array, URL-encoded as any query parameter is. Each element names one variable:
+
+```js
+const namedValues = [
+  { kind: "string", name: "label", value: "Ready" },
+  { kind: "color", name: "stopColor", value: "#FF8800" },
+  { kind: "float", name: "progress", value: 0.75 },
+];
+const src = `player.html?src=doc.rc&namedValues=${encodeURIComponent(JSON.stringify(namedValues))}`;
+```
+
+`value` is stringified, so a number or boolean may be passed unquoted. `bool` is `true`/`false`;
+`color` accepts `#RRGGBB`/`#AARRGGBB` with or without the leading `#`.
+
+**A malformed array is silently ignored, not reported.** The player's parser returns no overrides on
+any JSON error, and an element whose `kind` is unrecognized or whose `value` does not parse as its
+kind is dropped on its own — the document still renders, with its own defaults. Nothing appears in
+`data-rc-player-error`, because failing to *style* a document is not failing to *load* one. A host
+that cannot tolerate a silently-defaulted override should validate before building the URL.
+
+(The NUL-and-`\u0001`-delimited rows in `Main.kt`'s `flattenNamedValuesFromLocation` are an internal
+shape used to hand the parsed array across the JS/Wasm boundary. They are not the wire format, and
+passing them as `namedValues` yields no overrides at all.)
 
 `theme` and `namedValues` belong to the *page* and are **not** re-read on a document swap. A host
 that needs different ones navigates.

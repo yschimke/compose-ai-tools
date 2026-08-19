@@ -17,10 +17,13 @@ import platform.UIKit.UIViewController
  * `RcPlayerThemeRenderTest` asserts the three spellings resolve identically inside a real
  * composition rather than trusting that reading.
  *
- * **Reaching this from Swift needs an XCFramework, which is not published yet — see #4068.** This
- * entry point ships inside `ee.schimke.composeai:rc-player-compose`'s iOS klibs, so a Kotlin
- * Multiplatform consumer can call it today; a Swift-only project cannot until the framework is
- * packaged and distributed.
+ * **From Swift this is a file-facade call, not a global function.** Kotlin/Native exports top-level
+ * declarations as static members of a class named after their file, so a Swift consumer writes
+ * `RcComposeViewControllerKt.RcComposeViewController(bytes:theme:onEvent:typefaces:onError:)` —
+ * with all five arguments, since Objective-C has no defaults — and has to copy its `Data` into a
+ * `KotlinByteArray` by hand. docs/design/RC_PLAYER_SWIFT.md writes both out. The framework ships as
+ * `RcComposePlayer.xcframework.zip` on each GitHub Release, addressed by `Package.swift` (#4068);
+ * Kotlin Multiplatform consumers reach the same function through the published iOS klibs.
  */
 public fun RcComposeViewController(
   bytes: ByteArray,

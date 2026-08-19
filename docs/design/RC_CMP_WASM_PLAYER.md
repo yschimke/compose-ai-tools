@@ -28,8 +28,9 @@ The compatibility hierarchy is strict:
 
 The first delivery surface is an embeddable Wasm player, with iOS as the first native host. The
 model, interpreter, and Compose renderer are ordinary non-JVM CMP code; only browser fetch/iframe
-messaging is Wasm-specific. Protocol, runtime, and renderer publish iOS x64, device arm64, and
-simulator arm64 targets. The renderer also builds a static `RcComposePlayer` framework with a thin
+messaging is Wasm-specific. Protocol, runtime, and renderer publish iOS device arm64 and simulator
+arm64 — **not** x64; the target table below records why the Intel simulator is gone from the whole
+stack. The renderer also builds a static `RcComposePlayer` framework with a thin
 `RcComposeViewController` UIKit entry point.
 
 ### Why `third_party/remote-compose-player` still exists
@@ -703,8 +704,9 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   host messages, and surfaces host/named actions as inert `CustomEvent` payloads. Decode, support,
   and resource failures remain bounded inside the iframe instead of replacing the catalog page.
 - Protocol, runtime, Compose, compatibility, Wasm distribution, CLI host, and formatting checks run
-  in the dedicated player CI job. The shared renderer compiles/tests for iOS x64, device arm64, and
-  simulator arm64; the UIKit entry point reports decode/support/resource failures through `onError`
+  in the dedicated player CI job. The shared renderer compiles/tests for iOS device arm64 and
+  simulator arm64 (x64 having since left the whole stack, per the target table above); the UIKit
+  entry point reports decode/support/resource failures through `onError`
   and forwards player events through its host callback.
 
 After cluster 1, wire the player behind an experimental viewer flag so real documents can find
