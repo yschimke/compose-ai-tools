@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 338 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 322 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1071,12 +1071,6 @@ _No findings._
 
 _No findings._
 
-### `AssistChipSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/AssistChipSticker_Dark-c6a3982a.a11y.png" width="400" />
-
-_No findings._
-
 ### `BadgeSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/BadgeSticker_Dark-dc162abd.a11y.png" width="400" />
@@ -1086,30 +1080,6 @@ _No findings._
 ### `CheckboxChecked`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CheckboxChecked_Dark-7857b1a3.a11y.png" width="400" />
-
-_No findings._
-
-### `CircularProgressSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CircularProgressSticker_Dark-9e6726a1.png" width="400" />
-
-_No findings._
-
-### `ElevatedButtonSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/ElevatedButtonSticker_Dark-d072583a.a11y.png" width="400" />
-
-_No findings._
-
-### `ElevatedCardSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/ElevatedCardSticker_Dark-18954843.a11y.png" width="400" />
-
-_No findings._
-
-### `FabSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FabSticker_Dark-4af5bc82.a11y.png" width="400" />
 
 _No findings._
 
@@ -1143,57 +1113,9 @@ _No findings._
 
 _No findings._
 
-### `FilledCardSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledCardSticker_Dark-a4dde0c8.a11y.png" width="400" />
-
-_No findings._
-
-### `FilledTonalButtonSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledTonalButtonSticker_Dark-33902564.a11y.png" width="400" />
-
-_No findings._
-
-### `FilterChipSelected`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilterChipSelected_Dark-58750fb8.a11y.png" width="400" />
-
-_No findings._
-
 ### `LinearProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/LinearProgressSticker_Dark-b4131c7d.png" width="400" />
-
-_No findings._
-
-### `OutlinedButtonSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/OutlinedButtonSticker_Dark-d56655ef.a11y.png" width="400" />
-
-_No findings._
-
-### `OutlinedCardSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/OutlinedCardSticker_Dark-6c9348c5.a11y.png" width="400" />
-
-_No findings._
-
-### `OutlinedTextFieldSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/OutlinedTextFieldSticker_Dark-0946df4b.a11y.png" width="400" />
-
-_No findings._
-
-### `RadioSelected`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/RadioSelected_Dark-831f5cf9.a11y.png" width="400" />
-
-_No findings._
-
-### `SegmentedToggle`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SegmentedToggle_Dark-a426966f.a11y.png" width="400" />
 
 _No findings._
 
@@ -1254,12 +1176,6 @@ _No findings._
 ### `TextBrandedSpecimen`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/TextBrandedSpecimen_Dark-3d96b654.a11y.png" width="400" />
-
-_No findings._
-
-### `TextButtonSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/TextButtonSticker_Dark-7129bde1.a11y.png" width="400" />
 
 _No findings._
 
@@ -1744,12 +1660,6 @@ _No findings._
 
 _No findings._
 
-### `CheckboxButtonChecked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonChecked-16f1990b.a11y.png" width="400" />
-
-_No findings._
-
 ### `ChildButtonSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ChildButtonSticker-3f85a48b.a11y.png" width="400" />
@@ -1801,12 +1711,6 @@ _No findings._
 ### `IndeterminateCircularProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/IndeterminateCircularProgressSticker-08fc79fa.png" width="400" />
-
-_No findings._
-
-### `ListHeaderSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ListHeaderSticker-7f5259a9.a11y.png" width="400" />
 
 _No findings._
 
