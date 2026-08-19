@@ -1075,15 +1075,15 @@ class ServeWebTest {
 
   @Test
   fun `the design-spec chip states the published match score`() {
-    val html = chipHtmlFor(DesignReferenceMatch(percent = 96.34, changedPercent = 29.7))
+    val html = chipHtmlFor(DesignReferenceMatch(percent = 71.52, changedPercent = 29.7))
     // The catalog exists to answer "does this render match its design?", and before the verdict
     // moved onto the chip no page answered it at rest — the number was a click and two raster
     // decodes away, on every page, including the ones where the answer is 57%.
-    assertTrue(html.contains(">Figma 96.3%</button>"), "the chip states the score: $html")
-    assertTrue(html.contains("data-spec-match=\"off\""), "96.3% is below the close band: $html")
+    assertTrue(html.contains(">Figma 71.5%</button>"), "the chip states the score: $html")
+    assertTrue(html.contains("data-spec-match=\"off\""), "71.5% is below the close band: $html")
     // The exact numbers stay available without entering the lane.
     assertTrue(
-      html.contains("96.3% match against the imported Figma spec · 29.70% pixels differ"),
+      html.contains("71.5% match against the imported Figma spec · 29.70% pixels differ"),
       "the tooltip carries the full comparison: $html",
     )
     // The bare provider name is kept so the client can rebuild the label around a live score.
