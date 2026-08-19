@@ -50,6 +50,8 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
   fun validate() {
     if (platform.get() != "desktop") return
 
+    reportSkiko(skikoVersionsOnClasspath(classpathPaths))
+
     val offenders = androidxComposeArtifactsOnDesktopClasspath(classpathPaths)
     if (offenders.isEmpty()) return
 
@@ -78,7 +80,52 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
     )
   }
 
+  /**
+   * Say which skiko this classpath resolved, and stop when it resolved more than one.
+   *
+   * skiko is where a Compose Multiplatform bump reaches the renderer's own call sites: 0.150.0
+   * changed `Image.encodeToData`'s parameter list, and because skiko resolves to a SINGLE version
+   * across the render classpath, a consumer on a newer Compose line silently decides which API the
+   * tool is running against (compose-ai-tools#4190). The encode itself binds late now, so this is a
+   * diagnostic and not a gate — but the version belongs in the log, because the next skiko change
+   * will be diagnosed from it.
+   *
+   * Two DIFFERENT versions is the one case that fails. The API jar and the platform's native
+   * runtime jar are a matched pair; a skew between them loads a `libskiko` whose exports the API
+   * does not have, and every render dies with `UnsatisfiedLinkError` at draw time instead.
+   */
+  private fun reportSkiko(versions: List<String>) {
+    when (versions.size) {
+      0 -> Unit
+      1 -> logger.info("Compose Preview desktop classpath: skiko ${versions.single()}")
+      else ->
+        throw GradleException(
+          "Compose Preview desktop classpath resolved more than one skiko version " +
+            "(${versions.joinToString()}). The skiko API jar and its platform native runtime must " +
+            "match — a skew loads a libskiko whose exports the API does not declare, and every " +
+            "render fails at draw time. Align them through a single Compose Multiplatform version."
+        )
+    }
+  }
+
   internal companion object {
+    /**
+     * Every distinct skiko version named by a classpath entry, read off the artifact filenames
+     * (`skiko-awt-0.150.1.jar`, `skiko-awt-runtime-macos-arm64-0.150.1.jar`). Filenames because the
+     * task sees resolved files, not a dependency graph — and the version travels with the artifact.
+     */
+    fun skikoVersionsOnClasspath(paths: Iterable<String>): List<String> =
+      paths
+        .mapNotNull { path ->
+          val filename = path.replace('\\', '/').substringAfterLast('/')
+          SKIKO_ARTIFACT.matchEntire(filename)?.groupValues?.get(1)
+        }
+        .distinct()
+        .sorted()
+
+    /** `skiko`, `skiko-awt`, `skiko-awt-runtime-<platform>` — anything but the version suffix. */
+    private val SKIKO_ARTIFACT = Regex("""^skiko(?:-[a-z0-9]+)*-(\d[\w.\-]*)\.jar$""")
+
     fun androidxComposeArtifactsOnDesktopClasspath(paths: Iterable<String>): List<String> =
       paths
         .filter { path ->
