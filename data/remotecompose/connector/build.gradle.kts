@@ -137,6 +137,18 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
+
+  // Composition-level tests for the around-composable's seeding phase
+  // (`RemoteComposeSeedTimingTest`): the daemon's render lanes only register this extension when
+  // the alpha `compose-remote` artifacts are on the consumer's classpath, so the phase the seed
+  // lands in has to be pinned here, against a real composition, rather than in `:daemon:android`.
+  // Same Robolectric + compose-test-rule setup `:data-uiautomator-hierarchy-android` uses.
+  testImplementation(libs.robolectric)
+  testImplementation(libs.compose.foundation)
+  testImplementation("androidx.compose.animation:animation")
+  testImplementation(libs.activity.compose)
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  testImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 composeAiMavenPublishing {
