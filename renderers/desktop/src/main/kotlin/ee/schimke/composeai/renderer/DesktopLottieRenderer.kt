@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Density
+import ee.schimke.composeai.motion.ApngEncoder
 import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.preview.lottie.lottieIntrinsicDurationMillis
 import java.io.File

@@ -38,6 +38,13 @@ data class BundleManifest(
    * bundle was packed with `--include-data-extensions`.
    */
   val dataExtensions: List<BundleDataExtension> = emptyList(),
+  /**
+   * v9+: extra Maven repository base URLs (beyond Maven Central / Google Maven) needed to
+   * re-resolve this bundle's [ClasspathEntry.Maven] coordinates — a JitPack fork, an internal
+   * mirror, an androidx.dev snapshot build. Empty on a pre-v9 bundle and on any module whose deps
+   * all live on the two defaults.
+   */
+  val repositories: List<String> = emptyList(),
 )
 
 /** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */

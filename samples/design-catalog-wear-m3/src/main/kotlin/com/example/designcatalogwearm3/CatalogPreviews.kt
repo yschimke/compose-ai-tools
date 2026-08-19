@@ -55,6 +55,7 @@ import ee.schimke.composeai.preview.AnimatedPreview
 import ee.schimke.composeai.preview.CatalogComponent
 import ee.schimke.composeai.preview.CatalogVariant
 import ee.schimke.composeai.preview.FocusedPreview
+import ee.schimke.composeai.preview.InteractionPreview
 import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
@@ -346,6 +347,12 @@ fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
 // The off state rides this function via `@OverrideVariant` (seeding `checked = false`) instead of a
 // duplicated `SwitchButtonOff` — the render emits a `_VARIANT_off` capture that folds under this
 // sticker as the off state.
+//
+// The interaction capture rides the same function too, mirroring the mobile sheet's `SwitchOn`:
+// `targets = [0, 0]` is how a toggle is spelled — one tap off, one tap back on. It is also this
+// repo's standing regression net for `@InteractionPreview` on the Robolectric backend (issue
+// #4215): this is an Android module, CI renders every module, and if the backend stops honouring
+// the script the `.apng` stops being written and the missing-renders gate says so.
 @CatalogComponent(
   id = "SwitchButton/On",
   group = "Selection",
@@ -353,6 +360,12 @@ fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
 )
 @CatalogWearModes
 @OverrideVariant(name = "off", booleans = ["checked=false"])
+@InteractionPreview(
+  targets = [0, 0],
+  caption =
+    "Toggle off and back on. The thumb rides Wear Material 3's own spatial spec — the travel " +
+      "and its settle are what a still frame of either end state cannot show.",
+)
 @Composable
 fun SwitchButtonOn() = WearSticker {
   val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))

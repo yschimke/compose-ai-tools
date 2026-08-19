@@ -230,6 +230,26 @@ BundleManifest(
   (Bazel/Amper, or any "make it truly portable" pack). Bigger file.
 - `mixed` — embed what has no coordinate, reference the rest.
 
+A `coordinates` bundle is only re-renderable where its coordinates resolve, so
+v9 adds one more field:
+
+```kotlin
+BundleManifest(
+  ...
+  repositories: List<String> = emptyList()  // extra Maven repo base URLs, beyond Central + Google
+)
+```
+
+Maven Central and Google Maven are what every player already tries; anything
+else the producing build declared — a JitPack fork, an internal mirror, an
+androidx.dev snapshot build — is recorded here. Without it a coordinate served
+by none of the defaults simply went missing: the resolver warned, dropped it,
+and the player rendered (or a live server's daemon started) on an incomplete
+classpath, failing later with a linkage error that named a class rather than a
+cause (issues #4259 / #4265). The recorded `sha256` still decides whether the
+bytes that come back are the ones the producer packed, and an operator's own
+`--extra-maven-repos` is consulted first.
+
 All additive: v2 readers (`ignoreUnknownKeys = true` in `BundleLoader` and
 `BundlePngMetadata`) keep working against a v3 bundle, and a v3-aware player
 treats a v2 bundle as `resolution = "coordinates"`.

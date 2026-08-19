@@ -876,7 +876,6 @@ class ServeWebTest {
         reportIssue =
           ServeWeb.ReportIssue(
             action = "https://github.com/o/r/issues/new",
-            title = "Preview issue: button",
             body = "render: https://host/render/x.png",
             bodyTemplate = "render: {{render}}",
             repo = "o/r",
@@ -886,15 +885,29 @@ class ServeWebTest {
     assertTrue(html.contains("class=\"cp-preview-links\""), "source + report share one row")
     assertTrue(html.contains("id=\"cp-report\""), "report affordance rendered")
     // A GET form, not a link: nothing page-derived may reach a navigation sink, so the action is a
-    // server-rendered literal and the prefill rides in hidden inputs the browser encodes on submit.
+    // server-rendered literal and the prefill rides in a hidden input the browser encodes on
+    // submit. The link-styled toggle is the disclosure's own <summary>, so it works with JS off.
     assertTrue(
-      html.contains("<form class=\"cp-report\" id=\"cp-report\" method=\"get\"") &&
+      html.contains("<details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"o/r\">") &&
+        html.contains("<summary class=\"cp-report-link\"") &&
+        html.contains("<form class=\"cp-report-form\" method=\"get\"") &&
         html.contains("action=\"https://github.com/o/r/issues/new\""),
       "the issue form posts to the resolved repo",
     )
+    // The reporter writes the title — the server no longer derives one from the preview's name,
+    // and `required` is what stops an untitled report whether or not the page's script ran.
     assertTrue(
-      html.contains("name=\"title\" value=\"Preview issue: button\"") &&
-        html.contains("name=\"body\" id=\"cp-report-body\"") &&
+      html.contains(
+        "<input class=\"cp-report-summary-input\" type=\"text\" name=\"title\" required"
+      ),
+      "the reporter is asked for a summary, and cannot skip it",
+    )
+    assertFalse(
+      html.contains("type=\"hidden\" name=\"title\""),
+      "no server-written title rides along behind the reporter's back",
+    )
+    assertTrue(
+      html.contains("name=\"body\" id=\"cp-report-body\"") &&
         html.contains("value=\"render: https://host/render/x.png\""),
       "the server-filled prefill works without JS",
     )
@@ -902,9 +915,16 @@ class ServeWebTest {
       html.contains("data-report-template=\"render: {{render}}\""),
       "carries the template the viewer JS re-substitutes at the current overrides",
     )
-    // The tooltip names the repo the issue lands on, and — when this box knows the visitor's GitHub
-    // session — whose account will author it.
-    assertTrue(html.contains("title=\"File an issue on o/r as @octocat\""), html)
+    // The toggle's tooltip and the panel's note both name the repo the issue lands on, and — when
+    // this box knows the visitor's GitHub session — whose account will author it. Both also say
+    // what the report is ABOUT: this server has a second one a click away in the footer, and the
+    // two used to be distinguishable only by where they sat on the page.
+    assertTrue(
+      html.contains("title=\"Something wrong with this preview — files against o/r as @octocat\""),
+      html,
+    )
+    assertTrue(html.contains("Files against <code>o/r</code> as @octocat"), html)
+    assertTrue(html.contains("<em>not</em> the preview server"), html)
   }
 
   @Test
@@ -993,6 +1013,44 @@ class ServeWebTest {
       ),
       html,
     )
+  }
+
+  @Test
+  fun `a static catalog's published typography offers the Typography layer but not Theme`() {
+    // The two lanes behind one layer. A published bundle carries typography measured over its baked
+    // frame, so `.annotations` answers with no daemon at all — but theme attributes are projected
+    // live from a semantics tree and nothing authors them into a bundle, so that row must stay off.
+    // Folding the two into one flag would either hide a layer that works or offer one that cannot.
+    val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        hasDesignAnnotations = false,
+        hasPublishedTypography = true,
+      )
+    assertTrue(
+      html.contains("id=\"cp-inspect-typography\"") && html.contains("<cp-inspect-layers>"),
+      "published typography is inspectable without a daemon: $html",
+    )
+    assertFalse(
+      html.contains("id=\"cp-inspect-theme\""),
+      "no semantics lane ⇒ no Theme attributes row: $html",
+    )
+
+    // A daemon-backed session keeps both, unchanged.
+    val live =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        hasDesignAnnotations = true,
+      )
+    assertTrue(live.contains("id=\"cp-inspect-typography\""), live)
+    assertTrue(live.contains("id=\"cp-inspect-theme\""), live)
   }
 
   /** A viewer page for one preview carrying a Figma reference with [match]. */

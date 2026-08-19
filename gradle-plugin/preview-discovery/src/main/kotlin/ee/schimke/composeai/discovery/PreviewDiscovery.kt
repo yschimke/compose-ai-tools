@@ -260,6 +260,9 @@ object PreviewDiscovery {
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
   private const val GLIMMER_ENVIRONMENT_PREVIEW_FQN =
     "ee.schimke.composeai.preview.GlimmerEnvironmentPreview"
+  // Pre-capture settle window — sibling annotation to @AmbientPreview, same FQN-match policy.
+  // See `SettledPreview.kt`.
+  private const val SETTLED_PREVIEW_FQN = "ee.schimke.composeai.preview.SettledPreview"
   // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
   // policy. See `GestureHintPreview.kt`.
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
@@ -1913,6 +1916,39 @@ object PreviewDiscovery {
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val glimmerEnvironmentSpec = extractGlimmerEnvironmentSpec(annotations)
+    // `@SettledPreview` and a motion capture on ONE function want opposite things from the shared
+    // paused clock — the GIF records the timeline from its start, the settled still needs a
+    // coordinate near the end, and virtual time does not rewind. That used to be resolved here, by
+    // dropping the settle and warning about the pairing. It no longer is: both renderers now give
+    // the settled still a composition of its own (the desktop lane always did — every output is a
+    // separate `ImageComposeScene`; the Android lane splits into a second `setContent` pass, see
+    // `RobolectricRenderTest.settledStillNeedsOwnPass`), so each product owns its own timeline and
+    // the plan can simply carry both. Issue #4244.
+    val rawSettleSpec = extractSettleSpec(annotations)
+    // `@FocusedPreview` + an exact settle shorter than the focus path's setup: the desktop focus
+    // renderer spends two unconditional frames (`SETUP_FRAMES_MS`, 32ms) before any drive, because
+    // the focus walk needs a laid-out tree to find anything focusable in. A coordinate under that
+    // cannot be honoured there — the capture lands at 32ms regardless — while the Android lane
+    // would land on the requested value, so the same annotation would mean two different instants.
+    // Clamp here, the single place the manifest is written, and say so: an `afterMs` below one and
+    // a bit frames is asking for a frame that cannot show a focused component at all. Issue #4247.
+    val settleSpec =
+      if (
+        rawSettleSpec != null &&
+          rawSettleSpec.afterMs in 1 until FOCUS_SETUP_FRAMES_MS &&
+          focusSpecs.isNotEmpty()
+      ) {
+        warnings.add(
+          "@SettledPreview(afterMs = ${rawSettleSpec.afterMs}) on " +
+            "'${classInfo.name}.${method.name}' is raised to ${FOCUS_SETUP_FRAMES_MS}ms: " +
+            "@FocusedPreview on the same function spends its first ${FOCUS_SETUP_FRAMES_MS}ms " +
+            "laying out the tree the focus walk searches, so nothing focusable exists before " +
+            "then and the two backends would otherwise capture different instants."
+        )
+        rawSettleSpec.copy(afterMs = FOCUS_SETUP_FRAMES_MS)
+      } else {
+        rawSettleSpec
+      }
     val gestureHintSpec = extractGestureHintSpec(annotations)
     val permissionSpec =
       extractPermissionSpec(annotations, "${classInfo.name}.${method.name}", warnings)
@@ -2032,6 +2068,7 @@ object PreviewDiscovery {
             focusGifSpec,
             ambientSpec,
             glimmerEnvironmentSpec,
+            settleSpec,
             gestureHintSpec,
             permissionSpec,
             launcherWidgetSpec,
@@ -2062,6 +2099,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           glimmerEnvironmentSpec,
+          settleSpec,
           gestureHintSpec,
           permissionSpec,
           launcherWidgetSpec,
@@ -2092,6 +2130,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           glimmerEnvironmentSpec,
+          settleSpec,
           gestureHintSpec,
           permissionSpec,
           launcherWidgetSpec,
@@ -2831,6 +2870,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     glimmerEnvironment: GlimmerEnvironmentCapture?,
+    settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
@@ -2892,6 +2932,12 @@ object PreviewDiscovery {
     // no-op there.
     val effectiveAmbient = if (nonComposable) null else ambient
     val effectiveGlimmerEnvironment = if (nonComposable) null else glimmerEnvironment
+    // `@SettledPreview` advances the composition's paused clock, which a non-composable preview
+    // (Lottie / SVG / tile asset) has nothing to spend — same reasoning as ambient above.
+    //
+    // A motion capture on the same function is no longer a reason to drop it: the renderers give
+    // the settled still its own composition, so the two timelines no longer collide (issue #4244).
+    val effectiveSettle = if (nonComposable) null else settle
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
@@ -2979,8 +3025,11 @@ object PreviewDiscovery {
           gestureHint = effectiveGestureHint,
           permissions = effectivePermissions,
           glimmerEnvironment = effectiveGlimmerEnvironment,
+          settle = effectiveSettle,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
-          cost = STATIC_COST,
+          // Same reasoning as the still fan-out below: a settle walks its window frame by frame,
+          // so it is not the one-pass capture STATIC_COST describes.
+          cost = effectiveSettle?.let { settleCaptureCost(it.windowMs) } ?: STATIC_COST,
         )
       }
       val focusGifCaptures: List<Capture> =
@@ -3107,10 +3156,19 @@ object PreviewDiscovery {
     // IS the rendered output (the tall stitched PNG / scrolling GIF), so a sibling static
     // `renders/<id>.png` would just be the unscrolled initial frame — misleading, and the
     // exact regression issue #1524 reported.
+    //
+    // `@SettledPreview` is the one thing that overrides the suppression: it is a request for a
+    // settled *still*, so a function carrying one wants the static row even when a motion product
+    // would otherwise own the function outright. Discovery used to drop the settle here and warn
+    // that it was ignored, which was the circular form of the same bug — the still it was meant to
+    // fix had already been suppressed. Both ship now, and the renderers give the still its own
+    // composition so neither product spends the other's timeline (issue #4244). The extensions
+    // differ (`.png` vs `.gif` / `.apng`), so no filename disambiguation is needed.
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveFocuses.isNotEmpty() ||
+        effectiveSettle != null ||
         (effectiveAnimation == null && effectiveFocusGif == null && productScrolls.isEmpty())
 
     val scrollTimeCaptures: List<Capture> =
@@ -3129,9 +3187,12 @@ object PreviewDiscovery {
               // fan-out is in the *count*, which lives in the captures
               // list itself. Focus drive is similar: one moveFocus call
               // per stop, fixed-time work, no extra cost bucket.
+              val settleForRow = if (scroll == null && ms == null) effectiveSettle else null
               val captureCost =
                 when (scroll?.mode) {
-                  null -> STATIC_COST
+                  // A settled still walks its window a frame at a time, so it is not the one-pass
+                  // capture STATIC_COST describes — see `settleCaptureCost`.
+                  null -> settleForRow?.let { settleCaptureCost(it.windowMs) } ?: STATIC_COST
                   ScrollMode.TOP -> SCROLL_TOP_COST
                   ScrollMode.END -> SCROLL_END_COST
                   ScrollMode.LONG -> SCROLL_LONG_COST
@@ -3145,6 +3206,11 @@ object PreviewDiscovery {
                 gestureHint = effectiveGestureHint,
                 permissions = effectivePermissions,
                 glimmerEnvironment = effectiveGlimmerEnvironment,
+                // A scroll drive runs its own post-scroll settle, and a `@RoboComposePreviewOptions`
+                // timing is an exact snapshot of a chosen coordinate — settling either would move a
+                // capture off the frame it was asked for. So the settle rides only on the plain
+                // still, which is the capture the reveal actually spoils.
+                settle = settleForRow,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
@@ -3475,6 +3541,26 @@ object PreviewDiscovery {
       (ann.parameterValues.getValue("environment") as? AnnotationEnumValue)?.valueName
         ?: return null
     return runCatching { GlimmerEnvironmentCapture.valueOf(environmentName) }.getOrNull()
+  }
+
+  /**
+   * Reads `@SettledPreview(afterMs, maxMs)` into a [SettleCapture], or `null` when the annotation is
+   * absent.
+   *
+   * Both knobs are clamped here rather than in the renderers: discovery is the single place the
+   * manifest is written, so a nonsense value can't reach two backends and be clamped differently in
+   * each. A negative `afterMs` degrades to auto; `maxMs` is floored at one frame so an auto settle
+   * always gets at least one advance, and capped at [MAX_SETTLE_MS].
+   */
+  private fun extractSettleSpec(annotations: List<AnnotationInfo>): SettleCapture? {
+    val ann = annotations.firstOrNull { it.name == SETTLED_PREVIEW_FQN } ?: return null
+    val afterMs = (ann.parameterValues.getValue("afterMs") as? Int ?: 0).coerceAtLeast(0)
+    val maxMs =
+      (ann.parameterValues.getValue("maxMs") as? Int ?: DEFAULT_SETTLE_MAX_MS).coerceIn(
+        SETTLE_FRAME_MS,
+        MAX_SETTLE_MS,
+      )
+    return SettleCapture(afterMs = afterMs.coerceAtMost(MAX_SETTLE_MS), maxMs = maxMs)
   }
 
   /**
@@ -4112,6 +4198,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     glimmerEnvironment: GlimmerEnvironmentCapture?,
+    settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
@@ -4133,6 +4220,7 @@ object PreviewDiscovery {
       focusGif,
       ambient,
       glimmerEnvironment,
+      settle,
       gestureHint,
       permissions,
       launcherWidget,
@@ -4162,6 +4250,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     glimmerEnvironment: GlimmerEnvironmentCapture?,
+    settle: SettleCapture?,
     gestureHint: GestureHintCapture?,
     permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
@@ -4183,6 +4272,7 @@ object PreviewDiscovery {
         focusGif,
         ambient,
         glimmerEnvironment,
+        settle,
         gestureHint,
         permissions,
         launcherWidget,

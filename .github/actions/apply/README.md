@@ -49,7 +49,7 @@ jobs:
       # Android modules also need the SDK — add android-actions/setup-android@v3
       # (and a Gradle cache) here, or factor java+SDK+cache into a local
       # `./.github/actions/setup` composite as the reference workflows do.
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.16.0
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.21.0
 ```
 <!-- x-release-please-end -->
 
@@ -86,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup           # your java + SDK + cache composite
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.16.0
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.21.0
         with:
           only: compose,resources
           # `warn` keeps CI green when a handful of previews render nothing;
@@ -99,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.16.0
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.21.0
         with:
           # a11y renders first, then notifications stages the captures it
           # leaves behind — so the two must share a job (see below). Drop
@@ -301,6 +301,7 @@ Two values are in there because the publish job cannot recover them itself:
 | `_scope_modules` | The publish job never checked the PR out, so it can't classify the diff. Without the render job's scope, [change-scoped runs](#change-scoped-rendering) would report every unrendered module's baseline as a *Removed* preview. |
 | `_pipelines` | The resolved `only` / `skip` set. Re-resolving from the publish call's own inputs would default all four on, and the upsert for a pipeline that never ran would patch its existing sticky comment to "no changes". |
 | `_ab_config` | Read from the checkout, which on the publish side is the *base* branch — so a PR that adds or edits an [A/B config](#ab-comparison-of-preview-variants) would otherwise be graded against the old grouping. |
+| `_baseline_skew.json` | Which baseline the diff was taken against, and how far it trails the PR's base. Only the render job knows — it holds the PR's merge ref and the event's `base.sha`; the publish job has neither. See [Which baseline a PR diff compares against](#which-baseline-a-pr-diff-compares-against). |
 
 Both sides of every comparison travel, not just the new renders: the
 comparators fail closed on a missing baseline, so an absent
@@ -341,6 +342,61 @@ code on the render runner; that job just has nothing worth stealing (read-only
 token, no secrets). Keep `persist-credentials: false` on its checkout so the
 token isn't left in `.git/config` for the build to find.
 
+## Which baseline a PR diff compares against
+
+*Before* is not the baseline branch's tip. It's the newest commit on
+`compose-preview/main` whose **source** commit — the `main` commit recorded in
+its `Update preview baselines from <sha>` subject — is an ancestor of the state
+this PR's render was built on.
+
+That distinction is the whole point. A baseline lands 5–20 minutes after the
+merge that produced it, and `main` keeps moving while a PR is open, so the tip
+is routinely a different point in history than the PR. Diffing across that gap
+attributes everything inside it to whichever PR happened to render there:
+
+- **Baseline behind the PR's base** — the previews a just-merged PR changed are
+  replayed as the *next* PR's own New/Changed entries. Observed on
+  `wear-m3-catalog#24`: a one-file change reported 16 new / 9 changed / 4
+  removed, which was exactly the union of #20, #21 and #23 — all merged 13
+  minutes earlier with their baseline still rendering.
+- **Baseline ahead of the PR's base** — previews `main` gained after the PR
+  branched are missing from its render, so they surface as *Removed*
+  (`wear-m3-catalog#38` reported 36 deletions it never made).
+
+Walking back to the newest in-base baseline removes the second case entirely
+and bounds the first. Whatever gap is left is real: the baseline for this PR's
+base genuinely hasn't been published yet. That residual is measured, not
+guessed at, and the comment says so:
+
+> [!NOTE]
+> Compared against the baseline rendered from `abc12345`, which is **2
+> commit(s) behind** this PR's base (`def67890`) — the newest baseline
+> published when this ran. Any preview those commits changed is attributed to
+> this PR below. Re-run this check once the baseline for `def67890` has
+> published to see only this PR's own changes.
+
+Selection lives in [`select-baseline.py`](select-baseline.py) and is
+**best-effort by construction**. Anything it can't establish — no `main`
+history in a shallow checkout, an unparseable commit subject, a source commit
+whose object isn't local — leaves its outputs unwritten and the pipeline falls
+back to the branch tip, which is exactly the behaviour it replaces. It can
+therefore never do worse than not running.
+
+Two things it depends on, both of which hold for the branches this action
+publishes but are worth knowing if you point it at your own:
+
+- The baseline branch is **append-only** (see `lib/push-branch.sh`), so older
+  baseline commits — and the `renders/` trees the *Before* images are pinned
+  to — are still resolvable. An orphan force-push per baseline would leave
+  nothing to walk back to.
+- The `Update preview baselines from <sha>` subject is the **only** record of
+  which `main` commit a baseline came from. The `Update preview history from
+  <sha>` commits that follow each push share its tree but are not
+  publications, and are deliberately not selectable.
+
+The resource / a11y / notification comments still compare against their own
+branch tips; the same skew applies to them and is not yet corrected.
+
 ## Version skew
 
 > **What used to be the single most common way this action breaks.** Pinning
@@ -366,7 +422,7 @@ the CLI follows it for free:
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewPlugin = "1.16.0"
+composePreviewPlugin = "1.21.0"
 
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }
@@ -534,6 +590,55 @@ A group is only surfaced when at least one of its variants actually changed
 (or is new), so unchanged A/B groups don't post a comment on no-op PRs. The
 non-nominated variants of the same function keep the historical "Other
 variants" treatment.
+
+## Figma column — the design each preview is meant to match
+
+A preview diff answers "did these pixels move?". A design catalog exists to
+answer "do these pixels match the design?", and the reviewer used to answer that
+one by hand with the kit open in another tab. When a repo carries both halves of
+the join, the changed / new tables grow a third column showing the design node
+itself:
+
+| Figma | Before | After |
+|---|---|---|
+| the kit's drawing of `Button/Compact` | last render on `compose-preview/main` | this PR's render |
+
+Both halves are already committed artefacts, and **nothing here talks to Figma**:
+
+- `design-map.json` — which design node a preview implements. Produced by
+  [`@yschimke/compose-design-map`](../../../design-map) from
+  `@CatalogComponent(reference = …)`, with per-variant nodes resolved onto it by
+  a kit resolver. Both the base (`ref`/`previewId` as strings) and the resolved
+  (arrays tagged by `state`) shapes are read.
+- `design/pages/pages.json` + its SVGs — the imported kit pages, one SVG per
+  page with `data-node-id` on every element (the v2 design-pages manifest, see
+  `DesignPages.kt`). The column is cut straight out of that markup: the node's
+  subtree, re-wrapped in the ancestors that carry its transform and clipping,
+  rasterised, then cropped to the ink it draws and backed with the colour the
+  sheet paints behind it.
+
+Reading the cache rather than the API is the point. A fork PR gets no
+`FIGMA_TOKEN`, so a live column would go missing on exactly the PRs an outside
+contributor opens; the reference is pinned to what the PR's own checkout carries,
+so a designer's mid-review edit can't silently rewrite what a reviewer is judging
+against; and Figma sees no per-push traffic. The cost is freshness — the column
+is as current as the last run of the repo's page import, and *drift* is
+design-parity's job to report, on its own schedule.
+
+Every part of it degrades to nothing. No design map, no page import, a node the
+export skipped (the M3 kit's Stickersheet page is excluded for size), no
+rasteriser: the comment falls back to the two-column layout it always had. So
+there is nothing to switch on — commit the two files and the column appears.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `figma-references` | `true` | Set `false` to suppress the column even where the cache exists. |
+| `design-map` | `design-map.json` | Path to the design map. |
+| `design-pages` | `design/pages/pages.json` | Path to the imported page manifest. |
+
+The reference PNGs are pushed to `compose-preview/pr` alongside the PR renders
+(`figma/<module>/<previewId>.png`), so they are commit-pinned like every other
+image in the comment.
 
 ## Downloadable-font cache
 

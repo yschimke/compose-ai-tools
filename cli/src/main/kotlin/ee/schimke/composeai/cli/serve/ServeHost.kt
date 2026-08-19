@@ -632,6 +632,28 @@ interface ServeHost : AutoCloseable {
     get() = canApplyOverrides
 
   /**
+   * Per-preview annotation availability, the twin of [hasA11yOverlayFor]: a composite host may
+   * front a whole catalog while only part of it has a daemon twin to capture semantics from, and
+   * offering the Typography / Theme layers on a preview whose fetch can only 404 is exactly the
+   * dead control [hasDesignAnnotations] exists to avoid.
+   */
+  fun hasDesignAnnotationsFor(previewId: String): Boolean = hasDesignAnnotations
+
+  /**
+   * Whether this host can answer `.annotations` for [previewId] from the catalog's **published**
+   * annotations rather than from a daemon-captured semantics tree — see
+   * [ServeBundleHost.renderAnnotations].
+   *
+   * Separate from [hasDesignAnnotationsFor] because the two lanes carry different layers, and the
+   * viewer offers a checkbox per layer. A published bundle's preview annotations are typography (a
+   * producer measures them off the frame); the theme attributes are projected live from a semantics
+   * tree and nothing authors them into a bundle. Folding the two together would either hide the
+   * Typography layer on a catalog that published it, or offer a Theme checkbox with nothing behind
+   * it. Defaults to false — a host with no published annotation manifest has neither.
+   */
+  fun hasPublishedTypographyFor(previewId: String): Boolean = false
+
+  /**
    * Render [previewId] at [overrides] and return its typography + theme inspection layers as JSON
    * (`{previewId, annotations, tags}`), or [AnnotationsOutcome.NotFound] when this host has no
    * daemon. See [ServeRenderHost.renderAnnotations].

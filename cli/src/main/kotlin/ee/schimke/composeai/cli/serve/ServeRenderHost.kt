@@ -29,9 +29,6 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -157,6 +154,19 @@ data class ServePreview(
    * the viewer offer a variant switcher. Null keeps the current behaviour everywhere.
    */
   val props: JsonObject? = null,
+  /**
+   * The declared **breakpoint** this render was captured at — `"192dp"`, `"compact"`,
+   * `"smallRound"`, … — from the catalog's `previews/variants.json`, which carries the `size` name
+   * the spec's `breakpoints` table declares. Null when the catalog declares no breakpoints (or for
+   * a plain bundle), which is every catalog that had no size axis before.
+   *
+   * A size is a different *rendering* of one component rather than a different component, so the
+   * grid folds the non-primary sizes onto that component's one card — the same treatment [state]
+   * and [props] get — and the viewer offers them as a size switcher. Without this the axis is
+   * invisible to the server: five breakpoints publish five identically-named cards, which is what a
+   * five-size Wear catalog actually did (wear-m3-catalog#41).
+   */
+  val size: String? = null,
   /**
    * The top-level **section** (tab) this preview belongs to — `"Themes"`, `"Components"`,
    * `"Screens"`, `"Animations"`, … — from the catalog's `previews/variants.json`. Drives the
@@ -476,6 +486,13 @@ internal constructor(
    * deferred [Companion.open] path leaves this false.
    */
   private val sessionAlreadyOpen: Boolean = false,
+  /**
+   * One extra sentence appended to a **fatal** breaker trip, given the failure text — see
+   * [RenderCircuitBreaker]'s parameter of the same name. The [Companion.open] path supplies the
+   * daemon's own launch descriptor, so a Skia link error is answered with the Skiko pair that
+   * classpath resolves (#4220) rather than leaving the symbol name to speak for itself.
+   */
+  private val linkageDiagnosis: (String) -> String? = { null },
 ) : ServeHost {
 
   /**
@@ -745,7 +762,7 @@ internal constructor(
    * [RenderCircuitBreaker] and issue #3448 (3794 retries of one `UnsatisfiedLinkError` in 14
    * minutes).
    */
-  private val breaker = RenderCircuitBreaker()
+  private val breaker = RenderCircuitBreaker(linkageDiagnosis = linkageDiagnosis)
 
   override fun renderPerfStats(): RenderPerfSnapshot =
     perfStats.snapshot().copy(breaker = breaker.snapshot())
@@ -1314,6 +1331,13 @@ internal constructor(
   ): AnnotationsOutcome {
     check(!closed.get()) { "ServeRenderHost is closed" }
     if (previewId !in previewIds) return AnnotationsOutcome.NotFound
+    // Same precondition as the lanes above: `compose/semantics` (and the theme product below) are
+    // registered inactive, and the capability read further down forces the enable through a lazy
+    // that throws when the daemon can't be opened at all. Doing it here turns that into this
+    // request's failure instead of an exception escaping past the route's 500-with-reason.
+    ensureExtensionsEnabled()?.let {
+      return AnnotationsOutcome.Failed(it)
+    }
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     annotationsCache.get(key)?.let {
@@ -1350,28 +1374,11 @@ internal constructor(
         val theme = if (captureTheme) fetchTheme(previewId, overrides) else null
 
         val json =
-          dataJson
-            .encodeToString(
-              JsonObject.serializer(),
-              buildJsonObject {
-                put("previewId", JsonPrimitive(previewId))
-                put(
-                  "annotations",
-                  dataJson.encodeToJsonElement(
-                    ListSerializer(DesignAnnotation.serializer()),
-                    ServeDesignAnnotations.annotations(payload, theme),
-                  ),
-                )
-                put(
-                  "tags",
-                  dataJson.encodeToJsonElement(
-                    MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
-                    ServeSemanticsTags.index(payload),
-                  ),
-                )
-              },
-            )
-            .encodeToByteArray()
+          ServeAnnotationsPayload.encode(
+            previewId,
+            ServeDesignAnnotations.annotations(payload, theme),
+            ServeSemanticsTags.index(payload),
+          )
         annotationsCache.put(key, json)
         AnnotationsOutcome.Ok(json)
       } finally {
@@ -1812,6 +1819,14 @@ internal constructor(
         label = label,
         declaredThemes = declaredThemes,
         onLog = onLog,
+        // Two causes, tried in order of specificity: a split Skiko pair (which names the exact
+        // versions), then a classpath the bundle asked for and this server could not assemble.
+        // Either turns the open breaker's reason — the only report anyone outside the box reads —
+        // from a bare missing symbol into something that says what to do about it.
+        linkageDiagnosis = { reason ->
+          SkikoNativePairing.linkageDiagnosis(reason, descriptorPath)
+            ?: BundleClasspathGaps.linkageDiagnosis(reason, descriptorPath)
+        },
       )
     }
   }

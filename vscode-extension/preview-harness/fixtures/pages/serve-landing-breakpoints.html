@@ -1,0 +1,624 @@
+    <!doctype html>
+    <html lang="en" data-cp-theme-key="cp-theme:wear-m3-catalog">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>wear-m3-catalog — compose-preview</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <script>try{var s=localStorage.getItem("cp-interface-mode");if(s){localStorage.removeItem("cp-interface-mode");if((s==="catalog"||s==="dev")&&document.cookie.indexOf("cp_chrome=")<0){document.cookie="cp_chrome="+s+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");if(document.cookie.indexOf("cp_chrome="+s)>=0&&!/[?&]chrome=/.test(location.search))location.reload();}}}catch(e){}</script>
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||(((decodeURIComponent(location.pathname).split('/').pop()||"").match(/(?:^|__)(light|dark)(?:__|$)/)||[])[1]||localStorage.getItem("cp-theme:wear-m3-catalog")));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <script src="/assets/serve/fixture/serve-chrome.js"></script>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span class="cp-site-wordmark">compose-preview</span>
+    </a>
+    <span class="cp-site-catalog">wear-m3-catalog</span>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <div class="cp-interface-mode" role="group" aria-label="Interface mode">
+      <button type="button" data-cp-interface-mode="catalog" aria-pressed="false">Catalog</button>
+      <button type="button" data-cp-interface-mode="dev" aria-pressed="true">Dev</button>
+    </div>
+    <details class="cp-site-menu" id="cp-site-menu">
+      <summary class="cp-site-menu-btn" title="Menu" aria-label="Menu"
+        aria-controls="cp-site-menu-panel"><span aria-hidden="true">⋮</span></summary>
+    </details>
+    <div class="cp-site-menu-panel" id="cp-site-menu-panel">
+      <a class="cp-site-status-link" id="cp-status-link" href="/status">Status<span
+        class="cp-daemon-status" id="cp-daemon-status" aria-hidden="true" hidden></span></a>
+      <details class="cp-settings">
+        <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+          <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+        </summary>
+        <div class="cp-settings-panel">
+          <fieldset class="cp-settings-group">
+                    <legend class="cp-settings-legend">Page theme</legend>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+                      <span>Match the preview theme</span>
+                    </label>
+                    <label class="cp-settings-option">
+                      <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+                      <span>Follow my system</span>
+                    </label>
+                    <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+                      match. Choose Follow my system to keep the page on your operating system's setting.</p>
+                  </fieldset>
+          <fieldset class="cp-settings-group cp-settings-keyboard">
+            <legend class="cp-settings-legend">Keyboard</legend>
+            <label class="cp-settings-option">
+              <input type="checkbox" data-cp-keyboard-navigation>
+              <span>Power-user navigation</span>
+            </label>
+            <p class="cp-settings-hint">Jump between components, variants, modes, and overrides with
+              shortcuts and an on-screen command palette.</p>
+            <button type="button" class="cp-settings-tour" data-cp-keyboard-tour>
+              View keyboard tour
+            </button>
+          </fieldset>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+        <main class="cp-main">
+                <div class="cp-catalog-head-row"><div class="cp-catalog-title"><h1 class="cp-head cp-catalog-head">wear-m3-catalog</h1></div><p class="cp-sub">15 previews</p><div class="cp-head-toggles">
+<div class="cp-catalog-actions">
+          <details class="cp-actions-menu">
+            <summary class="cp-drawer-toggle cp-axis-toggle" title="More for this catalog" aria-label="More for this catalog" aria-controls="cp-catalog-actions-panel"><span aria-hidden="true">⋯</span></summary>
+          </details>
+          <div class="cp-actions-panel" id="cp-catalog-actions-panel">
+          <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
+          </div>
+        </div>
+</div>
+</div>
+        <div class="cp-catalog-body">
+<aside class="cp-catalog-menu" aria-label="Catalog menu">
+<div class="cp-searchbar">
+  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
+    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+</div>
+<nav class="cp-tree" id="cp-tabs" aria-label="Catalog sections">
+<ul class="cp-tree-list" role="tree" aria-label="Catalog sections">
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-containment" href="#cp-panel-containment" data-tab="containment" aria-controls="cp-panel-containment" aria-selected="true" aria-expanded="true" aria-owns="cp-tree-children-containment">Containment<span class="cp-tab-count">1</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-containment" role="group">
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-containment-dialogs" data-tab="containment" data-group="cp-group-containment-dialogs" aria-expanded="true" aria-owns="cp-tree-of-cp-group-containment-dialogs">Dialogs<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-containment-dialogs" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-alertdialog__ideal__default__192dp" data-tab="containment" data-group="cp-card-alertdialog__ideal__default__192dp" aria-expanded="false" aria-owns="cp-tree-of-cp-card-alertdialog__ideal__default__192dp">Alert Dialog<span class="cp-tree-count">2</span></a>
+          <ul class="cp-tree-children cp-tree-variants" id="cp-tree-of-cp-card-alertdialog__ideal__default__192dp" role="group">
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="#cp-card-alertdialog__ideal__default__192dp" data-tab="containment" data-group="cp-card-alertdialog__ideal__default__192dp">Default</a></li>
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/wear-m3-catalog/p/alertdialog__ideal__no-buttons__192dp">No buttons</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</li>
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-text" href="#cp-panel-text" data-tab="text" aria-controls="cp-panel-text" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-text">Text<span class="cp-tab-count">1</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-text" role="group">
+    <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-text-time" data-tab="text" data-group="cp-group-text-time" aria-expanded="false" aria-owns="cp-tree-of-cp-group-text-time">Time<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-text-time" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-timetext__ideal__default__192dp" data-tab="text" data-group="cp-card-timetext__ideal__default__192dp">Time Text</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</li>
+</ul>
+</nav>
+</aside>
+<div class="cp-sections" id="cp-grid">
+<section class="cp-section" id="cp-panel-containment" role="region" aria-labelledby="cp-tab-containment" data-section="containment">
+<h2 class="cp-section-head">Containment</h2>
+<div class="cp-subgroup" id="cp-group-containment-dialogs">
+<h3 class="cp-group-head">Dialogs</h3>
+<div class="cp-cards">
+<a class="cp-card" id="cp-card-alertdialog__ideal__default__192dp" data-bg-theme="dark" href="/wear-m3-catalog/p/alertdialog__ideal__default__192dp" aria-label="Alert Dialog">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Alert Dialog" src="/wear-m3-catalog/render/alertdialog__ideal__default__192dp.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="alertdialog__ideal__default__192dp">Alert Dialog</div>
+    <div class="cp-id">alertdialog__ideal__default__192dp</div>
+    
+  </div>
+</a>
+</div>
+</div>
+</section>
+<section class="cp-section" id="cp-panel-text" role="region" aria-labelledby="cp-tab-text" data-section="text">
+<h2 class="cp-section-head">Text</h2>
+<div class="cp-subgroup" id="cp-group-text-time">
+<h3 class="cp-group-head">Time</h3>
+<div class="cp-cards">
+<a class="cp-card" id="cp-card-timetext__ideal__default__192dp" data-bg-theme="dark" href="/wear-m3-catalog/p/timetext__ideal__default__192dp" aria-label="Time Text">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Time Text" src="/wear-m3-catalog/render/timetext__ideal__default__192dp.png">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="timetext__ideal__default__192dp">Time Text</div>
+    <div class="cp-id">timetext__ideal__default__192dp</div>
+    
+  </div>
+</a>
+</div>
+</div>
+</section>
+</div>
+</div>
+<p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
+<script src="/assets/serve/fixture/serve-components.js"></script>
+<script>(function () {
+  var cards = document.querySelectorAll(".cp-card");
+  var input = document.getElementById("cp-search");
+  var count = document.getElementById("cp-count");
+  var empty = document.getElementById("cp-empty");
+  var total = cards.length;
+  // Address-bar state (`window.cpUrlState`). Every selection below is reflected into the URL so the
+  // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+  // reachable with Back — without ever reloading: the grid re-points its own images.
+  var urlState = window.cpUrlState || null;
+  function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+  function pushUrl(v) { if (urlState) urlState.push(v); }
+  function replaceUrl(v) { if (urlState) urlState.replace(v); }
+  if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+  var navGroups = document.querySelectorAll(".cp-subgroup");
+  var treeGroups = document.querySelectorAll(".cp-tree-group");
+  var treeComponents = document.querySelectorAll(".cp-tree-component");
+  var treeLinks = document.querySelectorAll(".cp-tree-link");
+  var cpTreeStops = null;
+  var tabBtns = document.querySelectorAll(".cp-tab");
+  var treeGroups = document.querySelectorAll(".cp-tree-group");
+  var tabSections = document.querySelectorAll(".cp-section");
+  var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
+  try {
+    var storedTab = localStorage.getItem("cp-tab:wear-m3-catalog");
+    tabBtns.forEach(function (t) {
+      if (t.getAttribute("data-tab") === storedTab) current = storedTab;
+    });
+  } catch (e) {}
+  var urlTab = urlParam("tab");
+  tabBtns.forEach(function (t) {
+    if (t.getAttribute("data-tab") === urlTab) current = urlTab;
+  });
+  var initialTab = current;
+  function reflectTabs() {
+    var searching = !!(input && input.value.trim());
+    var stop = null;
+    var firstShown = null;
+    tabBtns.forEach(function (t) {
+      var on = t.getAttribute("data-tab") === current;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      if (t.hasAttribute("aria-expanded"))
+        t.setAttribute("aria-expanded", on || searching ? "true" : "false");
+      var node = t.closest(".cp-tree-node");
+      var shown = !(node && node.hidden);
+      t.tabIndex = on && shown ? 0 : -1;
+      if (shown && !firstShown) firstShown = t;
+      if (on && shown) stop = t;
+    });
+    treeGroups.forEach(function (g) { g.tabIndex = -1; });
+    if (!stop && firstShown) firstShown.tabIndex = 0;
+  }
+  reflectTabs();
+  document.documentElement.classList.add("cp-js");
+  
+  function apply() {
+    
+    var q = input ? input.value.trim().toLowerCase() : "";
+    var shown = 0;
+    cards.forEach(function (c) {
+      var lab = c.querySelector(".cp-label");
+      var idn = c.querySelector(".cp-id");
+      var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+      var searchOk = q === "" || hay.indexOf(q) !== -1;
+      var sec = c.closest(".cp-section");
+      var tabOk = q !== "" || !sec || sec.getAttribute("data-section") === current;
+      c.hidden = !(searchOk && tabOk);
+      if (searchOk && tabOk) shown++;
+    });
+    if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+    if (empty) empty.hidden = shown !== 0;
+    navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
+    tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
+    treeComponents.forEach(function (c) {
+      var card = document.getElementById(c.getAttribute("data-group"));
+      if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);
+    });
+    treeGroups.forEach(function (g) {
+      var sub = document.getElementById(g.getAttribute("data-group"));
+      if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
+    });
+    tabBtns.forEach(function (t) {
+      var node = t.closest(".cp-tree-node");
+      var sec = document.getElementById(t.getAttribute("aria-controls"));
+      if (node) node.hidden = q !== "" && !!(sec && sec.hidden);
+    });
+    reflectTabs();
+    if (cpTreeStops) cpTreeStops();
+  }
+  if (input) input.addEventListener("input", function () {
+    // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+    // visitor arrived from under five entries. The URL still carries the query, so the
+    // filtered grid is bookmarkable.
+    replaceUrl({ q: input.value.trim() });
+    apply();
+  });
+  
+  tabBtns.forEach(function (t) {
+    t.addEventListener("click", function (e) {
+      e.preventDefault();
+      current = t.getAttribute("data-tab");
+      try { localStorage.setItem("cp-tab:wear-m3-catalog", current); } catch (e) {}
+      reflectTabs();
+      pushUrl({ tab: current });
+      apply();
+    });
+  });
+  if (urlState) {
+    urlState.onPop(function () {
+      var poppedTab = urlParam("tab") || initialTab;
+      tabBtns.forEach(function (t) {
+        if (t.getAttribute("data-tab") === poppedTab) current = poppedTab;
+      });
+      reflectTabs();
+      if (input) input.value = urlParam("q");
+      apply();
+    });
+  }
+  (function () {
+    var tree = document.getElementById("cp-tabs");
+    if (!tree) return;
+    // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+    // sticky menu's offset and for every scroll target's `scroll-margin-top`. Measured rather
+    // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+    // and the static fallback in the stylesheet only covers the unwrapped case.
+    // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
+    // machinery alone, which would have left an outline tree permanently expanded.
+    document.documentElement.classList.add("cp-js");
+    var tools = document.querySelector(".cp-catalog-tools");
+    if (tools) {
+      var syncTools = function () {
+        var h = Math.round(tools.getBoundingClientRect().height);
+        if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+      };
+      syncTools();
+      if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+      else window.addEventListener("resize", syncTools);
+    }
+    var tabBtnsForHash = tabBtns;
+    function selectTab(slug) {
+      if (!slug || slug === current) return;
+      current = slug;
+      try { localStorage.setItem("cp-tab:wear-m3-catalog", current); } catch (e) {}
+      reflectTabs();
+      pushUrl({ tab: current });
+      apply();
+    }
+    function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
+    function applyLandingTab(landing) {
+      if (!landing.tab || landing.tab === current) return;
+      current = landing.tab;
+      initialTab = current;
+      reflectTabs();
+    }
+    // The row pointing at an id, found by COMPARING attribute values rather than by building a
+    // selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop viewer
+    // already follows).
+    function rowFor(id) {
+      var found = null;
+      treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
+      return found;
+    }
+    function markGroup(row) {
+      treeGroups.forEach(function (g) {
+        if (g === row) g.setAttribute("aria-current", "true");
+        else g.removeAttribute("aria-current");
+      });
+    }
+    // Which group and which component are open. One of each: a tree that opened every branch it
+    // was ever asked about would end up listing every component in the catalog, which is the
+    // wall the grid already is. The server marks the first group open, so the page arrives
+    // showing components rather than needing to be prised open first.
+    var openGroup = null;
+    var openCard = null;
+    treeLinks.forEach(function (r) {
+      if (r.classList.contains("cp-tree-group") && r.getAttribute("aria-expanded") === "true") {
+        openGroup = r.getAttribute("data-group");
+      }
+    });
+    function parentRow(row) {
+      var list = row.closest("ul.cp-tree-children");
+      return list ? list.previousElementSibling : null;
+    }
+    function reflectTree() {
+      treeLinks.forEach(function (r) {
+        if (!r.hasAttribute("aria-expanded")) return;
+        var id = r.getAttribute("data-group");
+        // A branch that names no in-page target is not one of the two this tracks — the Pages
+        // branch owns destinations that are elsewhere, and is written open once and left open.
+        if (!id) return;
+        var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
+        r.setAttribute("aria-expanded", on ? "true" : "false");
+      });
+    }
+    function openRow(row) {
+      var id = row.getAttribute("data-group");
+      if (row.classList.contains("cp-tree-group")) {
+        openGroup = id;
+        openCard = null;
+      } else if (row.classList.contains("cp-tree-component")) {
+        openCard = id;
+        // And the group that HOLDS it. A click can only reach a component whose group is already
+        // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
+        // on whichever group the server expanded would scroll to the card while keeping its own
+        // row, and every variant under it, collapsed out of the tree.
+        var owner = parentRow(row);
+        if (owner && owner.classList.contains("cp-tree-group")) {
+          openGroup = owner.getAttribute("data-group");
+        }
+      }
+      reflectTree();
+      syncTabStops();
+    }
+    // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+    // preserves whatever hash is already there when it rewrites the query. So a click that moves
+    // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+    // WERE. `replaceState`, not push: a jump inside the page is a scroll, not a place to come
+    // Back to.
+    function setFragment(id) {
+      var url = location.pathname + location.search + (id ? "#" + id : "");
+      try { history.replaceState(history.state, "", url); } catch (e) {}
+    }
+    // Every row that names an in-page destination. A VARIANT row is the exception: the grid
+    // folds those renders out, so it has nowhere here to jump to — it carries a plain `/p/<id>`
+    // href and is left to the browser.
+    treeLinks.forEach(function (row) {
+      row.addEventListener("click", function (e) {
+        var id = row.getAttribute("data-group");
+        if (!id) return;
+        var target = document.getElementById(id);
+        if (!target) return;
+        e.preventDefault();
+        openRow(row);
+      selectTab(row.getAttribute("data-tab"));
+        setFragment(id);
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (row.classList.contains("cp-tree-group")) markGroup(row);
+      });
+    });
+    // Keyboard: the tree pattern's roving focus. Visibility is read off layout rather than walked
+    // by hand — a collapsed branch is `display: none`, so `offsetParent` already answers "can the
+    // visitor reach this row", across all four levels and the filter's hiding at once.
+    function visibleRows() {
+      var rows = [];
+      tree.querySelectorAll(".cp-tab, .cp-tree-link").forEach(function (r) {
+        if (r.offsetParent !== null) rows.push(r);
+      });
+      return rows;
+    }
+    function focusRow(el) {
+      if (!el) return;
+      visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
+      el.focus();
+    }
+    // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
+    // Nothing established that until a first arrow press called `focusRow`, so every visible row
+    // sat in the normal tab order until then — the whole point of the pattern, lost on the one
+    // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
+    // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
+    function syncTabStops() {
+      var rows = visibleRows();
+      if (!rows.length) return;
+      var stop = null;
+      rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
+      if (!stop) stop = rows[0];
+      rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
+    }
+    cpTreeStops = syncTabStops;
+    tree.addEventListener("keydown", function (e) {
+      var items = visibleRows();
+      var at = items.indexOf(document.activeElement);
+      if (at === -1) return;
+      var key = e.key;
+      var next = null;
+      if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
+      else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
+      else if (key === "Home") next = items[0];
+      else if (key === "End") next = items[items.length - 1];
+      else if (key === "ArrowRight") {
+        // Right opens a collapsed parent, steps into an expanded one's first child, and does
+        // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
+        // second Arrow Down, walking the visitor across siblings when they asked to expand
+        // something that cannot expand.
+        var expanded = items[at].getAttribute("aria-expanded");
+        if (expanded === "false") {
+          e.preventDefault();
+          if (items[at].classList.contains("cp-tree-link")) openRow(items[at]);
+          else selectCollapsedTab(items[at]);
+          return;
+        }
+        if (expanded !== "true") return;
+        next = items[Math.min(at + 1, items.length - 1)];
+      } else if (key === "ArrowLeft") {
+        // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
+        // and the only way back up once the levels are four deep. The `data-group` test excludes
+        // the always-open Pages branch: closing it is not offered, and without the test Left on
+        // that row would clear `openCard` and collapse whichever component IS open.
+        if (
+          items[at].getAttribute("aria-expanded") === "true" &&
+          items[at].getAttribute("data-group")
+        ) {
+          e.preventDefault();
+          if (items[at].classList.contains("cp-tree-group")) openGroup = null;
+          else openCard = null;
+          reflectTree();
+          return;
+        }
+        next = parentRow(items[at]);
+      } else return;
+      if (!next) return;
+      e.preventDefault();
+      focusRow(next);
+    });
+    // What the URL's fragment names, or null when it names nothing this page has.
+    //
+    // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+    // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+    // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+    // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+    // escape sequence throws, and is simply not a fragment this page knows.
+    function hashTarget() {
+      var id = location.hash ? location.hash.slice(1) : "";
+      try { id = decodeURIComponent(id); } catch (e) { return null; }
+      if (!id) return null;
+      var tab = null;
+      var row = null;
+      treeLinks.forEach(function (g) {
+        if (!row && g.getAttribute("data-group") === id) {
+          tab = g.getAttribute("data-tab");
+          row = g;
+        }
+      });
+      if (!row) {
+        tabBtnsForHash.forEach(function (t) {
+          if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
+        });
+      }
+      return row || tab ? { tab: tab, row: row, id: id } : null;
+    }
+    syncTabStops();
+    var landing = hashTarget();
+    if (landing) {
+      if (landing.row) openRow(landing.row);
+      applyLandingTab(landing);
+      setTimeout(function () {
+        var el = document.getElementById(landing.id);
+        if (el) el.scrollIntoView({ block: "start" });
+        if (landing.row && landing.row.classList.contains("cp-tree-group")) markGroup(landing.row);
+      }, 0);
+    }// Choosing a whole section retires any group fragment: the row you clicked is the statement
+    // of where you are, and a leftover `#cp-group-…` from another section would outrank it on
+    // the next load. It also has to honour the promise its own `href="#cp-panel-…"` makes — the
+    // shared handler prevents the default navigation and only swaps which panel is hidden, so
+    // from halfway down a long section the scroll simply stayed where it was. Registered after
+    // that handler, so the panel is already showing when this measures it, and it only scrolls
+    // when the panel is actually behind the sticky toolbar.
+    tabBtns.forEach(function (t) {
+      t.addEventListener("click", function () {
+        setFragment("");
+        var panel = document.getElementById(t.getAttribute("aria-controls"));
+        if (!panel) return;
+        var clearance = tools ? tools.getBoundingClientRect().height : 0;
+        if (panel.getBoundingClientRect().top < clearance) {
+          panel.scrollIntoView({ block: "start" });
+        }
+      });
+    });// Back / Forward has to resolve an entry the same way loading it fresh would. The shared pop
+    // handler reads `?tab=` only, so returning to an entry whose fragment and query disagree —
+    // `?tab=components#cp-group-themes-foundation`, which a fresh load resolves to Themes —
+    // would land on Components with the fragment's target hidden. This runs after that handler
+    // (registered later, and `onPop` is a plain listener) and re-applies the precedence.
+    if (window.cpUrlState) {
+      window.cpUrlState.onPop(function () {
+        var popped = hashTarget();
+        if (!popped || popped.tab === current) return;
+        current = popped.tab;
+        reflectTabs();
+        apply();
+        if (popped.row) markGroup(popped.row);
+      });
+    }
+    // Scroll-spy: mark the group whose cards are on screen, so the tree says where you are rather
+    // than only where you last clicked. Additive — with no `IntersectionObserver` the marking
+    // simply follows clicks.
+    if (window.IntersectionObserver) {
+      var onScreen = [];
+      var spy = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          var at = onScreen.indexOf(en.target);
+          if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
+          else if (at !== -1) onScreen.splice(at, 1);
+        });
+        // The highest sub-group still in the band is the one being read.
+        var top = null;
+        onScreen.forEach(function (el) {
+          if (el.hidden) return;
+          if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+        });
+        if (top) markGroup(rowFor(top.id));
+      // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
+      // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
+      // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
+      // marked at all on first paint, since a catalog's first sub-group starts a header, a
+      // provenance strip and a toolbar down the page.
+      }, { rootMargin: "-64px 0px -20% 0px" });
+      document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
+    }
+  })();
+  apply();
+})();</script>
+<div class="cp-catalog-download"><a class="cp-action-chip" href="/wear-m3-catalog/bundle.zip">download all (.zip)</a></div>
+
+        <!-- Finishes the phone shape of this page's chrome: the tree sidebar's filter field moves
+             into the sticky toolbar beside the Theme and `⋯` menus already there, and back out
+             again above 640px, and the summary tally drops below the grid. Renders nothing;
+             `serve.css` hides the tag. -->
+        <cp-catalog-toolbar></cp-catalog-toolbar>
+        </main>
+        <footer class="cp-site-footer">
+          <div class="cp-site-footer-links">
+            <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a> ·
+            <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-report-bug-link" title="Report a bug in the preview server itself — not in a preview"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report a server bug</button></form> ·
+            <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+          </div>
+        </footer>
+        <div class="cp-fab" data-cp-capture-src="/assets/serve/fixture/report-capture.js">
+          <details class="cp-fab-menu">
+            <summary class="cp-fab-btn" title="Report a problem" aria-label="Report a problem"
+              ><svg class="cp-fab-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.4a7.7 7.7 0 0 1-8.3 7.6c-.7 0-1.4-.1-2-.3L4 21l1.4-3.9a7.3 7.3 0 0 1-1.9-4.9 7.7 7.7 0 0 1 8.5-7.6 7.8 7.8 0 0 1 8.5 7.8z"/><path d="M12 8.4v4"/><path d="M12 15.4h.01"/></svg></summary>
+            <div class="cp-fab-panel">
+              <p class="cp-fab-head">Report a problem</p>
+              <p class="cp-fab-sub">Two trackers &mdash; pick whichever owns the thing that is
+                wrong.</p>
+              <a class="cp-fab-choice cp-fab-catalog" href="#cp-report" hidden>
+                <span class="cp-fab-what">Something is wrong with this <strong>preview</strong></span>
+                <span class="cp-fab-who">wrong colours, wrong spec, a state that is missing</span>
+              </a>
+              <form class="cp-report-bug" method="get" action="/report-bug"><input type="hidden" name="from" value=""><input type="hidden" name="token" value=""><input type="hidden" name="scheme" value=""><button type="submit" class="cp-fab-choice"><span class="cp-fab-what">Something is wrong with the <strong>preview server</strong></span><span class="cp-fab-who">the page, a control, a render that failed &mdash; goes to <code>yschimke/compose-ai-tools</code></span></button></form>
+              <div class="cp-shot" hidden>
+                <p class="cp-shot-head">Capture what you can see</p>
+                <p class="cp-fab-who">The report embeds the plain render. Anything the browser composes
+                  &mdash; the spec triptych, a wipe, an overlay, an error &mdash; only reaches the issue as a
+                  picture you take.</p>
+                <div class="cp-shot-modes">
+                  <button type="button" class="cp-shot-mode" data-cp-capture="view"
+                    title="The whole browser viewport, as it is now">Whole view</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="region"
+                    title="Drag a box around the part that is wrong">Region</button>
+                  <button type="button" class="cp-shot-mode" data-cp-capture="element"
+                    title="Point at one element — a render, a table, a single cell">Element</button>
+                </div>
+                <p class="cp-shot-note" role="status"></p>
+                <ul class="cp-shot-list"></ul>
+              </div>
+            </div>
+          </details>
+        </div>
+        <script>(function(){var key="cp_chrome";document.querySelectorAll("[data-cp-interface-mode]").forEach(function(b){b.addEventListener("click",function(){var mode=b.getAttribute("data-cp-interface-mode");if(mode!=="catalog"&&mode!=="dev")return;try{document.cookie=key+"="+mode+"; path=/; max-age=31536000; samesite=lax"+(location.protocol==="https:"?"; secure":"");}catch(e){}var u=new URL(location.href);u.searchParams.delete("chrome");if(document.cookie.indexOf(key+"="+mode)<0)u.searchParams.set("chrome",mode);var q=u.searchParams.toString();location.assign(u.pathname+(q?"?"+q:"")+u.hash);});});})();</script>
+        <script src="/assets/serve/fixture/keyboard-navigation.js"></script>
+      </body>
+    </html>

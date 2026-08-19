@@ -84,7 +84,16 @@ const motionPlaceholder = resolve(pagesDir, "_motion-placeholder.apng");
 // Fixtures navigated with a query string, because the state they capture lives in the URL rather
 // than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
 // what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
-const FIXTURE_QUERY = { "serve-viewer-exploded": "?exploded=1" };
+// …and the design-spec lane reached at the URL #4218 was reported at. Every part of it is
+// load-bearing: `uiMode=light` on a `…__light` preview is a value that spells out the DEFAULT,
+// `mode=spec` opens the lane, and `specView=diff` picks the comparison. The state under test is
+// the one a visitor reaches by toggling to dark and back — the toggle leaves `uiMode` behind —
+// and what regressed is legible only in the capture: a live match on the chip and in the readout,
+// where a genuinely pinned theme instead (correctly) gets the "baseline-only" fallback.
+const FIXTURE_QUERY = {
+  "serve-viewer-exploded": "?exploded=1",
+  "serve-viewer-spec-default-theme": "?uiMode=light&mode=spec&specView=diff",
+};
 const IMAGE_LANES = [
   "**/render/**",
   "**/hero/**",
@@ -310,10 +319,20 @@ const STYLED_FIXTURES = new Set([
   // beside it. Captured bare, the row is an unstyled select and the `spec-lane` state below
   // could not even be entered (the lane needs `viewer.js`).
   "serve-viewer-path",
+  // Its default-valued-deep-link twin (#4218). Everything this fixture claims is painted at
+  // runtime by scripts — the lane is entered from `?mode=spec`, the delta map and the readout are
+  // drawn by `<cp-spec-compare>`, and whether a percentage appears there at all is decided by the
+  // sticky bootstrap reading `?uiMode=light` against the preview's baked theme. Captured bare
+  // there is no lane, no diff and no readout, so the regression it exists for would move nothing.
+  "serve-viewer-spec-default-theme",
   // The inspection layers (accessibility / typography / theme attributes). The whole surface is
   // painted at runtime by `<cp-inspect-layers>` — boxes over the stage, a legend beside it — so
   // captured bare there is nothing to see at all. Its `layers` state below is what draws them.
   "serve-viewer-inspect",
+  // The same overlay on a host with NO daemon: a published catalog whose typography came off the
+  // baked frame. Bare it is a static viewer with one unticked checkbox — the layer only exists once
+  // `<cp-inspect-layers>` has fetched the (stubbed) product, exactly as above.
+  "serve-viewer-published-typography",
   // The exploded 3D view. Everything it claims is produced at runtime: `viewer.js` reads
   // `?exploded=1`, presses the 3D chip, switches the stage to the vector lane and fetches the
   // exploded SVG, and the camera sliders in the drawer are laid out by `serve.css`. Captured
@@ -345,6 +364,13 @@ const STYLED_FIXTURES = new Set([
   // default shot IS the swap; its `design-lane` and `selected` states below are the flip it
   // exists to support and the affordance that replaced the resting outlines.
   "serve-design-page",
+  // The server bug report. Two of its claims are pure styling and one is drawn at runtime: the
+  // "that is the catalog's tracker, not this one" panel that now sets the routing apart from the
+  // intro above it (issue #4261's other half — a report in the wrong tracker reaches people who
+  // cannot act on it), and the list of captures `report-capture.js` renders from whatever came
+  // across from the reported page. Captured bare, the panel is an ordinary paragraph and the
+  // capture list does not exist at all, so neither would move a baseline.
+  "serve-report-bug",
 ]);
 const SERVE_ASSETS = [
   ["serve.css", "text/css"],
@@ -355,6 +381,10 @@ const SERVE_ASSETS = [
   ["codemirror.js", "text/javascript"],
   ["viewer.js", "text/javascript"],
   ["format-compare.js", "text/javascript"],
+  // Fetched by `chrome/reportLauncher.ts` when the report launcher's panel is first opened, and
+  // immediately on `/report-bug`. Routed here so the `report-menu` state below shoots the real
+  // capture controls rather than a panel with the block still `hidden`.
+  ["report-capture.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -517,6 +547,39 @@ async function filterTo(page, query) {
 }
 
 const FIXTURE_STATES = [
+  {
+    // The report launcher OPEN, which is the only state in which it says anything. Closed it is a
+    // 40px button, and everything the affordance is for — that there are two trackers, which one
+    // owns a wrong-looking preview versus a wrong-behaving page, which repository each files
+    // against, and the three capture modes under them — lives in the panel. A `<details>` ships
+    // closed, so without this shot the entire surface would be diffed by nothing.
+    //
+    // Shot on the viewer because that is the page with BOTH halves: the catalog entry is offered
+    // only where a per-preview report exists to point at (`#cp-report`), and its label is filled
+    // in from that report's own derived repository. On the front door the same panel would show
+    // the server half alone, which is the degenerate case.
+    fixture: "serve-viewer",
+    suffix: "report-menu",
+    apply: async (page) => {
+      await page.addStyleTag({
+        content:
+          "*, *::before, *::after { transition-duration: 0ms !important; }",
+      });
+      // Opened through the summary rather than by setting `.open`, so the shot is a state a
+      // reader can actually produce — and so the `toggle` handler that fetches the capture
+      // bundle really runs, which is what unhides the capture controls in the panel.
+      await page.click(".cp-fab-btn");
+      await page.waitForSelector(".cp-fab-menu[open] .cp-fab-panel");
+      // The catalog half is unhidden by the launcher's own wiring; waiting on it keeps the shot
+      // from racing the script that fills in the repository name.
+      await page.waitForSelector(".cp-fab-catalog:not([hidden])");
+      // Waits on the capture bundle having RUN, not on the capture controls being visible: the
+      // controls are unhidden only where the browser can actually grab a frame, and whether this
+      // headless engine can is its business rather than this shot's claim. Waiting on readiness
+      // means the baseline records whichever answer it gives, instead of failing on it.
+      await page.waitForSelector("html[data-cp-capture-ready]");
+    },
+  },
   {
     // A component under the POINTER. The sheet carries no resting marks, so this is the whole
     // discovery story: the outline appears where you point, and it appears whether or not the
@@ -1244,6 +1307,27 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The baked lane of the Typography layer, on a page that has no daemon controls at all: the
+    // catalog published these facts over the frame on screen, so ticking the one checkbox this
+    // static viewer offers has to draw boxes and a legend. Captured as its own state because the
+    // claim is about a page WITHOUT the a11y / theme rows — invisible on `serve-viewer-inspect`,
+    // which carries every control regardless.
+    fixture: "serve-viewer-published-typography",
+    suffix: "layers",
+    apply: async (page) => {
+      await openControlsDrawer(page);
+      await page.click('[data-cp-group="overlays"] > summary');
+      await page.check("#cp-inspect-typography");
+      await page.waitForFunction(
+        () => document.querySelectorAll(".cp-inspect-box").length > 0,
+      );
+      // The rows this host cannot produce are absent, not merely unticked: a published bundle
+      // carries no semantics tree, so neither the focus map nor the theme attributes exist.
+      await expect(page.locator("#cp-inspect-a11y")).toHaveCount(0);
+      await expect(page.locator("#cp-inspect-theme")).toHaveCount(0);
+    },
+  },
+  {
     // The Motion lane open: a recorded interaction on the stage in place of the still.
     //
     // The committed HTML cannot hold this, and deliberately so — the capture's `src` is
@@ -1373,6 +1457,42 @@ const FIXTURE_STATES = [
           play.getAttribute("aria-pressed") === "false"
         );
       });
+    },
+  },
+  {
+    // The MOTION BROWSER with every card running.
+    //
+    // Its committed HTML is the resting page — every card on its component's still, because the
+    // browser never autoplays — so the default shot is a grid of stills and says nothing about the
+    // one thing the page does. Pressing "Play all" is what swaps every card's `src` to its
+    // recording, and this is the only baseline where that swap is visible: a card that stopped
+    // swapping, or a "Play all" that stopped reaching the cards, would otherwise move no pixel.
+    //
+    // Same stub and the same reason as the viewer's lane above — the harness serves pages, not a
+    // catalog with a `motion/` directory behind it — and the stub's rest-on-last-frame behaviour
+    // is what keeps the shot deterministic across four cards at once.
+    fixture: "serve-motion-index",
+    suffix: "motion-index-playing",
+    apply: async (page) => {
+      await page.route("**/motion/**", (route) =>
+        route.fulfill({ path: motionPlaceholder, contentType: "image/apng" }),
+      );
+      await page.click("#cp-motion-all");
+      // Every card has to have LOADED its recording before the shot: a screenshot taken between
+      // the `src` assignment and the decode catches broken images and bakes them in. `complete`
+      // plus a non-zero natural width is the pair that says an image is actually on screen.
+      await page.waitForFunction(() => {
+        const imgs = Array.from(
+          document.querySelectorAll(".cp-motion-card-img"),
+        );
+        return (
+          imgs.length > 0 &&
+          imgs.every((i) => i.complete && i.naturalWidth > 0 && /\.apng/.test(i.getAttribute("src") || ""))
+        );
+      });
+      // The pointer is a means here, not the subject: left on the button it bakes a hover ring
+      // into a baseline about the cards.
+      await page.mouse.move(0, 0);
     },
   },
   {
@@ -1621,10 +1741,95 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // "report an issue" OPEN. Closed, the affordance is one link in the provenance row, which
+    // every other viewer shot already holds — so the part worth diffing is what the click
+    // reveals: the Summary field the reporter now has to fill in, on a floating M3 menu surface
+    // that must not shove the render down the page or fall off the fold. A `<details>` ships
+    // closed, so without this state the panel would be captured by nothing and the whole change
+    // this fixture exists to prove would look identical to the link it replaced.
+    //
+    // Opened through the summary rather than by setting `.open`, so the shot is a state a reader
+    // can actually produce — same reasoning (and shape) as `serve-viewer-history-menu-open`.
+    // Shot BEFORE `connecting` below, so the page under the panel is the resting viewer.
+    fixture: "serve-viewer",
+    suffix: "report-open",
+    apply: async (page) => {
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // The panel is the subject; a cursor left resting on the toggle would be a second change
+      // in the same frame.
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
+    // The same panel ON A PHONE, which is the width that decides whether it is usable at all.
+    // The toggle is the THIRD entry in a wrapping provenance row, so its containing block starts
+    // well inside the viewport — and a `max-width` caps how wide a panel is while saying nothing
+    // about where it starts, which is how the landing's Theme menu once ended up starting at
+    // -14px (see `.cp-catalog-theme` in serve.css). Here the offset runs the other way and pushes
+    // the right edge off screen, so this shot is the one that would catch a clipped Summary field
+    // and the horizontal page scroll that comes with it.
+    fixture: "serve-viewer",
+    suffix: "report-open-mobile",
+    viewport: PHONE_VIEWPORT,
+    apply: async (page) => {
+      // The state above left it OPEN and clicking a `<details>` toggles, so opening it again with
+      // a bare click would shut it. Closed first, then opened with the same gesture a reader
+      // uses, so this state does not depend on the order it runs in.
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
+    // The provenance row with an EXECUTABLE BUNDLE in it, at the tablet width this used to break
+    // at. No committed fixture carries `download executable bundle` — it needs a live viewer with
+    // a bundle — which is exactly why the panel could be clipped by 160px here with every check
+    // green. The link is injected rather than fixtured because what is under test is the panel's
+    // independence from the row's contents, not the link itself: with the panel anchored to the
+    // toggle, a fourth entry pushed it to x=420 and `html { overflow-x: clip }` cut it off with no
+    // scrollbar to reveal it; anchored to the row, its position does not move at all.
+    fixture: "serve-viewer",
+    suffix: "report-open-bundle",
+    viewport: { width: 760, height: 800 },
+    apply: async (page) => {
+      await page.evaluate(() => {
+        const report = document.getElementById("cp-report");
+        report.removeAttribute("open");
+        // The markup `ServeWeb.executableBundleLinkHtml` emits, in the place
+        // `previewLinksHtml` puts it: after playground, before the report toggle.
+        const link = document.createElement("a");
+        link.href = "/bundle/fixture.jar";
+        link.setAttribute("download", "");
+        link.textContent = "download executable bundle";
+        report.closest(".cp-preview-links").insertBefore(link, report);
+      });
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // Geometry, not just pixels: a panel clipped by `overflow-x: clip` still screenshots as a
+      // plausible-looking page, so assert it is inside the viewport rather than trusting the eye.
+      const box = await page.evaluate(() => {
+        const r = document
+          .querySelector("#cp-report .cp-report-panel")
+          .getBoundingClientRect();
+        return { left: r.left, right: r.right, width: innerWidth };
+      });
+      expect(box.left).toBeGreaterThanOrEqual(0);
+      expect(box.right).toBeLessThanOrEqual(box.width);
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     fixture: "serve-viewer",
     suffix: "connecting",
     apply: async (page) => {
+      // States run in order against the SAME page, so this also puts the report panel above
+      // away again — the same housekeeping the landing's states do via `closeLandingMenus`.
       await page.evaluate(() => {
+        document.getElementById("cp-report")?.removeAttribute("open");
         const root = document.querySelector(".cp-viewer");
         root.setAttribute("data-mode", "live");
         root.setAttribute("data-pending", "connecting…");
@@ -2011,6 +2216,37 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The comparison page's OWN report panel, on a phone. Same affordance as the viewer's, but
+    // this page renders it with no `.cp-preview-links` around it — which is precisely how the
+    // viewer's narrow-viewport fix once dropped this panel 619px above its own toggle, with
+    // nothing shooting this surface to catch it. Shot at phone width because that is the band
+    // the positioning rules differ in; above the breakpoint both pages take the base rule.
+    fixture: "serve-reference-compare",
+    suffix: "report-open-mobile",
+    viewport: PHONE_VIEWPORT,
+    apply: async (page) => {
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // The panel must hang off ITS OWN toggle, not float to wherever an ancestor puts it —
+      // which a screenshot alone would not tell you if the panel landed off the captured
+      // viewport entirely. Asserted here so the geometry fails loudly rather than silently
+      // producing a shot with no panel in it.
+      const gap = await page.evaluate(() => {
+        const d = document.getElementById("cp-report");
+        return (
+          d.querySelector(".cp-report-panel").getBoundingClientRect().top -
+          d.querySelector("summary").getBoundingClientRect().top
+        );
+      });
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThan(80);
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     // The annotation layers default to off — the page's first job is the pixel diff, and boxes
     // drawn over both panels would obscure exactly what is being judged. That leaves the drawn
     // state invisible to the diff bot unless it is captured deliberately, so switch both layers
@@ -2387,6 +2623,27 @@ for (const fixture of listPageFixtures()) {
             return status && !/^Check/.test(status.textContent.trim());
           })
           .catch(() => {});
+      }
+      // The default-value deep link opens its own lane and scores its own pair, both
+      // asynchronously and both after the snapshot underneath has landed — so without a wait the
+      // shot is the plain render with no lane up at all, which looks the same whether the fix
+      // holds or the comparison was suppressed. Held to the settled readout, exactly as the
+      // `spec-*` states below are.
+      if (fixture === "serve-viewer-spec-default-theme") {
+        await page
+          .waitForFunction(() => {
+            const score = document.getElementById("cp-spec-score");
+            return (
+              !document.getElementById("cp-spec-img")?.hidden &&
+              score &&
+              score.textContent &&
+              score.textContent !== "comparing…"
+            );
+          })
+          .catch(() => {});
+        // The delta map is painted a frame after the readout settles, as the `spec-diff` state's
+        // own hold records.
+        await page.waitForTimeout(500);
       }
       if (fixture === "serve-reference-compare") {
         await page

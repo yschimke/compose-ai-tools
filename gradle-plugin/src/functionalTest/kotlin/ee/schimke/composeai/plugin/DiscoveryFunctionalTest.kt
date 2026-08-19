@@ -2256,6 +2256,190 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover picks up @SettledPreview`() {
+    val projectDir = createCmpTestProject()
+
+    // Stub the annotation at its canonical FQN inside the synthetic project, same as the
+    // @ScrollingPreview test below — discovery matches by FQN, not by artifact.
+    val settledFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    settledFqnDir.mkdirs()
+    File(settledFqnDir, "SettledPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class SettledPreview(val afterMs: Int = 0, val maxMs: Int = 1000)
+        """
+          .trimIndent()
+      )
+    File(settledFqnDir, "AnimatedPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class AnimatedPreview(val durationMs: Int = 0, val frameIntervalMs: Int = 33)
+        """
+          .trimIndent()
+      )
+    File(settledFqnDir, "FocusedPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class FocusedPreview(val indices: IntArray = [0])
+        """
+          .trimIndent()
+      )
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.ui.unit.dp
+      import ee.schimke.composeai.preview.AnimatedPreview
+      import ee.schimke.composeai.preview.FocusedPreview
+      import ee.schimke.composeai.preview.SettledPreview
+
+      // Hoisted onto a multi-preview annotation — the shape a catalog uses to settle every
+      // sticker at once, which is the whole point of allowing ANNOTATION_CLASS as a target.
+      @SettledPreview
+      @Preview(name = "Light")
+      @Preview(name = "Dark")
+      annotation class StickerPreview
+
+      @StickerPreview
+      @Composable
+      fun HoistedSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Red))
+      }
+
+      @Preview
+      @SettledPreview(afterMs = 600, maxMs = 4000)
+      @Composable
+      fun ExactSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+      }
+
+      // Out-of-range knobs are clamped at discovery, so both renderers read one already-sane
+      // window instead of clamping it differently in each.
+      @Preview
+      @SettledPreview(afterMs = -5, maxMs = 99999)
+      @Composable
+      fun ClampedSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Green))
+      }
+
+      @Preview
+      @Composable
+      fun UnsettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Magenta))
+      }
+
+      // A settle and a motion capture on ONE function want opposite ends of the same paused
+      // clock — so each is now planned, and the renderers give the settled still a composition of
+      // its own rather than the plan dropping it (issue #4244).
+      @Preview
+      @SettledPreview
+      @AnimatedPreview(durationMs = 400)
+      @Composable
+      fun SettledPlusAnimatedPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Cyan))
+      }
+
+      // A focused capture spends its first 32ms laying out the tree the focus walk searches, so a
+      // coordinate under that cannot be honoured on that path — discovery raises it rather than
+      // letting the two backends capture different instants (issue #4247).
+      @Preview
+      @SettledPreview(afterMs = 8)
+      @FocusedPreview
+      @Composable
+      fun SubFrameFocusSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Yellow))
+      }
+
+      // …and a coordinate at or above the floor is left exactly as written.
+      @Preview
+      @SettledPreview(afterMs = 200)
+      @FocusedPreview
+      @Composable
+      fun FocusSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Gray))
+      }
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // Hoisted onto the multi-preview annotation: every expansion inherits the settle.
+    val hoisted = manifest.previews.filter { it.functionName == "HoistedSettledPreview" }
+    assertThat(hoisted).hasSize(2)
+    for (p in hoisted) {
+      assertThat(p.captures.single().settle).isEqualTo(SettleCapture(afterMs = 0, maxMs = 1000))
+    }
+
+    val exact = manifest.previews.single { it.functionName == "ExactSettledPreview" }
+    assertThat(exact.captures.single().settle).isEqualTo(SettleCapture(afterMs = 600, maxMs = 4000))
+
+    // afterMs < 0 degrades to auto; maxMs is capped at MAX_SETTLE_MS rather than trusted.
+    val clamped = manifest.previews.single { it.functionName == "ClampedSettledPreview" }
+    assertThat(clamped.captures.single().settle)
+      .isEqualTo(SettleCapture(afterMs = 0, maxMs = MAX_SETTLE_MS))
+
+    // A settled still keeps the plain `renders/<id>.png` name — the whole point of a dedicated
+    // field rather than reusing `advanceTimeMillis`, which stamps a `_TIME_<n>ms` suffix.
+    assertThat(exact.captures.single().renderOutput).doesNotContain("_TIME_")
+    assertThat(exact.captures.single().advanceTimeMillis).isNull()
+
+    val unsettled = manifest.previews.single { it.functionName == "UnsettledPreview" }
+    assertThat(unsettled.captures.single().settle).isNull()
+
+    // @SettledPreview + @AnimatedPreview on one function: BOTH ship now. The still carries its
+    // settle and the motion capture carries its animation; the renderers run them from separate
+    // compositions so neither spends the other's timeline (issue #4244).
+    val paired = manifest.previews.single { it.functionName == "SettledPlusAnimatedPreview" }
+    assertThat(paired.captures.any { it.settle != null }).isTrue()
+    assertThat(paired.captures.any { it.animation != null }).isTrue()
+    // …and never on the same capture: the settle rides the plain still, the animation its own row.
+    assertThat(paired.captures.none { it.settle != null && it.animation != null }).isTrue()
+
+    // A sub-frame exact coordinate on a focused capture is raised to the focus path's setup floor,
+    // so both backends land on the same instant (issue #4247).
+    val subFrame = manifest.previews.single { it.functionName == "SubFrameFocusSettledPreview" }
+    assertThat(subFrame.captures.mapNotNull { it.settle?.afterMs }.toSet())
+      .isEqualTo(setOf(FOCUS_SETUP_FRAMES_MS))
+    // Above the floor nothing is touched — the clamp is a floor, not a rewrite.
+    val focused = manifest.previews.single { it.functionName == "FocusSettledPreview" }
+    assertThat(focused.captures.mapNotNull { it.settle?.afterMs }.toSet()).isEqualTo(setOf(200))
+  }
+
+  @Test
   fun `composePreviewDiscover picks up @ScrollingPreview`() {
     val projectDir = createCmpTestProject()
 

@@ -1,5 +1,81 @@
 # Changelog
 
+## [1.21.0](https://github.com/yschimke/compose-ai-tools/compare/v1.20.0...v1.21.0) (2026-08-19)
+
+
+### Features
+
+* **preview:** show the mapped Figma node beside Before/After in the diff ([#4273](https://github.com/yschimke/compose-ai-tools/issues/4273)) ([e1a59c3](https://github.com/yschimke/compose-ai-tools/commit/e1a59c385e42f3eac9927116f463241035ae9494))
+* **serve:** floating report launcher, and capture what you can actually see ([#4271](https://github.com/yschimke/compose-ai-tools/issues/4271)) ([7a6494b](https://github.com/yschimke/compose-ai-tools/commit/7a6494bca8a6be26136c1730076b2a629008f014))
+* **serve:** inspect typography on published catalogs and per-preview daemons ([#4266](https://github.com/yschimke/compose-ai-tools/issues/4266)) ([54087cf](https://github.com/yschimke/compose-ai-tools/commit/54087cfe5a128a7bb4ad779f90132400a68fb747))
+
+
+### Bug Fixes
+
+* **daemon:** carry a preview's own overrides into the held/live merge ([#4272](https://github.com/yschimke/compose-ai-tools/issues/4272)) ([e567f9c](https://github.com/yschimke/compose-ai-tools/commit/e567f9ca12ac24fe83d834e70d2df7184b2b6c24))
+* **daemon:** make a live click show the component's press feedback ([#4274](https://github.com/yschimke/compose-ai-tools/issues/4274)) ([b58f852](https://github.com/yschimke/compose-ai-tools/commit/b58f8521be19f9f3f6cdc129ca3053056c09ec10))
+* **rc-player:** load the player-supplied system variables every frame ([#4267](https://github.com/yschimke/compose-ai-tools/issues/4267)) ([cc0010f](https://github.com/yschimke/compose-ai-tools/commit/cc0010ffa4331bd1eceb13aaffc239b07cbb03dc))
+* **serve:** read a default-valued uiMode as the default, not a pin ([#4270](https://github.com/yschimke/compose-ai-tools/issues/4270)) ([743cd09](https://github.com/yschimke/compose-ai-tools/commit/743cd096723a4f30be4e381c47478e7a344b3ad9))
+* **serve:** resolve snapshot coordinates and record a bundle's repositories ([#4269](https://github.com/yschimke/compose-ai-tools/issues/4269)) ([e16a5d6](https://github.com/yschimke/compose-ai-tools/commit/e16a5d67df923f0a5b7f42024fcc8cdb47e22583))
+
+## [1.20.0](https://github.com/yschimke/compose-ai-tools/compare/v1.19.0...v1.20.0) (2026-08-19)
+
+
+### Features
+
+* **design-map:** read a breakpoint fan-out as a size axis, not an ambiguous mode ([#4262](https://github.com/yschimke/compose-ai-tools/issues/4262)) ([77d469e](https://github.com/yschimke/compose-ai-tools/commit/77d469e251073c528f88b118ce92abb56e6a7332))
+
+
+### Bug Fixes
+
+* **a11y:** announce the label a focus stop merges ([#4255](https://github.com/yschimke/compose-ai-tools/issues/4255)) ([bcd9ca0](https://github.com/yschimke/compose-ai-tools/commit/bcd9ca0ba1fe0012205924d624a63c0502601748))
+* **a11y:** roll a stop's label up by ancestry, not by geometry ([#4258](https://github.com/yschimke/compose-ai-tools/issues/4258)) ([8d9282d](https://github.com/yschimke/compose-ai-tools/commit/8d9282db5cacedf29f6b2d1d1456c12488c8a075))
+* **preview:** settle the desktop daemon, serve settle+motion pairs, land exact coordinates ([#4260](https://github.com/yschimke/compose-ai-tools/issues/4260)) ([276818c](https://github.com/yschimke/compose-ai-tools/commit/276818cb6bad7fb5a9bd9858cb40ecd92859ac23))
+* **serve:** route typography inspection to the catalog's live daemon ([#4256](https://github.com/yschimke/compose-ai-tools/issues/4256)) ([e09e33a](https://github.com/yschimke/compose-ai-tools/commit/e09e33ad4921a5320f5bccabcecce0d4d30b6ff8))
+
+## [1.19.0](https://github.com/yschimke/compose-ai-tools/compare/v1.18.0...v1.19.0) (2026-08-19)
+
+
+### Features
+
+* **design-map:** let --strict accept an absence somebody wrote down ([#4250](https://github.com/yschimke/compose-ai-tools/issues/4250)) ([9eabefa](https://github.com/yschimke/compose-ai-tools/commit/9eabefa2234dd2ee33e2174194db45384cd98ae9))
+
+
+### Bug Fixes
+
+* **preview:** record the clock position the render loop actually reached ([#4248](https://github.com/yschimke/compose-ai-tools/issues/4248)) ([6bbb744](https://github.com/yschimke/compose-ai-tools/commit/6bbb744aa11beca03feef1b27ce88733a20112b0))
+
+## [1.18.0](https://github.com/yschimke/compose-ai-tools/compare/v1.17.0...v1.18.0) (2026-08-19)
+
+
+### Features
+
+* **preview:** settle a time-driven reveal before the still capture ([#4242](https://github.com/yschimke/compose-ai-tools/issues/4242)) ([5f7a4da](https://github.com/yschimke/compose-ai-tools/commit/5f7a4da2241935e0140bc7faf687633491659fd4))
+
+
+### Bug Fixes
+
+* **preview:** honour an exact settle coordinate, and widen the motion collision ([#4246](https://github.com/yschimke/compose-ai-tools/issues/4246)) ([5e0be96](https://github.com/yschimke/compose-ai-tools/commit/5e0be966eb74d29e9acd081dd9345a58274f7673))
+
+## [1.17.0](https://github.com/yschimke/compose-ai-tools/compare/v1.16.0...v1.17.0) (2026-08-19)
+
+
+### Features
+
+* **renderer:** implement @InteractionPreview on Robolectric, and stop a motion failure taking the still ([#4240](https://github.com/yschimke/compose-ai-tools/issues/4240)) ([0b26f81](https://github.com/yschimke/compose-ai-tools/commit/0b26f81b6efa2fea8e58c7d6916c5d4905467386))
+* **serve:** make catalog startup load order configurable ([#4233](https://github.com/yschimke/compose-ai-tools/issues/4233)) ([df13f8d](https://github.com/yschimke/compose-ai-tools/commit/df13f8dcd14258ea48c486bad99e7ef0e6c640df))
+
+
+### Bug Fixes
+
+* **daemon:** seed the Remote Compose override before the first composition pass ([#4241](https://github.com/yschimke/compose-ai-tools/issues/4241)) ([ba14c3c](https://github.com/yschimke/compose-ai-tools/commit/ba14c3c0fb37597841b4ce22e748a452a0bbd269))
+* **plugin:** scope the skiko skew check to one resolved classpath ([#4235](https://github.com/yschimke/compose-ai-tools/issues/4235)) ([9b7199b](https://github.com/yschimke/compose-ai-tools/commit/9b7199b5c931aa7a8e0ddcc6fda87b88e79f51f7))
+* **serve:** ask the reporter for a title on the catalog issue report ([#4237](https://github.com/yschimke/compose-ai-tools/issues/4237)) ([67c1589](https://github.com/yschimke/compose-ai-tools/commit/67c1589441747b198ed49c158c8e1bb5662c90ab))
+* **serve:** keep a shared-line scaffold annotation's declaration, and index extensions by callable name ([#4227](https://github.com/yschimke/compose-ai-tools/issues/4227)) ([7b6fcd9](https://github.com/yschimke/compose-ai-tools/commit/7b6fcd92da6c08c66e36a729f16b45b5bbd123dc))
+* **serve:** name the Skiko skew in the 409 a dead render lane returns ([#4243](https://github.com/yschimke/compose-ai-tools/issues/4243)) ([55d5652](https://github.com/yschimke/compose-ai-tools/commit/55d5652e8b6409b6cdef9e206546ec25e32ae107))
+* **serve:** pair a bundle's Skiko bindings with its native, and stop a tripped lane blacking out baked pixels ([#4236](https://github.com/yschimke/compose-ai-tools/issues/4236)) ([e49413c](https://github.com/yschimke/compose-ai-tools/commit/e49413cd904eef181db9b6c540291b38fba6d764))
+* **serve:** stop a sectioned catalog spending a row on its `⋯` menu ([#4232](https://github.com/yschimke/compose-ai-tools/issues/4232)) ([bc447f1](https://github.com/yschimke/compose-ai-tools/commit/bc447f1d5e98dbaa669f7376b85b4a903f5adba2))
+
 ## [1.16.0](https://github.com/yschimke/compose-ai-tools/compare/v1.15.0...v1.16.0) (2026-08-19)
 
 

@@ -79,7 +79,8 @@ what it takes to stand one up is three things, in two places.
 place, and an `AAAA` added later is inherited for free:
 
 ```
-m3.preview.coo.ee.  CNAME  preview.coo.ee.
+m3.preview.coo.ee.    CNAME  preview.coo.ee.
+wear.preview.coo.ee.  CNAME  preview.coo.ee.
 ```
 
 An `A` record straight to the host IP works identically; it is just a second copy of the IP to keep
@@ -89,8 +90,10 @@ which follows the alias without caring that it is one.
 **2. `.env` on the box** — **both** variables, because they configure different processes:
 
 ```bash
-SERVE_SITES=m3.preview.coo.ee=m3-catalog   # the app: which catalog this Host means
-SITE_DOMAINS=m3.preview.coo.ee             # Caddy: match the name AND get a cert for it
+# the app: which catalog each Host means
+SERVE_SITES=m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3-catalog
+# Caddy: match the names AND get a cert for each
+SITE_DOMAINS=m3.preview.coo.ee wear.preview.coo.ee
 ```
 
 Multiple sites are comma-separated in `SERVE_SITES`, space- or comma-separated in `SITE_DOMAINS`.
@@ -108,6 +111,7 @@ docker compose up -d          # preview picks up SERVE_SITES, caddy picks up SIT
 curl -sI https://m3.preview.coo.ee/ | head -1                            # 200 — catalog landing at /
 curl -sI https://m3.preview.coo.ee/m3-catalog/p/button-filled | head -1  # 308 → /p/button-filled
 curl -sI https://m3.preview.coo.ee/wear-m3/ | head -1                    # 404 — neighbours unreachable
+curl -sI https://wear.preview.coo.ee/ | head -1                          # 200 — the Wear catalog's landing
 ```
 
 Sites are read **at startup**, so this is a restart either way; the additive `/admin/catalogs`

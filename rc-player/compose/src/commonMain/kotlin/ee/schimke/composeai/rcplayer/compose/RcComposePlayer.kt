@@ -240,6 +240,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
+import ee.schimke.composeai.rcplayer.protocol.referencesMovingSystemVariable
 import ee.schimke.composeai.rcplayer.runtime.RcAnimationTimeline
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionType
@@ -414,7 +415,12 @@ private fun RcComposePlayerResolved(
       document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null } ||
         document.operations.any {
           it is RcMarqueeModifier || (it is RcTimeAttribute && it.type.requiresContinuousFrames)
-        }
+        } ||
+        // A document can also animate by reading the clock directly, with no animation attached to
+        // anything: `remote-m3`'s indeterminate circular progress builds its sweep from a float
+        // expression over the player-supplied `CONTINUOUS_SEC` (#4264). Without this the state's
+        // per-frame variables would be loaded exactly once and the arc would hold its first pose.
+        document.referencesMovingSystemVariable()
     }
   var frameNanos by remember { mutableLongStateOf(0L) }
   var frameOriginNanos by remember(document) { mutableLongStateOf(Long.MIN_VALUE) }

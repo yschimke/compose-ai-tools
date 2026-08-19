@@ -24,6 +24,38 @@ class RenderCircuitBreakerTest {
   }
 
   @Test
+  fun `a fatal trip carries the diagnosis the caller supplies`() {
+    // The open breaker's reason IS the body of every refused render, so it is the only diagnosis
+    // anyone outside the box sees — #4220 was reported from exactly that text, naming the missing
+    // symbol and nothing that explains it.
+    val breaker =
+      RenderCircuitBreaker(
+        linkageDiagnosis = { reason ->
+          "Skiko bindings 0.148.2 will link against libskiko 0.144.6"
+            .takeIf { "org.jetbrains.ski" in reason }
+        }
+      )
+
+    breaker.recordFailure(linkage)
+
+    val reason = assertNotNull(breaker.peekReason())
+    assertTrue(reason.endsWith("Skiko bindings 0.148.2 will link against libskiko 0.144.6"), reason)
+    assertTrue(reason.contains("UnsatisfiedLinkError"), "the raw failure is still there: $reason")
+  }
+
+  @Test
+  fun `a diagnosis that throws or declines costs the trip nothing`() {
+    val thrower = RenderCircuitBreaker(linkageDiagnosis = { error("boom") })
+    thrower.recordFailure(linkage)
+    assertTrue(assertNotNull(thrower.peekReason()).contains("UnsatisfiedLinkError"))
+
+    // A coherent classpath has nothing to add, and must not leave a dangling space behind.
+    val quiet = RenderCircuitBreaker(linkageDiagnosis = { null })
+    quiet.recordFailure(linkage)
+    assertTrue(assertNotNull(quiet.peekReason()).endsWith(linkage))
+  }
+
+  @Test
   fun `one fatal failure opens the breaker terminally`() {
     // The #3448 behaviour: 3794 retries of an UnsatisfiedLinkError in ~14 minutes. One is enough.
     var now = 0L

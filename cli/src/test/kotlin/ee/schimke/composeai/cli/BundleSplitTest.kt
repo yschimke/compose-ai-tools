@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -29,8 +30,9 @@ class BundleSplitTest {
       linkedMapOf(
         "bundle.json" to
           """
-          {"schemaVersion":8,"backend":"desktop","previewIds":["A","B","C"],
+          {"schemaVersion":9,"backend":"desktop","previewIds":["A","B","C"],
            "coverPreviewId":"A","resolution":"coordinates",
+           "repositories":["https://androidx.dev/snapshots/builds/16113093/artifacts/repository"],
            "classpath":[{"kind":"module","path":"classes/app.jar"}],
            "intermediateRepresentations":[],"dataExtensions":[{"extensionId":"a11y","path":"extensions/a11y.json"}]}
           """
@@ -71,6 +73,25 @@ class BundleSplitTest {
     }
     return out
   }
+
+  @Test
+  fun `a full split keeps the bundle repositories and a view-only split drops them`() {
+    // The per-preview bundles ARE the live lane for a `split-mode: full` catalog, so a repository
+    // list the sheet needed to resolve its coordinates has to survive the split — dropping it puts
+    // the daemon back on the incomplete classpath of #4259 / #4265. A view-only bundle carries no
+    // coordinates, so it must not advertise repositories for them either.
+    val full = manifestOf(splitBundleZip(sheetZip(), SplitMode.FULL).first().zipBytes)
+    assertEquals(
+      listOf("https://androidx.dev/snapshots/builds/16113093/artifacts/repository"),
+      full.getValue("repositories").jsonArray.map { it.jsonPrimitive.content },
+    )
+
+    val viewOnly = manifestOf(splitBundleZip(sheetZip(), SplitMode.VIEW_ONLY).first().zipBytes)
+    assertNull(viewOnly["repositories"])
+  }
+
+  private fun manifestOf(zip: ByteArray) =
+    json.parseToJsonElement(readEntries(zip).getValue("bundle.json").decodeToString()).jsonObject
 
   @Test
   fun `full split emits one re-renderable bundle per preview with a baked image`() {

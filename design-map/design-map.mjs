@@ -113,9 +113,51 @@ export function captureIdentity(preview) {
  * guessing which of `Dark` and `Coral` the kit drew, and pairing the wrong one diffs a whole
  * palette — so it is reported instead (`diagnostics.ambiguousMode`).
  */
-function preferredMode(modes) {
+function preferredMode(modes, widthByMode, baseBreakpointDp) {
   if (modes.has(LIGHT_MODE)) return LIGHT_MODE;
-  return modes.size === 1 ? [...modes][0] : null;
+  if (modes.size === 1) return [...modes][0];
+
+  // A BREAKPOINT FAN-OUT is not an ambiguous mode, and telling them apart is what this arm is for.
+  //
+  // A multipreview that renders one function at several screen sizes produces several captures of
+  // one composable, exactly like a themed pair does — and the id segment they are told apart by is
+  // the same segment. Read as modes they are unresolvable (`Light` is nowhere among
+  // `wearos_small_round` / `wearos_large_round`), so every full-screen component of a Wear catalog
+  // dropped out of the map the moment it gained a second size, and `--strict` failed on it.
+  //
+  // They are distinguishable by a fact the id does not carry: each capture names a `device`, and
+  // the devices have DIFFERENT WIDTHS. A palette does not change the frame's width, so a set of
+  // captures whose modes map one-to-one onto distinct device widths is a size axis rather than a
+  // colour one, and one of them can be picked on the merits.
+  const sized = [...modes].map((mode) => [mode, widthByMode.get(mode)]);
+  const widths = sized.map(([, width]) => width);
+  if (!widths.every((width) => Number.isFinite(width))) return null;
+  if (new Set(widths).size !== widths.length) return null;
+
+  // NARROWEST by default, because that is the size a kit draws: a design kit publishes its screen
+  // artwork at one size and leaves adaptation to the implementation, and the narrowest is the one
+  // every larger screen is an adaptation OF. `baseBreakpointDp` overrides it for a kit that draws
+  // somewhere else. A named base this composable does not render falls back to the narrowest
+  // rather than dropping the component: rendering a subset of the catalog's breakpoints is a
+  // legitimate thing for one screen to do, and it is not a reason to publish no map row for it.
+  sized.sort((a, b) => a[1] - b[1]);
+  const named = Number.isFinite(baseBreakpointDp)
+    ? sized.find(([, width]) => width === baseBreakpointDp)
+    : null;
+  return (named ?? sized[0])[0];
+}
+
+/**
+ * The device width a capture was drawn at, or `null` when it names no device.
+ *
+ * Read from `params.device` rather than `params.widthDp` alone: a device-less preview carries no
+ * width at all, and a `wrapSandbox` bound is not a screen size. Only a capture that names a device
+ * is claiming to be a picture of a screen.
+ */
+function deviceWidthDp(preview) {
+  const params = preview?.params;
+  if (!params?.device) return null;
+  return Number.isFinite(params.widthDp) ? params.widthDp : null;
 }
 
 /**
@@ -124,9 +166,10 @@ function preferredMode(modes) {
  *
  * @returns {{participates: (preview: object) => boolean, ambiguous: Array<object>}}
  */
-export function selectCaptures(previews) {
+export function selectCaptures(previews, { baseBreakpointDp } = {}) {
   const modesBySubject = new Map();
   const componentsBySubject = new Map();
+  const widthsBySubject = new Map();
   for (const preview of previews) {
     if (!preview?.catalog) continue;
     const { subject, mode } = captureIdentity(preview);
@@ -136,12 +179,18 @@ export function selectCaptures(previews) {
     const ids = componentsBySubject.get(subject) ?? new Set();
     if (preview.catalog.componentId) ids.add(preview.catalog.componentId);
     componentsBySubject.set(subject, ids);
+    const widths = widthsBySubject.get(subject) ?? new Map();
+    // A VARIANT capture rides the same device as its base, so it agrees rather than conflicts —
+    // but read the base's width first, since that is the one the fan-out is defined by.
+    if (!widths.has(mode)) widths.set(mode, deviceWidthDp(preview));
+    widthsBySubject.set(subject, widths);
   }
 
   const chosen = new Map();
   const ambiguous = [];
   for (const [subject, modes] of modesBySubject) {
-    const mode = preferredMode(modes);
+    const widths = widthsBySubject.get(subject) ?? new Map();
+    const mode = preferredMode(modes, widths, baseBreakpointDp);
     if (mode === null) {
       ambiguous.push({
         subject,
@@ -159,6 +208,22 @@ export function selectCaptures(previews) {
     participates(preview) {
       const { subject, mode } = captureIdentity(preview);
       return chosen.has(subject) && chosen.get(subject) === mode;
+    },
+    /**
+     * The device width of a capture that is a NON-BASE breakpoint of a fan-out, or `null`.
+     *
+     * This is what turns the sizes the base did not take into cells rather than into silence. A
+     * capture qualifies only when its subject resolved to some other mode and both that mode and
+     * this one name a device width — so a `Dark` capture standing beside a chosen `Light` one,
+     * which is a mode and not a size, is never mistaken for a breakpoint.
+     */
+    breakpointOf(preview) {
+      const { subject, mode } = captureIdentity(preview);
+      if (!chosen.has(subject) || chosen.get(subject) === mode) return null;
+      const widths = widthsBySubject.get(subject);
+      const base = widths?.get(chosen.get(subject));
+      const here = widths?.get(mode);
+      return Number.isFinite(base) && Number.isFinite(here) ? here : null;
     },
   };
 }
@@ -375,7 +440,25 @@ export function variantRendersByComponent(previews, selection = selectCaptures(p
     // mode its component's base reference pairs with.
     const isOverrideVariant = catalog.role === "COMPONENT" && isVariantCapture(preview);
     const isCatalogVariant = catalog.role === "VARIANT";
-    if (!isOverrideVariant && !isCatalogVariant) continue;
+
+    // A BREAKPOINT capture is the third form, and it is not an annotation at all — it is the same
+    // composable drawn on a wider screen by a multipreview. It folds under its component like any
+    // other cell, seeded with the width it was drawn at, so the sizes the base did not take are
+    // published rather than discarded.
+    //
+    // Taken BEFORE the `participates` gate, because a non-base breakpoint is by definition the
+    // capture that did not participate. An `@OverrideVariant` cell of a non-base breakpoint is
+    // skipped, though — that is the product of two axes and would multiply the sheet by every
+    // size; the base breakpoint carries the component's matrix.
+    if (!isOverrideVariant && !isCatalogVariant) {
+      const widthDp = catalog.role === "COMPONENT" ? selection.breakpointOf(preview) : null;
+      if (widthDp === null) continue;
+      const seeds = [{ key: "breakpoint", raw: String(widthDp) }];
+      const list = byComponent.get(catalog.componentId) ?? [];
+      list.push({ previewId: preview.id, name: `${widthDp}dp`, seeds });
+      byComponent.set(catalog.componentId, list);
+      continue;
+    }
     if (!selection.participates(preview)) continue;
 
     // A variant that names no axis says only "this is different", which is not enough to look
@@ -401,34 +484,55 @@ export function variantRendersByComponent(previews, selection = selectCaptures(p
  *   fact to report, not a failure.
  */
 export function projectDesignMap(previews, opts = {}) {
-  const selection = selectCaptures(previews);
+  const selection = selectCaptures(previews, { baseBreakpointDp: opts.baseBreakpointDp });
   const variantRenders = variantRendersByComponent(previews, selection);
 
   const components = [];
   const declarations = [];
+  /**
+   * Whether a component reaches a design reference at all, and what it said if not.
+   *
+   * Read from the ANNOTATIONS, before and independently of capture selection — which is the whole
+   * point. A component publishing several modes with no Light among them is `ambiguousMode`, and
+   * `participates()` is false for every one of its captures; computing absence inside the capture
+   * loop therefore dropped such a component out of `unmapped` / `statedAbsent` entirely and
+   * reported it only as an ambiguous mode. A stated absence would then be fatal under
+   * `--strict --allow-stated-absence`, which is exactly the case that flag exists to accept.
+   *
+   * Keyed by componentId rather than pushed per preview, because a component's absence is one fact
+   * however many captures it publishes.
+   */
+  const unmappedIds = new Map();
+  const statedAbsentIds = new Map();
+  for (const preview of previews) {
+    const catalog = preview.catalog;
+    if (!catalog || catalog.role !== "COMPONENT" || catalog.reference) continue;
+    if (isVariantCapture(preview)) continue;
+    const id = catalog.componentId;
+    if (catalog.noReference) statedAbsentIds.set(id, catalog.noReference);
+    else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
+  }
   /** Components carrying neither a reference nor a stated reason for its absence. */
-  const unmapped = [];
+  const unmapped = [...unmappedIds.keys()].filter((id) => !statedAbsentIds.has(id));
   /**
    * Components whose reference is absent for a STATED reason. Reported apart from `unmapped`
    * because they are the opposite situation: someone looked, and what they found is that the kit
    * has nothing live to point at. Rolling the two together is what made a retired pattern read as
    * neglect.
    */
-  const statedAbsent = [];
+  const statedAbsent = [...statedAbsentIds].map(([componentId, reason]) => ({
+    componentId,
+    reason,
+  }));
+  /** Every component that reaches no reference, however its absence was spelled. */
+  const referencelessIds = new Set([...unmapped, ...statedAbsentIds.keys()]);
 
   for (const preview of previews) {
     const catalog = preview.catalog;
     if (!catalog || catalog.role !== "COMPONENT") continue;
     if (isVariantCapture(preview) || !selection.participates(preview)) continue;
 
-    if (!catalog.reference) {
-      if (catalog.noReference) {
-        statedAbsent.push({ componentId: catalog.componentId, reason: catalog.noReference });
-      } else {
-        unmapped.push(catalog.componentId);
-      }
-      continue;
-    }
+    if (!catalog.reference) continue;
 
     const code = codeHandle(preview, opts);
     components.push({
@@ -478,7 +582,14 @@ export function projectDesignMap(previews, opts = {}) {
       // Composables whose captures name no mode a reference could pair with — several modes, none
       // of them light. Reported rather than guessed at: pairing `Dark` when the kit drew `Coral`
       // diffs a whole palette.
-      ambiguousMode: selection.ambiguous,
+      // An ambiguous mode is only ever a problem BECAUSE a reference needs one capture to pair
+      // with. A component that reaches no reference has nothing to pair, so which of its captures
+      // the kit drew is not a question anyone is asking — reporting it would be noise on top of the
+      // absence already reported above, and under --strict it would be a second, unfixable failure
+      // for the same component.
+      ambiguousMode: selection.ambiguous.filter(
+        (a) => !a.componentIds.length || a.componentIds.some((id) => !referencelessIds.has(id)),
+      ),
       variantRenders: declarations.reduce((n, d) => n + d.renders.length, 0),
       withSet: components.filter((c) => c.refSet).length,
     },

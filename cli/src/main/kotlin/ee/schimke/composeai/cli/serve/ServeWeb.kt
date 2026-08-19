@@ -552,6 +552,22 @@ object ServeWeb {
       "<path d=\"M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z\"/>" +
       "<path d=\"M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z\"/></svg>"
 
+  /**
+   * The launcher's mark: a speech bubble with an exclamation in it — "say something is wrong".
+   *
+   * Deliberately not the GitHub mark the two reports otherwise wear. Those marks say *where a
+   * report lands*, which is the right label on a control that files one; this button files nothing,
+   * it opens the choice between two destinations, and stamping one of their logos on it would
+   * pre-announce an answer the panel exists to ask.
+   */
+  private const val REPORT_ICON =
+    "<svg class=\"cp-fab-mark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" " +
+      "stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" " +
+      "stroke-linejoin=\"round\">" +
+      "<path d=\"M20.5 12.4a7.7 7.7 0 0 1-8.3 7.6c-.7 0-1.4-.1-2-.3L4 21l1.4-3.9a7.3 7.3 0 0 1-1.9-4.9" +
+      " 7.7 7.7 0 0 1 8.5-7.6 7.8 7.8 0 0 1 8.5 7.8z\"/>" +
+      "<path d=\"M12 8.4v4\"/><path d=\"M12 15.4h.01\"/></svg>"
+
   /** GitHub session action shown in the home-page header when OAuth is configured. */
   private fun githubAuthControl(status: GitHubAuthStatus?): String {
     status ?: return ""
@@ -636,6 +652,23 @@ $noteBlock        <div class="cp-site-footer-links">
    * route reached without a token.
    */
   private fun reportBugFormHtml(): String =
+    reportBugForm(
+      "<button type=\"submit\" class=\"cp-report-bug-link\"" +
+        " title=\"Report a bug in the preview server itself — not in a preview\">" +
+        "$GITHUB_ICON report a server bug</button>"
+    )
+
+  /**
+   * The `GET /report-bug` form, wrapped around whichever [submit] control the caller wants — the
+   * footer's link-shaped one, or the launcher's two-line choice.
+   *
+   * Emitted **twice** on an ordinary page, once per entry point, and that is deliberate rather than
+   * a duplication to factor out: they are two different affordances (a link in the document flow,
+   * and a fixed launcher) that happen to need the same three page-derived values.
+   * `fillBugReportLink` fills every copy on the page — it walks `querySelectorAll`, not
+   * `querySelector` — precisely so a second entry point costs nothing to add.
+   */
+  private fun reportBugForm(submit: String): String =
     "<form class=\"cp-report-bug\" method=\"get\" action=\"${ServeBugReport.PATH}\">" +
       "<input type=\"hidden\" name=\"${ServeBugReport.FROM_PARAM}\" value=\"\">" +
       "<input type=\"hidden\" name=\"token\" value=\"\">" +
@@ -643,9 +676,104 @@ $noteBlock        <div class="cp-site-footer-links">
       // report page: a catalog that pinned dark chrome and an OS set to light disagree, and the
       // report page has its own answer to that question rather than this page's.
       "<input type=\"hidden\" name=\"scheme\" value=\"\">" +
-      "<button type=\"submit\" class=\"cp-report-bug-link\"" +
-      " title=\"Report a bug in the preview server itself\">$GITHUB_ICON report a bug</button>" +
+      submit +
       "</form>"
+
+  /**
+   * The **floating report launcher**: a small fixed button, bottom-right of every browser-facing
+   * page, opening a panel that names both trackers and offers the screen capture.
+   *
+   * **Why it floats.** The footer entry is at the bottom of the document, and on the surfaces where
+   * something most often looks wrong — a viewer with a tall stage, a catalog grid of two hundred
+   * cards, a design page — that is several screens away from the thing being complained about. A
+   * fixed launcher makes "something here is broken" a one-click gesture from wherever the visitor
+   * noticed it, which is the only moment they still have the page in the state that produced the
+   * bug. The footer entry stays: it is in the document flow, it prints, and it is what a page with
+   * no JavaScript and no fixed positioning still has.
+   *
+   * **Why it offers two destinations rather than one.** This server has always had two reports and
+   * they go to different repositories — a bug in the *server* to the repo that ships it, a bug in a
+   * *preview* to the repo whose Kotlin declares it — but the only place that distinction was
+   * written down was a sentence on the report page, which is after the choice has been made. A
+   * report filed in the wrong tracker reaches people who cannot act on it, so the panel states the
+   * split at the moment of choosing, and names the repo each half files against.
+   *
+   * The catalog half is server-rendered `hidden` and unhidden by `reportLauncher.ts` on pages that
+   * actually carry the per-preview affordance (`#cp-report`), whose form already knows the derived
+   * repo — see [reportIssueHtml]. Deriving it here instead would mean plumbing the catalog's repo
+   * through every `document` caller for a link that is a scroll-and-focus into markup already on
+   * the page.
+   *
+   * [captureSrc] is the hashed URL of `report-capture.js`, carried as an attribute rather than a
+   * `<script>` tag: the capture machinery is several kilobytes that only matter once someone has
+   * decided to file something, so it is fetched when the panel first opens and never on a page
+   * whose visitor never reports anything.
+   */
+  private fun reportLauncherHtml(captureSrc: String): String =
+    """
+    <div class="cp-fab" data-cp-capture-src="${WebEscaping.htmlEscape(captureSrc)}">
+      <details class="cp-fab-menu">
+        <summary class="cp-fab-btn" title="Report a problem" aria-label="Report a problem"
+          >$REPORT_ICON</summary>
+        <div class="cp-fab-panel">
+          <p class="cp-fab-head">Report a problem</p>
+          <p class="cp-fab-sub">Two trackers &mdash; pick whichever owns the thing that is
+            wrong.</p>
+          <a class="cp-fab-choice cp-fab-catalog" href="#cp-report" hidden>
+            <span class="cp-fab-what">Something is wrong with this <strong>preview</strong></span>
+            <span class="cp-fab-who">wrong colours, wrong spec, a state that is missing</span>
+          </a>
+${reportBugForm(
+      "<button type=\"submit\" class=\"cp-fab-choice\">" +
+        "<span class=\"cp-fab-what\">Something is wrong with the <strong>preview " +
+        "server</strong></span>" +
+        "<span class=\"cp-fab-who\">the page, a control, a render that failed &mdash; goes to " +
+        "<code>${WebEscaping.htmlEscape(ServeBugReport.REPO)}</code></span></button>"
+    )
+      .prependIndent("          ")}
+${captureControlsHtml().prependIndent("          ")}
+        </div>
+      </details>
+    </div>
+    """
+      .trimIndent()
+
+  /**
+   * The capture controls, shared by the launcher panel and [bugReportPage].
+   *
+   * Server-rendered and `hidden`, unhidden by `report-capture.js` once it has established that this
+   * browser can actually grab a frame. That order matters: a control that offers a screenshot and
+   * then reports "your browser cannot" is worse than no control, and the capability
+   * (`getDisplayMedia`, `ClipboardItem`) is not knowable server-side.
+   *
+   * Three modes rather than one, because the three things a reporter wants to attach have nothing
+   * in common. *Whole view* is the honest default for "the page is wrong". *Region* is for a corner
+   * of a wide comparison, where a full-viewport shot buries the defect in a screenful of things
+   * that are fine. *Element* is the one that needed a picker: on these pages the interesting thing
+   * is very often a single node with an exact boundary — a render, a spec panel, a diagnostics
+   * table, one cell of one — and asking someone to drag a box precisely around a table cell is a
+   * worse tool than letting them point at it.
+   */
+  private fun captureControlsHtml(): String =
+    """
+    <div class="cp-shot" hidden>
+      <p class="cp-shot-head">Capture what you can see</p>
+      <p class="cp-fab-who">The report embeds the plain render. Anything the browser composes
+        &mdash; the spec triptych, a wipe, an overlay, an error &mdash; only reaches the issue as a
+        picture you take.</p>
+      <div class="cp-shot-modes">
+        <button type="button" class="cp-shot-mode" data-cp-capture="view"
+          title="The whole browser viewport, as it is now">Whole view</button>
+        <button type="button" class="cp-shot-mode" data-cp-capture="region"
+          title="Drag a box around the part that is wrong">Region</button>
+        <button type="button" class="cp-shot-mode" data-cp-capture="element"
+          title="Point at one element — a render, a table, a single cell">Element</button>
+      </div>
+      <p class="cp-shot-note" role="status"></p>
+      <ul class="cp-shot-list"></ul>
+    </div>
+    """
+      .trimIndent()
 
   /**
    * Shared, intentionally compact navigation for every browser-facing page.
@@ -839,17 +967,16 @@ $noteBlock        <div class="cp-site-footer-links">
   /**
    * The viewer's "report an issue" affordance: a prefilled GitHub new-issue **form** for the
    * preview on screen, assembled by [ServeIssueReport] (see [ServeIssueReport.action] for why a
-   * form rather than a link). [action] is the issue form's URL, [title] and [body] are its hidden
-   * inputs — filled for the settings the page was served at, so it works with JS off — and
-   * [bodyTemplate] is the same body with the render link left as
-   * [ServeIssueReport.RENDER_PLACEHOLDER], which the viewer JS re-substitutes as the overrides
-   * change. [repo] names the target in the tooltip so nobody files against a repo they didn't mean
-   * to, and [login] — present only when the visitor has a GitHub session on this server — says
-   * whose account will author it.
+   * form rather than a link). [action] is the issue form's URL and [body] is its hidden input —
+   * filled for the settings the page was served at, so it works with JS off — while [bodyTemplate]
+   * is the same body with the render link left as [ServeIssueReport.RENDER_PLACEHOLDER], which the
+   * viewer JS re-substitutes as the overrides change. There is deliberately **no** title: the
+   * reporter types it (see [reportIssueHtml]). [repo] names the target so nobody files against a
+   * repo they didn't mean to, and [login] — present only when the visitor has a GitHub session on
+   * this server — says whose account will author it.
    */
   data class ReportIssue(
     val action: String,
-    val title: String,
     val body: String,
     val bodyTemplate: String,
     val repo: String,
@@ -967,23 +1094,54 @@ $noteBlock        <div class="cp-site-footer-links">
   }
 
   /**
-   * Renders [report] as the GET form that sits beside the per-preview "source" link — styled as a
-   * link, since that is what it behaves like. Null (a surface with no repo to file against) renders
-   * nothing.
+   * Renders [report] as the per-preview "report an issue" affordance beside the "source" link: a
+   * disclosure styled as a link, opening a small panel whose one visible control is a **required**
+   * Summary the reporter writes themselves.
+   *
+   * **Why the reporter types the title.** This used to be one click straight to a prefilled issue
+   * whose title the server wrote (`Preview issue: <preview> (<system>)`) — which named the preview
+   * and said nothing about what was wrong, so a repo collected a queue of issues distinguishable
+   * only by opening them. The preview's identity was never the interesting part and is not lost: it
+   * is the `| Preview |` row of the body's "Which preview" table, which every report still carries.
+   * This is the same trade `/report-bug` already makes — see [bugReportPage]'s Summary input — so
+   * the two reporting affordances now ask for the same thing.
+   *
+   * **Why a script-free `<details>`.** The form has to keep working with JS off, which is also what
+   * enforces the title: `required` is the browser's own check, so a reporter cannot submit an
+   * untitled report whether or not the page's script ran. Nothing here is scripted — the disclosure
+   * is the element's own behaviour, the `action` stays a server-rendered literal, and the only
+   * thing the viewer JS touches is the hidden `body` input it already refreshed.
+   *
+   * Null (a surface with no repo to file against) renders nothing.
    */
   private fun reportIssueHtml(report: ReportIssue?): String {
     val r = report ?: return ""
     val who =
       r.login?.takeIf { it.isNotBlank() }?.let { " as @${WebEscaping.htmlEscape(it)}" } ?: ""
-    val tip = "File an issue on ${WebEscaping.htmlEscape(r.repo)}$who"
-    return "\n      <form class=\"cp-report\" id=\"cp-report\" method=\"get\" target=\"_blank\"" +
+    val repo = WebEscaping.htmlEscape(r.repo)
+    val tip = "Something wrong with this preview — files against $repo$who"
+    // `data-cp-repo` is read by the floating launcher, which offers this affordance as its catalog
+    // half and has to name the repo in the offer. Taken from an attribute rather than scraped out
+    // of the note's prose below, so rewording the note cannot silently change where the launcher
+    // says a report goes.
+    return "\n      <details class=\"cp-report\" id=\"cp-report\" data-cp-repo=\"$repo\">" +
+      "<summary class=\"cp-report-link\" title=\"$tip\">" +
+      "$GITHUB_ICON report a catalog issue</summary>" +
+      "\n        <div class=\"cp-report-panel\">" +
+      "<form class=\"cp-report-form\" method=\"get\" target=\"_blank\"" +
       " rel=\"noopener\" action=\"${WebEscaping.htmlEscape(r.action)}\">" +
-      "<input type=\"hidden\" name=\"title\" value=\"${WebEscaping.htmlEscape(r.title)}\">" +
+      "<label class=\"cp-report-summary\">Summary" +
+      "<input class=\"cp-report-summary-input\" type=\"text\" name=\"title\" required" +
+      " autocomplete=\"off\" placeholder=\"Briefly describe what is wrong\"></label>" +
       "<input type=\"hidden\" name=\"body\" id=\"cp-report-body\"" +
       " value=\"${WebEscaping.htmlEscape(r.body)}\"" +
       " data-report-template=\"${WebEscaping.htmlEscape(r.bodyTemplate)}\">" +
-      "<button type=\"submit\" class=\"cp-report-link\" title=\"$tip\">" +
-      "$GITHUB_ICON report an issue</button></form>"
+      "<button type=\"submit\" class=\"cp-report-submit\">" +
+      "$GITHUB_ICON Open a prefilled issue</button>" +
+      "<span class=\"cp-report-note\">Files against <code>$repo</code>$who — the project whose " +
+      "code declares this preview, <em>not</em> the preview server. The rest of the report — " +
+      "which preview, which build, the links — is filled in for you on GitHub.</span>" +
+      "</form></div></details>"
   }
 
   /** Render catalog-published GitHub issues. Every href has already been rebuilt by the store. */
@@ -1289,6 +1447,107 @@ $noteBlock        <div class="cp-site-footer-links">
   private fun hasNonDefaultProps(p: ServePreview): Boolean = !p.props.isNullOrEmpty()
 
   /**
+   * Whether [p] is a render at a **non-primary breakpoint** — one of the component's other declared
+   * sizes, which the grid folds onto its single card exactly as it folds a non-default
+   * [state][isNonDefaultState] or [props variant][hasNonDefaultProps].
+   *
+   * A size is a different *rendering* of one component, not a different component: `AlertDialog` at
+   * 204dp is the same dialog the 192dp card shows, drawn on a wider watch. Left unfolded, a catalog
+   * that documents five breakpoints publishes five cards under one name — 14 components became 70
+   * rows in wear-m3-catalog, all of them called things like "Alert Dialog"
+   * ([wear-m3-catalog#41](https://github.com/yschimke/wear-m3-catalog/issues/41)).
+   *
+   * [primary] is the component's primary size from [primarySizeByComponent]. A preview with no
+   * declared size, or whose component resolved none, is never folded — an older catalog (or a plain
+   * bundle) whose size lives only in the id keeps a card per size, because there is no metadata to
+   * build a switcher from and folding would make those renders unreachable.
+   */
+  private fun isNonPrimarySize(p: ServePreview, primary: Map<String, String>): Boolean {
+    val size = p.size?.takeIf { it.isNotBlank() } ?: return false
+    val componentPrimary = primary[componentKey(p)] ?: return false
+    return size != componentPrimary
+  }
+
+  /**
+   * Each component's **primary** breakpoint — the size its one card is drawn at — keyed by
+   * [componentKey].
+   *
+   * The catalog's own order decides it: the first size a component publishes, read in authored
+   * order ([ServePreview.catalogOrder], falling back to list order for a catalog that records
+   * none). The export writes a component's images in the order the spec's `breakpoints` table
+   * declares them, so this is the first *declared* breakpoint — the one a catalog leads with, and
+   * for a design catalog the one its design references are mapped against.
+   *
+   * Only the component's DEFAULT renders are consulted: a component may publish a state or props
+   * variant at some sizes and not others, and letting those vote could pick a primary that the
+   * default render never rendered at, folding the whole component's card out of the grid.
+   */
+  private fun primarySizeByComponent(previews: List<ServePreview>): Map<String, String> {
+    val primary = LinkedHashMap<String, String>()
+    previews
+      .filter { it.size != null && !isNonDefaultState(it) && !hasNonDefaultProps(it) }
+      .sortedBy { it.catalogOrder ?: Int.MAX_VALUE }
+      .forEach { primary.putIfAbsent(componentKey(it), it.size!!) }
+    return primary
+  }
+
+  /**
+   * A preview id with only its **size** segment removed — the key that groups renders differing
+   * *only* in breakpoint while holding every other axis fixed, so the viewer's size switcher offers
+   * `AlertDialog` at 204dp from its 192dp render without dragging the reader off the state or props
+   * variant they are looking at.
+   *
+   * The exporter names a sticker `<slug>__<variant>__<state>[__theme][__size][__props…]`
+   * (`catalog-image-path.mjs`), so the size sits after the theme and before the props segments —
+   * hence [propsCount] trailing segments are held out of the search rather than the token simply
+   * being matched from the end, which a props value spelling the same word would otherwise win. The
+   * token is the slug of the render's own declared [ServePreview.size] rather than anything from a
+   * fixed vocabulary: a catalog is free to name its breakpoints `192dp`, `smallRound` or `wide`,
+   * and only the catalog knows which.
+   *
+   * Returns [id] unchanged when the render declares no size or the token isn't in it — the props
+   * axis it may already have been folded on is preserved either way, so a caller can compose the
+   * two without a size-less preview quietly losing the other fold.
+   */
+  private fun sizeInvariantKey(id: String, size: String?, propsCount: Int): String {
+    val token = size?.takeIf { it.isNotBlank() }?.let(::catalogSlug) ?: return id
+    val parts = id.split("__")
+    val limit = (parts.size - propsCount).coerceAtLeast(0)
+    val idx = (1 until limit).lastOrNull { parts[it] == token } ?: return id
+    return parts.filterIndexed { i, _ -> i != idx }.joinToString("__")
+  }
+
+  /** [sizeInvariantKey] over a render's own id, holding its state and props segments in place. */
+  private fun sizeInvariantKey(p: ServePreview): String =
+    sizeInvariantKey(p.id, p.size, p.props?.size ?: 0)
+
+  /**
+   * The size-switcher grouping key: [sizeInvariantKey] with the theme dropped too, for the same
+   * reason [switcherStateKey] drops it — an untagged render has to group with its themed siblings,
+   * and [themeLane] is what keeps the lanes apart.
+   */
+  private fun switcherSizeKey(p: ServePreview): String =
+    themeStrippedKey(sizeInvariantKey(p), p.theme)
+
+  /**
+   * The exporter's slug for one id segment: non-`[a-zA-Z0-9._-]` runs collapse to `-`, trimmed and
+   * lowercased. The Kotlin twin of `catalogSlug` in `catalog-image-path.mjs` (and of
+   * [ServeBundleHost.heroSlug]) — a declared size of `Small Round` is `smallround` in the id it
+   * named, so matching one against the other has to go through the same rule.
+   */
+  private fun catalogSlug(value: String): String =
+    value.replace(Regex("[^a-zA-Z0-9._-]+"), "-").trim('-').lowercase()
+
+  /**
+   * Human label for a declared breakpoint: the catalog's own name for it ([ServePreview.size]),
+   * else the token vocabulary [previewSizeVariantLabel] can recognise in the id. The catalog's name
+   * leads because it is the one the spec's `breakpoints` table authored and the one the reader sees
+   * everywhere else the axis is named.
+   */
+  private fun sizeLabel(p: ServePreview): String? =
+    p.size?.takeIf { it.isNotBlank() } ?: previewSizeVariantLabel(p.id)
+
+  /**
    * Human label for a component [state] token: the default render reads "Default"; a hyphenated
    * token like `keyboard-focus` becomes "Keyboard focus" (dashes → spaces, first letter
    * capitalised). Used for the viewer's state-switcher buttons.
@@ -1449,12 +1708,18 @@ $noteBlock        <div class="cp-site-footer-links">
   }
 
   /**
-   * The comparison-table card family for [p]: fold state, props, and the baked light/dark pair,
-   * while preserving independent axes such as size. This mirrors the default-card grouping used by
-   * [groupPreviews] without broadening aliases to every render of the same [componentKey].
+   * The comparison-table card family for [p]: fold state, props, size and the baked light/dark
+   * pair. This mirrors the default-card grouping used by [groupPreviews] without broadening aliases
+   * to every render of the same [componentKey].
+   *
+   * The size is folded here so a viewer deep-link naming a breakpoint the gallery left out still
+   * selects that component's row rather than landing on an empty comparison — the same job the key
+   * already does for a folded-out state. A component whose second size DOES carry a reference keeps
+   * its own row (rows are keyed by [baseKey], not by this); the two rows then share one alias set,
+   * exactly as two reference-bearing states of one component already do.
    */
   private fun comparisonCardKey(p: ServePreview): String =
-    baseKey(stateInvariantKey(propsFamilyKey(p), p.state))
+    baseKey(stateInvariantKey(sizeInvariantKey(propsFamilyKey(p), p.size, propsCount = 0), p.state))
 
   /**
    * How a comparison row names the variant it shows — `Hovered`, `Xl square`, `RTL · Font 2.0×` —
@@ -2105,12 +2370,17 @@ $noteBlock        <div class="cp-site-footer-links">
   ): ServePreview {
     val key = componentKey(current)
     val lane = themeLane(current, darkFirst)
-    return all.firstOrNull {
-      componentKey(it) == key &&
-        themeLane(it, darkFirst) == lane &&
-        !isNonDefaultState(it) &&
-        !hasNonDefaultProps(it)
-    } ?: current
+    return all
+      .filter {
+        componentKey(it) == key &&
+          themeLane(it, darkFirst) == lane &&
+          !isNonDefaultState(it) &&
+          !hasNonDefaultProps(it)
+      }
+      // Authored order decides, not list order: the host lists previews sorted by id, so a
+      // component documented at several breakpoints would otherwise root its subtree at whichever
+      // size sorts first (`204dp` before `92dp`) rather than at the size its card is drawn at.
+      .minByOrNull { it.catalogOrder ?: Int.MAX_VALUE } ?: current
   }
 
   /**
@@ -2155,6 +2425,15 @@ $noteBlock        <div class="cp-site-footer-links">
       if ((p.state ?: "default") != curState) continue
       byProps.putIfAbsent(propsSignature(p.props), p)
     }
+    // …and its size axis, holding state and props fixed — [sizeInvariantKey] strips only the size,
+    // so a reader on `no-buttons` is offered the other breakpoints OF `no-buttons`.
+    val sizeKey = switcherSizeKey(current)
+    val bySize = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (p.size == null) continue
+      if (switcherSizeKey(p) != sizeKey || themeLane(p, darkFirst) != lane) continue
+      bySize.putIfAbsent(p.size, p)
+    }
     if (byState.size > 1) {
       byState.entries
         .sortedBy { if (it.key == "default") 0 else 1 }
@@ -2164,6 +2443,12 @@ $noteBlock        <div class="cp-site-footer-links">
       byProps.entries
         .sortedBy { if (it.key == "") 0 else 1 }
         .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "props") }
+    }
+    // Sizes last, and in the catalog's declared order rather than sorted: the export writes a
+    // component's images in `breakpoints` order, so first-seen IS smallest-to-largest as the
+    // catalog declares it, and re-sorting here would invent an ordering the spec did not ask for.
+    if (bySize.size > 1) {
+      bySize.forEach { (_, p) -> rows.putIfAbsent(href(p), p to "size") }
     }
     // Then the component's canonical set, for everything the two axes above did not already reach.
     primaryVariantPreviews(componentDefault(current, all, darkFirst), all, darkFirst).forEach {
@@ -2308,7 +2593,11 @@ $noteBlock        <div class="cp-site-footer-links">
    * reach it first.
    */
   private fun variantLabel(p: ServePreview, axis: String, crossProduct: Boolean): String =
-    if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
+    // A size row names its breakpoint whatever else is in play: it moves along neither of the two
+    // axes [crossProduct] disambiguates, and the size is the only thing that tells it from the row
+    // the reader is standing on.
+    if (axis == "size") sizeLabel(p) ?: stateLabel(p.state)
+    else if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
     else "${stateLabel(p.state)} · ${propsLabel(p.props)}"
 
   /** [primaryVariants] as previews paired with the axis each varies, before they are labelled. */
@@ -3875,9 +4164,16 @@ $noteBlock        <div class="cp-site-footer-links">
         : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
       var urlOption = null;
       Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+      // A choice that merely names the preview's baked theme is DISPLAYED but not marked active:
+      // it asks for nothing, so it must not read as a pinned override. `?uiMode=light` on a
+      // light-baked preview is the case that mattered — the light/dark toggle leaves the parameter
+      // behind on the way back to light, and treating it as a pin suppressed the Figma comparison
+      // for a visitor who had made no net choice. Mirrors `pinsTheme` in viewer/themeChoice.ts.
+      var bakedTheme = el.getAttribute("data-default-theme") || "";
+      function pinsTheme(choice) { return !!choice && choice !== bakedTheme; }
       if (urlOption) {
         el.value = urlChoice;
-        el.setAttribute("data-theme-active", "1");
+        if (pinsTheme(urlChoice)) el.setAttribute("data-theme-active", "1");
       }
       try {
         var stored = localStorage.getItem("$themeStorageKey");
@@ -3886,7 +4182,7 @@ $noteBlock        <div class="cp-site-footer-links">
         Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
         if (!urlOption && !themed && option && !option.disabled && (declared || stored === "light" || stored === "dark")) {
           el.value = stored;
-          el.setAttribute("data-theme-active", "1");
+          if (pinsTheme(stored)) el.setAttribute("data-theme-active", "1");
         }
       } catch (e) {}
       // Publish the design-score baseline before the component bundle upgrades the comparison
@@ -6046,16 +6342,15 @@ $noteBlock        <div class="cp-site-footer-links">
    * What [bugReportPage] draws: the assembled report, plus the pieces the page needs to show the
    * reporter what they are about to file.
    *
-   * [title] and [body] are [ServeBugReport]'s output for the settings the page was served at, so
-   * the form works with JS off. [bodyTemplate] is the same body with
-   * [ServeBugReport.CLIENT_PLACEHOLDER] where the browser block goes, which the page script fills
-   * from `navigator` / `window`. [renderUrl], when present, is the token-stripped `/render` PNG of
-   * whatever the reporter was looking at — shown on the page as a thumbnail so "this is what I saw"
-   * is literal rather than described.
+   * [body] is [ServeBugReport]'s output for the settings the page was served at, so the form works
+   * with JS off — the title is the reporter's own, typed into the page's Summary field.
+   * [bodyTemplate] is the same body with [ServeBugReport.CLIENT_PLACEHOLDER] where the browser
+   * block goes, which the page script fills from `navigator` / `window`. [renderUrl], when present,
+   * is the token-stripped `/render` PNG of whatever the reporter was looking at — shown on the page
+   * as a thumbnail so "this is what I saw" is literal rather than described.
    */
   data class BugReport(
     val action: String,
-    val title: String,
     val body: String,
     val bodyTemplate: String,
     val repo: String,
@@ -6116,14 +6411,29 @@ $noteBlock        <div class="cp-site-footer-links">
             "<div class=\"cp-status-scroll\"><table class=\"cp-table cp-report-facts\">" +
             "<tbody>\n$rows\n</tbody></table></div>"
         }
+    // Whatever the reporter captured on the page they came from, carried here in `sessionStorage`
+    // and rendered by `report-capture.js` — see [captureControlsHtml]. Server-rendered as an
+    // empty mount rather than left entirely to the script, so the section has a fixed place in the
+    // page and the "nothing came across" wording is written here with the rest of the page's prose.
+    val captures =
+      """
+      <div class="cp-shots" data-cp-capture-src="${esc(assetHref("report-capture.js"))}">
+        <p class="cp-sub cp-shots-empty">No captures came across from the page you reported. Take
+          one there with the &ldquo;Report a problem&rdquo; button, or paste an ordinary screenshot
+          straight into the issue.</p>
+        <ul class="cp-shot-list"></ul>
+      </div>
+      """
+        .trimIndent()
     val shot =
       report.renderUrl
         ?.takeIf { it.isNotBlank() }
         ?.let {
-          "\n      <p class=\"cp-status-sec\">The render you were looking at</p>\n" +
-            "      <p class=\"cp-sub\">Included in the report. It is a live render, so it " +
-            "follows the catalog — paste a screenshot below as well if the exact pixels " +
-            "matter.</p>\n" +
+          "\n      <p class=\"cp-status-sec\">The base render of that preview</p>\n" +
+            "      <p class=\"cp-sub\">Included in the report. It is the plain render at your " +
+            "settings — not the spec triptych, the wipe, or any other view the browser " +
+            "composes — and it is live, so it follows the catalog. Capture the page as well " +
+            "if the exact pixels matter.</p>\n" +
             "      <img class=\"cp-report-shot\" src=\"${esc(it)}\" alt=\"the render this " +
             "report is about\" loading=\"lazy\">"
         } ?: ""
@@ -6131,9 +6441,13 @@ $noteBlock        <div class="cp-site-footer-links">
       """
       <h1 class="cp-head">Report a bug in the preview server</h1>
       <p class="cp-sub">This files against <a href="https://github.com/${esc(report.repo)}"
-        >${esc(report.repo)}</a>, the repository that ships <code>compose-preview serve</code>$who.
-        For a preview that renders wrongly, use the &ldquo;report an issue&rdquo; link on that
-        preview instead — it goes to the project whose code declares it.</p>
+        >${esc(report.repo)}</a>, the repository that ships <code>compose-preview serve</code>$who
+        — the page you were on, its controls, and the render lanes behind them.</p>
+      <p class="cp-sub cp-report-elsewhere">Wrong <em>pixels</em> rather than a wrong page? A button
+        in the wrong colour, a state that is missing, a spec that does not match — that is the
+        <strong>catalog&rsquo;s</strong> bug, not this server&rsquo;s. Go back to the preview and use
+        its &ldquo;report a catalog issue&rdquo; link, which files against the repository whose
+        Kotlin declares that preview. A catalog bug filed here reaches people who cannot fix it.</p>
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="${esc(report.action)}">
@@ -6151,9 +6465,10 @@ $noteBlock        <div class="cp-site-footer-links">
       </form>
 
       <p class="cp-status-sec">Add a screenshot</p>
-      <p class="cp-sub">The report has a Screenshot section waiting for one. Take a shot of the
-        whole window and paste it into that section on GitHub &mdash; it uploads to GitHub&rsquo;s
-        own storage, so it keeps showing what you saw even after this server changes.</p>
+      <p class="cp-sub">The report has a Screenshot section waiting for one. Paste it into that
+        section on GitHub — it uploads to GitHub&rsquo;s own storage, so it keeps showing what
+        you saw even after this server changes.</p>
+      $captures
       $shot
 
       <p class="cp-status-sec">What gets sent</p>
@@ -6448,6 +6763,15 @@ $noteBlock        <div class="cp-site-footer-links">
      */
     hasParityView: Boolean = false,
     /**
+     * How many motion captures this catalog publishes, across every preview — the count behind the
+     * "motion" action, and the gate on whether it appears at all. Zero (the default) omits it, so a
+     * catalog that records nothing is unchanged and no visitor is offered an empty page.
+     *
+     * A count rather than a boolean because one recording and thirty are different offers, the same
+     * reasoning the pages chip carries its count for.
+     */
+    motionCaptureCount: Int = 0,
+    /**
      * The design pages this catalog publishes ([ServeDesignPages]), in publication order. Listed by
      * name in the navigation tree ([pagesBranchHtml]); a catalog with no tree to put them in falls
      * back to a header action chip. Empty (the default) offers neither, so a catalog that publishes
@@ -6607,6 +6931,15 @@ $noteBlock        <div class="cp-site-footer-links">
     @Suppress("NAME_SHADOWING")
     val hasReferenceComparison = hasReferenceComparison && !componentBrowser
     @Suppress("NAME_SHADOWING") val hasParityView = hasParityView && !componentBrowser
+    // Suppressed in Catalog mode with the other destinations, and it is a close call rather than
+    // an obvious one. The motion browser is browsing surface, not tooling — it is the collection
+    // view of a control Catalog mode deliberately KEEPS per component — so the case for showing it
+    // there is real. What settles it is the affordance: every other entry in the `⋯` menu is
+    // stripped in that mode, so keeping this one would give Catalog mode a menu that exists to
+    // hold a single item. Flip this line (and the checklist entry it is recorded under) if the
+    // collection view turns out to be what streamlined visitors come for.
+    @Suppress("NAME_SHADOWING")
+    val motionCaptureCount = if (componentBrowser) 0 else motionCaptureCount
     @Suppress("NAME_SHADOWING") val playgroundHref = playgroundHref?.takeUnless { componentBrowser }
     @Suppress("NAME_SHADOWING")
     val degradations = if (componentBrowser) emptyList() else degradations
@@ -6630,16 +6963,21 @@ $noteBlock        <div class="cp-site-footer-links">
     // Collapse per-theme variants into one card each so the Light/Dark control swaps a card between
     // its baked light/dark render *in place*, rather than filtering two cards. A single-theme /
     // theme-neutral card carries no swap data and the toggle leaves it alone.
-    // Fold non-default component states (unchecked/pressed/disabled/…) AND props-axis variants
-    // (locale/direction-rtl/fontScale/content) out of the grid first, so a component shows ONE card
-    // (its default render) instead of a card per state or per variant; the folded renders stay
-    // reachable through the viewer's state + variant switchers. Plain bundle screens (no state, no
-    // props) pass straight through.
+    // Fold non-default component states (unchecked/pressed/disabled/…), props-axis variants
+    // (locale/direction-rtl/fontScale/content) AND non-primary breakpoints out of the grid first,
+    // so a component shows ONE card (its default render at its first declared size) instead of a
+    // card per state, per variant or per screen size; the folded renders stay reachable through the
+    // viewer's state + variant + size switchers. Plain bundle screens (no state, no props, no
+    // declared size) pass straight through.
+    val primarySizes = primarySizeByComponent(previews)
     val groups =
       groupPreviews(
         previews.filterNot {
           (componentBrowser && it.renderFailure != null) ||
-            (it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it)))
+            (it.renderFailure == null &&
+              (isNonDefaultState(it) ||
+                hasNonDefaultProps(it) ||
+                isNonPrimarySize(it, primarySizes)))
         }
       )
     val cardAnchors = mintCardAnchors(groups)
@@ -6668,15 +7006,18 @@ $noteBlock        <div class="cp-site-footer-links">
               append("</ul></aside>\n")
             }
           } ?: ""
-    // Size/breakpoint variants intentionally remain separate cards, but catalog-authored labels
-    // often omit that axis (for example three "Edgebutton" cards at Small/Large/XL Round). Add a
-    // qualifier only when the base label actually collides, keeping ordinary one-card labels terse.
+    // A catalog whose breakpoints reach the server as metadata has just been folded to one card per
+    // component above, so its labels no longer collide on the size axis. This is the fallback for
+    // one whose sizes live only in the id — an older export, or a plain bundle's device fan-out —
+    // where each size is still a card of its own (for example three "Edgebutton" cards at
+    // Small/Large/XL Round). Add a qualifier only when the base label actually collides, keeping
+    // ordinary one-card labels terse.
     val duplicateGridLabels =
       groups.groupingBy { previewDisplayName(it.default) }.eachCount().filterValues { it > 1 }.keys
     fun gridDisplayName(preview: ServePreview): String {
       val label = previewDisplayName(preview)
       if (label !in duplicateGridLabels) return label
-      val size = previewSizeVariantLabel(preview.id) ?: return label
+      val size = sizeLabel(preview) ?: return label
       return "$label · $size"
     }
     // A card's pixel URL. With a prebaked thumbnail it carries `?thumb=<hash>`, which the render
@@ -7077,6 +7418,20 @@ $noteBlock        <div class="cp-site-footer-links">
           // the design file have *moved*, and how far apart they are — so it keeps its own name
           // rather than borrowing the comparison's.
           actionChip("$basePath/parity$q", "design parity").takeIf { hasParityView },
+          // The motion browser. A destination like the comparisons and the parity view — captures
+          // are scattered one-per-component and invisible until you open the component that has
+          // one, so this is the only place a visitor can find out the catalog records anything at
+          // all. It is NOT gated on having a tree the way the pages chip is: there is no tree
+          // listing to fall back on, so without the chip the page would be published and
+          // unreachable on every catalog.
+          motionCaptureCount
+            .takeIf { it > 0 }
+            ?.let {
+              actionChip(
+                "$basePath/motion$q",
+                "$it motion ${if (it == 1) "capture" else "captures"}",
+              )
+            },
           // Pages live in the navigation tree, which is where this catalog's other *places* are.
           // This chip is the fallback for a catalog too small to have a tree at all: without it
           // the pages would be published and unreachable. The count is in the label because one
@@ -7254,11 +7609,19 @@ $noteBlock        <div class="cp-site-footer-links">
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
     // Native-format rows retain the catalog's one-default-card presentation. A design reference,
-    // however, names one exact preview state/props mapping, so that referenced variant must remain
-    // independently visible instead of being folded out with the landing-page variants.
+    // however, names one exact preview state/props/size mapping, so that referenced variant must
+    // remain independently visible instead of being folded out with the landing-page variants.
+    //
+    // The size axis is folded on exactly that condition and no other. A kit draws its screen cells
+    // at one size, so the other breakpoints of a component carry no reference of their own and a
+    // row for each is four rows saying "no reference" under one name; but a kit that DOES publish a
+    // second size (Wear's `Picker`, at its `Larger Screen (BP)` cell) maps a reference to it, and
+    // that row is the whole point of the page.
+    val comparablePrimarySizes = primarySizeByComponent(previews)
     val comparablePreviews = previews.filterNot { preview ->
-      (isNonDefaultState(preview) || hasNonDefaultProps(preview)) &&
-        referencesFor(preview.id).isEmpty()
+      (isNonDefaultState(preview) ||
+        hasNonDefaultProps(preview) ||
+        isNonPrimarySize(preview, comparablePrimarySizes)) && referencesFor(preview.id).isEmpty()
     }
     val cards = groupPreviews(comparablePreviews)
     val hasSvg = comparablePreviews.any { hasSvgFor(it.id) }
@@ -7908,6 +8271,203 @@ $rows
           .trimIndent(),
     )
   }
+
+  /**
+   * The **motion browser**: every recorded capture this catalog publishes, on one page.
+   *
+   * ### Why this is a page of its own
+   *
+   * A capture is per-preview surface — the viewer's Motion lane — and that is the right home for
+   * *reading one*. It is the wrong home for the question this page answers, which is a catalog-wide
+   * one: **does this design system move consistently?** Two containers that morph on the same
+   * spatial spring and a third that cross-fades is a system bug, and it is invisible from three
+   * separate component pages, each of which shows its own recording in isolation and says nothing
+   * about its neighbours. Putting the recordings side by side is the entire feature; a grid is what
+   * makes the odd one out obvious at a glance.
+   *
+   * It is also the only view that answers "what has motion at all". Captures are rare —
+   * [ServeMotion] exists precisely because most components publish only a still — so today a reader
+   * finds them by opening components one at a time and noticing a chip. That is not discovery, it
+   * is luck.
+   *
+   * ### Nothing plays until it is asked to
+   *
+   * Same posture as the viewer's lane, for the same reason: motion is the answer to a question most
+   * readers are not asking, and a page that starts thirty recordings at once is a page nobody can
+   * read. Each card opens on its component's **still** — the baked pixels, the same image the grid
+   * shows — and swaps to the capture only when someone presses it or presses **Play all**. That
+   * makes `prefers-reduced-motion` a non-question here: there is no autoplay to suppress. The
+   * per-card control is a button rather than a hover, so it works on a touch screen and from a
+   * keyboard, and its pressed state says which cards are running.
+   *
+   * ### One card per capture, not per component
+   *
+   * A component with two recordings has two things to compare and they are frequently the point —
+   * "Baseline swaps the shape, Expressive travels between them" is one component and two captures.
+   * Folding them onto one card would hide exactly the comparison the page exists for. The captures
+   * of one component are labelled by [MotionCaptureLabels] — the same split the viewer's picker
+   * uses, so a recording is called the same thing in both places — and each card deep-links to
+   * `?mode=motion&motion=<id>`, which opens the viewer already on that recording rather than on the
+   * component's first one.
+   */
+  fun motionIndexPage(
+    moduleLabel: String,
+    previews: List<ServePreview>,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    displayTitle: String? = null,
+    /** See [designPagesIndexPage]; a rooted site implies its session by the origin. */
+    sessionInOrigin: Boolean = false,
+  ): String {
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val query = linkQuery(token, linkSessionId, basePath, isPublic)
+    val q = querySuffix(query)
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = catalogHeading(displayTitle, moduleLabel)
+
+    // Authoring order where the catalog published one, so the sections read in the order the
+    // landing's tabs do rather than alphabetically by preview id.
+    val withMotion =
+      previews
+        .filter { it.motion.isNotEmpty() }
+        .sortedWith(compareBy({ it.catalogOrder ?: Int.MAX_VALUE }, { it.id }))
+    val captureCount = withMotion.sumOf { it.motion.size }
+
+    /**
+     * The viewer, opened on this exact recording — see [ServeMotion] and the viewer's `?motion=`.
+     */
+    fun viewerHref(preview: ServePreview, capture: ServeMotion): String {
+      val parts =
+        listOf(query, "mode=motion", "motion=" + WebEscaping.urlEncodeSegment(capture.id)).filter {
+          it.isNotEmpty()
+        }
+      return "$basePath/p/${WebEscaping.urlEncodeSegment(preview.id)}?" + parts.joinToString("&")
+    }
+
+    fun cardHtml(preview: ServePreview, capture: ServeMotion, label: MotionCaptureLabel): String {
+      val poster = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
+      val motionSrc =
+        "$basePath/motion/${WebEscaping.urlEncodeSegment(capture.id)}${capture.extension}$q"
+      val name = WebEscaping.htmlEscape(preview.label)
+      // The kind is what the annotation recorded, and it is a real distinction to a reader: a
+      // scripted gesture proves the component's own input plumbing drives the transition, a
+      // self-running animation proves only that the animation exists.
+      val kind =
+        when (capture.kind) {
+          "interaction" -> "Interaction"
+          "animation" -> "Animation"
+          else -> "Capture"
+        }
+      // The full caption, printed under the card. Blank for a capture whose annotation declared
+      // none — the title is then the kind, and a second line repeating it would say nothing.
+      val detail =
+        label.detail
+          .takeIf { it.isNotBlank() && it != label.title }
+          ?.let {
+            "\n          <span class=\"cp-motion-card-detail\">${WebEscaping.htmlEscape(it)}</span>"
+          } ?: ""
+      val play = WebEscaping.htmlEscape("Play the ${label.title} recording of ${preview.label}")
+      return """
+        <figure class="cp-motion-card">
+          <button type="button" class="cp-motion-card-stage" aria-pressed="false"
+            data-motion-src="${WebEscaping.htmlEscape(motionSrc)}"
+            data-motion-poster="${WebEscaping.htmlEscape(poster)}"
+            title="$play" aria-label="$play">
+            <img class="cp-motion-card-img" loading="lazy" alt=""
+              src="${WebEscaping.htmlEscape(poster)}">
+            <span class="cp-motion-card-cue" aria-hidden="true">▶</span>
+          </button>
+          <figcaption class="cp-motion-card-meta">
+          <a class="cp-motion-card-name" href="${WebEscaping.htmlEscape(viewerHref(preview, capture))}">$name</a>
+          <span class="cp-motion-card-title">${WebEscaping.htmlEscape(label.title)}</span>
+          <span class="cp-motion-card-kind">$kind</span>$detail
+          </figcaption>
+        </figure>
+      """
+        .trimIndent()
+    }
+
+    // Grouped by the landing's own top-level section, so a reader who knows where a component lives
+    // in the catalog finds its recording in the same place here. A catalog with no sections (a
+    // plain bundle, an uploaded module) renders one unlabelled run of cards, exactly as its grid
+    // does.
+    val sections = withMotion.groupBy { it.section }
+    val body =
+      sections.entries.joinToString("\n") { (section, group) ->
+        val cards =
+          group.joinToString("\n") { preview ->
+            val labels = MotionCaptureLabels.of(preview.motion)
+            preview.motion
+              .mapIndexed { i, capture -> cardHtml(preview, capture, labels[i]) }
+              .joinToString("\n")
+          }
+        val head =
+          section
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "<h2 class=\"cp-section-head\">${WebEscaping.htmlEscape(it)}</h2>\n" } ?: ""
+        "<section class=\"cp-motion-section\">\n$head<div class=\"cp-motion-cards\">\n$cards\n</div>\n</section>"
+      }
+
+    val componentCount = withMotion.size
+    val componentWord = if (componentCount == 1) "component" else "components"
+    val captureWord = if (captureCount == 1) "recording" else "recordings"
+    return document(
+      title = "$heading — motion",
+      unfurlTitle = "$heading motion",
+      unfurlDescription =
+        "Every recorded interaction and animation this design system publishes, side by side",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Motion"),
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
+      siteName = heading,
+      body =
+        """
+        <h1 class="cp-head cp-catalog-head">Motion${compactTrustBadge(trust)}</h1>
+        <p class="cp-sub">Every recorded interaction and animation this catalog publishes, side by
+        side — so a transition that is shaped differently from its neighbours is visible without
+        opening each component in turn. $captureCount $captureWord across $componentCount $componentWord.</p>
+        <div class="cp-motion-toolbar">
+          <button type="button" id="cp-motion-all" class="cp-action-chip cp-motion-all"
+            aria-pressed="false" aria-controls="cp-motion-index">Play all</button>
+          <span class="cp-motion-hint">Nothing plays until you ask it to. Press a card to run one
+          recording, or open a component to scrub it frame by frame.</span>
+        </div>
+        <div class="cp-motion-index" id="cp-motion-index">
+        $body
+        </div>
+        <script>$MOTION_INDEX_SCRIPT</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * The motion browser's whole behaviour: swap a card between its still and its recording.
+   *
+   * Inline rather than an asset because it is the only page that has it and it is a dozen lines —
+   * the built bundles under `cli/serve-web/` exist for the surfaces with real state machines (the
+   * viewer, the comparison scorer), and adding a per-page file to that build to hold one `src`
+   * assignment would cost a round-trip on every visit to buy nothing.
+   *
+   * Swapping `src` is deliberately the entire mechanism. An `<img>` playing an APNG or a GIF cannot
+   * be paused, sought, or rate-controlled from script — that is what the viewer's canvas player is
+   * for, and why every card links to it. What an `<img>` *can* do is decode the format natively and
+   * start over from frame one each time its `src` is set, which is exactly the two things a
+   * browsing grid needs. Restoring the poster is what stops a recording, because a still that is no
+   * longer decoding costs nothing while thirty of them are on screen.
+   */
+  private const val MOTION_INDEX_SCRIPT =
+    """(function(){var stages=[].slice.call(document.querySelectorAll(".cp-motion-card-stage"));if(!stages.length)return;function set(b,on){var img=b.querySelector(".cp-motion-card-img");if(!img)return;var src=on?b.getAttribute("data-motion-src"):b.getAttribute("data-motion-poster");if(!src)return;b.setAttribute("aria-pressed",on?"true":"false");if(img.getAttribute("src")!==src||on)img.setAttribute("src",src);}stages.forEach(function(b){b.addEventListener("click",function(){set(b,b.getAttribute("aria-pressed")!=="true");sync();});});var all=document.getElementById("cp-motion-all");function playing(){return stages.filter(function(b){return b.getAttribute("aria-pressed")==="true";}).length;}function sync(){if(!all)return;var on=playing()===stages.length;all.setAttribute("aria-pressed",on?"true":"false");all.textContent=playing()?"Stop all":"Play all";}if(all)all.addEventListener("click",function(){var on=playing()!==stages.length;stages.forEach(function(b){set(b,on);});sync();});})();"""
 
   /**
    * One **design page**: the sheet itself as inlined SVG, an outline over every component node on
@@ -8769,6 +9329,14 @@ $rows
      * has no daemon to capture the tree.
      */
     hasDesignAnnotations: Boolean = false,
+    /**
+     * Whether the catalog **published** typography annotations over this preview's baked frame
+     * ([ServeHost.hasPublishedTypographyFor]) — the other lane behind the same Typography layer,
+     * and the only one a static bundle has. Offers the checkbox where [hasDesignAnnotations] is
+     * false but `.annotations` still answers; the Theme attributes row stays gated on the semantics
+     * lane, which is the only thing that produces it.
+     */
+    hasPublishedTypography: Boolean = false,
     trust: String? = null,
     /**
      * Whether this preview carries a captured Remote Compose document
@@ -9095,6 +9663,8 @@ $rows
     val hasA11yOverlay = hasA11yOverlay && pinned == null && !componentBrowser
     @Suppress("NAME_SHADOWING")
     val hasDesignAnnotations = hasDesignAnnotations && pinned == null && !componentBrowser
+    @Suppress("NAME_SHADOWING")
+    val hasPublishedTypography = hasPublishedTypography && pinned == null && !componentBrowser
     // A published capture is a file on the branch exactly as the baked render and the design
     // reference are, so by the pinned-page rule it ought to STAY and take the pin. It cannot yet:
     // `/motion/<id><ext>` reads the branch tip the session is holding, with no revision to resolve
@@ -9995,11 +10565,19 @@ $rows
       // the axis's single state holder: viewer.js reads it for every render (`activeThemeChoice`),
       // the sticky script seeds it from the URL + localStorage, and Back/Forward hydration writes
       // to it. Two visible controls for one value is worse than one, so only the chips are shown.
+      //
+      // `data-default-theme` is the theme this preview is BAKED in — what the select shows with
+      // nothing picked. It rides as its own attribute because the `selected` option stops
+      // answering for it the moment the sticky script writes `el.value`, and every consumer that
+      // asks "has the visitor actually pinned a theme?" (`pinsTheme`) reads it after that point.
+      // Empty when the catalog names no theme for the preview, which is deliberately NOT the same
+      // as "light": the select falls back to displaying Light, but a `uiMode=light` there is a
+      // real request the baked pixels may not answer, so it stays an override.
       // `tabindex="-1"` keeps the hidden select out of the tab order, which is what makes the
       // `aria-hidden` wrapper legitimate.
       """
         <span class="cp-modes-inputs" aria-hidden="true">
-          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed" tabindex="-1"$themeDis>
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-default-theme="${viewerTheme.orEmpty()}" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed" tabindex="-1"$themeDis>
             $defaults$providerOptions
           </select>
         </span>
@@ -10074,7 +10652,9 @@ $rows
     // Published reference typography is self-contained, so static bundle viewers can inspect the
     // Figma lane even though they cannot apply overrides or ask a daemon for render annotations.
     val hasTypographyInspection =
-      hasDesignAnnotations || referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
+      hasDesignAnnotations ||
+        hasPublishedTypography ||
+        referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
     val inspectRows = buildString {
       if (hasA11yOverlay)
         append(
@@ -10826,6 +11406,12 @@ $rows
     val footerBlock =
       if (componentBrowser) ""
       else "\n${siteFooter(version, footerNote, bugReport).prependIndent("        ")}"
+    // The floating launcher rides the same two conditions as the footer entry it duplicates from a
+    // fixed position: dropped in component-browser mode (which has no site chrome at all) and on
+    // the report page itself, where it would be a button back to the page you are already on.
+    val launcherBlock =
+      if (componentBrowser || !bugReport) ""
+      else "\n${reportLauncherHtml(assetHref("report-capture.js")).prependIndent("        ")}"
     // Before `themeCss`, so a catalog palette still wins at equal specificity; the font block
     // declares faces only and collides with nothing in the chrome.
     val rcFontsBlock = if (rcFonts) "\n" + ServeRcFonts.linkTag().prependIndent("        ") else ""
@@ -10883,7 +11469,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName, componentBrowser, interfaceModeControl, themeStorageKey.isNotBlank() && interfaceModeControl)}
         <main class="cp-main">
         $body
-        </main>$footerBlock$interfaceModeControls
+        </main>$footerBlock$launcherBlock$interfaceModeControls
         ${if (componentBrowser) "" else scriptTag("keyboard-navigation.js")}
       </body>
     </html>

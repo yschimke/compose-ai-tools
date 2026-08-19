@@ -10,7 +10,6 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasRequestFocusAction
 import androidx.compose.ui.test.isFocused
@@ -1873,32 +1872,34 @@ open class RobolectricHost(
       mergePreviewOverrides(
         base =
           PreviewOverrideBaseSpec(
-            widthPx = base.widthPx,
-            heightPx = base.heightPx,
-            density = base.density,
-            device = base.device,
-            localeTag = base.localeTag,
-            fontScale = base.fontScale,
-            uiMode =
-              when (base.uiMode) {
-                RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
-                RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
-                null -> null
-              },
-            orientation =
-              when (base.orientation) {
-                RenderSpec.SpecOrientation.PORTRAIT ->
-                  ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
-                RenderSpec.SpecOrientation.LANDSCAPE ->
-                  ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
-                null -> null
-              },
-            inspectionMode = base.inspectionMode,
-            material3Theme = base.overrides?.material3Theme,
-            wallpaper = base.overrides?.wallpaper,
-            ambient = base.overrides?.ambient,
-            gestures = base.overrides?.gestures,
-          ),
+              widthPx = base.widthPx,
+              heightPx = base.heightPx,
+              density = base.density,
+              device = base.device,
+              localeTag = base.localeTag,
+              fontScale = base.fontScale,
+              uiMode =
+                when (base.uiMode) {
+                  RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
+                  RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
+                  null -> null
+                },
+              orientation =
+                when (base.orientation) {
+                  RenderSpec.SpecOrientation.PORTRAIT ->
+                    ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
+                  RenderSpec.SpecOrientation.LANDSCAPE ->
+                    ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
+                  null -> null
+                },
+              inspectionMode = base.inspectionMode,
+            )
+            // Every extension-consumed field the resolved spec already carries — the baked
+            // `@OverrideVariant` seed above all, but also focus / talkBack / permissions / … —
+            // becomes the floor the per-render overlay lands on. Copied wholesale rather than
+            // named here, so this adapter can't fall behind the protocol (see
+            // `withCarriedOverrides`; yschimke/wear-m3-catalog#33).
+            .withCarriedOverrides(base.overrides),
         overrides = overrides,
       )
     return base.copy(
@@ -3245,7 +3246,7 @@ open class RobolectricHost(
                         dispatchHeldMotion(rule, cmd, position)
                       }
                       inputTrace.section("compose:advanceClock") {
-                        advanceHeldClocks(rule, POINTER_HOLD_MS)
+                        advanceHeldClocks(rule, postDispatchAdvanceMs(cmd.kind))
                       }
                       dataDir?.let(inputTrace::write)
                     }
@@ -3988,6 +3989,18 @@ open class RobolectricHost(
       }
     }
 
+    /**
+     * `mainClock` time to advance after an input has been dispatched, before the next capture.
+     *
+     * A click gets one frame ([POINTER_SETTLE_MS]) so its press feedback is still on screen for the
+     * frames that follow. Everything else keeps the historical [POINTER_HOLD_MS] settle: a
+     * `pointerDown` leaves the pointer down, so its feedback persists and there is nothing to lose
+     * by letting the composition settle first — and the touch overlay's active-pointer ring is one
+     * of the things that needs those frames to appear.
+     */
+    private fun postDispatchAdvanceMs(kind: String): Long =
+      if (kind == "click") POINTER_SETTLE_MS else POINTER_HOLD_MS
+
     private fun dispatchHeldMotion(
       rule:
         androidx.compose.ui.test.junit4.AndroidComposeTestRule<
@@ -4002,24 +4015,40 @@ open class RobolectricHost(
       // (every pre-#3491 client) still means touch.
       val mouse = cmd.pointerType?.trim()?.lowercase() == "mouse"
       when (cmd.kind) {
+        // A click is injected as a real press and release, never as the node's `OnClick` semantics
+        // action. The action invokes the handler lambda and NOTHING else: no `PressInteraction`
+        // reaches the component's interaction source, so it draws no ripple, no state layer and no
+        // pressed shape, and a live session ends up showing a different component from the one it
+        // names (wear-m3-catalog#32 — a live click looked inert because the only thing that moved
+        // was the state the handler wrote). The semantics action stays the right dispatch for the
+        // paths that ASK for it by name — `uia.click` / `a11y.action.click`, which are the
+        // screen-reader lane — and those go through `performSemanticsAction`, not here.
         "click" -> {
-          if (!performClickActionAt(rule, position)) {
-            if (mouse) {
-              // MouseInjectionScope has a cursor position of its own; `press()` takes a button,
-              // not a point, so the cursor is moved first.
-              heldSurfaceRoot(rule).performMouseInput {
-                moveTo(position)
-                press()
-              }
-              advanceHeldClocks(rule, POINTER_HOLD_MS)
-              heldSurfaceRoot(rule).performMouseInput { release() }
-            } else {
-              heldSurfaceRoot(rule).performTouchInput { down(position) }
-              advanceHeldClocks(rule, POINTER_MOVE_MS)
-              heldSurfaceRoot(rule).performTouchInput { move() }
-              advanceHeldClocks(rule, POINTER_HOLD_MS - POINTER_MOVE_MS)
-              heldSurfaceRoot(rule).performTouchInput { up() }
+          if (mouse) {
+            // MouseInjectionScope has a cursor position of its own; `press()` takes a button,
+            // not a point, so the cursor is moved first.
+            heldSurfaceRoot(rule).performMouseInput {
+              moveTo(position)
+              press()
             }
+            advanceHeldClocks(rule, POINTER_HOLD_MS)
+            rule.waitForIdle()
+            heldSurfaceRoot(rule).performMouseInput { release() }
+            rule.waitForIdle()
+          } else {
+            // `waitForIdle()` after each half, not just a clock advance. A press is only the
+            // anchor of a gesture once the node's `awaitPointerEventScope` coroutine has resumed
+            // and re-suspended on it, and under the held session's paused clock nothing else runs
+            // it — without the idle, `Modifier.clickable` sees the up before it has committed to
+            // the down and the tap is dropped.
+            heldSurfaceRoot(rule).performTouchInput { down(position) }
+            advanceHeldClocks(rule, POINTER_MOVE_MS)
+            rule.waitForIdle()
+            heldSurfaceRoot(rule).performTouchInput { move() }
+            advanceHeldClocks(rule, POINTER_HOLD_MS - POINTER_MOVE_MS)
+            rule.waitForIdle()
+            heldSurfaceRoot(rule).performTouchInput { up() }
+            rule.waitForIdle()
           }
         }
         "pointerDown" -> {
@@ -4176,28 +4205,6 @@ open class RobolectricHost(
       rule.waitForIdle()
     }
 
-    private fun performClickActionAt(
-      rule:
-        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
-          *,
-          androidx.activity.ComponentActivity,
-        >,
-      position: Offset,
-    ): Boolean {
-      val clickables = rule.onAllNodes(hasClickAction(), useUnmergedTree = true)
-      val nodes = clickables.fetchSemanticsNodes(atLeastOneRootRequired = false)
-      val target =
-        nodes
-          .withIndex()
-          .filter { (_, node) -> node.boundsInRoot.contains(position) }
-          .minByOrNull { (_, node) -> node.boundsInRoot.width * node.boundsInRoot.height }
-          ?: return false
-      rule.runOnUiThread { target.value.config[SemanticsActions.OnClick].action?.invoke() }
-      advanceHeldClocks(rule, POINTER_MOVE_MS)
-      rule.waitForIdle()
-      return true
-    }
-
     /**
      * Resolve a node by its `SemanticsProperties.ContentDescription` and invoke the named
      * `SemanticsActions` action against it — the screen-reader path. Used by
@@ -4209,9 +4216,9 @@ open class RobolectricHost(
      * Matching uses `useUnmergedTree = true` so a node merged into a parent (the inner `Icon` of an
      * `IconButton` carrying the contentDescription) remains reachable. When multiple nodes match
      * (e.g. two buttons with the same contentDescription), we pick the smallest by area — same
-     * heuristic as [performClickActionAt] uses for overlapping pixel hits — to bias toward the
-     * most-specific match. Note: a future iteration could surface "ambiguous match" as a distinct
-     * evidence message rather than silently picking one.
+     * heuristic the pixel-hit paths use for overlapping nodes — to bias toward the most-specific
+     * match. Note: a future iteration could surface "ambiguous match" as a distinct evidence
+     * message rather than silently picking one.
      *
      * Each `actionKind` arm maps to one
      * [`SemanticsActions`](https://developer.android.com/reference/kotlin/androidx/compose/ui/semantics/SemanticsActions)
@@ -4610,7 +4617,10 @@ open class RobolectricHost(
        */
       private const val HELD_CAPTURE_ADVANCE_MS: Long = 32L
 
-      /** Post-dispatch `mainClock` advance for any input kind. */
+      /**
+       * How long a synthesised click holds its press down, in `mainClock` time. Long enough that
+       * Compose reads it as a tap rather than as a stray down/up pair.
+       */
       private const val POINTER_HOLD_MS: Long = 100L
 
       /**
@@ -4619,6 +4629,23 @@ open class RobolectricHost(
        * [advanceHeldClocks] for why the window is stepped rather than jumped.
        */
       private const val HELD_CLOCK_STEP_MS: Long = 16L
+
+      /**
+       * Post-dispatch `mainClock` advance for a **click**: one frame, not a settle.
+       *
+       * Every kind used to advance `POINTER_HOLD_MS` here, and for a click that skipped the first
+       * 100ms of the press feedback the click had just started. With the idle frame cadence at
+       * 250ms on top, the whole thing was over before a client could be sent anything and a live
+       * click looked inert (wear-m3-catalog#32) — a ripple fades out over ~150ms from the release,
+       * so the old advance spent two thirds of it before the first frame.
+       *
+       * A click is the kind where that is pure loss: the gesture is already complete when the
+       * dispatch returns, [dispatchHeldMotion] has idled after each half (which is what makes the
+       * tap land at all), and everything still to come is the animation the frame loop exists to
+       * sample. The kinds that leave a pointer *down* keep the full settle — see
+       * [postDispatchAdvanceMs].
+       */
+      private const val POINTER_SETTLE_MS: Long = 16L
 
       private const val POINTER_MOVE_MS: Long = 16L
 

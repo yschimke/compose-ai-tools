@@ -165,6 +165,23 @@ fun renderFocusPreview(
   minHeightPx: Int? = null,
   maxWidthPx: Int? = null,
   maxHeightPx: Int? = null,
+  /**
+   * `@SettledPreview`'s target **coordinate** in milliseconds, or `0` for none. Discovery attaches
+   * a settle to a focused *still* row just as it does to a plain one, so a focused capture of a
+   * component whose content arrives on a timer needs the same wait — without it the focus walk runs
+   * against an empty container and the capture publishes one.
+   *
+   * A coordinate rather than a window because the two setup frames below already spend clock: an
+   * exact `afterMs` has to mean the same instant here as on the plain path, so those frames count
+   * toward it instead of being added on top (issue #4202 review). Auto mode's target already
+   * carries the same two-frame base, so it still walks its whole window.
+   *
+   * Spent on `mainClock` before the walk rather than after it: content that has not arrived yet has
+   * nothing focusable in it, so settling first is what gives the walk something to land on. This
+   * path drives a real `mainClock`, so `delay` is already on virtual time and no
+   * [DesktopSettleClock] is needed here.
+   */
+  settleTargetMs: Long = 0L,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
   require(focus != null || hoverIndex != null) { "focus or hover intent required" }
@@ -285,6 +302,11 @@ fun renderFocusPreview(
       // `scene.render()` calls on the single-frame path.
       mainClock.advanceTimeByFrame()
       mainClock.advanceTimeByFrame()
+
+      // `@SettledPreview` on a focused capture — see [settleTargetMs]. The two frames above are
+      // already on the clock, so only the remainder to the coordinate is owed.
+      val settleRemainderMs = settleTargetMs - SETUP_FRAMES_MS
+      if (settleRemainderMs > 0) mainClock.advanceTimeBy(settleRemainderMs)
 
       // `@ScrollingPreview(END)` + `@FocusedPreview` on one capture: land the scroll first, then
       // walk focus in the same scene. Order matters — focus first would be undone by the scroll
@@ -534,3 +556,10 @@ private fun InvokeFocusWrappedComposable(wrapperFqn: String, body: @Composable (
   val resolved = androidx.compose.runtime.remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
   resolved.first.invoke(currentComposer, resolved.second, body)
 }
+
+/**
+ * Virtual time the two setup frames above spend before any drive runs — two 60Hz frames, the same
+ * base `CAPTURE_ADVANCE_MS` gives the Android lane. A `@SettledPreview` coordinate is measured from
+ * the same zero, so this is what a settle target already has behind it.
+ */
+private const val SETUP_FRAMES_MS = 32L

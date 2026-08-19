@@ -46,6 +46,10 @@ class ServeCatalogLiveHostTest {
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
     override val hasA11yOverlay: Boolean = false,
+    /** Whether this host can project the typography / theme layers off a semantics tree. */
+    override val hasDesignAnnotations: Boolean = false,
+    /** Published typography this host can replay over its baked frame, keyed by preview id. */
+    private val publishedTypography: Set<String> = emptySet(),
     /**
      * Ids this host lists but has no pixels for (a catalog's deferred previews) — `render` reports
      * `NotFound` for them, exactly as the real baked host does.
@@ -53,7 +57,24 @@ class ServeCatalogLiveHostTest {
     override val liveOnlyPreviewIds: Set<String> = emptySet(),
     /** Published captures this host can serve, keyed `<motionId><extension>`. */
     private val motion: Map<String, ByteArray> = emptyMap(),
+    /** An open circuit breaker's reason, as [ServeRenderHost] reports one after a linkage fault. */
+    private val breakerReason: String? = null,
+    /**
+     * False models a **catalog** baked host whose published PNGs are fetched from the delivery
+     * branch on first use: `bakedRender` answers only from local pixels (it must never trigger the
+     * fetch), while `render` fetches and serves. The distinction is what turned an open breaker
+     * into a catalog-wide 409 in #4220.
+     */
+    private val bakedPixelsLocal: Boolean = true,
   ) : ServeHost {
+
+    override fun renderBreaker(): RenderBreakerSnapshot? = breakerReason?.let {
+      RenderBreakerSnapshot(open = true, fatal = true, reason = it)
+    }
+
+    override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
+      breakerReason
+
     override fun motionRead(motionId: String, extension: String): BranchFetch =
       motion["$motionId$extension"]?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
 
@@ -64,6 +85,7 @@ class ServeCatalogLiveHostTest {
     var lastSvgId: String? = null
     var lastStreamId: String? = null
     var lastA11yId: String? = null
+    var lastAnnotationsId: String? = null
     var renderCalls = 0
     val renderedIds = Collections.synchronizedList(mutableListOf<String>())
     var closed = false
@@ -84,7 +106,7 @@ class ServeCatalogLiveHostTest {
     // Local pixels, served without admission. Deliberately does NOT count as a render call, so a
     // test can assert the daemon was never reached.
     override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
-      if (previewId in liveOnlyPreviewIds) null
+      if (previewId in liveOnlyPreviewIds || !bakedPixelsLocal) null
       else RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
 
     override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
@@ -104,6 +126,22 @@ class ServeCatalogLiveHostTest {
       return A11yOutcome.Ok(
         """{"previewId":"$previewId","nodes":[],"findings":[],"touchTargets":[]}"""
           .encodeToByteArray()
+      )
+    }
+
+    override fun hasPublishedTypographyFor(previewId: String): Boolean =
+      previewId in publishedTypography
+
+    override fun renderAnnotations(
+      previewId: String,
+      overrides: PreviewOverrides,
+    ): AnnotationsOutcome {
+      lastAnnotationsId = previewId
+      lastRenderOverrides = overrides
+      if (!hasDesignAnnotations && previewId !in publishedTypography)
+        return AnnotationsOutcome.NotFound
+      return AnnotationsOutcome.Ok(
+        """{"previewId":"$previewId","annotations":[],"tags":{}}""".encodeToByteArray()
       )
     }
 
@@ -433,6 +471,119 @@ class ServeCatalogLiveHostTest {
       composite.renderA11y(androidOnlyId, PreviewOverrides()),
     )
     assertNull(live.lastA11yId)
+  }
+
+  @Test
+  fun `typography inspection maps the catalog id and preserves live overrides`() {
+    // Issue #4254: the composite reports `canApplyOverrides = false` (browsing is baked pixels),
+    // and
+    // the default `hasDesignAnnotations` reads exactly that flag — so a catalog fronted by a live
+    // daemon claimed it could not produce the layers its daemon produces on request, and
+    // `.annotations` 404'd while the viewer still offered the Typography checkbox.
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasDesignAnnotations = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+    val overrides = knobOverride().copy(uiMode = UiMode.DARK, fontScale = 1.3f)
+
+    assertTrue(composite.hasDesignAnnotations)
+    assertTrue(composite.hasDesignAnnotationsFor(catalogId))
+    val out = composite.renderAnnotations(catalogId, overrides) as AnnotationsOutcome.Ok
+    assertEquals(daemonId, live.lastAnnotationsId)
+    // The viewer's overrides must reach the daemon: a font-scaled frame's type sizes are the whole
+    // point of the layer, so inspecting the catalog's original pixels would describe the wrong
+    // text.
+    assertEquals(overrides, live.lastRenderOverrides)
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$daemonId\""))
+    assertNull(baked.lastAnnotationsId)
+  }
+
+  @Test
+  fun `typography inspection stays unavailable for a catalog preview without a daemon twin`() {
+    val baked =
+      RecordingHost(previews = listOf(ServePreview(androidOnlyId, androidOnlyId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasDesignAnnotations = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // No daemon twin AND nothing published for it — the layer has no source at all.
+    assertFalse(composite.hasDesignAnnotationsFor(androidOnlyId))
+    assertFalse(composite.hasPublishedTypographyFor(androidOnlyId))
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      composite.renderAnnotations(androidOnlyId, PreviewOverrides()),
+    )
+    assertNull(live.lastAnnotationsId)
+  }
+
+  @Test
+  fun `a catalog preview with no daemon twin inspects the published typography instead`() {
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+        publishedTypography = setOf(androidOnlyId),
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        hasDesignAnnotations = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // Browsing an unmapped id serves the baked PNG, and the published annotations were measured
+    // over exactly that frame — so the layer is answerable without any daemon.
+    assertTrue(composite.hasPublishedTypographyFor(androidOnlyId))
+    val out =
+      composite.renderAnnotations(androidOnlyId, PreviewOverrides()) as AnnotationsOutcome.Ok
+    assertEquals(androidOnlyId, baked.lastAnnotationsId)
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$androidOnlyId\""))
+    assertNull(live.lastAnnotationsId, "an unmapped id must never wake the daemon")
+
+    // …but only while the baked pixels are what the request asks for. A font scale would be
+    // reported as a dropped override and answered with the baked PNG, yet the published bounds
+    // were measured at the baked scale, so drawing them would misplace every box.
+    baked.lastAnnotationsId = null
+    assertEquals(
+      AnnotationsOutcome.NotFound,
+      composite.renderAnnotations(androidOnlyId, PreviewOverrides(fontScale = 1.5f)),
+    )
+    assertNull(baked.lastAnnotationsId)
+  }
+
+  @Test
+  fun `a mapped preview whose daemon has no semantics lane falls back to published typography`() {
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId)),
+        tag = "baked",
+        publishedTypography = setOf(catalogId),
+      )
+    // hasDesignAnnotations = false: a daemon backend carrying no `compose/semantics` lane.
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    val out = composite.renderAnnotations(catalogId, PreviewOverrides()) as AnnotationsOutcome.Ok
+    assertEquals(daemonId, live.lastAnnotationsId, "the daemon is asked first")
+    assertEquals(catalogId, baked.lastAnnotationsId, "…then the catalog's published layer")
+    assertTrue(out.json.decodeToString().contains("\"previewId\":\"$catalogId\""))
   }
 
   @Test
@@ -1219,7 +1370,15 @@ class ServeCatalogLiveHostTest {
       )
 
     composite.prewarm()
-    awaitOk(5_000) { backgroundWork.optimizerAdmissionSnapshot().takeIf { it.running == 1 } }
+    // The pass is at the quiet gate, which it now waits out holding NO lane — so what says it has
+    // started is its own worker being active, not an admission. (It used to be `running == 1`;
+    // that assertion was reading the bug where a gated pass sat on a lane the whole time.)
+    awaitOk(5_000) { composite.backgroundWorkActive.takeIf { it } }
+    assertEquals(
+      0,
+      backgroundWork.optimizerAdmissionSnapshot().running,
+      "a pass waiting for quiet must not be occupying a lane while it waits",
+    )
     backgroundWork.pauseOptimizers(60_000, "deploy")
     idleMillis.set(Long.MAX_VALUE)
     Thread.sleep(150)
@@ -1598,6 +1757,179 @@ class ServeCatalogLiveHostTest {
   }
 
   /** Wait for the background pass to go quiet, finished or not (unlike [awaitOptimization]). */
+  /**
+   * A pass still waiting at the idle gate must report the time it is spending there.
+   *
+   * The wait used to be charged by the caller, once [awaitQuiet] returned — so a gate that had not
+   * opened yet contributed nothing, and `gateWaitMillis: 0` meant both "sailed straight through"
+   * and "has been stuck here for three hours". The deployed server published exactly that: 23
+   * catalogs, `turnsGranted 0`, and a wait counter reading zero on every one of them.
+   */
+  @Test
+  fun `time spent at a gate that has not opened is reported while it is still shut`() {
+    val backgroundWork = ServeBackgroundWork()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        // Null is how the registry spells "a session holds a lease": permanently busy, so this
+        // gate never opens and the pass never gets a turn.
+        serverIdleMillis = { null },
+        themeOptimizationIdleMillis = 100,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    val waited =
+      awaitOk(5_000) { composite.themeOptimizationSnapshot()?.takeIf { it.gateWaitMillis > 0 } }
+
+    assertEquals(0, waited.turnsGranted, "the gate never opened, so no turn was ever granted")
+    assertEquals(0, live.renderCalls, "and nothing was rendered")
+    assertTrue(
+      waited.waitingMillis >= waited.gateWaitMillis,
+      "the total must not contradict the part it is made of",
+    )
+    composite.close()
+  }
+
+  /**
+   * A gated pass must not hold a lane while it waits — the failure that took the deployed server's
+   * theme cache to a standstill.
+   *
+   * Two catalogs won the two lanes at startup, blocked in the quiet wait, and never came out:
+   * `idleMillis()` answers *busy* outright while any session holds a lease, so nothing they were
+   * waiting for could ever arrive. Every other catalog was refused every 20s — 8,052 refusals, 43
+   * cumulative hours at the door — and not one of the 23 was ever granted a turn.
+   */
+  @Test
+  fun `a pass waiting on a gate that never opens leaves both lanes free for everyone else`() {
+    val backgroundWork = ServeBackgroundWork(maxConcurrentOptimizers = 1)
+    val previews = listOf(ServePreview(daemonId, daemonId))
+    fun host(idle: () -> Long?) =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live =
+          RecordingHost(previews = previews, tag = "live", declaredThemes = listOf(brandTheme)),
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = idle,
+        themeOptimizationIdleMillis = 100,
+        // The ceiling is the subject of its own test; off here so this one measures the lane.
+        optimizerGateCeilingMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+
+    // Null is the registry's "a session holds an open lease": this catalog can never be granted a
+    // turn, however long it waits.
+    val blocked = host { null }
+    blocked.prewarm()
+    awaitOk(5_000) { blocked.backgroundWorkActive.takeIf { it } }
+
+    repeat(5) {
+      assertEquals(
+        0,
+        backgroundWork.optimizerAdmissionSnapshot().running,
+        "a pass that cannot be granted a turn must wait at the gate, not on the only lane",
+      )
+      Thread.sleep(50)
+    }
+
+    // ...and the single lane is still there for a catalog whose box IS quiet.
+    val quiet = host { Long.MAX_VALUE }
+    quiet.prewarm()
+    assertTrue(awaitOptimization(quiet).fullyOptimized, "the free lane must be usable")
+
+    blocked.close()
+    quiet.close()
+  }
+
+  /**
+   * The ceiling: a gate that can shut permanently is indistinguishable from the feature being off.
+   *
+   * `idleMillis()` returning null is not "very busy", it is "unanswerable" — no quiet window ever
+   * satisfies it — so without a ceiling one leaked session lease switches theme optimization off
+   * for the life of the process, silently. The forced turn is deliberately one preview wide, which
+   * this asserts by leaving the box permanently busy and still expecting the work to finish.
+   */
+  @Test
+  fun `a gate that stays shut past the ceiling still grants a turn`() {
+    val backgroundWork = ServeBackgroundWork()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { null },
+        themeOptimizationIdleMillis = 100,
+        optimizerGateCeilingMillis = 50,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    val done = awaitOptimization(composite)
+
+    assertTrue(done.fullyOptimized, "the ceiling must make progress a shut gate never would")
+    assertTrue(done.turnsForced > 0, "and say so: the box never granted this turn, the ceiling did")
+    assertTrue(
+      done.turnsForced <= done.turnsGranted,
+      "forced turns are a slice of the granted total, not a separate tally",
+    )
+    composite.close()
+  }
+
+  /**
+   * The one refusal the ceiling must respect.
+   *
+   * Catalog loading reads as busy on purpose: a daemon start starved by background renders is
+   * recorded as `livebundle-unavailable` and degrades that catalog to baked PNGs for the whole
+   * process. A cold theme cache is recoverable; that is not — so the ceiling waits for loading in a
+   * way it deliberately does not wait for traffic.
+   */
+  @Test
+  fun `the ceiling does not override the catalog-loading gate`() {
+    val backgroundWork = ServeBackgroundWork()
+    backgroundWork.expectInitialCatalogLoad()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        // Quiet as far as requests go — only the load is holding the gate.
+        serverIdleMillis = backgroundWork.idleClock { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 100,
+        optimizerGateCeilingMillis = 50,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    // Comfortably past the ceiling, which would have forced a turn were traffic the only reason.
+    Thread.sleep(400)
+    assertEquals(0, live.renderCalls, "no render may start while catalogs are still loading")
+    assertEquals(0, composite.themeOptimizationSnapshot()?.turnsForced)
+
+    backgroundWork.initialCatalogLoadFinished()
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    composite.close()
+  }
+
   private fun awaitPassIdle(host: ServeCatalogLiveHost) {
     repeat(200) {
       if (!host.backgroundWorkActive) return
@@ -2094,5 +2426,91 @@ class ServeCatalogLiveHostTest {
 
     val snapshot = awaitOk(10_000) { cache.snapshot().takeIf { it.cached >= 2 } }
     assertEquals(2, snapshot.cached, "both themes cached without re-earning the entry window")
+  }
+
+  /**
+   * #4220: one broken daemon must not black out the pixels it was never the source of.
+   *
+   * A catalog fetches its published PNGs from the delivery branch on first use, so `bakedRender`
+   * (deliberately local-only) says null for a preview nobody has asked for yet — and the HTTP layer
+   * consults [renderFailureLatch] the moment it does. Latching every id in the alias therefore
+   * answered `409` to a plain override-free browse whose pixels `render` would have fetched
+   * happily, breaking every `<img>` on every page of the catalog while the degradation banner
+   * promised those very snapshots. Only requests the daemon was the answer to may be refused.
+   */
+  @Test
+  fun `an open breaker does not latch a browse the baked lane can answer`() {
+    val brokenLane =
+      "render lane disabled after a non-recoverable UnsatisfiedLinkError \u2014 retrying cannot help."
+    val baked =
+      RecordingHost(
+        previews =
+          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+        // The production shape: published, but not yet pulled onto this box.
+        bakedPixelsLocal = false,
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "live",
+        streaming = true,
+        breakerReason = brokenLane,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // The browse the baked PNG answers truthfully: no latch, and the pixels arrive through
+    // `render`, which is the lane that fetches them.
+    assertNull(composite.renderFailureLatch(catalogId, PreviewOverrides()))
+    val outcome = composite.render(catalogId, PreviewOverrides()) as RenderOutcome.Ok
+    assertEquals("baked:$catalogId", outcome.png.decodeToString())
+    assertEquals(0, live.renderCalls, "a broken daemon must not be asked to serve a baked browse")
+
+    // An unmapped (Android-only) variant never had a live twin, so it was never latched.
+    assertNull(composite.renderFailureLatch(androidOnlyId, PreviewOverrides()))
+
+    // A `uiMode` restating the variant's own baked theme is a no-op, so it stays baked too.
+    assertNull(composite.renderFailureLatch(catalogId, PreviewOverrides(uiMode = UiMode.DARK)))
+  }
+
+  /**
+   * The other half of the same rule: a request the baked pixels cannot answer still gets the
+   * terminal `409` naming the linkage error, rather than a dishonest `200` of the un-overridden
+   * snapshot or a `503` that invites the viewer to retry a lane that will never come back.
+   */
+  @Test
+  fun `an open breaker still latches the renders only the daemon could serve`() {
+    val brokenLane =
+      "render lane disabled after a non-recoverable UnsatisfiedLinkError \u2014 retrying cannot help."
+    val liveOnlyId = "chip-assist__ideal__deferred__light"
+    val liveOnlyDaemonId = "AssistChip_Deferred_Light"
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId), ServePreview(liveOnlyId, liveOnlyId)),
+        tag = "baked",
+        liveOnlyPreviewIds = setOf(liveOnlyId),
+      )
+    val live =
+      RecordingHost(
+        previews =
+          listOf(
+            ServePreview(daemonId, daemonId, overrides = listOf(labelKnob)),
+            ServePreview(liveOnlyDaemonId, liveOnlyDaemonId),
+          ),
+        tag = "live",
+        streaming = true,
+        breakerReason = brokenLane,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        mapOf(catalogId to daemonId, liveOnlyId to liveOnlyDaemonId),
+        live,
+        baked,
+      )
+
+    // A knob the baked PNG cannot represent — the daemon was the only lane, and it is broken.
+    assertEquals(brokenLane, composite.renderFailureLatch(catalogId, knobOverride()))
+    // A deferred (live-only) preview has no baked pixels at all, so even a bare browse is latched.
+    assertEquals(brokenLane, composite.renderFailureLatch(liveOnlyId, PreviewOverrides()))
   }
 }

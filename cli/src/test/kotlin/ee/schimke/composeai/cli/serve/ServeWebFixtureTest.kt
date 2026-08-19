@@ -182,7 +182,6 @@ class ServeWebFixtureTest {
       .let { ctx ->
         ServeWeb.ReportIssue(
           action = ServeIssueReport.action(ctx.repo),
-          title = ServeIssueReport.title(ctx),
           body = ServeIssueReport.body(ctx),
           bodyTemplate = ServeIssueReport.body(ctx, renderPlaceholder = true),
           repo = ctx.repo,
@@ -317,6 +316,52 @@ class ServeWebFixtureTest {
   // `previews/variants.json` manifest carries. The landing folds each component to ONE (default)
   // card; the viewer grows its `.cp-axes-tree` subtree reaching the component's other
   // same-theme states. Captured so the visual-diff bot covers the state toggle end-to-end.
+  /**
+   * A Wear-shaped catalog that documents each component at the FIVE screen sizes its kit declares —
+   * the shape wear-m3-catalog publishes. Every render carries the breakpoint it was captured at
+   * (`ServePreview.size`), so the landing folds the non-primary sizes onto one card per component
+   * and the viewer offers them as a size switcher; without the fold this is 10 cards wearing 2
+   * names (wear-m3-catalog#41).
+   *
+   * `alertdialog` also varies its button arrangement, so the fixture pins the two axes *crossed*:
+   * the state rows have to keep holding the size fixed, and the size rows the state.
+   */
+  private val breakpointPreviews =
+    listOf("192dp", "204dp", "216dp", "225dp", "240dp").flatMapIndexed { index, size ->
+      listOf(
+        ServePreview(
+          "alertdialog__ideal__default__$size",
+          "Alert Dialog · $size",
+          componentId = "AlertDialog",
+          state = "default",
+          size = size,
+          section = "Containment",
+          group = "Dialogs",
+          catalogOrder = index * 2,
+        ),
+        ServePreview(
+          "alertdialog__ideal__no-buttons__$size",
+          "Alert Dialog · No buttons · $size",
+          componentId = "AlertDialog",
+          state = "no-buttons",
+          size = size,
+          section = "Containment",
+          group = "Dialogs",
+          catalogOrder = index * 2 + 1,
+        ),
+        ServePreview(
+          "timetext__ideal__default__$size",
+          "Time Text · $size",
+          componentId = "TimeText",
+          state = "default",
+          size = size,
+          section = "Text",
+          group = "Time",
+          catalogOrder = 100 + index,
+        ),
+      )
+    }
+
   private val statefulPreviews =
     listOf(
       ServePreview(
@@ -1118,6 +1163,33 @@ class ServeWebFixtureTest {
             ),
           ),
       )
+    // The **default-value deep link** (#4218), captured because the bug it records is invisible
+    // in the markup and lives entirely in what the page does with its own query string.
+    //
+    // Same catalog and same imported reference as [viewerPath], on a preview whose id NAMES its
+    // theme (`…__light`) — which is what makes `?uiMode=light` a value that spells out the
+    // default rather than an override. `pages-snapshot` navigates it at exactly the reported URL
+    // (`?uiMode=light&mode=spec&specView=diff`), so the capture holds the state a visitor reaches
+    // by toggling to dark and back: the spec lane up, the diff drawn, and — the part that
+    // regressed — the live match on the chip and in the readout rather than the "baseline-only"
+    // fallback that a pinned theme correctly produces. [viewerPath] keeps the untokened case, so
+    // the pair covers both sides of the rule.
+    val viewerSpecDefaultTheme =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "profile-screen__ideal__default__light",
+          "Profile screen",
+          section = "Screens",
+          componentId = "ProfileScreen",
+        ),
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        basePath = "/meshcore-mobile",
+        siblings = previews,
+        figmaSpec = fixtureFigmaSpec,
+        designReference = fixtureDesignReference,
+      )
     // A **Remote Compose** viewer, the shape preview.coo.ee serves for `remote-m3`: the same
     // captured `.rc` document is drawable by five different players, so this is the page the
     // renderer picker exists for. Captured because it is the ONLY fixture that carries the picker
@@ -1285,6 +1357,25 @@ class ServeWebFixtureTest {
         canApplyOverrides = true,
         hasA11yOverlay = true,
         hasDesignAnnotations = true,
+      )
+    // The **other lane behind the same Typography layer**: a published catalog with no daemon at
+    // all, whose `annotations/index.json` carries typography measured over the baked frame this
+    // page shows. `canApplyOverrides = false` and `hasDesignAnnotations = false` — so the Overrides
+    // drawer is the static one and there is no Theme attributes row (nothing authors theme
+    // attributes into a bundle; they are projected from a live semantics tree).
+    //
+    // Its own fixture rather than a flag on `serve-viewer-inspect`, because the claim is precisely
+    // that a page WITHOUT the daemon controls still offers a working layer — which is invisible on
+    // a fixture that has every control anyway. The harness ticks it in the
+    // `serve-viewer-published-typography` `layers` state, so the boxes and the legend are diffed
+    // per PR alongside the daemon lane's.
+    val viewerPublishedTypography =
+      ServeWeb.viewerPage(
+        ServePreview("button-filled__ideal__default__light", "Filled button (light)"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        hasPublishedTypography = true,
       )
     // An SVG-exporting viewer opened straight into the **exploded 3D** view: the `3D` chip pressed
     // beside the SVG one, and the Exploded 3D group in the overrides drawer holding the camera
@@ -1994,6 +2085,86 @@ class ServeWebFixtureTest {
       "…and its destination is THIS node in the catalog's design file",
     )
 
+    // The catalog-wide MOTION BROWSER: every recording this catalog publishes, on one page.
+    //
+    // Captured because the page is the only place a reader can compare one component's transition
+    // against its neighbour's, and because its resting state is load-bearing — every card opens on
+    // its component's still, and nothing animates until someone presses it. A baseline of that
+    // resting grid is what would catch the page starting to autoplay.
+    //
+    // Two sections and a component with TWO captures, deliberately: the section heads are the
+    // page's only structure, and a component whose recordings differ only in their caption's tail
+    // is exactly the case [MotionCaptureLabels] splits — one card per capture, distinguished in
+    // the title, explained underneath.
+    val motionPreviews =
+      listOf(
+        ServePreview(
+          "switch-on__ideal__default__light",
+          "Switch · On",
+          section = "Components",
+          catalogOrder = 1,
+          motion =
+            listOf(
+              ServeMotion(
+                id = "switch-on__ideal__default__light",
+                kind = "interaction",
+                caption =
+                  "Toggle on. The thumb travels the full width of the track and the container " +
+                    "recolours to the checked state as it lands.",
+              ),
+              ServeMotion(
+                id = "switch-on__ideal__default__light__anim",
+                kind = "animation",
+                caption =
+                  "Thumb settle. Released mid-travel, the thumb overshoots and settles back " +
+                    "through the theme's spatial spring rather than snapping to the stop.",
+              ),
+            ),
+        ),
+        ServePreview(
+          "card-filled__ideal__default__light",
+          "Card · Filled",
+          section = "Components",
+          catalogOrder = 2,
+          motion =
+            listOf(
+              ServeMotion(
+                id = "card-filled__press",
+                kind = "interaction",
+                caption =
+                  "Press and hold the card. The container lifts to its pressed elevation and " +
+                    "the ripple expands from the contact point.",
+              )
+            ),
+        ),
+        // A capture with NO caption, which the annotation defaults produce and which the page has
+        // to name honestly rather than leaving blank — the same fallback the viewer's picker uses.
+        ServePreview(
+          "profile__screen",
+          "Profile screen",
+          section = "Screens",
+          catalogOrder = 3,
+          motion = listOf(ServeMotion(id = "profile__scroll", kind = "interaction")),
+        ),
+        // …and a still-only component, which must NOT appear: the page is a list of recordings.
+        ServePreview(
+          "badge__ideal__default__light",
+          "Badge",
+          section = "Components",
+          catalogOrder = 4,
+        ),
+      )
+    val motionIndex =
+      ServeWeb.motionIndexPage(
+        moduleLabel = "compose-m3",
+        previews = motionPreviews,
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+      )
+
     val designPageIndex =
       ServeWeb.designPagesIndexPage(
         moduleLabel = "compose-m3",
@@ -2020,6 +2191,10 @@ class ServeWebFixtureTest {
         isPublic = true,
         hasHomeIndex = true,
         version = version,
+        // The motion browser's entry point, in the `⋯` menu with the catalog's other
+        // destinations. This fixture is the one the harness OPENS that menu on (`actions-menu`),
+        // so it is the only place the chip's pixels are ever captured.
+        motionCaptureCount = 4,
         declaredThemes =
           listOf(
             ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
@@ -2090,6 +2265,33 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         hasHomeIndex = true,
+        version = version,
+      )
+    // A breakpoint-bearing catalog: one card per component at its first declared size, the other
+    // four folded away. Captured so the visual-diff bot covers the size axis on every future PR.
+    val landingBreakpoints =
+      ServeWeb.landingPage(
+        "wear-m3-catalog",
+        breakpointPreviews,
+        token,
+        sessionId = "wear-m3-catalog",
+        trust = "branch:yschimke/wear-m3-catalog@design-artifacts/wear-m3-catalog",
+        isPublic = true,
+        hasHomeIndex = true,
+        basePath = "/wear-m3-catalog",
+        declaredSurface = "dark",
+        version = version,
+      )
+    // …and its viewer, whose subtree lists the four folded breakpoints beside the state rows.
+    val viewerBreakpoints =
+      ServeWeb.viewerPage(
+        breakpointPreviews.first(),
+        token,
+        sessionId = "wear-m3-catalog",
+        catalogName = "M3 Wear OS Apps Design Kit",
+        isPublic = true,
+        basePath = "/wear-m3-catalog",
+        siblings = breakpointPreviews,
         version = version,
       )
     // An app catalog served under its path (/meshcore-mobile/) whose previews carry sections: the
@@ -2587,6 +2789,15 @@ class ServeWebFixtureTest {
                 ),
                 ServeWeb.Stat("Live daemons running", "1"),
                 ServeWeb.Stat("Active streams", "2"),
+                // Captured in the state that used to be invisible: a quiet gate held shut by a
+                // session lease, which stands the theme optimizer down indefinitely while every
+                // per-catalog row says only "paused". The fixture keeps the awkward case — the
+                // longest of the four wordings, with a holder named — so the row's wrapping is
+                // covered rather than the tidy "open · idle 90s" one.
+                ServeWeb.Stat(
+                  "Theme optimiser gate",
+                  "closed · session lease held by compose-m3 · needs 60s quiet",
+                ),
                 ServeWeb.Stat(
                   "Live seats",
                   "3 free / 5",
@@ -2774,7 +2985,6 @@ class ServeWebFixtureTest {
         report =
           ServeWeb.BugReport(
             action = ServeBugReport.action(),
-            title = ServeBugReport.title(bugReportPageContext),
             body = ServeBugReport.body(bugReportServer, bugReportPageContext),
             bodyTemplate =
               ServeBugReport.body(
@@ -2852,6 +3062,7 @@ class ServeWebFixtureTest {
         "serve-viewer-theme-overflow.html" to viewerThemeOverflow,
         "serve-viewer-focus.html" to viewerFocus,
         "serve-viewer-inspect.html" to viewerInspect,
+        "serve-viewer-published-typography.html" to viewerPublishedTypography,
         "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-viewer-source.html" to viewerSource,
@@ -2859,6 +3070,7 @@ class ServeWebFixtureTest {
         "serve-landing-path.html" to landingPath,
         "serve-landing-site.html" to landingSite,
         "serve-viewer-path.html" to viewerPath,
+        "serve-viewer-spec-default-theme.html" to viewerSpecDefaultTheme,
         "serve-viewer-rc-players.html" to viewerRcPlayers,
         "serve-viewer-wear-screen.html" to viewerWearScreen,
         "serve-landing-themed.html" to landingThemed,
@@ -2873,12 +3085,15 @@ class ServeWebFixtureTest {
         "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,
         "serve-design-page.html" to designPageHtml,
         "serve-design-page-index.html" to designPageIndex,
+        "serve-motion-index.html" to motionIndex,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
         "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,
         "serve-landing-live.html" to landingLive,
         "serve-landing-states.html" to landingStates,
         "serve-landing-sections.html" to landingSections,
+        "serve-landing-breakpoints.html" to landingBreakpoints,
+        "serve-viewer-breakpoints.html" to viewerBreakpoints,
         "serve-viewer-states.html" to viewerStates,
         "serve-viewer-axes-folded.html" to viewerAxesFolded,
         "serve-viewer-cross-product.html" to viewerCrossProduct,

@@ -161,6 +161,77 @@ class ServeViewerThemeBarTest {
   }
 
   @Test
+  fun `the select names the theme its preview is baked in`() {
+    // `data-default-theme` is what makes "has the visitor pinned a theme?" answerable. Without it
+    // the only record of the baked theme is the `selected` option, which stops answering the
+    // moment the sticky script writes `el.value` — so a URL that merely spells the default out
+    // (`?uiMode=light` on a light variant) read as a pinned override and suppressed the Figma
+    // comparison for a visitor who had chosen nothing (#4218).
+    assertTrue(
+      viewer(ServePreview("button-filled__ideal__default__light", "Button"))
+        .contains("data-default-theme=\"light\""),
+      "a __light variant is baked light",
+    )
+    assertTrue(
+      viewer(ServePreview("button-filled__ideal__default__dark", "Button"))
+        .contains("data-default-theme=\"dark\""),
+      "…and the forgiveness is per-preview: on a __dark variant it is `dark` that asks for nothing",
+    )
+    assertTrue(
+      viewer(ServePreview("wear.Chip", "Chip"), basePath = "/wear-m3", themes = emptyList())
+        .contains("data-default-theme=\"dark\""),
+      "a dark-first system's default needs no id token to be known",
+    )
+  }
+
+  @Test
+  fun `a preview whose theme the catalog cannot name claims no default`() {
+    // Empty is "the server could not say", NOT "light". The select still displays Light (its
+    // `selected` option), but the baked pixels are not known to be a light render, so
+    // `uiMode=light`
+    // there stays a real override that has to travel — claiming it as the default would answer a
+    // request with pixels that may not honour it.
+    assertTrue(
+      viewer(ServePreview("plain.Button", "Button")).contains("data-default-theme=\"\""),
+      "no id token, no metadata, not dark-first: nothing to claim",
+    )
+  }
+
+  @Test
+  fun `the sticky bootstrap displays a default-valued choice without marking it a pick`() {
+    val html = viewer(ServePreview("button-filled__ideal__default__light", "Button"))
+    assertTrue(
+      html.contains("var bakedTheme = el.getAttribute(\"data-default-theme\") || \"\";") &&
+        html.contains("function pinsTheme(choice) { return !!choice && choice !== bakedTheme; }"),
+      "the bootstrap must share the viewer's rule rather than re-deciding it: $html",
+    )
+    // Both seeding paths — the URL and the remembered choice — display the value and mark it
+    // active only when it deviates. `data-theme-active` is what the spec baseline is published
+    // from three lines later, so an un-guarded write here is the whole bug.
+    assertTrue(
+      html.contains("if (pinsTheme(urlChoice)) el.setAttribute(\"data-theme-active\", \"1\");"),
+      "a URL naming the default must not read as a pin: $html",
+    )
+    assertTrue(
+      html.contains("if (pinsTheme(stored)) el.setAttribute(\"data-theme-active\", \"1\");"),
+      "…nor must a remembered choice that agrees with it: $html",
+    )
+  }
+
+  @Test
+  fun `the viewer asks the shared rule whether a theme choice is a pin`() {
+    val script = viewerSource()
+    assertTrue(
+      script.contains("defaultValue: defaultThemeValue(),"),
+      "activeThemeChoice needs the baked theme to forgive a default-valued pick: $script",
+    )
+    assertTrue(
+      script.contains("rules.pinsTheme(choice, defaultThemeValue())"),
+      "Back/Forward hydration restores \"nobody picked\", not a pick agreeing with the default",
+    )
+  }
+
+  @Test
   fun `viewer js drives the select from the chips rather than rendering themes itself`() {
     val script = viewerSource()
     assertTrue(

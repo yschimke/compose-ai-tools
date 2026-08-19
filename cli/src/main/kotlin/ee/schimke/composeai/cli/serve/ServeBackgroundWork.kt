@@ -94,6 +94,21 @@ class ServeBackgroundWork(
   private val optimizerHostRefusals = AtomicLong()
 
   /**
+   * The clocks [idleClock] handed out, retained so [optimizerAdmissionSnapshot] can publish the
+   * value the optimizer's quiet gate actually reads.
+   *
+   * Every counter on `/status.json` described what the optimizer was doing *after* it got a turn,
+   * and none described the input that decides whether it ever gets one. A box where the gate never
+   * opens therefore reports the same all-zero row as a box with nothing left to do — which is how a
+   * server ran for hours with `turnsGranted 0` on all 23 catalogs and no page saying why.
+   * [publishedRequestIdleClock] is kept alongside the composed one so the null can be attributed: a
+   * held session lease and a catalog load are both "busy" to the gate and have nothing else in
+   * common.
+   */
+  @Volatile private var publishedIdleClock: (() -> Long?)? = null
+  @Volatile private var publishedRequestIdleClock: (() -> Long?)? = null
+
+  /**
    * True while the server is bringing catalogs up: the startup pass hasn't finished, or a refresh /
    * admin registration is fetching one right now. Background work treats this as "busy" even though
    * no visitor is waiting, because a catalog that loads slowly enough loses its live lane.
@@ -132,7 +147,15 @@ class ServeBackgroundWork(
    * clock restarts at zero when startup, refresh, or admin registration finishes. The catalog host
    * applies its quiet-window threshold to the smaller of this and request/render idleness.
    */
-  fun idleClock(idleMillis: () -> Long?): () -> Long? = {
+  fun idleClock(idleMillis: () -> Long?): () -> Long? =
+    composeIdleClock(idleMillis).also {
+      // Every catalog host asks for one and they all wrap the same registry, so last-wins is the
+      // same clock each time. Retained purely so status can read it; nothing here drives behaviour.
+      publishedRequestIdleClock = idleMillis
+      publishedIdleClock = it
+    }
+
+  private fun composeIdleClock(idleMillis: () -> Long?): () -> Long? = {
     if (catalogsLoading) {
       null
     } else {
@@ -341,6 +364,15 @@ class ServeBackgroundWork(
         unlock()
       }
     }
+    // Read the composed clock ONCE; the attribution below re-reads the request side only when it
+    // has already answered "busy", so the two can never contradict each other in the same row.
+    val serverIdle = publishedIdleClock?.invoke()
+    val idleBlockedBy =
+      when {
+        publishedIdleClock == null || serverIdle != null -> null
+        publishedRequestIdleClock?.invoke() == null -> IDLE_BLOCKED_BY_SESSION_LEASE
+        else -> IDLE_BLOCKED_BY_CATALOG_LOAD
+      }
     return ThemeOptimizerAdmissionSnapshot(
       lanes = optimizerLanes,
       running = optimizerRunning.values.sumOf(AtomicInteger::get),
@@ -360,6 +392,9 @@ class ServeBackgroundWork(
           else -> null
         },
       pressure = pressure,
+      serverIdleMillis = serverIdle,
+      idleBlockedBy = idleBlockedBy,
+      idleThresholdMillis = ServeCatalogLiveHost.themeOptimizationIdleMillisDefault(),
     )
   }
 
@@ -396,6 +431,12 @@ class ServeBackgroundWork(
 
     /** Pause reasons are bounded before they reach a status page. */
     const val MAX_PAUSE_REASON_CHARS: Int = 200
+
+    /** [ThemeOptimizerAdmissionSnapshot.idleBlockedBy]: a session holds an open lease. */
+    const val IDLE_BLOCKED_BY_SESSION_LEASE: String = "session-lease"
+
+    /** [ThemeOptimizerAdmissionSnapshot.idleBlockedBy]: catalogs are still loading. */
+    const val IDLE_BLOCKED_BY_CATALOG_LOAD: String = "catalog-load"
 
     /** Widest lane [renderLaneFor] will derive on its own. Beyond this, ask for it explicitly. */
     const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
@@ -470,4 +511,27 @@ data class ThemeOptimizerAdmissionSnapshot(
   val pausedUntilEpochMillis: Long? = null,
   val pauseReason: String? = null,
   val pressure: OptimizerPressureSnapshot? = null,
+  /**
+   * The whole-server idle clock the optimizer's quiet gate reads, or null when it reads *busy*.
+   *
+   * This is the gate's input, and until it was published nothing on the page distinguished "the box
+   * is never quiet enough to start" from "there is nothing left to do": both showed a pass that had
+   * rendered nothing. Compare against [idleThresholdMillis] — a number consistently below it, or a
+   * persistent null, means no catalog will ever be granted a turn, whatever [lanes], [admissions]
+   * and [paused] say.
+   */
+  val serverIdleMillis: Long? = null,
+  /**
+   * Why [serverIdleMillis] is null, when it is: [IDLE_BLOCKED_BY_SESSION_LEASE] (a session holds an
+   * open lease — `daemons.leasedSessions` names it) or [IDLE_BLOCKED_BY_CATALOG_LOAD] (catalogs are
+   * still being fetched). Null when the clock is running, or before any catalog host has asked for
+   * one.
+   *
+   * The two have opposite fixes and are indistinguishable from the outside: a lease that outlives
+   * its request is a bug that stands the optimizer down permanently, while a catalog load is the
+   * gate working as designed.
+   */
+  val idleBlockedBy: String? = null,
+  /** Quiet [serverIdleMillis] must reach before a cold pass may start. */
+  val idleThresholdMillis: Long = 0,
 )

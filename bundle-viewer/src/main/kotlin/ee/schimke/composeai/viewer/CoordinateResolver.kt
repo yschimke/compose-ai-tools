@@ -6,6 +6,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.util.UUID
@@ -189,16 +190,90 @@ internal object CoordinateResolver {
     downloadCacheDir: Path,
     fileSystem: FileSystem,
   ): Path? {
+    val versionDir = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}"
     for (fileName in candidateFileNames(coord)) {
-      val rel = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
-      val dest = downloadCacheDir / rel
+      // The cache always keys on the LITERAL `<artifact>-<version>.<ext>` name, even when the
+      // remote served a timestamped snapshot file, so [locate] finds the download next time.
+      val dest = downloadCacheDir / "$versionDir/$fileName"
       for (base in remoteRepositories) {
-        if (fetchTo(base.trimEnd('/') + "/" + rel, dest, fileSystem))
+        val remoteName = remoteFileName(base, coord, versionDir, fileName)
+        if (fetchTo(base.trimEnd('/') + "/" + versionDir + "/" + remoteName, dest, fileSystem))
           return materialize(dest, downloadCacheDir, fileSystem)
       }
     }
     return null
   }
+
+  /**
+   * The file name [base] actually serves for [coord] — [fileName] itself for a release, and for a
+   * **unique snapshot** the timestamped name its `maven-metadata.xml` names.
+   *
+   * A Maven snapshot repository does not serve `<artifact>-1.0.0-SNAPSHOT.aar`: it stores each
+   * publication as `<artifact>-1.0.0-<yyyyMMdd.HHmmss>-<n>.<ext>` and points at the current one
+   * from the version directory's `maven-metadata.xml`. Constructing the literal name 404s against
+   * every real snapshot repo, so a bundle carrying a `-SNAPSHOT` coordinate could not be rehydrated
+   * from the network at all (issues #4259 / #4265). Mirrors `:cli`'s `CoordinateResolver` — keep
+   * the two in sync.
+   *
+   * Falls back to [fileName] on anything unexpected (no metadata, unparseable metadata, transport
+   * error, or a repo publishing non-unique snapshots under the literal name), which is the old
+   * behaviour exactly.
+   */
+  private fun remoteFileName(
+    base: String,
+    coord: ClasspathEntry.Maven,
+    versionDir: String,
+    fileName: String,
+  ): String {
+    if (!isSnapshot(coord.version)) return fileName
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "")
+    val metadata = fetchText(base.trimEnd('/') + "/" + versionDir + "/maven-metadata.xml")
+    val timestamped = metadata?.let { snapshotVersion(it, extension) } ?: return fileName
+    return "${coord.artifact}-$timestamped.$extension"
+  }
+
+  /** GET [url] as text, or null on a non-2xx / transport error. */
+  private fun fetchText(url: String): String? =
+    try {
+      HttpClient(OkHttp).use { client ->
+        runBlocking {
+          client.prepareGet(url).execute { response ->
+            if (response.status.isSuccess()) response.bodyAsText() else null
+          }
+        }
+      }
+    } catch (_: Exception) {
+      null
+    }
+
+  /** A Maven snapshot version — the only kind whose artifact file name isn't the version. */
+  internal fun isSnapshot(version: String): Boolean = version.endsWith("-SNAPSHOT")
+
+  /**
+   * The unique-snapshot version (`1.0.0-20260818.194125-1`) a version-level `maven-metadata.xml`
+   * publishes for [extension], or null when the document names none. Scanned rather than parsed to
+   * keep the viewer's module graph free of an XML parser: `<snapshotVersion>` blocks carrying a
+   * `<classifier>` are skipped (the `sources` / `javadoc` siblings publish the same extension), and
+   * the first remaining block whose `<extension>` matches wins — a version-level metadata document
+   * carries one classifier-free entry per extension, the current publication.
+   */
+  internal fun snapshotVersion(metadataXml: String, extension: String): String? =
+    SNAPSHOT_VERSION_BLOCK.findAll(metadataXml)
+      .map { it.groupValues[1] }
+      .filterNot { "<classifier>" in it }
+      .firstOrNull { tagValue(it, "extension").equals(extension, ignoreCase = true) }
+      ?.let { tagValue(it, "value") }
+      ?.takeIf { it.isNotBlank() }
+
+  private val SNAPSHOT_VERSION_BLOCK =
+    Regex("""<snapshotVersion>(.*?)</snapshotVersion>""", RegexOption.DOT_MATCHES_ALL)
+
+  private fun tagValue(block: String, tag: String): String? =
+    Regex("""<$tag>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL)
+      .find(block)
+      ?.groupValues
+      ?.get(1)
+      ?.trim()
 
   /**
    * GET [url] into [dest] (parent dirs created); true only on a 2xx with a non-empty body. The

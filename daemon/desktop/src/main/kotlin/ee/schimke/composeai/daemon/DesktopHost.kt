@@ -432,7 +432,14 @@ open class DesktopHost(
       try {
         sceneExecutor
           .submit<RenderEngine.SceneState> {
-            engine.setUp(spec, classLoader, inspectionMode = inspectionMode ?: false)
+            engine.setUp(
+              spec,
+              classLoader,
+              inspectionMode = inspectionMode ?: false,
+              // A held interactive scene runs on wall time; a `DesktopSettleClock` would freeze
+              // every `delay` the user's clicks start. See `RenderEngine.setUp`'s `settleEligible`.
+              settleEligible = false,
+            )
           }
           .get()
       } catch (e: ExecutionException) {
@@ -532,6 +539,9 @@ open class DesktopHost(
         effectiveSpec,
         classLoader,
         inspectionMode = effectiveSpec.inspectionMode ?: false,
+        // Same as the interactive session: a recording walks its own timeline frame by frame, and
+        // a virtual settle clock would hold every `delay` it depends on.
+        settleEligible = false,
       )
     val recordingsRoot = recordingsRootDir()
     val framesDir = File(File(recordingsRoot, "frames"), recordingId)
@@ -566,6 +576,17 @@ open class DesktopHost(
   }
 
   /**
+   * Test seam for [applyOverrides] — the held-session (interactive / recording) merge is otherwise
+   * reachable only by standing up a full session with a live Skiko scene. Mirrors
+   * `RobolectricHost.applyOverridesForTest` so the two backends' held-lane behaviour can be
+   * asserted the same way.
+   */
+  internal fun applyOverridesForTest(
+    base: RenderSpec,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  ): RenderSpec = applyOverrides(base, overrides, "test-session")
+
+  /**
    * Merge [overrides] over [base], resolving `device` against [DeviceDimensions] when present.
    * Mirrors the stringly-typed merge that `JsonRpcServer.encodeRenderPayload` +
    * `RenderSpec.parseFromPayload` perform on the renderNow path — typed because recording doesn't
@@ -590,30 +611,34 @@ open class DesktopHost(
       mergePreviewOverrides(
         base =
           PreviewOverrideBaseSpec(
-            widthPx = base.widthPx,
-            heightPx = base.heightPx,
-            density = base.density,
-            device = base.device,
-            localeTag = base.localeTag,
-            fontScale = base.fontScale,
-            uiMode =
-              when (base.uiMode) {
-                RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
-                RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
-                null -> null
-              },
-            orientation =
-              when (base.orientation) {
-                RenderSpec.SpecOrientation.PORTRAIT ->
-                  ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
-                RenderSpec.SpecOrientation.LANDSCAPE ->
-                  ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
-                null -> null
-              },
-            inspectionMode = base.inspectionMode,
-            material3Theme = base.overrides?.material3Theme,
-            wallpaper = base.overrides?.wallpaper,
-          ),
+              widthPx = base.widthPx,
+              heightPx = base.heightPx,
+              density = base.density,
+              device = base.device,
+              localeTag = base.localeTag,
+              fontScale = base.fontScale,
+              uiMode =
+                when (base.uiMode) {
+                  RenderSpec.SpecUiMode.LIGHT -> ee.schimke.composeai.daemon.protocol.UiMode.LIGHT
+                  RenderSpec.SpecUiMode.DARK -> ee.schimke.composeai.daemon.protocol.UiMode.DARK
+                  null -> null
+                },
+              orientation =
+                when (base.orientation) {
+                  RenderSpec.SpecOrientation.PORTRAIT ->
+                    ee.schimke.composeai.daemon.protocol.Orientation.PORTRAIT
+                  RenderSpec.SpecOrientation.LANDSCAPE ->
+                    ee.schimke.composeai.daemon.protocol.Orientation.LANDSCAPE
+                  null -> null
+                },
+              inspectionMode = base.inspectionMode,
+            )
+            // Every extension-consumed field the resolved spec already carries — the baked
+            // `@OverrideVariant` seed above all, but also focus / talkBack / permissions / … —
+            // becomes the floor the per-render overlay lands on. Copied wholesale rather than
+            // named here, so this adapter can't fall behind the protocol (see
+            // `withCarriedOverrides`; yschimke/wear-m3-catalog#33).
+            .withCarriedOverrides(base.overrides),
         overrides = overrides,
       )
     val uiMode =

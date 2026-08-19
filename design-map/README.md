@@ -137,6 +137,29 @@ Several modes with **no light among them** is the one case that stays unmapped. 
 guessing which of `Dark` and `Coral` the kit drew, so those components are reported
 (`diagnostics.ambiguousMode`, and a `--strict` failure) rather than paired at random.
 
+**A breakpoint fan-out is a size axis, not a mode.** A multipreview that draws one composable at
+several screen sizes — the Wear round breakpoints are the live case — publishes several captures of
+it, told apart by the *same* id segment a themed pair uses. Read as modes they are unresolvable
+(`Light` is nowhere among `wearos_small_round` / `wearos_large_round`), so a full-screen component
+used to drop out of the map entirely the moment it gained a second size.
+
+They are told apart by a fact the id does not carry: each capture names a `device`, and the devices
+have **different widths**. A palette does not change the frame's width, so captures whose modes map
+one-to-one onto distinct device widths are a size axis and one of them can be picked on the merits:
+
+- the **narrowest** is the base by default, because that is the size a kit draws — a kit publishes
+  its screen artwork at one size and leaves adaptation to the implementation, and the narrowest is
+  the one every larger screen is an adaptation *of*;
+- `--base-breakpoint <dp>` moves it, for a kit that draws somewhere else. A named base a given
+  composable does not render falls back to the narrowest rather than dropping it — rendering a
+  subset of the catalog's breakpoints is a legitimate thing for one screen to do;
+- the sizes the base did not take **fold under it as cells**, seeded `breakpoint=<dp>` and named
+  `<dp>dp`, so they are published rather than discarded.
+
+Two captures of the *same* width are still a mode, whatever devices they name: nothing orders them,
+so they stay `ambiguousMode`. An `@OverrideVariant` cell rides the base breakpoint only — the
+product of both axes would multiply the sheet by every size, and the base carries the matrix.
+
 **`overrides.props` beats `overrides.seeds` where both exist.** They are not the same list. `seeds`
 holds only the values that differ from the composable's defaults; `props` — emitted for a
 `@PreviewAxis` cross product — carries the full axis assignment, defaults included. A cell that

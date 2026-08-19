@@ -823,6 +823,9 @@ abstract class RobolectricRenderTestBase(
     // Same for coil: arm the per-preview image-load tracker so a request that fails or is still in
     // flight at capture time is attributed to THIS preview (drained right after the render below).
     CoilLoadDiagnostics.beginPreview()
+    // Same again for the still-capture quiescence probe: an unsettled capture recorded during THIS
+    // render rides out in this preview's warnings sidecar (issue #4239).
+    VisualSettleDiagnostics.beginPreview()
     try {
       if (params.kind == PreviewKind.ACTIVITY || params.kind == PreviewKind.APP_TOUR) {
         // App-level previews: no composition to host — the real activity owns its content.
@@ -838,6 +841,43 @@ abstract class RobolectricRenderTestBase(
         )
         org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
         AppTourRenderer.render(preview, outputDir, roborazziOptions)
+      } else if (settledStillNeedsOwnPass(preview.captures)) {
+        // `@SettledPreview` + a motion product on ONE function (issue #4244). Both want the shared
+        // paused clock and they want opposite things from it: the GIF records forward from the
+        // start of the timeline, the settled still needs a coordinate near its end, and virtual
+        // time does not rewind. Whichever ran first spoiled the other, so discovery used to drop
+        // the settle and say so.
+        //
+        // Two compositions instead of one plan. Each `renderDefault` builds its own
+        // `createAndroidComposeRule`, so the second pass starts from a fresh `setContent` at clock
+        // zero and the settled still lands on exactly the coordinate it asked for — the same
+        // separation the desktop lane has had all along, where every output is already its own
+        // `ImageComposeScene`. Motion first, so the ordering inside the first pass is unchanged
+        // and every non-settled capture keeps the composition it has always shared.
+        renderDefault(
+          params = params,
+          widthDp = widthDp,
+          heightDp = heightDp,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          outputDir = outputDir,
+          roborazziOptions = roborazziOptions,
+          composeOptions = composeOptions,
+          inspectionMode = inspectionMode,
+          jobFilter = { !it.carriesSettle },
+        )
+        renderDefault(
+          params = params,
+          widthDp = widthDp,
+          heightDp = heightDp,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          outputDir = outputDir,
+          roborazziOptions = roborazziOptions,
+          composeOptions = composeOptions,
+          inspectionMode = inspectionMode,
+          jobFilter = { it.carriesSettle },
+        )
       } else {
         renderDefault(
           params = params,
@@ -864,10 +904,14 @@ abstract class RobolectricRenderTestBase(
       // Coil requests that didn't resolve are never fatal — a blank image is a legitimate thing to
       // capture (an offline/empty state), and the renderer can't conjure bytes the sandbox can't
       // reach. They ride in the same warnings sidecar so the blank is diagnosable.
+      // An unsettled still is never fatal either — the frame on disk is a real frame, just an
+      // earlier one than the author meant. It rides in the same sidecar so a consumer can fail its
+      // own build on a catalog that shipped a half-drawn sticker.
       RenderWarningsSidecar.writeOrDelete(
         pngFile,
         fontFallbacks,
         CoilLoadDiagnostics.drainPreview(),
+        VisualSettleDiagnostics.drainPreview(),
       )
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
@@ -1043,6 +1087,37 @@ abstract class RobolectricRenderTestBase(
     val advanceTimeMillis: Long?
     val scroll: ScrollCapture?
     val outputFile: File
+
+    /**
+     * Virtual-time coordinate `@SettledPreview` asks this job to capture at, or `null` when it
+     * carries no settle and the default [CAPTURE_ADVANCE_MS] applies.
+     *
+     * Exact mode (`afterMs > 0`) **replaces** the default advance rather than extending it, so the
+     * annotation's number means the same instant on both backends — the desktop renderer captures
+     * at exactly `afterMs`, and adding the default 32ms here would put Android 32ms further along a
+     * tween than desktop for the same source. Auto mode has no coordinate to honour, only a bound
+     * to walk, so it keeps the default advance underneath it.
+     *
+     * Lives on the job so the ordering below and the advance itself read one definition.
+     */
+    val settleTargetMs: Long?
+      get() = null
+
+    /**
+     * Whether [settleTargetMs] came from `@SettledPreview(afterMs = …)` rather than auto mode — an
+     * exact coordinate, which the visual-quiescence probe must not move off. See
+     * [shouldAdvanceClockForVisualSettling].
+     */
+    val hasExactSettle: Boolean
+      get() = false
+
+    /**
+     * Whether this job is a `@SettledPreview` still. Used to split it into a composition of its own
+     * when the same preview function also carries a motion product — see
+     * [settledStillNeedsOwnPass].
+     */
+    val carriesSettle: Boolean
+      get() = false
   }
 
   private data class CaptureRenderJob(
@@ -1051,6 +1126,10 @@ abstract class RobolectricRenderTestBase(
   ) : RenderJob {
     override val advanceTimeMillis: Long? = capture.advanceTimeMillis
     override val scroll: ScrollCapture? = capture.scroll
+    override val settleTargetMs: Long? =
+      capture.settle?.let { settleCaptureTargetMs(it.afterMs, it.maxMs, CAPTURE_ADVANCE_MS) }
+    override val hasExactSettle: Boolean = (capture.settle?.afterMs ?: 0) > 0
+    override val carriesSettle: Boolean = capture.settle != null
   }
 
   private data class ProductRenderJob(
@@ -1096,6 +1175,14 @@ abstract class RobolectricRenderTestBase(
     roborazziOptions: RoborazziOptions,
     composeOptions: RoborazziComposeOptions,
     inspectionMode: Boolean,
+    /**
+     * Which of this preview's jobs this composition owns. Every job by default — one `setContent`,
+     * one paused clock, every capture a snapshot of the same evolving composition, which is what
+     * makes a timed fan-out coherent. A settled still paired with a motion product is the one case
+     * that cannot share, so it is rendered by a second call with the complementary filter; see
+     * [settledStillNeedsOwnPass] (issue #4244).
+     */
+    jobFilter: (RenderJob) -> Boolean = { true },
   ) {
     val appContext: android.app.Application =
       androidx.test.core.app.ApplicationProvider.getApplicationContext()
@@ -1361,8 +1448,13 @@ abstract class RobolectricRenderTestBase(
             ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(params.locale)?.let {
               ee.schimke.composeai.daemon.PseudolocaleOverrideExtension(it)
             }
+          // State-backed rather than a constant so an `@InteractionPreview` can record in live mode
+          // without the preview's stills losing their Studio-parity default — the same seam, and
+          // the
+          // same reason, as [reduceMotionState]. Nothing flips it unless an interaction capture is
+          // present, so every other preview composes exactly as before.
+          val inspectionModeState = androidx.compose.runtime.mutableStateOf(inspectionMode)
           val providedValues = buildList {
-            add(LocalInspectionMode provides inspectionMode)
             LocaleCompositionLocals.providedValue(
                 RuntimeEnvironment.getApplication().resources.configuration
               )
@@ -1414,101 +1506,106 @@ abstract class RobolectricRenderTestBase(
               }
             }
             withReduceMotion {
-              CompositionLocalProvider(values = providedValues) {
-                if (focusExtension != null) {
-                  capturedView = androidx.compose.ui.platform.LocalView.current
-                }
-                val previewBody: @Composable () -> Unit = {
-                  val core: @Composable () -> Unit = {
-                    MeasuredWrapBox(
-                      wrapWidth = wrapWidth,
-                      wrapHeight = wrapHeight,
-                      onMeasured = { measured = it },
-                    ) {
-                      strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+              // Provided here rather than in [providedValues] because the value is state-backed:
+              // that array is built once, outside composition, so a flip in it would never be
+              // observed. Innermost wins, and nothing else provides this local on the render path.
+              CompositionLocalProvider(LocalInspectionMode provides inspectionModeState.value) {
+                CompositionLocalProvider(values = providedValues) {
+                  if (focusExtension != null) {
+                    capturedView = androidx.compose.ui.platform.LocalView.current
+                  }
+                  val previewBody: @Composable () -> Unit = {
+                    val core: @Composable () -> Unit = {
+                      MeasuredWrapBox(
+                        wrapWidth = wrapWidth,
+                        wrapHeight = wrapHeight,
+                        onMeasured = { measured = it },
+                      ) {
+                        strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
+                      }
+                    }
+                    if (applySystemBars) {
+                      SystemBarsFrame(uiMode = params.uiMode) { core() }
+                    } else {
+                      core()
                     }
                   }
-                  if (applySystemBars) {
-                    SystemBarsFrame(uiMode = params.uiMode) { core() }
-                  } else {
-                    core()
+                  val curveOrPlain: @Composable () -> Unit = {
+                    if (animationCurveCapture != null) {
+                      InspectablePreviewContent(animationCurveCapture, previewBody)
+                    } else {
+                      previewBody()
+                    }
                   }
-                }
-                val curveOrPlain: @Composable () -> Unit = {
-                  if (animationCurveCapture != null) {
-                    InspectablePreviewContent(animationCurveCapture, previewBody)
-                  } else {
-                    previewBody()
+                  val focusOrPlain: @Composable () -> Unit = {
+                    if (focusExtension != null) {
+                      focusExtension.AroundComposable { curveOrPlain() }
+                    } else {
+                      curveOrPlain()
+                    }
                   }
-                }
-                val focusOrPlain: @Composable () -> Unit = {
-                  if (focusExtension != null) {
-                    focusExtension.AroundComposable { curveOrPlain() }
-                  } else {
-                    curveOrPlain()
+                  // `@GestureHintPreview` — installs `LocalGestureRegistry` /
+                  // `LocalOneHandedGestureEnabled` and force-shows the hint, same
+                  // `DataExtensionPhase.OuterEnvironment` seam as ambient.
+                  val gestureHintOrPlain: @Composable () -> Unit = {
+                    if (gestureHintExtension != null) {
+                      gestureHintExtension.AroundComposable { focusOrPlain() }
+                    } else {
+                      focusOrPlain()
+                    }
                   }
-                }
-                // `@GestureHintPreview` — installs `LocalGestureRegistry` /
-                // `LocalOneHandedGestureEnabled` and force-shows the hint, same
-                // `DataExtensionPhase.OuterEnvironment` seam as ambient.
-                val gestureHintOrPlain: @Composable () -> Unit = {
-                  if (gestureHintExtension != null) {
-                    gestureHintExtension.AroundComposable { focusOrPlain() }
-                  } else {
-                    focusOrPlain()
+                  val ambientOrPlain: @Composable () -> Unit = {
+                    if (ambientExtension != null) {
+                      ambientExtension.AroundComposable { gestureHintOrPlain() }
+                    } else {
+                      gestureHintOrPlain()
+                    }
                   }
-                }
-                val ambientOrPlain: @Composable () -> Unit = {
-                  if (ambientExtension != null) {
-                    ambientExtension.AroundComposable { gestureHintOrPlain() }
-                  } else {
-                    gestureHintOrPlain()
+                  // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
+                  // `Box.size(...)` constrains the visible viewport before any inner
+                  // override applies — the cell footprint is the launcher chrome, not
+                  // the preview's own surface chemistry. Matches the connector's
+                  // `DataExtensionPhase.OuterEnvironment` ordering.
+                  val launcherWidgetOrPlain: @Composable () -> Unit = {
+                    if (launcherWidgetExtension != null) {
+                      launcherWidgetExtension.AroundComposable { ambientOrPlain() }
+                    } else {
+                      ambientOrPlain()
+                    }
                   }
-                }
-                // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
-                // `Box.size(...)` constrains the visible viewport before any inner
-                // override applies — the cell footprint is the launcher chrome, not
-                // the preview's own surface chemistry. Matches the connector's
-                // `DataExtensionPhase.OuterEnvironment` ordering.
-                val launcherWidgetOrPlain: @Composable () -> Unit = {
-                  if (launcherWidgetExtension != null) {
-                    launcherWidgetExtension.AroundComposable { ambientOrPlain() }
-                  } else {
-                    ambientOrPlain()
-                  }
-                }
-                // `@PermissionPreview` — the grants were already seeded into Robolectric when the
-                // extension was constructed above; this wrap is what scopes the connector's
-                // query tracking to this preview (`PermissionsController.beginRender`) and clears
-                // the override on dispose so the next preview in the sandbox starts clean. Same
-                // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
-                val permissionsOrPlain: @Composable () -> Unit = {
-                  if (permissionsExtension != null) {
-                    // `Around` (not `AroundComposable`): the permissions extension implements the
-                    // raw `AroundComposableHook`, because it needs the context's `previewId` to
-                    // scope query tracking — the convenience `AroundComposableExtension` base the
-                    // gesture / launcher-widget extensions use drops the context.
-                    permissionsExtension.Around(
-                      ExtensionComposeContext(
-                        extensionId = PermissionsOverrideExtension.ID,
-                        previewId = preview.id,
-                        renderMode = null,
-                      )
-                    ) {
+                  // `@PermissionPreview` — the grants were already seeded into Robolectric when the
+                  // extension was constructed above; this wrap is what scopes the connector's
+                  // query tracking to this preview (`PermissionsController.beginRender`) and clears
+                  // the override on dispose so the next preview in the sandbox starts clean. Same
+                  // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
+                  val permissionsOrPlain: @Composable () -> Unit = {
+                    if (permissionsExtension != null) {
+                      // `Around` (not `AroundComposable`): the permissions extension implements the
+                      // raw `AroundComposableHook`, because it needs the context's `previewId` to
+                      // scope query tracking — the convenience `AroundComposableExtension` base the
+                      // gesture / launcher-widget extensions use drops the context.
+                      permissionsExtension.Around(
+                        ExtensionComposeContext(
+                          extensionId = PermissionsOverrideExtension.ID,
+                          previewId = preview.id,
+                          renderMode = null,
+                        )
+                      ) {
+                        launcherWidgetOrPlain()
+                      }
+                    } else {
                       launcherWidgetOrPlain()
                     }
-                  } else {
-                    launcherWidgetOrPlain()
                   }
-                }
-                val pseudoOrPlain: @Composable () -> Unit = {
-                  if (pseudolocaleExtension != null) {
-                    pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
-                  } else {
-                    permissionsOrPlain()
+                  val pseudoOrPlain: @Composable () -> Unit = {
+                    if (pseudolocaleExtension != null) {
+                      pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
+                    } else {
+                      permissionsOrPlain()
+                    }
                   }
+                  keyboardExtension.AroundComposable { pseudoOrPlain() }
                 }
-                keyboardExtension.AroundComposable { pseudoOrPlain() }
               }
             }
           }
@@ -1517,7 +1614,16 @@ abstract class RobolectricRenderTestBase(
           // virtual time is a matter of advancing the delta.
           // `DiscoverPreviewsTask` guarantees `captures` is ordered by
           // ascending `advanceTimeMillis`, so we accumulate forward-only.
+          //
+          // Two clocks, deliberately. `currentTime` is the **requested** coordinate space — what
+          // the manifest asked for — and is what the ascending-order `require` below and every
+          // internal `+=` reason about. `clockBase` anchors the **physical** clock, which
+          // `advanceTimeBy` rounds up to whole frames. Keeping them apart is what lets a rounded
+          // advance stop compounding without making two jobs that legitimately share a coordinate
+          // (a timed still and its `@ScrollingPreview(LONG/GIF)` data product both sit at the same
+          // `advanceTimeMillis`) look like time running backwards. See issue #4247.
           var currentTime = 0L
+          val clockBase = rule.mainClock.currentTime
           // A preview whose content is a `Dialog` / `ModalBottomSheet` installs a second Compose
           // owner, and the activity's own root stays present but empty — so `isRoot()` matches two
           // nodes and `onRoot()` is ambiguous (issue #3048). Resolve the subject deliberately in
@@ -1532,10 +1638,26 @@ abstract class RobolectricRenderTestBase(
           val jobs =
             (preview.captures.map { CaptureRenderJob(it, outputFileFor(it, outputDir)) } +
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
+              .filter(jobFilter)
               .sortedWith(
-                compareBy<RenderJob> { it.advanceTimeMillis ?: CAPTURE_ADVANCE_MS }
-                  // Animated captures consume a time window after their target.
-                  // Keep same-target still/product jobs before that window opens.
+                // An interaction capture sorts after EVERY other job, not merely after the ones
+                // sharing its timestamp. Every job of a preview replays through one composition,
+                // and a real tap mutates the component's remembered state — so a later
+                // `advanceTimeMillis` still, ordered ahead of the tap by time alone, would publish
+                // the post-interaction component under a timestamp that never saw it. Time is the
+                // right key for snapshots of one evolving composition; a capture that *changes*
+                // that composition belongs at the end of the list.
+                compareBy<RenderJob> {
+                    if (it is CaptureRenderJob && it.capture.interaction != null) 1 else 0
+                  }
+                  // Then by the target each job actually advances the shared clock to, settle
+                  // window included. A `@SettledPreview` still asks for a *later* coordinate than
+                  // the default advance, so ordering it by the bare default would put its advance
+                  // ahead of a peer `advanceTimeMillis` snapshot — leaving that snapshot's target
+                  // behind the clock, which trips the ascending-order `require` below.
+                  .thenBy { it.advanceTimeMillis ?: it.settleTargetMs ?: CAPTURE_ADVANCE_MS }
+                  // An animated capture consumes a time window after its target. Keep same-target
+                  // still/product jobs before that window opens.
                   .thenBy { if (it is CaptureRenderJob && it.capture.animation != null) 1 else 0 }
               )
           var captureIndex = 0
@@ -1547,6 +1669,7 @@ abstract class RobolectricRenderTestBase(
               shouldAdvanceClockForVisualSettling(
                 advanceTimeMillis = job.advanceTimeMillis,
                 hasFollowingJobs = jobIndex < jobs.lastIndex,
+                hasExactSettle = job.hasExactSettle,
               )
             // When the job has no explicit `advanceTimeMillis`, default
             // to `CAPTURE_ADVANCE_MS` *or* the current virtual time —
@@ -1556,14 +1679,33 @@ abstract class RobolectricRenderTestBase(
             // taking the max keeps the require's monotonicity check
             // satisfied without forcing every consumer to thread an
             // explicit `advanceTimeMillis` through.
-            val target = job.advanceTimeMillis ?: maxOf(CAPTURE_ADVANCE_MS, currentTime)
+            // `@SettledPreview` (issue #4202): a reveal driven by
+            // `LaunchedEffect { delay(…); animateTo(…) }` — or a field whose
+            // value is written after first composition — has not arrived at
+            // `CAPTURE_ADVANCE_MS`, so the still publishes an empty container or
+            // a label sitting on top of its own value. The settle window pushes
+            // the shutter past it.
+            //
+            // Expressed as a clock *coordinate* rather than an extra advance so
+            // it's idempotent: several settled captures on one composition
+            // (a `@FocusedPreview` fan-out, say) settle once and then find
+            // themselves already past the target, instead of each paying the
+            // window again. `advanceTimeBy` dispatches a frame per 16ms step, so
+            // one call runs the reveal rather than teleporting past its start.
+            // See [RenderJob.settleTargetMs] for why exact mode replaces the
+            // default advance instead of extending it.
+            val target =
+              job.advanceTimeMillis ?: maxOf(job.settleTargetMs ?: CAPTURE_ADVANCE_MS, currentTime)
             require(target >= currentTime) {
               "Preview ${preview.id}: output advanceTimeMillis must be ascending " +
                 "(got $target after clock was at $currentTime)"
             }
-            val delta = target - currentTime
-            if (delta > 0) {
-              rule.mainClock.advanceTimeBy(delta)
+            if (target > currentTime) {
+              // Advance by what the *physical* clock still owes, not by the difference between two
+              // requested coordinates. A job whose coordinate the clock has already passed is owed
+              // nothing and captures where it stands.
+              val owed = (clockBase + target) - rule.mainClock.currentTime
+              if (owed > 0) advanceMainClockBy(rule, owed)
               currentTime = target
             }
 
@@ -1659,15 +1801,17 @@ abstract class RobolectricRenderTestBase(
               scroll != null &&
                 scroll.mode == ScrollMode.LONG &&
                 scroll.axis == ScrollAxis.VERTICAL &&
-                handleLongCaptureInternal(
-                  rule = rule,
-                  scroll = scroll,
-                  previewId = preview.id,
-                  heightDp = heightDp,
-                  isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                  outputFile = outputFile,
-                  settleFrames = settleStillFrame,
-                )
+                motionCaptureOrSidecar(outputFile, preview.id, "@ScrollingPreview(LONG)") {
+                  handleLongCaptureInternal(
+                    rule = rule,
+                    scroll = scroll,
+                    previewId = preview.id,
+                    heightDp = heightDp,
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                    outputFile = outputFile,
+                    settleFrames = settleStillFrame,
+                  )
+                }
             if (forceLongFlatten) {
               rule.runOnUiThread {
                 reduceMotionState.value = false
@@ -1704,14 +1848,16 @@ abstract class RobolectricRenderTestBase(
                 scroll != null &&
                 scroll.mode == ScrollMode.GIF &&
                 scroll.axis == ScrollAxis.VERTICAL &&
-                handleGifCapture(
-                  rule = rule,
-                  scroll = scroll,
-                  previewId = preview.id,
-                  heightDp = heightDp,
-                  isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                  outputFile = outputFile,
-                )
+                motionCaptureOrSidecar(outputFile, preview.id, "@ScrollingPreview(GIF)") {
+                  handleGifCapture(
+                    rule = rule,
+                    scroll = scroll,
+                    previewId = preview.id,
+                    heightDp = heightDp,
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                    outputFile = outputFile,
+                  )
+                }
             if (forceGifMotion) {
               rule.runOnUiThread {
                 reduceMotionState.value = true
@@ -1733,22 +1879,28 @@ abstract class RobolectricRenderTestBase(
                 !gifHandled &&
                 job is CaptureRenderJob &&
                 job.capture.animation != null &&
-                handleAnimatedCapture(
-                    rule = rule,
-                    animation = job.capture.animation,
-                    previewId = preview.id,
-                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
-                    outputFile = outputFile,
-                    curveCapture = animationCurveCapture,
-                    glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
-                  )
-                  .also { handled ->
-                    // The clock has been driven well past `currentTime`
-                    // by the animation pass — keep our local marker in
-                    // sync so any subsequent capture in the same
-                    // composition asserts ascending time correctly.
-                    if (handled) currentTime += job.capture.animation.durationMs.toLong()
-                  }
+                motionCaptureOrSidecar(outputFile, preview.id, "@AnimatedPreview") {
+                  handleAnimatedCapture(
+                      rule = rule,
+                      animation = job.capture.animation,
+                      previewId = preview.id,
+                      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                      outputFile = outputFile,
+                      curveCapture = animationCurveCapture,
+                      glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                    )
+                    .also { handled ->
+                      // The clock has been driven well past `currentTime`
+                      // by the animation pass — keep our local marker in
+                      // sync so any subsequent capture in the same
+                      // composition asserts ascending time correctly.
+                      // Inside the guarded body on purpose: a handler that threw part-way left
+                      // `mainClock` wherever it failed, so crediting the whole window here would
+                      // make a following timed capture compute too small a delta and silently
+                      // sample at the wrong virtual time.
+                      if (handled) currentTime += job.capture.animation.durationMs.toLong()
+                    }
+                }
 
             // @FocusedPreview(gif = true): drive `FocusController` through each step
             // and stitch the captured frames into a single GIF. Inside-composition
@@ -1762,21 +1914,87 @@ abstract class RobolectricRenderTestBase(
                 !animationHandled &&
                 job is CaptureRenderJob &&
                 job.capture.focusGif != null &&
-                handleFocusGifCapture(
+                motionCaptureOrSidecar(outputFile, preview.id, "@FocusedPreview(gif=true)") {
+                  handleFocusGifCapture(
+                      rule = rule,
+                      focusGif = job.capture.focusGif,
+                      previewId = preview.id,
+                      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
+                      outputFile = outputFile,
+                      glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                    )
+                    .also { handled ->
+                      // Inside the guarded body — see the animated capture above.
+                      if (handled) {
+                        val perStep =
+                          (job.capture.focusGif.frameDelayMs.toLong() + FocusController.SETTLE_MS)
+                        currentTime += perStep * job.capture.focusGif.steps.size
+                      }
+                    }
+                }
+
+            // @InteractionPreview: resolve the script's targets against the resting layout, then
+            // dispatch a real pointer gesture at each while sampling the paused clock frame by
+            // frame, encoded as an APNG (or GIF). The Android lane reads the same `previews.json`
+            // the desktop lane does — before issue #4215 the renderer simply dropped
+            // `Capture.interaction` as an unknown key, so an annotated preview on this backend
+            // produced no capture at all and then took its own still down with it.
+            // An interaction capture records the composition in its LIVE configuration, never the
+            // inspection one — the desktop path provides `LocalInspectionMode = false` for exactly
+            // this reason. Components short-circuit animations under inspection, and a catalog
+            // sticker commonly goes further and freezes its own state there so that a baked PNG
+            // cannot depend on having been tapped. A gesture recorded in that branch would show a
+            // component refusing to move, which is indistinguishable from one that cannot — the
+            // single question the artifact exists to answer. Flipped on the same state-backed seam
+            // `reduceMotionState` uses, around this capture only, and restored after so the
+            // preview's own stills keep their Android-Studio-parity default.
+            val forceLiveInspection =
+              job is CaptureRenderJob &&
+                job.capture.interaction != null &&
+                inspectionModeState.value
+            if (forceLiveInspection) {
+              rule.runOnUiThread {
+                inspectionModeState.value = false
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
+            val interactionHandled =
+              !longHandled &&
+                !gifHandled &&
+                !animationHandled &&
+                !focusGifHandled &&
+                job is CaptureRenderJob &&
+                job.capture.interaction != null &&
+                motionCaptureOrSidecar(outputFile, preview.id, "@InteractionPreview") {
+                  handleInteractionCapture(
                     rule = rule,
-                    focusGif = job.capture.focusGif,
+                    interaction = job.capture.interaction,
                     previewId = preview.id,
                     isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
+                    wrapWidth = wrapWidth,
+                    wrapHeight = wrapHeight,
+                    padArgb = resolveBackgroundColor(params).toArgb(),
+                    measuredContent = { measured },
                     glimmerEnvironment = job.capture.glimmerEnvironment?.toConnectorEnvironment(),
+                    // The handler reports what it actually drove, measured off `mainClock`
+                    // itself, so the marker cannot drift from the clock the way a re-derived
+                    // window does the moment the frame budget or the settle tick changes. It
+                    // reports on the failure path too, crediting exactly the time a capture that
+                    // threw part-way had already advanced.
+                    onClockAdvanced = { advanced -> currentTime += advanced },
                   )
-                  .also { handled ->
-                    if (handled) {
-                      val perStep =
-                        (job.capture.focusGif.frameDelayMs.toLong() + FocusController.SETTLE_MS)
-                      currentTime += perStep * job.capture.focusGif.steps.size
-                    }
-                  }
+                }
+            if (forceLiveInspection) {
+              rule.runOnUiThread {
+                inspectionModeState.value = true
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
 
             // `handleLongCapture` / `handleGifCapture` returned false
             // (e.g. `NoScrollable` — no scrollable on the requested
@@ -1790,28 +2008,46 @@ abstract class RobolectricRenderTestBase(
             // Write a structured error sidecar instead so the panel
             // surfaces the real failure.
             val productFellThrough = job is ProductRenderJob && !longHandled && !gifHandled
-            // The same reasoning applies to a CAPTURE job that targets a GIF —
-            // `@AnimatedPreview`, or `@FocusedPreview(gif = true)`. Those are
-            // CaptureRenderJobs, so the guard above never covered them: when the
-            // animated pass bailed (no frames, encoder refused, …) they fell
-            // through to the single `captureRoboImage` below and wrote PNG bytes
-            // to a `.gif` path. Nothing failed, the file looked plausible, and
-            // the extension lied to every consumer that trusts it — browser,
-            // Figma import, the preview server. Decide on the output extension,
-            // not the job type, so a still can never land under a `.gif` name.
-            val animatedCaptureFellThrough =
+            // The same reasoning applies to a CAPTURE job that targets a motion container —
+            // `@AnimatedPreview`, `@FocusedPreview(gif = true)`, or `@InteractionPreview`. Those
+            // are CaptureRenderJobs, so the guard above never covered them: when the motion pass
+            // bailed (no frames, encoder refused, …) they fell through to the single
+            // `captureRoboImage` below and wrote PNG bytes to a `.gif` / `.apng` path. Nothing
+            // failed, the file looked plausible, and the extension lied to every consumer that
+            // trusts it — browser, Figma import, the preview server. Decide on the output
+            // extension, not the job type, so a still can never land under a motion name. An
+            // `@InteractionPreview` is why this now keys on a set rather than on `"gif"`: its
+            // default container is APNG, so before issue #4215 an unhandled interaction capture
+            // fell straight past this guard.
+            val motionCaptureFellThrough =
               job is CaptureRenderJob &&
                 !animationHandled &&
                 !focusGifHandled &&
-                outputFile.extension.equals("gif", ignoreCase = true)
-            if (animatedCaptureFellThrough) {
+                !interactionHandled &&
+                outputFile.extension.lowercase() in MOTION_OUTPUT_EXTENSIONS
+            if (motionCaptureFellThrough) {
+              val interaction = (job as CaptureRenderJob).capture.interaction
               RenderErrorSidecar.write(
                 outputFile,
                 IllegalStateException(
-                  "Animated capture on '${preview.id}' produced no GIF — refusing to " +
-                    "write a single-frame PNG into the .gif output path. Most often the " +
-                    "preview has an unbounded axis: pin widthDp AND heightDp on an " +
-                    "@AnimatedPreview so the frames share one fixed size."
+                  if (interaction != null) {
+                    // An interaction capture that produced nothing is almost never a sizing
+                    // problem — it is a script that found nothing to press, which the target
+                    // resolution normally catches loudly. Name the script rather than repeating
+                    // the animated path's advice.
+                    "@InteractionPreview on '${preview.id}' produced no " +
+                      "${outputFile.extension.lowercase()} — the scripted " +
+                      "${interaction.gesture} on target(s) " +
+                      "${interaction.targets.joinToString()} recorded no frames, and a " +
+                      "single-frame PNG must not be written into the " +
+                      ".${outputFile.extension.lowercase()} output path."
+                  } else {
+                    "Animated capture on '${preview.id}' produced no " +
+                      "${outputFile.extension.lowercase()} — refusing to " +
+                      "write a single-frame PNG into the .${outputFile.extension.lowercase()} " +
+                      "output path. Most often the preview has an unbounded axis: pin widthDp " +
+                      "AND heightDp on an @AnimatedPreview so the frames share one fixed size."
+                  }
                 ),
               )
             } else if (productFellThrough) {
@@ -1825,7 +2061,13 @@ abstract class RobolectricRenderTestBase(
                     "single-frame capture into the data product path."
                 ),
               )
-            } else if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled) {
+            } else if (
+              !longHandled &&
+                !gifHandled &&
+                !animationHandled &&
+                !focusGifHandled &&
+                !interactionHandled
+            ) {
               // TOP mode is the unscrolled initial frame — no
               // drive, just a capture. END mode drives the first
               // scrollable on the requested axis to its content
@@ -1857,12 +2099,10 @@ abstract class RobolectricRenderTestBase(
                       .interaction
                       .captureRoboImage(file = candidate, roborazziOptions = roborazziOptions)
                   }
-                if (!visuallySettled) {
-                  System.err.println(
-                    "Preview '${preview.id}': still frame did not become visually quiescent " +
-                      "after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
-                  )
-                }
+                // Recorded, not merely printed: an unsettled still is a wrong sticker on a green
+                // build, and stderr is not something a consumer's build can fail on. The warnings
+                // sidecar is (issue #4239).
+                VisualSettleDiagnostics.record("Preview '${preview.id}' still", visuallySettled)
               } else {
                 resolveCaptureRoot()
                   .interaction
@@ -1878,11 +2118,12 @@ abstract class RobolectricRenderTestBase(
             val capturedDialogWindow =
               if (
                 !productFellThrough &&
-                  !animatedCaptureFellThrough &&
+                  !motionCaptureFellThrough &&
                   !longHandled &&
                   !gifHandled &&
                   !animationHandled &&
-                  !focusGifHandled
+                  !focusGifHandled &&
+                  !interactionHandled
               ) {
                 // Re-resolved rather than reusing the capture's value: the clock has not moved
                 // since, so this sees the same roots, and it keeps the selection out of a mutable
@@ -1907,11 +2148,12 @@ abstract class RobolectricRenderTestBase(
             if (
               capturedDialogWindow == null &&
                 !productFellThrough &&
-                !animatedCaptureFellThrough &&
+                !motionCaptureFellThrough &&
                 !longHandled &&
                 !gifHandled &&
                 !animationHandled &&
                 !focusGifHandled &&
+                !interactionHandled &&
                 (wrapWidth || wrapHeight) &&
                 measured != null
             ) {
@@ -1925,11 +2167,12 @@ abstract class RobolectricRenderTestBase(
             if (
               capturedDialogWindow == null &&
                 !productFellThrough &&
-                !animatedCaptureFellThrough &&
+                !motionCaptureFellThrough &&
                 !longHandled &&
                 !gifHandled &&
                 !animationHandled &&
-                !focusGifHandled
+                !focusGifHandled &&
+                !interactionHandled
             ) {
               val resizeDensity = params.density ?: 2.0f
               resizeFixedAxesPng(
@@ -2463,12 +2706,10 @@ private fun handleLongCaptureInternal(
                 roborazziOptions = sliceRoborazziOptions,
               )
             }
-          if (!visuallySettled) {
-            System.err.println(
-              "@ScrollingPreview(LONG) on '$previewId': slice ${slices.size} did not become " +
-                "visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
-            )
-          }
+          VisualSettleDiagnostics.record(
+            "@ScrollingPreview(LONG) on '$previewId' slice ${slices.size}",
+            visuallySettled,
+          )
         } else {
           stableDialogCrop.captureFrame(
             rule = rule,
@@ -2520,12 +2761,10 @@ private fun handleLongCaptureInternal(
             roborazziOptions = sliceRoborazziOptions,
           )
         }
-      if (!visuallySettled) {
-        System.err.println(
-          "@ScrollingPreview(LONG) on '$previewId': final frame did not become visually " +
-            "quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
-        )
-      }
+      VisualSettleDiagnostics.record(
+        "@ScrollingPreview(LONG) on '$previewId' final frame",
+        visuallySettled,
+      )
     } else {
       stableDialogCrop.captureFrame(
         rule = rule,
@@ -2627,11 +2866,80 @@ private fun settlePressedRipple() {
 private const val POST_SCROLL_SETTLE_MS = 1000L
 
 /**
+ * Whether [captures] pair a `@SettledPreview` still with a product that records a timeline, and so
+ * need two compositions rather than one (issue #4244).
+ *
+ * Every capture of one preview normally replays through a single `setContent` against a single
+ * paused clock, which is what makes a timed fan-out coherent: each still is a snapshot of the same
+ * evolving composition. A motion product breaks that for a settled still specifically, because the
+ * two consume the timeline in opposite directions — the GIF records forward from
+ * `CAPTURE_ADVANCE_MS`, the settled still wants a coordinate near the end of its window, and
+ * virtual time does not rewind. Discovery used to resolve it by dropping the settle and warning;
+ * this is the seam that serves both instead.
+ *
+ * Only the settled still moves to its own pass. Everything else — including a plain still that
+ * shares the composition with the GIF — stays exactly where it was, so no already-published render
+ * changes for a preview that never paired the two.
+ */
+internal fun settledStillNeedsOwnPass(captures: List<RenderPreviewCapture>): Boolean =
+  captures.any { it.settle != null } &&
+    captures.any { it.animation != null || it.interaction != null || it.focusGif != null }
+
+/**
+ * One 60Hz frame on the Compose test clock — the quantum `MainTestClock.advanceTimeBy` rounds a
+ * delta *up* to. Kept beside [advanceMainClockBy], which is the only thing that needs to know it.
+ */
+internal const val MAIN_CLOCK_FRAME_MS = 16L
+
+/**
+ * Splits an [owed] advance into the whole frames it contains and the sub-frame remainder left over.
+ *
+ * Pure so [AdvanceMainClockTest] can pin the arithmetic without a Compose rule.
+ */
+internal fun splitOwedAdvance(owed: Long, frameMs: Long = MAIN_CLOCK_FRAME_MS): Pair<Long, Long> {
+  if (owed <= 0L) return 0L to 0L
+  val remainder = owed % frameMs
+  return owed - remainder to remainder
+}
+
+/**
+ * Advances [rule]'s paused clock by exactly [owed] milliseconds, landing on the requested
+ * coordinate rather than on the next frame boundary past it (issue #4247).
+ *
+ * `advanceTimeBy` rounds a delta **up** to a whole number of frames, so an "exact" coordinate that
+ * is not a multiple of 16 — `@SettledPreview(afterMs = 150)`, or the
+ * `ManualClockOptions(advanceTimeMillis = 500)` this repo's own `SpinnerTimelinePreview` ships —
+ * captured one frame late. `@SettledPreview`'s exact mode and `advanceTimeMillis` both promise an
+ * instant; "the first frame at or after N" is a different promise, and after #4248 corrected the
+ * bookkeeping it was the only part of the gap left.
+ *
+ * So: spend the whole frames through the ordinary rounded advance — every 16ms tick has to dispatch
+ * a frame, or a reveal would be teleported past instead of run — and spend the sub-frame remainder
+ * with `ignoreFrameDuration`, which moves the scheduler without manufacturing a frame that
+ * Compose's cadence would not have produced. A `delay` whose deadline falls inside that remainder
+ * still fires, which is the point: `afterMs = 150` now reaches the moment a `delay(150)` resumes,
+ * where before it arrived at 160 with a whole extra frame of animation on top.
+ *
+ * What it does **not** do is invent a frame at N: the composition state captured is the last frame
+ * at or before the coordinate. That is the honest reading of "exact" on a clock that ticks every
+ * 16ms, and it errs toward showing less of the future rather than more.
+ */
+public fun advanceMainClockBy(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  owed: Long,
+) {
+  val (wholeFrames, remainder) = splitOwedAdvance(owed)
+  if (wholeFrames > 0) rule.mainClock.advanceTimeBy(wholeFrames)
+  if (remainder > 0) rule.mainClock.advanceTimeBy(remainder, ignoreFrameDuration = true)
+}
+
+/**
  * Adaptive sample budget used to prove that a still capture is visually quiescent.
  *
- * The first two matching frames are enough for the stable fast path. After any mismatch, three
- * consecutive identical decoded frames are required. Five total samples let a one- or two-frame
- * race settle while keeping intentional infinite animations bounded.
+ * Three consecutive identical decoded frames are required, and only once a frame delta has actually
+ * been observed — see [captureVisuallySettledFrame] for why there is no shorter path. Five total
+ * samples let a one- or two-frame race settle while keeping intentional infinite animations
+ * bounded.
  */
 public const val VISUAL_SETTLE_MAX_SAMPLES = 5
 internal const val VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES = 3
@@ -2641,26 +2949,114 @@ internal const val VISUAL_SETTLE_FRAME_MS = 16L
  * Whether visual settling may advance a preview's paused clock without changing another requested
  * output. Timed captures are exact snapshots, and any following job shares this same clock.
  */
+/**
+ * The paused-clock coordinate a `@SettledPreview` capture is taken at.
+ *
+ * Exact mode (`afterMs > 0`) is the coordinate itself — the annotation says "advance exactly this
+ * far, then capture", and the desktop renderer captures at exactly `afterMs`, so adding
+ * [captureAdvanceMs] on top here would put the two backends on different frames of the same tween
+ * for identical source (issue #4202 review). Auto mode has no coordinate to honour, only a bound to
+ * walk, so it keeps the default advance underneath it.
+ */
+public fun settleCaptureTargetMs(afterMs: Int, maxMs: Int, captureAdvanceMs: Long): Long =
+  if (afterMs > 0) afterMs.toLong() else captureAdvanceMs + maxMs.toLong()
+
+/**
+ * Whether a job may spend extra clock on the adaptive pixel-quiescence probe before capturing.
+ *
+ * Allowed only for an untimed final job. An explicit `advanceTimeMillis` is a snapshot of a chosen
+ * coordinate, and [hasExactSettle] — `@SettledPreview(afterMs = …)` — is the same promise written a
+ * different way: the probe always spends at least one more 16ms frame and up to
+ * [VISUAL_SETTLE_MAX_SAMPLES] of them, which would publish an "exact 350ms" capture from somewhere
+ * in 366–414ms (issue #4202 review). Auto settle keeps the probe: it names a bound, not a moment.
+ */
 internal fun shouldAdvanceClockForVisualSettling(
   advanceTimeMillis: Long?,
   hasFollowingJobs: Boolean,
-): Boolean = advanceTimeMillis == null && !hasFollowingJobs
+  hasExactSettle: Boolean = false,
+): Boolean = advanceTimeMillis == null && !hasExactSettle && !hasFollowingJobs
 
 /**
- * Captures [file] twice and returns immediately if both decoded frames have identical pixels. After
- * a mismatch, continues until [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive frames match
- * or the bounded [VISUAL_SETTLE_MAX_SAMPLES] budget is exhausted.
+ * How a still capture's quiescence probe ended. Three outcomes, not two, because "the frame never
+ * moved" and "the frame stopped moving" are different claims and only one of them proves the
+ * composition arrived (issue #4239).
+ */
+public enum class VisualSettleOutcome {
+  /**
+   * A frame delta was observed and the frame then held still for
+   * [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive samples. The capture is settled in the
+   * strong sense: something happened, and then it finished.
+   */
+  SETTLED,
+
+  /**
+   * Every sample in the budget was pixel-identical — nothing was ever observed to move.
+   *
+   * Treated as success, because a static preview is the overwhelmingly common reason for it. It is
+   * also, though, what a reveal that has not *started* looks like, and pixels alone cannot separate
+   * the two: the composition's `delay` queue lives on the Compose test scheduler, which exposes no
+   * "is anything still scheduled" query the way `DesktopSettleClock` does for the desktop lane. So
+   * this is reported as its own outcome rather than folded into [SETTLED] — the render no longer
+   * *claims* it saw the composition finish — but it does not warn. `@SettledPreview` is the way an
+   * author says "this one arrives late"; see issue #4239.
+   */
+  NEVER_CHANGED,
+
+  /** The budget ran out while frames were still changing. The published frame is mid-flight. */
+  STILL_CHANGING;
+
+  /** Whether the capture is safe to publish without a warning. */
+  public val isQuiescent: Boolean
+    get() = this == SETTLED || this == NEVER_CHANGED
+
+  /** One line describing the outcome for the caller's diagnostic, or `null` when there is none. */
+  public fun describe(role: String): String? =
+    when (this) {
+      SETTLED,
+      NEVER_CHANGED -> null
+      STILL_CHANGING ->
+        "$role: frame did not become visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES " +
+          "samples; using the latest frame."
+    }
+}
+
+/**
+ * Samples up to [VISUAL_SETTLE_MAX_SAMPLES] frames, one 60Hz tick apart, and stops as soon as a
+ * frame delta has been observed *and* [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive
+ * frames then match.
  *
  * Consecutive equality is deliberate: a majority vote could select one phase of a looping animation
- * (A/B/A/B/A) and call it stable. If the budget expires, the latest valid frame remains at [file]
- * and the caller can continue with a diagnostic rather than failing an otherwise useful render.
+ * (A/B/A/B/A) and call it stable. Whatever the outcome, the latest valid frame remains at [file] —
+ * the caller continues with a diagnostic rather than failing an otherwise useful render.
+ *
+ * ### Why there is no two-identical-frames fast path any more
+ *
+ * There used to be one: two matching frames with no mismatch behind them returned immediately. Two
+ * identical frames at `t = 0` is the *expected opening* of any delayed reveal, though — a
+ * `LaunchedEffect { delay(200); animateTo(…) }` is pixel-identical to a finished component for as
+ * long as the delay lasts. So quiescence was declared before the animation began, the render
+ * reported success, and the sticker published an empty container with no warning at all
+ * (issue #4239). Declaring settled now requires having seen the composition *move*, which costs the
+ * full sample budget on a preview that never does — three extra captures — and moves bytes on any
+ * preview whose reveal starts between the second and fifth frame, which is the point.
+ *
+ * What it still cannot do is separate a static preview from a reveal that has not begun — both are
+ * [VisualSettleOutcome.NEVER_CHANGED], and both stay quiet, because on this lane the two are
+ * genuinely indistinguishable: a preview's `delay` queue lives on the Compose test scheduler, which
+ * has no public "is anything still scheduled" query for the desktop lane's
+ * `DesktopSettleClock.hasScheduledWork` to be mirrored from, and a sample budget wide enough to
+ * out-wait a 200ms reveal would be paid by every static sticker in a catalog. What the outcome does
+ * buy is that the render stops *claiming* it watched the composition finish when it watched nothing
+ * happen at all, and that the case it can see — [VisualSettleOutcome.STILL_CHANGING] — now reaches
+ * `<png>.warnings.json` instead of stderr. Naming the window with `@SettledPreview` remains the way
+ * an author says "this one arrives late".
  */
 public fun captureVisuallySettledFrame(
   file: File,
   role: String,
   advanceFrame: () -> Unit,
   capture: (File) -> Unit,
-): Boolean {
+): VisualSettleOutcome {
   var previousWidth = -1
   var previousHeight = -1
   var previousPixels: IntArray? = null
@@ -2679,14 +3075,15 @@ public fun captureVisuallySettledFrame(
         previousPixels?.contentEquals(pixels) == true
     if (sample > 0 && !sameAsPrevious) sawMismatch = true
     identicalSamples = if (sameAsPrevious) identicalSamples + 1 else 1
-    val required = if (sawMismatch) VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES else 2
-    if (identicalSamples >= required) return true
+    if (sawMismatch && identicalSamples >= VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES) {
+      return VisualSettleOutcome.SETTLED
+    }
 
     previousWidth = image.width
     previousHeight = image.height
     previousPixels = pixels
   }
-  return false
+  return if (sawMismatch) VisualSettleOutcome.STILL_CHANGING else VisualSettleOutcome.NEVER_CHANGED
 }
 
 /**
@@ -2923,6 +3320,49 @@ private const val TAIL_FLING_EPSILON_PX = 1f
  * the written PNG won't decode — one initial attempt plus retries.
  */
 internal const val FRAME_CAPTURE_ATTEMPTS = 3
+
+/**
+ * Output extensions a motion capture owns. A still must never be written under one of these names —
+ * see the `motionCaptureFellThrough` guard.
+ */
+internal val MOTION_OUTPUT_EXTENSIONS: Set<String> = setOf("gif", "apng")
+
+/**
+ * Runs one motion capture, keeping a failure inside the slot the capture owns.
+ *
+ * Every multi-frame handler ([handleLongCapture], [handleGifCapture], `handleAnimatedCapture`,
+ * `handleFocusGifCapture`, [handleInteractionCapture]) used to throw straight out to the
+ * per-preview `catch`, which writes `<pngFile>.error.json` — and `RenderErrorSidecar.write`
+ * *deletes the file at that path*. `pngFile` is the preview's **first** capture, i.e. its ordinary
+ * still. So a component whose GIF encoder declined, or whose interaction script found nothing to
+ * press, lost the perfectly good PNG sitting beside it, and a catalog gained a broken card while
+ * every other check stayed green (issue #4215 — two components in the Wear catalog lost their
+ * stills exactly this way).
+ *
+ * The still is independent and useful. Reporting the motion failure *beside the motion output* is
+ * what makes it a one-line diagnosis instead of an archaeology exercise: the sidecar names the slot
+ * that actually failed, and the still stays on disk.
+ *
+ * Returns `true` on a throw as well as on success — "this slot is owned by the motion capture" — so
+ * the caller cannot fall through and stamp a single-frame PNG into a `.gif` / `.apng` path.
+ *
+ * Catching [Throwable] rather than [Exception] for the same reason the per-preview handler does:
+ * `check` / `require` in a capture (or in the composable it drives) raise `AssertionError`, and an
+ * out-of-range `targets` index — the interaction path's loud failure — is exactly that.
+ */
+private inline fun motionCaptureOrSidecar(
+  outputFile: File,
+  previewId: String,
+  label: String,
+  capture: () -> Boolean,
+): Boolean =
+  try {
+    capture()
+  } catch (e: Throwable) {
+    System.err.println("$label on '$previewId' failed: ${e.message}")
+    RenderErrorSidecar.write(outputFile, e)
+    true
+  }
 
 /**
  * Capture one GIF frame to [file] and re-capture if the written PNG won't decode.

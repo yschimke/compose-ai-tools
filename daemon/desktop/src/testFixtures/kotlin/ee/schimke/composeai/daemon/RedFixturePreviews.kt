@@ -7,6 +7,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -118,6 +121,70 @@ fun RememberedOverridableSquare() {
   // Keyless on purpose — see the KDoc. Do not add `fill` as a key.
   val captured = remember { fill }
   Box(modifier = Modifier.fillMaxSize().background(captured))
+}
+
+/**
+ * A labelled Material 3 switch row whose **shape** — not just a colour — is what a knob selects:
+ * `split = false` draws one container holding the label and the toggle (one tap target), `split =
+ * true` draws the same content as two containers with a gap between them (two).
+ *
+ * The shape of `wear-m3-catalog`'s `SwitchButton`, reduced to what a desktop scene can draw. Its
+ * point is that the two states are *structurally* different, so a lost seed is legible as the wrong
+ * component rather than as a recoloured one — which is how the bug was reported: browsing the
+ * `split` variant with the viewer's **Live (stream)** toggle drew the plain switch
+ * (yschimke/wear-m3-catalog#33).
+ *
+ * Pinned by [OverrideIntegrationTest.heldSessionSeedsTheSplitVariantTheIssueReported], which also
+ * regenerates `docs/evidence/live-variant-seed/`.
+ */
+@Composable
+fun SplittableSwitchRow() {
+  val split = ee.schimke.composeai.overrides.previewOverrideBoolean("split", default = false)
+  val label = ee.schimke.composeai.overrides.previewOverrideString("label", default = "Primary")
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+      Row(
+        modifier = Modifier.fillMaxSize().padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        // Unsplit: ONE container holding both the label and the toggle — one tap target.
+        // Split: the same content in TWO containers with a gap between them — two tap targets.
+        Surface(
+          modifier = Modifier.weight(1f).fillMaxHeight(),
+          color = MaterialTheme.colorScheme.primaryContainer,
+          shape = RoundedCornerShape(26.dp),
+        ) {
+          Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text(
+              label,
+              color = MaterialTheme.colorScheme.onPrimaryContainer,
+              maxLines = 1,
+              modifier = Modifier.weight(1f),
+            )
+            if (!split) Switch(checked = true, onCheckedChange = {})
+          }
+        }
+        if (split) {
+          Spacer(Modifier.width(6.dp))
+          Surface(
+            modifier = Modifier.fillMaxHeight(),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(26.dp),
+          ) {
+            Box(
+              modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp),
+              contentAlignment = Alignment.Center,
+            ) {
+              Switch(checked = true, onCheckedChange = {})
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -1436,3 +1503,36 @@ fun DarkAwareLongScrollPreview() {
     items(60) { Box(modifier = Modifier.fillMaxWidth().height(60.dp).background(bg)) }
   }
 }
+
+/**
+ * A reveal driven by *time* rather than by a gesture — the `@SettledPreview` shape from
+ * issue #4202, restated here so the desktop **daemon** lane has something to settle (issue #4238).
+ *
+ * The container is black until [TIMED_REVEAL_DELAY_MS] has passed on the composition's clock, then
+ * a solid green square lands inside it. Captured at the daemon's ordinary frame-zero the whole
+ * frame is black; a settled capture is black with a green square in the middle, so "did the settle
+ * happen" is a question about one pixel rather than about a rendering heuristic.
+ *
+ * `delay` is what makes it a real regression fixture: `scene.render(nanoTime)` drives Compose's
+ * frame clock but not `kotlinx.coroutines.delay`, so a raised frame timestamp alone leaves this
+ * black forever — only installing the scene on a `DesktopSettleClock` reveals it.
+ */
+@Composable
+fun TimedRevealPreview() {
+  var revealed by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+    kotlinx.coroutines.delay(TIMED_REVEAL_DELAY_MS)
+    revealed = true
+  }
+  Box(
+    modifier = Modifier.fillMaxSize().background(Color.Black),
+    contentAlignment = Alignment.Center,
+  ) {
+    if (revealed) {
+      Box(modifier = Modifier.size(40.dp).background(Color(0xFF00C853)))
+    }
+  }
+}
+
+/** When [TimedRevealPreview]'s square lands, in milliseconds of composition time. */
+const val TIMED_REVEAL_DELAY_MS: Long = 200L

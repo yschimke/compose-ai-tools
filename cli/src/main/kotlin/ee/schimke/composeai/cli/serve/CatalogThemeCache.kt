@@ -71,6 +71,16 @@ data class ThemeOptimizationSnapshot(
   val turnsGranted: Int = 0,
   val turnsYielded: Int = 0,
   /**
+   * Turns the *ceiling* granted because the gate had withheld one for too long, counted inside
+   * [turnsGranted].
+   *
+   * A number climbing here says the box never looks quiet to the optimizer and the only progress it
+   * makes is the forced kind — which is a working cache and a broken gate, not a healthy server. On
+   * a box whose idle clock is pinned by a leaked session lease this is the *only* counter that
+   * would ever move.
+   */
+  val turnsForced: Int = 0,
+  /**
    * Daemons that actually rendered **concurrently** in the last batch, and the most so far.
    *
    * Deliberately not the batch's job count. The optimizer submits N jobs to an executor and the
@@ -209,6 +219,7 @@ class CatalogThemeCache(
   private val permitWaitMillis = AtomicLong(0)
   private val turnsGranted = java.util.concurrent.atomic.AtomicInteger(0)
   private val turnsYielded = java.util.concurrent.atomic.AtomicInteger(0)
+  private val turnsForced = java.util.concurrent.atomic.AtomicInteger(0)
   private val lastBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
   private val maxBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
   // Entries the OPTIMIZER produced. The rate's denominator is optimizer time, so its numerator has
@@ -224,6 +235,15 @@ class CatalogThemeCache(
   /** Traffic took the turn back. */
   fun recordTurnYielded() {
     turnsYielded.incrementAndGet()
+  }
+
+  /**
+   * The ceiling granted a turn the gate would not have. Counted in [recordTurnGranted] too, so
+   * `turnsGranted` stays the total and this is the slice of it the box never actually offered.
+   */
+  fun recordTurnForced() {
+    turnsForced.incrementAndGet()
+    turnsGranted.incrementAndGet()
   }
 
   /** Wall-clock the idle gate withheld a turn because the box looked busy. */
@@ -605,6 +625,7 @@ class CatalogThemeCache(
       permitWaitMillis = permitWait,
       turnsGranted = turnsGranted.get(),
       turnsYielded = turnsYielded.get(),
+      turnsForced = turnsForced.get(),
       lastBatchWidth = lastBatchWidth.get(),
       maxBatchWidth = maxBatchWidth.get(),
     )

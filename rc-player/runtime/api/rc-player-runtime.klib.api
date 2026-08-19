@@ -1001,7 +1001,7 @@ final class ee.schimke.composeai.rcplayer.runtime/RcScrollBlock { // ee.schimke.
 }
 
 final class ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot { // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot|null[0]
-    constructor <init>(kotlin/Long, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int) // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.<init>|<init>(kotlin.Long;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int){}[0]
+    constructor <init>(kotlin/Long, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int, kotlin/Int = ...) // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.<init>|<init>(kotlin.Long;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int){}[0]
 
     final val dayOfMonth // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.dayOfMonth|{}dayOfMonth[0]
         final fun <get-dayOfMonth>(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.dayOfMonth.<get-dayOfMonth>|<get-dayOfMonth>(){}[0]
@@ -1017,12 +1017,15 @@ final class ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot { // ee.schimke
         final fun <get-minute>(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.minute.<get-minute>|<get-minute>(){}[0]
     final val month // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.month|{}month[0]
         final fun <get-month>(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.month.<get-month>|<get-month>(){}[0]
+    final val offsetSeconds // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.offsetSeconds|{}offsetSeconds[0]
+        final fun <get-offsetSeconds>(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.offsetSeconds.<get-offsetSeconds>|<get-offsetSeconds>(){}[0]
     final val second // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.second|{}second[0]
         final fun <get-second>(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.second.<get-second>|<get-second>(){}[0]
     final val year // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.year|{}year[0]
         final fun <get-year>(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.year.<get-year>|<get-year>(){}[0]
 
     final fun component1(): kotlin/Long // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component1|component1(){}[0]
+    final fun component10(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component10|component10(){}[0]
     final fun component2(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component2|component2(){}[0]
     final fun component3(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component3|component3(){}[0]
     final fun component4(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component4|component4(){}[0]
@@ -1031,7 +1034,7 @@ final class ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot { // ee.schimke
     final fun component7(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component7|component7(){}[0]
     final fun component8(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component8|component8(){}[0]
     final fun component9(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.component9|component9(){}[0]
-    final fun copy(kotlin/Long = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ...): ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.copy|copy(kotlin.Long;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int){}[0]
+    final fun copy(kotlin/Long = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ...): ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.copy|copy(kotlin.Long;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int;kotlin.Int){}[0]
     final fun equals(kotlin/Any?): kotlin/Boolean // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.equals|equals(kotlin.Any?){}[0]
     final fun hashCode(): kotlin/Int // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.hashCode|hashCode(){}[0]
     final fun toString(): kotlin/String // ee.schimke.composeai.rcplayer.runtime/RcTimeSnapshot.toString|toString(){}[0]

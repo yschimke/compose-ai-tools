@@ -2687,5 +2687,258 @@ class StageHandoffResourcesTest(unittest.TestCase):
         self.assertTrue((workspace / rel).exists())
 
 
+class FigmaReferenceColumnTest(unittest.TestCase):
+    """The design a preview is meant to match, beside Before/After.
+
+    The manifest is written by `lib/figma-reference` out of the repo's own
+    committed Figma page cache, and — on the fork-safe split — travels through
+    a handoff produced by a job that ran the PR's build. So these tests pin
+    both halves: that a mapped preview gains the column, and that a manifest
+    which tries to author markdown with it is refused.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, manifest) -> str:
+        import contextlib
+        import io
+        from types import SimpleNamespace
+
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+        refs_path = self.tmp / "figma.json"
+        if manifest is not None:
+            refs_path.write_text(json.dumps(manifest))
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                figma_refs=str(refs_path),
+            ))
+        return buf.getvalue()
+
+    def _manifest(self, **entry):
+        return {"entries": {"Changed": {
+            "module": "app",
+            "basename": "Changed.png",
+            "url": "https://www.figma.com/design/F1/?node-id=1-2",
+            **entry,
+        }}}
+
+    def _changed(self):
+        return (
+            {"previews": [_entry(id="Changed", function="Fn", sha="new", png="/c.png")]},
+            {"app/Changed": {"sha256": "old", "functionName": "Fn"}},
+        )
+
+    def test_changed_row_leads_with_the_design_it_must_match(self):
+        current, baselines = self._changed()
+        out = self._run(current, baselines, self._manifest())
+        self.assertIn("| Figma | Before | After |", out)
+        # Pinned to the PR render commit, like every other image in the comment.
+        self.assertIn(
+            "raw.githubusercontent.com/owner/repo/cafef00d/figma/app/Changed.png", out
+        )
+        # And clickable through to the node itself.
+        self.assertIn("https://www.figma.com/design/F1/?node-id=1-2", out)
+        self.assertIn("Figma column:", out)
+
+    def test_new_preview_shows_the_reference_beside_it(self):
+        out = self._run(
+            {"previews": [_entry(id="Changed", function="Fn", sha="new", png="/c.png")]},
+            {},
+            self._manifest(),
+        )
+        self.assertIn("| Figma | New |", out)
+        self.assertIn("figma/app/Changed.png", out)
+
+    def test_unmapped_preview_keeps_the_two_column_comment(self):
+        current, baselines = self._changed()
+        out = self._run(current, baselines, {"entries": {"Other": {
+            "module": "app", "basename": "Other.png", "url": "",
+        }}})
+        self.assertIn("| Before | After |", out)
+        self.assertNotIn("| Figma |", out)
+        # No column landed, so the explanatory footnote stays out too.
+        self.assertNotIn("Figma column:", out)
+
+    def test_absent_manifest_is_the_historical_comment(self):
+        current, baselines = self._changed()
+        out = self._run(current, baselines, None)
+        self.assertIn("| Before | After |", out)
+        self.assertNotIn("Figma", out)
+
+    def test_manifest_cannot_author_markdown_through_the_column(self):
+        # The handoff is hostile input on the fork-safe path: a basename that
+        # closes the `src` attribute, or a `url` pointing anywhere but Figma,
+        # would otherwise let a PR write arbitrary HTML into a comment this
+        # action posts with a write-scoped token.
+        current, baselines = self._changed()
+        out = self._run(current, baselines, self._manifest(
+            basename='x.png" onerror="alert(1)',
+        ))
+        self.assertNotIn("onerror", out)
+        self.assertNotIn("| Figma |", out)
+
+        out = self._run(current, baselines, self._manifest(
+            url="javascript:alert(1)",
+        ))
+        self.assertIn("| Figma | Before | After |", out)
+        self.assertNotIn("javascript:", out)
+
+    def test_malformed_manifest_degrades_to_no_column(self):
+        self.assertEqual(cp._load_figma_refs(None), {})
+        self.assertEqual(cp._load_figma_refs(str(self.tmp / "missing.json")), {})
+        broken = self.tmp / "broken.json"
+        broken.write_text("{not json")
+        self.assertEqual(cp._load_figma_refs(str(broken)), {})
+        shapeless = self.tmp / "shapeless.json"
+        shapeless.write_text(json.dumps({"entries": ["nope"]}))
+        self.assertEqual(cp._load_figma_refs(str(shapeless)), {})
+
+
+class ChangedIdsHandoffTest(unittest.TestCase):
+    """`copy-changed --changed-ids` names the previews the comment will show.
+
+    That list is what the Figma stager illustrates: rendering the whole
+    catalog's references costs a page rasterisation per node for images no
+    reviewer will ever scroll to.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_lists_changed_previews_once_each(self):
+        from types import SimpleNamespace
+
+        png = self.tmp / "Red.png"
+        png.write_bytes(_png_with(b"red"))
+        cli = self.tmp / "cli.json"
+        cli.write_text(json.dumps({"previews": [
+            # Two captures of one preview: one design node, so one entry.
+            _entry(id="Red", function="RedFn", sha="new", png=str(png), captures=[
+                {"sha256": "new", "pngPath": str(png)},
+                {"sha256": "new2", "pngPath": str(png), "label": "scroll end"},
+            ]),
+            _entry(id="Same", function="SameFn", sha="s", png=str(png)),
+        ]}))
+        baselines = self.tmp / "baselines.json"
+        baselines.write_text(json.dumps({
+            "app/Red": {"sha256": "old", "functionName": "RedFn"},
+            "app/Same": {"sha256": "s", "functionName": "SameFn"},
+        }))
+        ids = self.tmp / "changed.json"
+
+        cp.cmd_copy_changed(SimpleNamespace(
+            cli_json=str(cli),
+            baselines=str(baselines),
+            output_dir=str(self.tmp / "out"),
+            changed_ids=str(ids),
+        ))
+
+        self.assertEqual(
+            json.loads(ids.read_text()),
+            [{"previewId": "Red", "module": "app"}],
+        )
+
+
+class BaselineSkewNoteTest(unittest.TestCase):
+    """The comment has to declare a baseline that trails the PR's base.
+
+    Without it a reader can't tell this PR's diff from the diff of whatever
+    merged while its baseline was still rendering — the two are identical in
+    the comment (wear-m3-catalog#24 reported 16 new / 9 changed / 4 removed
+    for a one-file change).
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, skew) -> str:
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+        skew_path = None
+        if skew is not None:
+            skew_path = self.tmp / "skew.json"
+            skew_path.write_text(skew if isinstance(skew, str) else json.dumps(skew))
+
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                baseline_skew=str(skew_path) if skew_path else None,
+            ))
+        return buf.getvalue()
+
+    _CHANGED = ({"previews": [_entry(id="X", sha="new", png="/p.png")]},
+                {"app/X": {"sha256": "old", "functionName": "Fn"}})
+
+    def test_drift_is_declared_with_both_commits(self):
+        out = self._run(*self._CHANGED,
+                        skew={"selected": "b" * 40, "source": "abc12345",
+                              "target": "def67890", "drift": 3})
+        self.assertIn("[!NOTE]", out)
+        self.assertIn("3 commit(s) behind", out)
+        self.assertIn("`abc12345`", out)
+        self.assertIn("`def67890`", out)
+
+    def test_no_note_when_baseline_is_the_prs_own_base(self):
+        out = self._run(*self._CHANGED,
+                        skew={"selected": "b" * 40, "source": "abc12345",
+                              "target": "abc12345", "drift": 0})
+        self.assertNotIn("[!NOTE]", out)
+
+    def test_no_note_without_a_skew_file(self):
+        # Every caller that predates baseline selection, plus every run where
+        # the selector couldn't establish an answer.
+        out = self._run(*self._CHANGED, skew=None)
+        self.assertNotIn("[!NOTE]", out)
+
+    def test_unwritable_or_malformed_skew_is_not_fatal(self):
+        # The selector writes this file last; a truncated or half-written one
+        # must degrade to "no skew known", never break the comment.
+        out = self._run(*self._CHANGED, skew="{not json")
+        self.assertNotIn("[!NOTE]", out)
+        self.assertIn("### Changed", out)
+
+    def test_note_precedes_the_sections_it_qualifies(self):
+        out = self._run(*self._CHANGED,
+                        skew={"selected": "b" * 40, "source": "abc12345",
+                              "target": "def67890", "drift": 1})
+        self.assertLess(out.index("[!NOTE]"), out.index("### Changed"))
+
+    def test_silent_on_a_clean_diff(self):
+        # Nothing was attributed to this PR, so there is nothing to qualify.
+        out = self._run(
+            {"previews": [_entry(id="X", sha="s1", png="/p.png")]},
+            {"app/X": {"sha256": "s1", "functionName": "Fn"}},
+            skew={"selected": "b" * 40, "source": "abc12345",
+                  "target": "def67890", "drift": 4},
+        )
+        self.assertIn("No visual changes detected.", out)
+        self.assertNotIn("[!NOTE]", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -129,11 +129,28 @@ data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto?
 
 /**
  * Daemon-side mirror of the gradle plugin's `Capture` — one planned render of a preview. Only
- * [scroll] is carried; every other field on the plugin's type (`animation`, `focus`, `tourStep`,
- * `renderOutput`, `cost`, …) drives outputs the daemon's one-frame-per-id surface doesn't produce,
- * and `ignoreUnknownKeys` drops them on parse.
+ * [scroll] and [settle] are carried; every other field on the plugin's type (`animation`, `focus`,
+ * `tourStep`, `renderOutput`, `cost`, …) drives outputs the daemon's one-frame-per-id surface
+ * doesn't produce, and `ignoreUnknownKeys` drops them on parse.
  */
-@Serializable data class PreviewCaptureDto(val scroll: ScrollCaptureDto? = null)
+@Serializable
+data class PreviewCaptureDto(
+  val scroll: ScrollCaptureDto? = null,
+  val settle: SettleCaptureDto? = null,
+)
+
+/**
+ * Daemon-side mirror of the gradle plugin's `SettleCapture` — `@SettledPreview`'s pre-capture
+ * settle window. Carried so a live `compose-preview serve` frame lands on the same settled state as
+ * the published PNG; without it the viewer would show the empty container the batch render stopped
+ * publishing.
+ */
+@Serializable
+data class SettleCaptureDto(val afterMs: Int = 0, val maxMs: Int = 1000) {
+  /** The longest virtual-time window this settle can consume, whichever mode it is in. */
+  val windowMs: Int
+    get() = if (afterMs > 0) afterMs else maxMs
+}
 
 /**
  * Daemon-side mirror of the gradle plugin's `ScrollCapture`. Carries only the intent fields the
@@ -439,6 +456,22 @@ internal constructor(
     if (scrolls.isEmpty()) return null
     if (!scrolls.all { it.mode.equals("END", ignoreCase = true) }) return null
     return scrolls.first()
+  }
+
+  /**
+   * The pre-capture settle [SettleCaptureDto] an ordinary static render of [previewId] must apply,
+   * or `null` when the preview asks for none.
+   *
+   * Sibling of [staticScrollFor], and unanimous for the same reason: the capture grid is a
+   * cross-product, and the daemon's surface is one frame per id. Discovery only ever puts a settle
+   * on the plain still — never on a scroll or timed capture — so in practice every capture that
+   * carries one carries the same one, and a disagreement means the manifest describes something the
+   * daemon has no honest single answer for.
+   */
+  fun staticSettleFor(previewId: String): SettleCaptureDto? {
+    val info = rowResolved(previewId)?.info ?: return null
+    val settles = info.captures.mapNotNull { it.settle }.distinct()
+    return settles.singleOrNull()
   }
 
   /** All known preview ids. Phase 2 will diff a fresh scan against this set. */

@@ -107,6 +107,59 @@ data class AnimationCapture(
   val showCurves: Boolean = false,
 )
 
+/**
+ * Renderer-side mirror of the plugin's `MotionFormat` — the container a motion capture is written
+ * in. Duplicated on the renderer side for the same reason [ScrollMode] is.
+ */
+@Serializable
+enum class MotionFormat {
+  APNG,
+  GIF,
+}
+
+/** Renderer-side mirror of the plugin's `InteractionGesture`. */
+@Serializable
+enum class InteractionGesture {
+  TAP,
+  PRESS_AND_HOLD,
+}
+
+/**
+ * Renderer-side mirror of the plugin's `InteractionCapture` (`@InteractionPreview`, issue #4215).
+ *
+ * The duration is deliberately absent: it is a *consequence* of the script — lead-in, plus one
+ * press and one settle window per target — and both renderers derive it through
+ * `:data-motion-core`'s `InteractionScript`, so a capture and its script cannot disagree about how
+ * long the component was given to respond.
+ */
+@Serializable
+data class InteractionCapture(
+  val gesture: InteractionGesture = InteractionGesture.TAP,
+  /**
+   * Zero-based indices into the preview's clickable nodes in layout order, one gesture per entry,
+   * dispatched in order. Repeats are meaningful — `[0, 0, 0]` taps one control three times.
+   */
+  val targets: List<Int> = listOf(0),
+  val caption: String = "",
+  val holdMs: Int = DEFAULT_INTERACTION_HOLD_MS,
+  val gapMs: Int = DEFAULT_INTERACTION_GAP_MS,
+  val leadInMs: Int = DEFAULT_INTERACTION_LEAD_IN_MS,
+  val frameIntervalMs: Int = DEFAULT_MOTION_FRAME_INTERVAL_MS,
+  val format: MotionFormat = MotionFormat.APNG,
+)
+
+/** Mirrors `@InteractionPreview.holdMs`'s default. */
+const val DEFAULT_INTERACTION_HOLD_MS: Int = 600
+
+/** Mirrors `@InteractionPreview.gapMs`'s default. */
+const val DEFAULT_INTERACTION_GAP_MS: Int = 700
+
+/** Mirrors `@InteractionPreview.leadInMs`'s default. */
+const val DEFAULT_INTERACTION_LEAD_IN_MS: Int = 250
+
+/** Mirrors `ee.schimke.composeai.preview.DEFAULT_MOTION_FRAME_INTERVAL_MS` — 16ms ≈ 60fps. */
+const val DEFAULT_MOTION_FRAME_INTERVAL_MS: Int = 16
+
 /** Renderer-side mirror of the plugin's `FocusDirection`. */
 @Serializable
 enum class FocusDirection {
@@ -164,6 +217,18 @@ enum class GlimmerEnvironmentCapture {
   Dark,
   Busy,
   VeniceCanalCats,
+}
+
+/**
+ * Renderer-side mirror of the plugin's `SettleCapture` — `@SettledPreview`'s pre-capture settle
+ * window. [afterMs] `> 0` is an exact advance; `0` asks for auto (advance until quiescent, bounded
+ * by [maxMs]).
+ */
+@Serializable
+data class SettleCapture(val afterMs: Int = 0, val maxMs: Int = 1000) {
+  /** The longest virtual-time window this settle can consume, whichever mode it is in. */
+  val windowMs: Int
+    get() = if (afterMs > 0) afterMs else maxMs
 }
 
 /** Renderer-side mirror of the plugin's `GestureHintCapture`. */
@@ -318,8 +383,22 @@ data class RenderPreviewCapture(
   val focus: FocusCapture? = null,
   val hover: HoverCapture? = null,
   val focusGif: FocusGifCapture? = null,
+  /**
+   * `null` → not an interaction capture. Set when the preview carries `@InteractionPreview`; the
+   * renderer drives the scripted pointer gesture and writes an APNG / GIF rather than a still. The
+   * plugin has emitted this field since the annotation landed — the Android renderer simply used to
+   * drop it as an unknown key, which is why an annotated preview on this backend produced nothing
+   * at all (issue #4215).
+   */
+  val interaction: InteractionCapture? = null,
   val ambient: AmbientCapture? = null,
   val glimmerEnvironment: GlimmerEnvironmentCapture? = null,
+  /**
+   * `null` → capture at the renderer's default advance. Set when the preview carries
+   * `@SettledPreview`: the paused clock is advanced by this window before the still is captured, so
+   * a `LaunchedEffect`-driven reveal lands before the shutter rather than after it.
+   */
+  val settle: SettleCapture? = null,
   val gestureHint: GestureHintCapture? = null,
   /**
    * `null` → no runtime-permission override. Set when the preview carries `@PermissionPreview`.

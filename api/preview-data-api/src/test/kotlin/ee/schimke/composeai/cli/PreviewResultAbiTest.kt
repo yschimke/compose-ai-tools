@@ -54,4 +54,26 @@ class PreviewResultAbiTest {
       }
     )
   }
+
+  @Test
+  fun `Capture retains the constructor descriptor from before settle`() {
+    // `@SettledPreview` (issue #4202) appended `settle` to `Capture`. Same break as the two above:
+    // source-compatible, descriptor-incompatible. `Capture` is reached through `PreviewInfo`, so a
+    // consumer that builds one to drive a render would fail with NoSuchMethodError on upgrade.
+    assertTrue(
+      Capture::class.java.constructors.any { constructor ->
+        constructor.parameterTypes.toList() ==
+          listOf(
+            java.lang.Long::class.java,
+            ScrollCapture::class.java,
+            String::class.java,
+            java.lang.Boolean.TYPE,
+            kotlinx.serialization.json.JsonElement::class.java,
+            kotlinx.serialization.json.JsonElement::class.java,
+            kotlinx.serialization.json.JsonElement::class.java,
+            kotlinx.serialization.json.JsonElement::class.java,
+          )
+      }
+    )
+  }
 }

@@ -619,3 +619,105 @@ test("a cell overriding the fold's own knob keeps the fold's kit axis, not its v
     { key: "state", raw: "error", kitAxis: "Interaction state" },
   ]);
 });
+
+// BREAKPOINTS. A Wear multipreview draws one composable at several screen sizes, which produces
+// several captures of it told apart by the same id segment a themed pair uses. Read as colour
+// modes they are unresolvable and the component drops out of the map entirely — which is what
+// happened to every full-screen component of a Wear catalog the moment it gained a second size.
+const atWidth = (name, widthDp, catalog = {}) => ({
+  id: `com.example.CatalogKt.${name}_wearos_${widthDp}`,
+  functionName: name,
+  sourceFile: "Catalog.kt",
+  params: { device: `id:wearos_${widthDp}`, widthDp },
+  catalog: { role: "COMPONENT", componentId: name, ...catalog },
+});
+
+test("a breakpoint fan-out maps from its narrowest capture, not as an ambiguous mode", () => {
+  const { map, diagnostics } = projectDesignMap([
+    atWidth("Picker", 227, { reference: ref("1:2") }),
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 240, { reference: ref("1:2") }),
+  ]);
+  assert.deepEqual(diagnostics.ambiguousMode, []);
+  assert.equal(map.components.length, 1);
+  assert.match(map.components[0].previewId, /_wearos_192$/);
+});
+
+test("--base-breakpoint names the width the kit draws, when it is not the narrowest", () => {
+  const previews = [
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, { reference: ref("1:2") }),
+  ];
+  const { map } = projectDesignMap(previews, { baseBreakpointDp: 225 });
+  assert.match(map.components[0].previewId, /_wearos_225$/);
+});
+
+test("a named base this composable does not render falls back rather than dropping it", () => {
+  const { map, diagnostics } = projectDesignMap(
+    [
+      atWidth("Picker", 192, { reference: ref("1:2") }),
+      atWidth("Picker", 240, { reference: ref("1:2") }),
+    ],
+    { baseBreakpointDp: 225 },
+  );
+  assert.deepEqual(diagnostics.ambiguousMode, []);
+  assert.match(map.components[0].previewId, /_wearos_192$/);
+});
+
+test("the sizes the base did not take fold under it as cells, seeded with their width", () => {
+  const { variants } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 225, { reference: ref("1:2") }),
+    atWidth("Picker", 240, { reference: ref("1:2") }),
+  ]);
+  const renders = variants.components[0].renders;
+  assert.deepEqual(
+    renders.map((r) => r.name).sort(),
+    ["225dp", "240dp"],
+  );
+  assert.deepEqual(renders.find((r) => r.name === "225dp").seeds, [
+    { key: "breakpoint", raw: "225" },
+  ]);
+});
+
+test("a themed pair is still a mode, never a breakpoint — neither capture names a device", () => {
+  const { diagnostics } = projectDesignMap([
+    { ...component("Themed", { reference: ref("1:2") }), id: "com.example.CatalogKt.Themed_Dark" },
+    { ...component("Themed", { reference: ref("1:2") }), id: "com.example.CatalogKt.Themed_Coral" },
+  ]);
+  assert.equal(diagnostics.ambiguousMode.length, 1);
+  assert.deepEqual(diagnostics.ambiguousMode[0].modes, ["Coral", "Dark"]);
+});
+
+test("same-width captures are a mode, not a size — two devices of one width cannot be ordered", () => {
+  const square = {
+    id: "com.example.CatalogKt.Screen_wearos_square",
+    functionName: "Screen",
+    sourceFile: "Catalog.kt",
+    params: { device: "id:wearos_square", widthDp: 192 },
+    catalog: { role: "COMPONENT", componentId: "Screen", reference: ref("1:2") },
+  };
+  const { diagnostics } = projectDesignMap([atWidth("Screen", 192, { reference: ref("1:2") }), square]);
+  assert.equal(diagnostics.ambiguousMode.length, 1);
+});
+
+test("an override cell rides the base breakpoint, and is not repeated at every size", () => {
+  const cell = (widthDp) => ({
+    id: `com.example.CatalogKt.Picker_wearos_${widthDp}_VARIANT_month`,
+    functionName: "Picker",
+    sourceFile: "Catalog.kt",
+    params: { device: `id:wearos_${widthDp}`, widthDp },
+    catalog: { role: "COMPONENT", componentId: "Picker" },
+    overrides: { name: "month", seeds: [{ key: "order", raw: "month" }] },
+  });
+  const { variants } = projectDesignMap([
+    atWidth("Picker", 192, { reference: ref("1:2") }),
+    atWidth("Picker", 240, { reference: ref("1:2") }),
+    cell(192),
+    cell(240),
+  ]);
+  assert.deepEqual(
+    variants.components[0].renders.map((r) => r.name).sort(),
+    ["240dp", "month"],
+  );
+});

@@ -76,18 +76,26 @@
 ## Top-level sites: one catalog on a hostname of its own
 
 A published catalog can additionally be served on **its own hostname**, where it presents as the
-only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves:
+only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves, and
+`wear.preview.coo.ee` serves what `preview.coo.ee/wear-m3-catalog/` serves — the deployment's two
+reference design systems, one hostname each:
 
 ```
---sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3
+--sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3-catalog
 ```
 
 or, durably, beside the catalog set in `catalogs.json` (the form the deployment uses):
 
 ```json
 {
-  "catalogs": [{ "system": "m3-catalog", "repo": "yschimke/m3-catalog" }],
-  "sites": [{ "host": "m3.preview.coo.ee", "system": "m3-catalog" }]
+  "catalogs": [
+    { "system": "m3-catalog", "repo": "yschimke/m3-catalog" },
+    { "system": "wear-m3-catalog", "repo": "yschimke/wear-m3-catalog" }
+  ],
+  "sites": [
+    { "host": "m3.preview.coo.ee", "system": "m3-catalog" },
+    { "host": "wear.preview.coo.ee", "system": "wear-m3-catalog" }
+  ]
 }
 ```
 
@@ -460,6 +468,18 @@ the browser already has, and no re-render the visitor didn't ask for. Params the
 (`token`, `session`, …) are never touched, and a control back at its default **clears** its param
 rather than pinning a redundant value, so an untouched page keeps the clean URL it was opened with.
 
+That rule has a second half, because clearing a param on the way out does nothing for the links
+already in circulation: **where a default value is present anyway, it is recognised as the
+default.** A `uiMode=light` on a `…__light` preview names the theme the page would have shown
+regardless, so it is displayed and not treated as a pinned override — the theme select shows Light
+with `data-theme-active="0"`, the param clears on the next sync, and the features gated on *not*
+having pinned a theme stay available. The Figma comparison is the one that made this visible
+(#4218): the light/dark toggle writes `uiMode` on the way through, so clicking dark and back to
+light left `?uiMode=light` behind, and a visitor who had made no net choice lost the match score on
+pixels that were exactly the ones it was measured against. Which theme counts as the default is the
+server's answer, published on the select as `data-default-theme`; a preview the catalog names no
+theme for claims none, so every `uiMode` there stays a real override.
+
 | Surface | Carried in the URL |
 | --- | --- |
 | Catalog landing | `tab` (section), `theme` (a baked chip or `theme:<providerFqn>`), `q` (filter), `bg` |
@@ -748,6 +768,44 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
   take turns instead of occupying every live seat, and a visitor's render is never queued behind
   more than one background one. The permit is taken per render, so a catalog that parks for traffic
   hands it straight to the next one.
+
+**When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
+before it starts: the whole server has to have been untouched for
+`-Dcomposeai.serve.themeOptimizationIdleMillis` (60s by default). That gate reads
+`ServeSessionRegistry.idleMillis()`, which answers *busy* — not a number — while any session holds
+an open lease, so one long-lived WebSocket, or one lease leaked by a request cancelled mid-flight,
+stands the optimizer down for as long as it is held. The per-catalog `themeOptimization` rows cannot
+show this: they say `paused` whether the box is being politely quiet or the gate will never open
+again. Read `themeOptimizer` on `/status.json` instead:
+
+- `serverIdleMillis` — the gate's input, or `null` for busy — against `idleThresholdMillis`, the
+  quiet it must reach. The `/status` page prints the same comparison as **Theme optimiser gate**.
+- `idleBlockedBy` — why it reads busy: `session-lease` (a lease is held; `daemons.leasedSessions`
+  names the holders) or `catalog-load` (catalogs are still being fetched, which is the gate working
+  as designed).
+- Per catalog, `gateWaitMillis` accrues *while* a pass waits, not only once it is let through — so a
+  gate that has never opened shows a climbing wait beside `turnsGranted: 0`, rather than the zeros
+  that also describe a catalog with nothing left to do.
+
+**Waiting at that gate costs nothing but a sleeping thread, and it cannot last forever.** Two rules
+keep a shut gate from turning the feature off:
+
+- **A pass waits for quiet *before* it takes an optimizer lane, never while holding one.** Waiting
+  inside a lane converts "the box is busy" into "the first two catalogs own both lanes
+  indefinitely" — which is precisely what happened: two passes held the two lanes for a whole
+  uptime, blocked on quiet that a held lease meant could never arrive, while the other 16 catalogs
+  were refused every 20s. A pass that yields mid-slice and cannot get its turn back within 30s
+  (`OPTIMIZER_RESUME_WAIT_MILLIS`) also gives its lane back and re-parks at the gate, rather than
+  idling on a lane through a busy stretch.
+- **After ten minutes shut out, a catalog is granted one preview anyway**
+  (`-Dcomposeai.serve.themeOptimizationGateCeilingMillis`, non-positive to disable). The grant is
+  one preview wide and then the pass returns to the gate, so a genuinely busy box pays one preview
+  per catalog per ceiling period instead of never filling the cache at all. Forced turns are
+  counted separately as `turnsForced` (a subset of `turnsGranted`): a figure climbing there means
+  the box never looks quiet and every bit of progress is the forced kind — a working cache and a
+  broken idle clock. The ceiling does **not** override a pause, the pressure gate, or catalog
+  loading; a daemon start starved during loading is recorded as `livebundle-unavailable` and
+  degrades that catalog to baked PNGs for the whole process, which is much worse than a cold cache.
 
 The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
 60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
@@ -1072,11 +1130,13 @@ the page they came from (`?uiMode=dark`, a device, a font scale — the viewer r
 knobs move) is normalised and re-applied to the `/render` URL, so the embedded PNG is the render that
 prompted the report rather than the component's default.
 
-**The screenshot is two-sided.** When the reporter came from a viewer the page shows that preview's
-render and the body carries it (embedded when the host is publicly reachable, linked otherwise — the
-same two conditions as above). That covers "the render is wrong". It does not cover "the page is
-wrong", which is most server bugs, so the report leaves a Screenshot section for a pasted shot of
-the whole window — the one thing the server cannot produce and the browser gives away for free.
+**The screenshot is two-sided, and the embedded render is labelled as what it is.** When the
+reporter came from a viewer the page shows that preview's render and the body carries it (embedded
+when the host is publicly reachable, linked otherwise — the same two conditions as above). That
+covers "the render is wrong". It does not cover "the page is wrong", which is most server bugs, so
+the body's **Screenshot** section is a paste slot, first, and the render sits under it as **Base
+render** — never as "the screenshot". See [Reporting what you can actually
+see](#reporting-what-you-can-actually-see) for why that distinction is load-bearing.
 
 **Gating and safety.** `/report-bug` is gated exactly like `/status` (open in `--public`, else
 token-required), because it reports the same catalog-load and daemon-failure detail. The page the
@@ -1207,6 +1267,80 @@ The chosen view rides the URL as `?specView=diff|triptych|slider` alongside `?mo
 `…/p/<id>?mode=spec&specView=slider` is shareable and Back returns to the view you came from.
 `spec diff →` beside the group still steps out to the focused page when the annotation layers or the
 opacity overlay are what you want.
+
+## Reporting what you can actually see
+
+Two reports, two trackers, and until recently the only place that said so was the report page —
+which you reach *after* choosing. That is [#4261](https://github.com/yschimke/compose-ai-tools/issues/4261)'s
+neighbourhood, and both halves of it are the same mistake: a report that shows a picture of
+something other than what the reporter was looking at, filed in a tracker that may not own it.
+
+**A floating launcher, on every page.** Bottom-right of every browser-facing surface is a small
+**Report a problem** button. Its panel names both destinations in the reporter's own terms:
+
+- *Something is wrong with this **preview*** — wrong colours, a state that is missing, a spec that
+  does not match. It goes to the **catalog's** repository, and the panel names it. Offered only on
+  pages that carry the per-preview affordance; pressing it opens that form in place and focuses its
+  Summary field rather than starting a second report.
+- *Something is wrong with the **preview server*** — the page, a control, a render that failed. It
+  goes to `yschimke/compose-ai-tools`, and opens `/report-bug`.
+
+The footer entry stays where it was, renamed **report a server bug**, and the per-preview link is
+now **report a catalog issue**: both used to be called "report an issue" / "report a bug", a click
+apart, with nothing on either saying which tracker it meant. The launcher floats because the
+surfaces where something looks wrong are tall — a viewer stage, a grid of two hundred cards, a
+design page — and the footer is several screens from the thing being complained about, which is the
+one moment the page is still in the state that produced the bug.
+
+**Why the embedded render was never the screenshot.** `/render/<id>.png` is the only picture of a
+preview this server can produce. Everything else the viewer shows is composed **in the browser** out
+of several artefacts — the spec lane's triptych, diff and wipe, the exploded stack, the Remote
+Compose canvas, the inspection overlays, a lane that failed with an error where the render should
+be — and none of those has a URL to embed. So a report filed from the triptych arrived showing an
+ordinary single render: a picture that contradicted its own complaint. Two changes:
+
+- The body now leads with an empty **Screenshot** slot and puts the PNG below it under **Base
+  render**, with the view named — *Base render — you were on the design spec (triptych)*.
+- A **View** row joins the Page table, read out of the reporter's own address bar (`?mode=`,
+  `?specView=`, `?exploded=`) rather than from what the server rendered, because the viewer rewrites
+  those as the visitor moves between lanes. Only values this server's own viewer writes are
+  accepted; anything else is dropped rather than echoed into a public issue.
+
+**And a capture tool, because the pixels have to come from the browser.** GitHub's new-issue form
+takes a prefilled body and nothing else — there is no way to prefill an attachment — so the only
+route from a screenshot to an issue is the reporter's clipboard. The launcher panel offers three
+modes:
+
+| Mode | For |
+| --- | --- |
+| **Whole view** | "the page is wrong" — the whole viewport, chrome, controls and error text included |
+| **Region** | a corner of a wide comparison, where a full-viewport shot buries the defect |
+| **Element** | point at one node — a render, a spec panel, a diagnostics table, one cell of one |
+
+Each capture is copied to the clipboard, listed with a thumbnail, and **carried across the
+navigation** to `/report-bug` in `sessionStorage`, where it is listed again with Copy / Save /
+Remove. A picked **table** additionally yields the same table as markdown ("Copy as text"), because
+a triager who wants to read a number back, grep it or quote a row cannot do any of that with a
+screenshot — and `/status`, the parity dashboard and the report page itself are mostly tables.
+
+Mechanically it is `getDisplayMedia`, one frame, track stopped immediately — not a DOM-to-image
+serialisation. Serialising the DOM reproduces the *markup*: it needs every stylesheet inlined and
+every image re-fetched, it drops canvas contents and anything drawn by a shader, and what comes out
+is a reconstruction that can differ from the screen in exactly the ways a visual bug report is
+about. The frame is grabbed **before** the selection overlay exists, so no capture ever contains the
+tool that took it, and the launcher panel closes itself for the shutter. A crop is only offered when
+the browser reports it shared *this tab*; a shared window or monitor puts the page at an offset
+nothing can recover, so that case captures the whole shared surface and says so rather than cropping
+the wrong pixels.
+
+`sessionStorage`, not `localStorage`: a capture is scratch state belonging to one reporting gesture
+in one tab, and it is a picture of whatever was on screen — which on a preview server can be an
+unreleased design. Three captures and ~3.5 MB, oldest evicted first. The capture bundle
+(`report-capture.js`) is fetched when the panel is first opened, so a visitor who never files
+anything never downloads a selection overlay or a canvas cropper.
+
+Where `getDisplayMedia` is missing or refused, the capture block simply never appears and the report
+page keeps asking for an ordinary pasted screenshot, exactly as it did before.
 
 ## Design references and UI mocks
 
@@ -2530,7 +2664,18 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    back to baked PNGs (`livebundle-unavailable`), or — when the missing class is only linked at
    render time rather than at daemon bootstrap — every render fails with `NoClassDefFoundError`
    while the daemon itself stays up. Only list repos you trust; the server fetches
-   artifacts from them when resolving a trusted catalog's live bundle. Both backends are supported
+   artifacts from them when resolving a trusted catalog's live bundle.
+   **Since schema v9 a bundle carries its own repository list** (`BundleManifest.repositories` —
+   the extra repos its producing build declared), consulted after `--extra-maven-repos`, so a
+   catalog whose deps live elsewhere no longer needs the box reconfigured to match it. That is what
+   `remote-m3` needed: its whole Remote Compose runtime resolves from a pinned androidx.dev
+   **snapshot** build, and a `-SNAPSHOT` coordinate was doubly unreachable — not declared anywhere
+   the box knew about, and constructed as `<artifact>-<version>-SNAPSHOT.<ext>`, which no real
+   snapshot repo serves (they publish the timestamped `<artifact>-<version>-<yyyyMMdd.HHmmss>-<n>`
+   name via the version directory's `maven-metadata.xml`). Both are fixed; issues #4259 / #4265.
+   When coordinates still don't resolve, the count and the list are logged at materialization and
+   appended to the render circuit breaker's reason, so the `409` a dead lane answers with names the
+   unresolved artifacts instead of only the class the JVM couldn't find. Both backends are supported
    ([`ServeBundleDaemon.materialize`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)):
    a **desktop** bundle spawns the Skiko desktop daemon, and an **android** bundle spawns the
    Robolectric daemon **on a box that carries the Android sidecar + SDK** — the prebuilt `deploy/image`
@@ -2805,7 +2950,14 @@ a single render a minute and closes itself as soon as one succeeds.
 While the breaker is open the host:
 
 - answers `/render` with the **underlying failure reason** as a terminal `409`, not
-  `503 render busy; retry shortly` (the daemon isn't busy, and retrying will never help);
+  `503 render busy; retry shortly` (the daemon isn't busy, and retrying will never help). A fatal
+  `org.jetbrains.ski…` link error additionally carries the **Skiko skew read off the daemon's own
+  launch descriptor** — `Skiko bindings 0.148.2 will link against libskiko 0.144.6 …` — so the
+  refusal names the cause and not only the symbol that went missing. The startup log has carried
+  that line since [the split-Skiko repair](#trusted-server-side-re-render---allow-render-trusted),
+  but nobody outside the box reads the log: #4220 was reported from this response body, which said
+  only which symbol was absent. A coherent classpath adds nothing, so a link error with some other
+  cause reads exactly as it did before;
 - reports `live: false` for the catalog and publishes a `render-lane-broken` `degradation`, instead
   of advertising a healthy live lane at a 95% failure rate;
 - **pauses background theme optimization** for that catalog — it is the largest consumer of the

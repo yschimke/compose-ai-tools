@@ -1,5 +1,6 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.motion.apngDelayFor
 import java.awt.image.BufferedImage
 import java.io.File
 import org.junit.Assert.assertEquals

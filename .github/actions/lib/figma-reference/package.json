@@ -1,0 +1,11 @@
+{
+  "name": "@compose-ai-tools/figma-reference",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Rasterise a mapped component's node out of a repo's committed Figma page cache, for the preview-diff comment.",
+  "type": "module",
+  "main": "index.mjs",
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2"
+  }
+}

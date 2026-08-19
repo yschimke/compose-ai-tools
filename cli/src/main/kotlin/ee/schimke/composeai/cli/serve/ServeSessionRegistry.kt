@@ -392,6 +392,22 @@ class ServeSessionRegistry(
   }
 
   /**
+   * Session ids holding at least one open lease, sorted — i.e. exactly the set that makes
+   * [idleMillis] answer `null`.
+   *
+   * Published on `/status.json` because a busy answer with nothing to attribute it to is not
+   * diagnosable from outside the process, and everything downstream of the idle clock (the theme
+   * optimizer's quiet gate, the `--exit-when-idle` watchdog) then looks broken for no visible
+   * reason. A lease is released in a `finally`, but a request cancelled mid-flight can still leak
+   * one — see `withLeasedSessionOrNull` — and a single leaked lease pins the whole server as busy
+   * for the life of the process. This names the holder so that failure is a one-line read rather
+   * than an inference.
+   */
+  fun leasedSessions(): List<String> = lock.withLock {
+    sessions.entries.filter { it.value.leases > 0 }.map { it.key }.sorted()
+  }
+
+  /**
    * Suspend (close the daemon of, keep the state of) resident sessions idle past the timeout.
    *
    * The [suspendListeners] notification and the host `close()` both run **after** the lock is

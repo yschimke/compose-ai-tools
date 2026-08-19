@@ -56,7 +56,9 @@ import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.preview.lottie.LottiePreview
+import ee.schimke.composeai.renderer.DesktopSettleClock
 import ee.schimke.composeai.renderer.encodePngData
+import ee.schimke.composeai.renderer.settleScene
 import java.io.File
 import java.util.Base64
 import java.util.Collections
@@ -231,6 +233,11 @@ class RenderEngine(
         // describe the frame the Gradle render ships. Ahead of `renderOnce`, which is also the
         // interactive session's per-input entry point and must never re-drive under the user.
         val driveStartNs = System.nanoTime()
+        // `@SettledPreview` first, then the scroll — the same order `:daemon:android`'s
+        // RenderEngine uses (advance the clock, then drive the scrollable), so a preview carrying
+        // both lands on the same frame on both backends. Content that arrives on a timer has
+        // nothing to scroll until it has arrived.
+        trace.section("render:settle") { applyStaticSettle(state) }
         trace.section("render:scrollToEnd") { driveStaticScrollToEnd(state) }
         val driveNs = System.nanoTime() - driveStartNs
         trace.section("render:once") {
@@ -279,6 +286,18 @@ class RenderEngine(
     inspectionMode: Boolean = true,
     trace: PerfettoTraceDataProducer.Recorder =
       PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop"),
+    /**
+     * Whether this scene may be built on a [DesktopSettleClock] when the preview carries a
+     * `@SettledPreview` (issue #4238).
+     *
+     * True for the one-shot [render] path — a still, which is what the annotation is about. False
+     * for an interactive or recording session: those scenes are driven by *wall* time, and a
+     * dispatcher that only advances when someone calls `advanceTo` would freeze every `delay` the
+     * user's clicks start. A settled preview opened interactively therefore behaves exactly as it
+     * did before, which is the right answer — the moment a human is driving it, "the settled frame"
+     * is no longer a well-defined thing to be showing.
+     */
+    settleEligible: Boolean = true,
   ): SceneState {
     // Also here, not just in [render]: a daemon whose FIRST request is `interactive/start` or
     // `recording/start` reaches a held composition through `DesktopHost.acquireInteractiveSession`
@@ -411,9 +430,40 @@ class RenderEngine(
       )
     val sceneWidthPx = sceneSize.width
     val sceneHeightPx = sceneSize.height
+    // `@SettledPreview` (issue #4238). The batch renderer folds the settle window into the frame
+    // it publishes; without the same wiring here a `compose-preview serve` frame showed the
+    // component's *first* frame while its PNG beside it showed the settled one — the same
+    // disagreement #4202 was about, one lane over.
+    //
+    // The clock has to be installed at construction because it IS the scene's coroutine context:
+    // `scene.render(nanoTime)` drives Compose's frame clock but not `kotlinx.coroutines.delay`,
+    // which on the default context resolves against wall time and so never fires inside a render
+    // that takes microseconds. Raising the frame timestamp alone changes nothing — that finding is
+    // what made the batch desktop lane work at all, and it is repeated here rather than shared
+    // because the scene is built in two different places. See [DesktopSettleClock].
+    //
+    // Resolved from the daemon's `previews.json` index, the same lookup the END-scroll drive uses,
+    // so the intent is annotation-sourced: an interactive render with no previewId simply doesn't
+    // settle, as before.
+    val settle =
+      if (settleEligible) spec.previewId?.let { loadPreviewIndexLazily().staticSettleFor(it) }
+      else null
+    // A zero-length window is "no settle", not "settle for no time" — discovery floors both knobs
+    // at a frame, so only a hand-built manifest can produce one, and falling through keeps that
+    // case on the ordinary two-`render()` path. Mirrors `DesktopRendererMain.renderPreview`.
+    val settleClock = if ((settle?.windowMs ?: 0) > 0) DesktopSettleClock() else null
     val scene =
       try {
-        ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = density)
+        if (settleClock != null) {
+          ImageComposeScene(
+            width = sceneWidthPx,
+            height = sceneHeightPx,
+            density = density,
+            coroutineContext = settleClock,
+          )
+        } else {
+          ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = density)
+        }
       } catch (t: Throwable) {
         // Ensure we don't leave the context classloader installed if scene allocation fails before
         // the SceneState is even handed back to the caller (caller never gets a chance to call
@@ -637,6 +687,9 @@ class RenderEngine(
       themeFallbackCapture = themeFallbackCapture,
       lottieProgressState = lottieProgressState,
       measuredContent = measuredContent,
+      settleClock = settleClock,
+      settleWindowMs = settle?.windowMs ?: 0,
+      settleIsExact = (settle?.afterMs ?: 0) > 0,
     )
   }
 
@@ -930,6 +983,10 @@ class RenderEngine(
   private fun renderFrame(state: SceneState, useWallClockFrameTime: Boolean) =
     when {
       useWallClockFrameTime -> state.scene.render(nanoTime = currentFrameNanoTime())
+      // A settle walk stopped at a coordinate and the capture belongs *on* it, not a frame past
+      // it — see [SceneState.pinnedFrameNanos]. Both of renderOnce's frames render at the same
+      // timestamp, which is a no-op for the composition and is what `DesktopRendererMain` does.
+      state.pinnedFrameNanos != null -> state.scene.render(nanoTime = state.pinnedFrameNanos!!)
       // A scroll drive ran and left the frame clock mid-timeline — keep going from there rather
       // than resetting to zero. See [SceneState.virtualFrameNanos].
       state.virtualFrameNanos > 0L -> state.scene.render(nanoTime = state.nextVirtualFrameNanos())
@@ -1093,7 +1150,40 @@ class RenderEngine(
      * no-size preview's frame is the composable's natural size, not the sandbox.
      */
     internal val measuredContent: IntArray = IntArray(2),
+    /**
+     * The virtual clock a `@SettledPreview` still is settled on, or `null` when the preview carries
+     * no settle (every scene before issue #4238, and every interactive/recording scene still).
+     * Installed as the scene's `coroutineContext` at construction — see [setUp].
+     */
+    internal val settleClock: DesktopSettleClock? = null,
+    /** The settle window in milliseconds — the coordinate in exact mode, the bound in auto. */
+    internal val settleWindowMs: Int = 0,
+    /** Whether [settleWindowMs] is an exact coordinate (`afterMs`) rather than an auto bound. */
+    internal val settleIsExact: Boolean = false,
   ) {
+    /**
+     * Whether [applyStaticSettle] has already walked this scene's settle window.
+     *
+     * The window is walked **once per composition**, not once per capture: the annotation names a
+     * clock coordinate, and repeated captures on one composition are already past it. That is the
+     * contract the Android lane chose, and the desktop session wants the same — a held scene that
+     * re-settled per render would replay the same 1000ms window on every frame the viewer asked
+     * for.
+     */
+    internal var settled: Boolean = false
+
+    /**
+     * Frame timestamp the next capture frame must render at *verbatim*, or `null` to advance the
+     * cursor as usual.
+     *
+     * Set to the coordinate a settle walk stopped on so the captured frame is the one the
+     * quiescence check passed — the same `nanoTime` `DesktopRendererMain` captures at, rather than
+     * a frame or two further along where a paused-and-resumed animation would have moved again.
+     * Cleared by [nextVirtualFrameNanos] so anything that genuinely drives the timeline afterwards
+     * (an END scroll) takes the cursor back.
+     */
+    internal var pinnedFrameNanos: Long? = null
+
     /**
      * Frame timestamp the next one-shot capture frame renders at, in nanoseconds, or `0` for the
      * default frozen-at-zero clock.
@@ -1114,6 +1204,9 @@ class RenderEngine(
 
     /** Advances [virtualFrameNanos] by one 60 Hz frame and returns the new timestamp. */
     internal fun nextVirtualFrameNanos(): Long {
+      // Anything that advances the cursor has overtaken the settled coordinate, so the pin no
+      // longer describes a frame worth reproducing.
+      pinnedFrameNanos = null
       virtualFrameNanos += FRAME_INTERVAL_NANOS
       return virtualFrameNanos
     }
@@ -1434,6 +1527,51 @@ class RenderEngine(
   )
 
   /**
+   * `@SettledPreview` (issue #4238) — walk this scene's settle window once, and leave the frame
+   * cursor on the coordinate the walk stopped at so the capture lands there.
+   *
+   * The desktop daemon used to serve a settled preview's *first* frame while the published PNG
+   * carried its settled one. The batch renderer had solved it (`DesktopRendererMain.renderPreview`)
+   * and this is the same three moves against the held scene: advance the virtual clock the scene
+   * was built on, render a frame at each step so effects and animations actually run, and stop
+   * either at quiescence (auto mode) or at the named coordinate (exact mode).
+   *
+   * Once per composition, not once per capture. `@SettledPreview` names a clock coordinate, so a
+   * scene already past it is already settled — re-walking would replay the whole window on every
+   * frame a viewer asked for, and an exact coordinate would drift a window further along each time.
+   * [SceneState.settled] is the latch.
+   *
+   * No-ops (leaving the frame clock at zero, so the capture is bit-for-bit what it was) for every
+   * preview without a settle, and for interactive/recording scenes, which are never built on a
+   * settle clock at all.
+   */
+  internal fun applyStaticSettle(state: SceneState) {
+    val clock = state.settleClock ?: return
+    if (state.settled) return
+    state.settled = true
+    // Under the same JVM-default-`Locale` override `renderOnce` wraps its frames in: the walk
+    // renders real frames, and `rememberResourceEnvironment` caches what it resolves — so a
+    // localized settled capture would otherwise bake default-language `stringResource(...)` text
+    // into the content the reveal brought on screen.
+    val settledAtMs =
+      withPreviewLocale(state.spec.localeTag) {
+        settleScene(
+          scene = state.scene,
+          clock = clock,
+          windowMs = state.settleWindowMs,
+          autoDetect = !state.settleIsExact,
+        )
+      }
+    val settledAtNanos = settledAtMs * 1_000_000L
+    state.virtualFrameNanos = settledAtNanos
+    state.pinnedFrameNanos = settledAtNanos
+    System.err.println(
+      "@SettledPreview on ${state.spec.outputBaseName}: settled at ${settledAtMs}ms " +
+        "(${if (state.settleIsExact) "exact" else "auto"}, window ${state.settleWindowMs}ms)."
+    )
+  }
+
+  /**
    * `@ScrollingPreview(END)` — drive the preview's scrollable to its content end before the frame
    * is captured, so the daemon's PNG (and the semantics / layout / figma-svg read off the same
    * scene) show the frame the Gradle render ships, not the resting top.
@@ -1489,11 +1627,14 @@ class RenderEngine(
       else SemanticsProperties.VerticalScrollAxisRange
 
     // Semantics only exist once the scene has laid out, and `setUp` deliberately doesn't render.
-    // At timestamp zero, and *without* touching the frame cursor: a preview that turns out to have
-    // nothing scrollable must be captured at the same deterministic frame zero as an ordinary
-    // render, which is what the "capturing the initial frame" message below promises. The cursor
-    // only starts moving once a scrollable is actually found.
-    state.scene.render()
+    // At the cursor's current position, and *without* touching it: a preview that turns out to have
+    // nothing scrollable must be captured at the same deterministic frame as an ordinary render,
+    // which is what the "capturing the initial frame" message below promises. The cursor only
+    // starts moving once a scrollable is actually found. That position is zero for every preview
+    // except one a `@SettledPreview` walk has already advanced (issue #4238) — probing *that* one
+    // at zero would hand every animation the settle just ran a large negative frame delta.
+    if (state.virtualFrameNanos > 0L) state.scene.render(nanoTime = state.virtualFrameNanos)
+    else state.scene.render()
 
     // Re-resolved on each read rather than held: the drive recomposes the scene, and a
     // `SemanticsNode` is a snapshot of one composition pass.

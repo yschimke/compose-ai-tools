@@ -6,6 +6,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
+import org.gradle.api.artifacts.repositories.ArtifactRepository
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
@@ -166,6 +167,73 @@ internal object ComposePreviewTasks {
       }
       .files
   }
+
+  /**
+   * Maven repository base URLs [project] resolves from beyond the two every player already tries
+   * (Maven Central and Google Maven), recorded into the bundle as `BundleManifest.repositories`.
+   *
+   * A `coordinates` bundle only re-renders where its coordinates resolve. A module that takes a
+   * dependency from a JitPack fork, an internal mirror, or an androidx.dev snapshot build therefore
+   * records coordinates no player can find: the resolver warns, drops them, and the daemon comes up
+   * on an incomplete classpath — which is how `:samples:design-catalog-remote-m3` (whose entire
+   * Remote Compose runtime is an androidx.dev snapshot) served a live lane that died on its first
+   * render with `NoClassDefFoundError: androidx/compose/remote/player/view/RemoteComposePlayer`
+   * (issues #4259 / #4265). Carrying the URLs makes the bundle self-describing, and keeps a pinned
+   * snapshot build id honest: bump it here and the next pack records the new one.
+   *
+   * **Both** repository sources are read, because a build declares them in either place and this
+   * repo uses the one a project-level read misses: `project.repositories` holds what the build
+   * script declared, and settings' `dependencyResolutionManagement.repositories` holds what the
+   * settings script declared — under `PREFER_SETTINGS` / `FAIL_ON_PROJECT_REPOS` the project
+   * handler is simply empty, so reading it alone records nothing for exactly the builds that need
+   * this most. The settings block is reached through the one internal accessor there is
+   * (`GradleInternal.settings`, then the public `Settings.dependencyResolutionManagement`), wrapped
+   * so a Gradle that no longer offers it degrades to the project-level list rather than failing the
+   * pack.
+   *
+   * Read through a [Provider] so the list is sampled after both scripts have finished declaring
+   * repositories, while still being a configuration-time read — nothing pins `project` into the
+   * configuration cache at execution. Non-HTTP repositories (`mavenLocal()`, `file:` mirrors) are
+   * skipped: they name a path on the producing machine, which is worse than useless to a player
+   * elsewhere.
+   */
+  private fun extraMavenRepositoryUrls(project: Project): Provider<List<String>> =
+    project.provider {
+      (project.repositories + settingsRepositories(project))
+        .filterIsInstance<org.gradle.api.artifacts.repositories.MavenArtifactRepository>()
+        .map { it.url.toString().trimEnd('/') }
+        .filter { it.startsWith("https://") || it.startsWith("http://") }
+        .filterNot { url -> DEFAULT_PLAYER_REPOSITORIES.any { url.startsWith(it) } }
+        .distinct()
+    }
+
+  /**
+   * The repositories declared by settings' `dependencyResolutionManagement`, or empty when this
+   * Gradle doesn't expose them (or there is no settings object at all — `ProjectBuilder` in unit
+   * tests). `Settings.getDependencyResolutionManagement()` is public API; only reaching the
+   * `Settings` from a project plugin isn't, hence the guarded cast.
+   */
+  private fun settingsRepositories(project: Project): List<ArtifactRepository> = runCatching {
+    (project.gradle as org.gradle.api.internal.GradleInternal)
+      .settings
+      .dependencyResolutionManagement
+      .repositories
+      .toList()
+  }
+    .getOrElse { emptyList() }
+
+  /**
+   * The repositories every player tries before consulting `BundleManifest.repositories`, so
+   * recording them again would be noise. Kept in lockstep with `CoordinateResolver`'s
+   * `DEFAULT_REMOTE_REPOSITORIES` (both host names each serves under).
+   */
+  private val DEFAULT_PLAYER_REPOSITORIES =
+    listOf(
+      "https://repo1.maven.org/maven2",
+      "https://repo.maven.apache.org/maven2",
+      "https://dl.google.com/dl/android/maven2",
+      "https://maven.google.com",
+    )
 
   /** Builds the [DependencyClasspathBinding] for consumer runtime config [configName]. */
   private fun dependencyClasspathBinding(
@@ -659,6 +727,9 @@ internal object ComposePreviewTasks {
       catalogTokenFiles.from(previewOutputDir.map { it.dir("data/catalog-tokens") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
+      // (v9) Where this module's coordinates actually resolve from, for a player that has to
+      // re-attach them. See [extraMavenRepositoryUrls].
+      extraMavenRepositories.set(extraMavenRepositoryUrls(project))
       includeDataExtensions.set(includeDataExtensionsProperty.orElse(false))
       // Track the aggregated extension report sidecars (the render task writes them as top-level
       // `*.json` under the preview output dir) so a content change re-packs the bundle. The bundle

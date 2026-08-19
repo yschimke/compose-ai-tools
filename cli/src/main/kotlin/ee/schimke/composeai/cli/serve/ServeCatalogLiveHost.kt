@@ -123,8 +123,12 @@ class ServeCatalogLiveHost(
    * [ServeBackgroundWork].
    */
   private val backgroundWork: ServeBackgroundWork = ServeBackgroundWork(),
-  private val themeOptimizationIdleMillis: Long =
-    System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L,
+  private val themeOptimizationIdleMillis: Long = themeOptimizationIdleMillisDefault(),
+  /**
+   * How long the idle gate may withhold a turn before one is granted anyway — see
+   * [grantForcedTurn]. Non-positive disables the ceiling and restores the pure gate.
+   */
+  private val optimizerGateCeilingMillis: Long = optimizerGateCeilingMillisDefault(),
   /**
    * How long one admitted pass may hold its optimizer lane before giving it back and re-queueing.
    *
@@ -248,6 +252,14 @@ class ServeCatalogLiveHost(
   // When the optimizer last checked for activity. Any activity newer than this happened while it
   // was rendering, and must cost it the turn even if the server looks quiet again by now.
   private val optimizerSampledAt = java.util.concurrent.atomic.AtomicLong(0)
+  /**
+   * When the gate started withholding a turn, or [Long.MIN_VALUE] while it isn't — the clock the
+   * ceiling in [grantForcedTurn] measures. Reset the moment a turn is granted, by either route, so
+   * it always reads "how long has this catalog been shut out *right now*".
+   */
+  private val optimizerGateBlockedSince = java.util.concurrent.atomic.AtomicLong(Long.MIN_VALUE)
+  /** Set while the pass is running on a turn the ceiling forced rather than the box granting. */
+  private val optimizerTurnForced = AtomicBoolean(false)
   /**
    * Next preview position for a new optimizer slice; prevents an evicted prefix monopolising it.
    */
@@ -525,12 +537,26 @@ class ServeCatalogLiveHost(
         // freshly-stamped `lastRanAt` puts it behind everyone still waiting, so the next slice goes
         // to them and this catalog resumes once they have had theirs.
         while (true) {
+          // **The gate is waited out BEFORE a lane is taken, not inside one.** Waiting inside
+          // converts "the box is busy" into "two catalogs own both lanes indefinitely": the quiet
+          // wait blocks until the server goes quiet, and on a box that never does — one held
+          // session lease is enough, since the registry's idle clock then answers busy outright —
+          // the two admitted passes park on their lanes forever while every other catalog is
+          // refused every 20s. Measured on the deployed server: 2 lanes held for the whole 3h
+          // uptime, 16 catalogs queued behind them, 8,052 refusals, `turnsGranted 0` everywhere.
+          // A pass parked at the gate holding nothing costs a sleeping thread; parked on a lane it
+          // costs every other catalog its turn.
+          if (!awaitOptimizerTurn()) {
+            catalogThemeCache.markPaused()
+            if (!awaitOptimizerResume()) return@execute
+            continue
+          }
           val outcome =
             backgroundWork.withOptimizerSlot(label, optimizerAdmissionWaitMillis) {
-              // Inside the lane and behind the idle gate, so the sample's renders are admitted on
+              // Holding the turn established above, so the sample's renders are admitted on
               // exactly the terms every other background render is. Cheap and once per host: a
               // no-op when nothing was adopted from disk.
-              if (!persistenceVerified.get() && awaitOptimizerTurn()) verifyPersistedRenders(jobs)
+              if (!persistenceVerified.get()) verifyPersistedRenders(jobs)
               if (catalogThemeCache.snapshot().fullyOptimized) PassOutcome.FINISHED
               else runOptimizerPass(jobs, sliceUntil = clock() + optimizerSliceMillis)
             }
@@ -543,9 +569,12 @@ class ServeCatalogLiveHost(
             if (!awaitOptimizerResume()) return@execute
             continue
           }
-          // Anything other than a spent slice is the pass deciding it is done for now — finished,
-          // gated, paused or breakered — and re-queueing on those would spin.
-          if (outcome != PassOutcome.SLICE_SPENT) return@execute
+          // A spent slice re-queues, and so does a pass the gate took the turn back from — that
+          // one used to exit and wait for a visitor heartbeat, on the reasoning that re-queueing
+          // would spin. It no longer can: the loop's next stop is the quiet gate above, which
+          // parks until the box is actually quiet. Anything else — finished, breakered,
+          // interrupted — is the pass deciding it is done for now.
+          if (outcome != PassOutcome.SLICE_SPENT && outcome != PassOutcome.GATED) return@execute
         }
       } finally {
         optimizationActive.set(false)
@@ -626,12 +655,21 @@ class ServeCatalogLiveHost(
     }
   }
 
-  /** Why an optimizer pass returned; only [SLICE_SPENT] asks for another lane. */
+  /** Why an optimizer pass returned; [SLICE_SPENT] and [GATED] ask for another lane. */
   private enum class PassOutcome {
     /** Every target this pass could see is cached — nothing left to re-queue for. */
     FINISHED,
-    /** The idle gate, a pause, or the render breaker stopped the pass. */
+    /** The render breaker or a shutdown interrupt stopped the pass. */
     STOPPED,
+    /**
+     * Traffic took the turn back and it did not come back inside [OPTIMIZER_RESUME_WAIT_MILLIS], so
+     * the pass returned its lane rather than idling on one.
+     *
+     * Distinct from [STOPPED] because the two want opposite things from the caller: a breakered
+     * pass must not re-queue (nothing it renders can succeed), while a gated one must, or the
+     * catalog is stranded until a visitor's heartbeat happens to revive it.
+     */
+    GATED,
     /** The lane slice ran out with work remaining. */
     SLICE_SPENT,
   }
@@ -691,7 +729,7 @@ class ServeCatalogLiveHost(
       // cold daemon, which is the single most expensive thing this pass can do to a box that is
       // still loading catalogs or serving traffic — exactly what the idle gate exists to
       // prevent. Warming ahead of it let every catalog host kick off a cold start at prewarm.
-      if (!awaitOptimizerTurn()) return PassOutcome.STOPPED
+      if (!awaitOptimizerTurn()) return gateStopOutcome()
       val previewDaemonId = alias[previewId]
       // Await a cold warm ONCE per preview rather than letting each theme rediscover it. The
       // old per-job loop spent retry budget on this; here it is a precondition of the batch.
@@ -712,7 +750,7 @@ class ServeCatalogLiveHost(
         // Checked per batch, and a batch is bounded by ONE render — so a visitor arriving mid
         // batch still waits at most a render, which is the guarantee the old per-render permit
         // was expressing.
-        if (!awaitOptimizerTurn()) return PassOutcome.STOPPED
+        if (!awaitOptimizerTurn()) return gateStopOutcome()
         val batch =
           previewJobs.subList(index, minOf(index + optimizerBatchWidth(), previewJobs.size))
         index += batch.size
@@ -785,6 +823,14 @@ class ServeCatalogLiveHost(
             else -> catalogThemeCache.markFailed(job.cacheKey)
           }
         }
+      }
+      // A turn the ceiling forced buys exactly this one preview. Hand the lane back rather than
+      // carrying a turn the box never actually granted into the next one — the ceiling exists so a
+      // permanently-shut gate still makes progress, not so it stops being a gate.
+      if (optimizerTurnForced.compareAndSet(true, false)) {
+        optimizerHasTurn.set(false)
+        catalogThemeCache.markPaused()
+        return PassOutcome.SLICE_SPENT
       }
     }
     catalogThemeCache.markPassFinished(clock())
@@ -869,15 +915,20 @@ class ServeCatalogLiveHost(
       return false
     }
     if (!optimizerHasTurn.get()) {
-      val waitedFrom = clock()
+      // The wait is charged inside [awaitQuiet], per poll — see there for why charging it here,
+      // on the way out, was the wrong place. Unbounded, deliberately: this call holds no lane, so
+      // a pass parked here costs a sleeping thread and nothing else.
       val granted = awaitServerIdle()
-      catalogThemeCache.recordGateWait(clock() - waitedFrom)
       if (!granted) return false
       catalogThemeCache.recordTurnGranted()
       optimizerHasTurn.set(true)
       optimizerSampledAt.set(clock())
       return true
     }
+    // A forced turn is not re-examined against traffic: the ceiling granted it precisely because
+    // the box never looks quiet, so asking again would take it straight back. It lasts one preview
+    // — see where [optimizerTurnForced] is cleared.
+    if (optimizerTurnForced.get()) return true
     // Holding a turn. The question is NOT "is the server idle right this instant" — sampling that
     // misses every request that arrived *during* the render we just finished. A render can outlast
     // OPTIMIZER_YIELD_MILLIS several times over, so by the time we look, a visitor's request has
@@ -896,15 +947,18 @@ class ServeCatalogLiveHost(
     optimizerHasTurn.set(false)
     catalogThemeCache.recordTurnYielded()
     catalogThemeCache.markPaused()
-    val resumeFrom = clock()
     // Re-enter on the SHORT window, not the full entry one. [themeOptimizationIdleMillis] answers
     // "may I start work on a box someone might be using?" — a cold-start question, asked once. Once
     // the pass has been running, the box has already proved it goes quiet, and the only question
     // left is "has the visitor who just interrupted me finished?". Charging the full entry window
     // per interruption is what capped throughput: at a ~50% yield rate a 60s re-entry averages
     // ~30s/entry against a sub-second render, i.e. ~97% waiting.
-    return awaitQuiet(OPTIMIZER_RESUME_MILLIS).also {
-      catalogThemeCache.recordGateWait(clock() - resumeFrom)
+    //
+    // **Bounded, unlike the cold entry above**, because this one waits with a lane in hand. A pass
+    // that cannot get its turn back inside [OPTIMIZER_RESUME_WAIT_MILLIS] gives the lane up and
+    // re-parks at the cold gate, where waiting is free; holding it while the box stays busy is how
+    // two catalogs came to own both lanes for three hours.
+    return awaitQuiet(OPTIMIZER_RESUME_MILLIS, maxWaitMillis = OPTIMIZER_RESUME_WAIT_MILLIS).also {
       if (it) {
         // A resume IS a grant. Counting only cold entries made yields exceed grants after any
         // interrupted pass, which reads as the gate losing turns it never handed out.
@@ -915,22 +969,84 @@ class ServeCatalogLiveHost(
     }
   }
 
+  /**
+   * Why a mid-pass [awaitOptimizerTurn] returned false: a shutdown interrupt, or the gate simply
+   * not reopening in time.
+   *
+   * They differ in what the caller should do next — [PassOutcome.STOPPED] ends the worker,
+   * [PassOutcome.GATED] sends it back to the cold gate to wait without a lane — and conflating them
+   * is what left a gated catalog stranded until a visitor's heartbeat revived it.
+   */
+  private fun gateStopOutcome(): PassOutcome =
+    if (Thread.currentThread().isInterrupted) PassOutcome.STOPPED else PassOutcome.GATED
+
   private fun awaitServerIdle(): Boolean = awaitQuiet(themeOptimizationIdleMillis)
 
   /**
    * Block until the server has been untouched for [quietMillis]. Polls at a fraction of the window
    * so a short resume window is not rounded up to a full second of dead time — a 1s poll against a
    * 1.5s window would put the floor back where it started.
+   *
+   * **The gate wait is charged here, per poll, not by the caller once this returns.** Charging on
+   * the way out means a pass still waiting has spent, as far as `/status` is concerned, no time at
+   * the gate — so the one counter that names a closed gate reads `gateWaitMillis: 0`, which is also
+   * what a pass that sailed straight through reports. A box whose gate had never opened once in
+   * three hours published an all-zero optimizer row on every catalog and looked idle by choice.
+   * Accruing as we wait makes an unopened gate visible while it is still unopened, which is the
+   * only time the reading is any use.
    */
-  private fun awaitQuiet(quietMillis: Long): Boolean {
+  private fun awaitQuiet(quietMillis: Long, maxWaitMillis: Long = Long.MAX_VALUE): Boolean {
     val pollMillis = quietMillis.coerceAtMost(1_000L).coerceAtLeast(50L) / 2
+    val startedAt = clock()
+    optimizerGateBlockedSince.compareAndSet(Long.MIN_VALUE, startedAt)
     while (true) {
       if (!awaitOptimizerResume()) return false
       val idleMillis = serverIdleMillis()
-      if (idleMillis != null && idleMillis >= quietMillis) return true
+      if (idleMillis != null && idleMillis >= quietMillis) {
+        optimizerGateBlockedSince.set(Long.MIN_VALUE)
+        return true
+      }
+      if (grantForcedTurn()) return true
+      if (clock() - startedAt >= maxWaitMillis) return false
       catalogThemeCache.markPaused()
-      if (!pauseOptimization(pollMillis)) return false
+      val polledFrom = clock()
+      val slept = pauseOptimization(pollMillis)
+      catalogThemeCache.recordGateWait(clock() - polledFrom)
+      if (!slept) return false
     }
+  }
+
+  /**
+   * The ceiling: once the gate has withheld a turn for [optimizerGateCeilingMillis] without
+   * interruption, grant one anyway.
+   *
+   * **A gate that can close permanently is indistinguishable from the feature being off**, and this
+   * one can: the quiet window is measured from `ServeSessionRegistry.idleMillis()`, which answers
+   * *busy* outright — not a large number, but `null` — while any session holds an open lease. One
+   * long-lived WebSocket, or one lease leaked by a request cancelled mid-flight, and no amount of
+   * waiting will ever satisfy the window. The deployed server sat in exactly that state for its
+   * whole uptime: 23 catalogs, `turnsGranted 0`, 1 of 17,914 entries cached.
+   *
+   * The grant is deliberately small and self-limiting — one preview, then back to the gate (see
+   * [optimizerTurnForced]) — so a genuinely busy box pays one preview per ceiling period per
+   * catalog rather than losing the politeness the gate exists for.
+   *
+   * Two things it will **not** override, because both are correct refusals rather than a stuck
+   * clock: a pause (manual or pressure), which [awaitOptimizerResume] has already blocked on above,
+   * and catalog loading — a slow daemon start there is recorded as `livebundle-unavailable` and
+   * degrades that catalog to baked PNGs for the life of the process, which is a far worse outcome
+   * than a cold theme cache.
+   */
+  private fun grantForcedTurn(): Boolean {
+    if (optimizerGateCeilingMillis <= 0 || backgroundWork.catalogsLoading) return false
+    val blockedSince = optimizerGateBlockedSince.get()
+    if (blockedSince == Long.MIN_VALUE || clock() - blockedSince < optimizerGateCeilingMillis) {
+      return false
+    }
+    optimizerGateBlockedSince.set(Long.MIN_VALUE)
+    optimizerTurnForced.set(true)
+    catalogThemeCache.recordTurnForced()
+    return true
   }
 
   /** Park an unfinished optimizer through a timed/manual pause, stopping only for shutdown. */
@@ -1050,6 +1166,22 @@ class ServeCatalogLiveHost(
   override fun hasA11yOverlayFor(previewId: String): Boolean =
     previewId in alias && live.hasA11yOverlayFor(alias.getValue(previewId))
 
+  /**
+   * Annotation capability comes from the live lane, NOT from [canApplyOverrides].
+   *
+   * The composite reports `canApplyOverrides = false` because browsing serves baked pixels — but
+   * the default `hasDesignAnnotations` reads exactly that flag, so a catalog fronted by a live
+   * daemon advertised itself as unable to produce the layers its daemon produces on request.
+   */
+  override val hasDesignAnnotations: Boolean by lazy { live.hasDesignAnnotations }
+
+  override fun hasDesignAnnotationsFor(previewId: String): Boolean =
+    previewId in alias && live.hasDesignAnnotations
+
+  /** The baked half: a catalog that published typography can inspect an unmapped variant too. */
+  override fun hasPublishedTypographyFor(previewId: String): Boolean =
+    baked.hasPublishedTypographyFor(previewId)
+
   override fun hasScrollExportFor(previewId: String): Boolean =
     previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
 
@@ -1132,18 +1264,35 @@ class ServeCatalogLiveHost(
     renderInternal(previewId, overrides, leased = false)
 
   /**
-   * A broken live lane latches EVERY preview, not just the ones the theme cache has recorded
-   * against: the fault is in the daemon, so the answer is the same for all of them. Checked first
-   * so a `/render` gets the terminal 409 naming the real error before it takes a render slot —
-   * ahead of the per-key theme latch, which only knows about keys the optimizer reached.
+   * A broken live lane latches every render **that would have reached it**, not just the ones the
+   * theme cache has recorded against: the fault is in the daemon, so the answer is the same for
+   * every preview it serves. Checked first so a `/render` gets the terminal 409 naming the real
+   * error before it takes a render slot — ahead of the per-key theme latch, which only knows about
+   * keys the optimizer reached.
    *
-   * Scoped to daemon-twinned ids ([alias]): an unmapped variant never reaches the live lane — it
-   * replays baked pixels — so a broken daemon must not turn its perfectly serveable request into
-   * a 409.
+   * Scoped by [daemonIdForOverrideRender] — the same predicate [render] routes on — rather than by
+   * bare membership in [alias], and that scoping is the whole point. A broken daemon must only
+   * refuse the requests the daemon was the answer to:
+   * - an **unmapped** variant has no live twin at all and always replayed baked pixels;
+   * - a **mapped** id browsed with no override (or with one the baked PNG already satisfies) also
+   *   replays baked pixels — the routing has said so since the composite was written.
+   *
+   * Latching those turned one broken daemon into a catalog-wide blackout: with the breaker open,
+   * `bakedRender` answers only from pixels **already local** (deliberately — measuring an image
+   * must not trigger a fetch), so on a catalog whose PNGs are fetched lazily from its delivery
+   * branch the fast path returns null, the latch fired ahead of [render] — which *would* have
+   * fetched them — and every `<img>` on every page 409'd, including the live-render URLs the
+   * issue-report template embeds as evidence (compose-ai-tools#4220). The degradation banner
+   * meanwhile promised those very "baked PNG snapshots", so the page contradicted itself.
+   *
+   * A request that genuinely needs the daemon — any override the baked PNG can't represent, or a
+   * live-only (deferred) id with no baked pixels at all — still gets the terminal 409 naming the
+   * linkage error, because for those there is nothing honest to serve.
    */
   override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
-    (if (previewId in alias) live.renderBreaker()?.takeIf { it.open }?.reason else null)
-      ?: themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
+    (if (daemonIdForOverrideRender(previewId, overrides) != null)
+      live.renderBreaker()?.takeIf { it.open }?.reason
+    else null) ?: themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
 
   /**
    * Shed the pooled daemons — burst replicas and per-preview residents — while keeping the
@@ -1475,6 +1624,47 @@ class ServeCatalogLiveHost(
   }
 
   /**
+   * The typography + theme inspection layers follow [renderA11y] exactly: the baked lane has no
+   * daemon to capture a `compose/semantics` tree from, so a mapped id routes live and an unmapped
+   * one has nothing to inspect.
+   *
+   * Without this the composite inherited [ServeHost]'s daemon-less default — `NotFound` — while the
+   * viewer still offered the Typography checkbox from the catalog's *published reference*
+   * annotations (issue #4254). Ticking it on the Compose render fetched `<frame>.annotations`, got
+   * a 404, and drew nothing: a control that looked live on every catalog page and worked on none of
+   * them.
+   */
+  override fun renderAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome {
+    val daemonId = alias[previewId] ?: return bakedAnnotations(previewId, overrides)
+    val live = liveHostFor(daemonId).renderAnnotations(daemonId, overrides)
+    // A daemon that carries no semantics lane answers NotFound. The catalog may still have
+    // published typography for this preview, so fall back to it rather than leaving the layer
+    // blank — under the same rule [bakedAnnotations] states. A `Failed` is a real error and
+    // travels, unchanged: quietly answering a broken render with the published facts would
+    // describe pixels the visitor is not being shown.
+    return if (live is AnnotationsOutcome.NotFound) bakedAnnotations(previewId, overrides) else live
+  }
+
+  /**
+   * The catalog's published annotations, but ONLY where they describe the pixels on screen.
+   *
+   * They were measured over the baked frame, so they are true exactly while the baked frame is what
+   * this host serves — which is what [CatalogLiveRouting.overridesAffectRender] answers, the same
+   * predicate [render] routes on. Under a font scale or a knob edit the daemon draws different
+   * pixels, and published bounds over those would put every box in the wrong place while looking
+   * entirely deliberate.
+   */
+  private fun bakedAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome =
+    if (CatalogLiveRouting.overridesAffectRender(previewId, overrides)) AnnotationsOutcome.NotFound
+    else baked.renderAnnotations(previewId, overrides)
+
+  /**
    * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Delegates to
    * [CatalogLiveRouting] — the same predicate [ServePerPreviewLiveHost] uses — so the "baked vs
    * re-render" decision is identical across the two trusted-catalog live hosts.
@@ -1628,6 +1818,17 @@ class ServeCatalogLiveHost(
      */
     internal const val OPTIMIZER_ADMISSION_WAIT_MILLIS = 20_000L
 
+    /**
+     * Whole-server quiet the idle gate requires before a cold pass may start.
+     *
+     * Read through a function rather than held in a `val` so the system property is still honoured
+     * when it is set after this class loads, and so [ServeBackgroundWork] can publish the same
+     * number on `/status.json` without restating the default. A gate whose threshold is invisible
+     * is one nobody can tell from a gate that is simply never reached.
+     */
+    internal fun themeOptimizationIdleMillisDefault(): Long =
+      System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L
+
     /** Default lane slice — see the `optimizerSliceMillis` constructor parameter for the trade. */
     internal const val DEFAULT_OPTIMIZER_SLICE_MILLIS = 5 * 60_000L
 
@@ -1642,6 +1843,32 @@ class ServeCatalogLiveHost(
      * resume could immediately re-detect the activity it just waited out and livelock.
      */
     internal const val OPTIMIZER_RESUME_MILLIS = 2_000L
+
+    /**
+     * How long a pass that has yielded will wait, **holding its lane**, for the box to go quiet
+     * again before giving the lane back.
+     *
+     * The trade is re-warming against lane occupancy. Shorter than a cold daemon start (34-68s on
+     * an Android/Robolectric lane) and a pass keeps throwing away warms it has just paid for;
+     * unbounded — which is what this was — and a box that never goes quiet has its lanes held by
+     * the first passes to take them, permanently. Thirty seconds rides out an ordinary browse
+     * without re-warming, while a box that is busy for minutes rotates its lanes instead of
+     * freezing them.
+     */
+    internal const val OPTIMIZER_RESUME_WAIT_MILLIS = 30_000L
+
+    /**
+     * Default ceiling on how long the idle gate may withhold a turn — see [grantForcedTurn] for why
+     * a gate with no ceiling is a gate that can turn the feature off.
+     *
+     * Ten minutes, and the cost of being wrong is bounded by the grant's size rather than by this
+     * number: a forced turn buys ONE preview. A 23-catalog box that never goes quiet therefore
+     * spends 23 previews per ten minutes on background work — still behind the render permit and
+     * the two-lane cap — against a cache that otherwise never fills at all.
+     */
+    internal fun optimizerGateCeilingMillisDefault(): Long =
+      System.getProperty("composeai.serve.themeOptimizationGateCeilingMillis")?.toLongOrNull()
+        ?: (10 * 60_000L)
 
     /**
      * Ceiling on prefetch batch width. Matches the replica pool's own capacity, so the batch can

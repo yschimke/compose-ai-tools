@@ -40,18 +40,6 @@ class ServeBugReportTest {
   }
 
   @Test
-  fun `the title names where the visitor was, so two reports are told apart before reading them`() {
-    assertEquals("Preview server issue: jetnews", ServeBugReport.title(page))
-    assertEquals(
-      "Preview server issue: /status",
-      ServeBugReport.title(ServeBugReport.Page(path = "/status")),
-    )
-    // The front door has neither, and gets the bare title rather than one naming "/".
-    assertEquals("Preview server issue", ServeBugReport.title(ServeBugReport.Page(path = "/")))
-    assertEquals("Preview server issue", ServeBugReport.title(ServeBugReport.Page()))
-  }
-
-  @Test
   fun `the body carries the deployment facts a triager would otherwise have to ask for`() {
     val body = ServeBugReport.body(server, page)
     assertTrue(body.contains("### What went wrong"), body)
@@ -183,6 +171,15 @@ class ServeBugReportTest {
     assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/pages/shape"))
     assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/parity"))
     assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/usage/Button"))
+    // …and the motion browser, which is the same shape: a catalog page at a constant top-level
+    // segment, plus the capture bytes one level under it.
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/motion"))
+    assertEquals(ServeBugReport.PageRef(), ServeBugReport.parsePath("/motion/switch-on.apng"))
+    // The path-mode form still names its catalog, exactly as `/m3-catalog/parity` does.
+    assertEquals(
+      ServeBugReport.PageRef(system = "m3-catalog"),
+      ServeBugReport.parsePath("/m3-catalog/motion"),
+    )
   }
 
   @Test
@@ -261,6 +258,68 @@ class ServeBugReportTest {
     assertEquals("3h 12m", ServeBugReport.duration(3 * 3600 + 12 * 60))
     assertEquals("2d", ServeBugReport.duration(2 * 86400))
     assertEquals("2d 5h", ServeBugReport.duration(2 * 86400 + 5 * 3600))
+  }
+
+  @Test
+  fun `the screenshot section asks for a paste first and labels the render as the base one`() {
+    // Issue #4261. The embedded PNG used to BE the "Screenshot", so a report filed from the spec
+    // triptych arrived showing an ordinary render and contradicting its own complaint. The paste
+    // slot comes first now, and the render is under a heading that says what it is.
+    val body = ServeBugReport.body(server, page.copy(view = "design spec (triptych)"))
+    val screenshot = body.indexOf("### Screenshot")
+    val base = body.indexOf("### Base render")
+    assertTrue(screenshot in 0 until base, body)
+    assertTrue(body.contains("### Base render — you were on the design spec (triptych)"), body)
+    assertTrue(body.contains("| View | design spec (triptych) |"), body)
+  }
+
+  @Test
+  fun `a page on the plain render lane says nothing about a view`() {
+    val body = ServeBugReport.body(server, page)
+    assertTrue(body.contains("### Base render\n"), body)
+    assertFalse(body.contains("| View |"), body)
+  }
+
+  @Test
+  fun `the view is read out of the reporter's own query`() {
+    assertEquals(
+      "design spec (triptych)",
+      ServeBugReport.viewLabel("/jetnews/p/Article?mode=spec&specView=triptych"),
+    )
+    assertEquals("motion playback", ServeBugReport.viewLabel("/jetnews/p/Article?mode=motion"))
+    assertEquals(
+      "Remote Compose (wasm player)",
+      ServeBugReport.viewLabel("/jetnews/p/Article?mode=rc-wasm"),
+    )
+    // The spec lane's default view qualifies nothing — it is the lane.
+    assertEquals("design spec", ServeBugReport.viewLabel("/p/Article?mode=spec&specView=spec"))
+    // `specView` outside the spec lane is stale state, not a view.
+    assertEquals("motion playback", ServeBugReport.viewLabel("/p/A?mode=motion&specView=diff"))
+    assertEquals("exploded layers", ServeBugReport.viewLabel("/p/Article?exploded=1"))
+    assertEquals("exploded layers", ServeBugReport.viewLabel("/p/Article?exploded"))
+    assertEquals(
+      "design spec (slider), exploded layers",
+      ServeBugReport.viewLabel("/p/A?mode=spec&specView=slider&exploded=true"),
+    )
+  }
+
+  @Test
+  fun `nothing worth saying yields no view row at all`() {
+    // `png` is the lane the embedded render already is, so naming it would be a row that adds
+    // nothing; and the pages that are not viewers have no view to name.
+    assertNull(ServeBugReport.viewLabel("/jetnews/p/Article?mode=png&uiMode=dark"))
+    assertNull(ServeBugReport.viewLabel("/status"))
+    assertNull(ServeBugReport.viewLabel(null))
+    assertNull(ServeBugReport.viewLabel("/p/Article?exploded=0"))
+  }
+
+  @Test
+  fun `an unrecognised view value is dropped rather than echoed into a public issue`() {
+    // The query arrives from the browser and lands in an issue body; there are finitely many real
+    // answers and anything else was never a view at all.
+    assertNull(ServeBugReport.viewLabel("/p/Article?mode=%3Cimg+src%3Dx%3E"))
+    assertNull(ServeBugReport.viewLabel("/p/Article?mode=| shear | the | table"))
+    assertEquals("design spec", ServeBugReport.viewLabel("/p/Article?mode=spec&specView=nonsense"))
   }
 
   @Test

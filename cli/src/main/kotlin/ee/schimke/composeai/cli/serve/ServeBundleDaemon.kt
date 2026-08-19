@@ -181,19 +181,69 @@ internal object ServeBundleDaemon {
     }
 
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir, fileSystem)
-    val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
-    val resolvedDependencies =
+    val recordedCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
+    // A bundle records `skiko-awt` but not the `skiko-awt-runtime-<host>` its bindings link
+    // against — the platform native reaches a Gradle-resolved classpath as a transitive artifact,
+    // not as a coordinate. Promoted unpaired, those bindings link against the SERVER's older
+    // libskiko and every render dies with UnsatisfiedLinkError. See [SkikoNativePairing].
+    val skikoNativeRepair = SkikoNativePairing.missingHostRuntime(recordedCoords)
+    if (skikoNativeRepair != null) {
+      onLog("catalog $system: ${SkikoNativePairing.repairLog(skikoNativeRepair)}")
+    }
+    val mavenCoords = recordedCoords + listOfNotNull(skikoNativeRepair)
+    // (v9) The bundle names the repositories its own coordinates resolve from — a JitPack fork, an
+    // internal mirror, the androidx.dev snapshot build a Remote Compose catalog is built against.
+    // Consulted after the operator's `--extra-maven-repos`, so a box that pins a mirror still wins,
+    // and a pre-v9 bundle contributes nothing. The recorded `sha256` still decides whether the
+    // bytes that come back are the ones the producer packed.
+    val bundleRepositories = manifest.repositories.filter { it.isNotBlank() }
+    if (bundleRepositories.isNotEmpty()) {
+      onLog(
+        "catalog $system: bundle declares ${bundleRepositories.size} extra Maven " +
+          "repository(s) — ${bundleRepositories.joinToString()}"
+      )
+    }
+    val resolutions =
       CoordinateResolver(
           warn = { onLog("catalog $system: $it") },
           networkEnabled = if (offline) false else CoordinateResolver.defaultNetworkEnabled(),
           remoteRepositories =
             CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES +
-              extraMavenRepos.filter { it.isNotBlank() },
+              extraMavenRepos.filter { it.isNotBlank() } +
+              bundleRepositories,
         )
         .resolveAll(mavenCoords)
-        .mapNotNull { resolution ->
-          resolution.file?.let { file -> ResolvedBundleDependency(resolution.coordinate, file) }
-        }
+    val resolvedDependencies = resolutions.mapNotNull { resolution ->
+      resolution.file?.let { file -> ResolvedBundleDependency(resolution.coordinate, file) }
+    }
+    // A coordinate the resolver couldn't find is dropped with a per-coordinate warning and the
+    // daemon starts anyway — correct, because most misses are harmless (a dep nothing on the render
+    // path touches). What was missing is the *aggregate*: 13 unresolved coordinates read as 13
+    // unrelated warnings, and the consequence only surfaced later as an unattributable
+    // `NoClassDefFoundError` that tripped the breaker terminally (issues #4259 / #4265). Record the
+    // gap beside the launch descriptor so a linkage trip can name it — see [BundleClasspathGaps].
+    BundleClasspathGaps.record(
+      destDir = destDir,
+      unresolved = resolutions.filter { it.file == null }.map { it.coordinate },
+      total = mavenCoords.size,
+      system = system,
+      onLog = onLog,
+      fileSystem = fileSystem,
+    )
+    // The resolver warns and returns null rather than throwing, so an unresolvable repair would
+    // otherwise be indistinguishable from one that was never needed — and the daemon would launch
+    // straight back into the split-Skiko classpath this repair exists to close.
+    if (
+      skikoNativeRepair != null && resolvedDependencies.none { it.coordinate == skikoNativeRepair }
+    ) {
+      onLog(
+        "catalog $system: could not resolve ${skikoNativeRepair.artifact}:" +
+          "${skikoNativeRepair.version} — the live lane will link Skiko ${skikoNativeRepair.version} " +
+          "bindings against this server's own libskiko and is likely to fail every render with " +
+          "UnsatisfiedLinkError. Republish the catalog against a Compose Multiplatform version " +
+          "whose Skiko this server ships, or give the server network access to Maven Central."
+      )
+    }
     val (parentOverlayDependencies, childDependencies) =
       resolvedDependencies.partition { shouldPrecedeDaemonSidecar(it.coordinate) }
     // Android app-resource carriage: a classic `@Preview` that calls `stringResource(R.string.…)`
@@ -238,6 +288,12 @@ internal object ServeBundleDaemon {
           "entry(s) precede the daemon sidecar; ${childDependencies.size} app dependency " +
           "entry(s) remain isolated"
       )
+    }
+    // Backstop for every split-Skiko cause the repair above does not close (an offline box, a host
+    // with no published native, a bundle recording another platform's). Read off the assembled
+    // classpath rather than the coordinates, because order is what decides which pair loads.
+    SkikoNativePairing.classpathSkew(classpaths.daemonClasspath)?.let {
+      onLog("catalog $system: $it")
     }
 
     val descriptor =
