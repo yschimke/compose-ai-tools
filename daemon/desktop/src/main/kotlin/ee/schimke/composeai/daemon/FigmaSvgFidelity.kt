@@ -9,13 +9,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.loadSvgPainter
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.renderer.encodePngData
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import org.jetbrains.skia.EncodedImageFormat
 
 /**
  * Desktop half of the **figma-svg fidelity harness**: rasterises a preview's `compose-figma.svg`,
@@ -180,7 +180,7 @@ object FigmaSvgFidelity {
       }
       scene.render()
       val image = scene.render()
-      val bytes = image.encodeToData(EncodedImageFormat.PNG)?.bytes ?: return null
+      val bytes = image.encodePngData()?.bytes ?: return null
       ImageIO.read(ByteArrayInputStream(bytes))
     } finally {
       scene.close()

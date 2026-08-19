@@ -471,8 +471,17 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // process outlives the build. Created here rather than held on the task so nothing
     // process-shaped is on a field the configuration cache would try to store.
     val lane = RenderLane(openWorkerPool(nativeEnv), nativeEnv)
+    val attempted = mutableListOf<java.io.File>()
     try {
-      renderCaptures(manifest, manifestOutputFiles, previewsRoot, outDir, mainClass, lane)
+      renderCaptures(
+        manifest,
+        manifestOutputFiles,
+        previewsRoot,
+        outDir,
+        mainClass,
+        lane,
+        attempted,
+      )
     } finally {
       lane.pool?.let { pool ->
         pool.close()
@@ -485,6 +494,39 @@ abstract class RenderPreviewsTask : DefaultTask() {
         }
       }
     }
+    failIfNothingWasWritten(attempted)
+  }
+
+  /**
+   * Fail when every capture this execution scheduled left no file behind.
+   *
+   * The renderer draws each capture and then swallows its own failure — deliberately, so one broken
+   * preview does not sink a catalog — which means "nothing encoded at all" reaches Gradle looking
+   * exactly like a successful run: the pool reports each capture served, the task logs how many
+   * were drawn, and it exits 0 with an empty `renders/` directory. That is how a skiko API change
+   * (compose-ai-tools#4190) came back GREEN from a dependency bump while publishing an empty
+   * sticker sheet.
+   *
+   * The gate is deliberately all-or-nothing rather than per capture. A single preview that cannot
+   * draw is an ordinary fact about a catalog and is already reported through its `.error.json`
+   * sidecar; a run where not one capture survived is never that, and is always an environment or
+   * classpath fault worth stopping for.
+   */
+  private fun failIfNothingWasWritten(attempted: List<java.io.File>) {
+    emptyRunFailure(attempted)?.let { throw GradleException(it) }
+  }
+
+  internal companion object {
+    /** The failure message for an execution that wrote nothing, or null when it wrote something. */
+    internal fun emptyRunFailure(attempted: List<java.io.File>): String? {
+      if (attempted.isEmpty()) return null
+      if (attempted.any { it.isFile && it.length() > 0L }) return null
+      return "composePreviewRender: ${attempted.size} capture(s) were drawn and none produced a " +
+        "file. That is a renderer or classpath fault rather than a broken preview — check the " +
+        "`Render failed for …` lines above and the `.error.json` sidecars beside the expected " +
+        "outputs, and `validateComposePreviewDesktopRenderClasspath` for a version skew. " +
+        "Expected e.g. ${attempted.first().absolutePath}"
+    }
   }
 
   private fun renderCaptures(
@@ -494,6 +536,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outDir: java.io.File,
     mainClass: String,
     lane: RenderLane,
+    attempted: MutableList<java.io.File>,
   ) {
     for (preview in manifest.previews) {
       val spec =
@@ -542,6 +585,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         val outputFile =
           if (capture.renderOutput.isNotEmpty()) previewsRoot.resolve(capture.renderOutput)
           else outDir.resolve("${preview.id}.png")
+        attempted += outputFile
         invokeRenderer(
           mainClass = mainClass,
           preview = preview,
@@ -569,6 +613,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         if (product.scroll == null) continue
         if (product.output.isBlank()) continue
         val outputFile = previewsRoot.resolve(product.output)
+        attempted += outputFile
         invokeRenderer(
           mainClass = mainClass,
           preview = preview,

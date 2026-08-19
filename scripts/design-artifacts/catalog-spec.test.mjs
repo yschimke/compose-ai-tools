@@ -942,6 +942,20 @@ test("validateSpec accepts a $comment beside the exemptions", () => {
   );
 });
 
+test("validateSpec rejects a non-string completeness $comment", () => {
+  // The schema declares it a string, and `validate-catalog-spec.mjs` runs this validator rather
+  // than the schema — so a whitelist with no type check lets a malformed spec pass the advertised
+  // pre-flight and fail later in schema-aware tooling, which is the worst order to learn it in.
+  for (const bad of [3, { why: "x" }, ["x"], null, true]) {
+    assert.match(
+      validateSpec(prioritySpec([], { completeness: { $comment: bad, exemptSemantics: ["*"] } }))
+        .errors[0],
+      /`completeness\.\$comment` must be a string/,
+      `expected a type error for ${JSON.stringify(bad)}`,
+    );
+  }
+});
+
 // --- select: one breakpoint of a multipreview, without splitting the function ---
 
 const wearSpecWith = (components) => ({
