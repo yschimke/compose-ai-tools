@@ -5,13 +5,18 @@
 # Encrypt certificate automatically — no manual cert handling.
 #
 # {$SITE_DOMAINS} carries the TOP-LEVEL SITE hostnames — the `sites` entries in
-# catalogs.json / --sites, e.g. `m3.preview.coo.ee`, space- or comma-separated.
-# They belong in this same block, not blocks of their own: the app decides which
-# catalog a request is for from the Host header, so every hostname proxies to the
-# one upstream and differs only in what that upstream makes of it. Listing them
-# here is what makes Caddy match the name at all AND provision its certificate —
-# without it a site is configured in the app but unreachable at the edge, which is
-# the failure this line exists to prevent. Each name still needs its own DNS
+# catalogs.json / --sites, e.g. `m3.preview.coo.ee`. They belong in this same
+# block, not blocks of their own: the app decides which catalog a request is for
+# from the Host header, so every hostname proxies to the one upstream and differs
+# only in what that upstream makes of it. Listing them here is what makes Caddy
+# match the name at all AND provision its certificate — without it a site is
+# configured in the app but unreachable at the edge, which is the failure this
+# line exists to prevent.
+#
+# The value is RESOLVED BY THE ENTRYPOINT (../image/caddy-entrypoint.sh, mounted
+# by this profile's compose file) from the same catalogs.json the preview service
+# reads, unioned with any explicit SITE_DOMAINS — so `git pull` delivers a new
+# hostname to the app and the edge at once. Each name still needs its own DNS
 # record pointing at the VM. Empty (the default) leaves the block exactly as it
 # was: one domain, one cert.
 {$DOMAIN} {$SITE_DOMAINS:} {

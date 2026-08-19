@@ -58,6 +58,7 @@ rejected=0
 # Sections skipped because the box lacks the route (an older image, e.g. one still mid-roll).
 groups_skipped=0
 catalogs_skipped=0
+sites_skipped=0
 
 # POST one JSON body to an admin path. 200 = applied, 409 = already there (both fine), 404 =
 # that ROUTE doesn't exist on this box — returned as 2 so the caller can skip just its own section.
@@ -164,12 +165,46 @@ while IFS= read -r entry; do
   }
 done < <(jq -c '.catalogs // [] | .[]' "${CATALOGS_FILE}")
 
+# Sites LAST: a site may only name a catalog the box already serves, so it has to follow the
+# catalogs loop that publishes them — a hostname posted first would be rejected as naming an
+# unserved system, and on a first rollout that is every hostname.
+#
+# This section is why the whole reconcile exists for sites at all. `sites` is read at STARTUP from
+# /config/catalogs.json, which is seeded on first boot and never overwritten, so a hostname added to
+# the committed file reached a running box through nothing: standing one up meant editing SERVE_SITES
+# in the box's untracked .env and recreating the container. POST /admin/sites applies it live and
+# writes it back to the same file.
+#
+# What this still does NOT do is make the name reachable: DNS must point at the box, and the edge
+# must match the hostname and hold a certificate for it. The caddy container derives that from this
+# same file (deploy/image/caddy-entrypoint.sh), so it needs a caddy restart and no hand-maintained
+# env var — but a brand-new hostname is not live the instant this script prints "applied".
+echo "Reconciling top-level sites from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
+while IFS= read -r site; do
+  [[ -n "${site}" ]] || continue
+  host=$(printf '%s' "${site}" | jq -r '.host')
+  system=$(printf '%s' "${site}" | jq -r '.system')
+  post /admin/sites \
+    "$(jq -cn --arg h "${host}" --arg s "${system}" '{host:$h, system:$s}')" \
+    "site ${host} -> ${system}" || {
+    # A box predating /admin/sites. Everything else published fine; the hostnames stay on whatever
+    # that box booted with, which is the behaviour this section replaced.
+    if [[ $? == 2 ]]; then
+      sites_skipped=1
+      break
+    fi
+  }
+done < <(jq -c '.sites // [] | .[]' "${CATALOGS_FILE}")
+
 if [[ "${groups_skipped}" == 1 ]]; then
   echo "::warning::front-page groups were not reconciled — this box predates /admin/groups. Catalogs are published ungrouped; the next publish against a newer image will group them."
 fi
 if [[ "${catalogs_skipped}" == 1 ]]; then
   echo "::error::catalogs were not reconciled — /admin/catalogs is unavailable on this box."
   rejected=$((rejected + 1))
+fi
+if [[ "${sites_skipped}" == 1 ]]; then
+  echo "::warning::top-level sites were not reconciled — this box predates /admin/sites. Its hostnames keep serving whatever it booted with; the next publish against a newer image applies them."
 fi
 
 if [[ "${rejected}" -gt 0 ]]; then

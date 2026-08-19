@@ -247,4 +247,22 @@ class ServeCatalogsConfigFile(
     fileSystem.write(tmp) { writeUtf8(ServeCatalogsConfig.encode(config)) }
     fileSystem.atomicMove(tmp, path)
   }
+
+  /**
+   * [load] -> [mutate] -> [save] as one critical section, returning what was written.
+   *
+   * The whole read-modify-write has to be serialised, not just the write: two admin requests on
+   * different threads would otherwise load the same document, apply one edit each, and atomically
+   * move — last one wins, both report success, and the loser's change silently vanishes on the next
+   * restart. Atomicity of the individual save doesn't help, because the lost update happens between
+   * the load and the save.
+   *
+   * The lock lives here, on the file, rather than inside one administrator, because more than one
+   * edits this document now — [ServeCatalogAdmin] for catalogs and groups, [ServeSiteAdmin] for
+   * sites. A lock per administrator would serialise each against itself and neither against the
+   * other, which is the same lost update with a longer stack trace. Callers share one instance per
+   * path.
+   */
+  fun update(mutate: (ServeCatalogsConfig) -> ServeCatalogsConfig): ServeCatalogsConfig =
+    synchronized(this) { mutate(load()).also { save(it) } }
 }

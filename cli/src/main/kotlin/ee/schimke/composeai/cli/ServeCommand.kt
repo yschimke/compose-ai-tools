@@ -67,6 +67,8 @@ import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeSharedDaemonPool
+import ee.schimke.composeai.cli.serve.ServeSiteAdmin
+import ee.schimke.composeai.cli.serve.ServeSiteRegistry
 import ee.schimke.composeai.cli.serve.ServeSites
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeTrustAdmin
@@ -2577,15 +2579,20 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // catalog set), then any `--sites` flag entries for a host the file didn't already claim — the
     // same compose-don't-replace rule `--catalogs` follows. A site naming a system this server does
     // not serve is dropped with a startup warning rather than 404ing a whole hostname silently.
+    //
+    // Held in a [ServeSiteRegistry] rather than as a value, because `/admin/sites` publishes onto
+    // the running server: the startup map below is the seed, not the whole story.
     val sites =
-      ServeSites.of(
-        catalogsConfig.sites.map { it.host to it.system } +
-          ServeSites.parse(sitesRaw, onProblem = { System.err.println("serve: $it") }).let {
-            flagSites ->
-            flagSites.hosts.map { it to flagSites.systemFor(it)!! }
-          },
-        knownSystems = (configuredCatalogs + configuredApps).toSet(),
-        onProblem = { System.err.println("serve: $it") },
+      ServeSiteRegistry(
+        ServeSites.of(
+          catalogsConfig.sites.map { it.host to it.system } +
+            ServeSites.parse(sitesRaw, onProblem = { System.err.println("serve: $it") }).let {
+              flagSites ->
+              flagSites.hosts.map { it to flagSites.systemFor(it)!! }
+            },
+          knownSystems = (configuredCatalogs + configuredApps).toSet(),
+          onProblem = { System.err.println("serve: $it") },
+        )
       )
     // Runtime catalog administration: only when the operator supplied an admin token AND there's a
     // catalog store to fetch through. Both halves are opt-in, so a plain `serve` has no admin
@@ -2593,6 +2600,24 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     val catalogAdmin =
       if (adminToken != null && catalogStore != null && catalogLoads != null) {
         buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs, sites)
+      } else {
+        null
+      }
+    // Runtime site administration. Needs only the admin token and the live map: publishing a
+    // hostname adds no catalog and fetches nothing, it re-points an existing one. What it does need
+    // is the CURRENT served set, read through the tracker rather than captured here, so a site may
+    // name a catalog that was itself published at runtime a moment earlier — which is exactly the
+    // order a config reconcile applies them in.
+    val siteAdmin =
+      if (adminToken != null) {
+        ServeSiteAdmin(
+          registry = sites,
+          servedSystems = {
+            catalogLoads?.snapshot()?.map { it.config.system }?.toSet()
+              ?: (configuredCatalogs + configuredApps).toSet()
+          },
+          configFile = catalogsFile,
+        )
       } else {
         null
       }
@@ -2668,6 +2693,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         catalogRefreshSeconds = catalogRefreshSeconds,
         acceptBundlesEnabled = acceptBundles,
         catalogAdmin = catalogAdmin,
+        siteAdmin = siteAdmin,
         trustAdmin = trustAdmin,
         adminToken = adminToken,
         docStore = docStore,
@@ -2705,6 +2731,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     if (catalogAdmin != null) {
       System.err.println(
         "serve: catalog admin API enabled at /admin/catalogs" +
+          (catalogsFile?.let { " (persisting to ${it.displayPath})" }
+            ?: " (runtime only — pass --catalogs-file to persist)")
+      )
+    }
+    if (siteAdmin != null) {
+      System.err.println(
+        "serve: site admin API enabled at /admin/sites" +
           (catalogsFile?.let { " (persisting to ${it.displayPath})" }
             ?: " (runtime only — pass --catalogs-file to persist)")
       )
@@ -3195,7 +3228,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     loads: CatalogLoadTracker,
     wasmCatalogs: MutableMap<String, File>,
     /** So retiring a catalog a hostname is published as is refused rather than stranding it. */
-    sites: ServeSites,
+    sites: ServeSiteRegistry,
   ): ServeCatalogAdmin =
     ServeCatalogAdmin(
       tracker = loads,
@@ -4168,7 +4201,11 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                           /<this-system>/… 301s to the rooted URL. Same sessions, same baked pixels,
                           same daemons — a site is a view of the box, not a second one. The system
                           must be one this server already serves; catalogs.json's "sites" says the
-                          same thing as config.
+                          same thing as config, and POST /admin/sites says it on a running server
+                          (see --admin-token), writing it back to --catalogs-file. Two things this
+                          does NOT do, because they are outside the app: DNS for the name must point
+                          at this box, and the reverse proxy must match the name and hold a
+                          certificate for it.
         --admin-token <value>
                           Enable the runtime admin API and gate it with this secret. Two surfaces:
                           the catalog set — GET /admin/catalogs, POST /admin/catalogs (a
@@ -4179,7 +4216,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
                           the front-page sections — GET /admin/groups, POST /admin/groups
                           ({"id","heading","noun"}), DELETE /admin/groups/<id>. Defining a section
                           also regroups catalogs already registered, and re-POSTing a published
-                          catalog converges its listing (group / listed) in place.
+                          catalog converges its listing (group / listed) in place. And the
+                          top-level sites — GET /admin/sites, POST /admin/sites
+                          ({"host","system"}), DELETE /admin/sites/<host> — so a hostname can be
+                          published on a running box; re-POSTing one whose system changed re-points
+                          it in place. The edge still has to route the name and hold a certificate
+                          for it (see --sites).
                           Mutations are applied live AND written back to --catalogs-file /
                           --trust-store, so they survive a restart. Separate from --token on purpose
                           (a --public box hands that one to every visitor); omitted = the admin

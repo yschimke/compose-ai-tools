@@ -13,5 +13,18 @@
 # `{$DOMAIN}` stays an env placeholder — Caddy substitutes it from the container's
 # DOMAIN at runtime, so the same image serves any host. Published to
 # ghcr.io/<owner>/compose-preview-caddy by .github/workflows/preview-caddy-image.yml.
+#
+# The image also carries the entrypoint that resolves `{$SITE_DOMAINS}` from the deployment's
+# catalogs.json (mounted read-only at /srv/preview-config) instead of the box's untracked `.env`.
+# Same reason as the Caddyfile itself: a top-level site's hostname has to reach the edge to be
+# reachable at all, and a hand-maintained env var beside a committed `sites` list is two sources of
+# truth that silently disagree.
 FROM caddy:2
 COPY Caddyfile /etc/caddy/Caddyfile
+COPY site-domains.sh /usr/local/bin/site-domains.sh
+COPY caddy-entrypoint.sh /usr/local/bin/caddy-entrypoint.sh
+RUN chmod +x /usr/local/bin/site-domains.sh /usr/local/bin/caddy-entrypoint.sh
+# CMD is inherited from caddy:2 (`run --config /etc/caddy/Caddyfile --adapter caddyfile`) and passed
+# through by the entrypoint's `exec caddy "$@"`, so this changes what Caddy is *told*, never how it
+# is run.
+ENTRYPOINT ["/usr/local/bin/caddy-entrypoint.sh"]

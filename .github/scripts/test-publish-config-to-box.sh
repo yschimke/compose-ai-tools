@@ -39,6 +39,10 @@ cat > "${tmp}/catalogs.json" <<'JSON'
     { "system": "cadence", "repo": "yschimke/cadence", "listed": false },
     { "system": "jetnews", "repo": "yschimke/compose-samples", "listed": true,
       "attributionRepos": ["android/compose-samples"] }
+  ],
+  "sites": [
+    { "host": "m3.preview.coo.ee", "system": "compose-m3" },
+    { "host": "wear.preview.coo.ee", "system": "cadence" }
   ]
 }
 JSON
@@ -106,6 +110,27 @@ for system in compose-m3 cadence jetnews; do
     fail "missing catalog POST for ${system}"
 done
 
+# 7b. sites come LAST, after the catalogs they name. A hostname may only name a catalog the box
+#     already serves, so a site POSTed before its catalog is rejected outright — and on a first
+#     rollout that is every site. This section is the whole reason a committed hostname reaches a
+#     running box at all: `sites` is startup-only config on a volume that is seeded once, so before
+#     /admin/sites existed it could only be delivered by hand-editing the box's .env.
+last_catalog=$(printf '%s\n' "${out}" | grep -n 'POST /admin/catalogs' | tail -1 | cut -d: -f1)
+first_site=$(printf '%s\n' "${out}" | grep -n 'POST /admin/sites' | head -1 | cut -d: -f1)
+if [[ -z "${first_site}" ]]; then
+  fail "expected site POSTs; got:\n${out}"
+else
+  [[ "${last_catalog}" -lt "${first_site}" ]] ||
+    fail "catalogs must precede sites (last catalog ${last_catalog}, first site ${first_site})"
+fi
+
+# 7c. every site in the file is covered, host and system intact — a dropped `system` would point a
+#     hostname at the wrong catalog, which is worse than not publishing it.
+printf '%s' "${out}" | grep -q '"host":"m3.preview.coo.ee","system":"compose-m3"' ||
+  fail "missing site POST for m3.preview.coo.ee"
+printf '%s' "${out}" | grep -q '"host":"wear.preview.coo.ee","system":"cadence"' ||
+  fail "missing site POST for wear.preview.coo.ee"
+
 # 8. A box missing ONE route must not lose the other sections. This is the regression that
 #    silently dropped a newly-added catalog on the 0.19.8 publish: the box was mid-roll and still
 #    answering as an older image, /admin/groups 404'd, and the whole run aborted before catalogs.
@@ -136,6 +161,28 @@ printf '%s' "${partial}" | grep -q 'catalog cadence: applied' ||
   fail "every catalog must still be attempted when groups are unavailable:\n${partial}"
 printf '%s' "${partial}" | grep -q 'front-page groups were not reconciled' ||
   fail "skipping groups must be reported, not silent:\n${partial}"
+
+# 8b. …and the same for a box that predates /admin/sites: the catalogs it can publish must still
+#     be published, and the skip has to be reported rather than leaving the operator believing a
+#     hostname is live.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+# A box one release behind: everything but /admin/sites.
+for a in "$@"; do
+  case "$a" in
+    */admin/sites) printf 'not found\n404'; exit 0 ;;
+  esac
+done
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+no_sites=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+printf '%s' "${no_sites}" | grep -q 'catalog compose-m3: applied' ||
+  fail "a missing /admin/sites must NOT stop catalogs being published:\n${no_sites}"
+printf '%s' "${no_sites}" | grep -q 'top-level sites were not reconciled' ||
+  fail "skipping sites must be reported, not silent:\n${no_sites}"
 
 # 9. A 404 on /admin/trust — the oldest route — genuinely does mean the admin API is off, so it
 #    should stop early rather than emit one warning per entry.

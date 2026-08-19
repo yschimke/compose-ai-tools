@@ -84,7 +84,9 @@ reference design systems, one hostname each:
 --sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3-catalog
 ```
 
-or, durably, beside the catalog set in `catalogs.json` (the form the deployment uses):
+or, durably, beside the catalog set in `catalogs.json` — the form the deployment uses, and the one
+that reaches a running box (`POST /admin/sites` applies each entry on every publish; see
+[The admin API](#the-admin-api)):
 
 ```json
 {
@@ -117,6 +119,14 @@ On that hostname:
 - **A neighbour is not reachable.** `m3.preview.coo.ee/wear-m3/` is a `404`, not a second door onto
   another catalog through the wrong domain — and the host **outranks `?session=`**, so the older
   query spelling can't reach past it either.
+
+**Adding one is a config change, not a box visit.** The hostname goes in the `sites` list above and
+reaches the running server through the same additive reconcile the catalogs use; the reverse proxy
+derives its own site-address line from that same list, so there is no second place to spell the name
+and no `.env` edit. What stays outside the file is DNS (the name must resolve to the box) and a
+proxy restart (Caddy reads its config at start, so a site is served by the app immediately and
+reachable over TLS after the next `docker compose up -d`). The full runbook is in
+[`deploy/image/README.md`](../deploy/image/README.md#serving-a-catalog-on-its-own-hostname).
 
 **Sign-in works on a site host, given a cookie domain.** `--github-auth-cookie-domain preview.coo.ee`
 writes both auth cookies for the parent domain, so **one sign-in covers the parent host and every
@@ -2538,9 +2548,10 @@ older `preview.coo.ee` deployments fall back to the config file cleanly.
 
 ### The admin API
 
-Setting `SERVE_ADMIN_TOKEN` enables two admin surfaces on a **running** server: the catalog set and
-the producer-trust store. Both are needed for either to be useful — publishing a catalog whose
-producer isn't trusted just serves it as `unverified`.
+Setting `SERVE_ADMIN_TOKEN` enables the admin surfaces on a **running** server: the catalog set, its
+front-page groups, the top-level sites, and the producer-trust store. The first two are needed
+together for either to be useful — publishing a catalog whose producer isn't trusted just serves it
+as `unverified`.
 
 #### Catalogs
 
@@ -2585,9 +2596,43 @@ order, which is the only way an additive reconcile can reorder a live box.) Re-p
 so a duplicate stays visible, and a changed `repo` is still refused — that decides what bytes get
 served, so re-pointing a catalog is a retire plus a publish.
 
-Groups were the last part of the catalog config with no runtime path: a section could only be added
-by editing the box's `catalogs.json` and restarting, and a catalog claiming an undefined one was
-rejected outright — which meant a committed config genuinely could not converge. It can now.
+Groups were the first part of the catalog config to get a runtime path for this reason: a section
+could only be added by editing the box's `catalogs.json` and restarting, and a catalog claiming an
+undefined one was rejected outright — which meant a committed config genuinely could not converge.
+
+#### Top-level sites
+
+| Route | Does |
+|---|---|
+| `GET /admin/sites` | the hostnames this server serves a single catalog on |
+| `POST /admin/sites` | publish one — `{"host","system"}`, naming a catalog this server already serves |
+| `DELETE /admin/sites/<host>` | retire the hostname; the catalog itself is untouched |
+
+```
+curl -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+     -d '{"host":"wear.preview.coo.ee","system":"wear-m3-catalog"}' \
+     https://preview.coo.ee/admin/sites
+```
+
+Applied live — the hostname is served from the next request, on a box that started with no sites at
+all — and written back to `catalogs.json` so it survives a restart. A host that isn't a hostname, or
+one naming a system this server doesn't serve, is `400`; re-posting an identical entry is `409`, and
+re-posting a host whose `system` changed **re-points it in place** (unlike a catalog's `repo`, a
+site's target decides nothing about what bytes exist — only which of the already-served catalogs the
+name resolves to).
+
+Sites were the *last* part of the deployment config with no runtime path, and the gap was wider than
+the groups one: `catalogs.json` is seeded onto its volume on first boot and never overwritten, so a
+hostname committed on `main` reached a running box through nothing at all. Standing one up meant
+editing `SERVE_SITES` in the box's untracked `.env` and recreating the container — an edit no review
+saw and no file recorded.
+
+**Two things this route still does not do**, because they are outside the app: DNS for the name has
+to point at the box, and the reverse proxy has to match the name and hold a certificate for it. On
+this deployment the proxy reads the same `catalogs.json` (see
+[Serving a catalog on its own hostname](../deploy/image/README.md#serving-a-catalog-on-its-own-hostname)),
+so that half needs no second list — but it is read when Caddy starts, so a site published at runtime
+is served by the app immediately and reachable at the edge after the next `docker compose up -d`.
 
 #### Trusted producers
 

@@ -3,11 +3,10 @@
 # The base docker-compose.yml keeps catalogs.json + producers.json on the `preview_config` named
 # volume, seeded on first boot and never overwritten after (#2879 / #2897) so an image roll can't
 # stomp a runtime edit. The cost of that is real and it bit m3.preview.coo.ee: config the box has
-# never seen cannot arrive by `git pull`, and the one automated delivery path —
-# .github/scripts/publish-config-to-box.sh, additive over POST /admin/catalogs — carries catalogs,
-# groups and producers but NOT `sites`. So a top-level site committed to the deployment's
-# catalogs.json reaches the box only if someone hand-edits the volume or sets SERVE_SITES in .env,
-# and a rebuilt box loses it again with nothing to say so.
+# never seen cannot arrive by `git pull`, only through the additive reconcile
+# (.github/scripts/publish-config-to-box.sh over the admin API) — which now covers catalogs, groups,
+# producers AND `sites`, but is still additive, so anything it cannot express (a deletion, a changed
+# catalog `repo`) diverges silently until someone edits the volume by hand.
 #
 # This overlay makes the committed file the source of truth: the box's config is whatever `main`
 # says it is, and deploying config is `git pull && docker compose up -d`.

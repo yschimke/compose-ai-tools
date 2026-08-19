@@ -99,6 +99,20 @@ class ServeAdminRoutingTest {
   private val trustStoreFile = ServeTrustStoreFile("/config/producers.json".toPath(), fs)
   private val trust = MutableTrustStore()
   private val trustAdmin = ServeTrustAdmin(trust, trustStoreFile, onLog = {})
+
+  /**
+   * The live site map + its admin, started EMPTY on purpose. A box with no sites at boot is the
+   * case that used to be unfixable without a restart, so it is the one worth driving over HTTP: the
+   * request-path interceptor has to exist on a server that was configured with no hostnames.
+   */
+  private val siteRegistry = ServeSiteRegistry.empty()
+  private val siteAdmin =
+    ServeSiteAdmin(
+      registry = siteRegistry,
+      servedSystems = { tracker.snapshot().map { it.config.system }.toSet() },
+      configFile = configFile,
+      onLog = {},
+    )
   private val optimizerWork = ServeBackgroundWork()
 
   private val server: ServeHttpServer by lazy {
@@ -116,6 +130,8 @@ class ServeAdminRoutingTest {
         catalogLoads = tracker,
         catalogAdmin = admin,
         trustAdmin = trustAdmin,
+        sites = siteRegistry,
+        siteAdmin = siteAdmin,
         themeOptimizerAdmin = optimizerWork,
         adminToken = adminToken,
         wasmCatalogs = wasmCatalogs,
@@ -132,11 +148,15 @@ class ServeAdminRoutingTest {
     method: String = "GET",
     body: String? = null,
     token: String? = adminToken,
+    /** A `Host` header to send as, for driving a top-level site through the loopback port. */
+    host: String? = null,
+    followRedirects: Boolean = true,
   ): Pair<Int, String> {
     val req =
       Request.Builder()
         .url(url(path))
         .apply {
+          if (host != null) header("Host", host)
           if (token != null) header(ServeHttpServer.ADMIN_TOKEN_HEADER, token)
           when (method) {
             "GET" -> get()
@@ -145,8 +165,9 @@ class ServeAdminRoutingTest {
           }
         }
         .build()
-    client.newCall(req).execute().use { r ->
-      return r.code to (r.body?.string() ?: "")
+    val http = if (followRedirects) client else client.newBuilder().followRedirects(false).build()
+    http.newCall(req).execute().use { r ->
+      return r.code to (r.headers["Location"] ?: r.body?.string() ?: "")
     }
   }
 
@@ -499,5 +520,72 @@ class ServeAdminRoutingTest {
 
     assertTrue(listed.contains("\"keyId\":\"ci\""), listed)
     assertFalse(listed.contains(keys.publicKeyB64), "public key material must not be echoed back")
+  }
+
+  @Test
+  fun `the site routes are gated by the admin token like every other admin surface`() {
+    assertEquals(404, send("/admin/sites", token = null).first)
+    assertEquals(404, send("/admin/sites", token = "wrong").first)
+    assertEquals(200, send("/admin/sites").first)
+  }
+
+  @Test
+  fun `a site published over HTTP serves that hostname immediately`() {
+    // The whole point: this server booted with NO sites, so before the POST the hostname is just
+    // another vhost and `/compose-m3/` is the ordinary canonical path. Adding it used to need
+    // SERVE_SITES in the box's .env and a container recreate.
+    assertEquals(
+      200,
+      send("/compose-m3/", host = "m3.example.com", followRedirects = false).first,
+    )
+
+    val (code, body) =
+      send(
+        "/admin/sites",
+        method = "POST",
+        body = """{"host":"m3.example.com","system":"compose-m3"}""",
+      )
+    assertEquals(200, code)
+    assertTrue(body.contains("compose-preview-serve/admin-site-result/v1"), body)
+
+    // Now the canonical path redirects to the rooted spelling on that host — the interceptor is
+    // live on a server that started with no sites at all.
+    val (redirect, location) =
+      send("/compose-m3/", host = "m3.example.com", followRedirects = false)
+    assertEquals(308, redirect)
+    assertEquals("/", location)
+    // …and the hostname was written back, so a restart keeps serving it.
+    assertEquals(
+      listOf(ServeCatalogsConfig.Site("m3.example.com", "compose-m3")),
+      configFile.load().sites,
+    )
+    assertTrue(send("/admin/sites").second.contains("m3.example.com"))
+  }
+
+  @Test
+  fun `a site naming an unserved catalog is rejected with a reason`() {
+    val (code, body) =
+      send(
+        "/admin/sites",
+        method = "POST",
+        body = """{"host":"ghost.example.com","system":"never-published"}""",
+      )
+    assertEquals(400, code)
+    assertTrue(body.contains("never-published"), body)
+  }
+
+  @Test
+  fun `retiring a site over HTTP gives the hostname back to the front door`() {
+    send(
+      "/admin/sites",
+      method = "POST",
+      body = """{"host":"m3.example.com","system":"compose-m3"}""",
+    )
+    assertEquals(200, send("/admin/sites/m3.example.com", method = "DELETE").first)
+    assertEquals(
+      200,
+      send("/compose-m3/", host = "m3.example.com", followRedirects = false).first,
+    )
+    assertEquals(emptyList(), configFile.load().sites)
   }
 }

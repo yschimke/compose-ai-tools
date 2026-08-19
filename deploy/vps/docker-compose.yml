@@ -99,14 +99,27 @@ services:
       - "443:443"
     environment:
       DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
-      # Top-level site hostnames, matching the `sites` entries the app serves (see
-      # SERVE_SITES / catalogs.json). Caddy needs them on its site address line to
-      # match the name and provision its certificate; the app needs them to know
-      # which catalog the Host belongs to. Keep the two in step — a name in one and
-      # not the other is either an unreachable site or an unrecognised hostname.
+      # Top-level site hostnames. Caddy needs them on its site address line to match
+      # the name and provision its certificate; the app needs them to know which
+      # catalog the Host belongs to. Both now come from catalogs.json's `sites`, so
+      # there is no longer a second list to keep in step — this variable is only for
+      # additional hostnames beyond the ones catalogs.json declares — normally empty. The
+      # entrypoint below reads that file's `sites` list and unions it with this, so `git pull`
+      # delivers a new site to the app and the edge in one step.
       SITE_DOMAINS: "${SITE_DOMAINS:-}"
+    # Resolve SITE_DOMAINS from the committed catalogs.json before starting Caddy. Compose clears
+    # the image's CMD whenever `entrypoint` is set, so the caddy:2 default is restated here rather
+    # than inherited — the entrypoint passes it straight through with `exec caddy "$@"`.
+    entrypoint: /usr/local/bin/caddy-entrypoint.sh
+    command: ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The same deployment config the preview service reads, and the two scripts that turn its
+      # `sites` list into Caddy's site-address line. Bind-mounted from the repo (this profile has
+      # no baked image to carry them) and read-only — the edge only ever reads this.
+      - ../preview.coo.ee/catalogs.json:/srv/preview-config/catalogs.json:ro
+      - ../image/caddy-entrypoint.sh:/usr/local/bin/caddy-entrypoint.sh:ro
+      - ../image/site-domains.sh:/usr/local/bin/site-domains.sh:ro
       - caddy_data:/data
       - caddy_config:/config
 

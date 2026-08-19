@@ -33,9 +33,12 @@ class ServeCatalogAdmin(
   private val unload: (system: String) -> Unit,
   /**
    * The top-level sites this server publishes ([ServeSites]), so a catalog a hostname depends on
-   * cannot be retired out from under it. Empty by default — a server with no sites is unaffected.
+   * cannot be retired out from under it. The LIVE map ([ServeSiteRegistry]), not a startup
+   * snapshot: a site published at runtime has to protect its catalog from the moment it exists, or
+   * the two admin routes race to leave a hostname pointing at a system that was just retired. Empty
+   * by default — a server with no sites is unaffected.
    */
-  private val sites: ServeSites = ServeSites.EMPTY,
+  private val sites: ServeSiteRegistry = ServeSiteRegistry.empty(),
   /** Group table for resolving [ServeCatalogsConfig.Entry.group]; seeded from the config file. */
   groups: List<ServeCatalogsConfig.Group> = emptyList(),
   private val onLog: (String) -> Unit = { System.err.println(it) },
@@ -49,12 +52,12 @@ class ServeCatalogAdmin(
   @Volatile private var groups: List<ServeCatalogsConfig.Group> = groups
 
   /**
-   * Serialises the config file's **whole** read-modify-write, not just the write. Two admin
-   * requests land on different threads; each would otherwise load the same original document, apply
-   * its own edit, and atomically move — last one wins, both report success, and the loser's catalog
-   * silently vanishes on the next restart. Atomicity of the individual save doesn't help, because
-   * the lost update happens between the load and the save. Also guards [groups], which `persist`
-   * refreshes from the file it just wrote.
+   * Guards [groups] across the write that refreshes it, so a concurrent [register] can't read a
+   * table rebuilt from a document a different request is still replacing.
+   *
+   * The file's own read-modify-write is serialised by [ServeCatalogsConfigFile.update] — it moved
+   * there when [ServeSiteAdmin] started editing the same document, because a lock held here only
+   * ever serialised this administrator against itself.
    */
   private val configLock = Any()
 
@@ -258,9 +261,10 @@ class ServeCatalogAdmin(
     val file = configFile ?: return "not persisted: no catalogs config file is configured"
     return synchronized(configLock) {
       runCatching {
-        val updated = mutate(file.load())
-        file.save(updated)
-        groups = updated.groups
+        // The read-modify-write itself is serialised by the FILE (every administrator that edits
+        // this document shares one instance); configLock additionally guards `groups`, which is
+        // refreshed from what was written.
+        groups = file.update(mutate).groups
         null
       }
         .getOrElse { e ->

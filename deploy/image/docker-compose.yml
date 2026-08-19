@@ -369,13 +369,19 @@ services:
       - "443:443"
     environment:
       DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
-      # Top-level site hostnames, matching SERVE_SITES / catalogs.json's `sites` on the
-      # preview service above. Caddy needs them to match the name and get a certificate;
-      # the app needs them to know which catalog a Host belongs to. Keep the two in step.
+      # Additional site hostnames beyond the ones catalogs.json declares. Normally empty: the
+      # entrypoint reads the `sites` list out of the mounted config below and unions it with this,
+      # so the committed file is what routes a site AND what gets it a certificate. Set this only
+      # for a name the app doesn't serve as a site (a vanity alias, a migration).
       SITE_DOMAINS: "${SITE_DOMAINS:-}"
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      # The preview server's own config, READ-ONLY, purely to read `sites` at startup. Same volume
+      # the app boots from, so a hostname published at runtime (POST /admin/sites, which writes it
+      # back) is picked up by the next caddy start with nothing to keep in step by hand. Mounted at
+      # /srv/preview-config, not /config — that path is caddy's own state volume above.
+      - preview_config:/srv/preview-config:ro
     # Opt in to Watchtower so a new baked-Caddyfile image rolls onto this box.
     labels:
       com.centurylinklabs.watchtower.enable: "true"

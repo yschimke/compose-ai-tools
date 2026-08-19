@@ -79,7 +79,9 @@ class ServeGithubSiteAuthTest {
     )
 
   private val sites =
-    ServeSites.of(listOf("m3.preview.coo.ee" to "m3-catalog", "wear.preview.coo.ee" to "wear-m3"))
+    ServeSiteRegistry.of(
+      listOf("m3.preview.coo.ee" to "m3-catalog", "wear.preview.coo.ee" to "wear-m3")
+    )
 
   private val registry = ServeSessionRegistry(open = { null })
 
@@ -186,7 +188,7 @@ class ServeGithubSiteAuthTest {
           isPublic = true,
           githubAuth = auth(),
           // Same auth config and secret, but m3 is NOT a site here.
-          sites = ServeSites.of(listOf("wear.preview.coo.ee" to "wear-m3")),
+          sites = ServeSiteRegistry.of(listOf("wear.preview.coo.ee" to "wear-m3")),
         )
         .also { it.start() }
     try {

@@ -5,13 +5,19 @@
 # automatically. The app's token (?token= / X-Compose-Preview-Token) stays the
 # auth gate; this only adds TLS and forwards to the internal server.
 #
-# {$SITE_DOMAINS} carries the TOP-LEVEL SITE hostnames (SERVE_SITES / the `sites`
-# entries in catalogs.json), space- or comma-separated. They belong on this same
+# {$SITE_DOMAINS} carries the TOP-LEVEL SITE hostnames. They belong on this same
 # line: the app tells the catalogs apart by the Host header, so every name proxies
 # to the one upstream — but Caddy only matches a name, and only provisions a
 # certificate for it, if the name is listed here. Without it a site is configured
-# in the app and unreachable at the edge. Each name still needs its own DNS record.
-# Empty (the default) leaves this block exactly as it was.
+# in the app and unreachable at the edge.
+#
+# The value is RESOLVED BY THE ENTRYPOINT (caddy-entrypoint.sh), not by the
+# operator: it reads the `sites` list out of the preview server's own catalogs.json
+# — mounted read-only at /srv/preview-config — and unions it with any explicit
+# SITE_DOMAINS. So the committed file both routes a site and gets it a certificate,
+# instead of the two being kept in step by hand in an untracked .env. Each name
+# still needs its own DNS record. Empty (the default) leaves this block exactly as
+# it was.
 {$DOMAIN} {$SITE_DOMAINS:} {
 	encode zstd gzip
 
