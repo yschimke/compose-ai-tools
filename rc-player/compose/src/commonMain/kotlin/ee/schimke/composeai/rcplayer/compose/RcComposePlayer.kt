@@ -334,12 +334,16 @@ private fun RcComposePlayerResolved(
   // had changed — the same hazard the `systemColors` comment below describes, on the one API a host
   // uses to drive a live document. Changes are applied incrementally instead; see the
   // `LaunchedEffect` under this block.
+  // The exact map handed to the constructor, kept so the bridge below knows what the state
+  // actually holds rather than re-reading the holder. Computed in its own `remember` immediately
+  // before the state's, so both see the same snapshot of `namedValues`.
+  val seededNamedValues = remember(document) { namedValues.toMap() }
   val state =
     remember(document) {
       RcPlayerState(
         document,
         // Seeded once, from whatever the map holds when this document is first composed.
-        namedValues.toMap(),
+        seededNamedValues,
         eventSink = { latestEventSink(it) },
         onInvalidated = { invalidationVersion += 1 },
         effectSink = { effect ->
@@ -372,20 +376,34 @@ private fun RcComposePlayerResolved(
   // type; nothing on the public path called it. A removal means "stop overriding this", which needs
   // the pre-override value, so `clearNamedValue` is its inverse (see `RcPlayerState`).
   //
-  // Restarted on `state` rather than `document` so a swap re-seeds from the map the host still
-  // owns. Errors are deliberately not caught: an unknown name or a type mismatch threw from the
+  // Errors are deliberately not caught: an unknown name or a type mismatch threw from the
   // `RcPlayerState` constructor before this change, and a host that names a variable the document
   // does not have should still hear about it rather than watch the value quietly not apply.
-  LaunchedEffect(state) {
-    var applied = namedValues.toMap()
+  //
+  // `appliedNamedValues` tracks what the *state* holds, not what the holder holds, and is
+  // remembered on `state` so it survives the effect restarting. Two things need that:
+  //
+  //  * It is seeded from `seededNamedValues` — the map the constructor actually received — rather
+  //    than from a fresh read of the holder. A host that writes between the state's construction
+  //    and this effect starting would otherwise make the first emission compare equal to a value
+  //    the state never saw, and the player would stay stale until that entry moved again.
+  //  * The effect is keyed on the holder's identity as well as `state`, so a parent that swaps in a
+  //    *different* `SnapshotStateMap` for the same document is followed instead of leaving the
+  //    collector subscribed to the detached old one. Restarting the collector does not rebuild
+  //    `RcPlayerState`, which is the whole point of this bridge; because `appliedNamedValues`
+  //    outlives the restart, the new holder is diffed against what the state really has, so
+  //    entries the old holder had and the new one does not are cleared rather than left applied.
+  val appliedNamedValues = remember(state) { seededNamedValues.toMutableMap() }
+  LaunchedEffect(state, namedValues) {
     snapshotFlow { namedValues.toMap() }
       .collect { current ->
-        if (current == applied) return@collect
-        (applied.keys - current.keys).forEach(state::clearNamedValue)
+        if (current == appliedNamedValues) return@collect
+        (appliedNamedValues.keys - current.keys).forEach(state::clearNamedValue)
         current.forEach { (name, value) ->
-          if (applied[name] != value) state.setNamedValue(name, value)
+          if (appliedNamedValues[name] != value) state.setNamedValue(name, value)
         }
-        applied = current
+        appliedNamedValues.clear()
+        appliedNamedValues.putAll(current)
         // `setNamedValue` writes into the state's maps without going through the action path, so
         // nothing else tells the draw layer a value moved.
         invalidationVersion += 1
@@ -444,6 +462,25 @@ private fun RcComposePlayerResolved(
   val images = remember(document) { decodeInlineImages(document) }
   val fonts = remember(document) { decodeInlineFonts(document) }
   val textMeasurer = rememberTextMeasurer()
+  // Subscribe *composition* to invalidations, not just the draw layer below.
+  //
+  // `rootContentDescription` and the legacy click areas are read here, during composition, and both
+  // can be backed by a named text — so a host write, or a document action, changes what a screen
+  // reader should announce. Every such mutation raises `invalidationVersion`, but until this read
+  // existed the only composition that observed it was the `layout != null` branch further down; on
+  // a legacy canvas document `invalidationVersion` was read solely inside a `drawWithContent`
+  // lambda, which redraws without recomposing. The label went stale while the pixels were right —
+  // invisible to a pixel test, which is why `RcNamedValueSemanticsTest` asserts through the
+  // semantics tree.
+  //
+  // It also fixes an ordering hazard that has nothing to do with accessibility: when the *host*
+  // swaps in a different named-value holder, the recomposition that swap triggers runs before the
+  // bridge below has applied the new values, so a composition-time read of player state would
+  // otherwise show the previous holder's overrides and never be revisited.
+  //
+  // Cheap, because `invalidationVersion` is event-driven — actions, wake-ins, next-frame requests,
+  // host writes — and not bumped per frame; continuous animation drives `frameNanos` instead.
+  invalidationVersion
   val semanticsModifier =
     state.rootContentDescription?.let { description ->
       modifier.semantics { contentDescription = description }

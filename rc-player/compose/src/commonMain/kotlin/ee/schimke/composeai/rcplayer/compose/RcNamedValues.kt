@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.graphics.Color
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
+import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 
 /**
  * A caller-owned, snapshot-backed holder for the named values driving a document.
@@ -22,8 +23,16 @@ import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
  * `RcPlayerState.setNamedValue` — the mechanism that already existed and had no caller on the
  * public path.
  *
- * Ownership is the caller's on purpose: a host usually wants to read a value back (a document
- * action can change one) and to hold the same map across document swaps.
+ * Ownership is the caller's so the same holder can span document swaps, and so a host can drive the
+ * document from wherever its own state already lives.
+ *
+ * **The bridge is one-way: host to player.** A document action — `RcValueFloatChangeAction` and its
+ * siblings, a touch expression, an animation — mutates the player's variables directly and does
+ * *not* write back into this map. So after a click changes a named float, this map still holds the
+ * host's last override, or no entry at all. That is a real limitation rather than an oversight: the
+ * runtime has no change notification for a variable, so there is nothing to mirror from. A host
+ * that needs to observe what a document did to itself uses [RcPlayerEvent] — `HostNamedAction`
+ * carries a name and value — and a document that wants a value read back should emit one.
  */
 @Composable
 public fun rememberRcNamedValues(
