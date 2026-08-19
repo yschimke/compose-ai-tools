@@ -155,6 +155,19 @@ data class ServePreview(
    */
   val props: JsonObject? = null,
   /**
+   * The declared **breakpoint** this render was captured at — `"192dp"`, `"compact"`,
+   * `"smallRound"`, … — from the catalog's `previews/variants.json`, which carries the `size` name
+   * the spec's `breakpoints` table declares. Null when the catalog declares no breakpoints (or for
+   * a plain bundle), which is every catalog that had no size axis before.
+   *
+   * A size is a different *rendering* of one component rather than a different component, so the
+   * grid folds the non-primary sizes onto that component's one card — the same treatment [state]
+   * and [props] get — and the viewer offers them as a size switcher. Without this the axis is
+   * invisible to the server: five breakpoints publish five identically-named cards, which is what a
+   * five-size Wear catalog actually did (wear-m3-catalog#41).
+   */
+  val size: String? = null,
+  /**
    * The top-level **section** (tab) this preview belongs to — `"Themes"`, `"Components"`,
    * `"Screens"`, `"Animations"`, … — from the catalog's `previews/variants.json`. Drives the
    * landing page's tab bar: a catalog whose previews carry sections renders tabbed, one tab per

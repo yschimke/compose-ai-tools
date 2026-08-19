@@ -478,6 +478,7 @@ class ServeCatalogStore(
         // A catalog with neither state/theme nor a section records nothing and stays a flat grid.
         val hasSectionInfo = planned.section != null || planned.group != null
         val props = image.props?.takeIf { it.isNotEmpty() }
+        val size = image.size?.takeIf { it.isNotBlank() }
         // Pair the component's captures to THIS card by theme, rather than by taking the published
         // filename apart. The export already resolved which themed sticker each capture accompanies
         // and recorded it; re-deriving that here from the name would be a second implementation of
@@ -503,6 +504,7 @@ class ServeCatalogStore(
             image.state != null ||
             image.theme != null ||
             props != null ||
+            size != null ||
             planned.componentId != null ||
             hasSectionInfo ||
             planned.componentSourceFile != null ||
@@ -518,6 +520,7 @@ class ServeCatalogStore(
               state = image.state,
               theme = image.theme,
               props = props,
+              size = size,
               componentId = planned.componentId,
               overrides = image.overrides,
               remoteComposeKnobs = image.remoteComposeKnobs,
@@ -559,6 +562,7 @@ class ServeCatalogStore(
           state = record.state,
           theme = record.theme,
           props = record.props?.takeIf { it.isNotEmpty() },
+          size = record.size?.takeIf { it.isNotBlank() },
           componentId = record.componentId?.takeIf { it.isNotBlank() },
           fixedTheme = record.fixedTheme,
           section = section,
@@ -2114,6 +2118,8 @@ class ServeCatalogStore(
     val state: String? = null,
     val theme: String? = null,
     val props: JsonObject? = null,
+    /** The declared breakpoint this live-only record renders at — see [Image.size]. */
+    val size: String? = null,
     /** Why it was deferred (`entry` / `variant` / `mode`) — carried for diagnostics. */
     val reason: String? = null,
     /**
@@ -2252,6 +2258,18 @@ class ServeCatalogStore(
      * the component's one card (like [state]) instead of showing each as its own tile.
      */
     val props: JsonObject? = null,
+    /**
+     * The declared **breakpoint** this render was captured at (`"192dp"`, `"compact"`,
+     * `"smallRound"`, …) — the `size` name from the catalog spec's `breakpoints` table, re-tagged
+     * onto each image by the export. Absent for a catalog that declares no breakpoints, and for one
+     * published before the export recorded them.
+     *
+     * Carried into `previews/variants.json` so the serve grid can fold a component's other
+     * breakpoints onto its one card the way it folds [state] and [props] — a size is a different
+     * rendering of the same component, not a different component, and a five-breakpoint catalog
+     * otherwise publishes five identically-named cards for each of them.
+     */
+    val size: String? = null,
     /** Author-declared plain-Compose knobs, lifted from this preview's bundle sidecar in CI. */
     val overrides: List<PreviewOverrideDeclaration> = emptyList(),
     /** Author-declared Remote Compose named-value knobs, lifted from its bundle sidecar in CI. */
@@ -2308,6 +2326,12 @@ class ServeCatalogStore(
      * (like [state]) and offer a variant switcher. Null for a catalog that varies on neither props.
      */
     val props: JsonObject? = null,
+    /**
+     * The declared breakpoint this render was captured at — see [Image.size]. Lets a preview host
+     * fold a component's other breakpoints onto its one card and offer a size switcher. Null for a
+     * catalog that declares no breakpoints.
+     */
+    val size: String? = null,
     /** Original catalog component id, retained for human-readable display labels. */
     val componentId: String? = null,
     /** Catalog-published controls used before a lazy per-preview daemon has been opened. */
