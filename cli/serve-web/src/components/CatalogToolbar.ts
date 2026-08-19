@@ -15,9 +15,16 @@
 // controls a screenful away from where they appear.
 //
 // A CONTROLLER element in the `<cp-group-memory>` shape — it renders nothing and
-// holds no state of its own, and every element it touches is one the server
+// holds no state of its own, and every element it moves is one the server
 // already rendered. It is on the landing page only, which is the only page with
 // a toolbar to reflow.
+//
+// The one thing it does build is the row itself, and only on a phone: a
+// sectioned catalog's filter lives in the tree's sidebar, so its toggles ride on
+// the identity row and the server emits no toolbar at all (issue #4224 — a
+// full-width sticky band holding one `⋯` and nothing else). The phone row is
+// still worth having, so where there is no bar to move into, this makes one and
+// takes it away again on the way back up.
 //
 // Nothing here is required for the page to work: with the bundle blocked, the
 // filter, the chips and the menus are all still on the page in their served
@@ -43,8 +50,11 @@ interface Home {
 export class CatalogToolbar extends LitElement {
     private phone: MediaQueryList | null = null;
     private bar: Element | null = null;
+    /** Whether [bar] is one this element built, and so one it has to clear away. */
+    private ownBar = false;
     private search: Element | null = null;
     private sub: Element | null = null;
+    private toggles: Element | null = null;
     private homes: Home[] = [];
     /** Whether the rows are currently in the toolbar rather than where the server put them. */
     private moved = false;
@@ -111,11 +121,17 @@ export class CatalogToolbar extends LitElement {
         this.bar = document.querySelector(".cp-catalog-tools");
         this.search = document.querySelector(".cp-catalog-menu .cp-searchbar");
         this.sub = document.querySelector(".cp-sub");
-        // The actions row is no longer in this list: it is emitted inside the toolbar's
-        // `.cp-head-toggles` at every width, beside the Theme pill, so there is nothing to move.
-        // The filter is the only control left to bring in, and the summary line does not join the
-        // row at all; see `placeOnPhone`.
-        this.homes = [this.search, this.sub]
+        // The pills, when the server put them on the IDENTITY row rather than in a toolbar — a
+        // sectioned catalog, whose filter belongs to the sidebar, and browser mode. They come down
+        // into the phone's one row beside the filter, which is where they were before that row
+        // stopped being emitted; a toolbar that already holds them matches nothing here and is
+        // left alone.
+        this.toggles = document.querySelector(
+            ".cp-catalog-head-row > .cp-head-toggles",
+        );
+        // The filter and the toggles are the controls to bring in; the summary line does not join
+        // the row at all — see `placeOnPhone`.
+        this.homes = [this.search, this.toggles, this.sub]
             .filter((el): el is Element => !!el && el !== this.bar)
             .map((el) => ({
                 el,
@@ -148,7 +164,7 @@ export class CatalogToolbar extends LitElement {
     }
 
     private reflow(): void {
-        if (!this.bar) return;
+        if (!this.homes.length) return;
         const phone = !!this.phone?.matches;
         // Only on a CROSSING. Re-inserting a node where it already is looks like a no-op and is
         // not one: it detaches and re-attaches the element, and the browser rebuilds what it hangs
@@ -157,11 +173,44 @@ export class CatalogToolbar extends LitElement {
         // moved came back subtly different from one this element never touched, which is how the
         // page capture caught it. Nothing to do until the shape actually changes.
         if (phone === this.moved) return;
+        if (phone && !this.openBar()) return;
         this.moved = phone;
         if (phone) for (const { el } of this.homes) this.placeOnPhone(el);
-        else
+        else {
             for (const { el, parent, next } of this.homes)
                 parent.insertBefore(el, next);
+            this.closeBar();
+        }
+    }
+
+    /**
+     * The row to move into on a phone, built if the server emitted none.
+     *
+     * The server emits one only for a catalog whose filter field is in it (a flat grid's); where
+     * the tree owns the filter, that row would be a sticky band carrying two pills, so the pills
+     * are on the identity row instead and there is nothing here to fill. A phone still wants them
+     * and the filter together above the grid, and it is the only width that does — so the row is
+     * built on the way down and taken away again on the way back up, rather than served to
+     * everybody as an empty element to be hidden.
+     */
+    private openBar(): Element | null {
+        if (this.bar) return this.bar;
+        const head = document.querySelector(".cp-catalog-head-row");
+        if (!head?.parentNode) return null;
+        const bar = document.createElement("div");
+        bar.className = "cp-catalog-tools";
+        head.parentNode.insertBefore(bar, head.nextSibling);
+        this.bar = bar;
+        this.ownBar = true;
+        return bar;
+    }
+
+    /** …and away, once its contents have gone back to where the server had them. */
+    private closeBar(): void {
+        if (!this.ownBar) return;
+        this.bar?.remove();
+        this.bar = null;
+        this.ownBar = false;
     }
 
     /** Where a moved block goes on a phone. */
@@ -181,9 +230,16 @@ export class CatalogToolbar extends LitElement {
             else document.querySelector(".cp-main")?.appendChild(el);
             return;
         }
-        // The filter takes the width, the menus ride at the trailing edge — so it goes in front of
-        // the `.cp-head-toggles` group that holds them, and first when the bar has no such group
-        // (a catalog with neither a Theme control nor an action to offer).
+        // The menus ride at the trailing edge, which is where they already are in a bar that was
+        // served with them — and where they land in one this element built, since the filter goes
+        // in ahead of them.
+        if (el === this.toggles) {
+            this.bar.appendChild(el);
+            return;
+        }
+        // The filter takes the width — so it goes in front of the `.cp-head-toggles` group that
+        // holds the menus, and first when the bar has no such group yet (one built here, or a
+        // catalog with neither a Theme control nor an action to offer).
         const toggles = this.bar.querySelector(".cp-head-toggles");
         this.bar.insertBefore(el, toggles ?? this.bar.firstChild);
     }

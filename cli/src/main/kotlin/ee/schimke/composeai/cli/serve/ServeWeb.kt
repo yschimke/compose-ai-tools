@@ -7138,19 +7138,24 @@ $noteBlock        <div class="cp-site-footer-links">
       (themeToggle + primaryActions)
         .takeIf { it.isNotBlank() }
         ?.let { "<div class=\"cp-head-toggles\">\n$it</div>\n" } ?: ""
-    // Browser mode has no operational toolbar, so its Theme menu belongs on the identity row next
-    // to the catalog title. Leaving it in a full-width row of its own created an empty band between
-    // the heading and the sidebar/grid. Dev mode keeps the sticky toolbar because its controls are
-    // part of the denser authoring surface and may include a top-level search field.
+    // The toolbar row is the FILTER's row, and the pills are its passengers. Where the filter is
+    // not in it the row is a full-width sticky band holding two pills at its trailing edge and
+    // nothing else — an empty strip between the heading and the grid, which is what browser mode
+    // was given the identity row for. A SECTIONED catalog is the same case and was missed: its
+    // filter belongs to the tree's sidebar, so its toolbar carries the Theme pill and the `⋯`
+    // alone, and a catalog with one theme carries only the `⋯` — one 34px pill in an 80px band
+    // above 190 previews (issue #4224). So the toggles ride on the identity row whenever the
+    // toolbar has no filter to keep them company, and no toolbar row is emitted at all.
+    val togglesOnTitleRow = componentBrowser || searchBox.isBlank()
     val titleRow =
       "<div class=\"cp-catalog-head-row\">" +
         "<div class=\"cp-catalog-title\">" +
         "<h1 class=\"cp-head cp-catalog-head\">${WebEscaping.htmlEscape(heading)}" +
         "${compactTrustBadge(trust)}</h1>$catalogId</div>$subLine" +
-        (if (componentBrowser) headToggles else "") +
+        (if (togglesOnTitleRow) headToggles else "") +
         "</div>"
     val tools =
-      (searchBox + if (componentBrowser) "" else headToggles)
+      (searchBox + if (togglesOnTitleRow) "" else headToggles)
         .takeIf { it.isNotBlank() }
         ?.let { "<div class=\"cp-catalog-tools\">\n$it</div>\n" } ?: ""
     return document(

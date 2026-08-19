@@ -2542,8 +2542,11 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* The clipped title leaves the flow, and `<cp-catalog-toolbar>` takes the tally below the grid,
      so the row that holds them both is left with nothing to show and no reason to keep its own
-     bottom margin above the toolbar. */
-  html:has(.cp-site-catalog) .cp-catalog-head-row { margin: 0; }
+     bottom margin above the toolbar. Unless it is also carrying the Theme and `⋯` pills — a
+     sectioned catalog's are served on this row rather than in a band of their own — and they have
+     not been taken down into the toolbar, because the bundle is blocked. `:has` re-answers as they
+     move, so the margin is there exactly while there is something to space. */
+  html:has(.cp-site-catalog) .cp-catalog-head-row:not(:has(> .cp-head-toggles)) { margin: 0; }
   .cp-sub { margin-bottom: 10px; }
   .cp-catalog-head-row .cp-sub { margin-bottom: 10px; }
   .cp-catalog-menu { margin-bottom: 14px; }
