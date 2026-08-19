@@ -406,29 +406,50 @@ export function projectDesignMap(previews, opts = {}) {
 
   const components = [];
   const declarations = [];
+  /**
+   * Whether a component reaches a design reference at all, and what it said if not.
+   *
+   * Read from the ANNOTATIONS, before and independently of capture selection — which is the whole
+   * point. A component publishing several modes with no Light among them is `ambiguousMode`, and
+   * `participates()` is false for every one of its captures; computing absence inside the capture
+   * loop therefore dropped such a component out of `unmapped` / `statedAbsent` entirely and
+   * reported it only as an ambiguous mode. A stated absence would then be fatal under
+   * `--strict --allow-stated-absence`, which is exactly the case that flag exists to accept.
+   *
+   * Keyed by componentId rather than pushed per preview, because a component's absence is one fact
+   * however many captures it publishes.
+   */
+  const unmappedIds = new Map();
+  const statedAbsentIds = new Map();
+  for (const preview of previews) {
+    const catalog = preview.catalog;
+    if (!catalog || catalog.role !== "COMPONENT" || catalog.reference) continue;
+    if (isVariantCapture(preview)) continue;
+    const id = catalog.componentId;
+    if (catalog.noReference) statedAbsentIds.set(id, catalog.noReference);
+    else if (!statedAbsentIds.has(id)) unmappedIds.set(id, true);
+  }
   /** Components carrying neither a reference nor a stated reason for its absence. */
-  const unmapped = [];
+  const unmapped = [...unmappedIds.keys()].filter((id) => !statedAbsentIds.has(id));
   /**
    * Components whose reference is absent for a STATED reason. Reported apart from `unmapped`
    * because they are the opposite situation: someone looked, and what they found is that the kit
    * has nothing live to point at. Rolling the two together is what made a retired pattern read as
    * neglect.
    */
-  const statedAbsent = [];
+  const statedAbsent = [...statedAbsentIds].map(([componentId, reason]) => ({
+    componentId,
+    reason,
+  }));
+  /** Every component that reaches no reference, however its absence was spelled. */
+  const referencelessIds = new Set([...unmapped, ...statedAbsentIds.keys()]);
 
   for (const preview of previews) {
     const catalog = preview.catalog;
     if (!catalog || catalog.role !== "COMPONENT") continue;
     if (isVariantCapture(preview) || !selection.participates(preview)) continue;
 
-    if (!catalog.reference) {
-      if (catalog.noReference) {
-        statedAbsent.push({ componentId: catalog.componentId, reason: catalog.noReference });
-      } else {
-        unmapped.push(catalog.componentId);
-      }
-      continue;
-    }
+    if (!catalog.reference) continue;
 
     const code = codeHandle(preview, opts);
     components.push({
@@ -478,7 +499,14 @@ export function projectDesignMap(previews, opts = {}) {
       // Composables whose captures name no mode a reference could pair with — several modes, none
       // of them light. Reported rather than guessed at: pairing `Dark` when the kit drew `Coral`
       // diffs a whole palette.
-      ambiguousMode: selection.ambiguous,
+      // An ambiguous mode is only ever a problem BECAUSE a reference needs one capture to pair
+      // with. A component that reaches no reference has nothing to pair, so which of its captures
+      // the kit drew is not a question anyone is asking — reporting it would be noise on top of the
+      // absence already reported above, and under --strict it would be a second, unfixable failure
+      // for the same component.
+      ambiguousMode: selection.ambiguous.filter(
+        (a) => !a.componentIds.length || a.componentIds.some((id) => !referencelessIds.has(id)),
+      ),
       variantRenders: declarations.reduce((n, d) => n + d.renders.length, 0),
       withSet: components.filter((c) => c.refSet).length,
     },

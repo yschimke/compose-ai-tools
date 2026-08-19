@@ -4,7 +4,7 @@
  *
  *     npx @yschimke/compose-design-map [--previews <path>] [--out design-map.json]
  *                                      [--variants design-map-variants.json] [--prefix catalog]
- *                                      [--check] [--strict]
+ *                                      [--check] [--strict] [--allow-stated-absence]
  *
  * Run `./gradlew :<module>:composePreviewDiscover` first so the manifest exists.
  *
@@ -32,6 +32,14 @@
  * whose captures name no mode the reference could pair with. The annotation still earns its keep in
  * the default mode, where the three are reported apart so a retired pattern does not read as
  * neglect; `--strict` simply says there are no exceptions.
+ *
+ * `--allow-stated-absence` narrows `--strict` back to what it is usually wanted for: it still fails
+ * on a missing `reference` and on an ambiguous mode, but accepts a component whose absence a
+ * `noReference` explains. That is the posture of a catalog with two doors — one for the components
+ * that reproduce a kit set, one for the components of its own library the kit never published —
+ * where an exception is a fact about the kit rather than a gap. Without it such a catalog has to
+ * drop `--strict` altogether and loses the guard against silence as well. No effect without
+ * `--strict`.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -51,6 +59,7 @@ const VARIANTS_OUT = arg("variants", "design-map-variants.json");
 const PREFIX = arg("prefix", "catalog");
 const CHECK = process.argv.includes("--check");
 const STRICT = process.argv.includes("--strict");
+const ALLOW_STATED_ABSENCE = process.argv.includes("--allow-stated-absence");
 
 if (!fs.existsSync(PREVIEWS)) {
   console.error(
@@ -71,7 +80,16 @@ const { map, variants, diagnostics } = projectDesignMap(manifest.previews ?? [],
 if (STRICT) {
   const missing = [
     ...diagnostics.unmapped.map((id) => `${id} — no reference, and no reason given`),
-    ...diagnostics.statedAbsent.map((s) => `${s.componentId} — ${s.reason}`),
+    // A STATED absence is a gap under plain --strict and not under
+    // `--strict --allow-stated-absence`. The two postures are both real: a catalog whose inventory
+    // is exactly the kit's wants no exceptions at all, while one that also publishes components of
+    // its own library that the kit never drew (wear-m3-catalog's `ButtonGroup`, `Scaffold`) wants
+    // strictness about SILENCE without being failed by the four cases somebody already looked at
+    // and wrote down. Without the opt-in those catalogs cannot use --strict at all, which costs
+    // them the guard against silence too — the thing --strict was actually for.
+    ...(ALLOW_STATED_ABSENCE
+      ? []
+      : diagnostics.statedAbsent.map((s) => `${s.componentId} — ${s.reason}`)),
     // An ambiguous mode is the third way a component ends up outside the map, and the quietest:
     // the reference is there, but nothing says which capture it pairs with, so the component is
     // simply absent. Under --strict that is as much a gap as a missing reference.
@@ -90,7 +108,10 @@ if (STRICT) {
     for (const line of missing) console.error(`  - ${line}`);
     console.error(
       `A catalog that reproduces a kit has nothing to compare these against — remove them, ` +
-        `or drop --strict to publish them unmapped.`,
+        `or drop --strict to publish them unmapped` +
+        (ALLOW_STATED_ABSENCE
+          ? `.`
+          : `, or pass --allow-stated-absence to accept the ones a noReference explains.`),
     );
     process.exit(1);
   }
