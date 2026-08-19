@@ -4,8 +4,9 @@
 # Drives the --dry-run seam so the rules that actually matter are pinned without a server:
 #   1. trust is reconciled BEFORE catalogs (a catalog published ahead of its producer would
 #      register as `unverified` and stay that way until its branch moved);
-#   2. the declared entry shape survives — `listed: false` and `group` are not dropped, since
-#      either being lost silently changes where a card renders;
+#   2. the declared entry shape survives — `listed: false`, `group` and `loadPriority` are not
+#      dropped, since the first two being lost silently changes where a card renders and the last
+#      one decides which catalogs a rollout fetches first;
 #   3. null/absent optional fields are omitted rather than sent as JSON null.
 set -uo pipefail
 
@@ -33,7 +34,8 @@ cat > "${tmp}/catalogs.json" <<'JSON'
 {
   "groups": [{ "id": "ds", "heading": "Design Systems" }],
   "catalogs": [
-    { "system": "compose-m3", "repo": "yschimke/compose-ai-tools", "listed": true, "group": "ds" },
+    { "system": "compose-m3", "repo": "yschimke/compose-ai-tools", "listed": true, "group": "ds",
+      "loadPriority": 20 },
     { "system": "cadence", "repo": "yschimke/cadence", "listed": false },
     { "system": "jetnews", "repo": "yschimke/compose-samples", "listed": true,
       "attributionRepos": ["android/compose-samples"] }
@@ -80,6 +82,14 @@ printf '%s' "${out}" | grep -q '"system":"cadence".*"listed":false' ||
 # 4. a group claim survives.
 printf '%s' "${out}" | grep -q '"system":"compose-m3".*"group":"ds"' ||
   fail "compose-m3 must keep its group claim"
+
+# 4b. loadPriority survives — it is what decides which catalogs a rollout fetches first, and the
+#     box boots from the config this rewrites, so dropping it here makes the committed order a
+#     no-op on the deployed server.
+printf '%s' "${out}" | grep -q '"system":"compose-m3".*"loadPriority":20' ||
+  fail "compose-m3 must keep its loadPriority"
+printf '%s' "${out}" | grep -q '"system":"cadence".*"loadPriority"' &&
+  fail "an undeclared loadPriority must be omitted, not sent: ${out}"
 
 # 5. attributionRepos survives (it's what lets a fork-served catalog keep its upstream section).
 printf '%s' "${out}" | grep -q '"attributionRepos":\["android/compose-samples"\]' ||

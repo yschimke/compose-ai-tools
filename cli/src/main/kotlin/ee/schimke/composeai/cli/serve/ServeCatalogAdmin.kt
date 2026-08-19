@@ -129,8 +129,23 @@ class ServeCatalogAdmin(
     for (entry in declared.catalogs) {
       val current = tracker.configFor(entry.system) ?: continue
       val resolved = homeGroup(entry, current.repo, table)
-      if (current.group == resolved && current.listed == entry.listed) continue
-      if (tracker.relist(entry.system, listed = entry.listed, group = resolved)) changed++
+      if (
+        current.group == resolved &&
+          current.listed == entry.listed &&
+          current.loadPriority == entry.loadPriority
+      ) {
+        continue
+      }
+      if (
+        tracker.relist(
+          entry.system,
+          listed = entry.listed,
+          group = resolved,
+          loadPriority = entry.loadPriority,
+        )
+      ) {
+        changed++
+      }
     }
     return changed
   }
@@ -157,6 +172,10 @@ class ServeCatalogAdmin(
     // forever.
     // The content is untouched — no re-fetch, no dropped load state — and a repo change is still
     // refused, since that decides what bytes get served (retire and re-publish for that).
+    // `loadPriority` converges the same way: it changes nothing about a catalog already registered,
+    // but the point of writing it back is the NEXT boot's fetch order, and the deployment reconcile
+    // (.github/scripts/publish-config-to-box.sh) is additive — without this, re-declaring a
+    // priority on an already-published catalog would 409 and never reach the box's config.
     tracker.configFor(entry.system)?.let { current ->
       if (current.repo != repo) {
         return Result.Conflict(
@@ -165,10 +184,19 @@ class ServeCatalogAdmin(
         )
       }
       val resolved = homeGroup(entry, repo, declared)
-      if (current.group == resolved && current.listed == entry.listed) {
+      if (
+        current.group == resolved &&
+          current.listed == entry.listed &&
+          current.loadPriority == entry.loadPriority
+      ) {
         return Result.Conflict("catalog '${entry.system}' is already published")
       }
-      tracker.relist(entry.system, listed = entry.listed, group = resolved)
+      tracker.relist(
+        entry.system,
+        listed = entry.listed,
+        group = resolved,
+        loadPriority = entry.loadPriority,
+      )
       onLog("serve: catalog ${entry.system} listing updated via admin API")
       return Result.Ok(entry.system, persist { it.withEntry(entry.copy(repo = repo)) })
     }
@@ -219,6 +247,7 @@ class ServeCatalogAdmin(
       repo = repo,
       branch = "$branchPrefix${entry.system}",
       group = homeGroup(entry, repo, declaredGroups),
+      loadPriority = entry.loadPriority,
     )
 
   /**
