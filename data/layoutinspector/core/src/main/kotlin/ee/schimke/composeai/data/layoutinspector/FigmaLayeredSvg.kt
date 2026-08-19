@@ -721,14 +721,25 @@ object FigmaLayeredSvg {
         )
       if (vec.fromDrawCapture) {
         // A draw capture's viewport is already in *placed* px — the recorder is sized to the node's
-        // drawn bounds, not its layout slot — so the drawn/slot ratio is what maps it back, and it
-        // cancels `layoutScale` to 1 in the usual case. A `RadioButton`/`Checkbox` relies on this:
-        // it records a ~20px viewport while measuring to a 48dp touch target, and dropping the
-        // ratio would draw the control at 2.4× over its own box.
-        val placedScaleX = if (layoutWidth > 0.0) layer.width / layoutWidth else 1.0
-        val placedScaleY = if (layoutHeight > 0.0) layer.height / layoutHeight else 1.0
-        scaleX = layoutScale * placedScaleX
-        scaleY = layoutScale * placedScaleY
+        // `boundsIn(root)`, not its layout slot — so it maps onto the layer box directly, and is
+        // 1:1 in the usual case. A `RadioButton`/`Checkbox` relies on that: it records a ~20px
+        // viewport while measuring to a 48dp touch target, and fitting the slot would draw the
+        // control 2.4× over its own box.
+        //
+        // Read the ratio off the layer box (not the layout slot) so a node whose box the export
+        // grew or narrowed still tracks it — and take it **uniformly**, because these paths carry
+        // strokes and SVG scales a stroke with its group. Wear's `LinearProgressIndicator` is the
+        // case that proves it: it strokes a 24px round-capped track inside its 16px-tall draw box,
+        // deliberately overflowing. The old fit multiplied one axis's slot ratio by the other's
+        // placed ratio (`min(slot/viewport) × (layer/slot)`), landing on `scale(1.0 0.68)` — which
+        // squashed that stroke to 16px and flattened both round caps into ellipses.
+        val uniform =
+          minOf(
+            if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0,
+            if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0,
+          )
+        scaleX = uniform
+        scaleY = uniform
       } else if (
         abs(vec.scaleX - 1.0) > VECTOR_SCALE_EPSILON || abs(vec.scaleY - 1.0) > VECTOR_SCALE_EPSILON
       ) {

@@ -1046,12 +1046,24 @@ data class FigmaSvgModel(
       placeholder
         ?.takeIf { it.visible == true && it.kind == PlaceholderModifiers.KIND_PLACEHOLDER }
         ?.let { ph ->
+          // The block covers the CONTAINER it dresses, not that container's content. Wear's
+          // `Modifier.placeholder` rides on the *caller's* chain — outside the component's own
+          // content padding — so it paints across exactly the rect the container fills, which is
+          // what `paintBox` records. The node's placed `bounds` is the padded content rect (a
+          // `Card`'s is 12dp in on every side, a `Button`'s more), so building the block from it
+          // drew a block visibly smaller than the render's, and — because a `shape = "circle"`
+          // placeholder takes its radius from `min(w, h) / 2` — rounded to the wrong corner too.
+          // Held to the node's own mask, same as the ordinary paint path below: a clipped
+          // container's block stops at the clip.
+          val blockBox =
+            tokens?.paintBox?.let { box -> maskBox?.let { intersectBounds(box, it) } ?: box }
+              ?: bounds
           return FigmaSvgLayer(
             name = "${layerName()} Placeholder",
-            left = bounds.left,
-            top = bounds.top,
-            right = bounds.right,
-            bottom = bounds.bottom,
+            left = blockBox.left,
+            top = blockBox.top,
+            right = blockBox.right,
+            bottom = blockBox.bottom,
             fill = ph.colorArgb?.let { argbToColor(it, ctx.colorNames) },
             // The placeholder's corner is a measured length like any other token, so it rides the
             // node's draw-time scale (issue #2615) — a placeholdered card near a round face's edge
