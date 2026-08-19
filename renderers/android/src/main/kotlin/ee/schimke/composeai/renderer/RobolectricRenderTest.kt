@@ -1631,8 +1631,16 @@ abstract class RobolectricRenderTestBase(
             }
             val delta = target - currentTime
             if (delta > 0) {
+              // `advanceTimeBy` aligns to the frame duration and rounds *up*: it steps whole
+              // frames until it reaches at least the requested amount, so asking for 500ms from
+              // zero leaves the clock at 512. Recording `target` here would therefore write down a
+              // time the clock never sat at, and every later job would compute its own delta from
+              // that fiction — the error accumulating across a timed fan-out rather than cancelling
+              // (issue #4247). Read back what the clock actually reached instead; the same
+              // before/after measurement `AndroidInteractionRenderer` already uses.
+              val clockBefore = rule.mainClock.currentTime
               rule.mainClock.advanceTimeBy(delta)
-              currentTime = target
+              currentTime += rule.mainClock.currentTime - clockBefore
             }
 
             // `@FocusedPreview` per-capture focus walk. Discovery sorts focus indices
