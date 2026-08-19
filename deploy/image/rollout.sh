@@ -47,11 +47,38 @@ release_rollout_lock() {
 # terminate; EXIT keeps the plain cleanup, and `trap - EXIT` stops it running twice (harmless, since
 # the release is idempotent, but it would log a second removal attempt).
 on_rollout_signal() {
+  # Kill whatever this runner is blocked on first. See [run_interruptible].
+  if [ -n "${rollout_child:-}" ]; then
+    kill -TERM "$rollout_child" 2>/dev/null || true
+    wait "$rollout_child" 2>/dev/null || true
+    rollout_child=""
+  fi
   release_rollout_lock
   trap - EXIT
   # 128 + signal number: the conventional status for a signal-terminated process, so a supervisor
   # can tell an interrupted rollout from a failed one.
   exit "$((128 + $1))"
+}
+
+# Run a command so a trapped signal reaches the handler NOW rather than after it finishes.
+#
+# A POSIX shell defers a trapped signal until the running FOREGROUND child returns. This script is
+# PID 1 in the `rollout` compose service, where the two things it blocks on are exactly the long
+# ones: `docker rollout` can sit in its health timeout (default 300s) and the poll loop sleeps for
+# `$ROLLOUT_INTERVAL` (default 1200s). A plain foreground call therefore meant `docker stop` on the
+# service would hit its grace period and SIGKILL the shell before the handler ever ran — leaving the
+# lock CONTAINER alive for its whole TTL and blocking both the poller and the webhook runner from
+# deploying, which is the failure the lock exists to avoid, arrived at from the other side.
+#
+# Backgrounding and `wait`ing fixes it: `wait` is interruptible, so the handler runs immediately and
+# can take the child down with it.
+run_interruptible() {
+  "$@" &
+  rollout_child=$!
+  rc=0
+  wait "$rollout_child" || rc=$?
+  rollout_child=""
+  return "$rc"
 }
 
 arm_rollout_lock_traps() {
@@ -139,7 +166,7 @@ roll_once() {
   # loop below) or in an `if` condition, so a failed `docker rollout` would
   # otherwise fall through to the success log and a 0 return — reporting a failed
   # rollout as rolled. Inside the `else`, `$?` still holds the rollout exit code.
-  if docker rollout --timeout "$HEALTH_TIMEOUT" "$SERVICE"; then
+  if run_interruptible docker rollout --timeout "$HEALTH_TIMEOUT" "$SERVICE"; then
     log "'$SERVICE' rolled"
     release_rollout_lock
     trap - EXIT INT TERM
@@ -157,7 +184,10 @@ if [ "${1:-}" = "--loop" ]; then
   log "polling '$SERVICE' every ${INTERVAL}s for zero-downtime updates"
   while true; do
     roll_once || log "roll attempt failed — will retry next cycle"
-    sleep "$INTERVAL"
+    # Interruptible for the same reason the rollout is: at the default interval this shell spends
+    # almost all of its life right here, so a foreground `sleep` is where a shutdown signal would
+    # most often be swallowed.
+    run_interruptible sleep "$INTERVAL" || true
   done
 else
   roll_once

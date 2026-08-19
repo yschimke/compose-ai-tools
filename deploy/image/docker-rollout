@@ -226,16 +226,29 @@ main() {
   # shellcheck disable=SC2086 # DOCKER_ARGS and OLD_CONTAINER_IDS must be unquoted to allow multiple arguments
   docker $DOCKER_ARGS rm $OLD_CONTAINER_IDS || true
 
+  # Three outcomes per container, and only one of them is success. A failed `inspect` is NOT proof
+  # the container is gone: if the daemon or socket went away — the same thing that would have made
+  # `stop`/`rm` fail a moment ago — every inspect fails too, and reading that as "gone" hands back
+  # the clean bill of health this check exists to withhold. So the CONFIRMED absence is matched
+  # explicitly, and anything else counts as unverified.
   SURVIVING_CONTAINER_IDS=""
+  UNVERIFIED_CONTAINER_IDS=""
   for OLD_CONTAINER_ID in $OLD_CONTAINER_IDS; do
     # shellcheck disable=SC2086 # DOCKER_ARGS must be unquoted to allow multiple arguments
-    if docker $DOCKER_ARGS inspect --format='{{.Id}}' "$OLD_CONTAINER_ID" >/dev/null 2>&1; then
+    if INSPECT_ERROR="$(docker $DOCKER_ARGS inspect --format='{{.Id}}' "$OLD_CONTAINER_ID" 2>&1 >/dev/null)"; then
       SURVIVING_CONTAINER_IDS="$SURVIVING_CONTAINER_IDS $OLD_CONTAINER_ID"
+    elif ! echo "$INSPECT_ERROR" | grep -qiE 'no such (object|container)'; then
+      UNVERIFIED_CONTAINER_IDS="$UNVERIFIED_CONTAINER_IDS $OLD_CONTAINER_ID"
     fi
   done
   if [ -n "$SURVIVING_CONTAINER_IDS" ]; then
     echo "==> ERROR: old containers survived cleanup:$SURVIVING_CONTAINER_IDS" >&2
     echo "==> The new replicas are healthy but the old ones are still running. Remove them by hand." >&2
+    exit 1
+  fi
+  if [ -n "$UNVERIFIED_CONTAINER_IDS" ]; then
+    echo "==> ERROR: could not confirm old containers were removed:$UNVERIFIED_CONTAINER_IDS" >&2
+    echo "==> Last inspect error: $INSPECT_ERROR" >&2
     exit 1
   fi
 }

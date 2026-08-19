@@ -430,7 +430,7 @@ class CatalogThemeCache(
         // adopted entries are withheld from the read path (see [get]) and the next verification
         // pass tries again, which is the quarantine this case needs.
         if (discarded) persistenceTrusted.set(true)
-        return VerifyOutcome.MISMATCH
+        return if (discarded) VerifyOutcome.MISMATCH else VerifyOutcome.MISMATCH_UNDISCARDED
       }
     }
     // Zero successful comparisons is NOT a pass. Every sampled render can come back Busy, Failed or
@@ -450,7 +450,20 @@ class CatalogThemeCache(
     /** The renderer answered nothing usable, so the question is still open. Ask again. */
     NO_EVIDENCE,
     /** A persisted render no longer matches; the generation has been discarded. */
-    MISMATCH;
+    MISMATCH,
+    /**
+     * A persisted render no longer matches, and the generation could **not** be discarded — its
+     * write lock stayed held through every retry.
+     *
+     * Separate from [MISMATCH] because the two need opposite treatment from the caller. After a
+     * successful discard the question is answered: the suspect bytes are gone and verification can
+     * latch. Here they are still on disk, so the caller must NOT latch — the adopted entries stay
+     * withheld from the read path and the next pass has to ask again. Latching would leave them
+     * quarantined for the life of the process while the optimizer, which reads `contains`, went on
+     * believing they were present: repeated foreground renders, stale files, and no further attempt
+     * to clear either.
+     */
+    MISMATCH_UNDISCARDED;
 
     /** Whether the persisted renders may be trusted from here on. */
     val settled: Boolean

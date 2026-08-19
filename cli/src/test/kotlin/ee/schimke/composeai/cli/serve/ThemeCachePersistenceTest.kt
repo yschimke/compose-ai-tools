@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import java.io.File
+import java.io.RandomAccessFile
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -628,6 +629,49 @@ class ThemeCachePersistenceTest {
     assertEquals(CatalogThemeCache.VerifyOutcome.MISMATCH, outcome)
     assertEquals(0, cache.snapshot().cached, "a failed verification leaves nothing behind")
     assertNull(cache.get("one"))
+  }
+
+  /**
+   * A discard the write lock refuses is not a discard, and must not be reported as one.
+   *
+   * `verifySample` used to set `persistenceTrusted` on any mismatch, ignoring whether `discard`
+   * actually succeeded — so PNGs it had just proved wrong stayed on disk and were immediately
+   * servable as verified. Honouring the result fixed that, but returning plain `MISMATCH` was still
+   * wrong one level up: `ServeCatalogLiveHost` latches `persistenceVerified` for MISMATCH, so the
+   * retry this case depends on would never come, and the entries would stay withheld from reads
+   * while `contains` kept the optimizer from re-warming them.
+   */
+  @Test
+  fun `a discard blocked by the write lock is not reported as settled`() {
+    val root = tempDir()
+    val fp = "b".repeat(64)
+    store(root).open("m3-catalog", fp, inputs(fp))!!.also {
+      it.put("one", byteArrayOf(1))
+      it.put("two", byteArrayOf(2))
+    }
+    val generation = store(root).open("m3-catalog", fp, inputs(fp))!!
+    val cache = CatalogThemeCache(persistence = generation)
+    cache.configureTargets(listOf("one", "two"))
+
+    // Hold the generation's write lock from another channel in this process, the way a foreground
+    // render publishing into the same generation does.
+    val lockFile = File(File(File(root, "m3-catalog"), fp), ".write.lock")
+    RandomAccessFile(lockFile, "rw").use { raf ->
+      raf.channel.lock().use {
+        val outcome = cache.verifySample { byteArrayOf(99) }
+
+        assertEquals(CatalogThemeCache.VerifyOutcome.MISMATCH_UNDISCARDED, outcome)
+        assertFalse(outcome.settled, "an undiscarded mismatch leaves verification unfinished")
+        // The suspect entries are withheld rather than served...
+        assertNull(cache.get("one"))
+        // ...and the bytes are still there, which is exactly why the caller must ask again.
+        val generationDir = File(File(root, "m3-catalog"), fp)
+        assertTrue(
+          generationDir.listFiles().orEmpty().any { it.name.endsWith(".png") },
+          "the suspect PNGs are still on disk, which is why the caller has to ask again",
+        )
+      }
+    }
   }
 
   @Test
