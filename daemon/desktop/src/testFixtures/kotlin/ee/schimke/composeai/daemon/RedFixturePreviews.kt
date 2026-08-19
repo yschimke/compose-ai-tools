@@ -1436,3 +1436,36 @@ fun DarkAwareLongScrollPreview() {
     items(60) { Box(modifier = Modifier.fillMaxWidth().height(60.dp).background(bg)) }
   }
 }
+
+/**
+ * A reveal driven by *time* rather than by a gesture — the `@SettledPreview` shape from
+ * issue #4202, restated here so the desktop **daemon** lane has something to settle (issue #4238).
+ *
+ * The container is black until [TIMED_REVEAL_DELAY_MS] has passed on the composition's clock, then
+ * a solid green square lands inside it. Captured at the daemon's ordinary frame-zero the whole
+ * frame is black; a settled capture is black with a green square in the middle, so "did the settle
+ * happen" is a question about one pixel rather than about a rendering heuristic.
+ *
+ * `delay` is what makes it a real regression fixture: `scene.render(nanoTime)` drives Compose's
+ * frame clock but not `kotlinx.coroutines.delay`, so a raised frame timestamp alone leaves this
+ * black forever — only installing the scene on a `DesktopSettleClock` reveals it.
+ */
+@Composable
+fun TimedRevealPreview() {
+  var revealed by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+    kotlinx.coroutines.delay(TIMED_REVEAL_DELAY_MS)
+    revealed = true
+  }
+  Box(
+    modifier = Modifier.fillMaxSize().background(Color.Black),
+    contentAlignment = Alignment.Center,
+  ) {
+    if (revealed) {
+      Box(modifier = Modifier.size(40.dp).background(Color(0xFF00C853)))
+    }
+  }
+}
+
+/** When [TimedRevealPreview]'s square lands, in milliseconds of composition time. */
+const val TIMED_REVEAL_DELAY_MS: Long = 200L

@@ -1916,34 +1916,36 @@ object PreviewDiscovery {
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val glimmerEnvironmentSpec = extractGlimmerEnvironmentSpec(annotations)
-    // `@SettledPreview` and a motion capture on ONE function cannot both be honoured: both
-    // products render from one composition against one paused clock, and they want opposite things
-    // from it. The GIF needs the timeline from its start; the settled still needs a coordinate near
-    // the end. Shoot the still first and it eats the frames the GIF was going to record; shoot the
-    // GIF first and it leaves the clock past the coordinate the still asked for — which the
-    // renderer then cannot honour, because virtual time does not rewind. Serving both needs a
-    // second composition for the still, a change to the render loop rather than to this plan, so
-    // the still keeps its unsettled behaviour here and the pairing is reported rather than faked.
+    // `@SettledPreview` and a motion capture on ONE function want opposite things from the shared
+    // paused clock — the GIF records the timeline from its start, the settled still needs a
+    // coordinate near the end, and virtual time does not rewind. That used to be resolved here, by
+    // dropping the settle and warning about the pairing. It no longer is: both renderers now give
+    // the settled still a composition of its own (the desktop lane always did — every output is a
+    // separate `ImageComposeScene`; the Android lane splits into a second `setContent` pass, see
+    // `RobolectricRenderTest.settledStillNeedsOwnPass`), so each product owns its own timeline and
+    // the plan can simply carry both. Issue #4244.
     val rawSettleSpec = extractSettleSpec(annotations)
-    // Every product that *records a timeline* collides the same way, not just `@AnimatedPreview`:
-    // an `@InteractionPreview` recording and a `@FocusedPreview(gif = true)` walk each replay from
-    // the shared clock too, and the Android renderer deliberately sorts them after the stills.
-    val motionProduct =
-      when {
-        animationSpec != null -> "@AnimatedPreview"
-        interactionSpec != null -> "@InteractionPreview"
-        focusGifSpec != null -> "@FocusedPreview(gif = true)"
-        else -> null
-      }
+    // `@FocusedPreview` + an exact settle shorter than the focus path's setup: the desktop focus
+    // renderer spends two unconditional frames (`SETUP_FRAMES_MS`, 32ms) before any drive, because
+    // the focus walk needs a laid-out tree to find anything focusable in. A coordinate under that
+    // cannot be honoured there — the capture lands at 32ms regardless — while the Android lane
+    // would land on the requested value, so the same annotation would mean two different instants.
+    // Clamp here, the single place the manifest is written, and say so: an `afterMs` below one and
+    // a bit frames is asking for a frame that cannot show a focused component at all. Issue #4247.
     val settleSpec =
-      if (rawSettleSpec != null && motionProduct != null) {
+      if (
+        rawSettleSpec != null &&
+          rawSettleSpec.afterMs in 1 until FOCUS_SETUP_FRAMES_MS &&
+          focusSpecs.isNotEmpty()
+      ) {
         warnings.add(
-          "@SettledPreview on '${classInfo.name}.${method.name}' is ignored: $motionProduct on " +
-            "the same function drives the same paused clock, and the still and the motion capture " +
-            "cannot both own one timeline. Split them onto separate preview functions to settle " +
-            "the still."
+          "@SettledPreview(afterMs = ${rawSettleSpec.afterMs}) on " +
+            "'${classInfo.name}.${method.name}' is raised to ${FOCUS_SETUP_FRAMES_MS}ms: " +
+            "@FocusedPreview on the same function spends its first ${FOCUS_SETUP_FRAMES_MS}ms " +
+            "laying out the tree the focus walk searches, so nothing focusable exists before " +
+            "then and the two backends would otherwise capture different instants."
         )
-        null
+        rawSettleSpec.copy(afterMs = FOCUS_SETUP_FRAMES_MS)
       } else {
         rawSettleSpec
       }
@@ -2933,15 +2935,9 @@ object PreviewDiscovery {
     // `@SettledPreview` advances the composition's paused clock, which a non-composable preview
     // (Lottie / SVG / tile asset) has nothing to spend — same reasoning as ambient above.
     //
-    // A settle that collides with a motion capture on the same function has already been dropped
-    // by `extractSettleSpec`'s caller, which owns the warning; the guards here are only a backstop
-    // so a future caller cannot reintroduce the pairing silently.
-    val effectiveSettle =
-      if (nonComposable || effectiveAnimation != null || interaction != null || focusGif != null) {
-        null
-      } else {
-        settle
-      }
+    // A motion capture on the same function is no longer a reason to drop it: the renderers give
+    // the settled still its own composition, so the two timelines no longer collide (issue #4244).
+    val effectiveSettle = if (nonComposable) null else settle
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
@@ -3160,10 +3156,19 @@ object PreviewDiscovery {
     // IS the rendered output (the tall stitched PNG / scrolling GIF), so a sibling static
     // `renders/<id>.png` would just be the unscrolled initial frame — misleading, and the
     // exact regression issue #1524 reported.
+    //
+    // `@SettledPreview` is the one thing that overrides the suppression: it is a request for a
+    // settled *still*, so a function carrying one wants the static row even when a motion product
+    // would otherwise own the function outright. Discovery used to drop the settle here and warn
+    // that it was ignored, which was the circular form of the same bug — the still it was meant to
+    // fix had already been suppressed. Both ship now, and the renderers give the still its own
+    // composition so neither product spends the other's timeline (issue #4244). The extensions
+    // differ (`.png` vs `.gif` / `.apng`), so no filename disambiguation is needed.
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveFocuses.isNotEmpty() ||
+        effectiveSettle != null ||
         (effectiveAnimation == null && effectiveFocusGif == null && productScrolls.isEmpty())
 
     val scrollTimeCaptures: List<Capture> =

@@ -439,6 +439,17 @@ const val MAX_SETTLE_MS: Int = 5000
 const val SETTLE_FRAME_MS: Int = 16
 
 /**
+ * Virtual time a focused capture spends before any drive runs — two 60Hz frames, mirroring
+ * `DesktopFocusRenderer.SETUP_FRAMES_MS` and the Android lane's `CAPTURE_ADVANCE_MS`.
+ *
+ * The focus walk needs a laid-out tree to find anything focusable in, so those frames are not
+ * optional and a `@SettledPreview(afterMs = …)` under them cannot be honoured on a focused capture.
+ * Discovery raises such a coordinate to this floor so both backends land on the same instant rather
+ * than disagreeing quietly — see issue #4247.
+ */
+const val FOCUS_SETUP_FRAMES_MS: Int = 32
+
+/**
  * Tool-owned environment selected by `@GlimmerEnvironmentPreview`. The renderer captures normal
  * opaque RGB-on-black Glimmer UI first, then delegates ADD compositing to the environment connector.
  */

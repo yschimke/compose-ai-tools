@@ -823,6 +823,9 @@ abstract class RobolectricRenderTestBase(
     // Same for coil: arm the per-preview image-load tracker so a request that fails or is still in
     // flight at capture time is attributed to THIS preview (drained right after the render below).
     CoilLoadDiagnostics.beginPreview()
+    // Same again for the still-capture quiescence probe: an unsettled capture recorded during THIS
+    // render rides out in this preview's warnings sidecar (issue #4239).
+    VisualSettleDiagnostics.beginPreview()
     try {
       if (params.kind == PreviewKind.ACTIVITY || params.kind == PreviewKind.APP_TOUR) {
         // App-level previews: no composition to host — the real activity owns its content.
@@ -838,6 +841,43 @@ abstract class RobolectricRenderTestBase(
         )
         org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
         AppTourRenderer.render(preview, outputDir, roborazziOptions)
+      } else if (settledStillNeedsOwnPass(preview.captures)) {
+        // `@SettledPreview` + a motion product on ONE function (issue #4244). Both want the shared
+        // paused clock and they want opposite things from it: the GIF records forward from the
+        // start of the timeline, the settled still needs a coordinate near its end, and virtual
+        // time does not rewind. Whichever ran first spoiled the other, so discovery used to drop
+        // the settle and say so.
+        //
+        // Two compositions instead of one plan. Each `renderDefault` builds its own
+        // `createAndroidComposeRule`, so the second pass starts from a fresh `setContent` at clock
+        // zero and the settled still lands on exactly the coordinate it asked for — the same
+        // separation the desktop lane has had all along, where every output is already its own
+        // `ImageComposeScene`. Motion first, so the ordering inside the first pass is unchanged
+        // and every non-settled capture keeps the composition it has always shared.
+        renderDefault(
+          params = params,
+          widthDp = widthDp,
+          heightDp = heightDp,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          outputDir = outputDir,
+          roborazziOptions = roborazziOptions,
+          composeOptions = composeOptions,
+          inspectionMode = inspectionMode,
+          jobFilter = { !it.carriesSettle },
+        )
+        renderDefault(
+          params = params,
+          widthDp = widthDp,
+          heightDp = heightDp,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          outputDir = outputDir,
+          roborazziOptions = roborazziOptions,
+          composeOptions = composeOptions,
+          inspectionMode = inspectionMode,
+          jobFilter = { it.carriesSettle },
+        )
       } else {
         renderDefault(
           params = params,
@@ -864,10 +904,14 @@ abstract class RobolectricRenderTestBase(
       // Coil requests that didn't resolve are never fatal — a blank image is a legitimate thing to
       // capture (an offline/empty state), and the renderer can't conjure bytes the sandbox can't
       // reach. They ride in the same warnings sidecar so the blank is diagnosable.
+      // An unsettled still is never fatal either — the frame on disk is a real frame, just an
+      // earlier one than the author meant. It rides in the same sidecar so a consumer can fail its
+      // own build on a catalog that shipped a half-drawn sticker.
       RenderWarningsSidecar.writeOrDelete(
         pngFile,
         fontFallbacks,
         CoilLoadDiagnostics.drainPreview(),
+        VisualSettleDiagnostics.drainPreview(),
       )
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
@@ -1066,6 +1110,14 @@ abstract class RobolectricRenderTestBase(
      */
     val hasExactSettle: Boolean
       get() = false
+
+    /**
+     * Whether this job is a `@SettledPreview` still. Used to split it into a composition of its own
+     * when the same preview function also carries a motion product — see
+     * [settledStillNeedsOwnPass].
+     */
+    val carriesSettle: Boolean
+      get() = false
   }
 
   private data class CaptureRenderJob(
@@ -1077,6 +1129,7 @@ abstract class RobolectricRenderTestBase(
     override val settleTargetMs: Long? =
       capture.settle?.let { settleCaptureTargetMs(it.afterMs, it.maxMs, CAPTURE_ADVANCE_MS) }
     override val hasExactSettle: Boolean = (capture.settle?.afterMs ?: 0) > 0
+    override val carriesSettle: Boolean = capture.settle != null
   }
 
   private data class ProductRenderJob(
@@ -1122,6 +1175,14 @@ abstract class RobolectricRenderTestBase(
     roborazziOptions: RoborazziOptions,
     composeOptions: RoborazziComposeOptions,
     inspectionMode: Boolean,
+    /**
+     * Which of this preview's jobs this composition owns. Every job by default — one `setContent`,
+     * one paused clock, every capture a snapshot of the same evolving composition, which is what
+     * makes a timed fan-out coherent. A settled still paired with a motion product is the one case
+     * that cannot share, so it is rendered by a second call with the complementary filter; see
+     * [settledStillNeedsOwnPass] (issue #4244).
+     */
+    jobFilter: (RenderJob) -> Boolean = { true },
   ) {
     val appContext: android.app.Application =
       androidx.test.core.app.ApplicationProvider.getApplicationContext()
@@ -1577,6 +1638,7 @@ abstract class RobolectricRenderTestBase(
           val jobs =
             (preview.captures.map { CaptureRenderJob(it, outputFileFor(it, outputDir)) } +
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
+              .filter(jobFilter)
               .sortedWith(
                 // An interaction capture sorts after EVERY other job, not merely after the ones
                 // sharing its timestamp. Every job of a preview replays through one composition,
@@ -1640,13 +1702,10 @@ abstract class RobolectricRenderTestBase(
             }
             if (target > currentTime) {
               // Advance by what the *physical* clock still owes, not by the difference between two
-              // requested coordinates. `advanceTimeBy` rounds up to whole frames, so asking for
-              // 500ms from zero leaves the clock at 512; measuring the next hop from 500 would
-              // spend those 12ms twice, and the error compounds across a fan-out instead of
-              // cancelling (issue #4247). A job whose coordinate the clock has already passed is
-              // owed nothing and captures where it stands.
+              // requested coordinates. A job whose coordinate the clock has already passed is owed
+              // nothing and captures where it stands.
               val owed = (clockBase + target) - rule.mainClock.currentTime
-              if (owed > 0) rule.mainClock.advanceTimeBy(owed)
+              if (owed > 0) advanceMainClockBy(rule, owed)
               currentTime = target
             }
 
@@ -2040,12 +2099,10 @@ abstract class RobolectricRenderTestBase(
                       .interaction
                       .captureRoboImage(file = candidate, roborazziOptions = roborazziOptions)
                   }
-                if (!visuallySettled) {
-                  System.err.println(
-                    "Preview '${preview.id}': still frame did not become visually quiescent " +
-                      "after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
-                  )
-                }
+                // Recorded, not merely printed: an unsettled still is a wrong sticker on a green
+                // build, and stderr is not something a consumer's build can fail on. The warnings
+                // sidecar is (issue #4239).
+                VisualSettleDiagnostics.record("Preview '${preview.id}' still", visuallySettled)
               } else {
                 resolveCaptureRoot()
                   .interaction
@@ -2649,12 +2706,10 @@ private fun handleLongCaptureInternal(
                 roborazziOptions = sliceRoborazziOptions,
               )
             }
-          if (!visuallySettled) {
-            System.err.println(
-              "@ScrollingPreview(LONG) on '$previewId': slice ${slices.size} did not become " +
-                "visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
-            )
-          }
+          VisualSettleDiagnostics.record(
+            "@ScrollingPreview(LONG) on '$previewId' slice ${slices.size}",
+            visuallySettled,
+          )
         } else {
           stableDialogCrop.captureFrame(
             rule = rule,
@@ -2706,12 +2761,10 @@ private fun handleLongCaptureInternal(
             roborazziOptions = sliceRoborazziOptions,
           )
         }
-      if (!visuallySettled) {
-        System.err.println(
-          "@ScrollingPreview(LONG) on '$previewId': final frame did not become visually " +
-            "quiescent after $VISUAL_SETTLE_MAX_SAMPLES samples; using the latest frame."
-        )
-      }
+      VisualSettleDiagnostics.record(
+        "@ScrollingPreview(LONG) on '$previewId' final frame",
+        visuallySettled,
+      )
     } else {
       stableDialogCrop.captureFrame(
         rule = rule,
@@ -2813,11 +2866,80 @@ private fun settlePressedRipple() {
 private const val POST_SCROLL_SETTLE_MS = 1000L
 
 /**
+ * Whether [captures] pair a `@SettledPreview` still with a product that records a timeline, and so
+ * need two compositions rather than one (issue #4244).
+ *
+ * Every capture of one preview normally replays through a single `setContent` against a single
+ * paused clock, which is what makes a timed fan-out coherent: each still is a snapshot of the same
+ * evolving composition. A motion product breaks that for a settled still specifically, because the
+ * two consume the timeline in opposite directions — the GIF records forward from
+ * `CAPTURE_ADVANCE_MS`, the settled still wants a coordinate near the end of its window, and
+ * virtual time does not rewind. Discovery used to resolve it by dropping the settle and warning;
+ * this is the seam that serves both instead.
+ *
+ * Only the settled still moves to its own pass. Everything else — including a plain still that
+ * shares the composition with the GIF — stays exactly where it was, so no already-published render
+ * changes for a preview that never paired the two.
+ */
+internal fun settledStillNeedsOwnPass(captures: List<RenderPreviewCapture>): Boolean =
+  captures.any { it.settle != null } &&
+    captures.any { it.animation != null || it.interaction != null || it.focusGif != null }
+
+/**
+ * One 60Hz frame on the Compose test clock — the quantum `MainTestClock.advanceTimeBy` rounds a
+ * delta *up* to. Kept beside [advanceMainClockBy], which is the only thing that needs to know it.
+ */
+internal const val MAIN_CLOCK_FRAME_MS = 16L
+
+/**
+ * Splits an [owed] advance into the whole frames it contains and the sub-frame remainder left over.
+ *
+ * Pure so [AdvanceMainClockTest] can pin the arithmetic without a Compose rule.
+ */
+internal fun splitOwedAdvance(owed: Long, frameMs: Long = MAIN_CLOCK_FRAME_MS): Pair<Long, Long> {
+  if (owed <= 0L) return 0L to 0L
+  val remainder = owed % frameMs
+  return owed - remainder to remainder
+}
+
+/**
+ * Advances [rule]'s paused clock by exactly [owed] milliseconds, landing on the requested
+ * coordinate rather than on the next frame boundary past it (issue #4247).
+ *
+ * `advanceTimeBy` rounds a delta **up** to a whole number of frames, so an "exact" coordinate that
+ * is not a multiple of 16 — `@SettledPreview(afterMs = 150)`, or the
+ * `ManualClockOptions(advanceTimeMillis = 500)` this repo's own `SpinnerTimelinePreview` ships —
+ * captured one frame late. `@SettledPreview`'s exact mode and `advanceTimeMillis` both promise an
+ * instant; "the first frame at or after N" is a different promise, and after #4248 corrected the
+ * bookkeeping it was the only part of the gap left.
+ *
+ * So: spend the whole frames through the ordinary rounded advance — every 16ms tick has to dispatch
+ * a frame, or a reveal would be teleported past instead of run — and spend the sub-frame remainder
+ * with `ignoreFrameDuration`, which moves the scheduler without manufacturing a frame that
+ * Compose's cadence would not have produced. A `delay` whose deadline falls inside that remainder
+ * still fires, which is the point: `afterMs = 150` now reaches the moment a `delay(150)` resumes,
+ * where before it arrived at 160 with a whole extra frame of animation on top.
+ *
+ * What it does **not** do is invent a frame at N: the composition state captured is the last frame
+ * at or before the coordinate. That is the honest reading of "exact" on a clock that ticks every
+ * 16ms, and it errs toward showing less of the future rather than more.
+ */
+public fun advanceMainClockBy(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  owed: Long,
+) {
+  val (wholeFrames, remainder) = splitOwedAdvance(owed)
+  if (wholeFrames > 0) rule.mainClock.advanceTimeBy(wholeFrames)
+  if (remainder > 0) rule.mainClock.advanceTimeBy(remainder, ignoreFrameDuration = true)
+}
+
+/**
  * Adaptive sample budget used to prove that a still capture is visually quiescent.
  *
- * The first two matching frames are enough for the stable fast path. After any mismatch, three
- * consecutive identical decoded frames are required. Five total samples let a one- or two-frame
- * race settle while keeping intentional infinite animations bounded.
+ * Three consecutive identical decoded frames are required, and only once a frame delta has actually
+ * been observed — see [captureVisuallySettledFrame] for why there is no shorter path. Five total
+ * samples let a one- or two-frame race settle while keeping intentional infinite animations
+ * bounded.
  */
 public const val VISUAL_SETTLE_MAX_SAMPLES = 5
 internal const val VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES = 3
@@ -2855,20 +2977,86 @@ internal fun shouldAdvanceClockForVisualSettling(
 ): Boolean = advanceTimeMillis == null && !hasExactSettle && !hasFollowingJobs
 
 /**
- * Captures [file] twice and returns immediately if both decoded frames have identical pixels. After
- * a mismatch, continues until [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive frames match
- * or the bounded [VISUAL_SETTLE_MAX_SAMPLES] budget is exhausted.
+ * How a still capture's quiescence probe ended. Three outcomes, not two, because "the frame never
+ * moved" and "the frame stopped moving" are different claims and only one of them proves the
+ * composition arrived (issue #4239).
+ */
+public enum class VisualSettleOutcome {
+  /**
+   * A frame delta was observed and the frame then held still for
+   * [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive samples. The capture is settled in the
+   * strong sense: something happened, and then it finished.
+   */
+  SETTLED,
+
+  /**
+   * Every sample in the budget was pixel-identical — nothing was ever observed to move.
+   *
+   * Treated as success, because a static preview is the overwhelmingly common reason for it. It is
+   * also, though, what a reveal that has not *started* looks like, and pixels alone cannot separate
+   * the two: the composition's `delay` queue lives on the Compose test scheduler, which exposes no
+   * "is anything still scheduled" query the way `DesktopSettleClock` does for the desktop lane. So
+   * this is reported as its own outcome rather than folded into [SETTLED] — the render no longer
+   * *claims* it saw the composition finish — but it does not warn. `@SettledPreview` is the way an
+   * author says "this one arrives late"; see issue #4239.
+   */
+  NEVER_CHANGED,
+
+  /** The budget ran out while frames were still changing. The published frame is mid-flight. */
+  STILL_CHANGING;
+
+  /** Whether the capture is safe to publish without a warning. */
+  public val isQuiescent: Boolean
+    get() = this == SETTLED || this == NEVER_CHANGED
+
+  /** One line describing the outcome for the caller's diagnostic, or `null` when there is none. */
+  public fun describe(role: String): String? =
+    when (this) {
+      SETTLED,
+      NEVER_CHANGED -> null
+      STILL_CHANGING ->
+        "$role: frame did not become visually quiescent after $VISUAL_SETTLE_MAX_SAMPLES " +
+          "samples; using the latest frame."
+    }
+}
+
+/**
+ * Samples up to [VISUAL_SETTLE_MAX_SAMPLES] frames, one 60Hz tick apart, and stops as soon as a
+ * frame delta has been observed *and* [VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES] consecutive
+ * frames then match.
  *
  * Consecutive equality is deliberate: a majority vote could select one phase of a looping animation
- * (A/B/A/B/A) and call it stable. If the budget expires, the latest valid frame remains at [file]
- * and the caller can continue with a diagnostic rather than failing an otherwise useful render.
+ * (A/B/A/B/A) and call it stable. Whatever the outcome, the latest valid frame remains at [file] —
+ * the caller continues with a diagnostic rather than failing an otherwise useful render.
+ *
+ * ### Why there is no two-identical-frames fast path any more
+ *
+ * There used to be one: two matching frames with no mismatch behind them returned immediately. Two
+ * identical frames at `t = 0` is the *expected opening* of any delayed reveal, though — a
+ * `LaunchedEffect { delay(200); animateTo(…) }` is pixel-identical to a finished component for as
+ * long as the delay lasts. So quiescence was declared before the animation began, the render
+ * reported success, and the sticker published an empty container with no warning at all
+ * (issue #4239). Declaring settled now requires having seen the composition *move*, which costs the
+ * full sample budget on a preview that never does — three extra captures — and moves bytes on any
+ * preview whose reveal starts between the second and fifth frame, which is the point.
+ *
+ * What it still cannot do is separate a static preview from a reveal that has not begun — both are
+ * [VisualSettleOutcome.NEVER_CHANGED], and both stay quiet, because on this lane the two are
+ * genuinely indistinguishable: a preview's `delay` queue lives on the Compose test scheduler, which
+ * has no public "is anything still scheduled" query for the desktop lane's
+ * `DesktopSettleClock.hasScheduledWork` to be mirrored from, and a sample budget wide enough to
+ * out-wait a 200ms reveal would be paid by every static sticker in a catalog. What the outcome does
+ * buy is that the render stops *claiming* it watched the composition finish when it watched nothing
+ * happen at all, and that the case it can see — [VisualSettleOutcome.STILL_CHANGING] — now reaches
+ * `<png>.warnings.json` instead of stderr. Naming the window with `@SettledPreview` remains the way
+ * an author says "this one arrives late".
  */
 public fun captureVisuallySettledFrame(
   file: File,
   role: String,
   advanceFrame: () -> Unit,
   capture: (File) -> Unit,
-): Boolean {
+): VisualSettleOutcome {
   var previousWidth = -1
   var previousHeight = -1
   var previousPixels: IntArray? = null
@@ -2887,14 +3075,15 @@ public fun captureVisuallySettledFrame(
         previousPixels?.contentEquals(pixels) == true
     if (sample > 0 && !sameAsPrevious) sawMismatch = true
     identicalSamples = if (sameAsPrevious) identicalSamples + 1 else 1
-    val required = if (sawMismatch) VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES else 2
-    if (identicalSamples >= required) return true
+    if (sawMismatch && identicalSamples >= VISUAL_SETTLE_SLOW_PATH_IDENTICAL_SAMPLES) {
+      return VisualSettleOutcome.SETTLED
+    }
 
     previousWidth = image.width
     previousHeight = image.height
     previousPixels = pixels
   }
-  return false
+  return if (sawMismatch) VisualSettleOutcome.STILL_CHANGING else VisualSettleOutcome.NEVER_CHANGED
 }
 
 /**

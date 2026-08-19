@@ -8,12 +8,14 @@ import okio.Path.Companion.toPath
 /**
  * Per-preview render-*warning* sidecar for the Android (Robolectric) renderer path. The sibling of
  * [RenderErrorSidecar]: where `.error.json` means "the preview failed and there is no valid PNG",
- * `<png>.warnings.json` means "the preview rendered, but something about it is off". Two kinds
+ * `<png>.warnings.json` means "the preview rendered, but something about it is off". Three kinds
  * today:
  * - one or more downloadable fonts fell back to the platform default (see
  *   [FontResolutionDiagnostics]) while `composeai.fonts.failOnFallback` was turned off;
  * - one or more coil image requests didn't resolve before the capture (see [CoilLoadDiagnostics]),
- *   so the PNG has a blank, possibly layout-collapsing hole where artwork should be.
+ *   so the PNG has a blank, possibly layout-collapsing hole where artwork should be;
+ * - a still capture's quiescence probe ran out its sample budget (see [VisualSettleDiagnostics]),
+ *   so the PNG is a half-drawn frame or the frame before a reveal that hadn't started.
  *
  * Either way the PNG is kept and the warning rides alongside it.
  *
@@ -35,26 +37,29 @@ object RenderWarningsSidecar {
   fun pathFor(pngFile: File): File = File(pngFile.parentFile, pngFile.name + ".warnings.json")
 
   /**
-   * Write [fallbacks] and [imageLoads] as the warnings sidecar for [pngFile], or delete any stale
-   * sidecar when both are empty (a now-clean render must not keep yesterday's warning). Best-effort
-   * — a write failure prints to stderr but never derails the render, mirroring
-   * [RenderErrorSidecar].
+   * Write [fallbacks], [imageLoads] and [unsettled] as the warnings sidecar for [pngFile], or
+   * delete any stale sidecar when all three are empty (a now-clean render must not keep yesterday's
+   * warning). Best-effort — a write failure prints to stderr but never derails the render,
+   * mirroring [RenderErrorSidecar].
    */
   @JvmOverloads
   fun writeOrDelete(
     pngFile: File,
     fallbacks: List<FontResolutionDiagnostics.FontFallback>,
     imageLoads: List<CoilLoadDiagnostics.UnresolvedLoad> = emptyList(),
+    unsettled: List<VisualSettleDiagnostics.UnsettledCapture> = emptyList(),
     fileSystem: FileSystem = SystemFileSystem,
   ) {
-    if (fallbacks.isEmpty() && imageLoads.isEmpty()) {
+    if (fallbacks.isEmpty() && imageLoads.isEmpty() && unsettled.isEmpty()) {
       deleteStale(pngFile)
       return
     }
     try {
       val sidecar = pathFor(pngFile)
       sidecar.parentFile?.mkdirs()
-      fileSystem.write(sidecar.path.toPath()) { writeUtf8(encode(fallbacks, imageLoads)) }
+      fileSystem.write(sidecar.path.toPath()) {
+        writeUtf8(encode(fallbacks, imageLoads, unsettled))
+      }
     } catch (writeFailure: Throwable) {
       System.err.println(
         "Failed to write render-warnings sidecar for ${pngFile.name}: ${writeFailure.message}"
@@ -71,13 +76,14 @@ object RenderWarningsSidecar {
   /**
    * The JSON body. Pure + internal so a unit test can assert the shape without touching disk.
    *
-   * `unresolvedImages` is additive: a reader that only knows about `fontFallbacks` (every reader
-   * that predates issue #2952) keeps working unchanged, and an empty array is still written when
-   * there are no image warnings so the shape is stable.
+   * `unresolvedImages` and `unsettledCaptures` are additive: a reader that only knows about
+   * `fontFallbacks` (every reader that predates issue #2952) keeps working unchanged, and an empty
+   * array is still written when there are no warnings of that kind so the shape is stable.
    */
   internal fun encode(
     fallbacks: List<FontResolutionDiagnostics.FontFallback>,
     imageLoads: List<CoilLoadDiagnostics.UnresolvedLoad> = emptyList(),
+    unsettled: List<VisualSettleDiagnostics.UnsettledCapture> = emptyList(),
   ): String {
     val sb = StringBuilder()
     sb.append('{')
@@ -103,6 +109,16 @@ object RenderWarningsSidecar {
       if (load.detail == null) sb.append("null") else sb.append(jsonString(load.detail))
       sb.append(',')
       sb.append("\"message\":").append(jsonString(CoilLoadDiagnostics.describe(load)))
+      sb.append('}')
+    }
+    sb.append("],\"unsettledCaptures\":[")
+    unsettled.forEachIndexed { i, capture ->
+      if (i > 0) sb.append(',')
+      sb.append('{')
+      sb.append("\"role\":").append(jsonString(capture.role)).append(',')
+      sb.append("\"outcome\":").append(jsonString(capture.outcome.name.lowercase())).append(',')
+      sb.append("\"samples\":").append(capture.samples).append(',')
+      sb.append("\"message\":").append(jsonString(VisualSettleDiagnostics.describe(capture)))
       sb.append('}')
     }
     sb.append("]}")

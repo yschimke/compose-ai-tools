@@ -432,7 +432,14 @@ open class DesktopHost(
       try {
         sceneExecutor
           .submit<RenderEngine.SceneState> {
-            engine.setUp(spec, classLoader, inspectionMode = inspectionMode ?: false)
+            engine.setUp(
+              spec,
+              classLoader,
+              inspectionMode = inspectionMode ?: false,
+              // A held interactive scene runs on wall time; a `DesktopSettleClock` would freeze
+              // every `delay` the user's clicks start. See `RenderEngine.setUp`'s `settleEligible`.
+              settleEligible = false,
+            )
           }
           .get()
       } catch (e: ExecutionException) {
@@ -532,6 +539,9 @@ open class DesktopHost(
         effectiveSpec,
         classLoader,
         inspectionMode = effectiveSpec.inspectionMode ?: false,
+        // Same as the interactive session: a recording walks its own timeline frame by frame, and
+        // a virtual settle clock would hold every `delay` it depends on.
+        settleEligible = false,
       )
     val recordingsRoot = recordingsRootDir()
     val framesDir = File(File(recordingsRoot, "frames"), recordingId)

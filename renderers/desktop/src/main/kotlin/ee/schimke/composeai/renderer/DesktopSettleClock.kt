@@ -10,14 +10,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.InternalCoroutinesApi
 
 /** One 60Hz frame, the step a settle walk advances in. Mirrors discovery's `SETTLE_FRAME_MS`. */
-internal const val SETTLE_FRAME_MS = 16L
+public const val SETTLE_FRAME_MS: Long = 16L
 
 /**
  * Hard ceiling on a settle window, in milliseconds. Mirrors `preview-annotations`' `MAX_SETTLE_MS`
  * — discovery clamps to it, and this repeats the bound so a hand-built argv can't ask the renderer
  * to walk forever.
  */
-internal const val MAX_SETTLE_MS = 5_000
+public const val MAX_SETTLE_MS: Int = 5_000
 
 /**
  * The virtual clock a `@SettledPreview` still is captured on.
@@ -47,10 +47,10 @@ internal const val MAX_SETTLE_MS = 5_000
  * context and renders exactly the bytes it did before.
  */
 @OptIn(InternalCoroutinesApi::class, ExperimentalCoroutinesApi::class)
-internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
+public class DesktopSettleClock : CoroutineDispatcher(), Delay {
 
   /** Current virtual time, in milliseconds. */
-  var nowMs: Long = 0L
+  public var nowMs: Long = 0L
     private set
 
   private val ready = ArrayDeque<Runnable>()
@@ -59,11 +59,11 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
 
   private class Scheduled(val dueMs: Long, val seq: Long, val resume: Runnable)
 
-  override fun dispatch(context: CoroutineContext, block: Runnable) {
+  public override fun dispatch(context: CoroutineContext, block: Runnable) {
     ready.addLast(block)
   }
 
-  override fun scheduleResumeAfterDelay(
+  public override fun scheduleResumeAfterDelay(
     timeMillis: Long,
     continuation: CancellableContinuation<Unit>,
   ) {
@@ -81,7 +81,7 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
   }
 
   /** Whether any `delay` is still outstanding — the half of quiescence pixels cannot see. */
-  fun hasScheduledWork(): Boolean = scheduled.isNotEmpty()
+  public fun hasScheduledWork(): Boolean = scheduled.isNotEmpty()
 
   /**
    * Whether anything at all is still owed: a delay not yet due, **or** a runnable already
@@ -93,10 +93,10 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
    * consulted [hasScheduledWork] would stop right there and capture the pre-reveal frame
    * (issue #4202 review).
    */
-  fun hasPendingWork(): Boolean = ready.isNotEmpty() || scheduled.isNotEmpty()
+  public fun hasPendingWork(): Boolean = ready.isNotEmpty() || scheduled.isNotEmpty()
 
   /** Runs everything dispatched but not yet executed, including work those runnables dispatch. */
-  fun drain() {
+  public fun drain() {
     while (true) ready.removeFirstOrNull()?.run() ?: break
   }
 
@@ -104,7 +104,7 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
    * Moves virtual time to [targetMs], resuming each delayed continuation at its own deadline rather
    * than all at once — a `delay(50)` chained after a `delay(50)` must see 100ms, not 50.
    */
-  fun advanceTo(targetMs: Long) {
+  public fun advanceTo(targetMs: Long) {
     drain()
     while (true) {
       val next = scheduled.peek() ?: break
@@ -132,7 +132,7 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
  * ends never satisfies it and simply runs out the window, which is the documented behaviour for
  * pointing this annotation at a spinner.
  */
-internal fun settleScene(
+public fun settleScene(
   scene: ImageComposeScene,
   clock: DesktopSettleClock,
   windowMs: Int,

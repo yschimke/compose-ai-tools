@@ -2285,6 +2285,17 @@ class DiscoveryFunctionalTest {
         """
           .trimIndent()
       )
+    File(settledFqnDir, "FocusedPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class FocusedPreview(val indices: IntArray = [0])
+        """
+          .trimIndent()
+      )
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
     srcFile.writeText(
@@ -2300,6 +2311,7 @@ class DiscoveryFunctionalTest {
       import androidx.compose.ui.tooling.preview.Preview
       import androidx.compose.ui.unit.dp
       import ee.schimke.composeai.preview.AnimatedPreview
+      import ee.schimke.composeai.preview.FocusedPreview
       import ee.schimke.composeai.preview.SettledPreview
 
       // Hoisted onto a multi-preview annotation — the shape a catalog uses to settle every
@@ -2338,13 +2350,34 @@ class DiscoveryFunctionalTest {
       }
 
       // A settle and a motion capture on ONE function want opposite ends of the same paused
-      // clock, and virtual time does not rewind — so the settle is dropped rather than faked.
+      // clock — so each is now planned, and the renderers give the settled still a composition of
+      // its own rather than the plan dropping it (issue #4244).
       @Preview
       @SettledPreview
       @AnimatedPreview(durationMs = 400)
       @Composable
       fun SettledPlusAnimatedPreview() {
           Box(modifier = Modifier.size(50.dp).background(Color.Cyan))
+      }
+
+      // A focused capture spends its first 32ms laying out the tree the focus walk searches, so a
+      // coordinate under that cannot be honoured on that path — discovery raises it rather than
+      // letting the two backends capture different instants (issue #4247).
+      @Preview
+      @SettledPreview(afterMs = 8)
+      @FocusedPreview
+      @Composable
+      fun SubFrameFocusSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Yellow))
+      }
+
+      // …and a coordinate at or above the floor is left exactly as written.
+      @Preview
+      @SettledPreview(afterMs = 200)
+      @FocusedPreview
+      @Composable
+      fun FocusSettledPreview() {
+          Box(modifier = Modifier.size(50.dp).background(Color.Gray))
       }
       """
         .trimIndent()
@@ -2387,12 +2420,23 @@ class DiscoveryFunctionalTest {
     val unsettled = manifest.previews.single { it.functionName == "UnsettledPreview" }
     assertThat(unsettled.captures.single().settle).isNull()
 
-    // @SettledPreview + @AnimatedPreview on one function: the motion capture still ships, and NO
-    // capture carries a settle — the still keeps its unsettled behaviour rather than being
-    // captured at a coordinate the shared clock cannot honour.
-    val collided = manifest.previews.single { it.functionName == "SettledPlusAnimatedPreview" }
-    assertThat(collided.captures.none { it.settle != null }).isTrue()
-    assertThat(collided.captures.any { it.animation != null }).isTrue()
+    // @SettledPreview + @AnimatedPreview on one function: BOTH ship now. The still carries its
+    // settle and the motion capture carries its animation; the renderers run them from separate
+    // compositions so neither spends the other's timeline (issue #4244).
+    val paired = manifest.previews.single { it.functionName == "SettledPlusAnimatedPreview" }
+    assertThat(paired.captures.any { it.settle != null }).isTrue()
+    assertThat(paired.captures.any { it.animation != null }).isTrue()
+    // …and never on the same capture: the settle rides the plain still, the animation its own row.
+    assertThat(paired.captures.none { it.settle != null && it.animation != null }).isTrue()
+
+    // A sub-frame exact coordinate on a focused capture is raised to the focus path's setup floor,
+    // so both backends land on the same instant (issue #4247).
+    val subFrame = manifest.previews.single { it.functionName == "SubFrameFocusSettledPreview" }
+    assertThat(subFrame.captures.mapNotNull { it.settle?.afterMs }.toSet())
+      .isEqualTo(setOf(FOCUS_SETUP_FRAMES_MS))
+    // Above the floor nothing is touched — the clamp is a floor, not a rewrite.
+    val focused = manifest.previews.single { it.functionName == "FocusSettledPreview" }
+    assertThat(focused.captures.mapNotNull { it.settle?.afterMs }.toSet()).isEqualTo(setOf(200))
   }
 
   @Test
