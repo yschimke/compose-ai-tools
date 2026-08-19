@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -708,6 +709,51 @@ fun TaggedClickTargetSquare() {
     Box(modifier = Modifier.size(24.dp).testTag("target-box").clickable { clicked = true })
   }
 }
+
+/**
+ * Issue #4159 fixture — a real Material 3 button, so a live press can be filmed frame by frame and
+ * the ripple's actual timing measured rather than assumed (`AndroidRippleFrameTest`).
+ *
+ * Deliberately a plain filled `Button` on a white surface: a filled button's elevation is 0 dp
+ * pressed and unpressed, so it has no shadow to animate and the ripple is the *only* thing that can
+ * move between frames — a pixel delta cannot be credited to anything else.
+ */
+@Composable
+fun RippleButtonSurface() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface(color = Color.White) {
+      Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Button(onClick = {}, modifier = Modifier.testTag("ripple-button")) { Text("Press") }
+      }
+    }
+  }
+}
+
+/**
+ * Issue #4282 fixture — proves a held interactive session advances the **platform** animation clock
+ * and not only Compose's paused `mainClock`.
+ *
+ * Starts red and turns green from a `Handler.postDelayed` on the main looper, not from a Compose
+ * animation or a `LaunchedEffect`. That is deliberate: `mainClock.advanceTimeBy` drives Compose's
+ * frame clock and the test dispatcher, and moves Robolectric's looper clock not at all — so before
+ * the fix a held session rendered this square red forever, however long it ran, and no app timer
+ * scheduled onto the main looper ever came due inside a live preview.
+ */
+@Composable
+fun PostDelayedSquare() {
+  var elapsed by
+    androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+    android.os
+      .Handler(android.os.Looper.getMainLooper())
+      .postDelayed({ elapsed = true }, POST_DELAYED_SQUARE_DELAY_MS)
+  }
+  val color = if (elapsed) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color))
+}
+
+/** Looper delay [PostDelayedSquare] flips on. Well under one held render's auto-advance cap. */
+const val POST_DELAYED_SQUARE_DELAY_MS: Long = 100L
 
 @Composable
 fun ClickableToggleSquare() {

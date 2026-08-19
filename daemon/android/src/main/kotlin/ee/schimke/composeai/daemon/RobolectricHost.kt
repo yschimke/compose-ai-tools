@@ -3212,7 +3212,7 @@ open class RobolectricHost(
             // RenderEngine.render uses before its single capture. Enough for the initial
             // composition + first LaunchedEffect-equivalent pass to land.
             setupTrace.section("compose:advanceClock") {
-              rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+              advanceHeldClocks(rule, HELD_CAPTURE_ADVANCE_MS)
             }
             dataDir?.let(setupTrace::write)
             // Start succeeded — count the latch down before draining further commands so the host
@@ -3245,7 +3245,7 @@ open class RobolectricHost(
                         dispatchHeldMotion(rule, cmd, position)
                       }
                       inputTrace.section("compose:advanceClock") {
-                        rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+                        advanceHeldClocks(rule, POINTER_HOLD_MS)
                       }
                       dataDir?.let(inputTrace::write)
                     }
@@ -3264,7 +3264,7 @@ open class RobolectricHost(
                           backend = "android-live",
                         )
                       renderTrace.section("compose:advanceClock") {
-                        rule.mainClock.advanceTimeBy(cmd.advanceTimeMs ?: HELD_CAPTURE_ADVANCE_MS)
+                        advanceHeldClocks(rule, cmd.advanceTimeMs ?: HELD_CAPTURE_ADVANCE_MS)
                       }
                       renderTrace.section("render:captureRoboImage") {
                         heldSurfaceRoot(rule)
@@ -3311,7 +3311,7 @@ open class RobolectricHost(
                     if (matched) {
                       // Match the input-dispatch settle pattern so a screen-reader-driven click
                       // observes the same recomposition window a pixel click does.
-                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      advanceHeldClocks(rule, POINTER_MOVE_MS)
                       rule.waitForIdle()
                     }
                   } catch (t: Throwable) {
@@ -3328,7 +3328,7 @@ open class RobolectricHost(
                       // Same settle window as the contentDescription-driven path —
                       // recompositions from the SemanticsActions lambda need one tick before
                       // subsequent inputs / renders observe the new state.
-                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      advanceHeldClocks(rule, POINTER_MOVE_MS)
                       rule.waitForIdle()
                     }
                   } catch (t: Throwable) {
@@ -3408,7 +3408,7 @@ open class RobolectricHost(
                       // moveToState call, but composition recompositions triggered by lifecycle
                       // observers (e.g. `LocalLifecycleOwner` watchers) need a clock tick to
                       // flush before subsequent inputs / renders observe the new state.
-                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      advanceHeldClocks(rule, POINTER_MOVE_MS)
                       rule.waitForIdle()
                     }
                   } catch (t: Throwable) {
@@ -3423,7 +3423,7 @@ open class RobolectricHost(
                     // Settle window — Compose has to detect the key change, dispose the old
                     // slot table, and run the new composition's first frame before subsequent
                     // inputs / renders observe the rebuilt state.
-                    rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                    advanceHeldClocks(rule, HELD_CAPTURE_ADVANCE_MS)
                     rule.waitForIdle()
                     cmd.replyApplied.set(true)
                   } catch (t: Throwable) {
@@ -3444,7 +3444,7 @@ open class RobolectricHost(
                       recreateSavedState.value = current?.performSave().orEmpty()
                       recreateGeneration.intValue++
                     }
-                    rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                    advanceHeldClocks(rule, HELD_CAPTURE_ADVANCE_MS)
                     rule.waitForIdle()
                     cmd.replyApplied.set(true)
                   } catch (t: Throwable) {
@@ -3487,7 +3487,7 @@ open class RobolectricHost(
                         recreateSavedState.value = stash
                         recreateGeneration.intValue++
                       }
-                      rule.mainClock.advanceTimeBy(HELD_CAPTURE_ADVANCE_MS)
+                      advanceHeldClocks(rule, HELD_CAPTURE_ADVANCE_MS)
                       rule.waitForIdle()
                       cmd.replyApplied.set(true)
                     }
@@ -3506,7 +3506,7 @@ open class RobolectricHost(
                       // hooked into the back-progress flow, recompositions triggered by a
                       // popBackStack(), or an Activity launched by the deep-link Intent need a
                       // clock tick to flush before subsequent renders observe the new state.
-                      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+                      advanceHeldClocks(rule, POINTER_MOVE_MS)
                       rule.waitForIdle()
                     }
                   } catch (t: Throwable) {
@@ -3930,6 +3930,64 @@ open class RobolectricHost(
         else -> null
       }
 
+    /**
+     * Advance a held session's **two** clocks together, in one-frame steps.
+     *
+     * A held session has two independent clocks, and until issue #4282 this loop only ever moved
+     * one of them. Compose's paused `mainClock` drives composition, `LaunchedEffect` delays and
+     * every Compose-drawn animation. Robolectric's **looper** clock is a separate thing, moved only
+     * by `ShadowLooper.idleFor`, and it is what any `Handler.postDelayed` — the app's own timers, a
+     * platform widget's, anything scheduled onto the main looper — comes due against. Advancing
+     * `mainClock` alone left that clock frozen at zero for the whole life of a held session, so a
+     * live preview never ran a single delayed callback however long it was left open.
+     * `PostDelayedSquare` is the fixture that pins this; before the fix it stayed red forever.
+     *
+     * **Stepped, not jumped.** `idleFor` runs the callbacks that came *due*, not one per frame, so
+     * idling a whole tick in a single call runs everything scheduled inside it at once — a jump to
+     * the end state rather than motion through it. Stepping at [HELD_CLOCK_STEP_MS] keeps the frame
+     * cadence the work expects across the window. Both clocks move by the same amount at each step,
+     * so Compose-driven and looper-driven work cannot drift apart within a frame.
+     *
+     * **What this is NOT.** It is not the fix for #4159's "ripple artifacts", and the first attempt
+     * at this change claimed that it was. Material's pressed ripple *is* a platform
+     * `RippleDrawable` — but under this capture path (`pixelCopyRenderMode=hardware`) it animates
+     * and settles whether or not the looper clock moves, measured frame by frame in
+     * `AndroidRippleFrameTest`. What actually strands a ripple on screen is the live loop's 250 ms
+     * cadence sampling a ~200 ms animation at most once (#4283) and the viewer painting frames out
+     * of order (#4285). This change stands on its own — a live session that never runs a
+     * `postDelayed` is broken regardless — but it should not be sold as the ripple fix.
+     *
+     * **The cost is real and is the same one the static lane accepted** (see `settlePressedRipple`
+     * in `:renderer-android`'s `RobolectricRenderTest`). Idling the looper runs any main-looper
+     * work due inside the window ahead of the wall-clock moment it was scheduled for. In a *live*
+     * session that is closer to right than the alternative: a live preview is supposed to be
+     * running the app's timers, and before this the held composition simply never ran them at all.
+     *
+     * Non-positive [totalMs] passes straight through to `mainClock` untouched — recording's frame 0
+     * legitimately asks for `advanceTimeMs = 0`, and there is no time there to idle.
+     */
+    private fun advanceHeldClocks(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      totalMs: Long,
+    ) {
+      if (totalMs <= 0L) {
+        rule.mainClock.advanceTimeBy(totalMs)
+        return
+      }
+      val looper = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+      var remaining = totalMs
+      while (remaining > 0L) {
+        val step = minOf(remaining, HELD_CLOCK_STEP_MS)
+        rule.mainClock.advanceTimeBy(step)
+        looper.idleFor(java.time.Duration.ofMillis(step))
+        remaining -= step
+      }
+    }
+
     private fun dispatchHeldMotion(
       rule:
         androidx.compose.ui.test.junit4.AndroidComposeTestRule<
@@ -3953,13 +4011,13 @@ open class RobolectricHost(
                 moveTo(position)
                 press()
               }
-              rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+              advanceHeldClocks(rule, POINTER_HOLD_MS)
               heldSurfaceRoot(rule).performMouseInput { release() }
             } else {
               heldSurfaceRoot(rule).performTouchInput { down(position) }
-              rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+              advanceHeldClocks(rule, POINTER_MOVE_MS)
               heldSurfaceRoot(rule).performTouchInput { move() }
-              rule.mainClock.advanceTimeBy(POINTER_HOLD_MS - POINTER_MOVE_MS)
+              advanceHeldClocks(rule, POINTER_HOLD_MS - POINTER_MOVE_MS)
               heldSurfaceRoot(rule).performTouchInput { up() }
             }
           }
@@ -4114,7 +4172,7 @@ open class RobolectricHost(
       rule.runOnUiThread {
         focused.config[SemanticsActions.InsertTextAtCursor].action?.invoke(AnnotatedString(text))
       }
-      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      advanceHeldClocks(rule, POINTER_MOVE_MS)
       rule.waitForIdle()
     }
 
@@ -4135,7 +4193,7 @@ open class RobolectricHost(
           .minByOrNull { (_, node) -> node.boundsInRoot.width * node.boundsInRoot.height }
           ?: return false
       rule.runOnUiThread { target.value.config[SemanticsActions.OnClick].action?.invoke() }
-      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      advanceHeldClocks(rule, POINTER_MOVE_MS)
       rule.waitForIdle()
       return true
     }
@@ -4459,7 +4517,7 @@ open class RobolectricHost(
           .minByOrNull { (_, node) -> node.boundsInRoot.width * node.boundsInRoot.height }
           ?: return false
       rule.runOnUiThread { target.value.config[SemanticsActions.RequestFocus].action?.invoke() }
-      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      advanceHeldClocks(rule, POINTER_MOVE_MS)
       rule.waitForIdle()
       return true
     }
@@ -4510,7 +4568,7 @@ open class RobolectricHost(
       } finally {
         ev.recycle()
       }
-      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      advanceHeldClocks(rule, POINTER_MOVE_MS)
       rule.waitForIdle()
     }
 
@@ -4554,6 +4612,13 @@ open class RobolectricHost(
 
       /** Post-dispatch `mainClock` advance for any input kind. */
       private const val POINTER_HOLD_MS: Long = 100L
+
+      /**
+       * Step size for [advanceHeldClocks] — ~one `Choreographer` frame at 60 Hz, and deliberately
+       * the same 16 ms the static lane's `PRESS_SETTLE_FRAME_MS` steps a pressed capture by. See
+       * [advanceHeldClocks] for why the window is stepped rather than jumped.
+       */
+      private const val HELD_CLOCK_STEP_MS: Long = 16L
 
       private const val POINTER_MOVE_MS: Long = 16L
 
