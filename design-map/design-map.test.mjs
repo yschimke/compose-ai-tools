@@ -69,6 +69,75 @@ test("projects one entry per component, from the light capture only", () => {
   });
 });
 
+/** A dark-first catalog's component: one capture, drawn dark, so its id carries no mode segment. */
+const darkOnly = (name, catalog, extra = {}) => ({
+  id: `com.example.CatalogKt.${name}`,
+  functionName: name,
+  sourceFile: "Catalog.kt",
+  catalog: { role: "COMPONENT", componentId: name, ...catalog },
+  ...extra,
+});
+
+test("a dark-only catalog maps its sole capture, rather than projecting nothing", () => {
+  // A Wear watch face is a black screen, so the component multipreview is a single dark capture and
+  // no id ends in `_Light`. Demanding one projected the whole catalog to an empty map
+  // (compose-ai-tools#4192).
+  const { map, diagnostics } = projectDesignMap([
+    darkOnly("FilledButton", { reference: ref("1:2") }),
+    darkOnly("Card", { reference: ref("3:4") }),
+  ]);
+  assert.deepEqual(map.components.map((c) => c.previewId), [
+    "com.example.CatalogKt.Card",
+    "com.example.CatalogKt.FilledButton",
+  ]);
+  assert.deepEqual(diagnostics.ambiguousMode, []);
+});
+
+test("a dark-only catalog's variants declare against the same sole capture", () => {
+  const { variants } = projectDesignMap([
+    darkOnly("Button", { reference: ref("1:2") }),
+    {
+      ...overrideVariant("Button", "disabled", {
+        booleans: [{ key: "enabled", raw: "false" }],
+        props: [{ key: "enabled", value: "false" }],
+      }),
+      id: "com.example.CatalogKt.Button_VARIANT_disabled",
+    },
+  ]);
+  assert.deepEqual(variants.components[0].basePreviewId, "com.example.CatalogKt.Button");
+  assert.deepEqual(
+    variants.components[0].renders.map((r) => r.previewId),
+    ["com.example.CatalogKt.Button_VARIANT_disabled"],
+  );
+});
+
+test("a named single mode counts as the sole capture too, whatever it is called", () => {
+  const { map } = projectDesignMap([
+    {
+      ...component("FilledButton", { reference: ref("1:2") }),
+      id: "com.example.CatalogKt.FilledButton_Dark",
+    },
+  ]);
+  assert.deepEqual(map.components.map((c) => c.previewId), [
+    "com.example.CatalogKt.FilledButton_Dark",
+  ]);
+});
+
+test("several modes with no light among them are reported, not guessed at", () => {
+  // Pairing `Dark` when the kit drew `Coral` diffs a whole palette, so neither is chosen.
+  const dark = { ...component("Chip", { reference: ref("1:2") }), id: "com.example.CatalogKt.Chip_Dark" };
+  const coral = { ...component("Chip", { reference: ref("1:2") }), id: "com.example.CatalogKt.Chip_Coral" };
+  const { map, diagnostics } = projectDesignMap([dark, coral]);
+  assert.deepEqual(map.components, []);
+  assert.deepEqual(diagnostics.ambiguousMode, [
+    {
+      subject: "com.example.CatalogKt.Chip",
+      componentIds: ["Chip"],
+      modes: ["Coral", "Dark"],
+    },
+  ]);
+});
+
 test("carries refSet and a referenceContentsOnly opt-out only when declared", () => {
   const { map } = projectDesignMap([
     component("A", { reference: ref("1:2"), referenceSet: ref("1:1") }),
@@ -205,19 +274,25 @@ test("collects both annotation forms under the component they fold onto", () => 
   );
 });
 
-test("ignores a variant that names no axis, and non-light captures", () => {
+test("ignores a variant that names no axis, and the dark half of a themed pair", () => {
+  const size = { seeds: [{ key: "size", kind: "STRING", raw: "l" }] };
   const byComponent = variantRendersByComponent([
     // Named, but says only "this is different" — nothing to look up in a kit.
     overrideVariant("Button", "special", { seeds: [] }),
-    // A dark capture of a real variant: the light one already stands for it.
+    // A dark capture of a real variant: the light one it is published beside stands for it.
+    overrideVariant("Button", "l", size),
     {
-      ...overrideVariant("Button", "l", { seeds: [{ key: "size", kind: "STRING", raw: "l" }] }),
+      ...overrideVariant("Button", "l", size),
       id: "com.example.CatalogKt.Button_Dark_VARIANT_l",
     },
-    // A VARIANT-role dark capture, likewise.
+    // A VARIANT-role dark capture, likewise — its own composable, its own light sibling.
+    catalogVariant("B", "Button", { state: "disabled" }),
     { ...catalogVariant("B", "Button", { state: "disabled" }), id: "com.example.CatalogKt.B_Dark" },
   ]);
-  assert.equal(byComponent.size, 0);
+  assert.deepEqual(
+    byComponent.get("Button").map((r) => r.previewId),
+    ["com.example.CatalogKt.Button_Light_VARIANT_l", "com.example.CatalogKt.B_Light"],
+  );
 });
 
 test("emits variant declarations in a sidecar, unresolved", () => {
@@ -334,15 +409,21 @@ test("a folded component's cells are collected under its parent, named for both 
 });
 
 test("a folded component's DARK cell is still ignored, like every other dark capture", () => {
+  const cell = foldedCell(
+    "W",
+    "Button",
+    { props: [{ key: "type", value: "wave" }] },
+    "full",
+    { seeds: [{ key: "progress", kind: "FLOAT", raw: "1.0" }] },
+  );
   const byComponent = variantRendersByComponent([
-    {
-      ...foldedCell("W", "Button", { props: [{ key: "type", value: "wave" }] }, "full", {
-        seeds: [{ key: "progress", kind: "FLOAT", raw: "1.0" }],
-      }),
-      id: "com.example.CatalogKt.W_Dark_VARIANT_full",
-    },
+    cell,
+    { ...cell, id: "com.example.CatalogKt.W_Dark_VARIANT_full" },
   ]);
-  assert.equal(byComponent.size, 0);
+  assert.deepEqual(
+    byComponent.get("Button").map((r) => r.previewId),
+    ["com.example.CatalogKt.W_Light_VARIANT_full"],
+  );
 });
 
 test("variantSeeds carries a cell's declared kit axis and value onto its seed", () => {

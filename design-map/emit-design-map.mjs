@@ -28,9 +28,10 @@
  * `--strict` is the opposite posture, for a catalog whose whole purpose is to reproduce a kit —
  * there, a component with no kit node to compare against does not belong in the published
  * inventory at all, and publishing it means shipping a sticker that can never be checked. It gates
- * on BOTH kinds of absence: a missing `reference`, and one explained by `noReference`. The
- * annotation still earns its keep in the default mode, where the two are reported apart so a
- * retired pattern does not read as neglect; `--strict` simply says there are no exceptions.
+ * on EVERY kind of absence: a missing `reference`, one explained by `noReference`, and a component
+ * whose captures name no mode the reference could pair with. The annotation still earns its keep in
+ * the default mode, where the three are reported apart so a retired pattern does not read as
+ * neglect; `--strict` simply says there are no exceptions.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -71,11 +72,20 @@ if (STRICT) {
   const missing = [
     ...diagnostics.unmapped.map((id) => `${id} — no reference, and no reason given`),
     ...diagnostics.statedAbsent.map((s) => `${s.componentId} — ${s.reason}`),
+    // An ambiguous mode is the third way a component ends up outside the map, and the quietest:
+    // the reference is there, but nothing says which capture it pairs with, so the component is
+    // simply absent. Under --strict that is as much a gap as a missing reference.
+    ...diagnostics.ambiguousMode.map(
+      (a) =>
+        `${a.componentIds.join(", ") || a.subject} — captures ${a.modes
+          .map((m) => m || "(unnamed)")
+          .join(", ")}, none of them Light, so none pairs with the reference`,
+    ),
   ];
   if (missing.length) {
     console.error(
-      `::error::--strict: ${missing.length} component(s) carry no ` +
-        `@CatalogComponent(reference = …):`,
+      `::error::--strict: ${missing.length} component(s) reach no design reference — no ` +
+        `@CatalogComponent(reference = …), or none their captures can pair with:`,
     );
     for (const line of missing) console.error(`  - ${line}`);
     console.error(
@@ -159,6 +169,19 @@ if (diagnostics.unplacedDeclarations?.length) {
       .filter(Boolean)
       .join(", ");
     console.log(`  - ${miss.previewId} — ${named} against ${miss.seeds.join(", ")}`);
+  }
+}
+
+if (diagnostics.ambiguousMode?.length) {
+  console.log(
+    `\n${diagnostics.ambiguousMode.length} composable(s) publish several capture modes with no ` +
+      `Light among them, so which one the reference pairs with is undeclared, and they were ` +
+      `skipped. Rendering a single mode makes it the one that pairs; naming one of them "Light" ` +
+      `picks it explicitly:`,
+  );
+  for (const a of diagnostics.ambiguousMode) {
+    const who = a.componentIds.join(", ") || a.subject;
+    console.log(`  - ${who} — ${a.modes.map((m) => m || "(unnamed)").join(", ")}`);
   }
 }
 

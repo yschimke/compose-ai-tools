@@ -59,16 +59,109 @@
 export const DESIGN_MAP_VARIANTS_SCHEMA = "compose-preview-design-map-variants/v1";
 
 /**
- * The capture a component's base reference pairs with.
- *
- * One entry per component, not per rendered mode — and the LIGHT capture, because that is the mode
- * design kits draw their frames in. Diffing a dark render against a light reference reports the
- * whole palette as a finding.
+ * The mode a capture is drawn in, when a design map should prefer one: the mode design kits draw
+ * their frames in. Diffing a dark render against a light reference reports the whole palette as a
+ * finding, so where a light capture exists it is the one that pairs with the reference.
  */
-const LIGHT_CAPTURE = /_Light$/;
+const LIGHT_MODE = "Light";
 
-/** A light capture that is also an `@OverrideVariant` render: `…_Light_VARIANT_<name>`. */
-const LIGHT_VARIANT_CAPTURE = /_Light_VARIANT_/;
+/** The tag discovery puts in the id of an `@OverrideVariant` reseed: `…_VARIANT_<name>`. */
+const VARIANT_TAG = "_VARIANT_";
+
+/** Whether a capture is an `@OverrideVariant` reseed rather than a base capture. */
+function isVariantCapture(preview) {
+  return String(preview.id ?? "").includes(VARIANT_TAG);
+}
+
+/**
+ * A capture's id split into the composable it captures and the mode it was drawn in.
+ *
+ * Discovery builds an id as `<class>.<function>[_<mode>][_VARIANT_<name>]`, where the mode segment
+ * is the `@Preview` name a multipreview gives the capture — `Light` / `Dark` for a themed pair, and
+ * EMPTY for an unnamed single capture. Splitting on the function name rather than pattern-matching
+ * the tail is what lets a dark-first catalog be recognised at all: its ids carry no mode segment to
+ * match against.
+ *
+ * A capture whose id does not contain its own function name is left as its own subject with an
+ * empty mode — it cannot be grouped with anything, so it selects itself.
+ */
+export function captureIdentity(preview) {
+  const head = String(preview.id ?? "").split(VARIANT_TAG)[0];
+  const marker = preview.functionName ? `.${preview.functionName}` : null;
+  const at = marker ? head.lastIndexOf(marker) : -1;
+  if (at < 0) return { subject: head, mode: "" };
+  const cut = at + marker.length;
+  return { subject: head.slice(0, cut), mode: head.slice(cut).replace(/^_/, "") };
+}
+
+/**
+ * The one mode of a composable's captures that pairs with its design reference, or `null` when the
+ * captures do not say which that would be.
+ *
+ * LIGHT wins whenever it is published, which is every catalog that renders a themed pair — design
+ * kits draw their frames in light mode, so a dark render diffed against a light reference reports
+ * the whole palette as a finding.
+ *
+ * A composable that publishes exactly ONE mode pairs with that one, whatever it is. A dark-first
+ * catalog — a Wear watch face is a black screen, so its component multipreview is a single dark
+ * capture — names no `Light` capture anywhere, and demanding one projected it to an empty map: a
+ * file that reads as "nothing here corresponds to the kit" rather than "the projector could not see
+ * these", and that `--strict` cannot fire on either, since there is nothing to be strict about
+ * (compose-ai-tools#4192).
+ *
+ * Several modes with no light among them is the case that stays unselected. Picking one would be
+ * guessing which of `Dark` and `Coral` the kit drew, and pairing the wrong one diffs a whole
+ * palette — so it is reported instead (`diagnostics.ambiguousMode`).
+ */
+function preferredMode(modes) {
+  if (modes.has(LIGHT_MODE)) return LIGHT_MODE;
+  return modes.size === 1 ? [...modes][0] : null;
+}
+
+/**
+ * Which capture of each composable participates in the projection — one per composable, never one
+ * per rendered mode, since a component maps to a single design node.
+ *
+ * @returns {{participates: (preview: object) => boolean, ambiguous: Array<object>}}
+ */
+export function selectCaptures(previews) {
+  const modesBySubject = new Map();
+  const componentsBySubject = new Map();
+  for (const preview of previews) {
+    if (!preview?.catalog) continue;
+    const { subject, mode } = captureIdentity(preview);
+    const modes = modesBySubject.get(subject) ?? new Set();
+    modes.add(mode);
+    modesBySubject.set(subject, modes);
+    const ids = componentsBySubject.get(subject) ?? new Set();
+    if (preview.catalog.componentId) ids.add(preview.catalog.componentId);
+    componentsBySubject.set(subject, ids);
+  }
+
+  const chosen = new Map();
+  const ambiguous = [];
+  for (const [subject, modes] of modesBySubject) {
+    const mode = preferredMode(modes);
+    if (mode === null) {
+      ambiguous.push({
+        subject,
+        componentIds: [...(componentsBySubject.get(subject) ?? [])].sort(),
+        modes: [...modes].sort(),
+      });
+    } else {
+      chosen.set(subject, mode);
+    }
+  }
+  ambiguous.sort((a, b) => a.subject.localeCompare(b.subject));
+
+  return {
+    ambiguous,
+    participates(preview) {
+      const { subject, mode } = captureIdentity(preview);
+      return chosen.has(subject) && chosen.get(subject) === mode;
+    },
+  };
+}
 
 /** design-parity addresses a code subject as `<path>#<function>`. */
 export function codeHandle(preview, { prefix = "catalog" } = {}) {
@@ -263,7 +356,7 @@ export function declarationMisses(preview) {
  * this projection, which is why a FAB size axis read as unauthored while `FabSmall`/`FabMedium`/
  * `FabLarge` sat in the catalog all along.
  */
-export function variantRendersByComponent(previews) {
+export function variantRendersByComponent(previews, selection = selectCaptures(previews)) {
   const byComponent = new Map();
   for (const preview of previews) {
     const catalog = preview.catalog;
@@ -272,19 +365,18 @@ export function variantRendersByComponent(previews) {
     // An `@OverrideVariant` render is a reseed of the SAME composable, so it keeps the parent's
     // COMPONENT role and is distinguished only by the `_VARIANT_` tag discovery puts in its id.
     // A `@CatalogVariant` render is its own composable, so it carries the VARIANT role and an
-    // ordinary light-capture id.
+    // ordinary base-capture id.
     //
     // A VARIANT role with a `_VARIANT_` id is the third case, and it used to fall through both
     // tests into the `continue` below: a folded component carrying a matrix of its own. Discovery
     // emitted those renders all along — they were simply never projected, so the kit nodes they
     // sit on went uncompared, and a component could not be folded without deleting its cells.
-    // Either way only the light capture participates.
-    const isOverrideVariant =
-      catalog.role === "COMPONENT" && LIGHT_VARIANT_CAPTURE.test(preview.id);
-    const isCatalogVariant =
-      catalog.role === "VARIANT" &&
-      (LIGHT_CAPTURE.test(preview.id) || LIGHT_VARIANT_CAPTURE.test(preview.id));
+    // Either way only the selected capture participates — one declaration per variant, in the same
+    // mode its component's base reference pairs with.
+    const isOverrideVariant = catalog.role === "COMPONENT" && isVariantCapture(preview);
+    const isCatalogVariant = catalog.role === "VARIANT";
     if (!isOverrideVariant && !isCatalogVariant) continue;
+    if (!selection.participates(preview)) continue;
 
     // A variant that names no axis says only "this is different", which is not enough to look
     // anything up in a kit. Dropped rather than guessed at from the function name.
@@ -309,7 +401,8 @@ export function variantRendersByComponent(previews) {
  *   fact to report, not a failure.
  */
 export function projectDesignMap(previews, opts = {}) {
-  const variantRenders = variantRendersByComponent(previews);
+  const selection = selectCaptures(previews);
+  const variantRenders = variantRendersByComponent(previews, selection);
 
   const components = [];
   const declarations = [];
@@ -326,7 +419,7 @@ export function projectDesignMap(previews, opts = {}) {
   for (const preview of previews) {
     const catalog = preview.catalog;
     if (!catalog || catalog.role !== "COMPONENT") continue;
-    if (!LIGHT_CAPTURE.test(preview.id)) continue;
+    if (isVariantCapture(preview) || !selection.participates(preview)) continue;
 
     if (!catalog.reference) {
       if (catalog.noReference) {
@@ -372,11 +465,7 @@ export function projectDesignMap(previews, opts = {}) {
   // Only the captures that participate: a variant declares once, and reporting its dark capture
   // beside its light one would double every line of a list that exists to be acted on.
   const unplacedDeclarations = previews
-    .filter(
-      (preview) =>
-        preview.catalog &&
-        (LIGHT_CAPTURE.test(preview.id) || LIGHT_VARIANT_CAPTURE.test(preview.id)),
-    )
+    .filter((preview) => preview.catalog && selection.participates(preview))
     .flatMap(declarationMisses);
 
   return {
@@ -386,6 +475,10 @@ export function projectDesignMap(previews, opts = {}) {
       unmapped,
       statedAbsent,
       unplacedDeclarations,
+      // Composables whose captures name no mode a reference could pair with — several modes, none
+      // of them light. Reported rather than guessed at: pairing `Dark` when the kit drew `Coral`
+      // diffs a whole palette.
+      ambiguousMode: selection.ambiguous,
       variantRenders: declarations.reduce((n, d) => n + d.renders.length, 0),
       withSet: components.filter((c) => c.refSet).length,
     },
