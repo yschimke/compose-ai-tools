@@ -45,6 +45,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentDescription
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcSystemVariables
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLength
@@ -131,6 +132,11 @@ public class RcPlayerState(
   private val documentLoadTimeMillis = timeSource.currentTimeMillis()
   private var frameTimeSeconds: Float = 0f
   private var frameEpochMillis: Long = documentLoadTimeMillis
+  /**
+   * The previous frame's animation clock, so the first frame reports a zero delta rather than its
+   * own timestamp. NaN is the "no frame yet" marker — no real frame time is NaN.
+   */
+  private var lastAnimationTimeSeconds: Float = Float.NaN
 
   public val animationTimeSeconds: Float
     get() = frameTimeSeconds
@@ -227,7 +233,52 @@ public class RcPlayerState(
       texts.putAll(baseTexts)
       texts.putAll(textOverrides)
       computedMatrices.clear()
+      loadSystemVariables()
     }
+
+  /**
+   * Publishes the values AndroidX's `TimeVariables` loads into `RemoteContext` at the top of every
+   * frame — the wall clock, the calendar and the player's own animation clock.
+   *
+   * These ids are how a document animates *without* an animation: the indeterminate circular
+   * progress indicator in `remote-m3` builds its sweep from a float expression over
+   * [RcSystemVariables.CONTINUOUS_SEC], and nothing about that expression says "animation" to a
+   * player that only looks for one. Before they were loaded here, the reference resolved to its own
+   * raw `NaN` bits (see [resolve]) and every arc derived from it was drawn at `NaN`, which Skia
+   * discards — so the whole indicator, track included, came out as an empty frame (#4264) while the
+   * AndroidX and TypeScript players animated it.
+   *
+   * Loaded unconditionally rather than only for the ids a document reads: the map lookup a
+   * reference costs is the same either way, and a conditional load would have to keep its own list
+   * of which operations can name a variable, which is the thing that went stale here in the first
+   * place.
+   */
+  private fun loadSystemVariables() {
+    val snapshot = timeSource.snapshot(frameEpochMillis)
+    // Local milliseconds-within-the-second. Every zone offset in the IANA database is a whole
+    // number of minutes, so the epoch's sub-second remainder is also the local one; `mod` rather
+    // than `%` so a pre-epoch instant stays in 0..999 instead of going negative.
+    val millisOfSecond = frameEpochMillis.mod(1000L)
+    val secondsIntoTheHour = snapshot.minute * 60f + snapshot.second
+    floats[RcSystemVariables.CONTINUOUS_SEC] = secondsIntoTheHour + millisOfSecond * 0.001f
+    floats[RcSystemVariables.TIME_IN_SEC] = secondsIntoTheHour
+    floats[RcSystemVariables.TIME_IN_MIN] = snapshot.hour * 60f + snapshot.minute
+    floats[RcSystemVariables.TIME_IN_HR] = snapshot.hour.toFloat()
+    floats[RcSystemVariables.CALENDAR_MONTH] = snapshot.month.toFloat()
+    floats[RcSystemVariables.OFFSET_TO_UTC] = snapshot.offsetSeconds.toFloat()
+    floats[RcSystemVariables.WEEK_DAY] = snapshot.isoDayOfWeek.toFloat()
+    floats[RcSystemVariables.DAY_OF_MONTH] = snapshot.dayOfMonth.toFloat()
+    floats[RcSystemVariables.DAY_OF_YEAR] = snapshot.dayOfYear.toFloat()
+    floats[RcSystemVariables.YEAR] = snapshot.year.toFloat()
+    // The animation clock is the *frame* time, not the wall clock: it is what the host advances
+    // (and what a test can hold still), and it is already zeroed at the document's first frame.
+    val previous = lastAnimationTimeSeconds
+    floats[RcSystemVariables.ANIMATION_TIME] = frameTimeSeconds
+    floats[RcSystemVariables.ANIMATION_DELTA_TIME] =
+      if (previous.isNaN()) 0f else frameTimeSeconds - previous
+    lastAnimationTimeSeconds = frameTimeSeconds
+    setInteger(RcSystemVariables.EPOCH_SECOND, frameEpochMillis.floorDiv(1000L).toInt())
+  }
 
   /** Evaluates AndroidX `TimeAttribute.paint` against one wall-clock snapshot for this frame. */
   public fun applyTimeAttribute(operation: RcTimeAttribute) {
