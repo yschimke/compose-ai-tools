@@ -132,6 +132,19 @@ object PlaygroundSourceCleaner {
       }
     }
 
+    // A cross-file helper whose name equals the ENTRY's is not satisfied by the entry declaration,
+    // and treating it as satisfied produces a preview that calls itself. Renamed before the helper
+    // closure runs, so the reference below resolves to a declaration that will actually be emitted.
+    val collision =
+      resolveEntryNameCollision(
+        blocks[entryIndex].name,
+        cleanedByIndex[entryIndex],
+        helpers,
+        declaredAt.keys + rules.scaffolds.keys,
+      )
+    val closureHelpers = collision?.helpers ?: helpers
+    collision?.let { cleanedByIndex[entryIndex] = it.entryBody }
+
     // Then the same closure across the declared scaffold sources. A catalog whose component
     // bodies live in a shared module leaves the cleaned text calling `StatefulCheckbox` or
     // `CardContentSlot` — names as unresolvable to a reader as the sticker frame was, and which
@@ -141,7 +154,7 @@ object PlaygroundSourceCleaner {
     val cleanedHelpers =
       closeOverHelpers(
         seeds = cleanedByIndex.values,
-        helpers = helpers,
+        helpers = closureHelpers,
         skip = declaredAt.keys + rules.scaffolds.keys,
         rules = rules,
         strings = strings,
@@ -981,6 +994,92 @@ object PlaygroundSourceCleaner {
    * declares (the same-file closure has it), and what the rules describe (a declared scaffold is
    * rewritten, never copied in — copying it would defeat the rule and re-introduce the machinery).
    */
+  /**
+   * The rename applied when a cross-file helper shares the entry preview's name.
+   *
+   * [helpers] is re-keyed so the closure emits the helper under [renamedTo]; [entryBody] is the
+   * entry with its *calls* rewritten to match, its own declaration left alone.
+   */
+  private class EntryNameCollision(
+    val helpers: Map<String, Helper>,
+    val entryBody: String,
+    val renamedTo: String,
+  )
+
+  /**
+   * Rename a scaffold-source helper that collides with the entry preview's own name, or null when
+   * there is nothing to rename.
+   *
+   * `skip` in [closeOverHelpers] carries every name the preview file declares, on the sound
+   * reasoning that a local declaration already satisfies the reference. The entry is the one name
+   * that reasoning fails for. After EXPAND runs, the entry's body is the *sticker's* body, and the
+   * sticker's body calls the component — which in a delegating catalog can be the same name as the
+   * preview that shows it. The checked-in m3 catalog is exactly this: `CatalogStates.kt` declares
+   * `fun SegmentedToggle() = Sticker("segmentedbutton")`, and that slug's branch in
+   * `CatalogComponents.kt` calls `SegmentedToggle()`. Treating the entry declaration as satisfying
+   * the call emitted a preview whose body calls itself — unbounded recursion, reported as clean
+   * with no residue.
+   *
+   * Renaming rather than inlining: the helper keeps its own shape, so a reader sees the component
+   * as its author wrote it, and only the name moves. Inlining would flatten a component body into
+   * the preview and lose that.
+   */
+  private fun resolveEntryNameCollision(
+    entryName: String?,
+    entryBody: String?,
+    helpers: Map<String, Helper>,
+    taken: Set<String>,
+  ): EntryNameCollision? {
+    if (entryName == null || entryBody == null) return null
+    val helper = helpers[entryName] ?: return null
+    // Declaring the name is not the problem; CALLING it is. A preview that merely shares a name
+    // with something in the shared module, and never references it, needs nothing done.
+    val callSites = callOccurrences(entryBody, entryName)
+    if (callSites.isEmpty()) return null
+
+    val renamed = freshName(entryName, taken + helpers.keys)
+    // Every word occurrence in the helper — its declaration, and any recursion inside it.
+    val renamedText =
+      replaceAt(helper.text, wordOccurrences(helper.text, entryName), entryName, renamed)
+    return EntryNameCollision(
+      helpers = helpers - entryName + (renamed to helper.copy(text = renamedText)),
+      entryBody = replaceAt(entryBody, callSites, entryName, renamed),
+      renamedTo = renamed,
+    )
+  }
+
+  /**
+   * Offsets in [text] where [name] is *called* — followed by `(`, and not itself the `fun` header.
+   *
+   * The distinction is the whole point: the entry's own `fun SegmentedToggle()` must keep its name
+   * (it is the preview the reader clicked), while the call that EXPAND put in its body must move to
+   * the renamed helper.
+   */
+  private fun callOccurrences(text: String, name: String): List<Int> =
+    wordOccurrences(text, name).filter { at ->
+      val after = text.drop(at + name.length).takeWhile { it.isWhitespace() || it == '(' }
+      if (!after.contains('(')) return@filter false
+      val before = text.take(at).trimEnd()
+      !before.endsWith("fun")
+    }
+
+  /** [text] with each offset in [at] (which must all start [from]) replaced by [to]. */
+  private fun replaceAt(text: String, at: List<Int>, from: String, to: String): String {
+    if (at.isEmpty()) return text
+    val builder = StringBuilder(text)
+    for (offset in at.sortedDescending()) builder.replace(offset, offset + from.length, to)
+    return builder.toString()
+  }
+
+  /** `Name`, `NameComponent`, `NameComponent2`, … — the first not already spoken for. */
+  private fun freshName(base: String, taken: Set<String>): String {
+    val preferred = base + "Component"
+    if (preferred !in taken) return preferred
+    var suffix = 2
+    while ("$preferred$suffix" in taken) suffix++
+    return "$preferred$suffix"
+  }
+
   private fun closeOverHelpers(
     seeds: Collection<String>,
     helpers: Map<String, Helper>,

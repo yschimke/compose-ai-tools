@@ -1649,6 +1649,136 @@ class PlaygroundSourceCleanerTest {
     assertTrue(result.residue.contains("CatalogComponent"), result.residue.toString())
   }
 
+  /**
+   * The checked-in m3 catalog's shape, reduced: `CatalogStates.kt` declares `fun SegmentedToggle()
+   * = Sticker("segmentedbutton")`, and that slug's branch in `CatalogComponents.kt` calls
+   * `SegmentedToggle()` — a cross-file helper with the same name as the preview showing it.
+   *
+   * `skip` carries every name the preview file declares, on the reasoning that a local declaration
+   * satisfies the reference. The entry is the one name that fails for: after EXPAND, its body is
+   * the *sticker's* body, so the call is to the component, not to itself. Treating the entry as
+   * satisfying it emitted a preview whose body called itself — unbounded recursion, reported clean
+   * with no residue, and handed to the playground as a runnable snippet.
+   */
+  @Test
+  fun `a helper sharing the entry preview's name is renamed rather than skipped`() {
+    val previews =
+      """
+      package demo.catalog
+
+      import androidx.compose.runtime.Composable
+
+      @CatalogModes
+      @Composable
+      fun SegmentedToggle() = Sticker("segmentedbutton")
+      """
+        .trimIndent()
+    val components =
+      """
+      package demo.catalog.shared
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun CatalogComponent(id: String) {
+        when (id) {
+          "segmentedbutton" -> SegmentedToggle()
+          else -> Text("unknown")
+        }
+      }
+
+      @Composable
+      fun SegmentedToggle() {
+        Text("Segmented")
+      }
+      """
+        .trimIndent()
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source = previews,
+          bodyLine = lineIn(previews, "fun SegmentedToggle"),
+          rules = delegatingRules,
+          parser = null,
+          helperSources = listOf(stickerHelper, components),
+        )
+      )
+
+    // The component came along, under a name that does not collide...
+    assertTrue(result.text.contains("fun SegmentedToggleComponent"), result.text)
+    assertTrue(result.text.contains("""Text("Segmented")"""), result.text)
+    // ...the preview keeps the name the reader clicked...
+    assertTrue(result.text.contains("fun SegmentedToggle()"), result.text)
+    // ...and it calls the component rather than itself.
+    assertTrue(result.text.contains("SegmentedToggleComponent()"), result.text)
+    assertFalse(
+      result.text.substringAfter("fun SegmentedToggle()").contains("\n  SegmentedToggle()"),
+      "the preview must not call itself:\n${result.text}",
+    )
+    assertEquals(emptyList(), result.residue, result.text)
+  }
+
+  /**
+   * A preview merely SHARING a name with a shared-module declaration it never calls is untouched.
+   */
+  @Test
+  fun `a name shared with an uncalled helper is left alone`() {
+    val previews =
+      """
+      package demo.catalog
+
+      import androidx.compose.runtime.Composable
+
+      @CatalogModes
+      @Composable
+      fun FilledButton() = Sticker("button-filled")
+      """
+        .trimIndent()
+    val components =
+      """
+      package demo.catalog.shared
+
+      import androidx.compose.material3.Button
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun CatalogComponent(id: String) {
+        when (id) {
+          "button-filled" -> {
+            val label = "Filled"
+            Button(onClick = {}) { Text(label) }
+          }
+          else -> Text("unknown")
+        }
+      }
+
+      @Composable
+      fun FilledButton() {
+        Text("not the one the sticker dispatches to")
+      }
+      """
+        .trimIndent()
+
+    val result =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(
+          source = previews,
+          bodyLine = lineIn(previews, "fun FilledButton"),
+          rules = delegatingRules,
+          parser = null,
+          helperSources = listOf(stickerHelper, components),
+        )
+      )
+
+    // The branch inlines the button directly, so nothing calls `FilledButton` and no rename
+    // happens.
+    assertTrue(result.text.contains("fun FilledButton() {"), result.text)
+    assertFalse(result.text.contains("FilledButtonComponent"), result.text)
+  }
+
   private fun lineIn(text: String, needle: String): Int =
     text.lines().indexOfFirst { it.contains(needle) } + 1
 }

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.serve.UsageRules.Companion.appliesToModule
 import ee.schimke.composeai.cli.serve.UsageRules.Companion.declaresCatalogScaffolds
 import java.util.concurrent.ConcurrentHashMap
 
@@ -325,7 +326,8 @@ class PlaygroundSeedResolver(
     rulesCache[key]
       ?.takeIf { now - it.second < ttlSeconds * 1000 }
       ?.let {
-        return it.first
+        return it.first.takeIf { rules -> rules.appliesToModule(where.module) }
+          ?: UsageRules.GENERIC
       }
     val url = ServeUrls.githubRawUrl(where.repo, where.ref, null, USAGE_RULES_FILE)
     val rules =
@@ -347,7 +349,9 @@ class PlaygroundSeedResolver(
     // parsed rules object and (below) up to the fetch cap of string data.
     evictExpired(rulesCache, now)
     if (rulesCache.size < maxEntries) rulesCache[key] = rules to now
-    return rules
+    // Cached by `(repo, ref)` because that is what was FETCHED; scoped by module on the way out,
+    // because a repo can publish several catalogs from one rules file. See [UsageRules.modules].
+    return rules.takeIf { it.appliesToModule(where.module) } ?: UsageRules.GENERIC
   }
 
   /**
