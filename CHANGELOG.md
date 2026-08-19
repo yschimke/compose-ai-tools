@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.18.0](https://github.com/yschimke/compose-ai-tools/compare/v1.17.0...v1.18.0) (2026-08-19)
+
+
+### Features
+
+* **preview:** settle a time-driven reveal before the still capture ([#4242](https://github.com/yschimke/compose-ai-tools/issues/4242)) ([5f7a4da](https://github.com/yschimke/compose-ai-tools/commit/5f7a4da2241935e0140bc7faf687633491659fd4))
+
+
+### Bug Fixes
+
+* **preview:** honour an exact settle coordinate, and widen the motion collision ([#4246](https://github.com/yschimke/compose-ai-tools/issues/4246)) ([5e0be96](https://github.com/yschimke/compose-ai-tools/commit/5e0be966eb74d29e9acd081dd9345a58274f7673))
+
 ## [1.17.0](https://github.com/yschimke/compose-ai-tools/compare/v1.16.0...v1.17.0) (2026-08-19)
 
 
