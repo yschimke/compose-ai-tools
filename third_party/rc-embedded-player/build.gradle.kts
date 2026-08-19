@@ -38,10 +38,24 @@
 
 plugins {
   id("composeai.base-conventions")
-  // Published for TESTING only — see `composeAiMavenPublishing` below. This is a vendored AOSP
-  // snapshot, not a supported API; the coordinates exist so the embedded render lane can be pulled
-  // as an artifact. `composeai.maven-publishing` also applies `composeai.android-conventions`.
-  id("composeai.maven-publishing")
+  // NOT PUBLISHED. It used to apply `composeai.maven-publishing`, so it joined the root
+  // `publishAndReleaseToMavenCentral` aggregation — and it exposes `libs.compose.remote.core` and
+  // `libs.compose.remote.player.core` through `api`. Those moved to `1.0.0-SNAPSHOT` on
+  // androidx.dev, so the next release POM would have required
+  // `androidx.compose.remote:*:1.0.0-SNAPSHOT`: coordinates a consumer cannot resolve (the
+  // androidx.dev repository is declared in this project's `settings.gradle.kts` and cannot be
+  // inherited), absent from Google Maven and Central, and eventually swept from androidx.dev
+  // altogether. A published artifact nobody can resolve is worse than no artifact.
+  //
+  // Unpublishing rather than pinning, because there is nothing to pin to — upstream ships this
+  // player only as integration-test sources — and because nothing consumed the coordinates: every
+  // user in this repo (`:samples:remotecompose`, `:samples:design-catalog-remote-m3`,
+  // `:data-remotecompose-connector`, and the JVM sibling via `:cli`) depends on the PROJECT. The
+  // module's own note already called it "a testing artifact ... not intended for external use".
+  //
+  // `composeai.maven-publishing` also applied `composeai.android-conventions`, so that is named
+  // directly now.
+  id("composeai.android-conventions")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
@@ -77,26 +91,6 @@ android {
   // The player reaches `androidx.compose.remote.core.*` members marked `@RestrictTo(LIBRARY_GROUP)`
   // — unavoidable for an out-of-tree copy of in-tree code. Upstream's module disables it too.
   lint { disable += "RestrictedApi" }
-}
-
-// Published under the compose-ai-tools group (`ee.schimke.composeai`, set by the convention plugin)
-// deliberately, NOT under `androidx.*` — that package name is only the vendored code's namespace,
-// kept verbatim so a snapshot refresh stays a plain `diff -r` (see PROVENANCE.md). This is a
-// testing
-// artifact for the embedded render lane, not a library intended for external consumption; the POM's
-// Apache-2.0 license and the retained AOSP source headers keep the vendored snapshot compliant.
-composeAiMavenPublishing {
-  coordinates(
-    artifactId = "third-party-rc-embedded-player",
-    displayName = "Compose Preview — Embedded Remote Compose Player (vendored, testing)",
-    description =
-      "Vendored snapshot of AndroidX's experimental Compose embedded Remote Compose player " +
-        "(RcPlayer), lifted from an androidx integration-test app that publishes no artifact of its " +
-        "own. Backs the embedded render/compare lane in compose-ai-tools. Published under " +
-        "ee.schimke.composeai for testing only — not a supported API and not intended for external " +
-        "use.",
-  )
-  inceptionYear.set("2026")
 }
 
 // Hand the render harness its input/output directories. Gradle properties rather than ambient env,
