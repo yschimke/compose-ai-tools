@@ -29,9 +29,6 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -1364,28 +1361,11 @@ internal constructor(
         val theme = if (captureTheme) fetchTheme(previewId, overrides) else null
 
         val json =
-          dataJson
-            .encodeToString(
-              JsonObject.serializer(),
-              buildJsonObject {
-                put("previewId", JsonPrimitive(previewId))
-                put(
-                  "annotations",
-                  dataJson.encodeToJsonElement(
-                    ListSerializer(DesignAnnotation.serializer()),
-                    ServeDesignAnnotations.annotations(payload, theme),
-                  ),
-                )
-                put(
-                  "tags",
-                  dataJson.encodeToJsonElement(
-                    MapSerializer(String.serializer(), ServeSemanticsTags.TagEntry.serializer()),
-                    ServeSemanticsTags.index(payload),
-                  ),
-                )
-              },
-            )
-            .encodeToByteArray()
+          ServeAnnotationsPayload.encode(
+            previewId,
+            ServeDesignAnnotations.annotations(payload, theme),
+            ServeSemanticsTags.index(payload),
+          )
         annotationsCache.put(key, json)
         AnnotationsOutcome.Ok(json)
       } finally {

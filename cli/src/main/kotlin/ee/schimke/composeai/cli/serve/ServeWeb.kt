@@ -8793,6 +8793,14 @@ $rows
      * has no daemon to capture the tree.
      */
     hasDesignAnnotations: Boolean = false,
+    /**
+     * Whether the catalog **published** typography annotations over this preview's baked frame
+     * ([ServeHost.hasPublishedTypographyFor]) — the other lane behind the same Typography layer,
+     * and the only one a static bundle has. Offers the checkbox where [hasDesignAnnotations] is
+     * false but `.annotations` still answers; the Theme attributes row stays gated on the semantics
+     * lane, which is the only thing that produces it.
+     */
+    hasPublishedTypography: Boolean = false,
     trust: String? = null,
     /**
      * Whether this preview carries a captured Remote Compose document
@@ -9119,6 +9127,8 @@ $rows
     val hasA11yOverlay = hasA11yOverlay && pinned == null && !componentBrowser
     @Suppress("NAME_SHADOWING")
     val hasDesignAnnotations = hasDesignAnnotations && pinned == null && !componentBrowser
+    @Suppress("NAME_SHADOWING")
+    val hasPublishedTypography = hasPublishedTypography && pinned == null && !componentBrowser
     // A published capture is a file on the branch exactly as the baked render and the design
     // reference are, so by the pinned-page rule it ought to STAY and take the pin. It cannot yet:
     // `/motion/<id><ext>` reads the branch tip the session is holding, with no revision to resolve
@@ -10098,7 +10108,9 @@ $rows
     // Published reference typography is self-contained, so static bundle viewers can inspect the
     // Figma lane even though they cannot apply overrides or ask a daemon for render annotations.
     val hasTypographyInspection =
-      hasDesignAnnotations || referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
+      hasDesignAnnotations ||
+        hasPublishedTypography ||
+        referenceAnnotations.any { it.kind == AnnotationKind.TYPOGRAPHY }
     val inspectRows = buildString {
       if (hasA11yOverlay)
         append(

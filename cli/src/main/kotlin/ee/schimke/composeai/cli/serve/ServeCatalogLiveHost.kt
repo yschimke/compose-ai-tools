@@ -1062,6 +1062,10 @@ class ServeCatalogLiveHost(
   override fun hasDesignAnnotationsFor(previewId: String): Boolean =
     previewId in alias && live.hasDesignAnnotations
 
+  /** The baked half: a catalog that published typography can inspect an unmapped variant too. */
+  override fun hasPublishedTypographyFor(previewId: String): Boolean =
+    baked.hasPublishedTypographyFor(previewId)
+
   override fun hasScrollExportFor(previewId: String): Boolean =
     previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
 
@@ -1518,9 +1522,31 @@ class ServeCatalogLiveHost(
     previewId: String,
     overrides: PreviewOverrides,
   ): AnnotationsOutcome {
-    val daemonId = alias[previewId] ?: return AnnotationsOutcome.NotFound
-    return liveHostFor(daemonId).renderAnnotations(daemonId, overrides)
+    val daemonId = alias[previewId] ?: return bakedAnnotations(previewId, overrides)
+    val live = liveHostFor(daemonId).renderAnnotations(daemonId, overrides)
+    // A daemon that carries no semantics lane answers NotFound. The catalog may still have
+    // published typography for this preview, so fall back to it rather than leaving the layer
+    // blank — under the same rule [bakedAnnotations] states. A `Failed` is a real error and
+    // travels, unchanged: quietly answering a broken render with the published facts would
+    // describe pixels the visitor is not being shown.
+    return if (live is AnnotationsOutcome.NotFound) bakedAnnotations(previewId, overrides) else live
   }
+
+  /**
+   * The catalog's published annotations, but ONLY where they describe the pixels on screen.
+   *
+   * They were measured over the baked frame, so they are true exactly while the baked frame is what
+   * this host serves — which is what [CatalogLiveRouting.overridesAffectRender] answers, the same
+   * predicate [render] routes on. Under a font scale or a knob edit the daemon draws different
+   * pixels, and published bounds over those would put every box in the wrong place while looking
+   * entirely deliberate.
+   */
+  private fun bakedAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome =
+    if (CatalogLiveRouting.overridesAffectRender(previewId, overrides)) AnnotationsOutcome.NotFound
+    else baked.renderAnnotations(previewId, overrides)
 
   /**
    * The daemon preview id to route a [render] / [renderSvg] to, or null to stay baked. Delegates to

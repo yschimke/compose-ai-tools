@@ -1285,6 +1285,25 @@ class ServeWebFixtureTest {
         hasA11yOverlay = true,
         hasDesignAnnotations = true,
       )
+    // The **other lane behind the same Typography layer**: a published catalog with no daemon at
+    // all, whose `annotations/index.json` carries typography measured over the baked frame this
+    // page shows. `canApplyOverrides = false` and `hasDesignAnnotations = false` — so the Overrides
+    // drawer is the static one and there is no Theme attributes row (nothing authors theme
+    // attributes into a bundle; they are projected from a live semantics tree).
+    //
+    // Its own fixture rather than a flag on `serve-viewer-inspect`, because the claim is precisely
+    // that a page WITHOUT the daemon controls still offers a working layer — which is invisible on
+    // a fixture that has every control anyway. The harness ticks it in the
+    // `serve-viewer-published-typography` `layers` state, so the boxes and the legend are diffed
+    // per PR alongside the daemon lane's.
+    val viewerPublishedTypography =
+      ServeWeb.viewerPage(
+        ServePreview("button-filled__ideal__default__light", "Filled button (light)"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        hasPublishedTypography = true,
+      )
     // An SVG-exporting viewer opened straight into the **exploded 3D** view: the `3D` chip pressed
     // beside the SVG one, and the Exploded 3D group in the overrides drawer holding the camera
     // axes. Its stage is stubbed by the harness with the committed
@@ -2850,6 +2869,7 @@ class ServeWebFixtureTest {
         "serve-viewer-theme-overflow.html" to viewerThemeOverflow,
         "serve-viewer-focus.html" to viewerFocus,
         "serve-viewer-inspect.html" to viewerInspect,
+        "serve-viewer-published-typography.html" to viewerPublishedTypography,
         "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-viewer-source.html" to viewerSource,

@@ -314,6 +314,10 @@ const STYLED_FIXTURES = new Set([
   // painted at runtime by `<cp-inspect-layers>` — boxes over the stage, a legend beside it — so
   // captured bare there is nothing to see at all. Its `layers` state below is what draws them.
   "serve-viewer-inspect",
+  // The same overlay on a host with NO daemon: a published catalog whose typography came off the
+  // baked frame. Bare it is a static viewer with one unticked checkbox — the layer only exists once
+  // `<cp-inspect-layers>` has fetched the (stubbed) product, exactly as above.
+  "serve-viewer-published-typography",
   // The exploded 3D view. Everything it claims is produced at runtime: `viewer.js` reads
   // `?exploded=1`, presses the 3D chip, switches the stage to the vector lane and fetches the
   // exploded SVG, and the camera sliders in the drawer are laid out by `serve.css`. Captured
@@ -1241,6 +1245,27 @@ const FIXTURE_STATES = [
           clientWidth: line.clientWidth,
         })),
       );
+    },
+  },
+  {
+    // The baked lane of the Typography layer, on a page that has no daemon controls at all: the
+    // catalog published these facts over the frame on screen, so ticking the one checkbox this
+    // static viewer offers has to draw boxes and a legend. Captured as its own state because the
+    // claim is about a page WITHOUT the a11y / theme rows — invisible on `serve-viewer-inspect`,
+    // which carries every control regardless.
+    fixture: "serve-viewer-published-typography",
+    suffix: "layers",
+    apply: async (page) => {
+      await openControlsDrawer(page);
+      await page.click('[data-cp-group="overlays"] > summary');
+      await page.check("#cp-inspect-typography");
+      await page.waitForFunction(
+        () => document.querySelectorAll(".cp-inspect-box").length > 0,
+      );
+      // The rows this host cannot produce are absent, not merely unticked: a published bundle
+      // carries no semantics tree, so neither the focus map nor the theme attributes exist.
+      await expect(page.locator("#cp-inspect-a11y")).toHaveCount(0);
+      await expect(page.locator("#cp-inspect-theme")).toHaveCount(0);
     },
   },
   {

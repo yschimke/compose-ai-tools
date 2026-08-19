@@ -249,6 +249,54 @@ class ServeBundleHost(
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
     annotations.forPreview(previewId)
 
+  /**
+   * The kinds of published annotation the viewer's inspection layers actually draw.
+   *
+   * `layout` is published alongside these and belongs to the compare page, which reads the same
+   * manifest for a different surface. Handing it to the overlay would put boxes in the legend under
+   * no heading at all — `<cp-inspect-layers>` groups by the kind a layer declares, and there is no
+   * layout layer.
+   */
+  private fun drawableAnnotations(previewId: String): List<DesignAnnotation> =
+    annotationsForPreview(previewId).filter {
+      it.kind == AnnotationKind.TYPOGRAPHY || it.kind == AnnotationKind.THEME
+    }
+
+  /**
+   * Whether the catalog published typography over **this preview's own baked frame**, so the
+   * Typography layer has something to draw without a daemon. See [renderAnnotations].
+   */
+  override fun hasPublishedTypographyFor(previewId: String): Boolean =
+    previewId in previewIds &&
+      annotationsForPreview(previewId).any { it.kind == AnnotationKind.TYPOGRAPHY }
+
+  /**
+   * Replay the catalog's **published** annotations for [previewId] as the `.annotations` product.
+   *
+   * A static bundle has no daemon to capture a semantics tree from, which is why [ServeHost]'s
+   * default is `NotFound` — but a published catalog carries `annotations/index.json`, whose preview
+   * layer is exactly these facts measured over the very PNG this host serves. Answering from it is
+   * not an approximation: this host never re-renders, so [overrides] cannot move the pixels the
+   * bounds describe (an override-bearing request gets the same baked frame, and the HTTP layer
+   * reports what it dropped). That makes the overlay work on a plain published catalog instead of
+   * ticking a checkbox that fetches a 404 and silently draws nothing.
+   *
+   * Typography only, in practice: the theme layer is derived live from a render's semantics tree
+   * ([ServeDesignAnnotations]) and no producer authors it into a bundle. `tags` comes from the
+   * bundle's own published index, so the two halves still describe one frame.
+   */
+  override fun renderAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome {
+    if (previewId !in previewIds) return AnnotationsOutcome.NotFound
+    val published = drawableAnnotations(previewId)
+    if (published.isEmpty()) return AnnotationsOutcome.NotFound
+    return AnnotationsOutcome.Ok(
+      ServeAnnotationsPayload.encode(previewId, published, tagIndexForPreview(previewId))
+    )
+  }
+
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     annotations.forReference(referenceId)
 
