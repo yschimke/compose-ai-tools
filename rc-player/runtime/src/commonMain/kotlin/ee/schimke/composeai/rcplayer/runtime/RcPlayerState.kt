@@ -668,7 +668,13 @@ public class RcPlayerState(
       }
     }
 
-    applyScope(children, RcTheme.UNSPECIFIED, applyDirect = false)
+    // The document root is itself a content scope. AndroidX executes one FLAT operation list in
+    // wire order, so an operation declared at top level — a `ColorExpression` over two constants, a
+    // `ColorTheme` pair — runs there exactly like one nested in a layout. Skipping the root left
+    // those out ids unset, so `color(outId)` answered 0 and a `CoreText` reading one rendered fully
+    // transparent — while `composeSupportReport` counted the id as declared and passed the document
+    // as renderable. Same shape as the canvas-scope bug the comment above records, one level up.
+    applyScope(children, RcTheme.UNSPECIFIED, applyDirect = true)
   }
 
   private fun applyContentStateOperation(
