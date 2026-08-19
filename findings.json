@@ -390,6 +390,28 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "DeferredValueSettledPreview_Deferred_value-a8cd1a6d.a11y.png",
+      "cleanBasename": "DeferredValueSettledPreview_Deferred_value-a8cd1a6d.png",
+      "findings": [],
+      "functionName": "DeferredValueSettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.DeferredValueSettledPreview_Deferred value",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.a11y.png",
+      "cleanBasename": "DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.png",
+      "findings": [],
+      "functionName": "DeferredValueUnsettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.DeferredValueUnsettledPreview_Deferred unsettled",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase-0d81b92c.a11y.png",
       "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase-0d81b92c.png",
       "findings": [
@@ -1261,6 +1283,17 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.a11y.png",
+      "cleanBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
+      "findings": [],
+      "functionName": "RedToBlueScrollTimedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollTimedPreview_ScrollTimed",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.a11y.png",
       "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.png",
       "findings": [],
@@ -1269,6 +1302,28 @@
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72",
       "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RevealCardSettledPreview_Reveal_settled-c7245802.a11y.png",
+      "cleanBasename": "RevealCardSettledPreview_Reveal_settled-c7245802.png",
+      "findings": [],
+      "functionName": "RevealCardSettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.RevealCardSettledPreview_Reveal settled",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.a11y.png",
+      "cleanBasename": "RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.png",
+      "findings": [],
+      "functionName": "RevealCardUnsettledPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettledPreviewsKt.RevealCardUnsettledPreview_Reveal unsettled",
+      "rendersDir": "android",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt",
       "variant": ""
     },
     {
@@ -1604,6 +1659,28 @@
       "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default",
       "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DesktopRevealSettledPreview_Reveal_settled-fd6af239.a11y.png",
+      "cleanBasename": "DesktopRevealSettledPreview_Reveal_settled-fd6af239.png",
+      "findings": [],
+      "functionName": "DesktopRevealSettledPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SettledPreviewsKt.DesktopRevealSettledPreview_Reveal settled",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SettledPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.a11y.png",
+      "cleanBasename": "DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.png",
+      "findings": [],
+      "functionName": "DesktopRevealUnsettledPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.SettledPreviewsKt.DesktopRevealUnsettledPreview_Reveal unsettled",
+      "rendersDir": "cmp",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/SettledPreviews.kt",
       "variant": ""
     },
     {

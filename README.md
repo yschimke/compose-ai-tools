@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 322 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
+_Auto-generated from `compose-preview/a11y/main`. 329 preview(s) across 20 module(s) · 69 error(s) · 4 warning(s) · 30 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -109,6 +109,18 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `DeferredValueSettledPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/DeferredValueSettledPreview_Deferred_value-a8cd1a6d.a11y.png" width="400" />
+
+_No findings._
+
+### `DeferredValueUnsettledPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.a11y.png" width="400" />
+
+_No findings._
 
 ### `DeviceFontFamilyShowcasePreview`
 
@@ -521,9 +533,27 @@ _No findings._
 
 _No findings._
 
+### `RedToBlueScrollTimedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.a11y.png" width="400" />
+
+_No findings._
+
 ### `RemoteViewsWeatherWidgetPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2-f3e3deff.a11y.png" width="400" />
+
+_No findings._
+
+### `RevealCardSettledPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RevealCardSettledPreview_Reveal_settled-c7245802.a11y.png" width="400" />
+
+_No findings._
+
+### `RevealCardUnsettledPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.a11y.png" width="400" />
 
 _No findings._
 
@@ -788,6 +818,18 @@ _No findings._
 ### `CmpPseudoDefault`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/CmpPseudoDefault_default-f4d924f2.a11y.png" width="400" />
+
+_No findings._
+
+### `DesktopRevealSettledPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/DesktopRevealSettledPreview_Reveal_settled-fd6af239.a11y.png" width="400" />
+
+_No findings._
+
+### `DesktopRevealUnsettledPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.a11y.png" width="400" />
 
 _No findings._
 
