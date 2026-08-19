@@ -46,7 +46,11 @@ data class AccessibilityFinding(
  */
 @Serializable
 data class AccessibilityNode(
-  /** Visible text or contentDescription. */
+  /**
+   * What a screen reader announces: the node's own contentDescription / text, or the copy rolled up
+   * from the descendants a focus stop merges (issue #4253). Empty only when nothing under the stop
+   * supplies a name.
+   */
   val label: String,
   /**
    * Stable, content-independent handle (issue #1784) — mirrors `:data-a11y-core`'s

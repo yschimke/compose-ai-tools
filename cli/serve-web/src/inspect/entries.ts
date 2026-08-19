@@ -122,6 +122,72 @@ const boundsKey = (wire: string | null | undefined): string =>
     (wire ?? "").trim();
 
 /**
+ * The announcement a focus stop gets from the nodes it merges.
+ *
+ * A stop whose copy lives on its descendants — a Wear `Button(label = { Text(…) })`, an icon button
+ * whose `contentDescription` sits on the inner icon — reaches the wire with an empty `label` on
+ * every hierarchy produced before the extractor started rolling those up. Reading that literally
+ * prints `(unlabelled)` over a button with the word "Filled" plainly on it, which is worse than
+ * useless: it reports a labelling bug that is not there and hides the one that would be.
+ *
+ * Reconstructing which nodes a stop folded in takes both signals the flat wire carries. Emission
+ * order is pre-order, so its descendants follow it; bounds say where that subtree ends, and which
+ * of the nodes inside it belong to a NESTED stop instead. A row folding in a title, then a button
+ * of its own, then a subtitle announces "Title Subtitle" — stopping at the nested stop drops the
+ * subtitle, ignoring it swallows the button's copy into the row.
+ *
+ * Mirrors `AccessibilityLabels.mergedDescendantLabel` in `:data-a11y-core`, which is where a
+ * freshly rendered hierarchy gets this done before it reaches the wire.
+ */
+function mergedDescendantLabel(nodes: A11yNode[], index: number): string {
+    const parts: string[] = [];
+    const parent = parseBounds(nodes[index].boundsInScreen);
+    // A stop whose bounds do not parse has no box to test its descendants against: fall back to the
+    // plain following run of non-stops.
+    if (!parent) {
+        for (
+            let i = index + 1;
+            i < nodes.length && !isFocusStop(nodes[i]);
+            i++
+        ) {
+            const label = (nodes[i].label ?? "").trim();
+            if (label) parts.push(label);
+        }
+        return parts.join(" ");
+    }
+    // The nested focus stop currently being skipped over — what sits inside it is part of ITS
+    // announcement, not this one's.
+    let nested: Bounds | null = null;
+    for (let i = index + 1; i < nodes.length; i++) {
+        const bounds = parseBounds(nodes[i].boundsInScreen);
+        // A node that describes no box cannot be placed; skipping it beats ending the scan there
+        // and silently truncating the announcement.
+        if (!bounds) continue;
+        // Out of the parent's box: the walk has left its subtree.
+        if (!contains(parent, bounds)) break;
+        if (nested && contains(nested, bounds)) continue;
+        nested = null;
+        if (isFocusStop(nodes[i])) {
+            nested = bounds;
+            continue;
+        }
+        const label = (nodes[i].label ?? "").trim();
+        if (label) parts.push(label);
+    }
+    return parts.join(" ");
+}
+
+/** Whether `inner` sits entirely within `outer` — the flat wire's only handle on ancestry. */
+function contains(outer: Bounds, inner: Bounds): boolean {
+    return (
+        inner.x >= outer.x &&
+        inner.y >= outer.y &&
+        inner.x + inner.width <= outer.x + outer.width &&
+        inner.y + inner.height <= outer.y + outer.height
+    );
+}
+
+/**
  * One entry per screen-reader stop, carrying the findings and touch-target size whose bounds match
  * it — plus any finding the hierarchy has no node for.
  *
@@ -177,10 +243,16 @@ export function a11yEntries(payload: A11yPayload | null): Entry[] {
             detail.push(`${finding.type}: ${finding.message}`);
         for (const note of target?.findings ?? []) detail.push(note);
 
+        // A stop with no label of its own still announces its descendants' copy, so show that
+        // rather than `(unlabelled)`. Only reached on hierarchies whose producer did not roll the
+        // label up itself — a freshly rendered one arrives with it already on the node.
+        const label =
+            (node.label ?? "").trim() || mergedDescendantLabel(nodes, index);
+
         out.push({
             kind: "a11y",
             bounds,
-            title: node.label || "(unlabelled)",
+            title: label || "(unlabelled)",
             detail: detail.join(" · "),
             level: level ?? "info",
             // A flagged stop takes its colour from its level; only the rest need telling apart.

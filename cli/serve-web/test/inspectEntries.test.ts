@@ -128,6 +128,138 @@ describe("a11yEntries", () => {
         assert.equal(entries.length, 1);
     });
 
+    it("announces the copy a stop merges rather than calling it unlabelled", () => {
+        // A Wear `Button(icon = …, label = { Text("Filled") })` on a hierarchy captured before the
+        // extractor rolled the label up: the click is on the merging surface, the word is on the
+        // child nobody stops on. `(unlabelled)` over a button that plainly reads "Filled" reports a
+        // labelling bug that is not there — and hides the one that would be.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    {
+                        boundsInScreen: "16,16,209,120",
+                        label: "",
+                        states: ["clickable"],
+                    },
+                    {
+                        boundsInScreen: "104,50,181,86",
+                        label: "Filled",
+                        role: "TextView",
+                        merged: false,
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["Filled"],
+        );
+    });
+
+    it("keeps each stop's inherited copy to its own descendants", () => {
+        // Two sibling icon buttons: the second one's contentDescription must not leak into the
+        // first, which would label both boxes with the same wrong word.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    { boundsInScreen: "0,0,48,48", states: ["clickable"] },
+                    {
+                        boundsInScreen: "8,8,40,40",
+                        label: "Open navigation drawer",
+                        merged: false,
+                    },
+                    { boundsInScreen: "60,0,108,48", states: ["clickable"] },
+                    {
+                        boundsInScreen: "68,8,100,40",
+                        label: "Search",
+                        merged: false,
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["Open navigation drawer", "Search"],
+        );
+    });
+
+    it("carries a stop's inherited copy on past a nested stop", () => {
+        // A row that folds in a title, then a button of its own, then a subtitle: the button owns
+        // "Go", but the subtitle after it is still the row's. Stopping at the nested stop drops the
+        // subtitle; ignoring it swallows "Go" into the row.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    { boundsInScreen: "0,0,400,100", states: ["clickable"] },
+                    {
+                        boundsInScreen: "8,8,200,40",
+                        label: "Title",
+                        merged: false,
+                    },
+                    { boundsInScreen: "300,10,390,90", states: ["clickable"] },
+                    {
+                        boundsInScreen: "310,20,380,80",
+                        label: "Go",
+                        merged: false,
+                    },
+                    {
+                        boundsInScreen: "8,50,200,90",
+                        label: "Subtitle",
+                        merged: false,
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["Title Subtitle", "Go"],
+        );
+    });
+
+    it("does not claim copy that sits outside the stop's box", () => {
+        // The text after the button is beside it, not inside it — a sibling the walk reached after
+        // leaving the button, and not something the button announces.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    {
+                        boundsInScreen: "0,0,48,48",
+                        role: "Button",
+                        states: ["clickable"],
+                    },
+                    {
+                        boundsInScreen: "0,60,200,90",
+                        label: "Caption",
+                        merged: false,
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["(unlabelled)"],
+        );
+    });
+
+    it("still says unlabelled when nothing underneath supplies a name", () => {
+        // An unlabelled clickable really is unlabelled — that is the finding, not noise to hide.
+        const entries = a11yEntries(
+            payload({
+                nodes: [
+                    {
+                        boundsInScreen: "0,0,48,48",
+                        role: "Button",
+                        states: ["clickable"],
+                    },
+                ],
+            }),
+        );
+        assert.deepEqual(
+            entries.map((e) => e.title),
+            ["(unlabelled)"],
+        );
+    });
+
     it("gives un-flagged stops distinct hues so adjacent boxes can be told apart", () => {
         // With one colour for everything, adjacent focus targets in a list merge into a block and
         // the legend cannot be matched back to a box by eye.

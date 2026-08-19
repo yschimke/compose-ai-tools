@@ -128,9 +128,10 @@ object AccessibilityChecker {
           states.isNotEmpty() ||
           (role != null && (v.isClickable || v.isLongClickable))
       if (!keep) continue
-      // The label is what reviewers scan for first; an unlabelled
-      // clickable element with a known role still surfaces, but with
-      // an empty `label` field — the overlay caller decides how to
+      // The label is what reviewers scan for first. It can still be empty
+      // here — either the copy lives on merged descendants (rolled up
+      // below) or the element genuinely has no name, which is exactly the
+      // problem the legend should show; the overlay caller decides how to
       // render that (we draw the role on its own line in the legend).
       out +=
         AccessibilityNode(
@@ -141,7 +142,13 @@ object AccessibilityChecker {
           boundsInScreen = "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}",
         )
     }
-    return out
+    // ATF reports each element's own contentDescription / text, so a focus stop whose copy lives on
+    // the descendants it merges (a Wear `Button(label = { Text(...) })`, an `IconButton` whose
+    // contentDescription sits on the inner `Icon`) comes out of the walk blank. Roll those up so
+    // the
+    // node carries what TalkBack actually announces — issue #4253. Runs over the flat list rather
+    // than inside the walk because that is where the parent/child run is still legible.
+    return AccessibilityLabels.rollUpMergedLabels(out)
   }
 
   /**
