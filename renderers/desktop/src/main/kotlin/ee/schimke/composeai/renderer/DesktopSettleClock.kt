@@ -83,6 +83,18 @@ internal class DesktopSettleClock : CoroutineDispatcher(), Delay {
   /** Whether any `delay` is still outstanding — the half of quiescence pixels cannot see. */
   fun hasScheduledWork(): Boolean = scheduled.isNotEmpty()
 
+  /**
+   * Whether anything at all is still owed: a delay not yet due, **or** a runnable already
+   * dispatched but not yet executed.
+   *
+   * The second half matters because `scene.render(...)` itself can dispatch work — a recomposition
+   * that conditionally introduces a `LaunchedEffect` queues it *after* the preceding [advanceTo]
+   * drained. With nothing scheduled and no invalidation left, a quiescence check that only
+   * consulted [hasScheduledWork] would stop right there and capture the pre-reveal frame
+   * (issue #4202 review).
+   */
+  fun hasPendingWork(): Boolean = ready.isNotEmpty() || scheduled.isNotEmpty()
+
   /** Runs everything dispatched but not yet executed, including work those runnables dispatch. */
   fun drain() {
     while (true) ready.removeFirstOrNull()?.run() ?: break
@@ -134,7 +146,10 @@ internal fun settleScene(
     // Closed rather than left to a cleaner: each frame owns a Skia surface, and a pooled render
     // worker walks this loop once per settled capture for the life of the JVM.
     scene.render(t * 1_000_000L).close()
-    if (autoDetect && !clock.hasScheduledWork() && !scene.hasInvalidations()) return t
+    // Drain what the render itself dispatched before judging the frame, so an effect the
+    // recomposition just queued counts against quiescence rather than being missed entirely.
+    clock.drain()
+    if (autoDetect && !clock.hasPendingWork() && !scene.hasInvalidations()) return t
   }
   return bound
 }

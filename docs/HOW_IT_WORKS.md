@@ -89,7 +89,8 @@ It applies to **still** captures only — a scroll drive runs its own settle, an
 themselves, and an explicit `advanceTimeMillis` is a snapshot of a coordinate
 the author chose.
 
-Pairing it with `@AnimatedPreview` on the *same function* is reported as a
+Pairing it with a motion product on the *same function* — `@AnimatedPreview`,
+`@InteractionPreview`, or `@FocusedPreview(gif = true)` — is reported as a
 discovery warning and the settle is dropped, rather than half-honoured. Both
 products render from one composition against one paused clock and want opposite
 things from it: the GIF needs the timeline from its start, the settled still

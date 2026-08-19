@@ -11,6 +11,28 @@ import org.junit.Test
 class CaptureVisuallySettledFrameTest {
 
   @Test
+  fun `an exact settle is a snapshot and skips the quiescence probe`() {
+    // `@SettledPreview(afterMs = N)` names an instant, exactly as `advanceTimeMillis` does. The
+    // probe spends at least one more frame and up to the sample budget, which would publish an
+    // "exact 350ms" capture from somewhere in 366-414ms.
+    assertFalse(
+      shouldAdvanceClockForVisualSettling(
+        advanceTimeMillis = null,
+        hasFollowingJobs = false,
+        hasExactSettle = true,
+      )
+    )
+    // Auto settle names a bound, not a moment, so it keeps the probe.
+    assertTrue(
+      shouldAdvanceClockForVisualSettling(
+        advanceTimeMillis = null,
+        hasFollowingJobs = false,
+        hasExactSettle = false,
+      )
+    )
+  }
+
+  @Test
   fun `settling may advance only an untimed final job`() {
     assertTrue(
       shouldAdvanceClockForVisualSettling(

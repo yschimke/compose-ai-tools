@@ -45,8 +45,9 @@ package ee.schimke.composeai.preview
  * Only still captures are settled — a `@ScrollingPreview` LONG/GIF product, an `@AnimatedPreview`
  * GIF and an `@InteractionPreview` recording all drive the clock themselves and are left alone.
  *
- * Pairing this with `@AnimatedPreview` on the **same function** is reported and ignored, rather
- * than half-honoured. Both products render from one composition against one paused clock and want
+ * Pairing this with a motion product on the **same function** — `@AnimatedPreview`,
+ * `@InteractionPreview`, or `@FocusedPreview(gif = true)` — is reported and ignored, rather than
+ * half-honoured. Both products render from one composition against one paused clock and want
  * opposite things from it: the GIF needs the timeline from its start, the settled still needs a
  * coordinate near the end, and virtual time does not rewind. Put them on separate preview functions
  * — each then owns its own composition — and both get what they asked for. Serving both from one

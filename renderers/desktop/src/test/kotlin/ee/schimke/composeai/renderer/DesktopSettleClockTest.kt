@@ -65,4 +65,20 @@ class DesktopSettleClockTest {
 
     assertFalse("a cancelled delay must not hold the settle open", clock.hasScheduledWork())
   }
+
+  @Test
+  fun `work dispatched but not yet run counts against quiescence`() {
+    // `scene.render(...)` can dispatch a newly-introduced `LaunchedEffect` after the preceding
+    // advance already drained. Nothing is scheduled and nothing is invalidated at that instant, so
+    // a check that only consulted `hasScheduledWork` would stop and capture the pre-reveal frame.
+    val clock = DesktopSettleClock()
+    val scope = CoroutineScope(clock)
+    scope.launch { /* resumes immediately, but only once drained */ }
+
+    assertFalse("no delay is outstanding", clock.hasScheduledWork())
+    assertTrue("but a runnable is still queued", clock.hasPendingWork())
+
+    clock.drain()
+    assertFalse("drained, so nothing is owed", clock.hasPendingWork())
+  }
 }

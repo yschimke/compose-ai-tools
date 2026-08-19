@@ -673,6 +673,20 @@ const val SCROLL_GIF_COST: Float = 40.0f
 const val FOCUS_GIF_COST: Float = 40.0f
 const val ANIMATION_COST: Float = 50.0f
 const val INTERACTION_COST: Float = 60.0f
+
+/**
+ * Extra cost per second of `@SettledPreview` window, on top of [STATIC_COST].
+ *
+ * A settle is not a one-pass capture: both backends walk the window a frame at a time, so a default
+ * 1000ms settle is ~62 rendered frames. Sized so that default lands at 6.0 — just above
+ * [HEAVY_COST_THRESHOLD], which keeps it out of the on-every-save fast tier and lets shard balancing
+ * see the work — while a short explicit window (say `afterMs = 300`, ~19 frames) stays cheap.
+ */
+const val SETTLE_COST_PER_SECOND: Float = 5.0f
+
+/** Per-capture cost of a still carrying a settle of [windowMs]. See [SETTLE_COST_PER_SECOND]. */
+fun settleCaptureCost(windowMs: Int): Float =
+  STATIC_COST + (windowMs.coerceAtLeast(0) / 1000f) * SETTLE_COST_PER_SECOND
 const val ACCESSIBILITY_COST_PER_CAPTURE: Float = 4.0f
 const val HEAVY_COST_THRESHOLD: Float = 5.0f
 
