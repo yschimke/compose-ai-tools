@@ -1132,18 +1132,35 @@ class ServeCatalogLiveHost(
     renderInternal(previewId, overrides, leased = false)
 
   /**
-   * A broken live lane latches EVERY preview, not just the ones the theme cache has recorded
-   * against: the fault is in the daemon, so the answer is the same for all of them. Checked first
-   * so a `/render` gets the terminal 409 naming the real error before it takes a render slot —
-   * ahead of the per-key theme latch, which only knows about keys the optimizer reached.
+   * A broken live lane latches every render **that would have reached it**, not just the ones the
+   * theme cache has recorded against: the fault is in the daemon, so the answer is the same for
+   * every preview it serves. Checked first so a `/render` gets the terminal 409 naming the real
+   * error before it takes a render slot — ahead of the per-key theme latch, which only knows about
+   * keys the optimizer reached.
    *
-   * Scoped to daemon-twinned ids ([alias]): an unmapped variant never reaches the live lane — it
-   * replays baked pixels — so a broken daemon must not turn its perfectly serveable request into
-   * a 409.
+   * Scoped by [daemonIdForOverrideRender] — the same predicate [render] routes on — rather than by
+   * bare membership in [alias], and that scoping is the whole point. A broken daemon must only
+   * refuse the requests the daemon was the answer to:
+   * - an **unmapped** variant has no live twin at all and always replayed baked pixels;
+   * - a **mapped** id browsed with no override (or with one the baked PNG already satisfies) also
+   *   replays baked pixels — the routing has said so since the composite was written.
+   *
+   * Latching those turned one broken daemon into a catalog-wide blackout: with the breaker open,
+   * `bakedRender` answers only from pixels **already local** (deliberately — measuring an image
+   * must not trigger a fetch), so on a catalog whose PNGs are fetched lazily from its delivery
+   * branch the fast path returns null, the latch fired ahead of [render] — which *would* have
+   * fetched them — and every `<img>` on every page 409'd, including the live-render URLs the
+   * issue-report template embeds as evidence (compose-ai-tools#4220). The degradation banner
+   * meanwhile promised those very "baked PNG snapshots", so the page contradicted itself.
+   *
+   * A request that genuinely needs the daemon — any override the baked PNG can't represent, or a
+   * live-only (deferred) id with no baked pixels at all — still gets the terminal 409 naming the
+   * linkage error, because for those there is nothing honest to serve.
    */
   override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
-    (if (previewId in alias) live.renderBreaker()?.takeIf { it.open }?.reason else null)
-      ?: themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
+    (if (daemonIdForOverrideRender(previewId, overrides) != null)
+      live.renderBreaker()?.takeIf { it.open }?.reason
+    else null) ?: themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
 
   /**
    * Shed the pooled daemons — burst replicas and per-preview residents — while keeping the
