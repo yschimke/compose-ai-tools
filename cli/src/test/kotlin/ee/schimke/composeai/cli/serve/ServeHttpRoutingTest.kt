@@ -1645,14 +1645,26 @@ class ServeHttpRoutingTest {
       )
     }
 
-    // compose-m3 carries an RC document without a published comparison manifest. Its viewer can
-    // gain capabilities asynchronously, so serving it from a cache while staging is pending would
-    // preserve an incomplete page after those capabilities arrive.
+    // compose-m3 carries an RC document with no published comparison manifest — and, being a served
+    // directory, no lane that will ever stage one. That is exactly the case
+    // `ServeBundleHost.stagesRcCompare` exists to separate: `rcComparePending()` means "the lane
+    // has not landed yet", NOT "there is no manifest on disk". Reading it off the file alone made
+    // `pending()` permanently true for every uploaded bundle and served directory, dropping their
+    // viewer pages to `no-store` for the life of the host — fully baked pages, and precisely the
+    // ones edge caching is for. So this one is cacheable like any other static viewer.
+    //
+    // The genuinely-pending case (a catalog whose staging lane is still running, where caching an
+    // incomplete page would outlive the capabilities arriving) is covered at the seam that decides
+    // it: see `viewerCacheControl(stagedCapabilitiesPending = true)` in ServeAuthTest. It cannot be
+    // reached from this fixture, which has no lane to be pending on.
     val pendingViewerReq =
       Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/p/$previewId").build()
     client.newCall(pendingViewerReq).execute().use { response ->
       assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
-      assertEquals("no-store", response.header("Cache-Control"))
+      assertTrue(
+        response.header("Cache-Control")?.startsWith("public, max-age=60") == true,
+        "no staging lane means nothing to wait for; was ${response.header("Cache-Control")}",
+      )
     }
 
     val missingViewerReq =
