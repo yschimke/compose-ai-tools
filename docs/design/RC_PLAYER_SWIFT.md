@@ -62,6 +62,16 @@ them means adding a Swift wrapper target beside the binary target, which
 [#4068](https://github.com/yschimke/compose-ai-tools/issues/4068) leaves for after the first
 published framework.
 
+**"Works exactly as written" is checked, not asserted.** `scripts/check-swift-sample.sh` extracts
+the `swift` blocks above and type-checks them against the assembled XCFramework, and the
+`rc-player-tests` CI job runs it right after building one. This document is therefore the tested
+artifact — there is no second copy of the sample to keep in sync — and every property described
+here is a property of Kotlin/Native's Objective-C export rather than a choice made in this repo, so
+it can change under us without any Kotlin source changing. That is exactly the drift the check
+exists to catch: an earlier draft of this page called a bare `RcComposeViewController(...)` and a
+`KotlinByteArray.from(_:)` that does not exist, and nothing caught either until a reviewer read the
+generated header by hand.
+
 **Device and Apple-silicon simulator only.** There is no Intel-simulator slice anywhere in this
 stack: Compose Multiplatform 1.11 stopped publishing the variant, so `:rc-player-compose` cannot
 declare `iosX64` and its three siblings dropped theirs rather than publish a stack that resolves
