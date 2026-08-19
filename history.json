@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
+    "generatedFrom": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -2225,6 +2225,13 @@
             "path": "renders/samples:android/SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_500ms.png",
             "versions": [
                 {
+                    "blob": "22602850fdb77e52f1f28c2b9ed90c332a08b3c8",
+                    "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
+                    "date": "2026-08-19T22:14:45Z",
+                    "sourceSha": "8c637961",
+                    "commits": 1
+                },
+                {
                     "blob": "d1165b1634a962c1cfdcb4db83eec7e0478296f0",
                     "commit": "38de7e9ad4166cf04be90e34c90eec4988b694b1",
                     "date": "2026-08-14T10:40:34Z",
@@ -2232,13 +2239,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:android/com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline#2": {
             "path": "renders/samples:android/SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_1500ms.png",
             "versions": [
+                {
+                    "blob": "b6c8a555966edb68c19a5096787bec91fe751d98",
+                    "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
+                    "date": "2026-08-19T22:14:45Z",
+                    "sourceSha": "8c637961",
+                    "commits": 1
+                },
                 {
                     "blob": "6ed5384c8925fdc9244a27ee7902409d0b7bea1e",
                     "commit": "31b51415e0ccd1bd224cc377a0c961e0b7d0700f",
@@ -2254,7 +2268,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
@@ -2543,6 +2557,36 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:android/com.example.sampleandroid.SettledPreviewsKt.SettledPlusAnimatedPreview_Settled + animated": {
+            "path": "renders/samples:android/SettledPlusAnimatedPreview_Settled_animated-6b39dfe0.png",
+            "versions": [
+                {
+                    "blob": "7b7e66434814a7c053b3f42d7b375bb7b5f53111",
+                    "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
+                    "date": "2026-08-19T22:14:45Z",
+                    "sourceSha": "8c637961",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.SettledPreviewsKt.SettledPlusAnimatedPreview_Settled + animated#1": {
+            "path": "renders/samples:android/SettledPlusAnimatedPreview_Settled_animated-6b39dfe0.gif",
+            "versions": [
+                {
+                    "blob": "94ee3498a7a9e9960223b55fb7fbfcd41c12dc2f",
+                    "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
+                    "date": "2026-08-19T22:14:45Z",
+                    "sourceSha": "8c637961",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery — fBm Clouds (animated, AGSL)": {
             "path": "renders/samples:android/ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated_AGSL-e6e1f455.gif",
             "versions": [
@@ -2740,6 +2784,13 @@
             "path": "renders/samples:android/SharedElementFilmstripPreview_Shared_Element_Filmstrip-a8af1cd8_TIME_600ms.png",
             "versions": [
                 {
+                    "blob": "23d288d5aa89dcd34669344e3b50e6e2eaef205c",
+                    "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
+                    "date": "2026-08-19T22:14:45Z",
+                    "sourceSha": "8c637961",
+                    "commits": 1
+                },
+                {
                     "blob": "6fd8f29db5c7c850c654b389a5008097ba7a7ef5",
                     "commit": "f3714d2f552ac4cc32b3f3fe8241153eb4030393",
                     "date": "2026-08-19T00:34:21Z",
@@ -2747,7 +2798,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -8128,6 +8179,13 @@
             "path": "renders/samples:wear/ActivityListLongPreview_Devices_Large_Round-5304b86a.png",
             "versions": [
                 {
+                    "blob": "46cba7b58ab0258ca2195e34a316d4deb896db75",
+                    "commit": "fe52ff4a7f8ccd094d48083c06fd644c1996dd85",
+                    "date": "2026-08-19T22:14:45Z",
+                    "sourceSha": "8c637961",
+                    "commits": 1
+                },
+                {
                     "blob": "2eb6ffca0613b20314af8349535b969274a5c54c",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
                     "date": "2026-08-17T07:56:53Z",
@@ -8135,7 +8193,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
