@@ -2058,6 +2058,37 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The comparison page's OWN report panel, on a phone. Same affordance as the viewer's, but
+    // this page renders it with no `.cp-preview-links` around it — which is precisely how the
+    // viewer's narrow-viewport fix once dropped this panel 619px above its own toggle, with
+    // nothing shooting this surface to catch it. Shot at phone width because that is the band
+    // the positioning rules differ in; above the breakpoint both pages take the base rule.
+    fixture: "serve-reference-compare",
+    suffix: "report-open-mobile",
+    viewport: PHONE_VIEWPORT,
+    apply: async (page) => {
+      await page.evaluate(() =>
+        document.getElementById("cp-report")?.removeAttribute("open"),
+      );
+      await page.click("#cp-report > summary");
+      await page.waitForSelector("#cp-report[open] .cp-report-summary-input");
+      // The panel must hang off ITS OWN toggle, not float to wherever an ancestor puts it —
+      // which a screenshot alone would not tell you if the panel landed off the captured
+      // viewport entirely. Asserted here so the geometry fails loudly rather than silently
+      // producing a shot with no panel in it.
+      const gap = await page.evaluate(() => {
+        const d = document.getElementById("cp-report");
+        return (
+          d.querySelector(".cp-report-panel").getBoundingClientRect().top -
+          d.querySelector("summary").getBoundingClientRect().top
+        );
+      });
+      expect(gap).toBeGreaterThan(0);
+      expect(gap).toBeLessThan(80);
+      await page.mouse.move(0, 0);
+    },
+  },
+  {
     // The annotation layers default to off — the page's first job is the pixel diff, and boxes
     // drawn over both panels would obscure exactly what is being judged. That leaves the drawn
     // state invisible to the diff bot unless it is captured deliberately, so switch both layers
