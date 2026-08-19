@@ -334,38 +334,48 @@ private fun RcComposePlayerResolved(
   // had changed — the same hazard the `systemColors` comment below describes, on the one API a host
   // uses to drive a live document. Changes are applied incrementally instead; see the
   // `LaunchedEffect` under this block.
-  val state =
+  // The seed is captured BESIDE the state, not recomputed. The collector below has to diff its
+  // first emission against the map the state was actually built from: if `namedValues` changes
+  // between this composition and the effect starting — a sibling `SideEffect`, a concurrent host
+  // update — reading it again there would initialise the bookkeeping from the NEWER map while the
+  // state still held the older snapshot, so the first emission would compare equal and be skipped,
+  // leaving the player stale until that entry happened to change again.
+  val (seededNamedValues, state) =
     remember(document) {
-      RcPlayerState(
-        document,
-        // Seeded once, from whatever the map holds when this document is first composed.
-        namedValues.toMap(),
-        eventSink = { latestEventSink(it) },
-        onInvalidated = { invalidationVersion += 1 },
-        effectSink = { effect ->
-          when (effect) {
-            is RcPlayerEffect.HapticFeedback ->
-              latestHapticFeedback.performAndroidXHaptic(effect.type)
-            is RcPlayerEffect.WakeIn -> {
-              val current = wakeIntervalSeconds
-              if (!effect.seconds.isNaN() && (current == null || effect.seconds < current)) {
-                wakeIntervalSeconds = effect.seconds
+      val seed = namedValues.toMap()
+      seed to
+        RcPlayerState(
+          document,
+          // Seeded once, from whatever the map holds when this document is first composed.
+          seed,
+          eventSink = { latestEventSink(it) },
+          onInvalidated = { invalidationVersion += 1 },
+          effectSink = { effect ->
+            when (effect) {
+              is RcPlayerEffect.HapticFeedback ->
+                latestHapticFeedback.performAndroidXHaptic(effect.type)
+              is RcPlayerEffect.WakeIn -> {
+                val current = wakeIntervalSeconds
+                if (!effect.seconds.isNaN() && (current == null || effect.seconds < current)) {
+                  wakeIntervalSeconds = effect.seconds
+                }
               }
+              RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
             }
-            RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
-          }
-        },
-        // Read through `latestSystemColors`, never captured directly: a host's lookup is usually a
-        // capturing lambda, so a parent recomposition hands us a fresh instance. Keying the state
-        // on it would rebuild `RcPlayerState` — discarding variables an action changed,
-        // touch-expression state and running animation timelines — because a colour callback that
-        // resolves the same palette happened to be reallocated.
-        //
-        // The `Color` -> ARGB conversion happens here, at the module boundary: `RcPlayerState`
-        // lives in `:rc-player-runtime`, which has no Compose UI dependency, and packed ARGB really
-        // is the wire value there. See [toRcArgb].
-        systemColorLookup = { name -> latestSystemColors(name)?.toRcArgb() },
-      )
+          },
+          // Read through `latestSystemColors`, never captured directly: a host's lookup is usually
+          // a
+          // capturing lambda, so a parent recomposition hands us a fresh instance. Keying the state
+          // on it would rebuild `RcPlayerState` — discarding variables an action changed,
+          // touch-expression state and running animation timelines — because a colour callback that
+          // resolves the same palette happened to be reallocated.
+          //
+          // The `Color` -> ARGB conversion happens here, at the module boundary: `RcPlayerState`
+          // lives in `:rc-player-runtime`, which has no Compose UI dependency, and packed ARGB
+          // really
+          // is the wire value there. See [toRcArgb].
+          systemColorLookup = { name -> latestSystemColors(name)?.toRcArgb() },
+        )
     }
   // Apply host edits to the live state instead of rebuilding it. `setNamedValue` already applied a
   // single value incrementally against `variableNames`, type-checked against the AndroidX variable
@@ -376,16 +386,27 @@ private fun RcComposePlayerResolved(
   // owns. Errors are deliberately not caught: an unknown name or a type mismatch threw from the
   // `RcPlayerState` constructor before this change, and a host that names a variable the document
   // does not have should still hear about it rather than watch the value quietly not apply.
-  LaunchedEffect(state) {
-    var applied = namedValues.toMap()
+  // Survives the effect restarting, which is the point: `applied` is what this player has actually
+  // pushed into the state, and a restart must not forget it. Re-seeding from the state's own
+  // snapshot on every restart would leave a key applied from the OLD holder uncleared, because the
+  // diff would no longer know it had ever been set.
+  val appliedNamedValues = remember(document) { seededNamedValues.toMutableMap() }
+  // Keyed on the holder as well as the state. `namedValues` is read inside `snapshotFlow`, so the
+  // running collector stays bound to whichever map instance it started with: a parent that swaps in
+  // a different `SnapshotStateMap` while keeping the same document would have its replacement
+  // ignored entirely, while later mutations of the detached old map went on driving the player.
+  // Restarting on identity re-binds the flow without rebuilding `RcPlayerState`, so animation
+  // timelines, touch state and action-changed variables all survive the swap.
+  LaunchedEffect(state, namedValues) {
     snapshotFlow { namedValues.toMap() }
       .collect { current ->
-        if (current == applied) return@collect
-        (applied.keys - current.keys).forEach(state::clearNamedValue)
+        if (current == appliedNamedValues) return@collect
+        (appliedNamedValues.keys - current.keys).forEach(state::clearNamedValue)
         current.forEach { (name, value) ->
-          if (applied[name] != value) state.setNamedValue(name, value)
+          if (appliedNamedValues[name] != value) state.setNamedValue(name, value)
         }
-        applied = current
+        appliedNamedValues.clear()
+        appliedNamedValues.putAll(current)
         // `setNamedValue` writes into the state's maps without going through the action path, so
         // nothing else tells the draw layer a value moved.
         invalidationVersion += 1

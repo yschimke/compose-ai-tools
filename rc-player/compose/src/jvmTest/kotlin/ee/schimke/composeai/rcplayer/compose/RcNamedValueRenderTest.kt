@@ -1,6 +1,9 @@
 package ee.schimke.composeai.rcplayer.compose
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.toArgb
@@ -115,6 +118,68 @@ class RcNamedValueRenderTest {
       val restored = onRoot().captureToImage().toPixelMap()
       assertEquals(RED, restored[10, 10].toArgb())
       assertEquals(0, restored[40, 10].toArgb(), "the document's recorded 20 did not come back")
+    }
+
+  /**
+   * A parent that swaps in a different `SnapshotStateMap` while keeping the same document.
+   *
+   * The collector reads `namedValues` inside `snapshotFlow`, so a `LaunchedEffect` keyed only on
+   * `state` stayed bound to whichever map instance it started with: the replacement was ignored
+   * outright, while later mutations of the DETACHED old map went on driving the player. Keying on
+   * the holder as well re-binds the flow without rebuilding `RcPlayerState`.
+   */
+  @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
+  @Test
+  fun replacingTheNamedValueHolderRebindsTheCollector() =
+    runSkikoComposeUiTest(size = Size(60f, 20f), density = Density(1f)) {
+      mainClock.autoAdvance = false
+      val first = mutableStateMapOf<String, RcNamedValue>()
+      val second = mutableStateMapOf<String, RcNamedValue>()
+      var holder by mutableStateOf(first)
+      val document = widthDrivenDocument()
+      setContent { RcComposePlayer(document, namedValues = holder) }
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+
+      first["USER:width"] = RcNamedValue.FloatValue(50f)
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      assertEquals(RED, onRoot().captureToImage().toPixelMap()[40, 10].toArgb())
+
+      // The swap. `second` already carries a different value, which must take effect.
+      second["USER:width"] = RcNamedValue.FloatValue(20f)
+      holder = second
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      assertEquals(
+        0,
+        onRoot().captureToImage().toPixelMap()[40, 10].toArgb(),
+        "the replacement holder's value never reached the document",
+      )
+
+      // And the detached map must no longer drive anything.
+      first["USER:width"] = RcNamedValue.FloatValue(50f)
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      assertEquals(
+        0,
+        onRoot().captureToImage().toPixelMap()[40, 10].toArgb(),
+        "the detached old holder is still driving the player",
+      )
+
+      // A value applied through the OLD holder is still cleared when the new one drops it — the
+      // bookkeeping has to survive the effect restart, or the key stays stuck at its old override.
+      second["USER:width"] = RcNamedValue.FloatValue(50f)
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      second.remove("USER:width")
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      assertEquals(
+        0,
+        onRoot().captureToImage().toPixelMap()[40, 10].toArgb(),
+        "removing through the replacement holder did not restore the document's own value",
+      )
     }
 
   /** One canvas whose width *is* the named variable, so a host edit is directly visible. */
