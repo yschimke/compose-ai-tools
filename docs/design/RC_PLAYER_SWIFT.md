@@ -8,6 +8,16 @@ Implements #4068.
 
 ## Consuming it
 
+> [!WARNING]
+> **The Swift distribution is not shipping yet — see [#4222](https://github.com/yschimke/compose-ai-tools/issues/4222).**
+> The release job that builds `RcComposePlayer.xcframework.zip` runs out of heap during the
+> Kotlin/Native release link, so it is disabled: no release carries the asset, `Package.swift` on
+> `main` still holds its `v0.0.0` placeholder, and no bare `X.Y.Z` tag exists to resolve. The
+> `.package(...)` line below therefore describes the intended shape, not something you can add to a
+> project today — a resolve fails on the placeholder checksum. Everything after it (the call shape,
+> the export quirks) is accurate and still checked against the Kotlin source. The iOS klibs
+> themselves do publish to Maven Central and can be consumed from a Kotlin Multiplatform project.
+
 ```swift
 // Package.swift
 .package(url: "https://github.com/yschimke/compose-ai-tools.git", from: "1.15.1")
@@ -62,9 +72,14 @@ them means adding a Swift wrapper target beside the binary target, which
 [#4068](https://github.com/yschimke/compose-ai-tools/issues/4068) leaves for after the first
 published framework.
 
-**"Works exactly as written" is checked, not asserted.** `scripts/check-swift-sample.sh` extracts
-the `swift` blocks above and type-checks them against the assembled XCFramework, and the
-`rc-player-tests` CI job runs it right after building one. This document is therefore the tested
+**"Works exactly as written" is checked, not asserted — but the check is currently off.**
+`scripts/check-swift-sample.sh` extracts the `swift` blocks above and type-checks them against the
+assembled XCFramework, and the `rc-player-tests` CI job ran it right after building one. It no
+longer does: assembling the framework is what [#4222](https://github.com/yschimke/compose-ai-tools/issues/4222)
+disabled, and the script exits 0 when no framework is present, so leaving it wired in would have
+reported green while checking nothing. **Until that issue is closed, the sample below is asserted
+rather than checked** — run `scripts/check-swift-sample.sh` by hand against a locally assembled
+framework if you edit it. The intent, restored with the link: this document is the tested
 artifact — there is no second copy of the sample to keep in sync — and every property described
 here is a property of Kotlin/Native's Objective-C export rather than a choice made in this repo, so
 it can change under us without any Kotlin source changing. That is exactly the drift the check
