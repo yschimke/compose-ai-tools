@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.16.0](https://github.com/yschimke/compose-ai-tools/compare/v1.15.0...v1.16.0) (2026-08-19)
+
+
+### Features
+
+* **design-artifacts:** let a catalog exempt semantics-less renders from the completeness gate ([#4175](https://github.com/yschimke/compose-ai-tools/issues/4175)) ([453bc84](https://github.com/yschimke/compose-ai-tools/commit/453bc844d0dcfd4885d81aca8a9a3e398837a3de))
+* **design-catalog:** unlist compose-m3 / wear-m3 and scope both to pipeline features ([#4195](https://github.com/yschimke/compose-ai-tools/issues/4195)) ([58ed189](https://github.com/yschimke/compose-ai-tools/commit/58ed189fd32be131894ed0926188c6cf86ffdce3))
+* **rc-player:** distribute the Wasm player as a consumable npm bundle ([#4194](https://github.com/yschimke/compose-ai-tools/issues/4194)) ([f1f4eb3](https://github.com/yschimke/compose-ai-tools/commit/f1f4eb33671b5b690083073844301cf4c8640912))
+* **rc-player:** replace the host font map with an RcTypefaceLoader interface ([#4178](https://github.com/yschimke/compose-ai-tools/issues/4178)) ([654a33d](https://github.com/yschimke/compose-ai-tools/commit/654a33ddaaa3b4eb1e52975f9e1190a9309ae13b))
+* **rc-player:** ship a real default RcTypefaceLoader and move manifest loading into shared code ([#4185](https://github.com/yschimke/compose-ai-tools/issues/4185)) ([72947d7](https://github.com/yschimke/compose-ai-tools/commit/72947d74b81f5215bab2005e0522f8b02be309c6))
+* **rc-player:** ship the iOS player as an XCFramework consumable from Swift ([#4193](https://github.com/yschimke/compose-ai-tools/issues/4193)) ([2c1faab](https://github.com/yschimke/compose-ai-tools/commit/2c1faab3d1788c3c2fab3b4029f83d09961b0ac0))
+* serve the Wear M3 design-kit catalog on preview.coo.ee ([#4191](https://github.com/yschimke/compose-ai-tools/issues/4191)) ([09b6111](https://github.com/yschimke/compose-ai-tools/commit/09b6111d80225c7a887817251ec72a4363518c8a))
+
+
+### Bug Fixes
+
+* **build:** stop publishing the vendored embedded player, and record its package collision ([#4217](https://github.com/yschimke/compose-ai-tools/issues/4217)) ([eb84fd9](https://github.com/yschimke/compose-ai-tools/commit/eb84fd9ad53ad5c5180583dc72a522a67e40ac9e))
+* **ci:** give the Kotlin/Native compiler its own heap for the release link ([#4205](https://github.com/yschimke/compose-ai-tools/issues/4205)) ([25e4872](https://github.com/yschimke/compose-ai-tools/commit/25e4872120b1cf01f8499da7275db3d142681229))
+* **ci:** make the filmstrip, the interactive E2E and the serve routing tests deterministic ([#4187](https://github.com/yschimke/compose-ai-tools/issues/4187)) ([e654e1a](https://github.com/yschimke/compose-ai-tools/commit/e654e1abd7b915a9e0358c4daa5c70bd04ffce82))
+* **ci:** repair serve cache and fixture expectations ([#4188](https://github.com/yschimke/compose-ai-tools/issues/4188)) ([fe0e0dc](https://github.com/yschimke/compose-ai-tools/commit/fe0e0dc46cc6555e3d84fb57891ea34f10a0c1fc))
+* **daemon:** seed named overrides before the first composition pass ([#4223](https://github.com/yschimke/compose-ai-tools/issues/4223)) ([f404798](https://github.com/yschimke/compose-ai-tools/commit/f404798569b9c29566531f6fa44602f5a051e1ff))
+* **deploy,serve:** address Codex review on the rollout and verification fixes ([#4207](https://github.com/yschimke/compose-ai-tools/issues/4207)) ([dff399d](https://github.com/yschimke/compose-ai-tools/commit/dff399ddc6e00530369b041ae3d2392deefa4ca7))
+* **deploy,serve:** stop reporting success over surviving replicas, held locks and stale caches ([#4199](https://github.com/yschimke/compose-ai-tools/issues/4199)) ([c01e56c](https://github.com/yschimke/compose-ai-tools/commit/c01e56cb11fba4576e140d82fba87e285de80977))
+* **design-artifacts:** stop split-mode taking the expensive default in silence ([#4226](https://github.com/yschimke/compose-ai-tools/issues/4226)) ([465b908](https://github.com/yschimke/compose-ai-tools/commit/465b90880ccff0a875958e2e3386606a4f238ff4))
+* **design-artifacts:** type-check completeness.$comment ([#4201](https://github.com/yschimke/compose-ai-tools/issues/4201)) ([32f71e0](https://github.com/yschimke/compose-ai-tools/commit/32f71e00f972cd314b166dcb8d11a427acf69f43))
+* **design-map:** pair a dark-only catalog with its sole capture ([#4196](https://github.com/yschimke/compose-ai-tools/issues/4196)) ([e745f58](https://github.com/yschimke/compose-ai-tools/commit/e745f58919944d582dd44062810a47dc5ce1088b))
+* **preview:** coordinate rollouts and optimizer load ([#4168](https://github.com/yschimke/compose-ai-tools/issues/4168)) ([5b11d4c](https://github.com/yschimke/compose-ai-tools/commit/5b11d4cbcf50b77b8870a0abbc8d4da6d0788fcd))
+* **rc-js-player:** request a second document's axis, and re-measure for it ([#4180](https://github.com/yschimke/compose-ai-tools/issues/4180)) ([e50e2d1](https://github.com/yschimke/compose-ai-tools/commit/e50e2d1a47dd1a6895af1e0e8532bbe2e39fb393))
+* **rc-player:** evaluate content-state operations declared at the document root ([#4221](https://github.com/yschimke/compose-ai-tools/issues/4221)) ([14f3368](https://github.com/yschimke/compose-ai-tools/commit/14f33684fbe19378c2d2afe2816ca2ce9dccaf31))
+* **rc-player:** follow a replaced named-value holder, and rebuild semantics on invalidation ([#4213](https://github.com/yschimke/compose-ai-tools/issues/4213)) ([78c3b16](https://github.com/yschimke/compose-ai-tools/commit/78c3b166bca5389e4a4ca01cd0ab2e6644ae3215))
+* **rc-player:** named-value changes rebuild RcPlayerState and discard animation and touch state ([#4181](https://github.com/yschimke/compose-ai-tools/issues/4181)) ([7f90b25](https://github.com/yschimke/compose-ai-tools/commit/7f90b252f4df8f4cf9b3c2e3cedefe33f717b481))
+* **rc-player:** resolve branded typefaces in both embedded lanes ([#4174](https://github.com/yschimke/compose-ai-tools/issues/4174)) ([0d9216c](https://github.com/yschimke/compose-ai-tools/commit/0d9216c6d8d250eb025ea83365f7b558fa2223b9))
+* **rc-player:** resolve colours computed in a draw-content block ([#4171](https://github.com/yschimke/compose-ai-tools/issues/4171)) ([f92344f](https://github.com/yschimke/compose-ai-tools/commit/f92344f8b50bd605ca3397a5b4d7d6ab18e2b28c))
+* **rc-player:** un-strand RcNamedValueRenderTest from the old source set ([#4186](https://github.com/yschimke/compose-ai-tools/issues/4186)) ([2e91f6d](https://github.com/yschimke/compose-ai-tools/commit/2e91f6da9a31d12a0bdc9fe2383935d44abafa6e))
+* **rc-player:** unrepresentable named types, colliding font identities, swallowed cancellation ([#4198](https://github.com/yschimke/compose-ai-tools/issues/4198)) ([f0a8613](https://github.com/yschimke/compose-ai-tools/commit/f0a86139d03803f47f4d7102dca68c532fc15699))
+* **release:** check the Swift tag before writing, and compute one snapshot version ([#4208](https://github.com/yschimke/compose-ai-tools/issues/4208)) ([550dd18](https://github.com/yschimke/compose-ai-tools/commit/550dd18c23bcd8cf0120f9185c00a4e532bada36))
+* **release:** publish Apple targets from macOS, and make the Swift tag resolvable ([#4197](https://github.com/yschimke/compose-ai-tools/issues/4197)) ([dc9b115](https://github.com/yschimke/compose-ai-tools/commit/dc9b1152753ea20f47f20e345fc12fb39d8f10a1))
+* **renderer:** bind the desktop PNG encode against whatever skiko resolves ([#4200](https://github.com/yschimke/compose-ai-tools/issues/4200)) ([42d2776](https://github.com/yschimke/compose-ai-tools/commit/42d2776c00a165942e57f1ce0dd243c2b85e09da))
+* **serve:** assert the viewer cache header a laneless catalog actually gets ([#4203](https://github.com/yschimke/compose-ai-tools/issues/4203)) ([4693b8d](https://github.com/yschimke/compose-ai-tools/commit/4693b8d7ba55655cc057a824bbdbf290d306dfac))
+* **serve:** rename a helper colliding with the preview, and scope usage rules per module ([#4206](https://github.com/yschimke/compose-ai-tools/issues/4206)) ([a8ccf1c](https://github.com/yschimke/compose-ai-tools/commit/a8ccf1c4a9486de0c9663b871fe7d49fdcbabff6))
+* **serve:** show the component a delegating sticker delegates to ([#4179](https://github.com/yschimke/compose-ai-tools/issues/4179)) ([157287b](https://github.com/yschimke/compose-ai-tools/commit/157287b78b61b61651547a565d5ff32ff93237c6))
+
 ## [1.15.0](https://github.com/yschimke/compose-ai-tools/compare/v1.14.1...v1.15.0) (2026-08-18)
 
 
