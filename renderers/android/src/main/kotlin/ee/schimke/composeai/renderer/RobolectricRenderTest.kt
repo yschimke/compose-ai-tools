@@ -1058,6 +1058,14 @@ abstract class RobolectricRenderTestBase(
      */
     val settleTargetMs: Long?
       get() = null
+
+    /**
+     * Whether [settleTargetMs] came from `@SettledPreview(afterMs = …)` rather than auto mode — an
+     * exact coordinate, which the visual-quiescence probe must not move off. See
+     * [shouldAdvanceClockForVisualSettling].
+     */
+    val hasExactSettle: Boolean
+      get() = false
   }
 
   private data class CaptureRenderJob(
@@ -1068,6 +1076,7 @@ abstract class RobolectricRenderTestBase(
     override val scroll: ScrollCapture? = capture.scroll
     override val settleTargetMs: Long? =
       capture.settle?.let { settleCaptureTargetMs(it.afterMs, it.maxMs, CAPTURE_ADVANCE_MS) }
+    override val hasExactSettle: Boolean = (capture.settle?.afterMs ?: 0) > 0
   }
 
   private data class ProductRenderJob(
@@ -1589,6 +1598,7 @@ abstract class RobolectricRenderTestBase(
               shouldAdvanceClockForVisualSettling(
                 advanceTimeMillis = job.advanceTimeMillis,
                 hasFollowingJobs = jobIndex < jobs.lastIndex,
+                hasExactSettle = job.hasExactSettle,
               )
             // When the job has no explicit `advanceTimeMillis`, default
             // to `CAPTURE_ADVANCE_MS` *or* the current virtual time —
@@ -2814,10 +2824,20 @@ internal const val VISUAL_SETTLE_FRAME_MS = 16L
 public fun settleCaptureTargetMs(afterMs: Int, maxMs: Int, captureAdvanceMs: Long): Long =
   if (afterMs > 0) afterMs.toLong() else captureAdvanceMs + maxMs.toLong()
 
+/**
+ * Whether a job may spend extra clock on the adaptive pixel-quiescence probe before capturing.
+ *
+ * Allowed only for an untimed final job. An explicit `advanceTimeMillis` is a snapshot of a chosen
+ * coordinate, and [hasExactSettle] — `@SettledPreview(afterMs = …)` — is the same promise written a
+ * different way: the probe always spends at least one more 16ms frame and up to
+ * [VISUAL_SETTLE_MAX_SAMPLES] of them, which would publish an "exact 350ms" capture from somewhere
+ * in 366–414ms (issue #4202 review). Auto settle keeps the probe: it names a bound, not a moment.
+ */
 internal fun shouldAdvanceClockForVisualSettling(
   advanceTimeMillis: Long?,
   hasFollowingJobs: Boolean,
-): Boolean = advanceTimeMillis == null && !hasFollowingJobs
+  hasExactSettle: Boolean = false,
+): Boolean = advanceTimeMillis == null && !hasExactSettle && !hasFollowingJobs
 
 /**
  * Captures [file] twice and returns immediately if both decoded frames have identical pixels. After

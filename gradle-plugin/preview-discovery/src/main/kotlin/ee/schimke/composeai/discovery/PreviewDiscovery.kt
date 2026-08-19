@@ -1925,10 +1925,20 @@ object PreviewDiscovery {
     // second composition for the still, a change to the render loop rather than to this plan, so
     // the still keeps its unsettled behaviour here and the pairing is reported rather than faked.
     val rawSettleSpec = extractSettleSpec(annotations)
+    // Every product that *records a timeline* collides the same way, not just `@AnimatedPreview`:
+    // an `@InteractionPreview` recording and a `@FocusedPreview(gif = true)` walk each replay from
+    // the shared clock too, and the Android renderer deliberately sorts them after the stills.
+    val motionProduct =
+      when {
+        animationSpec != null -> "@AnimatedPreview"
+        interactionSpec != null -> "@InteractionPreview"
+        focusGifSpec != null -> "@FocusedPreview(gif = true)"
+        else -> null
+      }
     val settleSpec =
-      if (rawSettleSpec != null && animationSpec != null) {
+      if (rawSettleSpec != null && motionProduct != null) {
         warnings.add(
-          "@SettledPreview on '${classInfo.name}.${method.name}' is ignored: @AnimatedPreview on " +
+          "@SettledPreview on '${classInfo.name}.${method.name}' is ignored: $motionProduct on " +
             "the same function drives the same paused clock, and the still and the motion capture " +
             "cannot both own one timeline. Split them onto separate preview functions to settle " +
             "the still."
@@ -2924,9 +2934,14 @@ object PreviewDiscovery {
     // (Lottie / SVG / tile asset) has nothing to spend — same reasoning as ambient above.
     //
     // A settle that collides with a motion capture on the same function has already been dropped
-    // by `extractSettleSpec`'s caller, which owns the warning; the `effectiveAnimation` guard here
-    // is only a backstop so a future caller cannot reintroduce the pairing silently.
-    val effectiveSettle = if (nonComposable || effectiveAnimation != null) null else settle
+    // by `extractSettleSpec`'s caller, which owns the warning; the guards here are only a backstop
+    // so a future caller cannot reintroduce the pairing silently.
+    val effectiveSettle =
+      if (nonComposable || effectiveAnimation != null || interaction != null || focusGif != null) {
+        null
+      } else {
+        settle
+      }
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
@@ -3016,7 +3031,9 @@ object PreviewDiscovery {
           glimmerEnvironment = effectiveGlimmerEnvironment,
           settle = effectiveSettle,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
-          cost = STATIC_COST,
+          // Same reasoning as the still fan-out below: a settle walks its window frame by frame,
+          // so it is not the one-pass capture STATIC_COST describes.
+          cost = effectiveSettle?.let { settleCaptureCost(it.windowMs) } ?: STATIC_COST,
         )
       }
       val focusGifCaptures: List<Capture> =
@@ -3165,9 +3182,12 @@ object PreviewDiscovery {
               // fan-out is in the *count*, which lives in the captures
               // list itself. Focus drive is similar: one moveFocus call
               // per stop, fixed-time work, no extra cost bucket.
+              val settleForRow = if (scroll == null && ms == null) effectiveSettle else null
               val captureCost =
                 when (scroll?.mode) {
-                  null -> STATIC_COST
+                  // A settled still walks its window a frame at a time, so it is not the one-pass
+                  // capture STATIC_COST describes — see `settleCaptureCost`.
+                  null -> settleForRow?.let { settleCaptureCost(it.windowMs) } ?: STATIC_COST
                   ScrollMode.TOP -> SCROLL_TOP_COST
                   ScrollMode.END -> SCROLL_END_COST
                   ScrollMode.LONG -> SCROLL_LONG_COST
@@ -3185,7 +3205,7 @@ object PreviewDiscovery {
                 // timing is an exact snapshot of a chosen coordinate — settling either would move a
                 // capture off the frame it was asked for. So the settle rides only on the plain
                 // still, which is the capture the reveal actually spoils.
-                settle = if (scroll == null && ms == null) effectiveSettle else null,
+                settle = settleForRow,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
