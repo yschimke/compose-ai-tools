@@ -2944,6 +2944,7 @@ class ServeHttpServer(
             branch = state.config.branch,
             listed = state.config.listed,
             group = state.config.group?.heading,
+            loadPriority = state.config.loadPriority,
             state = state.loadState,
             error = state.error,
           )
@@ -8025,6 +8026,12 @@ private data class AdminCatalogDto(
   val listed: Boolean,
   /** The front-page section heading this catalog is published under; null ⇒ grouped by owner. */
   val group: String? = null,
+  /**
+   * Startup fetch order, highest first ([ServeCatalogsConfig.Entry.loadPriority]). Reported so a
+   * deployment reconcile can see what the box will actually load first on its next boot, rather
+   * than having to read the box's `catalogs.json`.
+   */
+  val loadPriority: Int = 0,
   /** `pending` / `loaded` / `failed` / `stale` ([CatalogLoadTracker.State.loadState]). */
   val state: String,
   val error: String? = null,

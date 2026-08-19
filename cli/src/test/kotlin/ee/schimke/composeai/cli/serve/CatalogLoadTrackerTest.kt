@@ -78,4 +78,64 @@ class CatalogLoadTrackerTest {
     assertEquals("stale", reply.loadState)
     assertEquals("new branch content is malformed", reply.error)
   }
+
+  @Test
+  fun `load order is by priority, leaving configured order to the front page`() {
+    val tracker = tracker()
+    tracker.add(
+      CatalogLoadTracker.Config(
+        system = "m3-catalog",
+        listed = true,
+        repo = "yschimke/m3-catalog",
+        branch = "design-artifacts/m3-catalog",
+        loadPriority = 20,
+      )
+    )
+    tracker.add(
+      CatalogLoadTracker.Config(
+        system = "wear-m3-catalog",
+        listed = true,
+        repo = "yschimke/wear-m3-catalog",
+        branch = "design-artifacts/wear-m3-catalog",
+        loadPriority = 10,
+      )
+    )
+
+    // A runtime registration is APPENDED, which is exactly how the two catalogs a box most wants
+    // back ended up loading last (#4231): fetch order now leads with them...
+    assertEquals(
+      listOf("m3-catalog", "wear-m3-catalog", "jetnews", "reply"),
+      tracker.loadOrder().map { it.config.system },
+    )
+    // ...while everything driven by configured order — the front page, and the session
+    // firstAvailableSystem hands the readiness probe — is untouched.
+    assertEquals(
+      listOf("jetnews", "reply", "m3-catalog", "wear-m3-catalog"),
+      tracker.snapshot().map { it.config.system },
+    )
+    tracker.recordSuccess("jetnews")
+    tracker.recordSuccess("m3-catalog")
+    assertEquals("jetnews", tracker.firstAvailableSystem())
+  }
+
+  @Test
+  fun `equal priorities keep configured order`() {
+    val tracker = tracker()
+
+    assertEquals(listOf("jetnews", "reply"), tracker.loadOrder().map { it.config.system })
+  }
+
+  @Test
+  fun `relisting carries the new load priority without touching load state`() {
+    val tracker = tracker()
+    tracker.recordSuccess("reply")
+
+    assertTrue(tracker.relist("reply", listed = false, group = null, loadPriority = 5))
+
+    val reply = tracker.snapshot().single { it.config.system == "reply" }
+    assertEquals(5, reply.config.loadPriority)
+    assertFalse(reply.config.listed)
+    assertTrue(reply.available, "a listing change must not drop the registered copy")
+    assertEquals(listOf("reply", "jetnews"), tracker.loadOrder().map { it.config.system })
+  }
 }
