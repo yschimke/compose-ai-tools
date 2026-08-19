@@ -179,15 +179,18 @@ export async function openScorer({ executablePath, log = () => {} } = {}) {
  *
  * Restated in `ServeWeb.kt` (the chip's colour) — the thresholds live here because this is where
  * the number is minted, and they are chosen from the distribution a real catalog produces rather
- * than from round numbers. Across m3-catalog's 120 published pairs the median is 99.70% and 72 sit
- * at or above 99.5%, so `match` is the "nothing to look at" majority; the 8 below 97% are the
- * genuine divergences (a 57.98% corner-radius sheet, a 72.80% colour grid, an 85.75% type scale).
+ * than from round numbers. They moved with the metric (issue #4290): a score averaged over the
+ * whole canvas put nearly every pair in the high nineties, so the bands sat at 99.5/97 to tell
+ * them apart at all. Measured over drawn content instead, wear-m3-catalog's 186 published pairs
+ * run 4%..100% with a median of 91 — 63 at or above 95, and the 59 below 85 the divergences a
+ * reader would name on sight (a 4% scroll indicator, a 52% picker, a 70% stepper that lost its
+ * button fills).
  *
  * Exported so the driver's tests can pin the bands against those same numbers.
  */
 export function matchBand(percent) {
   if (!Number.isFinite(percent)) return null;
-  if (percent >= 99.5) return "match";
-  if (percent >= 97) return "close";
+  if (percent >= 95) return "match";
+  if (percent >= 85) return "close";
   return "off";
 }

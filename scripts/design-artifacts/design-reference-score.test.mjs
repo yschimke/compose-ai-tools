@@ -16,15 +16,15 @@ import { test } from "node:test";
 import { matchBand, openScorer } from "./design-reference-score.mjs";
 
 test("the verdict bands come from a real catalog's distribution", () => {
-  // Across m3-catalog's 120 published pairs the median match is 99.70% and 72 sit at or above
-  // 99.5, so `match` is the "nothing to look at" majority rather than a perfection test. The 8
-  // below 97 are the genuine divergences — a 57.98% corner-radius sheet, a 72.80% colour grid.
+  // Across wear-m3-catalog's 186 published pairs the median match is 91 and 63 sit at or above 95,
+  // so `match` is the "nothing to look at" majority rather than a perfection test. The 59 below 85
+  // are the genuine divergences — a 4% scroll indicator, a 52% picker, a 70% stepper.
   assert.equal(matchBand(100), "match");
-  assert.equal(matchBand(99.5), "match");
-  assert.equal(matchBand(99.49), "close");
-  assert.equal(matchBand(97), "close");
-  assert.equal(matchBand(96.99), "off");
-  assert.equal(matchBand(57.98), "off");
+  assert.equal(matchBand(95), "match");
+  assert.equal(matchBand(94.99), "close");
+  assert.equal(matchBand(85), "close");
+  assert.equal(matchBand(84.99), "off");
+  assert.equal(matchBand(51.6), "off");
   assert.equal(matchBand(0), "off");
 });
 

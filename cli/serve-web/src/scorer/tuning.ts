@@ -16,6 +16,26 @@ export const EDGE_POSITION_COST = 10;
 export const EDGE_GRADIENT_THRESHOLD = 12;
 export const LUMA_TOLERANCE = 16;
 
+/**
+ * The luminance gap at which a pixel counts as *completely* wrong.
+ *
+ * Below this the cost ramps, so a fill that drifted a shade still reads as mostly right. At or above
+ * it the pixel is charged in full: half the luminance range apart is not a tone that moved, it is a
+ * different mark. Charging the gap linearly all the way to 255 — which is what this used to do —
+ * meant a filled control sitting where the reference has bare background cost about a fifth of a
+ * pixel, so a component that had lost its fills entirely still read as "mostly matching".
+ */
+export const FULL_DIFFERENCE_DELTA = 128;
+
+/**
+ * How far the content mask reaches beyond the pixels that carry detail (see `contentMask`).
+ *
+ * One pixel, because a mark is wider than its own gradient: the anti-aliased skirt of a hairline
+ * stroke is part of the stroke, and leaving it outside the measured region would put a stroke's
+ * disagreement in the numerator while its own pixels sat outside the denominator.
+ */
+export const CONTENT_DILATION = 1;
+
 // Longest side of the downscale that content-box detection samples, and how far a pixel may sit
 // from the backdrop colour before it counts as drawn.
 export const BOX_SAMPLE_SIDE = 256;

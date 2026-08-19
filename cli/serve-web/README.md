@@ -330,7 +330,7 @@ fail — a *negative* assertion ("the viewer must no longer spell it the old way
 is vacuously true against minified text, so it would retire itself silently.
 
 One thing worth knowing about `grade`: the 90/75 bands are NOT the spec lane's
-99.5/97, and unifying them would make one of the two surfaces lie. A wall
+95/85, and unifying them would make one of the two surfaces lie. A wall
 triaging dozens of rows and a lane judging one chosen pair are different
 questions about the same number.
 

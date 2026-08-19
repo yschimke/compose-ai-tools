@@ -1411,6 +1411,17 @@ finding, not noise to smooth away. Near-empty captures are the exception and fal
 whole-canvas scoring, because a content box of a few percent is located by whichever stray mark
 happens to be present rather than by the component.
 
+**And the score is a fraction of the drawn content, not of the canvas.** Averaging each pixel's cost
+over the whole frame made the number describe how much empty room a component was rendered into: the
+same missing mark scored 85.7% on a 9×7 frame and 99.3% on 41×31, and two watch screens that agreed
+on nothing but their black background published a 93% match (issue #4290). The cost is now divided by
+the pixels that carry content — where either frame has detail, plus wherever the two disagree — so a
+component that has lost half its marks reads as having lost half its marks at any canvas size. A
+pixel more than half the luminance range out of place is charged in full rather than in proportion to
+its own tone, so a control that lost its fill costs what an absent control costs. Because the numbers
+moved, so did the spec lane's verdict bands (now `match` ≥ 95, `close` ≥ 85); the compare wall's
+90/75 grades were left alone, since they were already reading a spread the old score never produced.
+
 Measure a whole lane with [`scripts/compare-audit.mjs`](../scripts/compare-audit.mjs): `mirror`
 pulls a catalog's compare page and its artifacts onto disk, `run` replays them in Chromium and
 reports per-catalog mean / p10 / min / count-below-threshold. `run --patch <format-compare.js>`
