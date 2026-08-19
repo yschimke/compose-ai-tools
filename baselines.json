@@ -1188,7 +1188,7 @@
     "functionName": "SpinnerTimelinePreview",
     "module": "samples:android",
     "renderBasename": "SpinnerTimelinePreview_Spinner_Timeline-20a9aec5_TIME_1500ms.png",
-    "sha256": "f9c3376703cc046ab7db01a412e4167c1f8bcd89569f0ab4a238d48e126cd7ee",
+    "sha256": "ee6ee223fb1a231c9e18b83d5f5a845be25d179325054b60db4489f3b902c2bf",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt"
   },
   "samples:android/com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleAccent_accent": {
@@ -1263,6 +1263,22 @@
     "sha256": "a7ede269b8b34462117176a1c8da3d603d792df660e81cc0cb59c258ff5aa9ba",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollTimedPreview_ScrollTimed": {
+    "captureLabel": "500ms",
+    "functionName": "RedToBlueScrollTimedPreview",
+    "module": "samples:android",
+    "renderBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
+    "sha256": "b1ccafb0ec51d0986b65ecc882768840f40aaf7d07927c20155023f4058b2abb",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollTimedPreview_ScrollTimed#1": {
+    "captureLabel": "500ms \u00b7 scroll long",
+    "functionName": "RedToBlueScrollTimedPreview",
+    "module": "samples:android",
+    "renderBasename": "RedToBlueScrollTimedPreview_ScrollTimed-d5690075_TIME_500ms.png",
+    "sha256": "fbf5b9a41a746717cf0dc280ed5ff455a49d2443db4c970c2765896dff5a8f83",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview": {
     "captureLabel": "",
     "functionName": "SemanticsClickableButtonPreview",
@@ -1302,6 +1318,38 @@
     "renderBasename": "SettingsListScrollGifPreview_SettingsListScrollGif-4d35aaee.gif",
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt"
+  },
+  "samples:android/com.example.sampleandroid.SettledPreviewsKt.DeferredValueSettledPreview_Deferred value": {
+    "captureLabel": "",
+    "functionName": "DeferredValueSettledPreview",
+    "module": "samples:android",
+    "renderBasename": "DeferredValueSettledPreview_Deferred_value-a8cd1a6d.png",
+    "sha256": "59f29b55673396fb78accd5e2eb5ccdc8b25e5ed78d18f9c36bbcb76e5348732",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SettledPreviewsKt.DeferredValueUnsettledPreview_Deferred unsettled": {
+    "captureLabel": "",
+    "functionName": "DeferredValueUnsettledPreview",
+    "module": "samples:android",
+    "renderBasename": "DeferredValueUnsettledPreview_Deferred_unsettled-0ca0ff3c.png",
+    "sha256": "a13e7b7ed173e264f99ed09729bc2e0fc4805f909f74977cc8b73127f16f16a9",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SettledPreviewsKt.RevealCardSettledPreview_Reveal settled": {
+    "captureLabel": "",
+    "functionName": "RevealCardSettledPreview",
+    "module": "samples:android",
+    "renderBasename": "RevealCardSettledPreview_Reveal_settled-c7245802.png",
+    "sha256": "a73290fe05f8d1eb3a58710de9d8f01c1d302de03352bbdddb4fb55cd2b999fb",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.SettledPreviewsKt.RevealCardUnsettledPreview_Reveal unsettled": {
+    "captureLabel": "",
+    "functionName": "RevealCardUnsettledPreview",
+    "module": "samples:android",
+    "renderBasename": "RevealCardUnsettledPreview_Reveal_unsettled-7b3359bc.png",
+    "sha256": "df68891277ac18120738fcbc3413df1f0d682ab53ae5ae2b7458be1aec05f26f",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettledPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery \u2014 fBm Clouds (animated, AGSL)": {
     "captureLabel": "",
@@ -2118,6 +2166,22 @@
     "renderBasename": "ScrollingListPreview_Scrolling_List-c4e44f3f_SCROLL_gif.gif",
     "sha256": "3ccdbb8ec3edc2bd335db90dd35264769553b89082ead162bffbd15e65a2f643",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.SettledPreviewsKt.DesktopRevealSettledPreview_Reveal settled": {
+    "captureLabel": "",
+    "functionName": "DesktopRevealSettledPreview",
+    "module": "samples:cmp",
+    "renderBasename": "DesktopRevealSettledPreview_Reveal_settled-fd6af239.png",
+    "sha256": "a94a3ec4ff17bfbaef4a42e1bfbed7c1a2a6177067b599137ecb5762108046ce",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/SettledPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.SettledPreviewsKt.DesktopRevealUnsettledPreview_Reveal unsettled": {
+    "captureLabel": "",
+    "functionName": "DesktopRevealUnsettledPreview",
+    "module": "samples:cmp",
+    "renderBasename": "DesktopRevealUnsettledPreview_Reveal_unsettled-19a0a782.png",
+    "sha256": "df68891277ac18120738fcbc3413df1f0d682ab53ae5ae2b7458be1aec05f26f",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/SettledPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery \u2014 fBm Clouds (animated)": {
     "captureLabel": "",
@@ -3228,7 +3292,7 @@
     "functionName": "ButtonPressed",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ButtonPressed-2ae1b0cc.png",
-    "sha256": "2641819d84f4750cdc5da7e3b2160e4fd370ecb98d5330841c39ebfa0327ec65",
+    "sha256": "dc914e5bd5473928e11421ee3fd5e8a9397088c2df8f9dbabb9dfc3bafae56b7",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker": {
@@ -3421,6 +3485,14 @@
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "SwitchButtonOn-3f3536cc.png",
     "sha256": "eb4e7e0f5d27c81076996125473339a6511555f7398c5ef2a55cf70b919bdb4b",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn#1": {
+    "captureLabel": "",
+    "functionName": "SwitchButtonOn",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "SwitchButtonOn-3f3536cc.apng",
+    "sha256": "6abf9a29557ef90ee98db8c62414e2ba04ed5db872e0153cd1da7f9924beb634",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off": {
