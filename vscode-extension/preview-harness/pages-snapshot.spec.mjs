@@ -581,6 +581,27 @@ const FIXTURE_STATES = [
     },
   },
   {
+    // The same launcher on the COMPARISON WALL, whose catalog half is page-scoped: the wall shows
+    // every component and singles out none, so its offer reads "these comparisons" and files a
+    // report naming the page and its lane (issue #4289). Its own shot rather than a note on the
+    // viewer's, because this is the half that was missing — the wall carried no `#cp-report` at
+    // all, so the panel offered the preview server as the only route out of a page whose whole
+    // subject is a catalog's fidelity — and a surface with no baseline is a surface that can lose
+    // it again unnoticed.
+    fixture: "serve-format-compare",
+    suffix: "report-menu",
+    apply: async (page) => {
+      await page.addStyleTag({
+        content:
+          "*, *::before, *::after { transition-duration: 0ms !important; }",
+      });
+      await page.click(".cp-fab-btn");
+      await page.waitForSelector(".cp-fab-menu[open] .cp-fab-panel");
+      await page.waitForSelector(".cp-fab-catalog:not([hidden])");
+      await page.waitForSelector("html[data-cp-capture-ready]");
+    },
+  },
+  {
     // A component under the POINTER. The sheet carries no resting marks, so this is the whole
     // discovery story: the outline appears where you point, and it appears whether or not the
     // opt-in layer is on (this shot is taken with it off, which is the default). A hover state
@@ -3114,6 +3135,48 @@ test("contract · the sidebar filter follows the pane it is pointed at", async (
   await page.click('.cp-pane-tab[data-pane="components"]');
   await expect.poll(shownPages).toBe(allPages);
   await expect.poll(shownCards).toBeLessThan(allCards);
+});
+
+test("contract · the report launcher offers a catalog only where one can be filed", async ({
+  page,
+}) => {
+  // The catalog half is server-rendered `hidden` and unhidden by `reportLauncher.ts` only on a
+  // page carrying `#cp-report`. That is markup and script; whether it is actually INVISIBLE is
+  // CSS, and `.cp-fab-choice { display: grid }` out-specified the UA's `[hidden]` rule — so the
+  // entry stood on every page, wired to nothing, and pressing it did nothing at all (issue #4289).
+  // A DOM-only test cannot see that; this one asks the browser for the computed box.
+  for (const [name, contentType] of SERVE_ASSETS) {
+    await page.route(`**/assets/serve/**/${name}`, (route) =>
+      route.fulfill({ path: resolve(serveAssetsDir, name), contentType }),
+    );
+  }
+  await page.route("**/render/**", (route) =>
+    route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+  );
+  const openLauncher = async () => {
+    await page.click(".cp-fab-btn");
+    await expect(page.locator(".cp-fab-panel")).toBeVisible();
+  };
+
+  // The landing carries no per-preview affordance, so no catalog report can be filed from it.
+  await page.goto("/preview-harness/fixtures/pages/serve-landing.html");
+  await openLauncher();
+  await expect(page.locator(".cp-fab-catalog")).toBeHidden();
+  // …and the server half is still offered, so the panel is never a dead end.
+  await expect(page.locator(".cp-fab-panel .cp-report-bug button")).toBeVisible();
+
+  // The comparison wall does carry one, and it says what it is about and where it goes.
+  await page.goto("/preview-harness/fixtures/pages/serve-format-compare.html");
+  await openLauncher();
+  const catalog = page.locator(".cp-fab-catalog");
+  await expect(catalog).toBeVisible();
+  await expect(catalog).toContainText("these comparisons");
+  await expect(catalog).toContainText("yschimke/compose-ai-tools");
+  // And it opens that report in place rather than following a fragment that names nothing.
+  await catalog.click();
+  await expect(
+    page.locator("#cp-report .cp-report-summary-input"),
+  ).toBeFocused();
 });
 
 test("contract · a page branch opens from the keyboard, and Enter still follows it", async ({

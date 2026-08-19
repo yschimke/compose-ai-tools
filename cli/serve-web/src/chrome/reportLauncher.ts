@@ -50,6 +50,19 @@ function wireCatalogChoice(): void {
     // useless next to "goes to `acme/widgets`" — so the generic wording is only the fallback for a
     // page whose affordance published no repo.
     const repo = report.getAttribute("data-cp-repo") || "";
+    // …and what it is about, from the same affordance. The offer's default wording names a single
+    // preview, which is true on the viewer and false on the comparison wall — that page shows every
+    // component at once and files a page-scoped report (issue #4289). Server-published rather than
+    // inferred from the URL, because the affordance is the thing that knows what it files.
+    const subject = report.getAttribute("data-cp-subject") || "";
+    const what = choice.querySelector<HTMLElement>(".cp-fab-what");
+    if (what && subject) {
+        const strong = document.createElement("strong");
+        strong.textContent = subject;
+        // `replaceChildren` + `append`, not innerHTML: the subject is server-rendered text like
+        // every other value this file puts on the page.
+        what.replaceChildren("Something is wrong with ", strong);
+    }
     const who = choice.querySelector<HTMLElement>(".cp-fab-who");
     if (who && repo) {
         const code = document.createElement("code");

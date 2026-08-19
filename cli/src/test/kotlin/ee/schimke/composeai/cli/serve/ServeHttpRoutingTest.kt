@@ -2436,6 +2436,19 @@ class ServeHttpRoutingTest {
       pathBody.contains("data-rc-neutral=\"/compose-m3/render/$previewId.rc\""),
       "the path-mounted page keeps its RC document URL under the catalog path: $pathBody",
     )
+    // …and the page can be reported against the CATALOG. Without `#cp-report` here the floating
+    // launcher keeps its catalog half hidden, leaving the preview server's own tracker as the only
+    // route out of a page whose whole subject is a catalog's fidelity (issue #4289).
+    assertTrue(
+      pathBody.contains("id=\"cp-report\"") &&
+        pathBody.contains("data-cp-subject=\"these comparisons\""),
+      "the comparison wall offers the catalog tracker: $pathBody",
+    )
+    assertTrue(
+      pathBody.contains("### Which page") && !pathBody.contains("| Preview |"),
+      "the wall's report is page-scoped — it names no preview it cannot honestly single out: " +
+        pathBody,
+    )
 
     val (queryCode, queryBody) = get("/compare?session=compose-m3")
     assertEquals(200, queryCode)
