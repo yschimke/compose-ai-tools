@@ -90,6 +90,8 @@ import java.io.OutputStream
 import java.lang.management.ManagementFactory
 import java.nio.file.Path
 import java.util.Base64
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.BlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
@@ -249,6 +251,8 @@ class JsonRpcServer(
     System.getProperty(DATA_FETCH_RERENDER_BUDGET_PROP)?.toLongOrNull()
       ?: DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS,
   private val interactiveFrameIntervalMs: Long = INTERACTIVE_FRAME_INTERVAL_MS,
+  private val interactiveBurstIntervalMs: Long = INTERACTIVE_BURST_INTERVAL_MS,
+  private val interactiveBurstMs: Long = INTERACTIVE_BURST_MS,
   /**
    * Stage-2 in-process compile. When non-null, `compileSources` requests dispatch through this
    * service; on `Ok` we swap the user classloader the same way `fileChanged({kind:source})` does.
@@ -478,6 +482,30 @@ class JsonRpcServer(
 
   /** Per-held-session frame loops for live previews with time-based animations. */
   private val interactiveFrameLoops = ConcurrentHashMap<String, Thread>()
+
+  /**
+   * Per-stream wall-clock deadline (epoch ms) until which the frame loop runs at
+   * [interactiveBurstIntervalMs] instead of the idle [interactiveFrameIntervalMs]. Set by
+   * [handleInteractiveInput] every time an input reaches a held session; absent or in the past
+   * means "idle cadence".
+   *
+   * The idle cadence exists to keep a *resting* preview cheap, and at 250ms it samples four frames
+   * a second. Press feedback is shorter than that gap end to end — a Material ripple fades in over
+   * ~75ms and back out over ~150ms — so a tap's entire animation used to fall between two idle
+   * frames and the click looked like it had done nothing (wear-m3-catalog#32). Bursting for
+   * [interactiveBurstMs] after each input samples the animation the input started; the frame
+   * registry's dedup turns the frames that end up identical into heartbeats, so a burst over a
+   * component that does not animate costs renders but almost no wire.
+   */
+  private val interactiveBurstUntilMs = ConcurrentHashMap<String, Long>()
+
+  /**
+   * Per-stream wake channel for the frame loop, so an input that starts a burst does not wait out
+   * an idle sleep it is already inside. The loop parks on `poll(interval)`;
+   * [handleInteractiveInput] offers a token to cut that park short. Capacity 1 with a dropping
+   * `offer` — the token means "re-evaluate now", so a second one adds nothing.
+   */
+  private val interactiveFrameWakes = ConcurrentHashMap<String, BlockingQueue<Unit>>()
 
   private val lastFrameHashes = ConcurrentHashMap<String, String>()
 
@@ -2944,6 +2972,8 @@ class JsonRpcServer(
   ) {
     if (interactiveFrameIntervalMs <= 0L) return
     stopInteractiveFrameLoop(streamId)
+    val wake = ArrayBlockingQueue<Unit>(1)
+    interactiveFrameWakes[streamId] = wake
     val thread =
       Thread(
         {
@@ -2956,7 +2986,10 @@ class JsonRpcServer(
           ) {
             requestInteractiveRender(streamId, previewId, session)
             try {
-              Thread.sleep(interactiveFrameIntervalMs)
+              // Park on the wake channel rather than sleeping flat, so an input that starts a
+              // burst is not stuck behind the idle interval it arrived in the middle of. A token
+              // means "the cadence may have changed"; the loop re-reads it on the next pass.
+              wake.poll(interactiveFrameCadenceMs(streamId), TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
               Thread.currentThread().interrupt()
               return@Thread
@@ -2972,6 +3005,34 @@ class JsonRpcServer(
 
   private fun stopInteractiveFrameLoop(streamId: String) {
     interactiveFrameLoops.remove(streamId)?.interrupt()
+    interactiveFrameWakes.remove(streamId)
+    interactiveBurstUntilMs.remove(streamId)
+  }
+
+  /**
+   * How long the frame loop for [streamId] should wait before its next render — the burst cadence
+   * while an input is still settling, the idle cadence otherwise. See [interactiveBurstUntilMs].
+   */
+  private fun interactiveFrameCadenceMs(streamId: String): Long {
+    val until = interactiveBurstUntilMs[streamId] ?: return interactiveFrameIntervalMs
+    if (System.currentTimeMillis() >= until) {
+      // Expired: drop the entry so the map does not accumulate one per stream that ever saw input.
+      interactiveBurstUntilMs.remove(streamId, until)
+      return interactiveFrameIntervalMs
+    }
+    return minOf(interactiveBurstIntervalMs, interactiveFrameIntervalMs)
+  }
+
+  /**
+   * Run [streamId]'s frame loop at the burst cadence for the next [interactiveBurstMs], and wake it
+   * if it is parked. Called for every input that reaches a held session: the frame the input's own
+   * render paints is the one at t≈0, which for press feedback is the frame *before* anything is
+   * visible, so the animation only reaches the client if the frames after it are sampled too.
+   */
+  private fun startInteractiveBurst(streamId: String) {
+    if (interactiveFrameIntervalMs <= 0L || interactiveBurstMs <= 0L) return
+    interactiveBurstUntilMs[streamId] = System.currentTimeMillis() + interactiveBurstMs
+    interactiveFrameWakes[streamId]?.offer(Unit)
   }
 
   /**
@@ -3088,6 +3149,9 @@ class JsonRpcServer(
       // Try to claim the in-flight slot. Whoever wins owns the render thread; whoever loses
       // already had their input queued and the winner will dispatch it.
       requestInteractiveRender(params.frameStreamId, target.previewId, session)
+      // That render paints the frame at t≈0. Press feedback has not drawn anything yet at t≈0 and
+      // is over before the idle cadence's next frame, so keep sampling for a moment.
+      startInteractiveBurst(params.frameStreamId)
       return
     }
     // v1 fallback: each input enqueues a fresh stateless render of the target preview. The
@@ -3942,6 +4006,8 @@ class JsonRpcServer(
     interactiveSessions.clear()
     val frameLoops = interactiveFrameLoops.values.toList()
     interactiveFrameLoops.clear()
+    interactiveFrameWakes.clear()
+    interactiveBurstUntilMs.clear()
     frameLoops.forEach { it.interrupt() }
     // v2 phase 3 — drop any pending coalesced inputs and in-flight claims. The render workers
     // they refer to may still be running; they observe the cleared sessions map on their post-
@@ -4235,6 +4301,20 @@ class JsonRpcServer(
 
     /** Live interactive preview frame cadence. Conservative to avoid saturating Android renders. */
     const val INTERACTIVE_FRAME_INTERVAL_MS: Long = 250L
+
+    /**
+     * Frame cadence while a live preview is settling an input — roughly 60fps, so press feedback
+     * that lives and dies inside one idle frame gap gets sampled rather than skipped.
+     */
+    const val INTERACTIVE_BURST_INTERVAL_MS: Long = 16L
+
+    /**
+     * How long after an input the burst cadence holds. Long enough for a Material ripple to fade
+     * in, hold and fade out (~250ms) plus the shape and container animations a Wear button runs on
+     * top of it, and short enough that a resting preview is back to four frames a second before the
+     * next tap.
+     */
+    const val INTERACTIVE_BURST_MS: Long = 600L
 
     /** RECORDING.md — minimum legal `recording/start.fps`. */
     const val MIN_RECORDING_FPS: Int = 1

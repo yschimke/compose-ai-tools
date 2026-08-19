@@ -61,6 +61,13 @@ const assets = (name) =>
 // `keyboard-navigation.js` is also emitted by every page, but stays separate so
 // its opt-in power-user UI can initialize after the complete page DOM exists.
 //
+// `report-capture.js` is the screen-capture tool behind the report launcher, and
+// it is separate for the opposite reason to the shell: it is on NO page until
+// somebody opens the launcher panel or lands on `/report-bug`, at which point
+// `chrome/reportLauncher.ts` injects the tag. Folding it into the shell would put
+// a selection overlay, a canvas cropper and the clipboard path on every front-door
+// visit, none of which will ever run there.
+//
 // `format-compare.js` keeps its own name and tag because two consumers OUTSIDE the
 // browser load that exact path — the publish-time reference-score driver and the
 // compare audit — and because only the comparison surfaces need its several
@@ -78,6 +85,7 @@ const BUNDLES = [
     { entry: "src/main.ts", out: "serve-components.js" },
     { entry: "src/chrome.ts", out: "serve-chrome.js" },
     { entry: "src/keyboardNavigation.ts", out: "keyboard-navigation.js" },
+    { entry: "src/reportCapture.ts", out: "report-capture.js" },
     { entry: "src/formatCompare.ts", out: "format-compare.js" },
     { entry: "src/viewer.ts", out: "viewer.js" },
 ];

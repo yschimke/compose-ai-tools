@@ -1167,6 +1167,8 @@ jobs:
         run: python3 .github/actions/install/test_resolve_version.py -v
       - name: Run apply skew-guard tests
         run: python3 .github/actions/apply/test_check_skew.py -v
+      - name: Run baseline-selection tests
+        run: python3 .github/actions/apply/test_select_baseline.py -v
       - name: Run post-comment tests
         run: python3 .github/actions/apply/test_post_comment.py -v
       - name: Run apply change-scope tests
@@ -1267,6 +1269,14 @@ jobs:
         run: ./.github/scripts/test-comment-release-milestone.sh
       - name: Run PR run reaper tests
         run: node --test .github/scripts/reap-pr-runs.test.mjs
+      # The Figma reference column cuts a node out of a repo's committed page
+      # cache. Its rasteriser is an optional dependency this job doesn't
+      # install (those tests self-skip); what runs here is everything that
+      # could put the WRONG node in front of a reviewer — which element the
+      # slice takes, which ancestors come with it, which variant ref a preview
+      # pairs with.
+      - name: Run figma-reference tests
+        run: node --test .github/actions/lib/figma-reference/index.test.mjs
       # The export-driver pin decides which revision of this repo other people's CI
       # executes, and it is rewritten unattended after each release. Both failure
       # modes are quiet: sites drifting apart means two jobs in one run render with

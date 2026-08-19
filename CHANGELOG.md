@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.21.0](https://github.com/yschimke/compose-ai-tools/compare/v1.20.0...v1.21.0) (2026-08-19)
+
+
+### Features
+
+* **preview:** show the mapped Figma node beside Before/After in the diff ([#4273](https://github.com/yschimke/compose-ai-tools/issues/4273)) ([e1a59c3](https://github.com/yschimke/compose-ai-tools/commit/e1a59c385e42f3eac9927116f463241035ae9494))
+* **serve:** floating report launcher, and capture what you can actually see ([#4271](https://github.com/yschimke/compose-ai-tools/issues/4271)) ([7a6494b](https://github.com/yschimke/compose-ai-tools/commit/7a6494bca8a6be26136c1730076b2a629008f014))
+* **serve:** inspect typography on published catalogs and per-preview daemons ([#4266](https://github.com/yschimke/compose-ai-tools/issues/4266)) ([54087cf](https://github.com/yschimke/compose-ai-tools/commit/54087cfe5a128a7bb4ad779f90132400a68fb747))
+
+
+### Bug Fixes
+
+* **daemon:** carry a preview's own overrides into the held/live merge ([#4272](https://github.com/yschimke/compose-ai-tools/issues/4272)) ([e567f9c](https://github.com/yschimke/compose-ai-tools/commit/e567f9ca12ac24fe83d834e70d2df7184b2b6c24))
+* **daemon:** make a live click show the component's press feedback ([#4274](https://github.com/yschimke/compose-ai-tools/issues/4274)) ([b58f852](https://github.com/yschimke/compose-ai-tools/commit/b58f8521be19f9f3f6cdc129ca3053056c09ec10))
+* **rc-player:** load the player-supplied system variables every frame ([#4267](https://github.com/yschimke/compose-ai-tools/issues/4267)) ([cc0010f](https://github.com/yschimke/compose-ai-tools/commit/cc0010ffa4331bd1eceb13aaffc239b07cbb03dc))
+* **serve:** read a default-valued uiMode as the default, not a pin ([#4270](https://github.com/yschimke/compose-ai-tools/issues/4270)) ([743cd09](https://github.com/yschimke/compose-ai-tools/commit/743cd096723a4f30be4e381c47478e7a344b3ad9))
+* **serve:** resolve snapshot coordinates and record a bundle's repositories ([#4269](https://github.com/yschimke/compose-ai-tools/issues/4269)) ([e16a5d6](https://github.com/yschimke/compose-ai-tools/commit/e16a5d67df923f0a5b7f42024fcc8cdb47e22583))
+
 ## [1.20.0](https://github.com/yschimke/compose-ai-tools/compare/v1.19.0...v1.20.0) (2026-08-19)
 
 

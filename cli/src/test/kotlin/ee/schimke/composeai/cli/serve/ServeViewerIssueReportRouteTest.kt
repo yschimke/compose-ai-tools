@@ -104,7 +104,9 @@ class ServeViewerIssueReportRouteTest {
     server = newServer()
     val (code, body) = get("/compose-m3/p/button-filled")
     assertEquals(200, code)
-    assertTrue(body.contains("report an issue"), body)
+    // Named for the tracker it goes to, not "report an issue" — the server has a second report a
+    // click away in the footer, and the two used to be told apart only by where they sat.
+    assertTrue(body.contains("report a catalog issue"), body)
     assertTrue(
       body.contains("action=\"https://github.com/example/design-catalog/issues/new\""),
       body,

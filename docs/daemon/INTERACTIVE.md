@@ -374,6 +374,57 @@ and a `stringResource(...)` first resolved at the host default is not
 re-resolved by the capture that follows), and it closes the snapshot it
 allocates instead of leaving native Skia memory to a cleaner.
 
+## 9.7.1 Press feedback: a real press, sampled by a burst
+
+A live click has to show what the component does when you press it — the
+ripple, the state layer, the pressed shape. Two things used to stop it,
+and both are fixed here (wear-m3-catalog#32).
+
+**The Android lane invoked the semantics action.** `RobolectricHost`'s
+`click` arm looked for the smallest clickable node containing the point
+and invoked its `SemanticsActions.OnClick` lambda. That runs the handler
+and nothing else: no `PressInteraction` reaches the component's
+interaction source, so the component never rippled, and the only thing
+that moved on screen was whatever state the handler wrote. It now
+injects a real press and release (`down` → `move` → `up`) like the
+desktop lane already did.
+
+That path needs `waitForIdle()` between the halves and after the up, not
+just a `mainClock` advance. Under the held session's paused clock nothing
+else resumes the node's `awaitPointerEventScope` coroutine, so without
+the idle `Modifier.clickable` sees the up before it has committed to the
+down and drops the tap — which is what made the semantics shortcut look
+like the reliable option in the first place.
+The semantics action is still the right dispatch for the paths that ask
+for it by name: `uia.click` and `a11y.action.click`, the screen-reader
+lane.
+
+A click also no longer advances the held `mainClock` 100ms past its own
+release before the next capture; it advances one frame. That settle is
+still right for the kinds that leave a pointer **down** — their feedback
+persists, and the touch overlay's active-pointer ring needs those frames
+to appear — but for a click the gesture is already complete when the
+dispatch returns, so the 100ms was spent on two thirds of the ripple's
+fade-out.
+
+**The frame loop sampled too slowly to catch it.** The per-stream loop
+runs at `INTERACTIVE_FRAME_INTERVAL_MS` (250ms) so a resting preview is
+cheap, and the render an input triggers paints t≈0 — before press
+feedback has drawn anything. A Material ripple fades in over ~75ms and
+back out over ~150ms, so the whole animation used to land between two
+frames. Every input now runs that stream's loop at
+`INTERACTIVE_BURST_INTERVAL_MS` (16ms) for `INTERACTIVE_BURST_MS`
+(600ms) and then falls back to the idle cadence. The loop parks on a
+per-stream wake channel rather than sleeping flat, so an input arriving
+mid-park starts its burst immediately.
+
+The burst is bounded by what is already there rather than by a budget of
+its own: `interactiveRenderInFlight` drops a burst tick whose predecessor
+is still rendering, so a slow host simply renders as fast as it can, and
+`FrameStreamRegistry`'s dedup turns the ticks that come back
+pixel-identical into `unchanged` heartbeats — a burst over a component
+that does not animate costs renders, not wire.
+
 ## 9.8 The `localeTag` scope is a process-wide reader/writer gate
 
 Applying `localeTag` means moving the **process-global** JVM default

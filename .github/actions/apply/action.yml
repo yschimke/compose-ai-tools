@@ -186,6 +186,28 @@ inputs:
       "Other variants" links. Absent file = feature off (purely additive).
       See `.github/actions/apply/README.md` for the schema.
     default: '.github/preview-abtest.json'
+  figma-references:
+    description: >
+      Show the design node each changed preview is meant to match, as a Figma
+      column beside Before/After in the PR comment. Sourced entirely from the
+      repo's own committed cache — `design-map.json` says which node a preview
+      implements, and the imported page SVGs (`design/pages/`) carry the
+      pixels — so it needs no Figma credential and works on fork PRs. A repo
+      missing either file gets the historical two-column comment, so this is
+      safe to leave on. Set `false` to suppress the column outright.
+    default: 'true'
+  design-map:
+    description: >
+      Path to the design map that says which design node a preview implements
+      (`@yschimke/compose-design-map`'s output, resolved onto per-variant nodes
+      by a kit resolver). Only read when `figma-references` is on.
+    default: 'design-map.json'
+  design-pages:
+    description: >
+      Path to the imported design-page manifest whose SVGs the Figma column is
+      cut out of (v2 `design-pages` manifest — see `DesignPages.kt`). Only read
+      when `figma-references` is on.
+    default: 'design/pages/pages.json'
   scope-config:
     description: >
       Path (relative to the checkout) to the change-scope config JSON. When
@@ -690,7 +712,7 @@ runs:
     - name: Install CLI from source
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v1.20.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v1.21.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
 
     # `cli-version: 'none'` is the third install state — install is skipped
     # entirely. Compose / resources pipelines must then run with
@@ -700,7 +722,7 @@ runs:
       id: install-release
       if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
       # The released action intentionally composes the matching released helper.
-      uses: yschimke/compose-ai-tools/.github/actions/install@v1.20.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
+      uses: yschimke/compose-ai-tools/.github/actions/install@v1.21.0 # x-release-please-version; zizmor: ignore[unpinned-uses]
       with:
         version: ${{ steps.clivers.outputs.version }}
         catalog-path: ${{ inputs.catalog-path }}
@@ -834,6 +856,7 @@ runs:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         A11Y_MODULES: ${{ inputs.a11y-module }}
         A11Y_SKIP_MODULES: ${{ inputs.a11y-skip-modules }}
         NOTIFY_MODULES: ${{ inputs.notifications-module }}
@@ -854,6 +877,9 @@ runs:
         SKIP_RENDER: ${{ inputs.skip-render }}
         AB_CONFIG: ${{ inputs.ab-config }}
         SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
+        FIGMA_REFERENCES: ${{ inputs.figma-references }}
+        DESIGN_MAP: ${{ inputs.design-map }}
+        DESIGN_PAGES: ${{ inputs.design-pages }}
       run: |
         set +e
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
@@ -1077,7 +1103,11 @@ runs:
         # resource diff, and notification-previews.py reads a missing
         # `_notification_baseline_findings.json` as empty, which reports every
         # surviving preview as Added and loses removals entirely.
-        for f in _baselines _base_sha _pr_renders \
+        # `_figma_refs.json` travels because the publish job checks out the
+        # BASE branch: it has neither the design map nor the page cache as this
+        # PR sees them, and re-deriving there would grade a PR that updates the
+        # cached design against the old import.
+        for f in _baselines _base_sha _baseline_skew.json _pr_renders _figma_refs.json \
                  _resources.json _resource_baselines _resource_base_sha _pr_resource_renders \
                  _a11y_renders _a11y_comment.md \
                  _notification_renders _notification_comment.md \
@@ -1412,6 +1442,22 @@ runs:
           RERUN_ARGS=(--rerun-checkbox)
         fi
 
+        # How far the baseline this diff used trails the PR's base, when the
+        # compose pipeline could work it out. Absent = no skew line, which is
+        # also what every pre-selection caller produces.
+        SKEW_ARGS=()
+        if [ -s _baseline_skew.json ]; then
+          SKEW_ARGS=(--baseline-skew _baseline_skew.json)
+        fi
+
+        # The Figma reference manifest, when the compose pipeline staged one
+        # (repo has a design map + a committed page import). Absent = the
+        # historical two-column comment.
+        FIGMA_ARGS=()
+        if [ -s _figma_refs.json ]; then
+          FIGMA_ARGS=(--figma-refs _figma_refs.json)
+        fi
+
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
           --baseline-renders _baselines/renders \
@@ -1421,6 +1467,8 @@ runs:
           "${AB_ARGS[@]}" \
           "${SCOPE_ARGS[@]}" \
           "${RERUN_ARGS[@]}" \
+          "${SKEW_ARGS[@]}" \
+          "${FIGMA_ARGS[@]}" \
           > _comment_body.md
 
     # Sibling step for the resources comment — separately gated on

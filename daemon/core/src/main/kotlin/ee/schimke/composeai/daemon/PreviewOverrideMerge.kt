@@ -5,7 +5,9 @@ import ee.schimke.composeai.daemon.devices.FrameOrientation
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
+import ee.schimke.composeai.daemon.protocol.KeyboardOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
+import ee.schimke.composeai.daemon.protocol.LottieOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
@@ -39,9 +41,11 @@ data class PreviewOverrideBaseSpec(
   val focus: FocusOverride? = null,
   val touchOverlay: Boolean? = null,
   val talkBack: Boolean? = null,
+  val keyboard: KeyboardOverride? = null,
   val permissions: PermissionsOverride? = null,
   val remoteCompose: RemoteComposeOverride? = null,
   val launcherWidget: LauncherWidgetOverride? = null,
+  val lottie: LottieOverride? = null,
   val namedOverrides: Map<String, PreviewOverrideValue>? = null,
 )
 
@@ -62,9 +66,11 @@ data class MergedPreviewOverrides(
   val focus: FocusOverride?,
   val touchOverlay: Boolean?,
   val talkBack: Boolean?,
+  val keyboard: KeyboardOverride?,
   val permissions: PermissionsOverride?,
   val remoteCompose: RemoteComposeOverride?,
   val launcherWidget: LauncherWidgetOverride?,
+  val lottie: LottieOverride?,
   val namedOverrides: Map<String, PreviewOverrideValue>?,
   /**
    * Whether [widthPx] / [heightPx] came back with their axes traded because [orientation]
@@ -102,9 +108,11 @@ data class MergedPreviewOverrides(
         focus == null &&
         touchOverlay != true &&
         talkBack != true &&
+        keyboard == null &&
         permissions == null &&
         remoteCompose == null &&
         launcherWidget == null &&
+        lottie == null &&
         namedOverrides.isNullOrEmpty() &&
         !isPseudolocale
     ) {
@@ -119,13 +127,61 @@ data class MergedPreviewOverrides(
       localeTag = if (isPseudolocale) localeTag else null,
       touchOverlay = touchOverlay,
       talkBack = talkBack,
+      keyboard = keyboard,
       permissions = permissions,
       remoteCompose = remoteCompose,
       launcherWidget = launcherWidget,
+      lottie = lottie,
       namedOverrides = namedOverrides,
     )
   }
 }
+
+/**
+ * Fill every **extension-consumed** field of this base spec from the discovery-time overrides bag
+ * [carried] the host resolved alongside it (`RenderSpec.overrides`).
+ *
+ * The held-session lane (`interactive/start` → `stream/start` → `setOverrides`, and the recording
+ * twin) reaches [mergePreviewOverrides] through each host's `applyOverrides`, which adapts its
+ * backend-local `RenderSpec` into a [PreviewOverrideBaseSpec]. Every field the adapter forgets is a
+ * field the live render silently loses — the merge fills it from `null`, [toExtensionOverrides]
+ * projects `null` back out, and the renderer composes as if the base had never carried it. Both
+ * hosts hand-picked a *subset* here, which is how a `@OverrideVariant` preview browsed in the
+ * viewer's **Live** lane rendered its base state: `namedOverrides` — the baked seed
+ * `renderSpecFromInfo` resolves from `previews.json` — was never copied across, so
+ * `switchbutton__ideal__split` composed the un-split switch its primary draws
+ * (yschimke/wear-m3-catalog#33). `focus`, `talkBack`, `touchOverlay`, `permissions`,
+ * `remoteCompose`, `launcherWidget`, `keyboard` and `lottie` were dropped the same way.
+ *
+ * So the copy lives here, once, beside the field list it has to stay exhaustive over — a new
+ * extension-consumed field is added in this file and both hosts inherit it, rather than being
+ * hand-added to two adapters that already disagreed with each other. The per-render overlay still
+ * wins per key: this is only the floor the overlay lands on. `PreviewOverrideMergeTest` guards the
+ * round trip (populated bag → base spec → merge with no overlay → [toExtensionOverrides]).
+ *
+ * Display-geometry fields (`widthPx`, `density`, `uiMode`, …) are deliberately NOT touched: the
+ * host resolves those from its own spec, where the discovery-time values already live.
+ */
+fun PreviewOverrideBaseSpec.withCarriedOverrides(
+  carried: PreviewOverrides?
+): PreviewOverrideBaseSpec =
+  if (carried == null) this
+  else
+    copy(
+      material3Theme = carried.material3Theme,
+      wallpaper = carried.wallpaper,
+      ambient = carried.ambient,
+      gestures = carried.gestures,
+      focus = carried.focus,
+      touchOverlay = carried.touchOverlay,
+      talkBack = carried.talkBack,
+      keyboard = carried.keyboard,
+      permissions = carried.permissions,
+      remoteCompose = carried.remoteCompose,
+      launcherWidget = carried.launcherWidget,
+      lottie = carried.lottie,
+      namedOverrides = carried.namedOverrides,
+    )
 
 /**
  * Fold a `themeProvider` FQN back onto an (optionally null) held-session overrides bag. The held /
@@ -272,9 +328,11 @@ fun mergePreviewOverrides(
       focus = base.focus,
       touchOverlay = base.touchOverlay,
       talkBack = base.talkBack,
+      keyboard = base.keyboard,
       permissions = base.permissions,
       remoteCompose = base.remoteCompose,
       launcherWidget = base.launcherWidget,
+      lottie = base.lottie,
       namedOverrides = base.namedOverrides,
     )
   }
@@ -319,9 +377,11 @@ fun mergePreviewOverrides(
     focus = overrides.focus ?: base.focus,
     touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
     talkBack = overrides.talkBack ?: base.talkBack,
+    keyboard = overrides.keyboard ?: base.keyboard,
     permissions = overrides.permissions ?: base.permissions,
     remoteCompose = overrides.remoteCompose ?: base.remoteCompose,
     launcherWidget = overrides.launcherWidget ?: base.launcherWidget,
+    lottie = overrides.lottie ?: base.lottie,
     // Per-key merge (not whole-map replace): editing one knob in a follow-up render must not drop
     // the
     // others the caller already set. Override entries win over base entries with the same key.

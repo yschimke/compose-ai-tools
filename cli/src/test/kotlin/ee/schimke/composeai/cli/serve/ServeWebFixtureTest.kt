@@ -316,6 +316,52 @@ class ServeWebFixtureTest {
   // `previews/variants.json` manifest carries. The landing folds each component to ONE (default)
   // card; the viewer grows its `.cp-axes-tree` subtree reaching the component's other
   // same-theme states. Captured so the visual-diff bot covers the state toggle end-to-end.
+  /**
+   * A Wear-shaped catalog that documents each component at the FIVE screen sizes its kit declares —
+   * the shape wear-m3-catalog publishes. Every render carries the breakpoint it was captured at
+   * (`ServePreview.size`), so the landing folds the non-primary sizes onto one card per component
+   * and the viewer offers them as a size switcher; without the fold this is 10 cards wearing 2
+   * names (wear-m3-catalog#41).
+   *
+   * `alertdialog` also varies its button arrangement, so the fixture pins the two axes *crossed*:
+   * the state rows have to keep holding the size fixed, and the size rows the state.
+   */
+  private val breakpointPreviews =
+    listOf("192dp", "204dp", "216dp", "225dp", "240dp").flatMapIndexed { index, size ->
+      listOf(
+        ServePreview(
+          "alertdialog__ideal__default__$size",
+          "Alert Dialog · $size",
+          componentId = "AlertDialog",
+          state = "default",
+          size = size,
+          section = "Containment",
+          group = "Dialogs",
+          catalogOrder = index * 2,
+        ),
+        ServePreview(
+          "alertdialog__ideal__no-buttons__$size",
+          "Alert Dialog · No buttons · $size",
+          componentId = "AlertDialog",
+          state = "no-buttons",
+          size = size,
+          section = "Containment",
+          group = "Dialogs",
+          catalogOrder = index * 2 + 1,
+        ),
+        ServePreview(
+          "timetext__ideal__default__$size",
+          "Time Text · $size",
+          componentId = "TimeText",
+          state = "default",
+          size = size,
+          section = "Text",
+          group = "Time",
+          catalogOrder = 100 + index,
+        ),
+      )
+    }
+
   private val statefulPreviews =
     listOf(
       ServePreview(
@@ -2221,6 +2267,33 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         version = version,
       )
+    // A breakpoint-bearing catalog: one card per component at its first declared size, the other
+    // four folded away. Captured so the visual-diff bot covers the size axis on every future PR.
+    val landingBreakpoints =
+      ServeWeb.landingPage(
+        "wear-m3-catalog",
+        breakpointPreviews,
+        token,
+        sessionId = "wear-m3-catalog",
+        trust = "branch:yschimke/wear-m3-catalog@design-artifacts/wear-m3-catalog",
+        isPublic = true,
+        hasHomeIndex = true,
+        basePath = "/wear-m3-catalog",
+        declaredSurface = "dark",
+        version = version,
+      )
+    // …and its viewer, whose subtree lists the four folded breakpoints beside the state rows.
+    val viewerBreakpoints =
+      ServeWeb.viewerPage(
+        breakpointPreviews.first(),
+        token,
+        sessionId = "wear-m3-catalog",
+        catalogName = "M3 Wear OS Apps Design Kit",
+        isPublic = true,
+        basePath = "/wear-m3-catalog",
+        siblings = breakpointPreviews,
+        version = version,
+      )
     // An app catalog served under its path (/meshcore-mobile/) whose previews carry sections: the
     // landing renders a TAB BAR (Themes / Components / Screens) over per-section panels, each with
     // its `group` sub-headings. Captured so the visual-diff bot covers the tabbed structure.
@@ -3010,6 +3083,8 @@ class ServeWebFixtureTest {
         "serve-landing-live.html" to landingLive,
         "serve-landing-states.html" to landingStates,
         "serve-landing-sections.html" to landingSections,
+        "serve-landing-breakpoints.html" to landingBreakpoints,
+        "serve-viewer-breakpoints.html" to viewerBreakpoints,
         "serve-viewer-states.html" to viewerStates,
         "serve-viewer-axes-folded.html" to viewerAxesFolded,
         "serve-viewer-cross-product.html" to viewerCrossProduct,

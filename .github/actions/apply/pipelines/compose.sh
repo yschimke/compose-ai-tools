@@ -16,6 +16,11 @@
 #   RESOURCE_BRANCH      — resource baselines branch (only used in baseline mode)
 #   PR_HEAD_BRANCH       — per-PR composable branch (only used in comment mode)
 #   PR_NUMBER            — PR number (comment mode)
+#   PR_BASE_SHA          — the PR's base commit (pull_request.base.sha). Comment
+#                          mode only, and only a fallback: the merge ref's own
+#                          first parent is preferred when the checkout has one.
+#                          Empty = compare against the baseline branch tip, as
+#                          before baseline selection existed.
 #   COMMENT_ON_EMPTY_DIFF — passthrough
 #   SKIP_RENDER          — when "true", reuse pre-staged _previews.json
 #                          instead of invoking `compose-preview show`. Lets
@@ -196,27 +201,77 @@ if [ "$MODE" = "baseline" ]; then
 else
   # comment mode
   mkdir -p _baselines
+  rm -f _baseline_commit _baseline_skew.json
   if git ls-remote --exit-code origin "$BASELINE_BRANCH" >/dev/null 2>&1; then
     git fetch origin "$BASELINE_BRANCH"
-    git show "origin/${BASELINE_BRANCH}:baselines.json" \
+
+    # Which baseline commit this diff is *entitled* to compare against. The
+    # branch tip is not it: a baseline lands minutes after the merge that
+    # produced it, and main keeps moving while a PR is open, so the tip is
+    # routinely a different point in history than the one this render was
+    # built on — and every preview in the gap gets attributed to this PR.
+    # `select-baseline.py` walks back to the newest baseline that IS in this
+    # PR's base, and measures whatever gap is left for the comment to declare.
+    # Best-effort: it writes nothing when it can't establish the answer, and
+    # the tip (the historical behaviour) is the fallback.
+    python3 "$ACTION_PATH/select-baseline.py" \
+      --branch "$BASELINE_BRANCH" \
+      --base-branch "${GITHUB_BASE_REF:-}" \
+      --base-sha "${PR_BASE_SHA:-}" \
+      --out-sha _baseline_commit \
+      --out-skew _baseline_skew.json || true
+
+    BASELINE_REF="origin/${BASELINE_BRANCH}"
+    if [ -s _baseline_commit ]; then
+      BASELINE_REF=$(cat _baseline_commit)
+    fi
+
+    git show "${BASELINE_REF}:baselines.json" \
       > _baselines/baselines.json 2>/dev/null || true
-    git archive "origin/${BASELINE_BRANCH}" renders 2>/dev/null \
+    git archive "$BASELINE_REF" renders 2>/dev/null \
       | tar -x -C _baselines/ 2>/dev/null || true
   else
     echo "compose pipeline: no $BASELINE_BRANCH yet — treating all previews as new."
   fi
 
-  # Pin Before to the current baseline tip SHA.
-  BASE_SHA=$(git ls-remote \
-    "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
-    "refs/heads/${BASELINE_BRANCH}" | awk '{print $1}')
+  # Pin Before to the baseline commit the diff was actually taken against —
+  # the selected one when there is one, else the branch tip.
+  if [ -s _baseline_commit ]; then
+    BASE_SHA=$(cat _baseline_commit)
+  else
+    BASE_SHA=$(git ls-remote \
+      "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+      "refs/heads/${BASELINE_BRANCH}" | awk '{print $1}')
+  fi
   [ -z "$BASE_SHA" ] && BASE_SHA="$BASELINE_BRANCH"
   echo "$BASE_SHA" > _base_sha
 
   python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed _previews.json \
     --baselines _baselines/baselines.json \
     --baseline-renders _baselines/renders \
-    --output-dir _pr_renders
+    --output-dir _pr_renders \
+    --changed-ids _changed_previews.json
+
+  # The design reference each changed preview is meant to match, cut out of the
+  # repo's own committed Figma page cache and staged into the same push, so the
+  # comment can show it commit-pinned beside Before/After. Entirely offline: no
+  # FIGMA_TOKEN, so it works on a fork, and no per-push API traffic.
+  #
+  # Every part of this is optional — a repo with no design map, no imported
+  # pages, no node, or no `node` on the runner gets the two-column comment it
+  # always got. Hence the `|| true`: this is a review aid, and a review aid must
+  # never be the reason a preview diff fails.
+  if [ "${FIGMA_REFERENCES:-true}" = "true" ] \
+     && [ -f "${DESIGN_MAP:-design-map.json}" ] \
+     && [ -f "${DESIGN_PAGES:-design/pages/pages.json}" ] \
+     && command -v node >/dev/null 2>&1; then
+    bash "$ACTION_PATH/../lib/figma-reference/stage.sh" \
+      "${DESIGN_MAP:-design-map.json}" \
+      "${DESIGN_PAGES:-design/pages/pages.json}" \
+      _changed_previews.json \
+      _pr_renders/figma \
+      "$GITHUB_WORKSPACE/_figma_refs.json" || true
+  fi
 
   # Stage push metadata for the post-wait push step.
   if [ -d _pr_renders/renders ] && [ -n "$(ls -A _pr_renders/renders 2>/dev/null)" ]; then

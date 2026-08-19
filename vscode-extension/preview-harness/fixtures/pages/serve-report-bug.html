@@ -55,9 +55,13 @@
         <main class="cp-main">
               <h1 class="cp-head">Report a bug in the preview server</h1>
       <p class="cp-sub">This files against <a href="https://github.com/yschimke/compose-ai-tools"
-        >yschimke/compose-ai-tools</a>, the repository that ships <code>compose-preview serve</code> as @yschimke.
-        For a preview that renders wrongly, use the &ldquo;report an issue&rdquo; link on that
-        preview instead — it goes to the project whose code declares it.</p>
+        >yschimke/compose-ai-tools</a>, the repository that ships <code>compose-preview serve</code> as @yschimke
+        — the page you were on, its controls, and the render lanes behind them.</p>
+      <p class="cp-sub cp-report-elsewhere">Wrong <em>pixels</em> rather than a wrong page? A button
+        in the wrong colour, a state that is missing, a spec that does not match — that is the
+        <strong>catalog&rsquo;s</strong> bug, not this server&rsquo;s. Go back to the preview and use
+        its &ldquo;report a catalog issue&rdquo; link, which files against the repository whose
+        Kotlin declares that preview. A catalog bug filed here reaches people who cannot fix it.</p>
 
       <form class="cp-report-bug-form" method="get" target="_blank" rel="noopener"
         action="https://github.com/yschimke/compose-ai-tools/issues/new">
@@ -72,6 +76,11 @@
 
 
 ### Screenshot
+
+&lt;!-- Paste your capture of the page here. --&gt;
+
+
+### Base render
 
 ![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
 
@@ -118,6 +127,11 @@
 
 
 ### Screenshot
+
+&lt;!-- Paste your capture of the page here. --&gt;
+
+
+### Base render
 
 ![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
 
@@ -167,12 +181,18 @@
       </form>
 
       <p class="cp-status-sec">Add a screenshot</p>
-      <p class="cp-sub">The report has a Screenshot section waiting for one. Take a shot of the
-        whole window and paste it into that section on GitHub &mdash; it uploads to GitHub&rsquo;s
-        own storage, so it keeps showing what you saw even after this server changes.</p>
+      <p class="cp-sub">The report has a Screenshot section waiting for one. Paste it into that
+        section on GitHub — it uploads to GitHub&rsquo;s own storage, so it keeps showing what
+        you saw even after this server changes.</p>
+      <div class="cp-shots" data-cp-capture-src="/assets/serve/fixture/report-capture.js">
+  <p class="cp-sub cp-shots-empty">No captures came across from the page you reported. Take
+    one there with the &ldquo;Report a problem&rdquo; button, or paste an ordinary screenshot
+    straight into the issue.</p>
+  <ul class="cp-shot-list"></ul>
+</div>
       
-      <p class="cp-status-sec">The render you were looking at</p>
-      <p class="cp-sub">Included in the report. It is a live render, so it follows the catalog — paste a screenshot below as well if the exact pixels matter.</p>
+      <p class="cp-status-sec">The base render of that preview</p>
+      <p class="cp-sub">Included in the report. It is the plain render at your settings — not the spec triptych, the wipe, or any other view the browser composes — and it is live, so it follows the catalog. Capture the page as well if the exact pixels matter.</p>
       <img class="cp-report-shot" src="/compose-m3/render/button-filled.png" alt="the render this report is about" loading="lazy">
 
       <p class="cp-status-sec">What gets sent</p>
@@ -221,6 +241,11 @@
 
 
 ### Screenshot
+
+&lt;!-- Paste your capture of the page here. --&gt;
+
+
+### Base render
 
 ![render](https://preview.coo.ee/compose-m3/render/button-filled.png?uiMode=dark)
 

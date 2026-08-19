@@ -1084,11 +1084,13 @@ the page they came from (`?uiMode=dark`, a device, a font scale — the viewer r
 knobs move) is normalised and re-applied to the `/render` URL, so the embedded PNG is the render that
 prompted the report rather than the component's default.
 
-**The screenshot is two-sided.** When the reporter came from a viewer the page shows that preview's
-render and the body carries it (embedded when the host is publicly reachable, linked otherwise — the
-same two conditions as above). That covers "the render is wrong". It does not cover "the page is
-wrong", which is most server bugs, so the report leaves a Screenshot section for a pasted shot of
-the whole window — the one thing the server cannot produce and the browser gives away for free.
+**The screenshot is two-sided, and the embedded render is labelled as what it is.** When the
+reporter came from a viewer the page shows that preview's render and the body carries it (embedded
+when the host is publicly reachable, linked otherwise — the same two conditions as above). That
+covers "the render is wrong". It does not cover "the page is wrong", which is most server bugs, so
+the body's **Screenshot** section is a paste slot, first, and the render sits under it as **Base
+render** — never as "the screenshot". See [Reporting what you can actually
+see](#reporting-what-you-can-actually-see) for why that distinction is load-bearing.
 
 **Gating and safety.** `/report-bug` is gated exactly like `/status` (open in `--public`, else
 token-required), because it reports the same catalog-load and daemon-failure detail. The page the
@@ -1219,6 +1221,80 @@ The chosen view rides the URL as `?specView=diff|triptych|slider` alongside `?mo
 `…/p/<id>?mode=spec&specView=slider` is shareable and Back returns to the view you came from.
 `spec diff →` beside the group still steps out to the focused page when the annotation layers or the
 opacity overlay are what you want.
+
+## Reporting what you can actually see
+
+Two reports, two trackers, and until recently the only place that said so was the report page —
+which you reach *after* choosing. That is [#4261](https://github.com/yschimke/compose-ai-tools/issues/4261)'s
+neighbourhood, and both halves of it are the same mistake: a report that shows a picture of
+something other than what the reporter was looking at, filed in a tracker that may not own it.
+
+**A floating launcher, on every page.** Bottom-right of every browser-facing surface is a small
+**Report a problem** button. Its panel names both destinations in the reporter's own terms:
+
+- *Something is wrong with this **preview*** — wrong colours, a state that is missing, a spec that
+  does not match. It goes to the **catalog's** repository, and the panel names it. Offered only on
+  pages that carry the per-preview affordance; pressing it opens that form in place and focuses its
+  Summary field rather than starting a second report.
+- *Something is wrong with the **preview server*** — the page, a control, a render that failed. It
+  goes to `yschimke/compose-ai-tools`, and opens `/report-bug`.
+
+The footer entry stays where it was, renamed **report a server bug**, and the per-preview link is
+now **report a catalog issue**: both used to be called "report an issue" / "report a bug", a click
+apart, with nothing on either saying which tracker it meant. The launcher floats because the
+surfaces where something looks wrong are tall — a viewer stage, a grid of two hundred cards, a
+design page — and the footer is several screens from the thing being complained about, which is the
+one moment the page is still in the state that produced the bug.
+
+**Why the embedded render was never the screenshot.** `/render/<id>.png` is the only picture of a
+preview this server can produce. Everything else the viewer shows is composed **in the browser** out
+of several artefacts — the spec lane's triptych, diff and wipe, the exploded stack, the Remote
+Compose canvas, the inspection overlays, a lane that failed with an error where the render should
+be — and none of those has a URL to embed. So a report filed from the triptych arrived showing an
+ordinary single render: a picture that contradicted its own complaint. Two changes:
+
+- The body now leads with an empty **Screenshot** slot and puts the PNG below it under **Base
+  render**, with the view named — *Base render — you were on the design spec (triptych)*.
+- A **View** row joins the Page table, read out of the reporter's own address bar (`?mode=`,
+  `?specView=`, `?exploded=`) rather than from what the server rendered, because the viewer rewrites
+  those as the visitor moves between lanes. Only values this server's own viewer writes are
+  accepted; anything else is dropped rather than echoed into a public issue.
+
+**And a capture tool, because the pixels have to come from the browser.** GitHub's new-issue form
+takes a prefilled body and nothing else — there is no way to prefill an attachment — so the only
+route from a screenshot to an issue is the reporter's clipboard. The launcher panel offers three
+modes:
+
+| Mode | For |
+| --- | --- |
+| **Whole view** | "the page is wrong" — the whole viewport, chrome, controls and error text included |
+| **Region** | a corner of a wide comparison, where a full-viewport shot buries the defect |
+| **Element** | point at one node — a render, a spec panel, a diagnostics table, one cell of one |
+
+Each capture is copied to the clipboard, listed with a thumbnail, and **carried across the
+navigation** to `/report-bug` in `sessionStorage`, where it is listed again with Copy / Save /
+Remove. A picked **table** additionally yields the same table as markdown ("Copy as text"), because
+a triager who wants to read a number back, grep it or quote a row cannot do any of that with a
+screenshot — and `/status`, the parity dashboard and the report page itself are mostly tables.
+
+Mechanically it is `getDisplayMedia`, one frame, track stopped immediately — not a DOM-to-image
+serialisation. Serialising the DOM reproduces the *markup*: it needs every stylesheet inlined and
+every image re-fetched, it drops canvas contents and anything drawn by a shader, and what comes out
+is a reconstruction that can differ from the screen in exactly the ways a visual bug report is
+about. The frame is grabbed **before** the selection overlay exists, so no capture ever contains the
+tool that took it, and the launcher panel closes itself for the shutter. A crop is only offered when
+the browser reports it shared *this tab*; a shared window or monitor puts the page at an offset
+nothing can recover, so that case captures the whole shared surface and says so rather than cropping
+the wrong pixels.
+
+`sessionStorage`, not `localStorage`: a capture is scratch state belonging to one reporting gesture
+in one tab, and it is a picture of whatever was on screen — which on a preview server can be an
+unreleased design. Three captures and ~3.5 MB, oldest evicted first. The capture bundle
+(`report-capture.js`) is fetched when the panel is first opened, so a visitor who never files
+anything never downloads a selection overlay or a canvas cropper.
+
+Where `getDisplayMedia` is missing or refused, the capture block simply never appears and the report
+page keeps asking for an ordinary pasted screenshot, exactly as it did before.
 
 ## Design references and UI mocks
 

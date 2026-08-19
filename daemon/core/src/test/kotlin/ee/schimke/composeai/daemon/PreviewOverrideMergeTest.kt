@@ -347,6 +347,117 @@ class PreviewOverrideMergeTest {
   }
 
   /**
+   * Exhaustiveness guard for [withCarriedOverrides] — the held/live lane's counterpart of the
+   * [layeredOver] canary below.
+   *
+   * A fully-populated discovery-time bag carried onto a base spec must survive the merge and come
+   * back out of [MergedPreviewOverrides.toExtensionOverrides] intact when the per-render overlay is
+   * empty, because that is exactly what browsing a `@OverrideVariant` preview in the viewer's Live
+   * lane does. Both hosts used to hand-pick a subset here, so the variant's `namedOverrides` seed
+   * (and focus / talkBack / permissions / …) never reached the held composition and the split
+   * switch composed as its un-split primary (yschimke/wear-m3-catalog#33). Whole-object
+   * [assertEquals] against the expected projection, so a field the carry forgets fails here.
+   */
+  @Test
+  fun `withCarriedOverrides keeps every extension field on a held session with no overlay`() {
+    val carried = fullyPopulatedOverrides()
+    val base =
+      PreviewOverrideBaseSpec(
+          widthPx = 320,
+          heightPx = 480,
+          density = 2.0f,
+          device = null,
+          localeTag = null,
+          fontScale = null,
+          uiMode = null,
+          orientation = null,
+          inspectionMode = null,
+        )
+        .withCarriedOverrides(carried)
+
+    val projected = mergePreviewOverrides(base, null).toExtensionOverrides()
+
+    assertEquals(
+      PreviewOverrides(
+        material3Theme = carried.material3Theme,
+        wallpaper = carried.wallpaper,
+        ambient = carried.ambient,
+        gestures = carried.gestures,
+        focus = carried.focus,
+        // The carried locale rides the spec's own `localeTag`, not the bag — only a pseudolocale
+        // projects into the extension bag, and the fixture's `fr-FR` is not one.
+        localeTag = null,
+        touchOverlay = carried.touchOverlay,
+        talkBack = carried.talkBack,
+        keyboard = carried.keyboard,
+        permissions = carried.permissions,
+        remoteCompose = carried.remoteCompose,
+        launcherWidget = carried.launcherWidget,
+        lottie = carried.lottie,
+        namedOverrides = carried.namedOverrides,
+      ),
+      projected,
+    )
+  }
+
+  @Test
+  fun `a live overlay wins per key over the carried variant seed`() {
+    // The floor is the baked `@OverrideVariant` seed; a knob the viewer actually edited still wins,
+    // and the seeds it did not touch survive.
+    val base =
+      PreviewOverrideBaseSpec(
+          widthPx = 320,
+          heightPx = 480,
+          density = 2.0f,
+          device = null,
+          localeTag = null,
+          fontScale = null,
+          uiMode = null,
+          orientation = null,
+          inspectionMode = null,
+        )
+        .withCarriedOverrides(
+          PreviewOverrides(
+            namedOverrides =
+              mapOf(
+                "split" to PreviewOverrideValue.BooleanValue(true),
+                "label" to PreviewOverrideValue.StringValue("Primary"),
+              )
+          )
+        )
+
+    val merged =
+      mergePreviewOverrides(
+        base,
+        PreviewOverrides(
+          namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("edited"))
+        ),
+      )
+
+    assertEquals(PreviewOverrideValue.BooleanValue(true), merged.namedOverrides?.get("split"))
+    assertEquals(PreviewOverrideValue.StringValue("edited"), merged.namedOverrides?.get("label"))
+  }
+
+  @Test
+  fun `withCarriedOverrides on a null bag leaves the base spec alone`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    assertEquals(base, base.withCarriedOverrides(null))
+    assertNull(mergePreviewOverrides(base, null).toExtensionOverrides())
+  }
+
+  /**
    * Exhaustiveness guard for [layeredOver]: an empty overlay over a fully-populated base must
    * round-trip to the base unchanged. Every [PreviewOverrides] field is non-null here, so a field
    * the merge forgot to carry would come back null and fail the whole-object [assertEquals] — the

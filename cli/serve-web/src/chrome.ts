@@ -17,6 +17,7 @@ import {
     installBugReportBody,
     installBugReportLink,
 } from "./chrome/bugReport.js";
+import { installReportLauncher } from "./chrome/reportLauncher.js";
 
 installUrlState();
 installPageTheme();
@@ -26,3 +27,7 @@ installPreviewImageStates();
 // elements are absent, and neither depends on the two above.
 installBugReportLink();
 installBugReportBody();
+// The floating launcher is emitted by `ServeWeb.document` beside the footer, so it is on the same
+// every-page footing as the two above and wired from the same place. It only opens a `<details>`
+// and points at the two destinations; the capture bundle it can reach is fetched on first use.
+installReportLauncher();

@@ -480,6 +480,10 @@ class ServeBundleHost(
           state = meta?.state,
           theme = meta?.theme,
           props = meta?.props,
+          // Like `state`, only a `catalog.json`-backed bundle carries this: a plain module bundle's
+          // device fan-out has no manifest to name the breakpoints, so its renders stay size-less
+          // and each keeps its own card rather than being folded out with no switcher to reach it.
+          size = meta?.size,
           section = meta?.section,
           group = meta?.group,
           catalogOrder = meta?.order,

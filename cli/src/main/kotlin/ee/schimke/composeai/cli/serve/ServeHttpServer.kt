@@ -3724,6 +3724,11 @@ class ServeHttpServer(
             seen != null -> "suspended (idle)"
             else -> null
           },
+        // Read from the reporter's own query rather than from anything the server rendered: the
+        // viewer rewrites `?mode=`/`?specView=` as the visitor moves between lanes, so the served
+        // HTML knows the lane the page OPENED on and only the address bar knows the one they were
+        // on when something looked wrong. See issue #4261.
+        view = ServeBugReport.viewLabel(from),
         degradations = host?.degradations.orEmpty().map { "${it.code} — ${it.detail}" },
         renderUrl =
           previewId?.let {
@@ -3929,6 +3934,7 @@ class ServeHttpServer(
           page.catalogToolVersion?.let { add("Catalog rendered by" to "compose-ai-tools $it") }
           page.trust?.let { add("Trust" to it) }
           page.renderLane?.let { add("Render lane" to it) }
+          page.view?.let { add("View" to it) }
           page.degradations.forEach { add("Degraded" to it) }
         },
       )
