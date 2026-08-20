@@ -59,6 +59,8 @@ class ServePinnedManifest(
      * nothing to say about an id it no longer contains.
      */
     val labels: Map<String, String> = emptyMap(),
+    /** Preview id → the caption that revision published for it. See [CatalogEntries.captions]. */
+    val captions: Map<String, String> = emptyMap(),
     /** Preview id → the baked light/dark theme recorded by that revision's image entry. */
     val themes: Map<String, String> = emptyMap(),
     /** Whether `catalog.json` was fetched and parsed at this commit. */
@@ -103,6 +105,7 @@ class ServePinnedManifest(
           renders = catalog?.paths.orEmpty(),
           references = references.orEmpty(),
           labels = catalog?.labels.orEmpty(),
+          captions = catalog?.captions.orEmpty(),
           themes = catalog?.themes.orEmpty(),
           catalogRead = catalog != null,
           referencesRead = references != null,
@@ -158,6 +161,8 @@ class ServePinnedManifest(
       val paths: Map<String, String>,
       /** Preview id → the component that declared it, where the catalog names one. */
       val labels: Map<String, String>,
+      /** Preview id → the caption that component authored, where the catalog carries one. */
+      val captions: Map<String, String>,
       /** Preview id → the explicit baked theme on the winning image entry. */
       val themes: Map<String, String>,
     )
@@ -168,11 +173,17 @@ class ServePinnedManifest(
           .getOrNull() ?: return null
       val paths = LinkedHashMap<String, String>()
       val labels = LinkedHashMap<String, String>()
+      val captions = LinkedHashMap<String, String>()
       val themes = LinkedHashMap<String, String>()
       for (component in components) {
         val obj = runCatching { component.jsonObject }.getOrNull() ?: continue
         val componentId = runCatching {
           obj["componentId"]?.jsonPrimitive?.content
+        }
+          .getOrNull()
+          ?.takeIf { it.isNotBlank() }
+        val caption = runCatching {
+          obj["caption"]?.jsonPrimitive?.content
         }
           .getOrNull()
           ?.takeIf { it.isNotBlank() }
@@ -199,6 +210,10 @@ class ServePinnedManifest(
           // component behind, and the page attributes one component's render to another. Whichever
           // declaration owns the pixels owns the name, even when that name is nothing.
           if (componentId != null) labels[id] = componentId else labels.remove(id)
+          // The caption follows the winning path for the same reason the label does: it describes
+          // the component that owns these pixels, so a collision resolved towards an uncaptioned
+          // entry must not leave the loser's sentence behind explaining someone else's render.
+          if (caption != null) captions[id] = caption else captions.remove(id)
           val theme = runCatching {
             image.jsonObject["theme"]?.jsonPrimitive?.content
           }
@@ -207,7 +222,7 @@ class ServePinnedManifest(
           if (theme != null) themes[id] = theme else themes.remove(id)
         }
       }
-      return CatalogEntries(paths, labels, themes)
+      return CatalogEntries(paths, labels, captions, themes)
     }
 
     /** `references/index.json` → reference id → the canonical raster's path on the branch. */

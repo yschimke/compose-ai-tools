@@ -45,6 +45,46 @@ class ServePinnedManifestTest {
   }
 
   @Test
+  fun `a revision's captions are read from its own catalog`() {
+    // The caption is `catalog.json` data, so a pinned page must print the sentence THAT publish
+    // carried — not the tip's, which may since have been rewritten to describe the component
+    // differently than the render on screen. Absence is an answer too: a component that authored
+    // no caption then gets none now.
+    val entries =
+      ServePinnedManifest.parseCatalog(
+        """
+        {"schema":"design-parity-catalog/v1","components":[
+          {"componentId":"Button/Loading","caption":"The kit's loading pattern.",
+           "images":[{"path":"images/button-loading/ideal.png"}]},
+          {"componentId":"Card","images":[{"path":"images/card/ideal.png"}]}]}
+        """
+          .trimIndent()
+      )!!
+
+    assertEquals("The kit's loading pattern.", entries.captions["button-loading__ideal"])
+    assertNull(entries.captions["card__ideal"])
+  }
+
+  @Test
+  fun `a caption follows the winning path, exactly as its label does`() {
+    // Two declarations flattening to one route id: the entry that owns the pixels owns the words.
+    // A caption left behind by the loser would explain someone else's render.
+    val entries =
+      ServePinnedManifest.parseCatalog(
+        """
+        {"schema":"design-parity-catalog/v1","components":[
+          {"componentId":"Old","caption":"The one that lost.",
+           "images":[{"path":"images/shared/ideal.png"}]},
+          {"componentId":"New","images":[{"path":"images/shared/ideal.png"}]}]}
+        """
+          .trimIndent()
+      )!!
+
+    assertEquals("New", entries.labels["shared__ideal"])
+    assertNull(entries.captions["shared__ideal"])
+  }
+
+  @Test
   fun `references key by their declared id, whatever path they carry`() {
     val paths =
       ServePinnedManifest.parseReferences(

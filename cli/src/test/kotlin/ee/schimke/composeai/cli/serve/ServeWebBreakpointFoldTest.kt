@@ -459,6 +459,32 @@ class ServeWebBreakpointFoldTest {
   }
 
   @Test
+  fun `a live-only preview carries its component's caption`() {
+    // A wholly-deferred component never reaches `components[]`, so its caption exists only on the
+    // deferred record — the component-map lookup alone would leave exactly the live-only cards
+    // (which have no baked pixels to explain them either) unable to say what they are.
+    val liveOnly =
+      ServePreview(
+        id = "livedialog__ideal__default__192dp",
+        label = "livedialog__ideal__default__192dp",
+        componentId = "LiveDialog",
+        state = "default",
+        size = "192dp",
+        section = "Containment",
+        catalogOrder = 0,
+        caption = "Rendered on demand, and it says so.",
+      )
+
+    val html =
+      ServeWeb.viewerPage(liveOnly, token = "t", basePath = "/wear", siblings = listOf(liveOnly))
+
+    assertTrue(
+      html.contains("<p class=\"cp-preview-caption\">Rendered on demand, and it says so.</p>"),
+      "a live-only preview prints its caption like any other",
+    )
+  }
+
+  @Test
   fun `a catalog that declares no sizes keeps a card per render`() {
     // The same fan-out as above with the metadata a pre-breakpoint export never wrote. Folding on
     // the id alone would make these renders unreachable — there would be no switcher to reach them

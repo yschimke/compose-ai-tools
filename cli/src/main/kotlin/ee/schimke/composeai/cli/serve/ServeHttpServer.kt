@@ -5697,6 +5697,12 @@ class ServeHttpServer(
           pinnedPreview != null ->
             currentPreview?.copy(
               componentId = pinnedPreview.componentId ?: currentPreview.componentId,
+              // The caption takes NO tip fallback, unlike the fields around it. Those are enriched
+              // from the tip because `catalog.json` does not carry them; the caption it does carry,
+              // so that revision's answer is authoritative including its silence. Falling back
+              // would print today's sentence on a historical page and, for a caption that has since
+              // been rewritten, describe the render on screen in words its publish never used.
+              caption = pinnedPreview.caption,
               theme = pinnedPreview.theme ?: currentPreview.theme,
             ) ?: pinnedPreview
           revisionAnswers -> null
