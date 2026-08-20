@@ -2791,9 +2791,21 @@ a signed-in account. A session alone is not enough — otherwise any account you
 grant into a server whose browse token they never had. In practice this is the `/status` route: the
 page you already have open carries the token, and each waiting request has a **Review →** link.
 
-On the deployed image set `SERVE_AGENT_GRANTS=1` (optional `SERVE_AGENT_GRANT_SCOPES`,
-`SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`, `SERVE_AGENT_GRANT_RATE_LIMIT`); it's
-off by default. The design, and why each control is where it is, is in
+On the deployed image the lane **enables itself where it can work**: leave `SERVE_AGENT_GRANTS`
+unset and it comes on exactly when `SERVE_GITHUB_AUTH_CLIENT_ID` / `_CLIENT_SECRET` /
+`_COOKIE_SECRET` are all set, because that is what supplies the human identity a grant is approved
+against. Neither flat default was right — a hardcoded `1` would fail startup on every public box
+with no OAuth app configured (the server refuses the lane rather than letting anonymous visitors
+mint credentials), and a hardcoded `0` shipped it switched off on the box it was built for.
+
+Set it explicitly to override in either direction: `SERVE_AGENT_GRANTS=0` opts out on a box that
+*does* have GitHub auth, and `=1` insists on a box that doesn't — which reaches the server's own
+refusal, deliberately, rather than being quietly downgraded to off. Optional knobs:
+`SERVE_AGENT_GRANT_SCOPES`, `SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`,
+`SERVE_AGENT_GRANT_RATE_LIMIT` — each rejects a malformed value at startup rather than silently
+falling back to its default. The derivation is pinned by
+[`deploy/image/test-agent-grants-default.sh`](../deploy/image/test-agent-grants-default.sh). The
+design, and why each control is where it is, is in
 [docs/design/AGENT_ACCESS_GRANTS.md](design/AGENT_ACCESS_GRANTS.md).
 
 ## Deploying `preview.coo.ee`

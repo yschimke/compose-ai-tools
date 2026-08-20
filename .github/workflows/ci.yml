@@ -1243,6 +1243,13 @@ jobs:
       # kept the public host's playground pinned to one catalog with the Android modes off.
       - name: Run deploy compose env-passthrough tests
         run: ./deploy/image/test-compose-env-passthrough.sh
+      # The agent-grant lane derives its own default (on where SERVE_GITHUB_AUTH_* gives it a human
+      # to approve against, off otherwise), because both flat answers are wrong in opposite
+      # directions: `1` fails startup on every box with no OAuth app, `0` ships the feature dead on
+      # the box it was built for. A derivation has no output of its own, so getting it wrong either
+      # breaks unrelated deployments on their next roll or quietly disables the lane — both silent.
+      - name: Run deploy agent-grant default tests
+        run: ./deploy/image/test-agent-grants-default.sh
       # The version-control config overlay is opt-in, so nothing exercises it on the way to a
       # release — a wrong source path or mount target is found on a box, after a restart, serving a
       # stale catalog set. Every failure mode is silent: a missing source makes Docker create an

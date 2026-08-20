@@ -371,6 +371,23 @@ fi
 # GitHub user here (SERVE_GITHUB_AUTH_* is what supplies the identity), so on the open profile the
 # lane refuses to start without it rather than letting anonymous visitors mint credentials.
 # Off unless asked for. See docs/design/AGENT_ACCESS_GRANTS.md.
+# Unset means "on where it can work": the lane needs a human identity to approve against, which is
+# exactly what SERVE_GITHUB_AUTH_* supplies, and on the open profile the server refuses to start
+# without one rather than letting anonymous visitors mint credentials. So defaulting it to a flat
+# `1` would take out every public box that has no OAuth app configured — while defaulting it off
+# leaves the feature switched off on the one box it was built for. Deriving it from the approver's
+# presence turns it on precisely where it is safe and useful, and an operator can still force either
+# answer explicitly (`SERVE_AGENT_GRANTS=0` to opt out with auth configured, `=1` to insist without
+# it and get the server's own refusal, which is the honest failure).
+if [[ -z "${SERVE_AGENT_GRANTS:-}" ]]; then
+  if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" && -n "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}" &&
+    -n "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}" ]]; then
+    SERVE_AGENT_GRANTS=1
+  else
+    SERVE_AGENT_GRANTS=0
+  fi
+fi
+
 if [[ "${SERVE_AGENT_GRANTS:-}" == "1" || "${SERVE_AGENT_GRANTS:-}" == "true" ]]; then
   args+=(--agent-grants)
   [[ -n "${SERVE_AGENT_GRANT_SCOPES:-}" ]] &&
