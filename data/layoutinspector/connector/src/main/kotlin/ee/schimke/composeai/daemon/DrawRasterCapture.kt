@@ -77,12 +77,21 @@ internal object DrawRasterCapture {
       // the placeholder block as its own layer. Skipping it here matches the same exclusion the
       // export's `hasCustomDraw` makes, and saves an offscreen render that would come back empty.
       if (ModifierTokenResolver.isPlaceholderElement(info.modifier)) return@mapNotNull null
-      val lambda = DrawCaptureExtractor.drawLambda(info.modifier) ?: return@mapNotNull null
-      val bounds = boundsOf(info)?.takeIf { it.right > it.left && it.bottom > it.top }
-      bounds?.let {
-        val (localWidth, localHeight) = localSizeOf(info, it)
-        Draw(it, localWidth, localHeight, lambda)
-      }
+      if (!DrawCaptureExtractor.isDrawModifier(info.modifier)) return@mapNotNull null
+      val bounds =
+        boundsOf(info)?.takeIf { it.right > it.left && it.bottom > it.top }
+          ?: return@mapNotNull null
+      // Bounds first, lambda second: a `drawWithCache` builds its draw block *for a size*, so the
+      // modifier's own local size has to be known before its lambda can be asked for.
+      val (localWidth, localHeight) = localSizeOf(info, bounds)
+      val cacheParams =
+        DrawCaptureExtractor.CacheDrawParams(
+          Size(localWidth.toFloat(), localHeight.toFloat()),
+          density,
+        )
+      val lambda =
+        DrawCaptureExtractor.drawLambda(info.modifier, cacheParams) ?: return@mapNotNull null
+      Draw(bounds, localWidth, localHeight, lambda)
     }
     if (draws.isEmpty()) return null
 

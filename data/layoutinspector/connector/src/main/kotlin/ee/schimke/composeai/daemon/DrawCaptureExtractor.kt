@@ -1,5 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.ui.draw.BuildDrawCacheParams
+import androidx.compose.ui.draw.CacheDrawScope
+import androidx.compose.ui.draw.DrawResult
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -15,6 +18,7 @@ import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawContext
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.DrawStyle
@@ -22,6 +26,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ModifierInfo
 import androidx.compose.ui.platform.InspectableValue
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -56,6 +61,15 @@ internal object DrawCaptureExtractor {
   /** The draw modifiers whose lambda paints chrome the token export can't otherwise see. */
   private val DRAW_MODIFIER_NAMES = setOf("drawBehind", "drawWithContent", "drawWithCache")
   private val LAMBDA_PROPERTY_NAMES = setOf("onDraw", "onBuildDrawCache")
+  private const val CACHE_LAMBDA_PROPERTY = "onBuildDrawCache"
+
+  /**
+   * What a `drawWithCache` needs before it will hand over a draw lambda: the size and density its
+   * `onBuildDrawCache` block builds against. `Modifier.drawWithCache` is a *builder* — geometry is
+   * computed once per size/density and closed over by the block it returns — so unlike `drawBehind`
+   * / `drawWithContent` its lambda can't be replayed without them.
+   */
+  internal class CacheDrawParams(val size: Size, val density: Float)
 
   fun extract(
     modifiers: List<ModifierInfo>,
@@ -64,8 +78,9 @@ internal object DrawCaptureExtractor {
     density: Float,
   ): LayoutInspectorVectorGraphic? {
     if (width <= 0 || height <= 0) return null
+    val cache = CacheDrawParams(Size(width.toFloat(), height.toFloat()), density)
     for (info in modifiers) {
-      val onDraw = drawLambda(info.modifier) ?: continue
+      val onDraw = drawLambda(info.modifier, cache) ?: continue
       captureDraw(onDraw, width, height, density)?.let {
         return it
       }
@@ -97,34 +112,49 @@ internal object DrawCaptureExtractor {
     )
   }
 
+  /** Whether [modifier] is one of the draw modifiers [drawLambda] can read a lambda out of. */
+  internal fun isDrawModifier(modifier: Any): Boolean {
+    val name = (modifier as? InspectableValue)?.nameFallback ?: modifier.javaClass.simpleName
+    return DRAW_MODIFIER_NAMES.any { name.contains(it, ignoreCase = true) } ||
+      modifier.javaClass.simpleName.let { s ->
+        s.contains("DrawBehind") || s.contains("DrawWithContent") || s.contains("DrawWithCache")
+      }
+  }
+
   /**
    * The `DrawScope.() -> Unit` a draw modifier paints with — from its [InspectableValue] projection
-   * first, else a reflected `Function1` backing field. `drawWithCache`'s `onBuildDrawCache` returns
-   * a `DrawResult` rather than being a draw lambda, so it isn't re-invokable here and is skipped.
+   * first, else a reflected `Function1` backing field.
+   *
+   * `drawWithCache` is the one that needs more than a field read: its `onBuildDrawCache` is a
+   * *builder* that returns a `DrawResult` rather than drawing, so the lambda is recovered by
+   * running the builder against a [CacheDrawScope] carrying [cacheParams] and taking the
+   * `DrawResult`'s block ([drawCacheBlock]). Without [cacheParams] — a caller that doesn't know the
+   * node's size yet — a `drawWithCache` yields null, as it always did.
    *
    * Shared with [DrawRasterCapture], which re-invokes the same lambdas against an offscreen bitmap
    * when this recorder can't represent what they draw: one reader means the two captures can never
    * disagree about which modifiers on a chain are draws.
    *
-   * A `drawWithContent`'s lambda is really a `ContentDrawScope.() -> Unit`; the declared type is
-   * the common supertype both callers can invoke, and both pass a `ContentDrawScope` receiver.
+   * A `drawWithContent`'s lambda — and a `DrawResult`'s block — is really a `ContentDrawScope.() ->
+   * Unit`; the declared type is the common supertype both callers can invoke, and both pass a
+   * `ContentDrawScope` receiver.
    */
   @Suppress("UNCHECKED_CAST")
-  internal fun drawLambda(modifier: Any): (DrawScope.() -> Unit)? {
+  internal fun drawLambda(
+    modifier: Any,
+    cacheParams: CacheDrawParams? = null,
+  ): (DrawScope.() -> Unit)? {
+    if (!isDrawModifier(modifier)) return null
     val inspectable = modifier as? InspectableValue
-    val name = inspectable?.nameFallback ?: modifier.javaClass.simpleName
-    val looksLikeDraw =
-      DRAW_MODIFIER_NAMES.any { name.contains(it, ignoreCase = true) } ||
-        modifier.javaClass.simpleName.let { s ->
-          s.contains("DrawBehind") || s.contains("DrawWithContent")
-        }
-    if (!looksLikeDraw) return null
     // Prefer the public inspector projection (properties["onDraw"]).
     inspectable
       ?.inspectableElements
       ?.firstOrNull { it.name in LAMBDA_PROPERTY_NAMES }
-      ?.value
-      ?.let { if (it is Function1<*, *>) return it as DrawScope.() -> Unit }
+      ?.let { element ->
+        val fn = element.value as? Function1<*, *> ?: return@let
+        return if (element.name == CACHE_LAMBDA_PROPERTY) drawCacheBlock(fn, cacheParams)
+        else fn as DrawScope.() -> Unit
+      }
     // Fall back to the first Function1 backing field (skiko doesn't always populate inspector
     // info).
     val field =
@@ -132,8 +162,57 @@ internal object DrawCaptureExtractor {
         Function1::class.java.isAssignableFrom(it.type)
       } ?: return null
     field.isAccessible = true
-    val fn = field.get(modifier)
-    return if (fn is Function1<*, *>) fn as DrawScope.() -> Unit else null
+    val fn = field.get(modifier) as? Function1<*, *> ?: return null
+    return if (field.name == CACHE_LAMBDA_PROPERTY) drawCacheBlock(fn, cacheParams)
+    else fn as DrawScope.() -> Unit
+  }
+
+  /**
+   * Runs a `drawWithCache`'s `onBuildDrawCache` builder for [cacheParams] and returns the draw
+   * block it produced, or null when the builder needs something this replay can't supply (an
+   * `obtainGraphicsLayer()`, a Compose whose internals moved).
+   *
+   * The builder is the component's own, so the block comes back closed over the component's real
+   * resolved geometry and colours — the same faithfulness the `drawBehind` replay already has.
+   */
+  @Suppress("UNCHECKED_CAST")
+  private fun drawCacheBlock(
+    onBuildDrawCache: Function1<*, *>,
+    cacheParams: CacheDrawParams?,
+  ): (DrawScope.() -> Unit)? {
+    val params = cacheParams ?: return null
+    return runCatching {
+      // `CacheDrawScope`'s constructor and its `cacheParams` are both internal to Compose
+      // (`setCacheParams$ui` after mangling), so both go through reflection — the backing field
+      // has one stable name, with no `$ui` / `$ui_release` suffix to guess.
+      val scope =
+        CacheDrawScope::class
+          .java
+          .getDeclaredConstructor()
+          .apply { isAccessible = true }
+          .newInstance()
+      CacheDrawScope::class
+        .java
+        .getDeclaredField("cacheParams")
+        .apply { isAccessible = true }
+        .set(scope, ReplayCacheParams(params))
+      val result = (onBuildDrawCache as CacheDrawScope.() -> DrawResult)(scope)
+      val block =
+        DrawResult::class.java.getDeclaredField("block").apply { isAccessible = true }.get(result)
+          as Function1<*, *>
+      block as DrawScope.() -> Unit
+    }
+      .getOrNull()
+  }
+
+  /** The size/density a replayed `drawWithCache` builds its geometry against. */
+  private class ReplayCacheParams(private val params: CacheDrawParams) : BuildDrawCacheParams {
+    override val size: Size
+      get() = params.size
+
+    override val density: Density = Density(params.density)
+
+    override val layoutDirection: LayoutDirection = LayoutDirection.Ltr
   }
 
   private fun fmt(v: Float): String {
@@ -148,10 +227,24 @@ internal object DrawCaptureExtractor {
     private val w: Float,
     private val h: Float,
     override val density: Float,
-  ) : DrawScope {
+  ) : ContentDrawScope {
     val paths = mutableListOf<LayoutInspectorVectorPath>()
     override val fontScale: Float = 1f
     override val layoutDirection: LayoutDirection = LayoutDirection.Ltr
+
+    // The receiver has to be a `ContentDrawScope`: a `drawWithContent` lambda — and the block a
+    // `drawWithCache` builds — is declared against one, so a plain `DrawScope` fails the cast the
+    // moment the lambda is invoked, whatever it goes on to draw.
+    //
+    // Drawing the content is what this recorder can't represent, though: the vector it returns
+    // stands in for the *whole* node, so a capture that painted over (or under) descendants,
+    // text or a painter would export the chrome and silently drop them. Aborting keeps the
+    // all-or-raster guarantee — a node whose draw wraps its content still falls back to the
+    // faithful raster, and only chrome-only draws (`Canvas`, a Wear progress ring, a slider
+    // track) vectorise.
+    override fun drawContent() {
+      throw UnsupportedOperationException("content draw not captured")
+    }
 
     // A transform block / clip drops to the canvas or transform, which we don't support — accessing
     // either throws, so the whole capture is caught and the node falls back to its raster crop.
