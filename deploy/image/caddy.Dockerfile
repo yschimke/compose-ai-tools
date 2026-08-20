@@ -24,7 +24,12 @@ COPY Caddyfile /etc/caddy/Caddyfile
 COPY site-domains.sh /usr/local/bin/site-domains.sh
 COPY caddy-entrypoint.sh /usr/local/bin/caddy-entrypoint.sh
 RUN chmod +x /usr/local/bin/site-domains.sh /usr/local/bin/caddy-entrypoint.sh
-# CMD is inherited from caddy:2 (`run --config /etc/caddy/Caddyfile --adapter caddyfile`) and passed
-# through by the entrypoint's `exec caddy "$@"`, so this changes what Caddy is *told*, never how it
-# is run.
+# ENTRYPOINT + CMD, and the CMD is NOT optional: Docker **resets an inherited CMD to empty** when a
+# Dockerfile declares ENTRYPOINT, so `caddy:2`'s own `run --config … --adapter caddyfile` does not
+# survive the line below. Without this, the entrypoint's `exec caddy "$@"` runs `caddy` with no
+# arguments — which prints usage and exits, so the container dies and takes ports 80/443 with it.
+# That is the whole box offline, not a degraded site: it is what happened when this image first
+# shipped without the CMD. Restated verbatim from caddy:2 so the entrypoint passes it straight
+# through and changes what Caddy is *told*, never how it is run.
 ENTRYPOINT ["/usr/local/bin/caddy-entrypoint.sh"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
