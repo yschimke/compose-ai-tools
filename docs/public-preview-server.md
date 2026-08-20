@@ -2795,15 +2795,28 @@ On the deployed image the lane **enables itself where it can work**: leave `SERV
 unset and it comes on whenever this box has an approver — which, matching the server's own rule, is
 either of:
 
-- **`SERVE_GITHUB_AUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_COOKIE_SECRET` all set** — any signed-in
-  GitHub user approves; or
-- **a token-gated box** (`SERVE_PUBLIC` not `1`, with `SERVE_TOKEN` set) — the operator token
-  holder approves.
+- **`SERVE_GITHUB_AUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_COOKIE_SECRET` all set**, or
+- **a token-gated box** — `SERVE_PUBLIC` not `1`, with `SERVE_TOKEN` set.
 
 Only a `--public` box with no GitHub auth has neither, and there the server refuses the lane
 outright rather than letting anonymous visitors mint credentials. Neither flat default was right —
 a hardcoded `1` would fail startup on exactly that configuration, and a hardcoded `0` shipped the
 feature switched off on the box it was built for.
+
+**What *approving* then requires is a separate question, and the two conditions stack rather than
+substituting for each other.** Reaching the approval page needs, in order:
+
+| Box | To approve you need |
+|---|---|
+| public + GitHub auth | a signed-in GitHub account |
+| private, no GitHub auth | the browse token (`SERVE_TOKEN`) |
+| **private + GitHub auth** | **both — the browse token *and* a signed-in account** |
+
+The last row is the one to be deliberate about. The server's own front door comes first and a GitHub
+session is not a substitute for it: without that rule, any account the (by default empty)
+`--github-auth-users` allowlist accepts could open a request and approve it into a server whose
+browse token they never had. In practice the token arrives for free — `/status` is where the waiting
+requests are listed, and the page you already have open carries it in its links.
 
 Set it explicitly to override in either direction: `SERVE_AGENT_GRANTS=0` opts out on a box that
 *does* have GitHub auth, and `=1` insists on a box that doesn't — which reaches the server's own

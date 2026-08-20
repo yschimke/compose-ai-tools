@@ -36,6 +36,13 @@ internal class AuthCommand(
    * production always gets the default.
    */
   injectedStore: AgentAccessStore? = null,
+  /**
+   * How the default store is opened when none was injected. A seam, because the one behaviour worth
+   * pinning here is what happens when this **throws** — `auth request --json` must still print the
+   * device secret rather than exiting, and a test cannot make a real machine forget where its home
+   * directory is.
+   */
+  private val openStore: () -> AgentAccessStore = { AgentAccessStore() },
 ) {
 
   /**
@@ -44,13 +51,29 @@ internal class AuthCommand(
    * needs the store, so `auth --help` still works there.
    */
   private val store: AgentAccessStore by lazy {
+    optionalStore ?: fail(storeFailure ?: "no user config directory could be determined")
+  }
+
+  /**
+   * The store, or null when this machine has nowhere safe to keep credentials.
+   *
+   * Separate from [store] because **one path legitimately does not need it**: `auth request --json`
+   * prints the device secret, which is the whole point of that mode — the caller polls for itself.
+   * Failing there would open a request on the server and then exit before printing the secret that
+   * could redeem it, leaving the human with an approval link that mints a credential nobody can
+   * ever collect. Every other path needs somewhere to write and says so through [store].
+   */
+  private val optionalStore: AgentAccessStore? by lazy {
     injectedStore
       ?: try {
-        AgentAccessStore()
+        openStore()
       } catch (e: NoCredentialHomeException) {
-        fail(e.message ?: "no user config directory could be determined")
+        storeFailure = e.message
+        null
       }
   }
+
+  private var storeFailure: String? = null
 
   private val json: Boolean = "--json" in args
 
@@ -138,8 +161,10 @@ internal class AuthCommand(
     // device secret is the only thing that can redeem the approval, so a `--no-wait` that printed
     // "re-run auth status" without persisting it was telling the user to do something impossible —
     // and a wait interrupted by Ctrl-C would have thrown the request away just as completely.
+    // `optionalStore` rather than `store`: with `--json` the device secret is printed, so a machine
+    // with nowhere to write can still drive the flow. Handled below.
     val remembered =
-      store.savePending(
+      optionalStore?.savePending(
         AgentAccessStore.Pending(
           origin = client.origin,
           requestId = opened.requestId,
@@ -155,7 +180,7 @@ internal class AuthCommand(
     // never prints the token, by design. Waiting would mean asking a person to approve access that
     // is guaranteed to be lost. `--json` is exempt: it prints the device secret, so its caller can
     // poll for itself and needs no store at all.
-    if (!remembered && !json) {
+    if (remembered != true && !json) {
       fail(
         "opened the request, but could not save it locally (see the warning above) — so nothing " +
           "could collect the token once it was approved. Fix the credential file's directory and " +
@@ -221,9 +246,9 @@ internal class AuthCommand(
     // grant with nothing left to redeem it.
     // The waiting path replaces this origin's entry too, and had no superseded handling at all —
     // the previous round only taught the `--no-wait` collector to do this.
-    handOverSuperseded(store, client, client.origin, outcome.token.orEmpty())
+    optionalStore?.let { handOverSuperseded(it, client, client.origin, outcome.token.orEmpty()) }
     val saved =
-      store.save(
+      optionalStore?.save(
         AgentAccessStore.Entry(
           origin = client.origin,
           token = outcome.token.orEmpty(),
@@ -233,7 +258,7 @@ internal class AuthCommand(
           expiresAtMillis = System.currentTimeMillis() + (outcome.expiresInSeconds ?: 0) * 1000,
         )
       )
-    if (saved) store.forgetPendingRequest(opened.requestId)
+    if (saved == true) optionalStore?.forgetPendingRequest(opened.requestId)
     if (json) {
       printJson(
         GrantedJson.serializer(),
@@ -242,7 +267,7 @@ internal class AuthCommand(
           scopes = outcome.scopes,
           approvedBy = outcome.approvedBy.orEmpty(),
           expiresInSeconds = outcome.expiresInSeconds ?: 0,
-          stored = saved,
+          stored = saved == true,
         ),
       )
       return
@@ -255,7 +280,7 @@ internal class AuthCommand(
         "."
     )
     println(
-      if (saved)
+      if (saved == true)
         "Saved for ${client.origin}. Other compose-preview commands against this server will use " +
           "it automatically; `compose-preview auth token` prints it for anything else."
       else
