@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.25.0](https://github.com/yschimke/compose-ai-tools/compare/v1.24.0...v1.25.0) (2026-08-20)
+
+
+### Features
+
+* **annotations:** let an override cell declare the kit's whole assignment ([#4359](https://github.com/yschimke/compose-ai-tools/issues/4359)) ([c1b1323](https://github.com/yschimke/compose-ai-tools/commit/c1b1323295631e041cc6365fa2d891e898f4f4af))
+* **serve:** add a GitHub-gated endpoint for uploading preview images ([#4366](https://github.com/yschimke/compose-ai-tools/issues/4366)) ([ea65a8c](https://github.com/yschimke/compose-ai-tools/commit/ea65a8cce3141ca8102a5750592f1567530ab5d2))
+* **serve:** audit the one cache fault content-addressing cannot see ([#4369](https://github.com/yschimke/compose-ai-tools/issues/4369)) ([eda3c87](https://github.com/yschimke/compose-ai-tools/commit/eda3c8728c9ebb30ed6be18ddceaead0c6cae959))
+* **serve:** put the front door's compare action on the card, and let the hero break out ([#4358](https://github.com/yschimke/compose-ai-tools/issues/4358)) ([2f67a69](https://github.com/yschimke/compose-ai-tools/commit/2f67a69329d820c8013016321cfd5511085a8d2a))
+* **serve:** say whether the catalog blob cache actually survives a restart ([#4362](https://github.com/yschimke/compose-ai-tools/issues/4362)) ([2b11542](https://github.com/yschimke/compose-ai-tools/commit/2b115420c1448a650b7f35dee483a885cfdd4809))
+* **serve:** show the component's authored caption ([#4357](https://github.com/yschimke/compose-ai-tools/issues/4357)) ([49ecd46](https://github.com/yschimke/compose-ai-tools/commit/49ecd46808e22bea7654e6717699138ce1dfc1ed))
+
+
+### Bug Fixes
+
+* **ci:** pin the Gradle wrapper to 9.7.0 until the 9.7.1 regression is fixed ([#4365](https://github.com/yschimke/compose-ai-tools/issues/4365)) ([1ad4ecf](https://github.com/yschimke/compose-ai-tools/commit/1ad4ecff095756c6a48ae5f6eee06ee05fb35630))
+* **serve:** accept installation tokens and meter image-lane verification ([#4368](https://github.com/yschimke/compose-ai-tools/issues/4368)) ([9cd3f75](https://github.com/yschimke/compose-ai-tools/commit/9cd3f75220616cc6612950c60eaa1ab4c02356c9))
+* **serve:** repair the front-door card's click target, state layer and focus state ([#4363](https://github.com/yschimke/compose-ai-tools/issues/4363)) ([164dd9d](https://github.com/yschimke/compose-ai-tools/commit/164dd9d5e78ed70ba68ba67a5a4074c80e62f101))
+* **serve:** report configured persistence as a decision, not as proof ([#4367](https://github.com/yschimke/compose-ai-tools/issues/4367)) ([0e8632b](https://github.com/yschimke/compose-ai-tools/commit/0e8632b8133c3cb53c220171562592ebb9fe9689))
+* **serve:** source captions from the publish that owns the render ([#4361](https://github.com/yschimke/compose-ai-tools/issues/4361)) ([2759f6e](https://github.com/yschimke/compose-ai-tools/commit/2759f6eed233eaa17500d844c168da1ed0b96e5f))
+
 ## [1.24.0](https://github.com/yschimke/compose-ai-tools/compare/v1.23.0...v1.24.0) (2026-08-20)
 
 
