@@ -215,6 +215,13 @@ internal object CliFlagValidation {
           "--public",
           "--raw-base",
           "--remote",
+          "--secret",
+          "--serve-url",
+          "--serve-token",
+          "--github-token-file",
+          // Known so the command's own refusal is the only message a caller gets: it explains why
+          // a token may not be an argument, which "unrecognised option" does not.
+          "--github-token",
         ),
       // `bundle` owns nested subcommands. Validate at the routed-command boundary while allowing
       // the union of their options; nested positional dispatch remains BundleCommand's concern.
