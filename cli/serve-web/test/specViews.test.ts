@@ -9,6 +9,7 @@ import {
     isView,
     normaliseView,
     onOpen,
+    PLAIN_VIEW,
     prefer,
     viewParam,
     type ViewChoice,
@@ -32,13 +33,15 @@ describe("normaliseView", () => {
 
 describe("choose", () => {
     it("takes the view and latches the choice", () => {
-        const state = choose(INITIAL, "triptych");
-        assert.equal(state.view, "triptych");
+        const state = choose(INITIAL, "diff");
+        assert.equal(state.view, "diff");
         assert.equal(state.chosen, true);
     });
 
     it("latches even on the default, which is still a choice", () => {
-        // Pressing "Spec" is someone saying they want the plain reference, not saying nothing.
+        // Pressing the view already showing is someone saying they want it, not saying nothing —
+        // it is what stops a later entry-view request from moving them off it.
+        assert.equal(choose(INITIAL, DEFAULT_VIEW).chosen, true);
         assert.equal(choose(INITIAL, "spec").chosen, true);
     });
 });
@@ -71,12 +74,12 @@ describe("hydrate", () => {
 
 describe("prefer / onOpen", () => {
     it("opens on the view the chip asked for", () => {
-        const state = onOpen(prefer(INITIAL, "triptych"));
-        assert.equal(state.view, "triptych");
+        const state = onOpen(prefer(INITIAL, "diff"));
+        assert.equal(state.view, "diff");
     });
 
     it("spends the request, so a later entry is not dragged back", () => {
-        const opened = onOpen(prefer(INITIAL, "triptych"));
+        const opened = onOpen(prefer(INITIAL, "diff"));
         assert.equal(opened.preferred, "");
         // The visitor moves on, then re-enters: the chip's old request must not reappear.
         const moved = choose(opened, "slider");
@@ -87,11 +90,11 @@ describe("prefer / onOpen", () => {
         // The bug this prevents: a shared `?specView=diff` link, or a Back into one, being
         // overwritten by the chip that happens to sit on the same page.
         const fromUrl = hydrate(INITIAL, "diff");
-        const asked = prefer(fromUrl, "triptych");
+        const asked = prefer(fromUrl, "spec");
         assert.equal(asked.preferred, "", "the request is not even recorded");
         assert.equal(onOpen(asked).view, "diff");
 
-        const clicked = prefer(choose(INITIAL, "slider"), "triptych");
+        const clicked = prefer(choose(INITIAL, "slider"), "spec");
         assert.equal(onOpen(clicked).view, "slider");
     });
 
@@ -112,6 +115,23 @@ describe("prefer / onOpen", () => {
 describe("viewParam", () => {
     it("says nothing for the default, which needs no parameter", () => {
         assert.equal(viewParam(DEFAULT_VIEW), "");
-        assert.equal(viewParam("triptych"), "triptych");
+        assert.equal(viewParam("diff"), "diff");
+    });
+
+    it("spells the plain reference out, now that it is not the default", () => {
+        // #4376 moved the default to the triptych, so `spec` is a view like any other and a URL
+        // that leaves it unsaid means the triptych. A shared link to the reference alone has to
+        // carry it or it reopens on three panels.
+        assert.equal(viewParam(PLAIN_VIEW), "spec");
+    });
+});
+
+describe("the lane's two fixed views", () => {
+    it("opens on the triptych and keeps `spec` as the one that paints nothing", () => {
+        // Both are load-bearing and they are no longer the same view: DEFAULT_VIEW decides what
+        // the lane opens on and what the URL may omit, PLAIN_VIEW decides which view leaves the
+        // stage's raster `<img>` alone. Collapsing them again is the regression this pins.
+        assert.equal(DEFAULT_VIEW, "triptych");
+        assert.equal(PLAIN_VIEW, "spec");
     });
 });

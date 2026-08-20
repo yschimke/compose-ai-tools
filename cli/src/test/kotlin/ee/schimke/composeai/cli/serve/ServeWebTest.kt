@@ -1391,11 +1391,11 @@ class ServeWebTest {
     listOf("spec", "diff", "triptych", "slider").forEach { view ->
       assertTrue(html.contains("data-cp-spec-view=\"$view\""), "the $view view is offered: $html")
     }
-    // `spec` is the default and the only pressed one, so a visitor who ignores the group sees
-    // exactly what this lane always showed.
+    // `triptych` is the default and the only pressed one (#4376), so a visitor who ignores the
+    // group is already comparing rather than looking at the reference on its own.
     assertTrue(
-      html.contains("data-cp-spec-view=\"spec\" aria-pressed=\"true\""),
-      "the plain spec is the default view",
+      html.contains("data-cp-spec-view=\"triptych\" aria-pressed=\"true\""),
+      "the triptych is the default view",
     )
     assertEquals(
       1,
@@ -1412,7 +1412,7 @@ class ServeWebTest {
     // and carrying the reference raster it normalises against.
     assertTrue(
       html.contains(
-        "id=\"cp-spec-compare\" hidden data-view=\"spec\" " +
+        "id=\"cp-spec-compare\" hidden data-view=\"triptych\" " +
           "data-reference=\"/meshcore-mobile/reference/contact-chat-figma.png?token=t\""
       ),
       html,

@@ -1,7 +1,7 @@
 // Which of the spec lane's four views is showing, and who got to decide.
 //
-// Three sources compete for that: the address bar (a shared link, or a Back into one), the
-// design-spec chip (which can request an entry view), and the visitor clicking a button. They are
+// Three sources compete for that: the address bar (a shared link, or a Back into one), a chip that
+// enters the lane asking for a particular entry view, and the visitor clicking a button. They are
 // not equal, and the rule that orders them is the whole reason this is a module rather than three
 // booleans in a closure:
 //
@@ -17,8 +17,25 @@
 export const VIEWS = ["spec", "diff", "triptych", "slider"] as const;
 export type SpecView = (typeof VIEWS)[number];
 
-/** The lane's original behaviour: the imported reference alone, on the stage viewer.js set up. */
-export const DEFAULT_VIEW: SpecView = "spec";
+/**
+ * The lane's original behaviour: the imported reference alone, on the stage viewer.js set up.
+ *
+ * Not the default any more, but still a view apart from the other three — it is the only one that
+ * paints nothing of its own, so it is the one `SpecCompare.apply()` keeps the comparison surfaces
+ * and the score away from. That is a fact about what `spec` DRAWS, not about which view the lane
+ * opens on, and the two were the same constant until [DEFAULT_VIEW] moved.
+ */
+export const PLAIN_VIEW: SpecView = "spec";
+
+/**
+ * What the lane opens on, and therefore what `?specView=` may leave unsaid.
+ *
+ * Triptych rather than `spec` (#4376): entering the design-spec lane is someone asking how the
+ * render and the reference compare, and the plain reference answers that only by asking the eye to
+ * hold one frame while looking at the other. Spec / diff / render side by side answers it on
+ * arrival, and the Spec button is one click away for anyone who wants the reference alone.
+ */
+export const DEFAULT_VIEW: SpecView = "triptych";
 
 export interface ViewChoice {
     view: SpecView;
@@ -61,7 +78,14 @@ export function hydrate(state: ViewChoice, next: string | null): ViewChoice {
         : { ...state, view: DEFAULT_VIEW };
 }
 
-/** The design-spec chip asks for an entry view. Ignored once anyone has chosen. */
+/**
+ * A chip asks for an entry view. Ignored once anyone has chosen.
+ *
+ * No caller requests one today: the design-spec chip used to ask for `diff` and stopped when
+ * [DEFAULT_VIEW] became Triptych (#4376), which is the same answer one rung further out. The
+ * precedence it encodes is what makes adding the next such entry point safe, so it stays — the
+ * ordering above is a rule about the lane, not about one chip.
+ */
 export function prefer(state: ViewChoice, next: string): ViewChoice {
     return state.chosen ? state : { ...state, preferred: normaliseView(next) };
 }

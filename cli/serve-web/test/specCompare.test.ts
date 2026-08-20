@@ -136,15 +136,33 @@ describe("<cp-spec-compare>", () => {
     it("hands viewer.js the global it calls", async () => {
         await mount();
         assert.equal(typeof lane().open, "function");
-        assert.equal(lane().view(), "spec");
+        assert.equal(lane().view(), "triptych");
     });
 
-    it("leaves the stage alone on the default view", async () => {
-        // A session that never picks a comparison view has to behave exactly as it did before this
-        // element existed: the raster `<img>` viewer.js put on the stage stays the whole surface.
+    it("opens comparing, without waiting to be asked", async () => {
+        // #4376: the lane is entered to ask how the render and the reference compare, so it opens
+        // on the triptych — spec, diff and render side by side — rather than on the reference
+        // alone, which answered that only by asking the eye to hold one frame while looking at the
+        // other.
+        const stub = stubCompare({ percent: 98.44, geometry: 0 });
+        await mount();
+        lane().open("/render/Button.png");
+        for (let i = 0; i < 5; i++) await flush();
+        assert.equal(viewer().getAttribute("data-spec-view"), "triptych");
+        assert.equal(panel().hidden, false, "the comparison panel is up");
+        assert.equal(score().hidden, false);
+        assert.equal(score().textContent, "98.4% match · 18.75% pixels differ");
+        assert.equal(stub.normalise.length, 1);
+    });
+
+    it("leaves the stage alone on the plain Spec view", async () => {
+        // The one view that paints nothing of its own: pressing Spec puts the lane back to what it
+        // showed before any of this existed — the raster `<img>` viewer.js put on the stage as the
+        // whole surface, with no comparison panel and no score over it.
         stubCompare();
         await mount();
         lane().open("/render/Button.png");
+        press("spec");
         await flush();
         assert.equal(viewer().getAttribute("data-spec-view"), "spec");
         assert.equal(panel().hidden, true, "the comparison panel stays away");
@@ -345,8 +363,8 @@ describe("<cp-spec-compare>", () => {
         const stub = stubCompare();
         await mount();
         lane().open("/render/Button.png");
-        press("diff");
         for (let i = 0; i < 5; i++) await flush();
+        press("diff");
         press("triptych");
         press("slider");
         for (let i = 0; i < 5; i++) await flush();
@@ -357,7 +375,6 @@ describe("<cp-spec-compare>", () => {
         const stub = stubCompare();
         await mount();
         lane().open("/render/Button.png");
-        press("diff");
         for (let i = 0; i < 5; i++) await flush();
         lane().close();
         lane().open("/render/Button.png?theme=dark");
