@@ -86,6 +86,10 @@ class ServeAgentGrantStore(
      * and the poll arrives up to an interval later — so shedding every non-pending entry to make
      * room let an anonymous caller fill the map, wait for a human to approve, and open one more
      * request inside that window, stranding a live token its owner could never collect.
+     *
+     * Deliberately **not** a deletion trigger. It records that a poll *built* a response, which is
+     * not the same as the agent receiving one; a response lost in flight has to be retriable, so
+     * expiry is governed by the grant's life ([purge]) and this only ranks eviction candidates.
      */
     @Volatile var collected: Boolean = false,
   ) {
@@ -214,8 +218,7 @@ class ServeAgentGrantStore(
     // still fetch the token; [purge] is what decides when that ends. A *pending* one still dies on
     // the dot — nobody should be able to approve a request whose window has closed.
     return requests[key]?.takeIf {
-      it.expiresAtMillis > now ||
-        (it.state == Request.State.APPROVED && !it.collected && !grantIsGone(it, now))
+      it.expiresAtMillis > now || (it.state == Request.State.APPROVED && !grantIsGone(it, now))
     }
   }
 
@@ -260,9 +263,12 @@ class ServeAgentGrantStore(
       grants[grant.id] = grant
       byToken[grant.token] = grant.id
       evictOverflow(keep = grant)
-      request.state = Request.State.APPROVED
+      // Data BEFORE the flag that says the data is there. The lock [poll] now takes is what makes
+      // the intermediate state unobservable; this ordering is the belt to that pair of braces, and
+      // is the right shape regardless of who else ever reads these.
       request.grantId = grant.id
       request.resolvedBy = approvedBy
+      request.state = Request.State.APPROVED
       audit(
         "agent-grant: minted ${grant.fingerprint} scope=${granted.wire} " +
           "ttl=${ttl}s approver=$approvedBy label=\"${grant.label}\""
@@ -291,7 +297,21 @@ class ServeAgentGrantStore(
    * answer an id that never existed gets. Someone holding a leaked link learns nothing about
    * whether it is real, let alone collects its token.
    */
-  fun poll(id: String?, deviceSecret: String?): Poll {
+  fun poll(id: String?, deviceSecret: String?): Poll =
+    synchronized(this) { pollLocked(id, deviceSecret) }
+
+  /**
+   * Under the lock, so a poll cannot observe a half-published approval.
+   *
+   * Ordering the writes in [approve] correctly — data, then the flag that says the data is there —
+   * is necessary but not sufficient: a poller can simply *interleave* between the two statements,
+   * no memory reordering required, see APPROVED with a null `grantId`, answer `expired`, and (the
+   * client treats expiry as terminal) throw away the device secret for a grant that had just been
+   * minted. Reading under the same lock the transition holds makes that state unobservable rather
+   * than merely unlikely — the difference between a guarantee and a narrow window. The critical
+   * section is a map lookup and a few field reads, on a lane that is rate-limited per caller.
+   */
+  private fun pollLocked(id: String?, deviceSecret: String?): Poll {
     val request = request(id) ?: return Poll.Unknown
     if (!ServeUrls.tokensMatch(request.deviceSecret, deviceSecret)) return Poll.Unknown
     return when (request.state) {
@@ -399,8 +419,12 @@ class ServeAgentGrantStore(
       // the record strands the grant it created — which is exactly what happened when someone
       // approved in the last seconds of the window and the agent's next poll landed after it.
       // The grant's own expiry is what reclaims these, via [grantIsGone].
-      val keepForCollection =
-        r.state == Request.State.APPROVED && !r.collected && !grantIsGone(r, nowMillis)
+      // Retained while its grant lives, collected or not. `collected` marks that a poll *built* a
+      // response, which is not the same as the agent receiving one: a response lost in flight left
+      // the retry hitting a purged record and being told `unknown` while the grant was still live.
+      // It stays meaningful for overflow (a collected request is the safest thing to shed), but it
+      // is no longer a reason to delete anything.
+      val keepForCollection = r.state == Request.State.APPROVED && !grantIsGone(r, nowMillis)
       (!keepForCollection && r.expiresAtMillis <= nowMillis).also { if (it) dropped++ }
     }
     grants.entries.removeIf { (_, g) ->

@@ -531,7 +531,7 @@ internal class AuthCommand(
   // --------------------------------------------------------------- revoke
 
   private fun revoke() {
-    val server = namedServer() ?: soleServer() ?: fail(NO_SERVER_MESSAGE)
+    val server = namedServer() ?: soleRevocableServer() ?: fail(NO_SERVER_MESSAGE)
     // A remembered-but-uncollected request is also access this machine asked for; revoking should
     // leave nothing behind, including the thing that could still turn into a credential. Asked
     // before it is removed, because `forgetPending` returning false means *either* "there was none"
@@ -645,6 +645,18 @@ internal class AuthCommand(
    * The one server we hold a grant for, when there is exactly one — so `auth token` needs no flag.
    */
   private fun soleServer(): String? = store.all().singleOrNull()?.origin
+
+  /**
+   * The one server this machine has *any* access to, granted or merely asked for — so `auth revoke`
+   * needs no flag either.
+   *
+   * Wider than [soleServer] on purpose, and only for revoke. That command already treats a pending
+   * request as revocable access (its device secret can still become a credential), so resolving the
+   * target from grants alone made the single most obvious case — one `--no-wait` request
+   * outstanding, nothing else — fail with "which server?" and skip the cleanup it was asked for.
+   */
+  private fun soleRevocableServer(): String? =
+    (store.all().map { it.origin } + store.allPending().map { it.origin }).distinct().singleOrNull()
 
   private fun defaultLabel(): String =
     System.getenv("COMPOSE_PREVIEW_AGENT_LABEL")?.takeIf { it.isNotBlank() }

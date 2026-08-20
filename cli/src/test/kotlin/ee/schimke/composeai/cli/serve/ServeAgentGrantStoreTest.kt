@@ -337,6 +337,45 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `concurrent polling never sees a half-published approval`() {
+    // HONEST SCOPE: this is a smoke test, not the guarantee. The guarantee is that `poll` reads
+    // under the same lock `approve` holds, so the intermediate state (APPROVED with a null grant
+    // id) cannot be observed at all. A racing test like this one passed against the *broken*
+    // ordering too — the window is two adjacent statements, and hitting it by sampling is luck.
+    // Kept because it would catch a gross regression (a lock removed, an exception under
+    // contention) cheaply, and because the reader should be told which of the two it is.
+    repeat(50) {
+      val store = store()
+      val request = store.ask(ttl = 600)
+      val seen = java.util.concurrent.ConcurrentLinkedQueue<ServeAgentGrantStore.Poll>()
+      val poller = Thread { repeat(200) { seen += store.poll(request.id, request.deviceSecret) } }
+      poller.start()
+      store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+      poller.join()
+      assertTrue(
+        seen.none { it is ServeAgentGrantStore.Poll.Expired },
+        "a poll saw `expired` for a grant that was being minted",
+      )
+    }
+  }
+
+  @Test
+  fun `a lost token response can be collected again`() {
+    // `collected` marks that a poll BUILT a response, not that the agent received one. Treating it
+    // as a deletion trigger meant a response lost in flight left the retry told `unknown` while the
+    // grant was still live.
+    val store = store()
+    val request = store.ask(ttl = 3600)
+    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    assertTrue(store.poll(request.id, request.deviceSecret) is ServeAgentGrantStore.Poll.Approved)
+    now += (store.requestTtlSeconds + 5) * 1000 // past the request window, grant still alive
+    assertTrue(
+      store.poll(request.id, request.deviceSecret) is ServeAgentGrantStore.Poll.Approved,
+      "the retry after a lost response must still collect the token",
+    )
+  }
+
+  @Test
   fun `a pending request still dies on its own deadline`() {
     // The other half: nobody may approve a request whose window has closed.
     val store = store()
