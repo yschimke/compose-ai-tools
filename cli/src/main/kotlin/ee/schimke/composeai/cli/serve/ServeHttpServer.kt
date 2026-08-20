@@ -7186,7 +7186,11 @@ class ServeHttpServer(
       // Lease (not just acquire) the tenant for the socket's whole life: a fallback-lane socket
       // opens
       // no stream, so without a lease the reaper could close its host mid-connection.
-      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId) }
+      //
+      // `connection = true`: this is the one hold that outlives any unit of work, so it is the one
+      // that has to earn its "busy" from activity rather than from being open (#4312). Every other
+      // caller takes the default request-scoped lease, which counts as busy until it is released.
+      val lease = withContext(Dispatchers.IO) { sessions.lease(sessionId, connection = true) }
       if (lease == null) {
         close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "no such session"))
         return
