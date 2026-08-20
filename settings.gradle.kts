@@ -29,7 +29,7 @@ val matrixRobolectricVersion: String? =
 
 // androidx-main post-submit build the Remote Compose / Glance Wear artifacts resolve from. See the
 // repository declaration below; bump this one line to move all three groups to a newer snapshot.
-val androidxSnapshotBuildId = "16113093"
+val androidxSnapshotBuildId = "16130474"
 
 dependencyResolutionManagement {
   // Kotlin's wasmJs toolchain resolves Node.js from an Ivy repository that the Kotlin Gradle
