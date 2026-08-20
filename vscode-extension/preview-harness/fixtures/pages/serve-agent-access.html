@@ -77,14 +77,14 @@
           <fieldset class="cp-grant-fieldset">
             <legend>What the agent may do</legend>
             <label class="cp-grant-scope">
-  <input type="checkbox" name="scope" value="preview" checked disabled>
+  <input type="radio" name="scope" value="preview" required>
   <span class="cp-grant-scope-name">preview</span>
   <span class="cp-grant-scope-what">Browse this server&#39;s catalogs and their rendered previews</span>
-</label><input type="hidden" name="scope" value="preview">
+</label>
 <label class="cp-grant-scope">
-  <input type="checkbox" name="scope" value="live" checked>
+  <input type="radio" name="scope" value="live" checked required>
   <span class="cp-grant-scope-name">live</span>
-  <span class="cp-grant-scope-what">Open live preview sessions, which start a render daemon on this machine</span>
+  <span class="cp-grant-scope-what">Open live preview sessions, which start a render daemon on this machine<span class="cp-grant-scope-implies">also includes preview</span></span>
 </label>
           </fieldset>
           <p class="cp-grant-withheld">Not offered: playground — you do not hold it yourself on this server, so you cannot pass it on</p>

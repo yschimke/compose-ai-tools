@@ -5171,21 +5171,33 @@ ${captureControlsHtml().prependIndent("          ")}
     withheldReason: String = "",
   ): String {
     val esc = WebEscaping::htmlEscape
+    // **Radios, not checkboxes**, because the scopes are cumulative and independent boxes lie about
+    // that. With `playground` offered, an approver could untick `live` while leaving `playground`
+    // ticked — the page then said live access was withheld, and the grant included it anyway,
+    // because `playground` implies `live` and the handler takes the highest ticked rung. On the one
+    // page in this server whose entire job is to state accurately what is being agreed to, a
+    // control that can misdescribe the outcome is the wrong control. One choice: the highest rung,
+    // with everything it carries spelled out beneath it.
+    // The **highest offered** rung is the default, not the requested one. Those differ exactly when
+    // the approver's own rights capped the request — and there `requestedScope` matches no radio at
+    // all, so the form opened with nothing selected and (being `required`) could not be submitted.
+    // Defaulting to the top of what this approver may actually give is also the right answer on the
+    // merits: it is the agent's ask, clamped to what the person in front of the page can grant.
+    val defaultScope = selectableScopes.lastOrNull()
     val scopeRows =
       selectableScopes.joinToString("\n") { scope ->
-        val checked = if (requestedScope.implies(scope)) " checked" else ""
-        // `preview` is the floor: every grant is at least a read grant, so offering to untick it
-        // would offer a grant that grants nothing. Shown, explained, and fixed.
-        val fixed = scope == ServeAgentGrantScope.PREVIEW
-        val disabled = if (fixed) " disabled" else ""
-        val hidden =
-          if (fixed) "<input type=\"hidden\" name=\"scope\" value=\"${esc(scope.wire)}\">" else ""
+        val checked = if (scope == defaultScope) " checked" else ""
+        val includes =
+          ServeAgentGrantScope.upTo(scope).filter { it != scope }.joinToString(", ") { it.wire }
+        val alsoIncludes =
+          if (includes.isEmpty()) ""
+          else "<span class=\"cp-grant-scope-implies\">also includes ${esc(includes)}</span>"
         """
         <label class="cp-grant-scope">
-          <input type="checkbox" name="scope" value="${esc(scope.wire)}"$checked$disabled>
+          <input type="radio" name="scope" value="${esc(scope.wire)}"$checked required>
           <span class="cp-grant-scope-name">${esc(scope.wire)}</span>
-          <span class="cp-grant-scope-what">${esc(scope.humanDescription)}</span>
-        </label>$hidden
+          <span class="cp-grant-scope-what">${esc(scope.humanDescription)}$alsoIncludes</span>
+        </label>
         """
           .trimIndent()
       }

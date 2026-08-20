@@ -210,7 +210,13 @@ class ServeAgentGrantStore(
     val key = id?.takeIf { isWellFormedId(it) } ?: return null
     val now = clock()
     purge(now)
-    return requests[key]?.takeIf { it.expiresAtMillis > now }
+    // An approved-but-uncollected request stays reachable past its own deadline so its owner can
+    // still fetch the token; [purge] is what decides when that ends. A *pending* one still dies on
+    // the dot — nobody should be able to approve a request whose window has closed.
+    return requests[key]?.takeIf {
+      it.expiresAtMillis > now ||
+        (it.state == Request.State.APPROVED && !it.collected && !grantIsGone(it, now))
+    }
   }
 
   /**
@@ -363,6 +369,12 @@ class ServeAgentGrantStore(
       .sortedBy { it.expiresAtMillis }
   }
 
+  /** True when the grant a request minted is expired or revoked, so the record owes nobody. */
+  private fun grantIsGone(request: Request, nowMillis: Long): Boolean {
+    val grant = request.grantId?.let { grants[it] } ?: return true
+    return grant.expiresAtMillis <= nowMillis
+  }
+
   /** Drop everything — server shutdown, and the tests' reset. */
   fun clear() {
     requests.clear()
@@ -374,7 +386,14 @@ class ServeAgentGrantStore(
   fun purge(nowMillis: Long = clock()): Int {
     var dropped = 0
     requests.entries.removeIf { (_, r) ->
-      (r.expiresAtMillis <= nowMillis).also { if (it) dropped++ }
+      // An approved request outlives its own deadline until its token has actually been fetched.
+      // The request TTL bounds *how long a human has to decide*; once they have decided, deleting
+      // the record strands the grant it created — which is exactly what happened when someone
+      // approved in the last seconds of the window and the agent's next poll landed after it.
+      // The grant's own expiry is what reclaims these, via [grantIsGone].
+      val keepForCollection =
+        r.state == Request.State.APPROVED && !r.collected && !grantIsGone(r, nowMillis)
+      (!keepForCollection && r.expiresAtMillis <= nowMillis).also { if (it) dropped++ }
     }
     grants.entries.removeIf { (_, g) ->
       (g.expiresAtMillis <= nowMillis).also {

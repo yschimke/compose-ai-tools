@@ -193,6 +193,43 @@ class AgentAccessStoreTest {
   }
 
   @Test
+  fun `two requests for one server both survive`() {
+    // Replacing per origin looked tidy and quietly discarded a credential: the first link stays
+    // approvable on the server, so a human could approve it and mint a grant whose device secret
+    // this store had already thrown away.
+    fun pending(id: String) =
+      AgentAccessStore.Pending(
+        origin = "https://preview.coo.ee",
+        requestId = id,
+        deviceSecret = "secret-$id",
+        expiresAtMillis = now + 600_000,
+      )
+    store().savePending(pending("first"))
+    store().savePending(pending("second"))
+    assertEquals(2, store().allPending().size)
+    assertEquals(setOf("first", "second"), store().allPending().map { it.requestId }.toSet())
+    // …and one can be dropped without taking the other with it.
+    assertTrue(store().forgetPendingRequest("first"))
+    assertEquals(listOf("second"), store().allPending().map { it.requestId })
+  }
+
+  @Test
+  fun `the remembered-request pile is bounded`() {
+    for (i in 1..20) {
+      store()
+        .savePending(
+          AgentAccessStore.Pending(
+            origin = "https://h$i.example",
+            requestId = "r$i",
+            deviceSecret = "s$i",
+            expiresAtMillis = now + 600_000,
+          )
+        )
+    }
+    assertTrue(store().allPending().size <= AgentAccessStore.MAX_PENDING)
+  }
+
+  @Test
   fun `a remembered request expires with its own deadline`() {
     store()
       .savePending(

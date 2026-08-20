@@ -96,24 +96,42 @@ internal open class AgentAccessStore(
     return read().pending.filter { it.expiresAtMillis > now }
   }
 
-  /** The un-collected request for [origin], or null. */
+  /** The most recently opened un-collected request for [origin], or null. */
   fun pendingFor(origin: String): Pending? {
     val key = normalizeOrigin(origin) ?: return null
-    return allPending().firstOrNull { it.origin == key }
+    return allPending().lastOrNull { it.origin == key }
   }
 
-  /** Remember an opened request so a later invocation can collect its token. */
+  /**
+   * Remember an opened request so a later invocation can collect its token.
+   *
+   * Requests **accumulate** rather than replacing each other per origin. Replacing looked tidy and
+   * quietly threw away a credential: run `auth request --no-wait` twice against one server and the
+   * first link stays approvable, so a human could approve it and mint a live grant whose device
+   * secret this store had already discarded. [MAX_PENDING] bounds the pile; the oldest goes first,
+   * which is also the one closest to its own deadline.
+   */
   fun savePending(pending: Pending): Boolean {
     val key = normalizeOrigin(pending.origin) ?: return false
     return withLock {
       val now = clock()
+      val current = read()
       val kept =
-        read().let { w -> w.pending.filter { it.origin != key && it.expiresAtMillis > now } }
-      write(read().copy(pending = kept + pending.copy(origin = key)))
+        current.pending
+          .filter { it.expiresAtMillis > now && it.requestId != pending.requestId }
+          .takeLast(MAX_PENDING - 1)
+      write(current.copy(pending = kept + pending.copy(origin = key)))
     }
   }
 
-  /** Drop the remembered request for [origin] — collected, denied, or expired. */
+  /** Drop one remembered request by id — collected, denied, or expired. */
+  fun forgetPendingRequest(requestId: String): Boolean = withLock {
+    val current = read()
+    val kept = current.pending.filter { it.requestId != requestId }
+    if (kept.size == current.pending.size) false else write(current.copy(pending = kept))
+  }
+
+  /** Drop every remembered request for [origin] — used when revoking or forgetting a server. */
   fun forgetPending(origin: String): Boolean {
     val key = normalizeOrigin(origin) ?: return false
     return withLock {
@@ -245,6 +263,13 @@ internal open class AgentAccessStore(
 
   companion object {
     const val SCHEMA_V1 = "compose-preview-agent-access/v1"
+
+    /**
+     * Un-collected requests kept at once. Each is a device secret on disk, so the pile is bounded;
+     * high enough that opening a couple of `--no-wait` asks against different servers never loses
+     * one, low enough that a runaway script cannot fill the file.
+     */
+    const val MAX_PENDING = 8
 
     private val JSON = Json {
       ignoreUnknownKeys = true

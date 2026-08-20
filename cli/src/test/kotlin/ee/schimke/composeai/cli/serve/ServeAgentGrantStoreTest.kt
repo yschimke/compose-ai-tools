@@ -298,6 +298,39 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `an approval near the deadline is still collectable after it`() {
+    // The request TTL bounds how long a human has to DECIDE. Once they have decided, deleting the
+    // record strands the grant it created — which is what happened to anyone approving in the last
+    // seconds of the window, because the agent's next poll landed after it.
+    val store = store()
+    val request = store.ask(ttl = 3600)
+    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+    now += (store.requestTtlSeconds + 5) * 1000
+    val polled = store.poll(request.id, request.deviceSecret)
+    assertTrue(polled is ServeAgentGrantStore.Poll.Approved, "got $polled")
+  }
+
+  @Test
+  fun `a pending request still dies on its own deadline`() {
+    // The other half: nobody may approve a request whose window has closed.
+    val store = store()
+    val request = store.ask()
+    now += (store.requestTtlSeconds + 5) * 1000
+    assertNull(store.request(request.id))
+    assertNull(store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 600))
+  }
+
+  @Test
+  fun `a retained approval is reclaimed once its grant is gone`() {
+    val store = store()
+    val request = store.ask(ttl = 60)
+    store.approve(request.id, "@yuri", ServeAgentGrantScope.LIVE, 60)
+    now += (store.requestTtlSeconds + 5) * 1000
+    // The grant expired too, so the record owes nobody anything and goes.
+    assertNull(store.request(request.id))
+  }
+
+  @Test
   fun `a collected request is shed to make room`() {
     val store = store(maxPendingRequests = 2)
     val collected = store.ask()

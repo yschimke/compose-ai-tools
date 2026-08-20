@@ -3826,6 +3826,10 @@ cp-page-zoom button:focus-visible {
   font-size: 14px; color: var(--cp-fg); }
 .cp-grant-scope-what { grid-column: 2; color: var(--cp-fg-muted); font-size: 13px;
   line-height: 1.5; }
+/* What the chosen rung carries with it — the cumulative half, said out loud so the single
+   choice is not mistaken for a single capability. */
+.cp-grant-scope-implies { display: block; margin-top: 2px; color: var(--cp-fg-faint);
+  font-size: 12px; }
 .cp-grant-withheld { margin: -8px 0 16px; color: var(--cp-fg-muted); font-size: 13px; }
 
 .cp-grant-ttl { display: flex; gap: 10px; align-items: center; margin-bottom: 20px;

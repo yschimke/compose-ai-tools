@@ -713,9 +713,20 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * more, it is a credential nobody remembers issuing.
    */
   private val agentGrantMaxTtlSeconds: Long =
-    (ServeAgentGrants.parseDurationSeconds(args.flagValue("--agent-grant-max-ttl"))
-        ?: ServeAgentGrantStore.DEFAULT_MAX_GRANT_TTL_SECONDS)
-      .coerceIn(60L, ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS)
+    args
+      .flagValue("--agent-grant-max-ttl")
+      ?.let {
+        // A typo must not silently become the default. `--agent-grant-max-ttl 30m` mistyped is an
+        // operator asking for half an hour and getting eight — sixteen times the ceiling they
+        // meant, on the one setting that bounds how long a minted credential lives. The client's
+        // `--ttl` already fails loudly; so does this.
+        ServeAgentGrants.parseDurationSeconds(it)
+          ?: throw IllegalArgumentException(
+            "--agent-grant-max-ttl '$it' is not a duration — try 90m, 2h, or a number of seconds"
+          )
+      }
+      ?.coerceIn(60L, ServeAgentGrantStore.HARD_MAX_GRANT_TTL_SECONDS)
+      ?: ServeAgentGrantStore.DEFAULT_MAX_GRANT_TTL_SECONDS
 
   /** How many grants may be live at once (`--agent-grant-max-active`). */
   private val agentGrantMaxActive: Int =

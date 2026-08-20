@@ -137,6 +137,21 @@ internal class AuthCommand(
         )
       )
 
+    // Nothing was persisted, so nothing later can redeem an approval — and the human-readable path
+    // never prints the token, by design. Waiting would mean asking a person to approve access that
+    // is guaranteed to be lost. `--json` is exempt: it prints the device secret, so its caller can
+    // poll for itself and needs no store at all.
+    if (!remembered && !json) {
+      fail(
+        "opened the request, but could not save it locally (see the warning above) — so nothing " +
+          "could collect the token once it was approved. Fix the credential file's directory and " +
+          "run this again, or use --json, which prints the device secret for you to poll with. " +
+          "The unsaved request expires on its own in " +
+          ServeAgentGrants.formatDuration(opened.expiresInSeconds) +
+          "; nobody has been asked to approve anything."
+      )
+    }
+
     if (json) {
       // The device secret is deliberately included: `--json` exists for an agent that wants to
       // drive the poll itself, and without it the response is a link it can never redeem. It is
@@ -171,13 +186,11 @@ internal class AuthCommand(
       println()
       if ("--no-wait" in args) {
         println(
-          if (remembered)
-            "Not waiting. Run `compose-preview auth status --server ${client.origin}` after they " +
-              "approve and it will collect the token — or run this without --no-wait to block " +
-              "until they do."
-          else
-            "Not waiting — but the request could NOT be saved locally (see the warning above), so " +
-              "no later command can collect its token. Re-run without --no-wait."
+          // `remembered` is guaranteed true here — an unsaved request aborts above, before anyone
+          // is asked to approve anything.
+          "Not waiting. Run `compose-preview auth status --server ${client.origin}` after they " +
+            "approve and it will collect the token — or run this without --no-wait to block " +
+            "until they do."
         )
         return
       }
@@ -203,7 +216,7 @@ internal class AuthCommand(
           expiresAtMillis = System.currentTimeMillis() + (outcome.expiresInSeconds ?: 0) * 1000,
         )
       )
-    if (saved) store.forgetPending(client.origin)
+    if (saved) store.forgetPendingRequest(opened.requestId)
     if (json) {
       printJson(
         GrantedJson.serializer(),
@@ -421,12 +434,12 @@ internal class AuthCommand(
                   System.currentTimeMillis() + (polled.expiresInSeconds ?: 0) * 1000,
               )
             )
-          if (stored) store.forgetPending(pending.origin)
+          if (stored) store.forgetPendingRequest(pending.requestId)
         }
         // Terminal and not coming back — stop carrying it.
         "denied",
         "expired",
-        "unknown" -> store.forgetPending(pending.origin)
+        "unknown" -> store.forgetPendingRequest(pending.requestId)
         else -> Unit // still pending
       }
     }

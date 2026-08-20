@@ -8390,6 +8390,9 @@ class ServeHttpServer(
     // and the store clamps to the request and this box's ceiling regardless, but refusing to *ask*
     // for something outside the approver's own ceiling keeps the audit line honest about what was
     // actually chosen.
+    // The page posts ONE value (a radio — see [ServeWeb.agentGrantApprovalPage] for why it is not a
+    // set of checkboxes), but `maxOrNull` is kept rather than `single()`: the form is client state,
+    // and a caller that posts several is asking for the highest, which the ceilings then clamp.
     val ticked =
       form["scope"].orEmpty().mapNotNull { ServeAgentGrantScope.parse(it) }.maxOrNull()
         ?: ServeAgentGrantScope.PREVIEW
