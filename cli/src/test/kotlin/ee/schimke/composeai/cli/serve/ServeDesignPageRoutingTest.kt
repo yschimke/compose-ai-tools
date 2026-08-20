@@ -72,7 +72,7 @@ class ServeDesignPageRoutingTest {
          {"nodeId":"1:1","name":"Shape=Circle","depth":3,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:1","link":"manifest",
           "code":"ui/Shapes.kt#CircleShape","previewId":"com.example.Circle","confidence":"high"},
-         {"nodeId":"1:3","name":"Shape=Pill","depth":3,
+         {"nodeId":"1:3","name":"Shape=Pill","depth":3,"cell":true,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:3","link":"manifest",
           "code":"ui/Shapes.kt#PillShape","previewId":"com.example.NotPublished"},
          {"nodeId":"1:12","name":"Shape=Gem","depth":3,
@@ -136,6 +136,33 @@ class ServeDesignPageRoutingTest {
     // missing when one was.
     assertTrue(body.contains("2 of 3 components implemented"), body)
     assertTrue(body.contains("/m3-catalog/pages/shape"))
+  }
+
+  /**
+   * A node we REACHED rather than BUILT gets its own mark, and the legend names it.
+   *
+   * `Shape=Pill` is linked exactly as `Shape=Circle` is — both `link: manifest` — so the link
+   * cannot tell them apart, and on a well-covered sheet painted one colour neither could a reader.
+   * The distinction is what is behind them: a preview written for the component, or a `_VARIANT_`
+   * capture of a neighbouring one with a knob turned.
+   */
+  @Test
+  fun `an override cell is marked apart from a component we wrote`() {
+    val (_, _, body) = get("/m3-catalog/pages/shape")
+    assertTrue(
+      Regex("data-cp-node=\"1:3\"[^>]*data-cp-cell|data-cp-cell[^>]*data-cp-node=\"1:3\"")
+        .containsMatchIn(body),
+      body,
+    )
+    // The component with a preview of its own carries no such claim — and note 1:3 does, despite
+    // this catalog publishing no sticker for it: cell-ness is a fact about the mapping, not about
+    // whether the render made it into the bundle.
+    assertFalse(
+      Regex("data-cp-node=\"1:1\"[^>]*data-cp-cell|data-cp-cell[^>]*data-cp-node=\"1:1\"")
+        .containsMatchIn(body),
+      body,
+    )
+    assertTrue(body.contains("override variant"), body)
   }
 
   /**

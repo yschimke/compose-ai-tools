@@ -9180,6 +9180,9 @@ $cards
           "id=\"${nodeAnchorId(node.nodeId)}\" " +
           "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
           (if (node in gaps) " data-cp-gap" else "") +
+          // Separate from `data-link`, because it answers a different question: the link says HOW
+          // we know this maps, the cell says WHAT is behind it. See `PageNode.cell`.
+          (if (node.cell) " data-cp-cell" else "") +
           hrefAttr +
           " " +
           "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
@@ -9240,6 +9243,7 @@ $cards
         val detail = if (code != null) WebEscaping.htmlEscape(code) else "no code behind this"
         "<$tag class=\"cp-page-row\" data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
           (if (node in gaps) " data-cp-gap" else "") +
+          (if (node.cell) " data-cp-cell" else "") +
           " " +
           "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\"$hrefAttr>" +
           "<span class=\"cp-page-dot\" aria-hidden=\"true\"></span>" +
@@ -9308,6 +9312,7 @@ $cards
             <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>
             <span data-link="manifest"><i class="cp-page-swatch" style="color:#0969da"></i> design-map</span>
             <span data-link="convention"><i class="cp-page-swatch" style="color:#bf8700"></i> name match</span>
+            <span data-cp-cell><i class="cp-page-swatch" style="color:#8250df"></i> override variant</span>
             <span data-link="unlinked"><i class="cp-page-swatch" style="color:#cf222e;border-style:dashed"></i> not implemented</span>
           </div>
           <div class="cp-page-layout">

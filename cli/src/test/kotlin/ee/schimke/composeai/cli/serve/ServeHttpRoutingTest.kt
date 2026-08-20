@@ -619,18 +619,20 @@ class ServeHttpRoutingTest {
   }
 
   @Test
-  fun `catalog refresh carries the force flag through to the refresher`() {
-    // The ordinary check short-circuits on an unchanged branch head, which is what makes polling
-    // cheap. `?force=1` is the only way to say "read it again anyway" — what an operator wants
-    // after discarding the blob cache.
-    assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh?force=1"))
-    assertEquals(200 to "{\"status\":\"current\"}", post("/refresh?session=compose-m3&force=1"))
-    // Anything other than an explicit 1 is an ordinary refresh, so a stray query cannot force one.
+  fun `forcing a refresh is refused on a public server with no admin token`() {
+    // This server is `--public` with no admin token, so the browse gate authorizes everyone. An
+    // ordinary refresh is safe to hand out — it short-circuits on an unchanged head — but forcing
+    // removes that short-circuit, so an anonymous caller could drive a full re-stage in a loop.
+    // A box that configured no admin credential cannot be forced at all, rather than being
+    // forceable
+    // by everyone.
+    assertEquals(404, post("/compose-m3/refresh?force=1").first)
+    assertEquals(404, post("/refresh?session=compose-m3&force=1").first)
+    assertTrue(refreshes.isEmpty(), "a refused force must do no remote work: $refreshes")
+
+    // Anything other than an explicit 1 is an ordinary refresh, which stays open.
     assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh?force=0"))
-    assertEquals(
-      listOf("compose-m3!force", "compose-m3!force", "compose-m3"),
-      refreshes,
-    )
+    assertEquals(listOf("compose-m3"), refreshes)
   }
 
   @Test

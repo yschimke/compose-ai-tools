@@ -3119,6 +3119,12 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
    variant-set container — is structure rather than missing work, so it takes the neutral grey and
    stops competing for the eye with the thing the reader is hunting for. */
 .cp-page-node[data-link="unlinked"] { --cp-page-node-color: #6e7781; }
+/* A node we REACHED rather than BUILT: an override cell, a `_VARIANT_` capture of a neighbouring
+   preview with a knob turned. It is linked like anything else, so it would otherwise take the
+   `data-link` colour and vanish into the components someone actually wrote — precisely when a sheet
+   is well covered and the question becomes "how much of this green did we mean?". After the
+   `data-link` rules and before the gap rule: cell-ness refines a link, a gap replaces one. */
+.cp-page-node[data-cp-cell] { --cp-page-node-color: #8250df; }
 .cp-page-node[data-cp-gap] { --cp-page-node-color: #cf222e; }
 /* The opt-in layer: every node marked at once, which is the coverage read rather than the reading
    view. */
@@ -3463,6 +3469,7 @@ cp-page-zoom button:focus-visible {
 .cp-page-row[data-link="manifest"] { --cp-page-node-color: #0969da; }
 .cp-page-row[data-link="convention"] { --cp-page-node-color: #bf8700; }
 .cp-page-row[data-link="unlinked"] { --cp-page-node-color: #6e7781; }
+.cp-page-row[data-cp-cell] { --cp-page-node-color: #8250df; }
 .cp-page-row[data-cp-gap] { --cp-page-node-color: #cf222e; }
 .cp-page-count { color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-page-card {

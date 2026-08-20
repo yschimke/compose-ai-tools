@@ -224,6 +224,122 @@ class ApiDocLinksTest {
   }
 
   @Test
+  fun `a line break ends the statement before a composable call`() {
+    // Kotlin has no statement terminator, so the character before `Button(` is the `e` of `true`.
+    // Reading only that dropped the component the card is about — the most visible way this can
+    // be wrong, and invisible in a 404 count because a missing link 404s nothing.
+    val links =
+      urls(
+        """
+        import androidx.wear.compose.material3.Button
+
+        fun demo() {
+          val enabled = true
+          Button(onClick = {}, enabled = enabled)
+        }
+        """
+          .trimIndent()
+      )
+    assertEquals(ref("androidx/wear/compose/material3/Button.composable"), links["Button"])
+  }
+
+  @Test
+  fun `a constructor in a callback lambda is not a composable`() {
+    // `onClick = { … }` and `label = { … }` are the same shape and opposite kinds, so the braces
+    // cannot decide this. The namespace can: nothing outside Compose has a `.composable` page.
+    val links =
+      urls(
+        """
+        import android.content.Intent
+        import androidx.wear.compose.material3.Button
+
+        fun demo() {
+          Button(onClick = { Intent(context, Target::class.java) })
+        }
+        """
+          .trimIndent()
+      )
+    assertEquals(ref("android/content/Intent"), links["Intent"])
+    assertEquals(ref("androidx/wear/compose/material3/Button.composable"), links["Button"])
+  }
+
+  @Test
+  fun `a nested type keeps its dot`() {
+    val links =
+      urls(
+        """
+        import androidx.wear.protolayout.LayoutElementBuilders.Box
+
+        fun demo() {
+          val box: Box = build()
+        }
+        """
+          .trimIndent()
+      )
+    // `…/LayoutElementBuilders/Box` asks for a directory; the site spells the nested type dotted.
+    assertEquals(ref("androidx/wear/protolayout/LayoutElementBuilders.Box"), links["Box"])
+  }
+
+  @Test
+  fun `an API written out in full is linked even with no import`() {
+    // The cleaner's `MATERIAL3_SYSTEM_THEME` rewrite emits exactly this and prunes the import, so
+    // reading import lines alone missed the most prominent API on the card.
+    val links =
+      urls(
+        """
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun FilledButton() =
+          androidx.compose.material3.MaterialTheme(
+            colorScheme = androidx.compose.material3.lightColorScheme()
+          ) {}
+        """
+          .trimIndent()
+      )
+    // Called, so the composable page — the same reading a plain `MaterialTheme { }` would get.
+    assertEquals(ref("androidx/compose/material3/MaterialTheme.composable"), links["MaterialTheme"])
+  }
+
+  @Test
+  fun `a qualified use stops at the type, and a constant is not one`() {
+    val links =
+      urls(
+        """
+        fun demo() {
+          val c = androidx.compose.ui.graphics.Color.Transparent
+          request(android.permission.BLUETOOTH_CONNECT)
+        }
+        """
+          .trimIndent()
+      )
+    // `Color.Transparent` is a member read off `Color`, not a nested type.
+    assertEquals(ref("androidx/compose/ui/graphics/Color"), links["Color"])
+    // A SCREAMING_CASE leaf is a String constant. Only the qualified scan can reach one, and an
+    // import line is not there to say otherwise.
+    assertTrue("BLUETOOTH_CONNECT" !in links)
+  }
+
+  @Test
+  fun `a raw string is blanked whole`() {
+    // Toggling per quote hands back alternating slices of a raw string as though they were code —
+    // and `Button.foo` inside one reads as a qualifier, demoting the real composable call.
+    val links =
+      urls(
+        """
+        import androidx.compose.material3.Button
+
+        fun demo() {
+          val json = ${"\"\"\""}{"kind": "Button.foo"}${"\"\"\""}
+          Button(onClick = {})
+        }
+        """
+          .trimIndent()
+      )
+    assertEquals(ref("androidx/compose/material3/Button.composable"), links["Button"])
+  }
+
+  @Test
   fun `a snippet with no platform imports contributes nothing`() {
     assertEquals(emptyList(), ApiDocLinks.of("fun demo() { println(\"hi\") }"))
   }

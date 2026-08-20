@@ -344,6 +344,49 @@ test("a page's inventory=false survives publishing; true is left implicit", () =
   assert.equal(other.inventory, undefined);
 });
 
+test("a node drawn by an override cell says so; one drawn by its own preview does not", () => {
+  // The page has to be able to tell a component someone WROTE from a kit variant we REACHED by
+  // seeding a knob on a neighbouring one. Both are `link: manifest`, so the link cannot say it.
+  const cell = {
+    ...appBar,
+    nodeId: "1:8",
+    previewId: "ee.schimke.m3catalog.sections.TopAppBarsKt_MediumTopAppBarSticker_Light_VARIANT_off",
+  };
+  const plan = planDesignPages({
+    manifest: manifest([page([appBar, cell])]),
+    spec,
+    catalog: {
+      components: [
+        {
+          componentId: "TopAppBar/Medium",
+          images: [
+            { previewId: appBar.previewId, path: "images/top-app-bar.png" },
+            { previewId: cell.previewId, path: "images/top-app-bar__off.png" },
+          ],
+        },
+      ],
+    },
+  });
+  const nodes = plan.manifest.pages[0].nodes;
+  assert.equal(nodes.find((n) => n.nodeId === "1:1").cell, undefined);
+  assert.equal(nodes.find((n) => n.nodeId === "1:8").cell, true);
+});
+
+test("an unlinked node makes no cell claim, even carrying a stale variant preview id", () => {
+  // A manifest can carry `link: unlinked` beside a leftover `previewId`, and the consumer already
+  // refuses to DRAW that (`renderablePreviewId`). Claiming cell-ness off it would be the same
+  // contradiction in the other direction — the page saying "no code behind this" in red while
+  // colouring it as something we reached.
+  const stale = {
+    ...appBar,
+    nodeId: "1:8",
+    link: "unlinked",
+    previewId: "com.example.SwitchKt_SwitchOn_Light_VARIANT_off",
+  };
+  const plan = planDesignPages({ manifest: manifest([page([stale])]), spec, catalog });
+  assert.equal(plan.manifest.pages[0].nodes[0].cell, undefined);
+});
+
 test("an unsupported confidence is dropped, not republished", () => {
   // The consumer decodes this into a strict enum, so republishing an unknown value would fail the
   // parse for the WHOLE manifest — one bad string hiding every page the catalog publishes.

@@ -479,6 +479,16 @@ class ServeHttpServer(
   /** As [adminEnabled], for the `/admin/sites` routes. Same token, separately supplied admin. */
   private val siteAdminEnabled: Boolean = siteAdmin != null && !adminToken.isNullOrBlank()
 
+  /**
+   * As [adminEnabled], for `DELETE /admin/catalog-cache`.
+   *
+   * Paired with the token like every sibling rather than registered on the handle alone: discarding
+   * the cache is destructive-ish (it costs a re-fetch, not data), and a box whose operator never
+   * configured a credential must not expose it at all.
+   */
+  private val catalogCacheAdminEnabled: Boolean =
+    catalogCacheClear != null && !adminToken.isNullOrBlank()
+
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
@@ -957,10 +967,10 @@ class ServeHttpServer(
         // cost of using this unnecessarily is bandwidth. Responds with what the pool holds
         // afterwards, which is the same shape `/status.json` reports, so an operator can see it
         // took.
-        if (catalogCacheClear != null) {
+        if (catalogCacheAdminEnabled) {
           delete("/admin/catalog-cache") {
             if (rejectBadAdminToken()) return@delete
-            val after = withContext(Dispatchers.IO) { catalogCacheClear.invoke() }
+            val after = withContext(Dispatchers.IO) { catalogCacheClear!!.invoke() }
             call.response.headers.append(HttpHeaders.CacheControl, "no-store")
             call.respondText(
               Json.encodeToString(CatalogBlobPoolSnapshot.serializer(), after),
@@ -1392,7 +1402,17 @@ class ServeHttpServer(
     // also means there is otherwise no way to say "read it again anyway", which is exactly what an
     // operator wants after clearing the blob cache, or when they simply want the published bytes
     // re-read rather than reasoned about.
+    // Gated by the ADMIN token, not the browse token this handler opens with. On a `--public` box
+    // the browse gate authorizes everyone, and an ordinary refresh is safe to hand out because it
+    // short-circuits on an unchanged head — a repeated call costs one `git ls-remote`. Forcing
+    // removes that short-circuit, so an anonymous caller could drive a full re-stage (and, with a
+    // cold pool, a bundle re-download) in a loop. Refused the way the admin surface refuses
+    // everything, which also means a box with no configured admin token cannot be forced at all.
     val force = call.request.queryParameters["force"] == "1"
+    if (force && rejectBadAdminToken()) {
+      catalogRefreshesInFlight.remove(system)
+      return
+    }
     val result =
       try {
         withContext(Dispatchers.IO) { refresh(system, force) }
@@ -3094,7 +3114,16 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.rejectBadAdminToken(): Boolean {
     val provided = call.request.queryParameters["token"] ?: call.request.headers[ADMIN_TOKEN_HEADER]
-    if (ServeUrls.tokensMatch(adminToken.orEmpty(), provided)) return false
+    // An unconfigured token is not a token everyone matches. `tokensMatch` compares bytes, so a
+    // blank expected value is satisfied by `?token=` — which would turn "the operator never set a
+    // credential" into "no credential is required", the exact inversion the `*Enabled` flags below
+    // exist to prevent. They gate registration; this gates the check, so a route that forgets to
+    // pair itself with one still fails closed rather than open.
+    if (adminToken.isNullOrBlank()) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return true
+    }
+    if (ServeUrls.tokensMatch(adminToken, provided)) return false
     call.respondText("not found", status = HttpStatusCode.NotFound)
     return true
   }
@@ -7945,11 +7974,17 @@ private data class StatusResponse(
    * The catalog blob cache ([CatalogBlobPoolSnapshot]), or null on a server that publishes no
    * catalogs.
    *
-   * The pair to watch is `cached` on `branchFetch` against this row's `hits`: they count the same
-   * event from the two ends, and both climbing while `branchFetch.attempted` flattens across a
-   * restart is the whole feature working. `blobs`/`bytes` against `maxBytes` says whether the
-   * sweeper is keeping up; `corrupt` above zero says a volume is losing bytes, since every blob is
-   * named by its own digest and re-verified on read.
+   * `hits` here is the **aggregate** across all three lanes the pool serves — small assets, the
+   * executable bundles, and the content-addressed resource pool — while `branchFetch.cached` counts
+   * only the small-asset subset. So `hits` is normally the larger of the two and the gap is the
+   * executable tier; they are not the same number, and reading them as one would make a healthy
+   * warm start look inconsistent. What says the feature is working is either of them climbing while
+   * `branchFetch.attempted` flattens across a restart.
+   *
+   * `blobs`/`bytes` against `maxBytes` says whether the sweeper is keeping up — both are published
+   * by the last sweep rather than censused per request, so they lag a write by at most one sweep
+   * interval. `corrupt` above zero says a volume is losing bytes, since every blob is named by its
+   * own digest and re-verified on read.
    */
   val catalogCache: CatalogBlobPoolSnapshot? = null,
   /**

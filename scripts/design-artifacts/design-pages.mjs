@@ -37,6 +37,7 @@ import {
   matchesForPreviewId,
   servePreviewId,
 } from "./design-references.mjs";
+import { variantStateFromId } from "./variant-state.mjs";
 
 /** Directory (bundle-relative) the manifest and its cached SVGs are published under. */
 export const PAGES_DIR = "pages";
@@ -132,6 +133,24 @@ function resolveServePreviewId(node, { byPreviewId, byFunction }) {
  */
 function isDrawableNode(node) {
   return typeof node?.nodeId === "string" && node.nodeId.trim() !== "";
+}
+
+/**
+ * Whether this node is drawn by an **override cell** — a `_VARIANT_<name>` capture of another
+ * preview with knobs seeded — rather than by a `@Preview` written for it.
+ *
+ * Read off the id the design-map DECLARED, not off the resolved serve id: the serve id is derived
+ * from the published image path ([servePreviewId]) and carries no guarantee of keeping discovery's
+ * suffix. `variantStateFromId` is the same parse the catalog fold uses, so the page and the fold
+ * cannot disagree about what a cell is.
+ *
+ * Independent of whether the catalog publishes a sticker for it. The claim is about the MAPPING —
+ * "the thing behind this node is a variant of something else" — which is true whether or not the
+ * render made it into the bundle, and a linked node keeps its outline either way.
+ */
+function isCellNode(node) {
+  const declared = typeof node?.previewId === "string" ? node.previewId : "";
+  return declared !== "" && variantStateFromId(declared) !== null;
 }
 
 /**
@@ -257,6 +276,11 @@ export function planDesignPages({ manifest, spec, catalog }) {
         // manifest published before the field existed counts exactly what it counted before, and a
         // truthy string would fail the parse for every page.
         ...(node?.inventory === false ? { inventory: false } : {}),
+        // Drawn by an override cell rather than by a preview of its own. Only for a node that is
+        // actually linked: an unlinked node carries no claim about what is behind it, and a stale
+        // `previewId` left beside `link: unlinked` is exactly the contradiction
+        // `renderablePreviewId` refuses to draw.
+        ...(link !== "unlinked" && isCellNode(node) ? { cell: true } : {}),
       });
     }
     if (unresolved > 0) {

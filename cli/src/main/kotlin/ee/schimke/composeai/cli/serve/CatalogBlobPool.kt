@@ -98,6 +98,18 @@ class CatalogBlobPool(
   private val writeFailures = AtomicLong()
   private val evicted = AtomicLong()
   private val corrupt = AtomicLong()
+  /**
+   * Occupancy as of the last census, advanced by each write and reclaim in between.
+   *
+   * Published rather than measured, for the reason [maxBytes] is enforced by [sweep] rather than at
+   * write time: a census is a directory listing plus a `length()` per file, and `/status.json` is
+   * polled. Reading it there would put an O(blobs) filesystem walk on a monitoring request and make
+   * the cost grow with exactly the thing the cache is trying to grow. [ThemeCacheStore] publishes
+   * its own the same way. The cost is that these lag a write by at most one sweep interval, which
+   * is the right trade for a number nobody reads to the byte.
+   */
+  private val knownBlobs = java.util.concurrent.atomic.AtomicInteger()
+  private val knownBytes = AtomicLong()
   @Volatile private var lastFailure: String? = null
   private val tempSequence = AtomicLong()
 
@@ -253,12 +265,23 @@ class CatalogBlobPool(
    * this is bandwidth, not correctness.
    */
   fun clear(): CatalogBlobPoolSnapshot {
-    for (dir in listOf(contentDir, keysDir)) {
-      for (file in dir.listFiles()?.filter { it.isFile }.orEmpty()) {
-        if (runCatching { file.delete() }.getOrDefault(false)) evicted.increment()
-      }
+    // Only the blobs count as evictions. A pointer is not a blob, and deduplication means many of
+    // them can name one — counting both would let a clear report far more reclaimed than existed,
+    // in the very metric an operator reads to check the clear did what they asked.
+    for (blob in contentDir.listFiles()?.filter { it.isFile }.orEmpty()) {
+      if (runCatching { blob.delete() }.getOrDefault(false)) evicted.increment()
     }
-    return snapshot()
+    for (pointer in keysDir.listFiles()?.filter { it.isFile }.orEmpty()) {
+      runCatching { pointer.delete() }
+    }
+    // Scratch too. A process killed mid-produce leaves a bundle-sized file under `tmp/`, which no
+    // census counts and no read will ever want — so without this an operator could clear the cache,
+    // be told it holds nothing, and still find the volume full. A live writer losing its scratch
+    // file fails that one produce and returns null, which every caller already treats as a miss.
+    for (scratch in File(root, TEMP_DIR).listFiles()?.filter { it.isFile }.orEmpty()) {
+      runCatching { scratch.delete() }
+    }
+    return census()
   }
 
   /**
@@ -286,14 +309,31 @@ class CatalogBlobPool(
     for (pointer in keysDir.listFiles()?.filter { it.isFile }.orEmpty()) {
       if (resolve(pointer, verify = false) == null) runCatching { pointer.delete() }
     }
+    // Abandoned scratch, on the same reasoning as [clear] — but bounded by the grace window rather
+    // than unconditional, because this runs on a timer while writers are live and a scratch file
+    // younger than that may be one of theirs. Anything older belonged to a process that is gone.
+    for (scratch in File(root, TEMP_DIR).listFiles()?.filter { it.isFile }.orEmpty()) {
+      if (now - scratch.lastModified() >= graceMillis) runCatching { scratch.delete() }
+    }
+    return census()
+  }
+
+  /**
+   * Re-measure occupancy from the filesystem and publish it. Only ever called from the paths that
+   * are already walking the directory — see [knownBlobs].
+   */
+  private fun census(): CatalogBlobPoolSnapshot {
+    val blobs = contentDir.listFiles()?.filter { it.isFile }.orEmpty()
+    knownBlobs.set(blobs.size)
+    knownBytes.set(blobs.sumOf { it.length() })
     return snapshot()
   }
 
+  /** Counters and the last published occupancy. Cheap enough for a polled status endpoint. */
   fun snapshot(): CatalogBlobPoolSnapshot {
-    val blobs = contentDir.listFiles()?.filter { it.isFile }.orEmpty()
     return CatalogBlobPoolSnapshot(
-      blobs = blobs.size,
-      bytes = blobs.sumOf { it.length() },
+      blobs = knownBlobs.get(),
+      bytes = knownBytes.get(),
       maxBytes = maxBytes,
       hits = hits.get(),
       misses = misses.get(),
@@ -336,7 +376,11 @@ class CatalogBlobPool(
   private fun dropCorrupt(blob: File, why: String) {
     corrupt.increment()
     recordFailure("discarded ${blob.name.take(12)}… on $why mismatch")
-    runCatching { blob.delete() }
+    val size = runCatching { blob.length() }.getOrDefault(0L)
+    if (runCatching { blob.delete() }.getOrDefault(false)) {
+      knownBlobs.updateAndGet { (it - 1).coerceAtLeast(0) }
+      knownBytes.updateAndGet { (it - size).coerceAtLeast(0L) }
+    }
   }
 
   /**
@@ -412,6 +456,9 @@ class CatalogBlobPool(
       return null
     }
     writes.increment()
+    // Advance the published occupancy so a write is visible before the next sweep re-measures.
+    knownBlobs.incrementAndGet()
+    knownBytes.addAndGet(runCatching { blob.length() }.getOrDefault(0L))
     // Stamped from the same clock every hit reads, so "least recently used" is one notion rather
     // than a mix of the pool's clock and whatever mtime the move happened to preserve.
     stamp(blob)
