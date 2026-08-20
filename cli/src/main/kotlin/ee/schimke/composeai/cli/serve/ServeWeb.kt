@@ -4610,64 +4610,57 @@ ${captureControlsHtml().prependIndent("          ")}
     val tokenParam = if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token)
     val suffix = querySuffix(tokenParam)
     /**
-     * The card's **compare to Figma** action: a chip under the tile, deep-linking that catalog's
-     * comparison page straight to its `reference` format.
+     * The card's **compare to Figma** action: a chip in the card's own meta block, under the
+     * preview count, deep-linking that catalog's comparison page straight to its `reference`
+     * format.
      *
      * It is on the front door because the comparison is a destination people arrive *for*, and
-     * until now the only route to it was the chip row on a catalog's own landing page — so "compare
-     * this system against its Figma" cost a visit to the catalog first, and was invisible from `/`
-     * (compose-ai-tools#4324). The label names the design tool the catalog is actually specified
-     * by, for the same reason the landing chip does: "compare to Figma" says what you get where
-     * "compare reference" would name the format slug — and falls back to the landing's own neutral
-     * "compare to design references" for a catalog whose references name no tool (a checked-in
-     * `png`, an `svg`, an unmapped provider). Whether there is an action at all is
-     * [HomeSystem.hasReferenceComparison], never the label: those are two questions, and answering
-     * the first with the second dropped the action from every provider-neutral catalog (#4349).
+     * until this it was reachable only from the chip row on a catalog's own landing page — so
+     * "compare this system against its Figma" cost a visit to the catalog first, and was invisible
+     * from `/` (compose-ai-tools#4324).
+     *
+     * The label names the design tool the catalog is actually specified by, for the same reason the
+     * landing chip does: "compare to Figma" says what you get where "compare reference" would name
+     * the format slug — and falls back to the landing's own neutral "compare to design references"
+     * for a catalog whose references name no tool (a checked-in `png`, an `svg`, an unmapped
+     * provider). Whether there is an action at all is [HomeSystem.hasReferenceComparison], never
+     * the label: those are two questions, and answering the first with the second dropped the
+     * action from every provider-neutral catalog (#4349).
      *
      * The accessible name carries the catalog's title ("Compose Material 3: compare to Figma")
-     * while the visible text stays short. Half a dozen cards on a front door otherwise expose half
-     * a dozen links announced identically as "compare to Figma", and a screen-reader link list or a
-     * voice command has nothing to tell them apart — the tile that gives each one its context is a
-     * *sibling*, so nothing labels the chip by it. The visible string is kept intact inside the
-     * accessible name (WCAG 2.5.3 Label in Name), so "click compare to Figma" still matches.
+     * while the visible text stays short. A front door lists many catalogs and several may name the
+     * same tool, so half a dozen links otherwise announce identically as "compare to Figma" with
+     * nothing in a screen-reader link list to tell them apart. The visible string is kept intact
+     * inside the accessible name (WCAG 2.5.3 Label in Name), so "click compare to Figma" still
+     * matches.
      *
-     * A sibling of the tile anchor, not a child of it: the tile is one big link, and a link inside
-     * a link is not a thing HTML has. That is what the `.cp-sys-cell` wrapper is for — it is the
-     * grid item, so the tile keeps stretching to a shared height across a row and the chip sits
-     * under it.
+     * It lives INSIDE the card, which is why the card is a `<div>` whose title carries the
+     * `.cp-sys-open` link rather than being one big `<a>`: a link inside a link is not a thing HTML
+     * has. `.cp-sys-open` stretches an overlay across the whole tile, so the tile is still one
+     * click target, and the chip sits above that overlay as the one region that goes somewhere
+     * else. The earlier shape hung the chip under the card in a wrapper cell, which meant a card
+     * with an action was taller than one without unless an empty row was reserved for it — with the
+     * chip inside, the grid's own stretch makes every card in a section the same size and the
+     * reservation is gone.
      *
      * Suppressed in the component-browser ("Catalog") interface mode, which hides the format
      * comparisons on the catalog landing too — the mode is for browsing components, not for
      * auditing them against a design file.
-     *
-     * The row is emitted **empty** for a catalog that has no action, when a catalog in the same
-     * SECTION does. The cell's second row is what the tile is sized against, so a card whose
-     * neighbour carries a chip and which had no row at all grew taller by exactly that chip — the
-     * ragged grid the cell layout exists to prevent. Per section rather than per page because that
-     * is the scope the raggedness lives in: each section is its own `.cp-grid`, so a publisher
-     * whose catalogs all lack references would otherwise carry a strip of empty rows reserved for a
-     * chip nothing in that grid can ever show.
      */
-    fun reservesActionRow(list: List<HomeSystem>): Boolean =
-      !componentBrowser && list.any { it.hasReferenceComparison }
-    fun compareAction(s: HomeSystem, sysSeg: String, reserveRow: Boolean): String {
-      if (!reserveRow) return ""
-      val chip =
-        if (!s.hasReferenceComparison) ""
-        else {
-          val query =
-            listOf("format=reference", tokenParam).filter { it.isNotEmpty() }.joinToString("&")
-          val href = WebEscaping.htmlEscape("/$sysSeg/compare?$query")
-          val label =
-            s.designToolLabel?.takeIf { it.isNotBlank() }?.let { "compare to $it" }
-              ?: "compare to design references"
-          val described = WebEscaping.htmlEscape("${s.title}: $label")
-          "<a class=\"cp-action-chip\" href=\"$href\" aria-label=\"$described\">" +
-            "${WebEscaping.htmlEscape(label)}</a>"
-        }
-      return "\n        <p class=\"cp-sys-actions\">$chip</p>"
+    fun compareAction(s: HomeSystem, sysSeg: String): String {
+      if (componentBrowser || !s.hasReferenceComparison) return ""
+      val query =
+        listOf("format=reference", tokenParam).filter { it.isNotEmpty() }.joinToString("&")
+      val href = WebEscaping.htmlEscape("/$sysSeg/compare?$query")
+      val label =
+        s.designToolLabel?.takeIf { it.isNotBlank() }?.let { "compare to $it" }
+          ?: "compare to design references"
+      val described = WebEscaping.htmlEscape("${s.title}: $label")
+      return "\n            <p class=\"cp-sys-actions\">" +
+        "<a class=\"cp-action-chip\" href=\"$href\" aria-label=\"$described\">" +
+        "${WebEscaping.htmlEscape(label)}</a></p>"
     }
-    fun card(s: HomeSystem, reserveActionRow: Boolean): String {
+    fun card(s: HomeSystem): String {
       val sysSeg = WebEscaping.urlEncodeSegment(s.system)
       val title = WebEscaping.htmlEscape(s.title)
       val sysId = WebEscaping.htmlEscape(s.system)
@@ -4721,13 +4714,11 @@ ${captureControlsHtml().prependIndent("          ")}
       val searchAttr =
         " data-browser-search=\"${WebEscaping.htmlEscape("${s.title} ${s.system} ${s.subtitle.orEmpty()} ${s.sourceRepo.orEmpty()}").lowercase()}\""
       return """
-      <div class="cp-sys-cell"$searchAttr>
-        <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix" aria-label="$title">
-          <div class="cp-imgwrap">$img</div>
-          <div class="cp-meta">
-            <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance$totals
-          </div>
-        </a>${compareAction(s, sysSeg, reserveActionRow)}
+      <div class="cp-card cp-sys"$bg$searchAttr>
+        <div class="cp-imgwrap">$img</div>
+        <div class="cp-meta">
+          <div class="cp-sys-title"><a class="cp-sys-open" href="/$sysSeg/$suffix">$title</a>${homeTrustBadge(s.trust)}</div>$technicalId$desc$provenance${compareAction(s, sysSeg)}$totals
+        </div>
       </div>
       """
         .trimIndent()
@@ -4737,14 +4728,13 @@ ${captureControlsHtml().prependIndent("          ")}
     fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String {
       val head = WebEscaping.htmlEscape(heading)
       val count = WebEscaping.htmlEscape(counted(list.size, noun))
-      val reserveActionRow = reservesActionRow(list)
       return """
       <div class="cp-section-title">
         <h1 class="cp-head">$head</h1>
         ${if (componentBrowser) "" else "<span class=\"cp-section-count\">$count</span>"}
       </div>
       <div class="cp-grid cp-syslist" id="$gridId">
-      ${list.joinToString("\n") { card(it, reserveActionRow) }}
+      ${list.joinToString("\n") { card(it) }}
       </div>
       """
         .trimIndent()
@@ -4764,7 +4754,7 @@ ${captureControlsHtml().prependIndent("          ")}
         """
           .trimIndent() +
           """
-          <script>(function(){var q=document.getElementById("cp-browser-catalog-search"),e=document.getElementById("cp-browser-catalog-empty");if(!q)return;q.addEventListener("input",function(){var n=q.value.trim().toLowerCase(),shown=0;document.querySelectorAll(".cp-sys-cell").forEach(function(c){var hit=!n||(c.getAttribute("data-browser-search")||"").indexOf(n)>=0;c.hidden=!hit;if(hit)shown++;});document.querySelectorAll(".cp-section-title").forEach(function(h){var g=h.nextElementSibling;h.hidden=!!g&&!Array.prototype.some.call(g.children,function(c){return !c.hidden;});});if(e)e.hidden=shown!==0;});})();</script>
+          <script>(function(){var q=document.getElementById("cp-browser-catalog-search"),e=document.getElementById("cp-browser-catalog-empty");if(!q)return;q.addEventListener("input",function(){var n=q.value.trim().toLowerCase(),shown=0;document.querySelectorAll(".cp-sys").forEach(function(c){var hit=!n||(c.getAttribute("data-browser-search")||"").indexOf(n)>=0;c.hidden=!hit;if(hit)shown++;});document.querySelectorAll(".cp-section-title").forEach(function(h){var g=h.nextElementSibling;h.hidden=!!g&&!Array.prototype.some.call(g.children,function(c){return !c.hidden;});});if(e)e.hidden=shown!==0;});})();</script>
           """
             .trimIndent()
     val body =

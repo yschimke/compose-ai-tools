@@ -170,14 +170,15 @@ describe("power-user keyboard navigation", () => {
             "beforeend",
             `
           <span hidden data-cp-global-components="/api/components"></span>
-          <a class="cp-card cp-sys" href="/compose-m3/">
-            <span class="cp-sys-title">Compose Material 3</span>
+          <div class="cp-card cp-sys">
+            <span class="cp-sys-title"><a class="cp-sys-open" href="/compose-m3/">Compose Material 3</a></span>
             <span class="cp-id">compose-m3</span>
-          </a>
-          <a class="cp-card cp-sys" href="/wear-m3/">
-            <span class="cp-sys-title">Wear Material 3</span>
+            <p class="cp-sys-actions"><a class="cp-action-chip" href="/compose-m3/compare?format=reference">compare to Figma</a></p>
+          </div>
+          <div class="cp-card cp-sys">
+            <span class="cp-sys-title"><a class="cp-sys-open" href="/wear-m3/">Wear Material 3</a></span>
             <span class="cp-id">wear-m3</span>
-          </a>`,
+          </div>`,
         );
         let componentFetches = 0;
         Object.defineProperty(globalThis, "fetch", {

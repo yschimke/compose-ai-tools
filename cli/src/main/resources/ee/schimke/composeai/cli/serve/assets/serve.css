@@ -1343,20 +1343,38 @@ cp-parity-scores { display: contents; }
    BOTH classes deliberately: `.cp-card { display: block }` is declared later in this sheet and
    at equal specificity it won, which silently made the row template inert. */
 .cp-card.cp-sys { display: grid; grid-template-rows: 220px 1fr; }
-/* The front door's grid item is the CELL, not the tile: a card is one big link, so a per-catalog
-   action (`compare to Figma`) cannot live inside it — a link inside a link is not a thing HTML
-   has. The cell carries the tile plus that action row, and `1fr auto` keeps the tile stretching to
-   the row's shared height so a card WITH an action and one without still line their artwork and
-   their footers up. `[hidden]` needs restating because `display: grid` here outranks the UA
-   sheet's `[hidden] { display: none }`, and the catalog search filters by hiding cells. */
-.cp-sys-cell { display: grid; grid-template-rows: 1fr auto; gap: 10px; }
-.cp-sys-cell[hidden] { display: none; }
-/* Left-aligned under the tile it belongs to, so the chip reads as that card's action rather than
-   as a caption centred beneath it. `min-height` is the chip's own height: the row is emitted EMPTY
-   for a catalog with no action on a page where another card has one, and it has to occupy the same
-   space either way or the tiles above them go ragged again. */
-.cp-sys-actions { margin: 0; min-height: 32px; display: flex; flex-wrap: wrap; gap: 8px; }
-.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: hidden; }
+/* `[hidden]` needs restating because `display: grid` above outranks the UA sheet's
+   `[hidden] { display: none }`, and the catalog search filters by hiding cards. */
+.cp-card.cp-sys[hidden] { display: none; }
+/* The card is a `<div>` and its TITLE is the link, stretched over the whole tile by this overlay —
+   a link inside a link is not a thing HTML has, and the compare chip has to live inside the card.
+   So the tile stays one click target with one accessible name, and the chip is simply the one
+   region that goes somewhere else. `z-index: 1` sits under the card's own `::after` state layer
+   (`z-index: 3`), which is `pointer-events: none` and so does not intercept either. */
+.cp-sys-open { color: inherit; text-decoration: none; }
+.cp-sys-open::after { content: ""; position: absolute; inset: 0; z-index: 1; }
+.cp-sys-open:hover, .cp-sys-open:focus-visible { text-decoration: none; }
+/* Above the stretched overlay, so it is independently clickable. It sits with the metadata, ABOVE
+   the count line's divider, so the count keeps `margin-top: auto` and stays the card's baseline —
+   put the chip after the count instead and a card with an action lands its count line higher than
+   the card beside it, which is exactly the ragged row the bottom-anchoring exists to prevent. */
+.cp-sys-actions { position: relative; z-index: 2; margin: 12px 0 0;
+  display: flex; flex-wrap: wrap; gap: 8px; }
+/* Focus lands on the inner link now, so the tile's ring is drawn from `:focus-within` rather than
+   the card's own `:focus-visible` (a `<div>` never takes focus). Excludes the chip's own focus,
+   which draws its own ring — otherwise tabbing to the chip lit the whole card as well. */
+.cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) {
+  outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+/* The hero BREAKS OUT on hover: it scales past the card's edge instead of being cropped inside it,
+   which is why `overflow` is visible here and on the image well (the shared `.cp-card` rule clips,
+   for every other card in the product). The card is lifted above its neighbours for the moment it
+   is scaled so the overflow paints over them rather than under the next tile; `isolation: isolate`
+   on `.cp-card` already gives it a stacking context to be raised within. The image well keeps the
+   card's top corners so the RESTING state is still a clean poster. */
+.cp-card.cp-sys { overflow: visible; }
+.cp-card.cp-sys:hover, .cp-card.cp-sys:focus-within { z-index: 4; }
+.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible;
+  border-radius: var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0; }
 .cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
 /* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
    and the library coordinate sit on separate rhythms, and the count line is divided off so a
@@ -1414,6 +1432,14 @@ cp-parity-scores { display: contents; }
 .cp-card:hover .cp-label, .cp-card:focus-visible .cp-label { color: var(--md-sys-color-primary); }
 .cp-card .cp-imgwrap img { transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.3, 1); }
 .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: scale(1.035); }
+/* The front door zooms further than the product-wide 1.035 and lets the hero LEAVE the card, which
+   is the whole point of the gesture here: these tiles are posters for a design system, so the
+   artwork lifting off its card says "this is the thing" in a way an inside-the-frame nudge cannot.
+   Origin at bottom-centre so it grows UP and outward only — growing downward would ride the art
+   over the title and the count line (`.cp-imgwrap` is positioned, so it paints above the static
+   meta block, and the overlap would be unreadable rather than playful). */
+.cp-card.cp-sys:hover .cp-imgwrap img, .cp-card.cp-sys:focus-within .cp-imgwrap img {
+  transform: scale(1.12); transform-origin: 50% 100%; }
 /* A card mid-render is already animating (fade + spinner); leave its artwork alone so the two
    effects don't fight, and never zoom for a visitor who asked for less motion. */
 .cp-card.cp-reloading:hover .cp-imgwrap img { transform: none; }
@@ -1421,6 +1447,10 @@ cp-parity-scores { display: contents; }
   .cp-card, .cp-card::after, .cp-card .cp-imgwrap img { transition-duration: 0.01ms; }
   .cp-card:hover, .cp-card:focus-visible { transform: none; }
   .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: none; }
+  /* Restated at the front door's own specificity, or the bigger break-out zoom above would
+     outrank the blanket rule and animate for a visitor who asked for less motion. */
+  .cp-card.cp-sys:hover .cp-imgwrap img, .cp-card.cp-sys:focus-within .cp-imgwrap img {
+    transform: none; }
 }
 .cp-card--render-failed { border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 55%, transparent); }
 .cp-card--render-failed > summary { list-style: none; cursor: pointer; }
@@ -1486,6 +1516,15 @@ html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
    follow the palette — an unthemed sticker has no theme of its own to be backed by. */
 html:not(.cp-bg-transparent) .cp-card[data-bg-theme="light"] .cp-imgwrap { background: #fff; }
 html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { background: #1d1d20; }
+/* …except on the front door, where the hero sits directly on the card surface with no plate behind
+   it. A plate is a frame, and a frame is the thing the hover break-out has to escape: the art
+   crossing a visible rectangle's edge reads as clipping gone wrong, where art lifting off a plain
+   surface reads as depth. Overrides BOTH the default `--cp-surface` well and the per-card
+   `data-bg-theme` plate, including the dark one a Wear catalog declares — so a light-on-transparent
+   Wear sticker now sits on `surface-container-low` rather than on #1d1d20, and if one ever reads
+   washed out here that is the trade this rule made, not a bug in the sticker. */
+.cp-syslist .cp-imgwrap,
+html:not(.cp-bg-transparent) .cp-syslist .cp-card[data-bg-theme] .cp-imgwrap { background: transparent; }
 /* The single-preview viewer's stage follows the preview's background theme the same way the grid
    thumbnails do (data-bg-theme on .cp-viewer, kept SEPARATE from the explicit-only
    data-card-theme filter axis): a dark variant — or any preview in a dark-first system like Wear
