@@ -1514,6 +1514,13 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   margin: 0 0 8px; }
 .cp-preview-title { margin: 0; font-size: var(--md-sys-typescale-headline-small-size);
   line-height: var(--md-sys-typescale-headline-small-line); }
+/* The component's authored caption, under its name. Reads as prose rather than as another chip in
+   the identity row — it is the one line on the page written for a human who does not yet know what
+   this component is, so it gets body type and a measure, not the muted micro-type the id wears. */
+.cp-preview-caption { margin: -4px 0 12px; max-width: 68ch;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line); }
 .cp-preview-id { font-family: var(--md-sys-typescale-mono-font); padding: 2px 6px;
   border-radius: var(--md-sys-shape-corner-extra-small);
   background: var(--md-sys-color-surface-container-high); color: var(--cp-fg-muted);
