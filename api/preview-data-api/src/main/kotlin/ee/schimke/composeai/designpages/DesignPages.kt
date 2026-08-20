@@ -148,8 +148,8 @@ public data class PageNode(
    * `false` is for the kit's own internals: the base parts each published set is assembled from
    * (`Base / SelectionControl / Switch`, `Base / Loading Icon`), which a consumer of the kit never
    * places and no catalog owes an implementation. They are the same kind of thing as [isPrivate],
-   * reached by a different convention — the Material 3 Expressive Wear kit states them by a `Base /`
-   * name prefix rather than by Figma's leading dot — and `kit-sets.json` in the catalog repos
+   * reached by a different convention — the Material 3 Expressive Wear kit states them by a `Base
+   * /` name prefix rather than by Figma's leading dot — and `kit-sets.json` in the catalog repos
    * already excludes both from the kit walk. Counting them made a Buttons sheet report 24 missing
    * components that nothing could ever clear.
    *
