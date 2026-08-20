@@ -922,8 +922,8 @@
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "93dd603a5ded36c9393940ff10e62125db7913fd751dc6e4c3693fb9677c6558",
-      "size": 82014
+      "sha256": "6a832a1d1093e457e347b7e92ec885f205083b1ffd3391ed674e578deb4a7b73",
+      "size": 78680
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1432,14 +1432,14 @@
     "serve-viewer-inspect-layers.dark.png": {
       "fixture": "serve-viewer-inspect-layers",
       "theme": "dark",
-      "sha256": "abe83e018e2afcf8677b53ca5163fe967896676276bc34da10f9aaf58fc66446",
-      "size": 118652
+      "sha256": "e9b2a8d8fc76d16b756187abbcaaa210a7d2dada980aca429ab7973b42c525b1",
+      "size": 128150
     },
     "serve-viewer-inspect-layers.light.png": {
       "fixture": "serve-viewer-inspect-layers",
       "theme": "light",
-      "sha256": "4ca014b98149760533a0a1bfef1f2d224a454f4f2f5852296db7f0ba23022152",
-      "size": 117384
+      "sha256": "3e596beee3718da976470f6bafef9e5605dc93a00aed8f27727c1c9f41190c7d",
+      "size": 126019
     },
     "serve-viewer-inspect.dark.png": {
       "fixture": "serve-viewer-inspect",
@@ -1732,14 +1732,14 @@
     "serve-viewer-source-source-panel.dark.png": {
       "fixture": "serve-viewer-source-source-panel",
       "theme": "dark",
-      "sha256": "343793f279400d1b22c19c5ed54b18829384343083c258a769a1a0967c7121b3",
-      "size": 88572
+      "sha256": "64128d9c27eb339a5b0d04659c3b217456cd46e205326feb7d2b751fd4fc01b3",
+      "size": 97074
     },
     "serve-viewer-source-source-panel.light.png": {
       "fixture": "serve-viewer-source-source-panel",
       "theme": "light",
-      "sha256": "e0ba0bf673272aad8494443217b324817b42289528f5ce8fc5b4c30cc34c902c",
-      "size": 86613
+      "sha256": "f380bec089402d9ded92f52a259a8c1895337e4a5ca035d732c4aa4358f1f7dc",
+      "size": 95060
     },
     "serve-viewer-source.dark.png": {
       "fixture": "serve-viewer-source",
