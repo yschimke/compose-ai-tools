@@ -22,6 +22,24 @@ data class CatalogBlobPoolSnapshot(
   val evicted: Long,
   /** Blobs dropped because their bytes did not hash back to their name. */
   val corrupt: Long,
+  /**
+   * Whether this pool's directory outlives the process (`--catalog-cache-dir`), or is the temp-dir
+   * fallback that is discarded with the container.
+   *
+   * The field that separates a cache from a decoration. Everything else here looks the same either
+   * way — a temp pool fills, serves within-process hits, and reports climbing writes — right up
+   * until the container is recreated and none of it is there. `false` on a deployed box means the
+   * bytes are being paid for and thrown away.
+   */
+  val durable: Boolean = false,
+  /**
+   * Blobs already on disk when this process opened the pool.
+   *
+   * The only direct evidence that anything survived the last restart, and therefore the number to
+   * read after a roll: `0` on a [durable] pool that should have found a warm volume is the failure,
+   * and it is invisible in every other field.
+   */
+  val adopted: Int = 0,
   val lastFailure: String? = null,
 )
 
@@ -90,6 +108,15 @@ class CatalogBlobPool(
   private val maxBytes: Long = DEFAULT_MAX_BYTES,
   /** How recently a blob must have been touched to be spared by [sweep]. See **Concurrency**. */
   private val graceMillis: Long = DEFAULT_SWEEP_GRACE_MILLIS,
+  /**
+   * Whether [root] outlives this process — an operator-configured directory rather than the
+   * temp-dir fallback.
+   *
+   * Reported rather than inferred, because the two are indistinguishable from the inside: a pool in
+   * `/tmp` fills, serves within-process hits and reports healthy-looking counters right up until
+   * the container is recreated and every byte of it is gone. Only the caller knows which it built.
+   */
+  private val durable: Boolean = false,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   private val hits = AtomicLong()
@@ -126,6 +153,18 @@ class CatalogBlobPool(
 
   private val contentDir = File(root, CONTENT_DIR)
   private val keysDir = File(root, KEYS_DIR)
+
+  /**
+   * Blobs already present when this process opened the pool — the only direct evidence that
+   * anything survived the last restart.
+   *
+   * One census at construction, which is also what seeds the published occupancy so `/status.json`
+   * is right from the first poll rather than from the first sweep. `0` on a durable pool after a
+   * roll that should have found a warm volume is the failure this number exists to make visible;
+   * without it a cache that is quietly starting over every time looks exactly like one that is
+   * working, since both report climbing writes.
+   */
+  private val adopted: Int = census().blobs
 
   /**
    * The blob whose sha256 is [sha256], fetching it once when absent, or null when it cannot be had.
@@ -335,6 +374,8 @@ class CatalogBlobPool(
       blobs = knownBlobs.get(),
       bytes = knownBytes.get(),
       maxBytes = maxBytes,
+      durable = durable,
+      adopted = adopted,
       hits = hits.get(),
       misses = misses.get(),
       writes = writes.get(),

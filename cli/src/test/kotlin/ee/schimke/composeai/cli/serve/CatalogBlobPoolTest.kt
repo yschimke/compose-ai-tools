@@ -364,6 +364,42 @@ class CatalogBlobPoolTest {
   }
 
   @Test
+  fun `a pool reports whether it is durable and what it adopted`() {
+    // The two numbers that separate a working cache from a decoration. Everything else looks the
+    // same either way: a temp pool fills, serves within-process hits and reports climbing writes,
+    // right up until the container is recreated and none of it is there.
+    val root = root()
+    val first = CatalogBlobPool(root, durable = true)
+    assertFalse(CatalogBlobPool(root()).snapshot().durable, "a temp-dir pool says so")
+    assertTrue(first.snapshot().durable)
+    assertEquals(0, first.snapshot().adopted, "nothing was here before this process")
+
+    first.write("https://raw.githubusercontent.com/o/r/$COMMIT/images/a.png", "png".toByteArray())
+
+    // A restart over the same volume: what it finds is what survived.
+    val reopened = CatalogBlobPool(root, durable = true)
+    assertEquals(1, reopened.snapshot().adopted, "the blob the previous process left")
+    assertEquals(0, first.snapshot().adopted, "adopted is fixed at open, not a running total")
+  }
+
+  @Test
+  fun `occupancy is right from the first poll, before any sweep`() {
+    // The census at construction seeds the published occupancy too, so a freshly opened pool over a
+    // warm volume does not report an empty cache until its first sweep.
+    val root = root()
+    CatalogBlobPool(root)
+      .write(
+        "https://raw.githubusercontent.com/o/r/$COMMIT/images/a.png",
+        "png".toByteArray(),
+      )
+
+    val snapshot = CatalogBlobPool(root).snapshot()
+
+    assertEquals(1, snapshot.blobs)
+    assertTrue(snapshot.bytes > 0)
+  }
+
+  @Test
   fun `sweep reclaims oldest-first down to the cap`() {
     val now = AtomicLong(1_000_000L)
     val pool = CatalogBlobPool(root(), maxBytes = 200, graceMillis = 0, clock = { now.get() })
