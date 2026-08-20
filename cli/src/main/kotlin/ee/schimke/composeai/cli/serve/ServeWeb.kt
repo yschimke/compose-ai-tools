@@ -4380,18 +4380,23 @@ ${captureControlsHtml().prependIndent("          ")}
   data class ComponentSearchEntry(val previewId: String, val label: String, val keywords: String)
 
   /**
-   * Project a catalog's previews to the same component cards its landing page exposes. Theme, state
-   * and props renders collapse to their component's default card; genuine size variants stay
-   * separate and receive the same disambiguating suffix as the visible grid.
+   * Project a catalog's previews to the same component cards its landing page exposes. Theme,
+   * state, props AND breakpoint renders collapse to their component's default card, so the palette
+   * offers a component once rather than once per declared screen size — the same fold the grid and
+   * the viewer's component drawer apply (#4279). A render whose size the export never tagged can't
+   * be folded (there'd be no switcher to reach it from); those stay separate and keep the
+   * disambiguating size suffix below.
    */
   fun componentSearchEntries(
     previews: List<ServePreview>,
     darkFirst: Boolean = false,
   ): List<ComponentSearchEntry> {
+    val primarySizes = primarySizeByComponent(previews)
     val cards =
       groupPreviews(
         previews.filterNot {
-          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+          it.renderFailure == null &&
+            (isNonDefaultState(it) || hasNonDefaultProps(it) || isNonPrimarySize(it, primarySizes))
         }
       )
     val duplicateLabels =
@@ -11708,15 +11713,22 @@ $cards
   ): String {
     // Collapse to ONE entry per component — the same folding the landing grid does — so the nav
     // reads as a list of components, not of every baked state/theme/props/size permutation
-    // (`button-filled` once, not ~14 times). Each entry links to the component's render in the
-    // viewer's current [theme] (falling back to its default when it has no such variant); the
-    // viewer's own state/variant switchers reach that component's other axes. `aria-current` pins
-    // the component being viewed, even when the current preview is a folded (non-default) variant
-    // that has no card of its own.
+    // (`button-filled` once, not ~14 times). The SIZE axis folds here for the same reason it folds
+    // on the grid (#4279): a catalog documenting five breakpoints otherwise fills the drawer with
+    // five identically-named rows per full-screen component — "Alert Dialog" five times over, with
+    // nothing in the row to say which watch each one is. Each entry links to the component's render
+    // in the viewer's current [theme] (falling back to its default when it has no such variant);
+    // the viewer's own state/variant/size switchers reach that component's other axes.
+    // `aria-current` pins the component being viewed, even when the current preview is a folded
+    // (non-default) variant that has no card of its own.
+    val navPrimarySizes = primarySizeByComponent(siblings)
     val representatives =
       groupPreviews(
           siblings.filterNot {
-            it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+            it.renderFailure == null &&
+              (isNonDefaultState(it) ||
+                hasNonDefaultProps(it) ||
+                isNonPrimarySize(it, navPrimarySizes))
           }
         )
         .map {

@@ -85,11 +85,22 @@ class ServeSessionRegistry(
      */
     val forked: Boolean,
     @Volatile var lastAccess: Long,
-    /** Open long-lived holders (e.g. WebSocket connections) keeping this session resident. */
-    @Volatile var leases: Int = 0,
     /**
-     * Wall-clock of the last thing a *leaseholder* actually did — the lease being taken, a client
-     * message arriving on its socket ([Lease.touch]), or any acquire/lease of this session.
+     * Open **request-scoped** holders: a lease taken for the duration of one HTTP request
+     * (`withLeasedSession`). These count as busy for their whole life, however long that is — a
+     * cold `/render` or a `/bundle.zip` legitimately runs for minutes, and the quiet gate exists to
+     * keep background work off exactly that.
+     */
+    @Volatile var requestLeases: Int = 0,
+    /**
+     * Open **connection** holders: a viewer WebSocket, held for the socket's whole life. These keep
+     * the session resident unconditionally but only count as busy while [lastLeaseActivity] is
+     * recent — see [idleMillis] and issue #4312.
+     */
+    @Volatile var connectionLeases: Int = 0,
+    /**
+     * Wall-clock of the last thing a *leaseholder* actually did — a lease being taken, a client
+     * message arriving on its socket ([Lease.touch]), or any acquire of this session.
      *
      * Separate from [lastAccess], which answers "may this session's daemon be suspended?" and is
      * deliberately generous. This one answers "is someone being served right now?" against the much
@@ -111,7 +122,11 @@ class ServeSessionRegistry(
      * Closing under the lock used to serialise this implicitly.
      */
     @Volatile var closing: Boolean = false,
-  )
+  ) {
+    /** Every open holder, of either kind — the residency question. */
+    val leases: Int
+      get() = requestLeases + connectionLeases
+  }
 
   /**
    * A read-only snapshot of one **currently-resident** session (its host is live right now), for
@@ -142,24 +157,40 @@ class ServeSessionRegistry(
     private val released = AtomicBoolean(false)
 
     /**
+     * Serialises [touch] against [close], so "a no-op once released" is a guarantee rather than a
+     * likelihood.
+     *
+     * An `AtomicBoolean` read alone makes [touch] a check-then-act: it can see the lease open, be
+     * overtaken by a `close()` that releases the hold, and only then write its timestamps — marking
+     * a session busy on behalf of a holder that has already left, and (with a second connection
+     * lease on the same session) restarting that one's quiet window from a stale instant.
+     *
+     * A private monitor rather than the registry's own lock: [touch] is on the socket's per-message
+     * path, and the registry lock is held across a session *build* in `entryFor`, so borrowing it
+     * here would park a message loop behind an unrelated tenant's Gradle work. Lock ordering is
+     * one-way — this monitor is taken before the registry lock (via `onRelease`) and never the
+     * other way round — so the pair cannot deadlock.
+     */
+    private val gate = Any()
+
+    /**
      * Report that the holder is *doing* something — a client message on its socket, say — as
      * opposed to merely still being connected.
      *
-     * Holding a lease is what keeps the session resident; calling this is what keeps it counting as
-     * **busy** on the whole-server idle clock (see [idleMillis]). A long-lived connection that
-     * never touches goes quiet on that clock while staying resident, which is the point: an open
-     * browser tab nobody is looking at should not stand the theme optimizer down for hours.
+     * Holding a lease is what keeps the session resident; calling this is what keeps a **connection
+     * lease** counting as busy on the whole-server idle clock (see [idleMillis]). A long-lived
+     * connection that never touches goes quiet on that clock while staying resident, which is the
+     * point: an open browser tab nobody is looking at should not stand the theme optimizer down for
+     * hours. Request-scoped leases count as busy regardless and need not call this.
      *
-     * Cheap and lock-free by design — it is on the per-message path. It writes volatile timestamps
-     * that no invariant spans, so a reader can only ever see an older or newer instant, never an
-     * inconsistent pair. A no-op once the lease is [close]d.
+     * A no-op once the lease is [close]d.
      */
     fun touch() {
-      if (!released.get()) onTouch()
+      synchronized(gate) { if (!released.get()) onTouch() }
     }
 
     override fun close() {
-      if (released.compareAndSet(false, true)) onRelease()
+      synchronized(gate) { if (released.compareAndSet(false, true)) onRelease() }
     }
   }
 
@@ -369,19 +400,30 @@ class ServeSessionRegistry(
    * Acquire [sessionId] and hold it resident for the returned [Lease]'s lifetime, so a long-lived
    * connection — including a WebSocket on the snapshot fallback lane that opens no stream — isn't
    * suspended mid-connection. Returns `null` when the session can't be created/opened.
+   *
+   * [connection] picks which of the two questions this hold answers on the idle clock, and the
+   * default is the conservative one:
+   * - **false (default), a request-scoped hold.** `withLeasedSession` wraps ordinary HTTP work in
+   *   one of these, and that work is not always short — a cold `/render` is 30-70s and a
+   *   `/bundle.zip` longer still. It counts as busy for its whole life, because keeping background
+   *   work off a foreground render is precisely what the quiet gate is for.
+   * - **true, a connection hold.** A viewer WebSocket, which lives as long as the tab does. It
+   *   keeps the session resident unconditionally, but counts as busy only while its holder is
+   *   actually doing something ([Lease.touch]) — see [idleMillis] and issue #4312.
    */
-  fun lease(sessionId: String): Lease? = lock.withLock {
+  fun lease(sessionId: String, connection: Boolean = false): Lease? = lock.withLock {
     check(!closed) { "ServeSessionRegistry is closed" }
     val entry = entryFor(sessionId) ?: return null
     entry.lastAccess = clock()
     entry.lastLeaseActivity = clock()
     lastActivity = clock()
     val host = liveHost(entry) ?: return null
-    entry.leases++
+    if (connection) entry.connectionLeases++ else entry.requestLeases++
     Lease(
       host,
       onTouch = {
-        // No lock: see [Lease.touch]. Three independent volatile writes, on the per-message path.
+        // No registry lock here — see [Lease.gate] for why, and for what serialises this against
+        // the release below. Three independent volatile writes, on the per-message path.
         val now = clock()
         entry.lastLeaseActivity = now
         entry.lastAccess = now
@@ -389,7 +431,7 @@ class ServeSessionRegistry(
       },
     ) {
       lock.withLock {
-        entry.leases--
+        if (connection) entry.connectionLeases-- else entry.requestLeases--
         entry.lastAccess = clock() // start the idle clock fresh once the holder leaves
         entry.lastLeaseActivity = clock()
         lastActivity = clock()
@@ -436,18 +478,24 @@ class ServeSessionRegistry(
    * Idle counts from the last acquire/lease/release/[Lease.touch]; with nothing happening it grows
    * unbounded. Drives the theme optimizer's quiet gate.
    *
-   * **A lease answers busy only while its holder is still doing something** (issue #4312). This
-   * used to be `any { leases > 0 }`, and a viewer WebSocket holds a lease for the socket's whole
-   * life — so one browser tab left open on a catalog pinned the clock at *busy* indefinitely,
-   * whether or not anyone was looking at it. Everything gated on the clock then stopped: measured
-   * on the public box, a single idle tab held the optimizer's gate shut for eight consecutive
-   * minutes with zero renders, after which only the ceiling (#4288) let work through, at a trickle.
+   * **A connection lease answers busy only while its holder is still doing something**
+   * (issue #4312). This used to be `any { leases > 0 }`, and a viewer WebSocket holds a lease for
+   * the socket's whole life — so one browser tab left open on a catalog pinned the clock at *busy*
+   * indefinitely, whether or not anyone was looking at it. Everything gated on the clock then
+   * stopped: measured on the public box, a single idle tab held the optimizer's gate shut for eight
+   * consecutive minutes with zero renders, after which only the ceiling (#4288) let work through,
+   * at a trickle.
    *
    * Residency and busyness are two questions, and `leases > 0` answered both with one number. A
    * lease still keeps its session resident unconditionally — the reaper must never close a live
-   * socket's host mid-connection — but it stops *suppressing this clock* once the holder has been
-   * quiet for [leaseBusyMillis]. Interrupting an optimizer pass costs a returning visitor at most
-   * one render (`OPTIMIZER_YIELD_MILLIS`), so the trade is heavily one-sided.
+   * socket's host mid-connection — but a **connection** lease stops *suppressing this clock* once
+   * its holder has been quiet for [leaseBusyMillis]. Interrupting an optimizer pass costs a
+   * returning visitor at most one render (`OPTIMIZER_YIELD_MILLIS`), so the trade is one-sided.
+   *
+   * A **request-scoped** lease is never aged out, however long it runs. `withLeasedSession` wraps
+   * ordinary HTTP work in one, and that work is not always quick — a cold `/render` is 30-70s, a
+   * `/bundle.zip` longer — so ageing those out would let background work start against exactly the
+   * foreground render this gate exists to protect. See [lease].
    *
    * Use [connectionIdleMillis] where a live connection must count regardless of activity.
    */
@@ -467,9 +515,12 @@ class ServeSessionRegistry(
     if (sessions.values.any { it.leases > 0 }) null else now - lastActivity
   }
 
-  /** Whether this entry's lease is recent enough to answer *busy*. See [idleMillis]. */
+  /**
+   * Whether this entry has a holder that answers *busy*: any request-scoped lease, or a connection
+   * lease whose holder has been active recently enough. See [idleMillis].
+   */
   private fun Entry.isBusy(now: Long): Boolean =
-    leases > 0 && now - lastLeaseActivity < leaseBusyMillis
+    requestLeases > 0 || (connectionLeases > 0 && now - lastLeaseActivity < leaseBusyMillis)
 
   /**
    * Session ids holding at least one open lease, sorted — i.e. exactly the set keeping a session
