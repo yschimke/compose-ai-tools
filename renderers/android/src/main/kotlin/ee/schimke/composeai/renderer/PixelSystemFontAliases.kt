@@ -103,6 +103,29 @@ object PixelSystemFontAliases {
     // code asked for — otherwise the typography inspector reports a face nothing drew, hiding the
     // very drift the warning below is about.
     SystemFontFamilies.recordSeeding(attempted = ALIASES.keys, seeded = seeded)
+    // …and route a *use* of one of those unseeded families into the same diagnostic sink an
+    // unresolved downloadable font goes to.
+    //
+    // This is the narrow case the "deliberately NOT fatal" note above carves out. That note's
+    // objection is blast radius — a cold cache misses all ten families at once, and failing the
+    // render then "would take down previews that never asked for the family in the first place".
+    // True, and this does not do that: the sink is fed from `SystemFontFamilies.label`, which is
+    // only reached when a preview's own text node resolved that family. A preview that never
+    // mentions `roboto-flex` never reports it, however cold the cache is.
+    //
+    // What it does catch is the case where the note's other argument stops holding. "A real device
+    // without that family would fall back too" is right about the *pixels* and wrong about the
+    // *artefact*: a published sticker rendered in Roboto where the catalog says Roboto Flex is a
+    // fidelity claim nothing backs, and it reaches a design comparison as typography drift that
+    // exists only in the render environment. Whether that is fatal stays the existing
+    // `composeai.fonts.failOnFallback` decision — on by default, `false` to keep the PNG and take
+    // the `<png>.warnings.json` sidecar instead — so this adds no new switch and no new policy.
+    SystemFontFamilies.onUnseededUse { slug ->
+      FontResolutionDiagnostics.recordDeviceFamilyFallback(
+        slug = slug,
+        displayName = SystemFontFamilies.displayName(slug),
+      )
+    }
     val missing = ALIASES.keys - seeded.toSet()
     if (missing.isNotEmpty() && unseededWarned.compareAndSet(false, true)) {
       warn(

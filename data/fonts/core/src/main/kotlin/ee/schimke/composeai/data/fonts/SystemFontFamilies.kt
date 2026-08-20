@@ -77,6 +77,29 @@ object SystemFontFamilies {
   fun isDrawable(slug: String): Boolean = slug.trim().lowercase() !in unseeded
 
   /**
+   * Notified when [label] is asked about a slug this process failed to seed — i.e. a preview
+   * genuinely *used* a device family that nothing drew.
+   *
+   * The use site is the only honest place to raise this. Seeding attempts every entry in
+   * [DISPLAY_NAMES] on every render process, so a cold cache fails all ten at once; treating that
+   * as a per-render fault would fail every Android preview in every project, including the nine
+   * families the preview never mentions. Asking about a slug is the point where the failure stops
+   * being hypothetical: something is about to report a typeface, and the face it names is not the
+   * one that drew.
+   *
+   * A listener rather than a direct call because the reporting sink lives in `:renderer-android`
+   * ([FontResolutionDiagnostics]) and this module sits below it — the renderer installs itself.
+   * Null on any lane with no sink (the desktop renderer, plain unit tests), where the slug simply
+   * passes through as before.
+   */
+  @Volatile private var unseededUseListener: ((String) -> Unit)? = null
+
+  /** Install the [unseededUseListener]. Idempotent; pass null to remove. */
+  fun onUnseededUse(listener: ((String) -> Unit)?) {
+    unseededUseListener = listener
+  }
+
+  /**
    * How [slug] should be **reported**: the display name of the face that was drawn, or the raw
    * slug.
    *
@@ -89,6 +112,10 @@ object SystemFontFamilies {
    */
   fun label(slug: String): String {
     val trimmed = slug.trim()
-    return if (isDrawable(trimmed)) displayName(trimmed) ?: trimmed else trimmed
+    if (isDrawable(trimmed)) return displayName(trimmed) ?: trimmed
+    // Asked about a family nothing drew — tell the sink before answering, so the render can treat
+    // it the way it already treats an unresolved downloadable font.
+    unseededUseListener?.invoke(trimmed)
+    return trimmed
   }
 }

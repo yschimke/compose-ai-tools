@@ -148,6 +148,28 @@ object FontResolutionDiagnostics {
   }
 
   /**
+   * Record that a preview used `Font(DeviceFontFamilyName([slug]))` for a family this process could
+   * not seed, so the text drew in the platform fallback rather than [displayName].
+   *
+   * The **use** is the trigger, not the seeding miss: seeding attempts every known family on every
+   * render process, so a cold cache misses all of them at once, and a preview that never mentions a
+   * family must not be failed for it. See the call site in `PixelSystemFontAliases`.
+   *
+   * Reported through the same [FontFallback] channel as an unresolved downloadable font because it
+   * is the same defect from a consumer's side — text in a face nobody asked for — and so that
+   * `composeai.fonts.failOnFallback` governs both without a second switch. [FontFallback.weight] is
+   * 400 because that is the weight seeding asks for; off-400 weights are synthesised from it, so a
+   * miss there is a miss at every weight.
+   */
+  fun recordDeviceFamilyFallback(slug: String, displayName: String?) {
+    val named = displayName ?: slug
+    recordFallback(
+      GoogleFontKey(named, 400, false),
+      "system font family \"$slug\" was not seeded — ${currentFailureReason()}",
+    )
+  }
+
+  /**
    * Best-effort explanation for *why* a resolution just failed, from the process's font config. The
    * shadow doesn't get a reason back from the null [GoogleFontCacheAccess.load] result, so we infer
    * it from the same knobs the cache reads: an unset cache dir, offline mode, else a live fetch
