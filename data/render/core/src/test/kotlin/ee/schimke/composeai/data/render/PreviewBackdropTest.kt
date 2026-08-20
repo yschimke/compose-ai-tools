@@ -67,6 +67,27 @@ class PreviewBackdropTest {
   }
 
   @Test
+  fun `a nonzero but fully transparent explicit colour is not a ground`() {
+    // `0` is the annotation's "unset"; `0x00FFFFFF` is a stated colour that still paints nothing.
+    // Publishing it would hand a consumer a ground that isn't one and strand the catalog's stage.
+    val backdrop =
+      PreviewBackdrop.resolve(
+        backgroundColor = 0x00FFFFFFL,
+        catalogSurface = PreviewBackdrop.CatalogSurface.DARK,
+      )
+    assertEquals(PreviewBackdrop.Source.CATALOG_SURFACE, backdrop.source)
+    assertTrue(backdrop.isDark)
+  }
+
+  @Test
+  fun `a barely-opaque explicit colour still counts`() {
+    // Only *fully* transparent falls through — a low-alpha wash is still the author stating one.
+    val backdrop = PreviewBackdrop.resolve(backgroundColor = 0x01FFFFFFL)
+    assertEquals(PreviewBackdrop.Source.PREVIEW_BACKGROUND_COLOR, backdrop.source)
+    assertEquals("#01FFFFFF", backdrop.color)
+  }
+
+  @Test
   fun `a dark variant inside a light-first catalog keeps a dark ground`() {
     // The catalog's stage speaks for the system, not for a variant that contradicts it: a dark
     // variant's light-on-transparent artwork needs a dark ground wherever it lives.

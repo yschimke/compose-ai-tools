@@ -69,6 +69,7 @@ internal object DrawRasterCapture {
   fun capture(
     modifiers: List<ModifierInfo>,
     density: Float,
+    fontScale: Float = 1f,
     boundsOf: (ModifierInfo) -> LayoutInspectorBounds?,
   ): LayoutInspectorDrawRaster? {
     val draws = modifiers.mapNotNull { info ->
@@ -77,12 +78,22 @@ internal object DrawRasterCapture {
       // the placeholder block as its own layer. Skipping it here matches the same exclusion the
       // export's `hasCustomDraw` makes, and saves an offscreen render that would come back empty.
       if (ModifierTokenResolver.isPlaceholderElement(info.modifier)) return@mapNotNull null
-      val lambda = DrawCaptureExtractor.drawLambda(info.modifier) ?: return@mapNotNull null
-      val bounds = boundsOf(info)?.takeIf { it.right > it.left && it.bottom > it.top }
-      bounds?.let {
-        val (localWidth, localHeight) = localSizeOf(info, it)
-        Draw(it, localWidth, localHeight, lambda)
-      }
+      if (!DrawCaptureExtractor.isDrawModifier(info.modifier)) return@mapNotNull null
+      val bounds =
+        boundsOf(info)?.takeIf { it.right > it.left && it.bottom > it.top }
+          ?: return@mapNotNull null
+      // Bounds first, lambda second: a `drawWithCache` builds its draw block *for a size*, so the
+      // modifier's own local size has to be known before its lambda can be asked for.
+      val (localWidth, localHeight) = localSizeOf(info, bounds)
+      val cacheParams =
+        DrawCaptureExtractor.CacheDrawParams(
+          Size(localWidth.toFloat(), localHeight.toFloat()),
+          density,
+          fontScale,
+        )
+      val lambda =
+        DrawCaptureExtractor.drawLambda(info.modifier, cacheParams) ?: return@mapNotNull null
+      Draw(bounds, localWidth, localHeight, lambda)
     }
     if (draws.isEmpty()) return null
 
@@ -107,8 +118,8 @@ internal object DrawRasterCapture {
     if (width <= 0 || height <= 0 || width.toLong() * height > MAX_PIXELS) return null
 
     val pixels =
-      runCatching { render(draws, left, top, scaleX, scaleY, width, height, density) }.getOrNull()
-        ?: return null
+      runCatching { render(draws, left, top, scaleX, scaleY, width, height, density, fontScale) }
+        .getOrNull() ?: return null
     if (pixels.none { (it ushr 24) != 0 }) return null
     val png = runCatching { encodePng(pixels, width, height) }.getOrNull() ?: return null
     return LayoutInspectorDrawRaster(
@@ -158,6 +169,7 @@ internal object DrawRasterCapture {
     width: Int,
     height: Int,
     density: Float,
+    fontScale: Float,
   ): IntArray {
     val target = ImageBitmap(width, height)
     val canvas = Canvas(target)
@@ -166,7 +178,7 @@ internal object DrawRasterCapture {
     // valid or the backend throws mid-draw and the whole capture is lost.
     val scratch = Canvas(ImageBitmap(1, 1))
     val scope = CanvasDrawScope()
-    val densityScope = Density(density)
+    val densityScope = Density(density, fontScale)
     for (draw in draws) {
       // Offsets are root-space distances, so they divide back into the bitmap's local space too.
       val dx = (draw.bounds.left - left) / scaleX

@@ -291,8 +291,21 @@ class ServeBugReportTest {
       "Remote Compose (wasm player)",
       ServeBugReport.viewLabel("/jetnews/p/Article?mode=rc-wasm"),
     )
-    // The spec lane's default view qualifies nothing — it is the lane.
-    assertEquals("design spec", ServeBugReport.viewLabel("/p/Article?mode=spec&specView=spec"))
+    // The reference-alone view is spelled out rather than echoed: "design spec (spec)" reads as a
+    // stutter, and since #4376 it is not the lane's default either.
+    assertEquals(
+      "design spec (reference only)",
+      ServeBugReport.viewLabel("/p/Article?mode=spec&specView=spec"),
+    )
+    // A spec-lane URL that names no view is not silent about the view — the viewer leaves the
+    // lane's default out of the query precisely because it needs no parameter, so the row says
+    // which picture the reporter was looking at instead of dropping its most useful half.
+    assertEquals("design spec (triptych)", ServeBugReport.viewLabel("/p/Article?mode=spec"))
+    // An unrecognised view is not echoed into a public issue body; the lane's default stands in.
+    assertEquals(
+      "design spec (triptych)",
+      ServeBugReport.viewLabel("/p/Article?mode=spec&specView=%3Cimg%3E"),
+    )
     // `specView` outside the spec lane is stale state, not a view.
     assertEquals("motion playback", ServeBugReport.viewLabel("/p/A?mode=motion&specView=diff"))
     assertEquals("exploded layers", ServeBugReport.viewLabel("/p/Article?exploded=1"))
@@ -319,7 +332,12 @@ class ServeBugReportTest {
     // answers and anything else was never a view at all.
     assertNull(ServeBugReport.viewLabel("/p/Article?mode=%3Cimg+src%3Dx%3E"))
     assertNull(ServeBugReport.viewLabel("/p/Article?mode=| shear | the | table"))
-    assertEquals("design spec", ServeBugReport.viewLabel("/p/Article?mode=spec&specView=nonsense"))
+    // Dropped in the sense that matters — the value never reaches the issue body. What the row
+    // then names is the lane's own default, which is what a viewer showing no named view is on.
+    assertEquals(
+      "design spec (triptych)",
+      ServeBugReport.viewLabel("/p/Article?mode=spec&specView=nonsense"),
+    )
   }
 
   @Test

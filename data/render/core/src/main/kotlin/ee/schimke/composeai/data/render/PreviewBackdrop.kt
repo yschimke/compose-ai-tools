@@ -162,7 +162,12 @@ public object PreviewBackdrop {
     fallback: Boolean = false,
   ): Backdrop =
     when {
-      backgroundColor != 0L ->
+      // Nonzero AND actually opaque enough to sit behind something. `0` is the annotation's own
+      // "unset", but a nonzero-yet-fully-transparent value like `0x00FFFFFF` is not a ground
+      // either — publishing it would hand a consumer `#FFFFFF00` to composite onto, which paints
+      // nothing while claiming the preview answered, so a dark catalog's transparent artwork would
+      // lose its stage. Same rule the captured-theme rungs below apply, for the same reason.
+      backgroundColor != 0L && !isTransparentArgb(backgroundColor) ->
         Backdrop(hexArgb(backgroundColor.toInt()), Source.PREVIEW_BACKGROUND_COLOR)
       showBackground ->
         Backdrop(
@@ -259,6 +264,9 @@ public object PreviewBackdrop {
     val b = (value and 0xFF) / 255.0
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) < DARK_LUMINANCE_THRESHOLD
   }
+
+  /** Whether an ARGB `Long` from `@Preview(backgroundColor = …)` carries no alpha at all. */
+  private fun isTransparentArgb(argb: Long): Boolean = ((argb ushr 24) and 0xFF) == 0L
 
   /**
    * Whether an `#AARRGGBB` colour is fully transparent. A `#RRGGBB` form is opaque by definition.

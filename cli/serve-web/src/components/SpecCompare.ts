@@ -26,8 +26,8 @@ import { compareApi, type NormalisedPair } from "../compare/api.js";
 import { urlState } from "../urlState.js";
 import { sameOrigin } from "../dom/sameOrigin.js";
 import {
-    DEFAULT_VIEW,
     INITIAL,
+    PLAIN_VIEW,
     choose,
     hydrate,
     onOpen,
@@ -293,8 +293,8 @@ export class SpecCompare extends LitElement {
      * Reconcile the stage with the chosen view.
      *
      * `spec` deliberately touches nothing but its own container: the raster `<img>` viewer.js put
-     * on the stage stays the whole surface, so a session that never picks a comparison view behaves
-     * exactly as it did before this existed. The other three hide that `<img>` from CSS (see
+     * on the stage stays the whole surface, so pressing Spec puts the lane back to exactly what it
+     * showed before any of this existed. The other three hide that `<img>` from CSS (see
      * `.cp-viewer[data-spec-view]` in `serve.css`) and take the stage themselves.
      */
     private apply(): void {
@@ -303,9 +303,9 @@ export class SpecCompare extends LitElement {
         this.compare?.setAttribute("data-view", view);
         if (this.views) this.views.hidden = !this.open;
         const score = document.getElementById("cp-spec-score");
-        if (score) score.hidden = !this.open || view === DEFAULT_VIEW;
+        if (score) score.hidden = !this.open || view === PLAIN_VIEW;
         if (this.compare)
-            this.compare.hidden = !this.open || view === DEFAULT_VIEW;
+            this.compare.hidden = !this.open || view === PLAIN_VIEW;
         for (const button of this.views?.querySelectorAll(
             "[data-cp-spec-view]",
         ) ?? []) {
@@ -314,7 +314,7 @@ export class SpecCompare extends LitElement {
                 String(button.getAttribute("data-cp-spec-view") === view),
             );
         }
-        if (this.open && view !== DEFAULT_VIEW) void this.compute();
+        if (this.open && view !== PLAIN_VIEW) void this.compute();
         else this.clearTypography();
     }
 

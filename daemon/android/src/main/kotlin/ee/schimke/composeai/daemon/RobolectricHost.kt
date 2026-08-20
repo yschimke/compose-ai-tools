@@ -3090,10 +3090,16 @@ open class RobolectricHost(
                         // `plan(request)` returns an extension regardless of input (e.g. the
                         // always-active keyboard band). See `InteractiveCommand.Start.touchOverlay`
                         // for the cross-boundary-threading rationale.
+                        //
+                        // `localeTag` joins it for the pseudolocale planner: `en-XA` / `ar-XB` is
+                        // otherwise applied here only as a Robolectric qualifier (base locale +
+                        // `ldrtl`), so a live session browsed at `?localeTag=ar-XB` mirrored but
+                        // showed plain, un-pseudolocalised strings (#4371). `withPseudolocaleFrom`
+                        // ignores every real locale, which the qualifier path already serves.
                         val syntheticOverrides =
-                          ee.schimke.composeai.daemon.protocol.PreviewOverrides(
-                            touchOverlay = start.touchOverlay
-                          )
+                          ee.schimke.composeai.daemon.protocol
+                            .PreviewOverrides(touchOverlay = start.touchOverlay)
+                            .withPseudolocaleFrom(start.localeTag)
                         ComposeDataExtensionPipeline.Apply(
                           extensions = engine.previewOverrideExtensions.plan(syntheticOverrides),
                           previewId = null,

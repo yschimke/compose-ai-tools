@@ -526,6 +526,19 @@ object ServeWeb {
    */
   private const val THEME_CHIPS_INLINE = 4
 
+  /**
+   * Which of the design-spec lane's four views the page is served pressed, and therefore the one
+   * `?specView=` leaves unsaid.
+   *
+   * Triptych since #4376 — the lane is entered to ask how the render and the imported reference
+   * compare, and spec / diff / render side by side answers that on arrival where the plain
+   * reference (the lane's original view, still one click away) only asked the eye to hold one frame
+   * while looking at the other. The browser side keeps the same constant in
+   * `serve-web/src/spec/views.ts`; they are the same decision rendered twice, so move both together
+   * or the served page opens pressing a button the script immediately unpresses.
+   */
+  internal const val SPEC_DEFAULT_VIEW = "triptych"
+
   // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
   private const val UI_MODE_NIGHT_MASK = 0x30
   private const val UI_MODE_NIGHT_NO = 0x10
@@ -1401,20 +1414,36 @@ ${captureControlsHtml().prependIndent("          ")}
    * chose a stage instead of leaving a reader to guess — see the reference-compare page, which
    * names it in the panel's title text.
    */
-  internal fun backdropFor(preview: ServePreview, darkFirst: Boolean): PreviewBackdrop.Backdrop =
-    PreviewBackdrop.withCatalogDefault(
+  internal fun backdropFor(
+    preview: ServePreview,
+    darkFirst: Boolean,
+    /**
+     * The render lane's `uiMode` override (`"light"`/`"dark"`), when this page is showing one.
+     *
+     * An override is the *effective* render state, so it outranks the preview's discovery-time
+     * `uiMode` for both rungs that read the night axis. Without it a `?uiMode=dark` comparison put
+     * the overridden — genuinely dark — Actual panel on the preview's original light stage, and for
+     * a `showBackground = true` preview it named white while the renderer painted the dark sheet.
+     */
+    uiModeOverride: String? = null,
+  ): PreviewBackdrop.Backdrop {
+    val overriddenSurface = PreviewBackdrop.CatalogSurface.parse(uiModeOverride)
+    return PreviewBackdrop.withCatalogDefault(
       PreviewBackdrop.resolve(
         showBackground = preview.showBackground,
         backgroundColor = preview.backgroundColor,
-        night = PreviewBackground.isNight(preview.uiMode),
+        night =
+          overriddenSurface?.let { it == PreviewBackdrop.CatalogSurface.DARK }
+            ?: PreviewBackground.isNight(preview.uiMode),
         // The variant this render IS, which the catalog's stage cannot speak for: a *dark* variant
         // inside a light-first catalog needs a dark ground exactly as much as a dark-first
         // catalog's does. Omitting it opened a dark row's focused comparison on a light stage while
         // the wall and the viewer both showed it dark.
-        variantSurface = variantSurfaceOf(preview),
+        variantSurface = overriddenSurface ?: variantSurfaceOf(preview),
       ),
       if (darkFirst) PreviewBackdrop.CatalogSurface.DARK else PreviewBackdrop.CatalogSurface.LIGHT,
     )
+  }
 
   /**
    * The light/dark variant a preview **is**, from the catalog's baked `theme` token, else its night
@@ -8556,7 +8585,14 @@ $rows
     // only meaningful if the reference and the render were composited onto identical pixels, and
     // showing each on its own preferred stage would put a ground difference into a comparison whose
     // entire job is to isolate the component's difference.
-    val backdrop = backdropFor(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
+    val backdrop =
+      backdropFor(
+        preview,
+        isDarkFirstSystem(basePath, sessionId, declaredSurface),
+        // Both panels already take this override through `assetQuery`; the stage has to take it too
+        // or the pixels and their ground describe different renders.
+        uiModeOverride = overrides["uiMode"],
+      )
     val stageAttrs =
       backdrop.color?.let { color ->
         // The theme word drives the existing CSS; the exact colour rides along as a custom property
@@ -10557,8 +10593,9 @@ $cards
     // other. That finds a wholesale colour change and misses the 4dp of padding that is the actual
     // bug. The focused `/compare/<id>` page has always had the real instruments, but reaching it
     // means leaving the viewer, and with it the overrides, knobs and theme that produced the render
-    // worth comparing. So the instruments come to the lane. `spec` is first and is the default, so
-    // a visitor who ignores this row sees exactly what the lane always showed.
+    // worth comparing. So the instruments come to the lane. `triptych` is the default (#4376): the
+    // lane is entered to ask how the two compare, and side-by-side answers that on arrival, while
+    // `spec` — the reference alone, the way the lane used to open — is one click away.
     val specViews =
       listOf(
         "spec" to ("Spec" to "The imported design reference on its own"),
@@ -10582,7 +10619,7 @@ $cards
           specViews.joinToString("") { (value, text) ->
             val (viewLabel, viewTip) = text
             "<button type=\"button\" class=\"cp-spec-view\" data-cp-spec-view=\"$value\" " +
-              "aria-pressed=\"${value == "spec"}\" " +
+              "aria-pressed=\"${value == SPEC_DEFAULT_VIEW}\" " +
               "title=\"${WebEscaping.htmlEscape(viewTip)}\">${WebEscaping.htmlEscape(viewLabel)}</button>"
           }
         "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" " +
@@ -11025,7 +11062,8 @@ $cards
           "<figure class=\"cp-spec-panel\" data-cp-spec-panel=\"$kind\">" +
             "<canvas id=\"$id\" aria-label=\"${WebEscaping.htmlEscape(description)}\"></canvas>" +
             "<figcaption>${WebEscaping.htmlEscape(caption)}</figcaption></figure>"
-        "<div class=\"cp-spec-compare\" id=\"cp-spec-compare\" hidden data-view=\"spec\" " +
+        "<div class=\"cp-spec-compare\" id=\"cp-spec-compare\" hidden " +
+          "data-view=\"$SPEC_DEFAULT_VIEW\" " +
           "data-reference=\"${WebEscaping.htmlEscape(specRasterUrl)}\">" +
           panel("reference", "cp-spec-reference", "Spec", "Imported design spec") +
           panel("diff", "cp-spec-diff", "Diff", "Pixels where the render and the spec disagree") +

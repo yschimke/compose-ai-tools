@@ -340,6 +340,7 @@ class DoctorCommand(
     // Cheap, disk-only, and independent of the Gradle model — so it runs first and still reports
     // when the model query below fails. A wrong pin is one of the reasons a query fails.
     checkVersionPin(projectDir)
+    checkPreviewServer(projectDir)
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val model =
       try {
@@ -610,6 +611,86 @@ class DoctorCommand(
    *   A `-SNAPSHOT` on either side stays `ok`: a local snapshot build driving a pinned project is a
    *   deliberate development flow, not a misconfiguration.
    */
+  /**
+   * Report the project's **preview server** — the host `share-preview` uploads rendered evidence to
+   * when the project names one (see [resolveProjectServeUrl]).
+   *
+   * Reported because it changes what a command does without appearing on its command line: a
+   * project with this set makes `share-preview` upload by default where it would otherwise create a
+   * gist, and "why did my render end up on a website" should be answerable by `doctor` rather than
+   * by reading the source. Never an error — not naming a host is the normal state.
+   */
+  private fun checkPreviewServer(projectDir: File) {
+    val configured = resolveProjectServeUrl(projectDir, args, fileSystem = fileSystem)
+    if (configured == null) {
+      addCheck(
+        DoctorCheck(
+          id = "project.preview-server",
+          category = "project",
+          status = "ok",
+          message = "no preview server configured",
+          detail =
+            "Set $SERVE_URL_PROPERTY in gradle.properties to point share-preview at a " +
+              "`compose-preview serve --accept-images` host, so rendered evidence gets an " +
+              "embeddable URL without `gh` or push rights. Uploading needs a GitHub token with " +
+              "access to that host's configured repository; the token is never read from a file " +
+              "you commit.",
+        )
+      )
+      return
+    }
+    // The same validation the upload performs, so `doctor` can't hand out a clean bill of health
+    // for a configuration the command will refuse — which is precisely the configuration it exists
+    // to diagnose.
+    ServeImageUploader.rejectUnsafeUrl(configured.url)?.let { refusal ->
+      addCheck(
+        DoctorCheck(
+          id = "project.preview-server",
+          category = "project",
+          status = "error",
+          // Redacted: a URL is refused *because* it carries credentials, and this message is where
+          // that URL would otherwise reach a terminal, a CI log and --json output.
+          message =
+            "preview server URL is unusable: ${ServeImageUploader.redactedUrl(configured.url)}",
+          detail = "Source: ${configured.source.display}. $refusal",
+        )
+      )
+      return
+    }
+    val trust =
+      confirmProjectServeHost(configured, projectRoot = projectDir, fileSystem = fileSystem)
+    if (trust is ServeUrlTrust.NeedsConfirmation) {
+      addCheck(
+        DoctorCheck(
+          id = "project.preview-server",
+          category = "project",
+          // A warning, not an error: nothing is broken, and refusing to act on an unconfirmed
+          // host is the safe behaviour working as designed. The operator just isn't getting the
+          // upload they may be expecting.
+          status = "warning",
+          message =
+            "this project names ${ServeImageUploader.redactedUrl(configured.url)}, unconfirmed " +
+              "— share-preview won't use it",
+          detail = trust.how,
+        )
+      )
+      return
+    }
+    addCheck(
+      DoctorCheck(
+        id = "project.preview-server",
+        category = "project",
+        status = "ok",
+        message = "share-preview uploads to ${ServeImageUploader.redactedUrl(configured.url)}",
+        detail =
+          "Source: ${configured.source.display}. This is what `share-preview` uses unless " +
+            "--mechanism says otherwise. An uploaded image is readable by anyone holding its " +
+            "link, so a project whose renders shouldn't leave the building should not name a " +
+            "public host here.",
+      )
+    )
+  }
+
   private fun checkVersionPin(projectDir: File) {
     val pin = resolveVersionPin(projectDir, args, fileSystem = fileSystem)
     if (pin == null) {

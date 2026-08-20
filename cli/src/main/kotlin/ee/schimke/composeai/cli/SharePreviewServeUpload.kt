@@ -137,6 +137,25 @@ internal class ServeImageUploader(
     private val LOOPBACK = setOf("127.0.0.1", "localhost", "::1", "[::1]")
 
     /**
+     * [url] with any `user:password@` stripped, for printing.
+     *
+     * Every message that names a destination goes through this. A URL carrying credentials is
+     * refused rather than used, but *refusing* it is exactly when its text gets printed to a
+     * terminal, a CI log and `--json` output — so the refusal must not be the thing that publishes
+     * the secret. Unparseable input is redacted by shape rather than trusted.
+     */
+    fun redactedUrl(url: String): String {
+      val uri = runCatching { URI(url.trim()) }.getOrNull()
+      if (uri?.userInfo == null) {
+        // Not parseable as a URI (so the check above proves nothing): strip anything that looks
+        // like userinfo in an authority, which is the only place a secret can hide in a URL.
+        return url.replace(Regex("""(?<=://)[^/@\s]*@"""), "***@")
+      }
+      val port = if (uri.port >= 0) ":${uri.port}" else ""
+      return "${uri.scheme}://***@${uri.host}$port${uri.rawPath.orEmpty()}"
+    }
+
+    /**
      * Whether [url] is somewhere a GitHub credential may be sent, or the reason it isn't. Null when
      * the URL is acceptable.
      */
@@ -145,20 +164,21 @@ internal class ServeImageUploader(
         try {
           URI(url)
         } catch (e: Exception) {
-          return "invalid --serve-url '$url': ${e.message ?: "not a URL"}"
+          return "invalid --serve-url '${redactedUrl(url)}': ${e.message ?: "not a URL"}"
         }
       val scheme = uri.scheme?.lowercase()
       val host = uri.host?.lowercase()
       if (scheme == null || host.isNullOrBlank()) {
-        return "invalid --serve-url '$url': expected something like https://preview.example.com"
+        return "invalid --serve-url '${redactedUrl(url)}': expected something like " +
+          "https://preview.example.com"
       }
       if (uri.userInfo != null) {
         return "refusing --serve-url with credentials in it: they leak into every log that " +
           "records the destination. Pass the host alone."
       }
       if (scheme != "https" && !(scheme == "http" && host in LOOPBACK)) {
-        return "refusing to send a GitHub token to '$url' over $scheme — use https:// " +
-          "(http:// is allowed only for a loopback host)."
+        return "refusing to send a GitHub token to '${redactedUrl(url)}' over $scheme — use " +
+          "https:// (http:// is allowed only for a loopback host)."
       }
       return null
     }

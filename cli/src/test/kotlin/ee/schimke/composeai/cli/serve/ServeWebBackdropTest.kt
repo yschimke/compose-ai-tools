@@ -44,7 +44,11 @@ class ServeWebBackdropTest {
       theme = theme,
     )
 
-  private fun page(preview: ServePreview, declaredSurface: String?): String =
+  private fun page(
+    preview: ServePreview,
+    declaredSurface: String?,
+    overrides: Map<String, String> = emptyMap(),
+  ): String =
     ServeWeb.referenceComparisonPage(
       moduleLabel = "wear-m3",
       preview = preview,
@@ -52,6 +56,7 @@ class ServeWebBackdropTest {
       token = "t",
       sessionId = "wear-m3",
       declaredSurface = declaredSurface,
+      overrides = overrides,
     )
 
   @Test
@@ -116,6 +121,28 @@ class ServeWebBackdropTest {
     val html =
       page(preview(theme = "dark", backgroundColor = 0xFFFFFFFFL), declaredSurface = "dark")
     assertTrue(html.contains("data-bg-theme=\"light\""), html)
+  }
+
+  @Test
+  fun `a uiMode override moves the stage with the pixels it renders`() {
+    // Both panels take the override through `assetQuery`, so the Actual really is dark here. A
+    // stage still resolved from the preview's discovery-time uiMode would describe a different
+    // render than the one on screen.
+    val html = page(preview(), declaredSurface = "light", overrides = mapOf("uiMode" to "dark"))
+    assertTrue(html.contains("data-bg-theme=\"dark\""), html)
+    assertTrue(html.contains("--cp-stage-backdrop: #1C1B1F"), html)
+  }
+
+  @Test
+  fun `a uiMode override also flips a showBackground preview's sheet`() {
+    val html =
+      page(
+        preview(showBackground = true, uiMode = 0x20),
+        declaredSurface = "dark",
+        overrides = mapOf("uiMode" to "light"),
+      )
+    assertTrue(html.contains("data-bg-theme=\"light\""), html)
+    assertTrue(html.contains("--cp-stage-backdrop: #FFFFFF"), html)
   }
 
   @Test

@@ -434,6 +434,102 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * **Regression guard for the pseudolocale drop on every daemon lane (#4371).**
+   *
+   * A pseudolocale override is two halves: the renderer folds `ar-XB` to its base locale for the
+   * `LocaleList` / JVM-default-`Locale` state, and `PseudolocaleOverrideExtensionDesktop` — planned
+   * from the **extension bag** — installs the around-composable that flips `LocalLayoutDirection`
+   * and pseudolocalises `stringResource(...)`. But `localeTag` travels as a typed wire token, and
+   * `JsonRpcServer.encodeRenderPayload` nulls tokenised fields out of the bag, so the planner was
+   * handed `localeTag = null` on every payload-driven render and abstained: `?localeTag=ar-XB` on
+   * the preview server came back plain LTR English, looking exactly like the feature was off. The
+   * Gradle path plans from `params.locale` instead, which is why the baked catalog PNGs were right
+   * and only the live daemon lane was wrong.
+   *
+   * [LayoutDirectionAwareSquare] paints `Rtl` blue and `Ltr` red, and the base locale `ar-XB` folds
+   * to is `en` (LTR) — so the flip can only come from the around-composable. Before the fix this
+   * rendered red.
+   *
+   * Driven through a **gated** [ExtensionRegistry] (see below), which covers the second half of the
+   * same deployed failure: `serve` never enables extensions, so the planner also had to stop being
+   * gated on one.
+   */
+  @Test
+  fun pseudolocaleTagReachesTheAroundComposableOnThePayloadPath() {
+    val outputDir = tempFolder.newFolder("renders-pseudolocale")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "direction-aware",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "LayoutDirectionAwareSquare",
+              widthPx = 32,
+              heightPx = 32,
+              density = 1.0f,
+              outputBaseName = "direction-aware",
+            )
+          )
+      )
+    // The production seam, as `namedOverrideAppliesThroughGatedRegistryWithoutEnable` uses it: a
+    // real registry whose `data/pseudolocale` extension is registered but never enabled — exactly
+    // what `serve` builds, since only the MCP supervisor calls `extensions/enable`. The planner is
+    // marked `AlwaysOnPreviewOverrideExtension`, so it must plan despite the gate; without the
+    // marker this render is the deployed bug a second time over.
+    val registry =
+      ExtensionRegistry(
+        listOf(
+          Extension(
+            id = "data/pseudolocale",
+            previewOverrideExtensions = listOf(PseudolocalePreviewOverrideExtensionDesktop()),
+          )
+        )
+      )
+    assertFalse(
+      "the pseudolocale extension must be inactive — half of what this regression covers",
+      registry.isActive("data/pseudolocale"),
+    )
+    val host =
+      PreviewManifestRouter(
+        manifest = manifest,
+        engine = RenderEngine(previewOverrideExtensions = registry.activeOverrideExtensions()),
+      )
+    host.start()
+    try {
+      val base = renderAndDecode(host, "previewId=direction-aware", "pseudo-base")
+      val baseRedPct = pixelMatchPct(base, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "no override must stay LTR (red); got ${"%.2f".format(baseRedPct * 100)}%",
+        baseRedPct >= 0.95,
+      )
+
+      val bidi = renderAndDecode(host, "previewId=direction-aware;localeTag=ar-XB", "pseudo-bidi")
+      val bidiBluePct = pixelMatchPct(bidi, expectedRgb = 0x42A5F5, perChannelTolerance = 8)
+      assertTrue(
+        "localeTag=ar-XB must plan PseudolocaleOverrideExtensionDesktop so the composition flips " +
+          "to RTL; got ${"%.2f".format(bidiBluePct * 100)}% blue — the pseudolocale bag drop is " +
+          "back (#4371)",
+        bidiBluePct >= 0.95,
+      )
+
+      // The accent pseudolocale is LTR: it plans the same extension (pseudolocalising
+      // `stringResource`) without touching layout direction, so this render must stay red. A blue
+      // one would mean the wrap flips direction for every pseudolocale, not just the bidi one.
+      val accent =
+        renderAndDecode(host, "previewId=direction-aware;localeTag=en-XA", "pseudo-accent")
+      val accentRedPct = pixelMatchPct(accent, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "localeTag=en-XA must stay LTR; got ${"%.2f".format(accentRedPct * 100)}% red",
+        accentRedPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * `localeTag` must reach `androidx.compose.ui.text.intl.Locale.current` — the locale CMP string
    * resources (`components-resources`) resolve from via `rememberResourceEnvironment()`. On
    * Skiko/desktop that reads the JVM default `Locale`, **not** the `LocalProvidableLocaleList`

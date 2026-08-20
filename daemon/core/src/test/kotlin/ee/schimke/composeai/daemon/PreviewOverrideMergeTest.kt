@@ -25,6 +25,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -265,6 +266,39 @@ class PreviewOverrideMergeTest {
       "non-pseudo locales must not project into the extension bag — the renderer applies them via qualifiers / LocaleList directly",
       realLocale,
     )
+  }
+
+  /**
+   * The renderer-side twin of the projection above (#4371). A payload-driven render never sees the
+   * merge: `localeTag` arrives as a typed wire token and the encoder nulls it out of the bag, so
+   * the engines rehydrate it with `withPseudolocaleFrom(spec.localeTag)` before planning. Only
+   * pseudolocales fold back — a real locale has no bag-consuming planner.
+   */
+  @Test
+  fun `withPseudolocaleFrom rehydrates only pseudolocale tags`() {
+    val none: PreviewOverrides? = null
+    assertEquals("en-XA", none.withPseudolocaleFrom("en-XA")?.localeTag)
+    assertEquals("ar-XB", none.withPseudolocaleFrom("ar-XB")?.localeTag)
+    // Spelling is normalized the same way `toExtensionOverrides` normalizes it, and the tag is
+    // carried through verbatim — `Pseudolocale.fromTag` does its own folding downstream.
+    assertEquals("ar_xb", none.withPseudolocaleFrom("ar_xb")?.localeTag)
+
+    // A bag that already carries other overrides keeps them.
+    val seeded = PreviewOverrides(touchOverlay = true).withPseudolocaleFrom("en-XA")
+    assertEquals(true, seeded?.touchOverlay)
+    assertEquals("en-XA", seeded?.localeTag)
+
+    // Real locales, and no locale at all, pass through untouched — no bag conjured from nothing.
+    assertNull(none.withPseudolocaleFrom("fr-FR"))
+    assertNull(none.withPseudolocaleFrom(null))
+    assertNull(none.withPseudolocaleFrom("  "))
+    val real = PreviewOverrides(touchOverlay = true)
+    assertSame(real, real.withPseudolocaleFrom("de"))
+
+    // Idempotent, so the held-session lane (which already carries the tag through
+    // `toExtensionOverrides`) is unchanged by the rehydration.
+    val held = PreviewOverrides(localeTag = "ar-XB")
+    assertEquals(held, held.withPseudolocaleFrom("ar-XB"))
   }
 
   @Test
