@@ -258,6 +258,11 @@ dependencies {
   // (payload schema only; the alpha `androidx.compose.remote.*` deps live in the connector, not
   // here), so it stays off the renderer/daemon boundary the CLI guards.
   implementation(project(":data-remotecompose-core"))
+  // `PreviewBackdrop` / `PreviewBackground` — the one chain that decides which ground a preview is
+  // presented on, shared with both renderers and both daemons so the served pages cannot disagree
+  // with the pixels. Pure JVM ARGB math, no Compose types, so it stays off the renderer/daemon
+  // boundary the CLI guards for the same reason the two entries above do.
+  implementation(project(":data-render-core"))
   // Public render-session library — the CLI consumes its own published API for daemon-driven
   // commands (`compose-preview a11y` etc.) instead of touching DaemonClient directly. We eat
   // our own dog food: anything the CLI can do, a third-party tooling consumer can do via the

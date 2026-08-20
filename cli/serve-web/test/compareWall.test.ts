@@ -111,11 +111,24 @@ describe("variantFor", () => {
 });
 
 describe("rowTheme", () => {
-    it("puts only a genuinely dark pairing on the dark sheet", () => {
+    it("takes a genuinely themed pairing at its word, whatever the stage", () => {
         assert.equal(rowTheme("dark"), "dark");
         assert.equal(rowTheme("light"), "light");
+        assert.equal(rowTheme("dark", "light"), "dark");
+        assert.equal(rowTheme("light", "dark"), "light");
+    });
+
+    it("defaults an unthemed pairing to light, as before", () => {
         assert.equal(rowTheme("neutral"), "light");
         assert.equal(rowTheme(""), "light");
+        assert.equal(rowTheme("neutral", "light"), "light");
+    });
+
+    it("puts an unthemed pairing on a dark-first catalog's own stage", () => {
+        // wear-m3-catalog#56: a theme-neutral component in a dark-first system is still drawn for a
+        // black watch face, so answering "light" here left its sticker nearly blank in the table.
+        assert.equal(rowTheme("neutral", "dark"), "dark");
+        assert.equal(rowTheme("", "dark"), "dark");
     });
 });
 

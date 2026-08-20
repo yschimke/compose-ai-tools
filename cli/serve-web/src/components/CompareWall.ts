@@ -325,7 +325,10 @@ export class CompareWall extends LitElement {
             return;
         }
         row.hidden = false;
-        row.setAttribute("data-bg-theme", rowTheme(variant));
+        row.setAttribute(
+            "data-bg-theme",
+            rowTheme(variant, this.root.getAttribute("data-default-theme") ?? ""),
+        );
         png.src = pngUrl;
         png.alt = `${row.getAttribute("data-label")} rendered PNG`;
         score.textContent = "comparing…";

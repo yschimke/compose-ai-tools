@@ -46,9 +46,23 @@ export function variantFor(
     return "";
 }
 
-/** The background a row is drawn on: the dark sheet only for a genuinely dark pairing. */
-export function rowTheme(variant: string): "light" | "dark" {
-    return variant === "dark" ? "dark" : "light";
+/**
+ * The background a row is drawn on.
+ *
+ * A row whose pairing is genuinely light or dark says so and is taken at its word. Everything else
+ * — a `neutral` pairing, or a row this format cannot show — has no theme *of its own*, and used to
+ * be answered "light" unconditionally. That is wrong for a dark-first catalog, where a theme-neutral
+ * component is still drawn for a black watch face: its white-on-transparent sticker landed on the
+ * light sheet and read as nearly blank, in the table meant to compare it
+ * (yschimke/wear-m3-catalog#56).
+ *
+ * So an absent theme defers to [stage] — the catalog's declared stage, which the wall already
+ * carries as `data-default-theme`. "Neutral" means neutral *between the catalog's themes*, not
+ * "light".
+ */
+export function rowTheme(variant: string, stage?: string): "light" | "dark" {
+    if (variant === "dark" || variant === "light") return variant;
+    return stage === "dark" ? "dark" : "light";
 }
 
 /**
