@@ -403,6 +403,52 @@ class CatalogBlobPoolTest {
   }
 
   @Test
+  fun `the audit catches a key filed against the wrong content`() {
+    // The one failure content-addressing cannot see. Every blob is verified against its OWN name,
+    // so a mis-filed pointer — key K naming content sha S when S is not what K holds — passes every
+    // existing check: the blob under S hashes to S perfectly well. Simulated here by writing one
+    // key's bytes and then auditing it against what the branch actually serves.
+    val pool = CatalogBlobPool(root())
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/button.png"
+    pool.write(url, "the wrong asset".toByteArray())
+
+    val result = pool.audit(url, "what the branch serves".toByteArray())
+
+    assertEquals(CatalogBlobPool.AuditResult.MISMATCHED, result)
+    assertEquals(1, pool.snapshot().mismatched)
+    assertNull(pool.read(url), "a mismatched entry is dropped so the next read re-fetches")
+  }
+
+  @Test
+  fun `an audit that agrees leaves the entry alone`() {
+    val pool = CatalogBlobPool(root())
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/button.png"
+    val bytes = "the right asset".toByteArray()
+    pool.write(url, bytes)
+
+    assertEquals(CatalogBlobPool.AuditResult.MATCHED, pool.audit(url, bytes))
+    assertEquals(0, pool.snapshot().mismatched)
+    assertEquals(1, pool.snapshot().audited)
+    assertContentEquals(bytes, assertNotNull(pool.read(url)))
+  }
+
+  @Test
+  fun `auditing a key the pool does not hold checks nothing`() {
+    // Not a pass and not a failure — there was nothing to compare. Counting it as audited would
+    // make the audit look like it is doing more work than it is.
+    val pool = CatalogBlobPool(root())
+
+    val result =
+      pool.audit(
+        "https://raw.githubusercontent.com/o/r/$COMMIT/images/absent.png",
+        "x".toByteArray(),
+      )
+
+    assertEquals(CatalogBlobPool.AuditResult.NOT_CACHED, result)
+    assertEquals(0, pool.snapshot().audited)
+  }
+
+  @Test
   fun `sweep reclaims oldest-first down to the cap`() {
     val now = AtomicLong(1_000_000L)
     val pool = CatalogBlobPool(root(), maxBytes = 200, graceMillis = 0, clock = { now.get() })

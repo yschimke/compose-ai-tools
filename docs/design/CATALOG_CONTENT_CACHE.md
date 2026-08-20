@@ -263,7 +263,7 @@ Each ships independently and is provable on its own.
 | **2 — landed** | Asset cache for commit-pinned reads, behind `fetchCatalogAsset`; `cached` counter on `branchFetch` | Manifests, lazy PNGs, motion, references, and the `?at=` lane stop re-fetching | Low — one funnel, one admission rule |
 | **3** | Generation snapshots + `current` pointer; adopt-then-converge boot; seed the refresher's head | The restart win: catalogs serve before any network | Medium — the adoption checks are where the care goes |
 | **4 — landed** | `DELETE /admin/catalog-cache`, `POST /<system>/refresh?force=1`, `catalogCache` status block | Operability, and the ability to tell a working cache from write amplification | Low |
-| **5** | Background audit: adopted-commit reachability from the Atom feed, plus a sampled byte comparison | Catches disk corruption and rewritten history | Low — reports, never gates |
+| **5 — landed, reduced** | Sampled post-publish audit of the cache's key→content mapping | Catches the one fault content-addressing cannot see | Low — reports, never gates |
 
 Phases 1–2 are worth doing regardless of whether 3 lands: they are pure subtraction from the fetch
 path with no new correctness surface. Phase 3 is where the headline number is.
@@ -329,6 +329,32 @@ to overstate what is expressible, and shipping them as written would have been a
 The rename matters more than it looks: `flush` on a route that does not evict anything would read as
 a cache control and behave as a poll, and the next person to reach for it would be reaching for the
 wrong thing.
+
+### What phase 5 shipped, and why two thirds of it was dropped
+
+The plan justified phase 5 on three grounds. What actually shipped in phases 1–2 removed two of
+them, and it is worth recording that rather than building the audit as specified:
+
+- **Disk corruption** is already caught. Every blob is named by the sha256 of its own bytes and
+  re-verified on read (phase 1), so a truncated or bit-rotted file cannot be served. A sampled byte
+  comparison adds nothing here.
+- **Rewritten history** was a worry for *adopted commits*, which only phase 3 would introduce. As
+  built, every load resolves the branch head fresh and nothing is adopted across restarts — and a
+  git sha's content is immutable by construction, so a force-push can make a commit unreachable but
+  never make it serve different bytes. There is no reachability question to ask.
+
+What remains is a fault neither the plan nor the implementation had named: **the key→content
+mapping is the one thing nothing verifies.** A blob is checked against its own name; the pointer
+that says "this URL holds that sha" is not checked against anything. A key filed against the wrong
+content — a mistaken `write` call site, a refactor reusing a key — passes every existing check,
+because the blob under that sha hashes to it perfectly well, and the pool then serves the wrong
+bytes for that URL indefinitely. Content-addressing makes corruption impossible and mis-filing
+invisible.
+
+So phase 5 is a three-asset sample re-read from the branch after each pinned load, compared against
+what the pool would serve, reported as `audited` / `mismatched`. Small on purpose: it is checking
+for something the design says cannot happen, so its job is to be running at all rather than to be
+exhaustive.
 
 ## What this deliberately does not do
 

@@ -22,6 +22,16 @@ data class CatalogBlobPoolSnapshot(
   val evicted: Long,
   /** Blobs dropped because their bytes did not hash back to their name. */
   val corrupt: Long,
+  /** Cached entries re-checked against the branch by the sampled audit. */
+  val audited: Long = 0,
+  /**
+   * Audited entries whose cached bytes did **not** match the branch.
+   *
+   * Expected to be zero forever: the audit exists to check the one thing content-addressing cannot
+   * — that a key is filed against the right content — and a non-zero value means something the
+   * design treats as impossible has happened. Worth an alert, not a dashboard.
+   */
+  val mismatched: Long = 0,
   /**
    * Whether an operator configured a directory (`--catalog-cache-dir`), rather than this being the
    * temp-dir fallback discarded with the container.
@@ -112,10 +122,11 @@ class CatalogBlobPool(
    * Whether an operator named a directory for [root], rather than this being the temp-dir fallback.
    *
    * Deliberately **not** called durable. Nothing here can establish that the storage outlives the
-   * container — `--catalog-cache-dir /var/cache/x` in an image with no volume mounted there is
-   * configured and just as ephemeral, and no portable test tells a bind mount from a writable
-   * layer. So this reports the decision that was made, and [adopted] reports what actually
-   * survived. Claiming the stronger thing would be the false reassurance it exists to remove.
+   * process — `--catalog-cache-dir /var/cache/x` in a container with no volume mounted there is
+   * configured and just as ephemeral, while the same path under a plain host `serve` persists fine,
+   * and no portable test tells those apart from in here. So this reports the decision that was
+   * made, and [adopted] reports what actually survived. Claiming the stronger thing would be the
+   * false reassurance it exists to remove.
    */
   private val persistenceConfigured: Boolean = false,
   private val clock: () -> Long = System::currentTimeMillis,
@@ -126,6 +137,8 @@ class CatalogBlobPool(
   private val writeFailures = AtomicLong()
   private val evicted = AtomicLong()
   private val corrupt = AtomicLong()
+  private val audited = AtomicLong()
+  private val mismatched = AtomicLong()
   /**
    * Occupancy as of the last census, advanced by each write and reclaim in between.
    *
@@ -292,6 +305,44 @@ class CatalogBlobPool(
   }
 
   /**
+   * Check what this pool would serve for [key] against [fresh] — bytes just read from the branch —
+   * and drop the entry when they differ.
+   *
+   * ### The one thing nothing else here checks
+   *
+   * Every blob is verified against its **own** name on read, so a truncated or bit-rotted file can
+   * never be served. What that cannot catch is a wrong *mapping*: the pointer says "key K holds
+   * content sha S", and if K were ever filed against the wrong S — a mistaken `write` call site, a
+   * refactor that reuses a key, a race nobody predicted — the blob under S still hashes to S, every
+   * check passes, and the pool serves the wrong bytes for K indefinitely. Content-addressing makes
+   * corruption impossible and mis-filing invisible; this is the only thing that would notice.
+   *
+   * Deliberately a **report, not a gate**. It runs on a sample, behind the request path, and its
+   * effect on a mismatch is to drop the entry so the next read re-fetches. A mismatch means
+   * something is wrong that the design says cannot happen, so the point is that [mismatched] stops
+   * being zero and someone looks — not that a visitor waits for an audit.
+   */
+  fun audit(key: String, fresh: ByteArray): AuditResult {
+    val held = read(key) ?: return AuditResult.NOT_CACHED
+    audited.increment()
+    if (held.contentEquals(fresh)) return AuditResult.MATCHED
+    mismatched.increment()
+    recordFailure("audit: cached bytes for a key did not match the branch — entry dropped")
+    runCatching { File(keysDir, sha256Hex(key.toByteArray())).delete() }
+    return AuditResult.MISMATCHED
+  }
+
+  /** What [audit] established about one key. */
+  enum class AuditResult {
+    /** Nothing cached under that key — the audit had nothing to check. */
+    NOT_CACHED,
+    /** What the pool holds is what the branch serves. */
+    MATCHED,
+    /** They differ. The entry was dropped; something is wrong upstream of the blob. */
+    MISMATCHED,
+  }
+
+  /**
    * Drop **everything** this pool holds, returning what is left (normally nothing).
    *
    * The operator's "I do not trust this; fetch it again" button. Whole-pool rather than per
@@ -383,6 +434,8 @@ class CatalogBlobPool(
       writeFailures = writeFailures.get(),
       evicted = evicted.get(),
       corrupt = corrupt.get(),
+      audited = audited.get(),
+      mismatched = mismatched.get(),
       lastFailure = lastFailure,
     )
   }
