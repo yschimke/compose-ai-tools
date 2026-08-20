@@ -229,6 +229,20 @@ data class ServePreview(
   /** Discovery-time `@Preview(uiMode=…)`; used to identify the baked Day/Night default. */
   val uiMode: Int = 0,
   /**
+   * Discovery-time `@Preview(showBackground = …)` / `@Preview(backgroundColor = …)`.
+   *
+   * Carried for one reason: they are the two rungs where the *preview itself* states the ground it
+   * wants, and without them a page can only infer one from the catalog's stage or from a variant
+   * name — which is how a catalog full of `showBackground = false` stickers and one deliberately
+   * white specimen ended up presented identically. Fed to `PreviewBackdrop`; see [ServeWeb]'s
+   * backdrop resolution. Both default to the annotation's own defaults, so a host with no
+   * `previews.json` behind it (a plain uploaded bundle) simply contributes no opinion and the
+   * catalog stage answers, exactly as before.
+   */
+  val showBackground: Boolean = false,
+  /** See [showBackground]. `0` means unset — the annotation's own default. */
+  val backgroundColor: Long = 0L,
+  /**
    * The catalog's original component identifier (`SessionDetails`, `Button/Filled`, …). Unlike
    * [id], this retains word boundaries and casing after the image path is flattened into a
    * route-safe slug. Null for ordinary uploaded bundles and live discovery previews.

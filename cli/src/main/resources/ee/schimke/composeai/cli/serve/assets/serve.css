@@ -2501,6 +2501,26 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-reference-grid section h2 { margin: 0 0 8px; font-size: 0.8rem; color: var(--cp-fg-muted);
   text-transform: uppercase; letter-spacing: 0.06em; }
 .cp-reference-grid .cp-compare-shot { width: 100%; min-height: 180px; box-sizing: border-box; }
+/* The comparison's stage. Without this the three panels fell through to the `.cp-compare-shot`
+   checkerboard above, so a dark-first catalog's white-on-transparent sticker was unreadable in the
+   Actual panel — the panel whose whole job is to show it (yschimke/wear-m3-catalog#56).
+   ALL THREE PANELS TAKE THE SAME GROUND, including Diff: a reference and a render composited onto
+   different colours differ by that colour everywhere, which is exactly the signal this page exists
+   to remove. `--cp-stage-backdrop` is the resolved per-preview backdrop the server inlines
+   (`PreviewBackdrop`), so a catalog whose stage is neither of the two literal plates elsewhere in
+   this file still gets its own; the `data-bg-theme` fallbacks cover a page served without one.
+   Solid mode only — the header's Transparent toggle still wins, so the raw alpha stays inspectable,
+   which is the reason none of this is baked into the PNG in the first place. */
+html:not(.cp-bg-transparent) #cp-reference-compare[data-bg-theme] .cp-compare-shot {
+  background: var(--cp-stage-backdrop, #fff); }
+html:not(.cp-bg-transparent) #cp-reference-compare[data-bg-theme="dark"] .cp-compare-shot {
+  background: var(--cp-stage-backdrop, #1d1d20); }
+/* The overlay slider stacks the two panels on top of each other, so it needs the same ground for
+   the same reason — a half-faded render over a checkerboard reads as a rendering fault. */
+html:not(.cp-bg-transparent) #cp-reference-compare[data-bg-theme] .cp-reference-overlay {
+  background: var(--cp-stage-backdrop, #fff); border-radius: 8px; }
+html:not(.cp-bg-transparent) #cp-reference-compare[data-bg-theme="dark"] .cp-reference-overlay {
+  background: var(--cp-stage-backdrop, #1d1d20); }
 .cp-reference-result { font-weight: 650; font-variant-numeric: tabular-nums; }
 /* Annotation layers. The layer is absolutely positioned over its panel's image and sized in JS from
    the image's rendered box, because annotation bounds arrive in the source frame's pixel space and

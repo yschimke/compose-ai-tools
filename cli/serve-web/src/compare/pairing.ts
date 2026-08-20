@@ -46,9 +46,32 @@ export function variantFor(
     return "";
 }
 
-/** The background a row is drawn on: the dark sheet only for a genuinely dark pairing. */
-export function rowTheme(variant: string): "light" | "dark" {
-    return variant === "dark" ? "dark" : "light";
+/**
+ * The background a row is drawn on — the wall's end of `PreviewBackdrop`'s precedence.
+ *
+ * Three rungs, in the same order the resolver uses:
+ *
+ * 1. [declared] — what this variant's preview says about its OWN ground
+ *    (`@Preview(backgroundColor)` / `showBackground`), emitted per variant as
+ *    `data-declared-bg-<variant>`. Highest, because it is the author stating it outright: a
+ *    component that asks for a light ground keeps it even inside a dark-first catalog.
+ * 2. the pairing's own theme, when it is genuinely `light` or `dark`.
+ * 3. [stage] — the catalog's declared stage, which the wall carries as `data-default-theme`.
+ *
+ * Rung 3 is what this used to answer `"light"` for unconditionally. That is wrong for a dark-first
+ * catalog, where a theme-neutral component is still drawn for a black watch face: its
+ * white-on-transparent sticker landed on the light sheet and read as nearly blank, in the table
+ * meant to compare it (yschimke/wear-m3-catalog#56). "Neutral" means neutral *between the catalog's
+ * themes*, not "light".
+ */
+export function rowTheme(
+    variant: string,
+    stage?: string,
+    declared?: string | null,
+): "light" | "dark" {
+    if (declared === "dark" || declared === "light") return declared;
+    if (variant === "dark" || variant === "light") return variant;
+    return stage === "dark" ? "dark" : "light";
 }
 
 /**

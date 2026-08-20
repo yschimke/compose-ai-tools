@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
+import ee.schimke.composeai.data.render.PreviewBackdrop
+import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.designpages.DesignPage
 import ee.schimke.composeai.designpages.PageNode
 import java.time.Instant
@@ -1382,16 +1384,117 @@ ${captureControlsHtml().prependIndent("          ")}
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
   /**
+   * An `#AARRGGBB` data-product colour as a CSS one.
+   *
+   * CSS's 8-digit hex puts alpha **last** (`#RRGGBBAA`), so emitting the wire form unchanged would
+   * read `#FF1C1B1F` as opaque-ish `#FF1C1B` — a red stage instead of a near-black one, which is
+   * the kind of wrong that looks deliberate. An opaque colour drops the alpha entirely so the
+   * common case stays the familiar six digits.
+   */
+  private fun String.asCssColor(): String {
+    val hex = removePrefix("#")
+    if (hex.length != 8) return this
+    val alpha = hex.take(2)
+    val rgb = hex.drop(2)
+    return if (alpha.equals("FF", ignoreCase = true)) "#$rgb" else "#$rgb$alpha"
+  }
+
+  /**
+   * The ground this preview should be shown on, resolved through the shared [PreviewBackdrop]
+   * chain: what the preview states about itself first, the catalog's declared stage after.
+   *
+   * This is the serve host's end of the "per-preview with catalog defaults" contract. The two
+   * halves are genuinely different claims and must not be collapsed: a `showBackground = false`
+   * sticker says nothing about its ground on purpose (so it drops onto any Figma canvas) and
+   * *wants* the catalog stage, while an explicit `@Preview(backgroundColor = 0xFFFFFFFF)` specimen
+   * in the same dark-first catalog is stating a white ground and must keep it. Deriving both from
+   * the catalog alone, which is what every compare surface used to do, gets the second one wrong.
+   *
+   * The [Backdrop][PreviewBackdrop.Backdrop] carries its own `source`, so a page can show *why* it
+   * chose a stage instead of leaving a reader to guess — see the reference-compare page, which
+   * names it in the panel's title text.
+   */
+  internal fun backdropFor(
+    preview: ServePreview,
+    darkFirst: Boolean,
+    /**
+     * The render lane's `uiMode` override (`"light"`/`"dark"`), when this page is showing one.
+     *
+     * An override is the *effective* render state, so it outranks the preview's discovery-time
+     * `uiMode` for both rungs that read the night axis. Without it a `?uiMode=dark` comparison put
+     * the overridden — genuinely dark — Actual panel on the preview's original light stage, and for
+     * a `showBackground = true` preview it named white while the renderer painted the dark sheet.
+     */
+    uiModeOverride: String? = null,
+  ): PreviewBackdrop.Backdrop {
+    val overriddenSurface = PreviewBackdrop.CatalogSurface.parse(uiModeOverride)
+    return PreviewBackdrop.withCatalogDefault(
+      PreviewBackdrop.resolve(
+        showBackground = preview.showBackground,
+        backgroundColor = preview.backgroundColor,
+        night =
+          overriddenSurface?.let { it == PreviewBackdrop.CatalogSurface.DARK }
+            ?: PreviewBackground.isNight(preview.uiMode),
+        // The variant this render IS, which the catalog's stage cannot speak for: a *dark* variant
+        // inside a light-first catalog needs a dark ground exactly as much as a dark-first
+        // catalog's does. Omitting it opened a dark row's focused comparison on a light stage while
+        // the wall and the viewer both showed it dark.
+        variantSurface = overriddenSurface ?: variantSurfaceOf(preview),
+      ),
+      if (darkFirst) PreviewBackdrop.CatalogSurface.DARK else PreviewBackdrop.CatalogSurface.LIGHT,
+    )
+  }
+
+  /**
+   * The light/dark variant a preview **is**, from the catalog's baked `theme` token, else its night
+   * `uiMode`. Null when the render is unthemed and says nothing — the catalog's stage answers then.
+   *
+   * Same two signals, in the same order, that [previewTheme] reads; they are kept in step
+   * deliberately so the stage a comparison uses and the theme the viewer reports cannot diverge.
+   */
+  private fun variantSurfaceOf(preview: ServePreview): PreviewBackdrop.CatalogSurface? =
+    PreviewBackdrop.CatalogSurface.parse(preview.theme)
+      ?: when (preview.uiMode and UI_MODE_NIGHT_MASK) {
+        UI_MODE_NIGHT_YES -> PreviewBackdrop.CatalogSurface.DARK
+        UI_MODE_NIGHT_NO -> PreviewBackdrop.CatalogSurface.LIGHT
+        else -> null
+      }
+
+  /**
    * The preview's baked theme, preferring explicit catalog metadata, then its discovery-time
    * uiMode, over id heuristics.
+   *
+   * Falls through to [backdropFor] rather than to the catalog stage directly, so a preview that
+   * declares its own ground (`showBackground` / `backgroundColor`) is placed on *that* rather than
+   * on whichever stage its system happens to prefer.
    */
   private fun previewTheme(preview: ServePreview, darkFirst: Boolean): String? =
     preview.theme
       ?: when (preview.uiMode and UI_MODE_NIGHT_MASK) {
         UI_MODE_NIGHT_YES -> "dark"
         UI_MODE_NIGHT_NO -> "light"
-        else -> bgTheme(preview.id, darkFirst)
+        // A preview that states its own ground overrides the catalog stage; everything else keeps
+        // [bgTheme]'s existing answer verbatim — including its `null` for a light-first catalog,
+        // which means "emit no tag, take the page's default stage" rather than "light".
+        else -> declaredBackdropTheme(preview) ?: bgTheme(preview.id, darkFirst)
       }
+
+  /**
+   * `"light"`/`"dark"` when the preview's own `@Preview` params name a ground, else null.
+   *
+   * Deliberately narrower than [backdropFor]: this is only the rungs where the preview speaks for
+   * itself, because the catalog-default rung is [bgTheme]'s job and answering it here too would
+   * turn its null — the signal that no tag should be emitted at all — into a `light` tag on every
+   * preview in every light-first catalog.
+   */
+  private fun declaredBackdropTheme(preview: ServePreview): String? =
+    PreviewBackdrop.resolve(
+        showBackground = preview.showBackground,
+        backgroundColor = preview.backgroundColor,
+        night = PreviewBackground.isNight(preview.uiMode),
+      )
+      .takeIf { it.source != PreviewBackdrop.Source.NONE }
+      ?.let { if (it.isDark) "dark" else "light" }
 
   /** Stable, catalog-specific persistence key shared by that catalog's landing and viewer pages. */
   private fun themeStorageKey(sessionId: String?, basePath: String): String {
@@ -7482,8 +7585,14 @@ ${captureControlsHtml().prependIndent("          ")}
           """
           .trimIndent()
       }
-      // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
-      val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
+      // data-bg-theme is the thumbnail's background: what the preview declares for itself first,
+      // then the explicit id token, then the dark-first default. Without the first rung the grid
+      // and the reference page answered differently for the same preview — a card showing a
+      // deliberately white specimen on this catalog's dark plate, and the comparison of that same
+      // specimen on white.
+      val bgAttr =
+        (declaredBackdropTheme(p) ?: bgTheme(p.id, darkFirst))?.let { " data-bg-theme=\"$it\"" }
+          ?: ""
       return """
           <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q" aria-label="$label">
             <div class="cp-imgwrap">
@@ -8085,9 +8194,23 @@ ${captureControlsHtml().prependIndent("          ")}
           referenceAttrs("light", card.light) +
             referenceAttrs("dark", card.dark) +
             referenceAttrs("neutral", card.neutral)
+        // The ground each variant declares for ITSELF, where it declares one. Only the preview's
+        // own rungs — the catalog default is the wall's `data-default-theme` and applying it here
+        // too would make every row claim to have declared something. Without this the wall could
+        // only choose between "the variant is named dark" and "the catalog is dark-first", so a
+        // neutral pairing whose preview asks for a light ground inside a dark-first catalog had no
+        // way to say so and landed on the dark sheet.
+        val declaredBgAttrs =
+          listOf("light" to card.light, "dark" to card.dark, "neutral" to card.neutral)
+            .mapNotNull { (variant, preview) ->
+              preview
+                ?.let { declaredBackdropTheme(it) }
+                ?.let { " data-declared-bg-$variant=\"$it\"" }
+            }
+            .joinToString("")
         """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
-            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs>
+            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs$declaredBgAttrs>
             <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(component)}${
             if (variant.isEmpty()) ""
             else "<span class=\"cp-compare-variant\">${WebEscaping.htmlEscape(variant)}</span>"
@@ -8388,6 +8511,14 @@ $rows
     isPublic: Boolean = false,
     trust: String? = null,
     /**
+     * The catalog's declared stage surface (`catalog.json`'s `display.surface`), as everywhere
+     * else. This page went without one for far too long, which is the whole of
+     * yschimke/wear-m3-catalog#56: its three panels fell through to the `.cp-compare-shot`
+     * checkerboard, so a dark-first catalog's white-on-transparent sticker was compared against its
+     * reference while being nearly invisible in the panel meant to show it.
+     */
+    declaredSurface: String? = null,
+    /**
      * The served catalog's own palette as an inline `:root` override for the chrome's custom
      * properties, built by [ServeThemeCss] from the branch's `tokens.dtcg.json`. Empty ⇒ the page
      * keeps the built-in chrome (a plain module, or a catalog that publishes no tokens).
@@ -8450,6 +8581,26 @@ $rows
     val assetQuery = withPin(q, revisions.pinned)
     val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$assetQuery"
     val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$assetQuery"
+    // The ground all three panels sit on. Both sides get the SAME one on purpose: the diff panel is
+    // only meaningful if the reference and the render were composited onto identical pixels, and
+    // showing each on its own preferred stage would put a ground difference into a comparison whose
+    // entire job is to isolate the component's difference.
+    val backdrop =
+      backdropFor(
+        preview,
+        isDarkFirstSystem(basePath, sessionId, declaredSurface),
+        // Both panels already take this override through `assetQuery`; the stage has to take it too
+        // or the pixels and their ground describe different renders.
+        uiModeOverride = overrides["uiMode"],
+      )
+    val stageAttrs =
+      backdrop.color?.let { color ->
+        // The theme word drives the existing CSS; the exact colour rides along as a custom property
+        // so a catalog whose stage is neither of the two literal plates still gets its own ground
+        // rather than the nearest of them.
+        " data-bg-theme=\"${if (backdrop.isDark) "dark" else "light"}\"" +
+          " style=\"--cp-stage-backdrop: ${WebEscaping.htmlEscape(color.asCssColor())}\""
+      } ?: ""
     // One toggle per kind, offered only when some panel actually carries that kind — a control that
     // reveals nothing is worse than no control. The payload rides inline rather than behind a fetch
     // so the layers are there on first paint, like the rest of this page's data.
@@ -8537,7 +8688,7 @@ $rows
       siteName = heading,
       body =
         """
-        <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
+        <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual"$stageAttrs>
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
           $revisionsBlock

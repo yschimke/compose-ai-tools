@@ -10,6 +10,8 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.PreviewBackdrop
+import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
@@ -26,10 +28,18 @@ import kotlinx.serialization.json.put
 /**
  * Metadata product describing the background a client should place behind a rendered device frame.
  *
- * Preview annotation settings win because they are an explicit author signal. Otherwise, a render
- * can provide captured Material3 theme colors through [PreviewContext.inspection]; when no render
- * has happened yet, the product falls back to Material3's light background color so transparent
- * component previews remain readable.
+ * **The precedence lives in [PreviewBackdrop], not here.** This product used to own its own chain,
+ * which was the same question the catalog grid, the compare wall, the reference-compare page and
+ * the fidelity scorer were each answering differently elsewhere; it now supplies the evidence it
+ * has and lets the shared resolver rank it. What this class still owns is which evidence a *live
+ * daemon* can offer: the preview's annotation params up front, the captured Material 3 theme colors
+ * through [PreviewContext.inspection] once a render has produced them, and the light-background
+ * fallback in the window before that — a live host has to draw something the moment a preview is
+ * opened.
+ *
+ * It does **not** supply a catalog stage, because a daemon renders a module and does not know which
+ * published catalog (if any) a preview belongs to. That rung is applied downstream, by the serve
+ * host that mounted the catalog, via `PreviewBackdrop.withCatalogDefault`.
  */
 class DeviceBackgroundDataProductRegistry(previewIndex: PreviewIndex) : DataProductRegistry {
   private val backgrounds: ConcurrentHashMap<String, DeviceBackground> =
@@ -140,25 +150,18 @@ internal data class DeviceBackground(
   val previewExplicit: Boolean = false,
 )
 
-private fun PreviewInfoDto.background(): DeviceBackground {
-  val previewParams = params
-  val backgroundColor = previewParams?.backgroundColor
-  return when {
-    backgroundColor != null && backgroundColor != 0L ->
-      DeviceBackground(
-        color = backgroundColor.hexArgb(),
-        source = "preview.backgroundColor",
-        previewExplicit = true,
-      )
-    previewParams?.showBackground == true ->
-      DeviceBackground(
-        color = "#FFFFFFFF",
-        source = "preview.showBackground",
-        previewExplicit = true,
-      )
-    else -> fallbackBackground()
-  }
-}
+private fun PreviewInfoDto.background(): DeviceBackground =
+  PreviewBackdrop.resolve(
+      showBackground = params?.showBackground == true,
+      backgroundColor = params?.backgroundColor ?: 0L,
+      // The renderer paints M3's dark sheet — not white — for `showBackground` under a night
+      // uiMode, so reporting white here would have named a colour the pixels contradict.
+      night = PreviewBackground.isNight(params?.uiMode ?: 0),
+      // A live host must put *something* behind a transparent preview the moment it is opened,
+      // before any render has produced a theme capture. See `Source.M3_LIGHT_FALLBACK`.
+      fallback = true,
+    )
+    .toDeviceBackground()!!
 
 /**
  * Domain API for the captured theme colors that device background understands.
@@ -168,19 +171,12 @@ private fun PreviewInfoDto.background(): DeviceBackground {
  * caller needs to know that shape or any reflective access details.
  */
 internal data class DeviceBackgroundThemeCapture(private val colorScheme: Map<String, String>) {
-  fun background(): DeviceBackground? {
-    val background =
-      colorScheme["background"]?.takeUnless(::isTransparentColor)
-        ?: colorScheme["surface"]?.takeUnless(::isTransparentColor)
-        ?: return null
-    val source =
-      if (colorScheme["background"]?.equals(background, ignoreCase = true) == true) {
-        "material3.background"
-      } else {
-        "material3.surface"
-      }
-    return DeviceBackground(background.uppercase(), source)
-  }
+  fun background(): DeviceBackground? =
+    PreviewBackdrop.resolve(
+        themeBackground = colorScheme["background"],
+        themeSurface = colorScheme["surface"],
+      )
+      .toDeviceBackground()
 
   companion object {
     private const val THEME_PAYLOAD_KEY: String = "compose.material3.themePayload"
@@ -205,9 +201,22 @@ internal data class DeviceBackgroundThemeCapture(private val colorScheme: Map<St
 }
 
 private fun fallbackBackground(): DeviceBackground =
-  DeviceBackground("#FFFFFBFE", "material3.lightBackgroundFallback")
+  PreviewBackdrop.resolve(fallback = true).toDeviceBackground()!!
 
-private fun Long.hexArgb(): String = "#%08X".format(this and 0xFFFFFFFFL)
-
-private fun isTransparentColor(color: String): Boolean =
-  color.length == 9 && color.startsWith("#") && color.substring(1, 3).equals("00", true)
+/**
+ * This product's view of a resolved [PreviewBackdrop.Backdrop], or null when the chain had nothing
+ * to say (which this product never publishes — it always asks for the fallback).
+ *
+ * [DeviceBackground.previewExplicit] is derived from the source rather than passed alongside it:
+ * "the preview stated this itself" is exactly "the answer came from one of the `@Preview` rungs",
+ * and deriving it keeps the two from drifting apart the way two hand-set flags would.
+ */
+private fun PreviewBackdrop.Backdrop.toDeviceBackground(): DeviceBackground? = color?.let {
+  DeviceBackground(
+    color = it,
+    source = source.wire,
+    previewExplicit =
+      source == PreviewBackdrop.Source.PREVIEW_BACKGROUND_COLOR ||
+        source == PreviewBackdrop.Source.PREVIEW_SHOW_BACKGROUND,
+  )
+}

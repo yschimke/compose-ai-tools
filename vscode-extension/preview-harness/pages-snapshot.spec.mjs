@@ -305,6 +305,12 @@ const STYLED_FIXTURES = new Set([
   // switches the format pane, so it needs both the stylesheet and the scripts routed in.
   "serve-rc-lanes",
   "serve-reference-compare",
+  // The same page for a dark-first catalog. Needs the stylesheet routed in for the same reason the
+  // entries above do, and more so: its whole diffable claim is the panels' GROUND — a dark-first
+  // system's stickers are transparent by design, so the stage is what makes them visible at all
+  // (yschimke/wear-m3-catalog#56). Its light-first twin cannot catch a regression here, because
+  // dark content stays readable whichever stage it lands on.
+  "serve-reference-compare-dark-first",
   "serve-viewer",
   "serve-parity",
   "serve-viewer-catalog-knobs",
@@ -2837,7 +2843,9 @@ for (const fixture of listPageFixtures()) {
         // own hold records.
         await page.waitForTimeout(500);
       }
-      if (fixture === "serve-reference-compare") {
+      // Prefix match, so every variant of this page (the dark-first twin, and any later one)
+      // waits for its scorer rather than shooting a panel still reading "comparing…".
+      if (fixture.startsWith("serve-reference-compare")) {
         await page
           .waitForFunction(
             () =>
