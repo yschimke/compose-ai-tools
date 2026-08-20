@@ -37,13 +37,19 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -66,6 +72,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -1093,3 +1101,38 @@ private const val OUTCOME_SELECTED = 2
 
 /** The value changed by something other than one character (a duplicate, most likely). */
 private const val OUTCOME_TYPED_OTHER = 3
+
+/**
+ * A box clipped to a shape whose outline is an [Outline.Generic] path — the shape family
+ * `MaterialShapes`, morphs and squircles all belong to. No corner getter can describe it, so the
+ * export has to reach `ModifierTokenResolver.outlineShapePathWire`, sample the outline, and emit
+ * `shapePath`.
+ *
+ * A hand-rolled diamond rather than a real `MaterialShapes` value so the fixture carries no
+ * dependency on Material 3's expressive-experimental shape library, and so its expected geometry is
+ * obvious: four straight edges, no rectangle anywhere in it.
+ *
+ * Used by [FigmaSvgGenericOutlineShapeTest] to pin the Android half of [PlatformPathMeasure].
+ */
+@Composable
+fun GenericOutlineShapeSquare() {
+  val diamond = remember {
+    object : Shape {
+      override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+      ): Outline =
+        Outline.Generic(
+          Path().apply {
+            moveTo(size.width / 2f, 0f)
+            lineTo(size.width, size.height / 2f)
+            lineTo(size.width / 2f, size.height)
+            lineTo(0f, size.height / 2f)
+            close()
+          }
+        )
+    }
+  }
+  Box(modifier = Modifier.fillMaxSize().clip(diamond).background(Color(0xFF7E57C2)))
+}
