@@ -10764,6 +10764,25 @@ $cards
             else "Static snapshot — this session has no live lane to switch to"
         ) +
         "\""
+    // The chip has to read as a SWITCH, not a caption. Its label NAMES the lane on the stage
+    // ("Java", "Live preview") — a noun, sitting beside a status dot, which is the grammar of a
+    // readout rather than of a control, and that is why a visitor never learns it is clickable.
+    // The verb supplies the missing half by naming the DESTINATION instead ("Java ▸ Live"), so the
+    // chip states where a click goes without the label having to stop naming where it already is.
+    //
+    // `aria-hidden`, deliberately: the accessible name stays the lane's own name, and the
+    // `aria-pressed` flag plus the tooltip already carry the switch semantics. Without it the
+    // button announces "Java ▸ Live, toggle button, not pressed" — the arrow read aloud as a name.
+    //
+    // Empty when there is no lane to enter: a disabled chip must not promise a destination it
+    // cannot reach. `updateLiveToggle()` re-derives this on every transition from the same state
+    // that decides the dot, the tooltip and the stage hint — so the two halves of the chip can
+    // never disagree about which way the switch is pointing.
+    val liveToggleVerb =
+      if (liveToggleDis.isEmpty())
+        "            <span class=\"cp-live-toggle-verb\" id=\"cp-live-toggle-verb\" " +
+          "aria-hidden=\"true\">▸ Live</span>\n"
+      else ""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
         "aria-pressed=\"false\" " +
@@ -10776,6 +10795,7 @@ $cards
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span id=\"cp-live-toggle-label\">" +
         "${WebEscaping.htmlEscape(primaryLaneLabel)}</span>\n" +
+        liveToggleVerb +
         "          </button>"
     // When sign-in is the ONLY thing between the visitor and the daemon lane, offer the sign-in
     // itself rather than a dead control.
@@ -10850,6 +10870,25 @@ $cards
               ") need the live server, not a published catalog. " +
               "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
         }
+    // The stage's own invitation into the live lane.
+    //
+    // Until this, the only route in was the chip in the toolbar: nothing on the preview itself said
+    // the picture could be made interactive, and an affordance a visitor has to hover a toolbar to
+    // discover is one most of them never find. The grid solved exactly this for its cards with
+    // `.cp-live-hint` (`CatalogLive.ts`); that vocabulary never reached the single-preview page, so
+    // this reuses the same badge — same shape, same placement — and only the wording differs,
+    // because the gesture does. One click here, a long press there; a hint naming the wrong gesture
+    // would be worse than no hint.
+    //
+    // Rendered only when there is genuinely a lane to enter (the same condition the chip is enabled
+    // on) and never in the component browser, which carries no live toggle at all. It stays hidden
+    // until `updateLiveToggle()` reveals it, which is deliberate: the click it advertises is wired
+    // in `viewer.ts`, so a page whose script never ran must not offer a gesture nothing implements.
+    val stageLiveHint =
+      if (componentBrowser || liveToggleDis.isNotEmpty()) ""
+      else
+        "<span class=\"cp-live-hint cp-stage-live-hint\" id=\"cp-stage-live-hint\" " +
+          "aria-hidden=\"true\">click for live</span>"
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
     // One Theme axis replaces the separate Day/Night + app-theme controls. The two defaults map to
@@ -11450,7 +11489,7 @@ $cards
       $historyInlineHtml
       <div class="cp-viewer"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
-        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><cp-backend-badge class="cp-backend" id="cp-backend" role="status" aria-live="polite"></cp-backend-badge><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$motionImg$motionPlayer$sourcePanelHtml$specCompare$inspectLayerHtml$stageLiveHint<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select

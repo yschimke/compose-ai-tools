@@ -5082,6 +5082,83 @@ class ServeWebFixtureTest {
       viewerSource().contains("const liveSignIn = may<HTMLAnchorElement>(\"cp-live-signin\")"),
       "the hint keys off the sign-in link, which is the only marker of the auth-blocked state",
     )
+
+    // The sign-in case gets NEITHER half of the invitation. The stage's click handler enters the
+    // lane through `#cp-live-toggle`'s own state, which this page deliberately does not render — so
+    // a hint here would advertise a gesture that lands on a sign-in the visitor has not done yet.
+    assertFalse(
+      protectedLive.contains("id=\"cp-stage-live-hint\""),
+      "no click-for-live hint over a stage whose lane is still behind sign-in",
+    )
+    assertFalse(
+      protectedLive.contains("id=\"cp-live-toggle-verb\""),
+      "the sign-in link names its own destination; it does not carry the chip's verb",
+    )
+  }
+
+  @Test
+  fun `the viewer invites the live lane from the stage, not only from the toolbar chip`() {
+    val card = previews.first { it.id.endsWith("CardPreview") }
+
+    // #4287. Before this the ONLY route into the live lane was a chip in the toolbar: the stage
+    // carried no click handler and said nothing about being interactive, so a visitor who never
+    // hovered the toolbar never learned the preview could be made live. Two affordances fix it —
+    // a hint badge ON the picture, and a click on the picture itself.
+    val openLive = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
+    assertTrue(
+      openLive.contains(
+        "<span class=\"cp-live-hint cp-stage-live-hint\" id=\"cp-stage-live-hint\" " +
+          "aria-hidden=\"true\">click for live</span>"
+      ),
+      "the stage carries the grid's own live-hint badge, worded for the gesture it offers here",
+    )
+    // Deliberately the SAME class the grid's cards use (`CatalogLive.ts`), so one badge style
+    // means one thing across both surfaces rather than two lookalikes drifting apart.
+    assertTrue(
+      openLive.indexOf("id=\"cp-stage-live-hint\"") > openLive.indexOf("class=\"cp-stage\""),
+      "the hint lives inside the stage, where the render it describes is",
+    )
+    // The chip reads as a switch rather than a caption: the label names the lane it is ON, the
+    // verb names the lane a click goes TO.
+    assertTrue(
+      openLive.contains(
+        "<span class=\"cp-live-toggle-verb\" id=\"cp-live-toggle-verb\" aria-hidden=\"true\">" +
+          "▸ Live</span>"
+      ),
+      "the chip states its destination, so \"Java\" alone can't read as a readout",
+    )
+    // aria-hidden matters: the accessible name stays the lane's own name, and `aria-pressed` plus
+    // the tooltip already carry the switch semantics. Without it the chip announces "Java ▸ Live".
+    assertTrue(
+      openLive.contains("id=\"cp-live-toggle\"") && openLive.contains("aria-pressed=\"false\""),
+      "the verb is added beside the existing toggle semantics, not in place of them",
+    )
+
+    // A session with no live lane gets neither: a disabled chip must not promise a destination,
+    // and a hint over a stage whose click is inert is worse than no hint at all.
+    val noLane = ServeWeb.viewerPage(card, token, canApplyOverrides = false)
+    assertTrue(
+      Regex("id=\"cp-live-toggle\"[^>]* disabled>").containsMatchIn(noLane),
+      "the fixture under test is the disabled-chip case",
+    )
+    assertFalse(
+      noLane.contains("id=\"cp-stage-live-hint\"") || noLane.contains("id=\"cp-live-toggle-verb\""),
+      "nothing invites a lane that does not exist",
+    )
+
+    // One predicate behind the chip's verb, the badge and the stage's click handler, so the three
+    // cannot disagree about whether clicking the picture does anything.
+    assertTrue(
+      viewerSourceFlat().contains("function liveInvited() { return rules.liveInviteAvailable({"),
+      "the invitation is derived, not duplicated per affordance",
+    )
+    // Single click, not double: a double-click requirement is exactly as undiscoverable as the
+    // toolbar-only chip this replaces.
+    assertTrue(
+      viewerSource().contains("img.addEventListener(\"click\", function (event) {") &&
+        !viewerSource().contains("img.addEventListener(\"dblclick\""),
+      "the stage enters live on a single click",
+    )
   }
 
   @Test
