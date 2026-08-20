@@ -78,6 +78,48 @@ class LiveInfiniteAnimationTest {
     }
   }
 
+  @Test
+  fun `an infinite animation advances on the wall-clock path the live loop actually uses`() {
+    // The sibling test above passes an explicit `advanceTimeMs`, which is what a recording does.
+    // The **live** loop does not: `JsonRpcServer.submitInteractiveRenderAsync` calls
+    // `session.render(hostId)` with no advance at all, and `AndroidInteractiveSession.render`
+    // substitutes the wall-clock delta since the previous render — floored at 32ms, capped at
+    // 1000ms. That substitution is the thing an animating live preview actually depends on, and
+    // asserting only the explicit path would leave it untested while looking like coverage.
+    val outputDir = tempFolder.newFolder("infinite-auto-renders")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = INFINITE_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val fills =
+          (1..FRAMES).map {
+            val result = session.render(RenderHost.nextRequestId())
+            val png = File(requireNotNull(result.pngPath) { "held render produced no PNG" })
+            val image = ImageIO.read(png)
+            image.getRGB(image.width / 2, image.height / 2) and 0xFFFFFF
+          }
+        assertEquals(
+          "every frame off the wall-clock auto-advance should differ; got " +
+            fills.joinToString { "#%06X".format(it) },
+          fills.size,
+          fills.toSet().size,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun previewSpecResolver(): (String) -> RenderSpec? = { previewId ->
     if (previewId == INFINITE_PREVIEW_ID) {
       RenderSpec(
