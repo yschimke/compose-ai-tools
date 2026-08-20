@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.27.0](https://github.com/yschimke/compose-ai-tools/compare/v1.26.0...v1.27.0) (2026-08-20)
+
+
+### Features
+
+* **serve:** let an agent ask a human for temporary, scoped access ([#4394](https://github.com/yschimke/compose-ai-tools/issues/4394)) ([53a5745](https://github.com/yschimke/compose-ai-tools/commit/53a5745bd3c137c623a238e2b7db6be1fea7ccf5))
+
+
+### Bug Fixes
+
+* **harness:** regenerate the capsule fixture so it names Roboto Flex ([#4389](https://github.com/yschimke/compose-ai-tools/issues/4389)) ([2939e12](https://github.com/yschimke/compose-ai-tools/commit/2939e125c2a9515dfc8bcbfc1c7bd1491f051de6))
+* **serve:** say what Live preview actually costs, and offer the sign-in on a site's own front door ([#4388](https://github.com/yschimke/compose-ai-tools/issues/4388)) ([5cce73a](https://github.com/yschimke/compose-ai-tools/commit/5cce73a1fb475005c8231cc7dd3410512af566c9))
+
 ## [1.26.0](https://github.com/yschimke/compose-ai-tools/compare/v1.25.0...v1.26.0) (2026-08-20)
 
 
