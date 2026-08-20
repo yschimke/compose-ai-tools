@@ -22,13 +22,15 @@ import okio.Path.Companion.toPath
  * directory of PNGs → a shared capture branch) into a single surface that picks the right mechanism
  * for the environment it runs in:
  *
- * - **Permissions pick the mechanism.** A configured serve host (`--serve-url`, or
- *   `$COMPOSE_PREVIEW_SERVE_URL`) wins, because naming one is a deliberate act and it is the
- *   mechanism that works where the others can't. Otherwise: when the GitHub CLI is installed *and*
- *   authenticated, the default is a **gist** — isolated, doesn't touch the project repo. When it
- *   isn't (e.g. Claude Code's hosted web sessions, which have no `gh` and no token but do have an
- *   authenticated git remote), it falls back to pushing a **branch** through that remote.
- *   `--mechanism` forces one.
+ * - **Permissions pick the mechanism.** A configured serve host wins — `--serve-url`,
+ *   `$COMPOSE_PREVIEW_SERVE_URL`, or the project's own `composePreview.serveUrl`
+ *   ([resolveProjectServeUrl]) — because naming one is a deliberate act and it is the mechanism
+ *   that works where the others can't. A repository that names its preview server therefore gets
+ *   this mechanism by default, for everyone working in it. Otherwise: when the GitHub CLI is
+ *   installed *and* authenticated, the default is a **gist** — isolated, doesn't touch the project
+ *   repo. When it isn't (e.g. Claude Code's hosted web sessions, which have no `gh` and no token
+ *   but do have an authenticated git remote), it falls back to pushing a **branch** through that
+ *   remote. `--mechanism` forces one.
  * - **The current branch picks the target.** For the branch mechanism the destination capture
  *   branch is derived from the branch you're on (`compose-preview/share/<branch>`), so each
  *   feature/PR branch's snapshots stay separate; mainline/release branches are refused. `--branch`
@@ -73,14 +75,21 @@ class SharePreviewCommand(
   private val customMessage: String? = args.flagValue("--message")
   private val allowNonPreviewBranch = "--allow-non-preview-branch" in args
   /**
-   * The serve host to upload to (`--serve-url`, else `$COMPOSE_PREVIEW_SERVE_URL`). Its presence is
-   * also the opt-in: configuring a host is a deliberate act, so `auto` prefers it, and without one
-   * the serve mechanism does not exist.
+   * The serve host to upload to: `--serve-url`, `$COMPOSE_PREVIEW_SERVE_URL`, or the project's own
+   * `composePreview.serveUrl` ([resolveProjectServeUrl]). Its presence is also the opt-in —
+   * configuring a host is a deliberate act, so `auto` prefers it, and without one the serve
+   * mechanism does not exist.
+   *
+   * Reading it from the project is what makes this the **default** in a repository that has one: an
+   * agent that clones and runs `share-preview` reaches the team's host without being told it
+   * exists, which is the difference between a mechanism that shipped and one that gets used.
    */
-  private val serveUrl: String? =
-    (args.flagValue("--serve-url") ?: System.getenv("COMPOSE_PREVIEW_SERVE_URL"))?.trim()?.takeIf {
-      it.isNotEmpty()
-    }
+  private val resolvedServeUrl: ResolvedServeUrl? =
+    resolveProjectServeUrl(findGradleProjectRoot(), args)
+
+  private val serveUrl: String?
+    get() = resolvedServeUrl?.url
+
   /** The host's own browse token, for a serve box that isn't `--public`. */
   private val serveHostToken: String? =
     (args.flagValue("--serve-token") ?: System.getenv("COMPOSE_PREVIEW_SERVE_TOKEN"))
@@ -319,6 +328,7 @@ class SharePreviewCommand(
         markdown = rewritten,
         expiresIn = expiresIn,
         credentialSource = credential.source,
+        serveUrlSource = resolvedServeUrl?.source?.display,
       )
     )
   }
@@ -1004,6 +1014,12 @@ internal data class SharePreviewResponse(
    * credentials was actually used.
    */
   val credentialSource: String? = null,
+  /**
+   * Which source named the host (`--serve-url`, the environment variable, or the project's
+   * `gradle.properties`) — the same "say where this came from" the version pin's `doctor` check
+   * reports, and for the same reason: a default nobody typed has to be traceable.
+   */
+  val serveUrlSource: String? = null,
 )
 
 @Serializable

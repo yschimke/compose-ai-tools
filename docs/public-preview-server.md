@@ -2503,8 +2503,24 @@ compose-preview share-preview report.md before.png after.png \
   --mechanism serve --serve-url https://preview.coo.ee
 ```
 
-A configured `--serve-url` (or `$COMPOSE_PREVIEW_SERVE_URL`) also wins the `auto` choice, so a
-correctly-configured agent environment picks this lane without asking for it. The client refuses to
+**A project can name its own preview server**, and then this is simply what `share-preview` does —
+no flag, no environment variable, for everyone working in the repo:
+
+```properties
+# gradle.properties
+composePreview.serveUrl=https://preview.coo.ee
+```
+
+Precedence is the version pin's: `--serve-url` → `$COMPOSE_PREVIEW_SERVE_URL` →
+`gradle.properties`. `compose-preview doctor` reports which one is in effect
+(`project.preview-server`), because a setting that changes where your renders go without appearing
+on the command line should be answerable by `doctor` rather than by reading source. Only the **URL**
+is project configuration: no credential is ever read from a committed file — the GitHub token comes
+from the environment or a protected file, per run.
+
+Naming a host is therefore a deliberate act with a consequence worth stating: it makes uploading the
+default path for every contributor and agent in that repo, and an uploaded image is readable by
+anyone holding its link. The client refuses to
 send the credential over plaintext to anything but a loopback host, refuses a URL with credentials
 in it, and never follows a redirect while carrying it.
 
