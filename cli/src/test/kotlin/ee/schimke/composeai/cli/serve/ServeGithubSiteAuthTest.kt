@@ -248,6 +248,97 @@ class ServeGithubSiteAuthTest {
   }
 
   @Test
+  fun `a catalog with nothing behind a login does not invite one`() {
+    // A plain static bundle: no live stream to unlock, and no playground compiling against it. The
+    // sign-in would change nothing on this page, which is the dead affordance the viewer's own chip
+    // refuses to be — so the landing withholds the control even though the sign-in round-trips
+    // here perfectly well, as its own /status proves two lines down.
+    val dir = java.nio.file.Files.createTempDirectory("static-catalog").toFile()
+    dir.deleteOnExit()
+    java.io.File(dir, "index.html").writeText("<html></html>")
+    java.io.File(dir, "previews").mkdirs()
+    registry.register(
+      "m3-catalog",
+      host = ServeBundleHost(dir, label = "m3-catalog", title = "M3"),
+      pinned = true,
+    )
+
+    get("/", "m3.preview.coo.ee").use {
+      assertEquals(200, it.code)
+      assertFalse(
+        it.body!!.string().contains("cp-gh-auth"),
+        "a static catalog has no gated lane, so its landing must not offer a sign-in",
+      )
+    }
+    get("/status", "m3.preview.coo.ee").use {
+      assertTrue(
+        it.body!!.string().contains("cp-gh-auth"),
+        "…and the withholding is about the catalog's lanes, not about this host's round-trip",
+      )
+    }
+  }
+
+  @Test
+  fun `a site host only shows the sign-in control when the sign-in can come back`() {
+    // The header control follows the same predicate the card and viewer affordances always did:
+    // a login that cannot return leaves the visitor signed out, so offering it is a dead end.
+    get("/status", "m3.preview.coo.ee").use {
+      assertEquals(200, it.code)
+      assertTrue(
+        it.body!!.string().contains("cp-gh-auth"),
+        "a site under the cookie domain can round-trip a sign-in, so it is offered",
+      )
+    }
+
+    // Same server, a host it does not serve: nothing may redirect there, so nothing invites it.
+    get("/status", "other.preview.coo.ee").use {
+      assertEquals(200, it.code)
+      assertFalse(
+        it.body!!.string().contains("cp-gh-auth"),
+        "a host outside the site list cannot round-trip, so the control is withheld",
+      )
+    }
+
+    // And with host-only cookies against a pinned callback, no site host can round-trip at all.
+    val hostOnly =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = ServeSessionRegistry(open = { null }),
+          defaultSessionId = "none",
+          isPublic = true,
+          githubAuth = auth(cookieDomain = null),
+          sites = sites,
+        )
+        .also { it.start() }
+    try {
+      val req = { host: String ->
+        noRedirect
+          .newCall(
+            Request.Builder()
+              .url("http://127.0.0.1:${hostOnly.port}/status")
+              .header("X-Forwarded-Host", host)
+              .build()
+          )
+          .execute()
+      }
+      req("m3.preview.coo.ee").use {
+        assertFalse(
+          it.body!!.string().contains("cp-gh-auth"),
+          "the site cannot come back to itself",
+        )
+      }
+      // The pinned callback host itself is unaffected — this is where sign-in always worked.
+      req("preview.coo.ee").use {
+        assertTrue(it.body!!.string().contains("cp-gh-auth"), "the main host still offers sign-in")
+      }
+    } finally {
+      runCatching { hostOnly.stop() }
+    }
+  }
+
+  @Test
   fun `without a cookie domain a site host is told sign-in cannot round-trip`() {
     val hostOnly = auth(cookieDomain = null)
     assertFalse(

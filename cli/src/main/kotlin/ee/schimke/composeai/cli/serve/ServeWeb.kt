@@ -20,15 +20,55 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object ServeWeb {
 
-  /** Sign-in affordance for a GitHub-protected live stream lane. */
-  data class LiveAuthPrompt(val loginHref: String, val repository: String)
+  /**
+   * Sign-in affordance for a GitHub-protected live stream lane.
+   *
+   * Deliberately carries no repository: the live stream gates on *being signed in*, nothing more
+   * ([ServeHttpServer.rejectMissingGithubRepoAccess] is the playground's gate, not this one). The
+   * chip used to name `--github-auth-repo` in its tooltip, which read as "you need access to that
+   * repo for Live" — the opposite of the rule, and enough to make an outside contributor give up
+   * before clicking (wear-m3-catalog#68).
+   *
+   * [restrictedToAllowedUsers] is the one thing that can narrow it: with `--github-auth-users` set,
+   * [GitHubOAuthVerifier] refuses every login outside the list, so "any GitHub account works" would
+   * walk those visitors through OAuth to a 403. Same distinction the front door's control already
+   * draws — the allowlist restricts *sign-in itself*, which the repo check never did.
+   */
+  data class LiveAuthPrompt(
+    val loginHref: String,
+    val restrictedToAllowedUsers: Boolean = false,
+  )
 
   /** Front-door GitHub auth state, shown when the public server protects code-running surfaces. */
   data class GitHubAuthStatus(
     val loginHref: String,
     val login: String? = null,
     val restrictedToAllowedUsers: Boolean = false,
+    /**
+     * What the sign-in unlocks on the page carrying this control, which is what its tooltip has to
+     * describe. The two lanes have genuinely different gates — live streams open to any signed-in
+     * visitor, the playground additionally wants access to [accessRepository] — so a control shown
+     * on a catalog whose *only* gated lane is the playground must not promise Live.
+     *
+     * [LIVE] is the default because it is what the front door and `/status` carry: those pages
+     * stand above any one catalog, so they describe the capability the sign-in most broadly unlocks
+     * rather than answering for a particular catalog's lanes.
+     */
+    val lane: GatedLane = GatedLane.LIVE,
+    /**
+     * `--github-auth-repo`, named only when [lane] is [GatedLane.PLAYGROUND] — the one case where
+     * repository access is genuinely part of what the visitor needs. Deliberately absent from the
+     * Live wording: naming it there is the confusion this whole change exists to remove
+     * (wear-m3-catalog#68).
+     */
+    val accessRepository: String? = null,
   )
+
+  /** The capability a header sign-in control speaks for. See [GitHubAuthStatus.lane]. */
+  enum class GatedLane {
+    LIVE,
+    PLAYGROUND,
+  }
 
   /**
    * Absolute URLs advertised to link unfurlers for a browser-facing page. [imageUrl] is the thing
@@ -588,16 +628,27 @@ object ServeWeb {
   /** GitHub session action shown in the home-page header when OAuth is configured. */
   private fun githubAuthControl(status: GitHubAuthStatus?): String {
     status ?: return ""
-    val restricted =
-      if (status.restrictedToAllowedUsers)
-        " title=\"Live preview access is limited to configured GitHub users\""
-      else " title=\"Live previews require a GitHub sign-in\""
+    // What this sign-in buys, in the visitor's terms. The allowlist narrows *who may sign in at
+    // all*, so it reshapes either sentence; the repo is named only on the playground, whose gate
+    // it actually is.
+    val repo =
+      status.accessRepository?.let { " with access to ${WebEscaping.htmlEscape(it)}" } ?: ""
+    val tooltip =
+      when {
+        status.lane == GatedLane.PLAYGROUND && status.restrictedToAllowedUsers ->
+          "Playground access is limited to configured GitHub users$repo"
+        status.lane == GatedLane.PLAYGROUND -> "The playground requires a GitHub sign-in$repo"
+        status.restrictedToAllowedUsers ->
+          "Live preview access is limited to configured GitHub users"
+        else -> "Live previews require a GitHub sign-in"
+      }
+    val tooltipAttr = " title=\"$tooltip\""
     val login = status.login?.takeIf { it.isNotBlank() }
     return if (login == null) {
       "<a class=\"cp-gh-auth\" href=\"${WebEscaping.htmlEscape(status.loginHref)}\"" +
-        "$restricted>$GITHUB_ICON Sign in with GitHub</a>"
+        "$tooltipAttr>$GITHUB_ICON Sign in with GitHub</a>"
     } else {
-      "<span class=\"cp-gh-auth cp-gh-auth--signed\"$restricted>$GITHUB_ICON " +
+      "<span class=\"cp-gh-auth cp-gh-auth--signed\"$tooltipAttr>$GITHUB_ICON " +
         "Signed in as ${WebEscaping.htmlEscape(login)}</span>"
     }
   }
@@ -7364,6 +7415,20 @@ ${captureControlsHtml().prependIndent("          ")}
     /** Validated catalog-published issues, matched onto each component card. */
     parityIssues: List<ParityIssue> = emptyList(),
     componentBrowser: Boolean = false,
+    /**
+     * GitHub session state, rendered as the header's sign-in control.
+     *
+     * A catalog landing is where a visitor arrives, and on a **top-level site** ([ServeSites]) it
+     * is the whole front door — there is no home index above it carrying the control, so before
+     * this the only sign-in affordance on a host like `wear.preview.coo.ee` was a press-and-hold on
+     * a card (which follows the login) or a chip on a preview page. Someone who wanted a live
+     * session had to be told to go and sign in on a *different hostname* first
+     * (wear-m3-catalog#68).
+     *
+     * Null, and in Catalog mode, renders nothing — same as every other page. Catalog mode drops the
+     * live lane entirely (hover-live included), so a sign-in offered there would unlock nothing.
+     */
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
     @Suppress("NAME_SHADOWING") val designPages = if (componentBrowser) emptyList() else designPages
     @Suppress("NAME_SHADOWING")
@@ -7979,6 +8044,7 @@ ${captureControlsHtml().prependIndent("          ")}
       siteName = heading,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       declaredThemes = declaredThemeChips,
+      headerAction = if (componentBrowser) "" else githubAuthControl(githubAuth),
       body =
         """
         $titleRow
@@ -11232,9 +11298,10 @@ $cards
     val liveSignInLink = liveAuthPrompt?.let {
       "<a id=\"cp-live-signin\" class=\"cp-live-toggle cp-live-signin\" " +
         "href=\"${WebEscaping.htmlEscape(it.loginHref)}\" " +
-        "data-github-repo=\"${WebEscaping.htmlEscape(it.repository)}\" " +
-        "title=\"Sign in with GitHub (${WebEscaping.htmlEscape(it.repository)}) " +
-        "to enable Live preview\">\n" +
+        "title=\"Sign in with GitHub to enable Live preview. " +
+        (if (it.restrictedToAllowedUsers) "This server allows named GitHub users only."
+        else "Any GitHub account works.") +
+        "\">\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span>Live preview — sign in</span>\n" +
         "          </a>"

@@ -1059,10 +1059,7 @@ class ServeWebFixtureTest {
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         liveAuthPrompt =
-          ServeWeb.LiveAuthPrompt(
-            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview",
-            repository = "yschimke/compose-ai-tools",
-          ),
+          ServeWeb.LiveAuthPrompt(loginHref = "/auth/github/start?return=%2Fp%2FCardPreview"),
       )
     // A trusted catalog served LIVE (ServeCatalogLiveHost) whose preview declares author knobs:
     // snapshots stay baked (canApplyOverrides=false) but the carried daemon CAN re-render an
@@ -1158,6 +1155,10 @@ class ServeWebFixtureTest {
         hasReferenceComparison = true,
         hasParityView = true,
         designToolLabel = "Figma",
+        // A site host's landing IS its front door, so it is the page that has to carry the sign-in
+        // — there is no home index above it. Captured here so the control is visually diffed on the
+        // one shape that depends on it (wear-m3-catalog#68).
+        githubAuth = ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F"),
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -5147,8 +5148,7 @@ class ServeWebFixtureTest {
         canApplyOverrides = true,
         liveAuthPrompt =
           ServeWeb.LiveAuthPrompt(
-            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview%3Ftoken%3Dabc",
-            repository = "yschimke/compose-ai-tools",
+            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview%3Ftoken%3Dabc"
           ),
       )
 
@@ -5172,6 +5172,41 @@ class ServeWebFixtureTest {
     assertFalse(
       protectedLive.contains("data-github-login="),
       "the login URL is the anchor's href, not an attribute nothing reads",
+    )
+    // The live stream gates on being signed in, full stop — the repo check is the PLAYGROUND's.
+    // Naming `--github-auth-repo` here told a visitor they needed access to a repo they have never
+    // heard of, which is how wear-m3-catalog#68 ended with an outside contributor concluding the
+    // preview was broken rather than that they were signed out.
+    assertFalse(
+      protectedLive.contains("data-github-repo="),
+      "the Live sign-in must not carry the playground's gating repo",
+    )
+    assertTrue(
+      protectedLive.contains(
+        "title=\"Sign in with GitHub to enable Live preview. Any GitHub account works.\""
+      ),
+      "…and its tooltip states the real bar instead of naming that repo",
+    )
+    // …unless the operator narrowed sign-in itself. `--github-auth-users` makes the verifier refuse
+    // every login outside the list, so "any GitHub account" would walk those visitors through OAuth
+    // to a 403. The repo check never restricted sign-in this way; the allowlist does.
+    val allowlisted =
+      ServeWeb.viewerPage(
+        card,
+        token,
+        canApplyOverrides = true,
+        liveAuthPrompt =
+          ServeWeb.LiveAuthPrompt(
+            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview",
+            restrictedToAllowedUsers = true,
+          ),
+      )
+    assertTrue(
+      allowlisted.contains(
+        "title=\"Sign in with GitHub to enable Live preview. " +
+          "This server allows named GitHub users only.\""
+      ),
+      "an allowlisted server does not promise that any account works",
     )
     // Must NOT be the toggle: `updateLiveToggle()` drives that element through `.disabled` and
     // `aria-pressed`, neither of which means anything on a link.
@@ -6110,6 +6145,124 @@ class ServeWebFixtureTest {
       signed.substring(0, aboutEnd).contains("server v") ||
         signed.substring(0, aboutEnd).contains("href=\"/version\""),
       "the home about disclosure no longer contains build metadata",
+    )
+  }
+
+  @Test
+  fun `a catalog landing carries the same GitHub login control as the front door`() {
+    val auth = ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F")
+    // A top-level site ([ServeSites]) roots one catalog on a hostname, so THIS page is its front
+    // door — no home index sits above it to carry the control. Without it the only sign-in on
+    // `wear.preview.coo.ee` was a long-press on a card, and a visitor had to be told to go and sign
+    // in on a different hostname before Live would work at all (wear-m3-catalog#68).
+    val landing =
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, githubAuth = auth)
+    assertTrue(
+      landing.contains("class=\"cp-gh-auth\" href=\"/auth/github/start?return=%2F\""),
+      "an unsigned catalog landing links to GitHub sign-in",
+    )
+    assertTrue(
+      landing.indexOf("<header class=\"cp-site-header\">") <
+        landing.indexOf("> Sign in with GitHub</a>") &&
+        landing.indexOf("> Sign in with GitHub</a>") < landing.indexOf("</header>"),
+      "the landing's GitHub action is in the header",
+    )
+
+    val signed =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        isPublic = true,
+        githubAuth = auth.copy(login = "yschimke"),
+      )
+    assertTrue(signed.contains("Signed in as yschimke"), "…and reports who is signed in")
+
+    // Catalog mode drops the live lane whole — hover-live included — so there is nothing behind a
+    // sign-in there, exactly as on every other page that renders this control.
+    val catalogMode =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        isPublic = true,
+        githubAuth = auth,
+        componentBrowser = true,
+      )
+    assertFalse(
+      catalogMode.contains("cp-gh-auth"),
+      "Catalog mode offers no sign-in, because it unlocks nothing there",
+    )
+
+    // Unconfigured auth is unchanged: no control, no empty header slot.
+    assertFalse(
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true).contains("cp-gh-auth"),
+      "a box with no GitHub auth renders no sign-in control",
+    )
+  }
+
+  @Test
+  fun `the login control names the lane the sign-in actually unlocks`() {
+    val auth = ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F")
+    // Live is the broad case — the front door's wording, and a catalog that streams. It names no
+    // repository, because being signed in IS the whole gate (wear-m3-catalog#68).
+    val live =
+      ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, githubAuth = auth)
+    assertTrue(
+      live.contains("title=\"Live previews require a GitHub sign-in\""),
+      "the live lane's gate is the sign-in itself",
+    )
+    assertFalse(
+      live.substringAfter("cp-gh-auth").substringBefore("</a>").contains("access to"),
+      "…so the live wording names no repository",
+    )
+
+    // A catalog with no live lane but a reachable playground: the control is still worth showing,
+    // but repository access is that lane's real gate, so promising Live would be false twice over.
+    val playground =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        isPublic = true,
+        githubAuth =
+          auth.copy(
+            lane = ServeWeb.GatedLane.PLAYGROUND,
+            accessRepository = "yschimke/compose-ai-tools",
+          ),
+      )
+    assertTrue(
+      playground.contains(
+        "title=\"The playground requires a GitHub sign-in with access to " +
+          "yschimke/compose-ai-tools\""
+      ),
+      "a playground-only catalog names the playground and its repository gate",
+    )
+    assertFalse(
+      playground.contains("Live previews require"),
+      "…and never promises a Live lane the catalog does not have",
+    )
+
+    // The allowlist reshapes either sentence: it narrows who may sign in at all, which neither
+    // lane's own gate does.
+    assertTrue(
+      ServeWeb.landingPage(
+          moduleLabel,
+          previews,
+          token,
+          isPublic = true,
+          githubAuth =
+            auth.copy(
+              lane = ServeWeb.GatedLane.PLAYGROUND,
+              accessRepository = "yschimke/compose-ai-tools",
+              restrictedToAllowedUsers = true,
+            ),
+        )
+        .contains(
+          "title=\"Playground access is limited to configured GitHub users with access to " +
+            "yschimke/compose-ai-tools\""
+        ),
+      "an allowlisted box says so on the playground wording too",
     )
   }
 
