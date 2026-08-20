@@ -23,6 +23,10 @@ dependencies {
   // embed path: subset an embedded face to the glyphs the SVG actually draws so the exact typeface
   // rides along at a few KB instead of the full multi-hundred-KB font file.
   implementation(libs.fontbox)
+  // `SystemFontFamilies` — the Pixel system-font slug → display-name table, shared with the
+  // renderer that seeds those faces so a `DeviceFontFamilyName` node is *reported* as the family
+  // the render actually drew.
+  implementation(project(":data-fonts-core"))
   api(project(":data-layoutinspector-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))
