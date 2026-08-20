@@ -571,6 +571,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-motion-index/dark](renders/serve-motion-index.dark.png) |
 | `light` | ![serve-motion-index/light](renders/serve-motion-index.light.png) |
 
+## serve-motion-index-motion-index-dark-take
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-motion-index-motion-index-dark-take/dark](renders/serve-motion-index-motion-index-dark-take.dark.png) |
+| `light` | ![serve-motion-index-motion-index-dark-take/light](renders/serve-motion-index-motion-index-dark-take.light.png) |
+
 ## serve-motion-index-motion-index-playing
 
 | Theme | Capture |
