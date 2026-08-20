@@ -138,6 +138,8 @@ internal class FakeRenderSession(
   val streamStarts = AtomicInteger(0)
   val interactiveInputs = CopyOnWriteArrayList<InteractiveInputParams>()
   val streamStops = CopyOnWriteArrayList<String>()
+  /** Every `stream/visibility` the lane sent: (frameStreamId, visible, fps). */
+  val streamVisibilities = CopyOnWriteArrayList<Triple<String, Boolean, Int?>>()
   @Volatile
   var lastFrameStreamId: String? = null
     private set
@@ -515,6 +517,10 @@ internal class FakeRenderSession(
 
   override fun streamStop(frameStreamId: String) {
     streamStops.add(frameStreamId)
+  }
+
+  override fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int?) {
+    streamVisibilities.add(Triple(frameStreamId, visible, fps))
   }
 
   override fun interactiveInput(

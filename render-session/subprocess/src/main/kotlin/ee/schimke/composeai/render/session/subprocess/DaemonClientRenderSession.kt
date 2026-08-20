@@ -241,6 +241,11 @@ class DaemonClientRenderSession(
     client.streamStop(frameStreamId)
   }
 
+  override fun streamVisibility(frameStreamId: String, visible: Boolean, fps: Int?) {
+    checkOpen()
+    client.streamVisibility(frameStreamId = frameStreamId, visible = visible, fps = fps)
+  }
+
   override fun interactiveInput(
     frameStreamId: String,
     kind: InteractiveInputKind,

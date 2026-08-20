@@ -468,6 +468,76 @@ class AnimatedGifPerceptualFilterTest(unittest.TestCase):
         self.assertTrue(cp._perceptually_changed(a, b))
 
 
+class HighContrastPassTest(unittest.TestCase):
+    """The second, contrast-based pass.
+
+    Both PNGs are real `FilledIconAction` captures from wear-m3-catalog, before
+    and after its icon buttons were corrected from a 24dp glyph to the 26dp one
+    the M3 Wear kit draws. The pair differs by exactly **16** pixelmatch-counted
+    pixels — one short of the flat 16 floor's `> limit`, so the diff bot filed a
+    real defect in five components under "Unchanged".
+
+    Counting cannot fix that: the noise fixtures this file also carries are
+    *larger* than this signal (the adaptive-icon jitter is 62 px, in clusters of
+    28 against this one's clusters of 4), so no count budget and no cluster size
+    orders them correctly. Contrast does — the noise is a boundary shimmer, the
+    signal is a glyph edge against its container."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+        cls.fixtures = Path(__file__).resolve().parent / "fixtures" / "icon-size-2dp"
+        cls.a = cls.fixtures / "FilledIconAction_icon24.png"
+        cls.b = cls.fixtures / "FilledIconAction_icon26.png"
+        if not cls.a.exists() or not cls.b.exists():
+            raise unittest.SkipTest("icon-size-2dp fixture PNGs not present")
+
+    def test_small_high_contrast_change_is_flagged(self):
+        self.assertTrue(cp._perceptually_changed(self.a, self.b))
+
+    def test_sits_exactly_on_the_count_floor(self):
+        # Pins WHY the old rule missed it: at the permissive threshold the pair
+        # is exactly the tolerance, and the test is `>`. If a future change to
+        # the floor moves this, the fixture stops documenting what it is for.
+        from pixelmatch.contrib.PIL import pixelmatch
+        from PIL import Image
+
+        with Image.open(self.a) as a, Image.open(self.b) as b:
+            self.assertEqual(
+                pixelmatch(a, b, threshold=0.1, includeAA=False),
+                cp._PERCEPTUAL_PIXEL_TOLERANCE,
+            )
+
+    def test_high_contrast_pass_does_not_resurrect_the_known_flakes(self):
+        # The whole risk of a second pass is that it re-flags what the first
+        # deliberately absorbs. Both real noise fixtures must stay collapsed.
+        from pixelmatch.contrib.PIL import pixelmatch
+        from PIL import Image
+
+        here = Path(__file__).resolve().parent / "fixtures"
+        pairs = [
+            (here / "issue-190/ActivityListLongPreview_A.png",
+             here / "issue-190/ActivityListLongPreview_B.png"),
+            (here / "adaptive-icon-flake/ic_launcher_LEGACY_A.png",
+             here / "adaptive-icon-flake/ic_launcher_LEGACY_B.png"),
+        ]
+        for a, b in pairs:
+            if not a.exists() or not b.exists():
+                continue
+            with self.subTest(pair=a.parent.name):
+                with Image.open(a) as ia, Image.open(b) as ib:
+                    self.assertLessEqual(
+                        pixelmatch(
+                            ia, ib, threshold=cp._HIGH_CONTRAST_THRESHOLD, includeAA=False
+                        ),
+                        cp._HIGH_CONTRAST_PIXEL_TOLERANCE,
+                    )
+
+
 class ResourceSizeAwareToleranceTest(unittest.TestCase):
     """The size-aware slack the resource path opts into. Both PNGs are real
     ``mipmap/ic_launcher`` LEGACY adaptive-icon captures of the *same*
