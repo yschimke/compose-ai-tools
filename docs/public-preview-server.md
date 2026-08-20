@@ -2514,13 +2514,30 @@ composePreview.serveUrl=https://preview.coo.ee
 Precedence is the version pin's: `--serve-url` → `$COMPOSE_PREVIEW_SERVE_URL` →
 `gradle.properties`. `compose-preview doctor` reports which one is in effect
 (`project.preview-server`), because a setting that changes where your renders go without appearing
-on the command line should be answerable by `doctor` rather than by reading source. Only the **URL**
-is project configuration: no credential is ever read from a committed file — the GitHub token comes
-from the environment or a protected file, per run.
+on the command line should be answerable by `doctor` rather than by reading source.
 
-Naming a host is therefore a deliberate act with a consequence worth stating: it makes uploading the
-default path for every contributor and agent in that repo, and an uploaded image is readable by
-anyone holding its link. The client refuses to
+**A checkout supplies the value, never the trust.** `gradle.properties` is a file *any pull request
+can edit*, and checking a branch out to look at it is how you review one — so a project-named host
+that took effect on its own would mean that opening somebody's PR and running the ordinary
+`share-preview` hands them your GitHub token. HTTPS proves nothing here: an attacker's host has a
+certificate too. So a host named by the project is used only once something **outside** the checkout
+confirms it:
+
+```bash
+export COMPOSE_PREVIEW_SERVE_HOSTS=preview.coo.ee   # this machine / CI image trusts that host
+```
+
+or `$COMPOSE_PREVIEW_SERVE_URL` naming it, or your **user-level** `~/.gradle/gradle.properties`
+(which no checkout can write), or `--serve-url` typed for the run. Unconfirmed, `share-preview` falls
+back to gist/branch and says why; `doctor` reports it as a warning. Confirmation matches on the host
+exactly, so `preview.coo.ee.evil.example` is not `preview.coo.ee`.
+
+Only the **URL** is project configuration: no credential is ever read from a committed file — the
+GitHub token comes from the environment or a protected file, per run.
+
+Naming a host is therefore a deliberate act with a consequence worth stating: for everyone who has
+confirmed that host, it makes uploading the default path, and an uploaded image is readable by anyone
+holding its link. The client refuses to
 send the credential over plaintext to anything but a loopback host, refuses a URL with credentials
 in it, and never follows a redirect while carrying it.
 

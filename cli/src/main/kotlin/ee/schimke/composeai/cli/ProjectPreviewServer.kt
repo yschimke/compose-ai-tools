@@ -24,6 +24,14 @@ import okio.FileSystem
  * Nothing found → null, and `share-preview` behaves exactly as it did before: gist when `gh` is
  * signed in, else a capture-branch push.
  *
+ * # A checkout supplies the value, never the trust
+ *
+ * Source 3 is a file **any pull request can edit**, so it is resolved here but not acted on until
+ * [confirmProjectServeHost] finds the host confirmed from outside the checkout. Without that, a
+ * branch could name an attacker's host and a maintainer reviewing that branch — checking it out and
+ * running the ordinary `share-preview` — would send their GitHub token to it. That is the entire
+ * reason this file has a trust function and not just a getter.
+ *
  * # What is deliberately *not* here
  *
  * **No credential of any kind.** Not the GitHub token the upload authenticates with, and not the
@@ -50,7 +58,105 @@ internal enum class ServeUrlSource(val display: String) {
 }
 
 /** A preview-server URL that was actually found, plus which source supplied it. */
-internal data class ResolvedServeUrl(val url: String, val source: ServeUrlSource)
+internal data class ResolvedServeUrl(val url: String, val source: ServeUrlSource) {
+  /**
+   * Whether this URL was named by something **outside the checkout**, and may therefore be sent a
+   * credential without further confirmation. See [confirmProjectServeHost] for why that distinction
+   * is the whole security model here.
+   */
+  val isOutsideCheckout: Boolean
+    get() = source != ServeUrlSource.GRADLE_PROPERTIES
+}
+
+/** What a caller may do with a resolved URL. */
+internal sealed interface ServeUrlTrust {
+  /** Confirmed: send to it. */
+  data class Trusted(val resolved: ResolvedServeUrl) : ServeUrlTrust
+
+  /**
+   * The **project** names this host and nothing outside the checkout confirms it. [how] is the
+   * operator-facing explanation of what would confirm it; it is safe to print.
+   */
+  data class NeedsConfirmation(val resolved: ResolvedServeUrl, val how: String) : ServeUrlTrust
+}
+
+/** Environment allowlist of hosts a checkout-named preview server may use. */
+internal const val SERVE_HOSTS_ENV = "COMPOSE_PREVIEW_SERVE_HOSTS"
+
+/**
+ * Decide whether [resolved] may be sent a GitHub credential.
+ *
+ * **A checkout may supply the value; it may never supply the trust.** `gradle.properties` is a file
+ * any pull request can edit, and checking a branch out to look at it is the normal way to review
+ * one — so a project-sourced host that took effect on its own would mean that opening someone's PR
+ * and running the ordinary `share-preview` command hands them a repository-scoped token. TLS proves
+ * nothing about that: an attacker's host has a certificate too. This is the same class as a
+ * malicious `.vscode/settings.json` or a `Makefile` that runs on open, and it gets the same answer:
+ * configuration from inside the tree is data, and the decision to *act* on it comes from outside.
+ *
+ * Anything outside the checkout is already an act of consent and passes straight through:
+ * `--serve-url` (typed for this run) and `$COMPOSE_PREVIEW_SERVE_URL` (set by the environment that
+ * built the sandbox). A `gradle.properties` value is confirmed by any of:
+ * - `$COMPOSE_PREVIEW_SERVE_HOSTS` — a comma-separated host allowlist, which is how an org's CI
+ *   image or agent sandbox says "these hosts are ours" once, for every repo it will ever check out;
+ * - `$COMPOSE_PREVIEW_SERVE_URL` naming the same host;
+ * - the **user-level** `gradle.properties` (`$GRADLE_USER_HOME` or `~/.gradle`) naming the same
+ *   host — a developer's own machine config, which no checkout can write.
+ *
+ * Comparison is on the **host** alone, exactly, so `preview.coo.ee.evil.example` does not pass as
+ * `preview.coo.ee`. Port and path are not compared: whoever operates a host operates its ports.
+ */
+internal fun confirmProjectServeHost(
+  resolved: ResolvedServeUrl,
+  env: (String) -> String? = System::getenv,
+  userHome: String? = System.getProperty("user.home"),
+  fileSystem: FileSystem = SystemFileSystem,
+): ServeUrlTrust {
+  if (resolved.isOutsideCheckout) return ServeUrlTrust.Trusted(resolved)
+  val host = hostOf(resolved.url) ?: return needsConfirmation(resolved)
+  val allowed = buildSet {
+    env(SERVE_HOSTS_ENV)?.split(',')?.forEach { entry ->
+      entry.trim().lowercase().takeIf { it.isNotEmpty() }?.let(::add)
+    }
+    env(SERVE_URL_ENV)?.let { hostOf(it)?.let(::add) }
+    userGradlePropertiesServeUrl(env, userHome, fileSystem)?.let { hostOf(it)?.let(::add) }
+  }
+  return if (host in allowed) ServeUrlTrust.Trusted(resolved) else needsConfirmation(resolved)
+}
+
+private fun needsConfirmation(resolved: ResolvedServeUrl): ServeUrlTrust.NeedsConfirmation {
+  val host = hostOf(resolved.url) ?: resolved.url
+  return ServeUrlTrust.NeedsConfirmation(
+    resolved,
+    "This project's $SERVE_URL_PROPERTY names $host, but nothing outside the checkout confirms " +
+      "it — and gradle.properties is a file any branch can change, so acting on it unconfirmed " +
+      "would let a pull request redirect your GitHub token. Confirm the host once, from outside " +
+      "the repo:" +
+      "\n  export $SERVE_HOSTS_ENV=$host        (this machine / CI image trusts that host)" +
+      "\n  or pass --serve-url ${resolved.url}  (just this run)",
+  )
+}
+
+/**
+ * `composePreview.serveUrl` from the **user-level** `gradle.properties` — `$GRADLE_USER_HOME`, else
+ * `~/.gradle`. Outside every checkout by construction, which is what makes it a confirmation.
+ */
+private fun userGradlePropertiesServeUrl(
+  env: (String) -> String?,
+  userHome: String?,
+  fileSystem: FileSystem,
+): String? {
+  val gradleHome =
+    env("GRADLE_USER_HOME")?.let(::File) ?: userHome?.let { File(it, ".gradle") } ?: return null
+  return readGradleProperty(gradleHome, SERVE_URL_PROPERTY, fileSystem)?.normalizedUrl()
+}
+
+/** Lowercased host of [url], or null when it isn't a URL with one. */
+internal fun hostOf(url: String): String? = runCatching {
+  java.net.URI(url.trim()).host?.lowercase()
+}
+  .getOrNull()
+  ?.takeIf { it.isNotEmpty() }
 
 /**
  * Resolves the project's preview server, or null when nothing names one.
@@ -59,6 +165,9 @@ internal data class ResolvedServeUrl(val url: String, val source: ServeUrlSource
  * isn't in a project — the flag and environment sources still apply, which is what lets a bare
  * directory of PNGs be uploaded from anywhere. Every disk read is failure-tolerant for the same
  * reason the pin's is: an unreadable `gradle.properties` must be no worse than an absent one.
+ *
+ * Resolution says *what* was named, never whether it may be used — [confirmProjectServeHost] owns
+ * that, so no caller can accidentally act on a checkout-supplied host by skipping a boolean.
  */
 internal fun resolveProjectServeUrl(
   projectRoot: File?,

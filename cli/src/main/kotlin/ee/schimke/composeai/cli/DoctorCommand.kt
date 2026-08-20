@@ -622,27 +622,66 @@ class DoctorCommand(
    */
   private fun checkPreviewServer(projectDir: File) {
     val configured = resolveProjectServeUrl(projectDir, args, fileSystem = fileSystem)
+    if (configured == null) {
+      addCheck(
+        DoctorCheck(
+          id = "project.preview-server",
+          category = "project",
+          status = "ok",
+          message = "no preview server configured",
+          detail =
+            "Set $SERVE_URL_PROPERTY in gradle.properties to point share-preview at a " +
+              "`compose-preview serve --accept-images` host, so rendered evidence gets an " +
+              "embeddable URL without `gh` or push rights. Uploading needs a GitHub token with " +
+              "access to that host's configured repository; the token is never read from a file " +
+              "you commit.",
+        )
+      )
+      return
+    }
+    // The same validation the upload performs, so `doctor` can't hand out a clean bill of health
+    // for a configuration the command will refuse — which is precisely the configuration it exists
+    // to diagnose.
+    ServeImageUploader.rejectUnsafeUrl(configured.url)?.let { refusal ->
+      addCheck(
+        DoctorCheck(
+          id = "project.preview-server",
+          category = "project",
+          status = "error",
+          message = "preview server URL is unusable: ${configured.url}",
+          detail = "Source: ${configured.source.display}. $refusal",
+        )
+      )
+      return
+    }
+    val trust = confirmProjectServeHost(configured, fileSystem = fileSystem)
+    if (trust is ServeUrlTrust.NeedsConfirmation) {
+      addCheck(
+        DoctorCheck(
+          id = "project.preview-server",
+          category = "project",
+          // A warning, not an error: nothing is broken, and refusing to act on an unconfirmed
+          // host is the safe behaviour working as designed. The operator just isn't getting the
+          // upload they may be expecting.
+          status = "warning",
+          message =
+            "this project names ${configured.url}, unconfirmed — share-preview won't use it",
+          detail = trust.how,
+        )
+      )
+      return
+    }
     addCheck(
       DoctorCheck(
         id = "project.preview-server",
         category = "project",
         status = "ok",
-        message =
-          if (configured == null) "no preview server configured"
-          else "share-preview uploads to ${configured.url}",
+        message = "share-preview uploads to ${configured.url}",
         detail =
-          if (configured == null) {
-            "Set $SERVE_URL_PROPERTY in gradle.properties to point share-preview at a " +
-              "`compose-preview serve --accept-images` host, so rendered evidence gets an " +
-              "embeddable URL without `gh` or push rights. Uploading needs a GitHub token with " +
-              "access to that host's configured repository; the token is never read from a file " +
-              "you commit."
-          } else {
-            "Source: ${configured.source.display}. This is what `share-preview` uses unless " +
-              "--mechanism says otherwise. An uploaded image is readable by anyone holding its " +
-              "link, so a project whose renders shouldn't leave the building should not name a " +
-              "public host here."
-          },
+          "Source: ${configured.source.display}. This is what `share-preview` uses unless " +
+            "--mechanism says otherwise. An uploaded image is readable by anyone holding its " +
+            "link, so a project whose renders shouldn't leave the building should not name a " +
+            "public host here.",
       )
     )
   }

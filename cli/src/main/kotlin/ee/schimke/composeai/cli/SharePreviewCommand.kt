@@ -87,8 +87,19 @@ class SharePreviewCommand(
   private val resolvedServeUrl: ResolvedServeUrl? =
     resolveProjectServeUrl(findGradleProjectRoot(), args)
 
+  /**
+   * Whether the resolved host may actually be sent a credential ([confirmProjectServeHost]). Null
+   * when nothing named a host at all.
+   *
+   * A project-named host that nothing outside the checkout confirms is deliberately **not** usable:
+   * `gradle.properties` is a file any pull request can edit, so acting on it unchecked would mean
+   * that reviewing somebody's branch and running the ordinary `share-preview` sends them a
+   * repository-scoped GitHub token.
+   */
+  private val serveTrust: ServeUrlTrust? = resolvedServeUrl?.let { confirmProjectServeHost(it) }
+
   private val serveUrl: String?
-    get() = resolvedServeUrl?.url
+    get() = (serveTrust as? ServeUrlTrust.Trusted)?.resolved?.url
 
   /** The host's own browse token, for a serve box that isn't `--public`. */
   private val serveHostToken: String? =
@@ -130,6 +141,17 @@ class SharePreviewCommand(
 
     val first = File(positional[0])
     val mode = if (positional.size == 1 && first.isDirectory) Mode.BULK else Mode.REPORT
+
+    // An unconfirmed project host never silently selects the upload mechanism. Say so once, on
+    // stderr, so the fallback to gist/branch isn't mysterious — and so the operator learns the one
+    // command that would confirm it.
+    (serveTrust as? ServeUrlTrust.NeedsConfirmation)?.let {
+      if (forcedMechanism == Mechanism.SERVE) {
+        System.err.println(it.how)
+        exitProcess(64)
+      }
+      System.err.println("compose-preview: not using this project's preview server. ${it.how}")
+    }
 
     val mechanism =
       when (

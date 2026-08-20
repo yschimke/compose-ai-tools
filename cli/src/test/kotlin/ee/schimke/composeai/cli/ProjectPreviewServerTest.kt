@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 
@@ -86,6 +87,84 @@ class ProjectPreviewServerTest {
   fun `an unreadable properties file is no worse than an absent one`() {
     // Nothing written at all: the read fails and resolution falls through rather than throwing.
     assertNull(resolveProjectServeUrl(root, env = { null }, fileSystem = fs))
+  }
+
+  // ---- a checkout supplies the value, never the trust ---------------------------------------
+
+  @Test
+  fun `a host named only by the checkout is not usable`() {
+    // The attack this gate exists for: a pull request adds the property, a maintainer checks the
+    // branch out to look at it, and the ordinary share-preview run would otherwise send their
+    // GitHub token to whoever wrote that line.
+    writeProperties("$SERVE_URL_PROPERTY=https://attacker.example\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val trust = confirmProjectServeHost(resolved, env = { null }, userHome = null, fileSystem = fs)
+    val needs = trust as ServeUrlTrust.NeedsConfirmation
+    assertTrue(needs.how.contains("attacker.example"), needs.how)
+    assertTrue(needs.how.contains(SERVE_HOSTS_ENV), needs.how)
+  }
+
+  @Test
+  fun `the environment allowlist confirms a checkout-named host`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val env = { name: String ->
+      if (name == SERVE_HOSTS_ENV) "shots.example, preview.coo.ee" else null
+    }
+    assertTrue(
+      confirmProjectServeHost(resolved, env, userHome = null, fileSystem = fs)
+        is ServeUrlTrust.Trusted
+    )
+  }
+
+  @Test
+  fun `a lookalike host does not pass as the confirmed one`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee.evil.example\n")
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    val env = { name: String -> if (name == SERVE_HOSTS_ENV) "preview.coo.ee" else null }
+    assertTrue(
+      confirmProjectServeHost(resolved, env, userHome = null, fileSystem = fs)
+        is ServeUrlTrust.NeedsConfirmation
+    )
+  }
+
+  @Test
+  fun `the user's own gradle properties confirms a host, since no checkout can write it`() {
+    writeProperties("$SERVE_URL_PROPERTY=https://preview.coo.ee\n")
+    val userHome = "/home/dev"
+    val userProps = "$userHome/.gradle/gradle.properties".toPath()
+    fs.createDirectories(userProps.parent!!)
+    fs.write(userProps) { writeUtf8("$SERVE_URL_PROPERTY=https://preview.coo.ee\n") }
+
+    val resolved = resolveProjectServeUrl(root, env = { null }, fileSystem = fs)!!
+    assertTrue(
+      confirmProjectServeHost(resolved, env = { null }, userHome = userHome, fileSystem = fs)
+        is ServeUrlTrust.Trusted
+    )
+  }
+
+  @Test
+  fun `anything from outside the checkout is already consent`() {
+    // Typed for this run, or set by whoever built the sandbox: both are acts by the person whose
+    // credential it is, so neither needs a second confirmation.
+    val flag =
+      resolveProjectServeUrl(
+        root,
+        args = listOf("--serve-url", "https://anywhere.example"),
+        env = { null },
+        fileSystem = fs,
+      )!!
+    assertTrue(
+      confirmProjectServeHost(flag, env = { null }, userHome = null, fileSystem = fs)
+        is ServeUrlTrust.Trusted
+    )
+
+    val fromEnv =
+      resolveProjectServeUrl(root, env = { "https://anywhere.example" }, fileSystem = fs)!!
+    assertTrue(
+      confirmProjectServeHost(fromEnv, env = { null }, userHome = null, fileSystem = fs)
+        is ServeUrlTrust.Trusted
+    )
   }
 
   @Test
