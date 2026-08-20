@@ -545,7 +545,12 @@ class ServeSessionRegistryTest {
         val b = assertNotNull(reg.lease("b"))
         val a = assertNotNull(reg.lease("a"))
         assertEquals(listOf("a", "b"), reg.leasedSessions(), "sorted, so a diff is stable")
-        assertNull(reg.idleMillis(), "and these are precisely why the clock reads busy")
+        assertEquals(
+          listOf("a", "b"),
+          reg.busyLeasedSessions(),
+          "and while the holders are fresh they are also the busy set",
+        )
+        assertNull(reg.idleMillis(), "which is precisely why the clock reads busy")
 
         a.close()
         assertEquals(listOf("b"), reg.leasedSessions())
@@ -554,6 +559,99 @@ class ServeSessionRegistryTest {
         assertEquals(emptyList(), reg.leasedSessions())
         assertNotNull(reg.idleMillis(), "the clock runs again once the last lease is released")
       }
+  }
+
+  /**
+   * The regression this whole change exists for (#4312).
+   *
+   * A viewer WebSocket holds a lease for the socket's whole life, and `leases > 0` used to mean
+   * *busy* outright — so one browser tab left open on a catalog pinned the server's idle clock at
+   * null indefinitely, whether or not anyone was looking at it. Measured on the public box: eight
+   * consecutive minutes with a lease held, `activeStreams 1` and zero renders, after which only the
+   * ceiling let any work through.
+   */
+  @Test
+  fun `a lease stops suppressing the idle clock once its holder goes quiet`() {
+    val clock = AtomicLong(0)
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = CountingFactory(),
+        reaperIntervalMillis = 0,
+        leaseBusyMillis = 30_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val lease = assertNotNull(reg.lease("a"))
+
+        clock.set(29_999)
+        assertNull(reg.idleMillis(), "still busy inside the window — a visitor may be mid-browse")
+
+        clock.set(30_000)
+        assertEquals(
+          30_000L,
+          reg.idleMillis(),
+          "quiet for the window: the clock runs again with the socket still open",
+        )
+        assertNull(
+          reg.connectionIdleMillis(),
+          "but the connection is still live, so exit-when-idle must not fire",
+        )
+        assertEquals(listOf("a"), reg.leasedSessions(), "and the session is still held resident")
+        assertEquals(emptyList(), reg.busyLeasedSessions(), "just not by anyone doing anything")
+
+        // A client message on the socket is what real use looks like from here.
+        clock.set(45_000)
+        lease.touch()
+        assertNull(reg.idleMillis(), "activity re-arms it without needing a new lease")
+
+        clock.set(80_000)
+        assertEquals(35_000L, reg.idleMillis(), "and it counts from that activity, not the lease")
+      }
+  }
+
+  /**
+   * `touch` is called from the socket's message loop, which outlives the lease's `finally` on a
+   * cancelled request. Touching a released lease must not resurrect it as busy.
+   */
+  @Test
+  fun `touching a closed lease does nothing`() {
+    val clock = AtomicLong(0)
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = CountingFactory(),
+        reaperIntervalMillis = 0,
+        leaseBusyMillis = 30_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        val lease = assertNotNull(reg.lease("a"))
+        lease.close()
+        clock.set(60_000)
+        lease.touch()
+        assertEquals(60_000L, reg.idleMillis(), "still counted from the release, not the touch")
+        assertEquals(emptyList(), reg.leasedSessions())
+      }
+  }
+
+  /**
+   * The busy window has to sit **below** the optimizer's cold-entry window, or a held lease that
+   * only goes quiet after the gate's own window is still the binding constraint and the gate never
+   * opens under one — which is the bug, restated with a different number.
+   *
+   * It also has to sit below the page's presence heartbeat, or an open tab's own keepalive keeps
+   * the lease permanently "active" and nothing changes.
+   */
+  @Test
+  fun `the lease busy window fits inside the optimizer gate and the presence heartbeat`() {
+    assertTrue(
+      ServeSessionRegistry.DEFAULT_LEASE_BUSY_MILLIS <
+        ServeCatalogLiveHost.themeOptimizationIdleMillisDefault(),
+      "a lease must go quiet before the gate's own window elapses",
+    )
+    assertTrue(
+      ServeSessionRegistry.DEFAULT_LEASE_BUSY_MILLIS < ServeWeb.PRESENCE_INTERVAL_SECONDS * 1_000L,
+      "or the heartbeat alone would keep every open tab busy forever",
+    )
   }
 
   /**
