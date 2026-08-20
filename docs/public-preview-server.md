@@ -2492,6 +2492,22 @@ curl -sS -H "Authorization: Bearer $(gh auth token)" \
 - **`GET /i/<id>.png`** — the image itself, with `X-Content-Type-Options: nosniff` and a
   `Cache-Control` that expires with the link.
 
+**From the CLI, not curl.** `share-preview` grew a third mechanism for exactly this, and it is what
+an agent should actually reach for — it uploads every image, rewrites the report's relative links,
+and hands back the finished markdown to paste:
+
+```bash
+# $GITHUB_TOKEN (or $GH_TOKEN, or `gh auth login`) supplies the credential; there is deliberately
+# no --github-token flag, since an argument is visible in `ps` and in CI logs.
+compose-preview share-preview report.md before.png after.png \
+  --mechanism serve --serve-url https://preview.coo.ee
+```
+
+A configured `--serve-url` (or `$COMPOSE_PREVIEW_SERVE_URL`) also wins the `auto` choice, so a
+correctly-configured agent environment picks this lane without asking for it. The client refuses to
+send the credential over plaintext to anything but a loopback host, refuses a URL with credentials
+in it, and never follows a redirect while carrying it.
+
 **Who may upload.** Not "anyone", on any host, ever — including a `--public` one:
 
 - The caller sends `Authorization: Bearer <github-token>`, and the server asks **GitHub** who that is
@@ -2512,7 +2528,12 @@ curl -sS -H "Authorization: Bearer $(gh auth token)" \
   installation token is refused outright when `--github-auth-users` narrows sign-in, since that list
   names people.
 - The token is used for two GitHub reads and dropped. It is never stored, logged, or echoed back; the
-  verification cache is keyed by its SHA-256.
+  verification cache is keyed by its SHA-256, and the host installs no request logging that could
+  capture an `Authorization` header.
+- **What the uploader is trusting.** Verification means the host *holds* that credential for the
+  length of a request. Point this at a host you trust with a repo-scoped credential, and prefer a
+  short-lived one: in CI, `${{ github.token }}` expires with the job where a personal access token
+  does not.
 - Two budgets, both from `--image-rate-limit` (default 60/minute, `0` disables). The first is
   charged **before** verification and keyed by client address — verifying costs a synchronous call
   to GitHub, so a spray of unique invalid tokens must not buy one outbound request per guess. The
@@ -2530,6 +2551,13 @@ On `/status` the lane shows as one row in the Configuration block — `Accept im
 beside the document lane's — and `/status.json` carries `acceptImages`, `imageTtlSeconds`,
 `imageUploadRepository`, and what the store is holding. Both states are captured in
 [docs/design/evidence/serve-image-lane](design/evidence/serve-image-lane/README.md).
+
+**What an uploader is publishing.** The link is unguessable, but it is not access-controlled: anyone
+holding it can fetch the image, and an image embedded in a PR body is handed to GitHub's proxy and to
+every reader of that PR. That is the intended trade — it is what makes the lane work at all — but it
+means an upload is a **publication decision**, not a share with the repo's collaborators. Don't put
+anything through it you wouldn't attach to a public pull request: a render of an unreleased screen, a
+screenshot with real user data or a token visible in it, stay off a public host.
 
 **Lifetime and bounds.** Links live 7 days by default (`--image-ttl`), in memory, dropped on expiry
 and on restart; 256 images / 128 MB max, oldest evicted first. GitHub's camo proxy caches an embedded
