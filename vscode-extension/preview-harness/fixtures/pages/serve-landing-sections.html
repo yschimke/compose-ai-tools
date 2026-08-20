@@ -92,7 +92,10 @@
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog sections">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog sections">
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true" aria-expanded="true" aria-owns="cp-tree-children-themes">Themes<span class="cp-tab-count">2</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-all" href="#cp-grid" data-tab="all" aria-controls="cp-grid" aria-selected="true">All<span class="cp-tab-count">9</span></a>
+</li>
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-themes">Themes<span class="cp-tab-count">2</span></a>
   <ul class="cp-tree-children" id="cp-tree-children-themes" role="group">
     <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-themes-foundation" data-tab="themes" data-group="cp-group-themes-foundation" aria-expanded="true" aria-owns="cp-tree-of-cp-group-themes-foundation">Foundation<span class="cp-tree-count">2</span></a>
       <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-themes-foundation" role="group">
@@ -105,7 +108,7 @@
   </ul>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-components">Components<span class="cp-tab-count">4</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-components">Components<span class="cp-tab-count">4</span></a>
   <ul class="cp-tree-children" id="cp-tree-children-components" role="group">
     <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-components-device" data-tab="components" data-group="cp-group-components-device" aria-expanded="false" aria-owns="cp-tree-of-cp-group-components-device">Device<span class="cp-tree-count">2</span></a>
       <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-components-device" role="group">
@@ -126,7 +129,7 @@
   </ul>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-screens">Screens<span class="cp-tab-count">3</span></a>
+  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="true" aria-owns="cp-tree-children-screens">Screens<span class="cp-tab-count">3</span></a>
   <ul class="cp-tree-children" id="cp-tree-children-screens" role="group">
     <li role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-screens-scanner" data-tab="screens" data-group="cp-group-screens-scanner" aria-expanded="false" aria-owns="cp-tree-of-cp-group-screens-scanner">Scanner<span class="cp-tree-count">2</span></a>
       <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-screens-scanner" role="group">
@@ -312,13 +315,21 @@
   var initialTab = current;
   function reflectTabs() {
     var searching = !!(input && input.value.trim());
+    var showingAll = current === "all";
+    document.documentElement.classList.toggle(
+      "cp-multi-section",
+      showingAll || searching
+    );
     var stop = null;
     var firstShown = null;
     tabBtns.forEach(function (t) {
       var on = t.getAttribute("data-tab") === current;
       t.setAttribute("aria-selected", on ? "true" : "false");
       if (t.hasAttribute("aria-expanded"))
-        t.setAttribute("aria-expanded", on || searching ? "true" : "false");
+        t.setAttribute(
+          "aria-expanded",
+          on || searching || showingAll ? "true" : "false"
+        );
       var node = t.closest(".cp-tree-node");
       var shown = !(node && node.hidden);
       t.tabIndex = on && shown ? 0 : -1;
@@ -341,7 +352,7 @@
       var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
       var searchOk = q === "" || hay.indexOf(q) !== -1;
       var sec = c.closest(".cp-section");
-      var tabOk = q !== "" || !sec || sec.getAttribute("data-section") === current;
+      var tabOk = q !== "" || !sec || current === "all" || sec.getAttribute("data-section") === current;
       c.hidden = !(searchOk && tabOk);
       if (searchOk && tabOk) shown++;
     });
@@ -424,8 +435,16 @@
       apply();
     }
     function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
+    // Jumping to a group from ALL stays in All: the row you clicked says where to scroll, not
+    // which slice of the catalog to throw away. From a section it still switches, because a
+    // group row can name a section other than the one showing.
+    function selectOwningTab(row) {
+      if (current === "all") return;
+      selectTab(row.getAttribute("data-tab"));
+    }
     function applyLandingTab(landing) {
       if (!landing.tab || landing.tab === current) return;
+      if (current === "all") return;
       current = landing.tab;
       initialTab = current;
       reflectTabs();
@@ -509,7 +528,7 @@
         if (!target) return;
         e.preventDefault();
         openRow(row);
-      selectTab(row.getAttribute("data-tab"));
+      selectOwningTab(row);
         setFragment(id);
         target.scrollIntoView({ behavior: "smooth", block: "start" });
         if (row.classList.contains("cp-tree-group")) markGroup(row);
@@ -651,6 +670,10 @@
       window.cpUrlState.onPop(function () {
         var popped = hashTarget();
         if (!popped || popped.tab === current) return;
+        if (current === "all") {
+          if (popped.row) markGroup(popped.row);
+          return;
+        }
         current = popped.tab;
         reflectTabs();
         apply();

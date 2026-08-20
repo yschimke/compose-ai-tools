@@ -3807,11 +3807,11 @@ class ServeWebFixtureTest {
         .map { it.groupValues[1] }
         .toList()
     assertEquals(
-      listOf("themes", "components", "screens"),
+      listOf("all", "themes", "components", "screens"),
       tabOrder,
-      "section rows are ordered by authored catalogOrder, not id-sorted",
+      "All leads, then the section rows in authored catalogOrder rather than id-sorted",
     )
-    // Each section is a labelled region keyed by its slug, and the first row opens selected.
+    // Each section is a labelled region keyed by its slug.
     assertTrue(
       landingSections.contains("id=\"cp-panel-themes\" role=\"region\"") &&
         landingSections.contains("id=\"cp-panel-components\" role=\"region\"") &&
@@ -3821,18 +3821,68 @@ class ServeWebFixtureTest {
     assertTrue(
       landingSections.contains(
         "id=\"cp-tab-themes\" href=\"#cp-panel-themes\" data-tab=\"themes\"" +
-          " aria-controls=\"cp-panel-themes\" aria-selected=\"true\""
+          " aria-controls=\"cp-panel-themes\" aria-selected=\"false\""
       ),
-      "the first section row is selected and its anchor targets its panel",
+      "a section row's anchor targets its own panel",
     )
-    // Selected ⇒ expanded: one section's contents show at a time, which is the same statement its
-    // panel makes, rather than a second piece of state that could disagree with it.
+    // The catalog lands on ALL — every section's panel showing, one scroll through the lot, and a
+    // filter that spans the whole catalog because nothing is narrowing it. It counts the catalog,
+    // and it controls the grid rather than any one panel, since that is what it shows.
     assertTrue(
-      Regex("id=\"cp-tab-themes\"[^>]* aria-selected=\"true\" aria-expanded=\"true\"")
+      landingSections.contains(
+        "<a class=\"cp-tab\" role=\"treeitem\" id=\"cp-tab-all\" href=\"#cp-grid\"" +
+          " data-tab=\"all\" aria-controls=\"cp-grid\" aria-selected=\"true\">" +
+          "All<span class=\"cp-tab-count\">"
+      ),
+      "the tree leads with a selected All row controlling the whole grid",
+    )
+    val sectionTree = landingSections.substringAfter("id=\"cp-tabs\"").substringBefore("</nav>")
+    assertEquals(
+      1,
+      Regex("aria-selected=\"true\"").findAll(sectionTree).count(),
+      "All is the only selected row — a section under it is expanded, not selected",
+    )
+    // Under All every section is expanded: the tree stands beside a grid showing everything, so it
+    // has to be the outline of everything rather than of one panel.
+    assertTrue(
+      Regex("id=\"cp-tab-themes\"[^>]* aria-selected=\"false\" aria-expanded=\"true\"")
         .containsMatchIn(landingSections) &&
-        Regex("id=\"cp-tab-components\"[^>]* aria-selected=\"false\" aria-expanded=\"false\"")
+        Regex("id=\"cp-tab-components\"[^>]* aria-selected=\"false\" aria-expanded=\"true\"")
           .containsMatchIn(landingSections),
-      "the selected section row is the expanded one and the rest are collapsed",
+      "All expands every section rather than leaving the tree closed over a full grid",
+    )
+    // What All actually does to the grid, the tree and the headings, in the script that owns each:
+    // no card is filtered out by section; the per-section <h2>s that `cp-js` hides come back,
+    // because the selected row no longer names the one section on screen; and a jump to a group
+    // scrolls without narrowing the catalog down to that group's section.
+    assertTrue(
+      landingSections.contains("var tabOk = q !== \"\" || !sec || current === \"all\""),
+      "under All a card is in the current tab whatever section holds it",
+    )
+    assertTrue(
+      landingSections.contains("classList.toggle(") &&
+        landingSections.contains("\"cp-multi-section\",") &&
+        landingSections.contains("showingAll || searching") &&
+        assetText("serve.css")
+          .contains("html.cp-js.cp-multi-section .cp-section-head { display: block; }"),
+      "the section headings come back whenever several sections are on screen at once",
+    )
+    assertTrue(
+      landingSections.contains("function selectOwningTab(row) {") &&
+        landingSections.contains("if (current === \"all\") return;"),
+      "jumping to a group from All stays in All",
+    )
+    // …and a reload of the URL that click wrote lands on the same page. The fragment names where
+    // to scroll, not which slice of the catalog to show, so neither the landing resolver nor the
+    // Back/Forward one may narrow to the section that happens to hold it while All is selected.
+    assertEquals(
+      2,
+      Regex("if \\(current === \"all\"\\) return;").findAll(landingSections).count(),
+      "a #cp-group-… fragment scrolls within All rather than undoing it on load",
+    )
+    assertTrue(
+      landingSections.contains("if (popped.row) markGroup(popped.row);"),
+      "Back/Forward within All marks the row it lands on instead of switching section",
     )
     // The second level: each named group is a row under its section, pointing at the sub-group
     // divider's anchor — including the same "Device" group name reused across the Components and

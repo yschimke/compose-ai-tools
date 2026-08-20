@@ -1023,6 +1023,11 @@ html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: n
   line-height: var(--md-sys-typescale-title-medium-line);
   letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
 html.cp-js .cp-section-head { display: none; }
+/* …except when SEVERAL sections are on screen at once — the All row, and a live search, both of
+   which span the whole catalog. The heading is hidden because the selected row already names the
+   one section showing; with the panels stacked it is the only thing saying where one ends and the
+   next begins. `cp-multi-section` is set by the filter script's `reflectTabs`. */
+html.cp-js.cp-multi-section .cp-section-head { display: block; }
 /* `scroll-margin-top` because both are jump targets — a tree row scrolls to a `.cp-subgroup`, and
    a no-JS client follows `#cp-panel-<slug>` to a `.cp-section`. Without it the heading they were
    asked for lands at viewport zero, under the sticky toolbar. */
