@@ -151,7 +151,7 @@ object ComposeSemanticsDataProducer {
     previewId: String,
     root: SemanticsNode,
     fileSystem: FileSystem = SystemFileSystem,
-    density: Float = 1f,
+    density: Float? = null,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = buildPayload(root, density)
@@ -165,12 +165,17 @@ object ComposeSemanticsDataProducer {
    * producer (and any other derived view) reuses the exact same projection — label precedence,
    * bounds formatting, merge-mode mapping — rather than re-walking the tree with different rules.
    *
-   * [density] is the render density (dp = px / density). It is only needed to express a
-   * percent-based corner radius (`CircleShape`) as dp; the default of `1f` leaves px-equals-dp
-   * captures (and the token text/colour fields, which carry dp directly) unchanged (issue #1908).
+   * [density] is the render density (dp = px / density). It expresses a percent-based corner radius
+   * (`CircleShape`) as dp, and — since schema v14 — is recorded on the payload so a consumer can
+   * put the node's px [ComposeSemanticsNode.boundsInRoot] in the same unit as its dp
+   * [ComposeSemanticsNode.tokens]. Null means the caller didn't state one: the projection falls
+   * back to `1f` (px-equals-dp, as before issue #1908) but the payload says nothing rather than
+   * asserting a factor it doesn't know.
    */
-  fun buildPayload(root: SemanticsNode, density: Float = 1f): ComposeSemanticsPayload =
-    SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode(density)))
+  fun buildPayload(root: SemanticsNode, density: Float? = null): ComposeSemanticsPayload =
+    SemanticsRefs.assign(
+      ComposeSemanticsPayload(root = root.toWireNode(density ?: 1f), density = density)
+    )
 
   private val probeNodesSerializer = ListSerializer(RecordingProbeNode.serializer())
 

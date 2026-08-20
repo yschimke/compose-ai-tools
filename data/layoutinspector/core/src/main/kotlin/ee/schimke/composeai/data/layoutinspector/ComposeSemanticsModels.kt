@@ -59,7 +59,15 @@ object ComposeSemanticsProduct {
   // the resolver can't reduce to corners). Populated only after `cornerRadius`, `cornerRadiusPx`
   // and the rounded-outline fallback have all come up empty, so an understood shape is unaffected.
   // Additive; older entries decode with `shapePath = null`.
-  const val SCHEMA_VERSION: Int = 13
+  // v14: the payload carries `density` — render pixels per dp for this capture. Every node states
+  // its `boundsInRoot` in the render's own pixels while `tokens` resolve to dp, and nothing on the
+  // wire said which factor separates them, so a consumer measuring a token against a box had to
+  // assume they shared a unit. They don't: a 52dp Wear icon button with a fully-clamped 26dp corner
+  // is a 104x104 box at dpi 320, and design-parity's "is this corner already a stadium?" test read
+  // 26 against half of 104, called a pill un-clamped, and reported a Δ against the kit's
+  // fully-rounded sentinel on every icon button it compared. Additive; older entries decode with
+  // `density = null`, which a consumer reads as "not stated" rather than as 1.
+  const val SCHEMA_VERSION: Int = 14
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -207,7 +215,20 @@ object ComposeFigmaSvgProduct {
   const val RASTER_DIR: String = "figma-raster"
 }
 
-@Serializable data class ComposeSemanticsPayload(val root: ComposeSemanticsNode)
+@Serializable
+data class ComposeSemanticsPayload(
+  val root: ComposeSemanticsNode,
+  /**
+   * Render pixels per dp for this capture — the factor that turns a node's
+   * [ComposeSemanticsNode. boundsInRoot] (px) into the dp its [ComposeSemanticsNode.tokens] are
+   * already in (issue #1908 left the two units unstated; schema v14).
+   *
+   * Null when the producer didn't state it: read that as "unknown", not as `1f`. Only the render
+   * knows the factor — a `@Preview` that pins no `device`/`widthDp` gives a consumer nothing to
+   * derive it from, which is exactly the case that made a clamped corner look un-clamped.
+   */
+  val density: Float? = null,
+)
 
 @Serializable
 data class ComposeSemanticsNode(

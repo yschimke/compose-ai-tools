@@ -31,7 +31,10 @@ class ComposeSemanticsExtension : PostCaptureProcessor {
     val rootDir = context.require(RenderArtifactContextKeys.RootDir)
     val outputBaseName = context.require(RenderArtifactContextKeys.OutputBaseName)
     val semanticsRoot = context.require(RenderArtifactContextKeys.SemanticsRoot)
-    val density = context.get(RenderArtifactContextKeys.Density) ?: 1f
+    // Deliberately NOT coerced to 1f: an absent density is unknown, and the payload records it as
+    // such (schema v14) so a consumer reading bounds against tokens knows not to assume they share
+    // a unit. The projection still falls back to 1f for its own percent-corner maths.
+    val density = context.get(RenderArtifactContextKeys.Density)
     ComposeSemanticsDataProducer.writeArtifacts(
       rootDir = rootDir,
       previewId = outputBaseName,

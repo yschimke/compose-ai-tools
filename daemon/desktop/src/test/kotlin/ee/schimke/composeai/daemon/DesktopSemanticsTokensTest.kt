@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -53,13 +54,18 @@ class DesktopSemanticsTokensTest {
   private fun buildTree(
     density: Float = 1.0f,
     content: @Composable () -> Unit,
-  ): ComposeSemanticsNode {
+  ): ComposeSemanticsNode = buildPayload(density, content).root
+
+  private fun buildPayload(
+    density: Float = 1.0f,
+    content: @Composable () -> Unit,
+  ): ComposeSemanticsPayload {
     val scene =
       ImageComposeScene(width = 400, height = 400, density = Density(density), content = content)
     try {
       scene.render()
       val root: SemanticsNode = scene.semanticsOwners.first().unmergedRootSemanticsNode
-      return ComposeSemanticsDataProducer.buildPayload(root, density).root
+      return ComposeSemanticsDataProducer.buildPayload(root, density)
     } finally {
       scene.close()
     }
@@ -143,6 +149,35 @@ class DesktopSemanticsTokensTest {
     val atTwo = radiusAt(2f)
     assertNotNull("a CircleShape must resolve a dp corner radius", atOne)
     assertEquals("the resolved dp radius must be density-independent", atOne, atTwo)
+  }
+
+  @Test
+  fun payload_states_the_density_separating_px_bounds_from_dp_tokens() {
+    // A node's `boundsInRoot` is px and its `tokens` are dp, and nothing on the wire said which
+    // factor separates them. A consumer measuring one against the other — design-parity asking
+    // "is this 24dp corner already at the clamp of its box?" — read 24 against half of a 96px box
+    // and called a fully-rounded corner un-clamped. Stating the density is what lets it divide the
+    // box through first. The assertions below are the whole gap in one place: same dp radius, box
+    // twice the size, and a density that reconciles them.
+    fun capture(density: Float): Pair<Float?, ComposeSemanticsNode> {
+      val payload =
+        buildPayload(density = density) {
+          Box(Modifier.testTag("pill").size(48.dp).background(Color(0xFF006A60), CircleShape))
+        }
+      return payload.density to payload.root.find("pill")!!
+    }
+
+    val (densityOne, atOne) = capture(1f)
+    val (densityTwo, atTwo) = capture(2f)
+    assertEquals(1f, densityOne)
+    assertEquals(2f, densityTwo)
+    assertEquals(atOne.tokens?.cornerRadius, atTwo.tokens?.cornerRadius)
+    fun width(node: ComposeSemanticsNode): Int =
+      node.boundsInRoot
+        .split(",")
+        .map { it.trim().toFloat() }
+        .let { (l, _, r, _) -> (r - l).toInt() }
+    assertEquals("the density-2 capture's box is twice as wide", width(atOne) * 2, width(atTwo))
   }
 
   @Test
