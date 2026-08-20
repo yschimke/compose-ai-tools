@@ -202,8 +202,18 @@ class RenderEngine(
     // writes the stitched PNG (LONG) / animated GIF (GIF) to the same on-disk path the registry
     // (`ScrollDataProductRegistry.fileFor`) reads back, so the dispatcher's second fetch sees the
     // file and emits `Ok(path)`. Mirrors `:daemon:android`'s `RenderEngine.runScrollScenario`.
+    //
+    // Wrapped in [withPreviewLocale] like every other composing path, rather than dispatched
+    // outside the gate: this mode composes the user's preview in this JVM, so it needs both halves
+    // of what the gate provides — the JVM-default-`Locale` override a `localeTag` request asks
+    // for, and serialisation against a held session's frames, which is what bounds the
+    // pseudolocale string cache (see `enterPreviewLocale`) instead of leaving this lane composing
+    // against another render's transformed items (#4384 / #4385 review). Same for the two modes
+    // below.
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
-      return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      return withPreviewLocale(spec.localeTag) {
+        runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      }
     }
     // Full-page figma-svg for a scrolling preview (`compose/figma-svg-long`). Renders at an
     // expanded
@@ -212,14 +222,18 @@ class RenderEngine(
     // /
     // GIF above. See docs/design/SCROLLING_SVG.md.
     if (spec.renderMode == FIGMA_SVG_LONG_RENDER_MODE) {
-      return runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      return withPreviewLocale(spec.localeTag) {
+        runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      }
     }
     // kind=LOTTIE animated capture — sweep the asset's intrinsic timeline into a looping GIF
     // instead of capturing one still frame. Routed here (before the reflection-based setUp) because
     // a Lottie asset has no class to resolve; the render body lives in `:renderer-desktop`'s
     // `renderLottieApng`, mirroring how `runScrollScenario` delegates to `renderScrollPreview`.
     if (spec.kind == "LOTTIE" && spec.renderMode == LOTTIE_GIF_RENDER_MODE) {
-      return runLottieGifScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      return withPreviewLocale(spec.localeTag) {
+        runLottieGifScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+      }
     }
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop")
     val state =
@@ -363,9 +377,6 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
 
-    // Drop any pseudolocalised string items a previous render left in CMP's process-wide cache
-    // before this one composes; a no-op unless this render is leaving pseudolocale mode.
-    guardPseudolocaleStringCache(spec.localeTag)
     val localeProviders = localeProviders(spec.localeTag)
     val themeFallbackCapture =
       if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
@@ -1941,39 +1952,37 @@ class RenderEngine(
     }
 
     /**
-     * Whether the *previous* render in this JVM composed under a pseudolocale, so
-     * [guardPseudolocaleStringCache] knows when the process-wide CMP string cache is holding
-     * transformed values. One daemon renders sequentially, and the flag is only ever read and
-     * written on the render path, so a plain `@Volatile` boolean is enough.
+     * How many times a pseudolocale scope has cleared Compose Resources' process-wide
+     * `stringItemsCache` on its way out. Test-visible only — it is the one observable that a
+     * composing path actually went through [enterPreviewLocale] with a pseudolocale tag.
      */
-    @Volatile private var lastRenderWasPseudolocale: Boolean = false
+    @Volatile
+    internal var pseudolocaleCacheClears: Int = 0
+      private set
 
     /**
-     * Clear Compose Resources' process-wide `stringItemsCache` when a render *leaves* pseudolocale
-     * mode. Returns true when it cleared, for the tests that pin the state machine.
+     * Drop Compose Resources' process-wide `stringItemsCache` at the end of a pseudolocale
+     * composition, **while the locale gate is still held exclusively**.
      *
-     * CMP caches a string item under `path/offset-size` with the value the **first** reader
-     * returned, so a cached value outlives the reader that produced it. `PseudolocaleOverride
-     * ExtensionDesktop` already clears on entry (a pseudo render must not be served plain strings
-     * cached earlier); this is the other edge: after a pseudo render the cache holds *transformed*
-     * values, and the next ordinary render would be handed accented / bidi text for a locale it
-     * never asked for. Only the renderer sees both renders, so the flag lives here.
+     * CMP caches a string item under `path/offset-size` with the value the *first* reader returned,
+     * so a cached value outlives the reader that produced it.
+     * `PseudolocaleOverrideExtensionDesktop` clears on entry, which stops a pseudo render being
+     * served plain strings cached earlier. This is the other edge: a pseudo render leaves
+     * *transformed* values behind, and anything that composes afterwards would be handed accented /
+     * bidi text for a locale it never asked for.
      *
-     * Deliberately does nothing while pseudolocale renders repeat back to back — the around
-     * composable's entry clear covers a mode switch between `en-XA` and `ar-XB` — and nothing at
-     * all in the ordinary case where no pseudolocale render has happened yet, so a daemon that
-     * never renders one keeps its warm cache.
+     * **The render that dirties the cache is the one that cleans it, before it lets go of the
+     * gate.** An earlier design tracked "has anything pseudolocalised composed since the last
+     * clear?" in a flag and made the next ordinary render do the clearing; every version of that
+     * lost a race, because the flag and the composition it described were separate events on
+     * separate threads (#4385 review, twice). Clearing here needs no flag and no cross-thread
+     * agreement: the write lock is exclusive and still held, so by the time any other render can
+     * enter a locale scope the transformed items are already gone. Ordinary renders do nothing at
+     * all — which is also why a daemon that never renders a pseudolocale keeps its warm cache.
      */
-    internal fun guardPseudolocaleStringCache(localeTag: String?): Boolean {
-      val isPseudolocale =
-        ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag) != null
-      if (isPseudolocale) {
-        lastRenderWasPseudolocale = true
-        return false
-      }
-      if (!lastRenderWasPseudolocale) return false
-      lastRenderWasPseudolocale = false
-      return PseudolocaleResourceCache.clearStringResourcesCacheBestEffort()
+    private fun clearPseudolocaleStringCacheHoldingTheGate() {
+      PseudolocaleResourceCache.clearStringResourcesCacheBestEffort()
+      pseudolocaleCacheClears++
     }
 
     /**
@@ -2065,6 +2074,11 @@ class RenderEngine(
      * wait would deadlock against the executor thread that needs it.
      */
     internal fun enterPreviewLocale(localeTag: String?): PreviewLocaleScope {
+      // Every composition — a one-shot render, a held session's per-frame recomposition, a scroll
+      // drive — enters through here, which is what makes it the right place to bound a
+      // pseudolocale's effect on the process-wide CMP string cache: see
+      // [clearPseudolocaleStringCacheHoldingTheGate], which runs on the way out, under this same
+      // exclusive lock. An unlocalized scope has nothing to clean up.
       val effectiveTag = effectiveLocaleTag(localeTag)
       if (effectiveTag == null) {
         localeGate.readLock().lock()
@@ -2078,8 +2092,13 @@ class RenderEngine(
           "localized render must not nest inside an unlocalized one"
       }
       localeGate.writeLock().lock()
+      val isPseudolocale =
+        ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag) != null
       val previousDefaultLocale = overrideJvmDefaultLocale(effectiveTag)
       return PreviewLocaleScope {
+        // Ordering matters: clear before releasing the gate, so nothing can compose against the
+        // transformed items this scope cached.
+        if (isPseudolocale) clearPseudolocaleStringCacheHoldingTheGate()
         restoreJvmDefaultLocale(previousDefaultLocale)
         localeGate.writeLock().unlock()
       }
