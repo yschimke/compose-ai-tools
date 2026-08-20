@@ -1357,21 +1357,41 @@ cp-parity-scores { display: contents; }
 /* Above the stretched overlay, so it is independently clickable. It sits with the metadata, ABOVE
    the count line's divider, so the count keeps `margin-top: auto` and stays the card's baseline —
    put the chip after the count instead and a card with an action lands its count line higher than
-   the card beside it, which is exactly the ragged row the bottom-anchoring exists to prevent. */
+   the card beside it, which is exactly the ragged row the bottom-anchoring exists to prevent.
+
+   The ROW takes no pointer events, only its chips do. The row is full-width whatever the chip's
+   width, so raising the whole paragraph above the overlay made the blank space beside the chip —
+   most of the card's width — swallow clicks into an inert `<p>`, punching a dead stripe through
+   the whole-tile target. Letting the row pass clicks through hands that space back to the tile
+   link underneath. */
 .cp-sys-actions { position: relative; z-index: 2; margin: 12px 0 0;
-  display: flex; flex-wrap: wrap; gap: 8px; }
-/* Focus lands on the inner link now, so the tile's ring is drawn from `:focus-within` rather than
-   the card's own `:focus-visible` (a `<div>` never takes focus). Excludes the chip's own focus,
-   which draws its own ring — otherwise tabbing to the chip lit the whole card as well. */
+  display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none; }
+.cp-sys-actions > a { pointer-events: auto; }
+/* Focus lands on the inner link now, so the card's own `:focus-visible` rules can never match (a
+   `<div>` never takes focus) — every one of them has to be restated on `:focus-within` or keyboard
+   focus silently loses the treatment pointer hover gets: the lift, the elevation, the state layer
+   and the title colour, not just the ring. Excludes the chip's own focus, which draws its own ring
+   and is a different destination — otherwise tabbing to the chip lit the whole card as well. */
 .cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) {
+  transform: translateY(-2px); box-shadow: var(--md-sys-elevation-level3);
   outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+.cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible))::after {
+  opacity: var(--md-sys-state-focus-opacity); }
+.cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) .cp-sys-title {
+  color: var(--md-sys-color-primary); }
 /* The hero BREAKS OUT on hover: it scales past the card's edge instead of being cropped inside it,
    which is why `overflow` is visible here and on the image well (the shared `.cp-card` rule clips,
    for every other card in the product). The card is lifted above its neighbours for the moment it
    is scaled so the overflow paints over them rather than under the next tile; `isolation: isolate`
    on `.cp-card` already gives it a stacking context to be raised within. The image well keeps the
-   card's top corners so the RESTING state is still a clean poster. */
+   card's top corners so the RESTING state is still a clean poster.
+
+   Losing `overflow: hidden` also loses what was clipping the `::after` state layer, which is
+   `inset: 0` with square corners over a rounded card — so on hover its primary-colour fill painted
+   into the transparent corners outside the border radius. It has to round itself now that nothing
+   rounds it for it. */
 .cp-card.cp-sys { overflow: visible; }
+.cp-card.cp-sys::after { border-radius: inherit; }
 .cp-card.cp-sys:hover, .cp-card.cp-sys:focus-within { z-index: 4; }
 .cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: visible;
   border-radius: var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) 0 0; }
@@ -1438,7 +1458,8 @@ cp-parity-scores { display: contents; }
    Origin at bottom-centre so it grows UP and outward only — growing downward would ride the art
    over the title and the count line (`.cp-imgwrap` is positioned, so it paints above the static
    meta block, and the overlap would be unreadable rather than playful). */
-.cp-card.cp-sys:hover .cp-imgwrap img, .cp-card.cp-sys:focus-within .cp-imgwrap img {
+.cp-card.cp-sys:hover .cp-imgwrap img,
+.cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) .cp-imgwrap img {
   transform: scale(1.12); transform-origin: 50% 100%; }
 /* A card mid-render is already animating (fade + spinner); leave its artwork alone so the two
    effects don't fight, and never zoom for a visitor who asked for less motion. */
@@ -1448,9 +1469,15 @@ cp-parity-scores { display: contents; }
   .cp-card:hover, .cp-card:focus-visible { transform: none; }
   .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: none; }
   /* Restated at the front door's own specificity, or the bigger break-out zoom above would
-     outrank the blanket rule and animate for a visitor who asked for less motion. */
-  .cp-card.cp-sys:hover .cp-imgwrap img, .cp-card.cp-sys:focus-within .cp-imgwrap img {
+     outrank the blanket rule and animate for a visitor who asked for less motion. The card LIFT
+     needs the same treatment for the same reason the lift rule itself did: the blanket reset above
+     is keyed on `:focus-visible`, which the card `<div>` can never match, so a keyboard user who
+     asked for less motion still got the tile moving under them — the one case the reset exists to
+     prevent, reached by the one input method that cannot opt out of it. */
+  .cp-card.cp-sys:hover .cp-imgwrap img,
+  .cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) .cp-imgwrap img {
     transform: none; }
+  .cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) { transform: none; }
 }
 .cp-card--render-failed { border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 55%, transparent); }
 .cp-card--render-failed > summary { list-style: none; cursor: pointer; }

@@ -5845,6 +5845,34 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains(".cp-syslist .cp-imgwrap { min-height: 0; height: 220px;"),
       "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
     )
+    // Three invariants the hero break-out depends on, each of which turns into a silent regression
+    // rather than a failing render if it is dropped.
+    assertTrue(
+      assetText("serve.css").contains(".cp-sys-actions") &&
+        assetText("serve.css").contains("pointer-events: none; }") &&
+        assetText("serve.css").contains(".cp-sys-actions > a { pointer-events: auto; }"),
+      "the action row passes clicks through to the tile link; only its chips take them",
+    )
+    assertTrue(
+      assetText("serve.css").contains(".cp-card.cp-sys::after { border-radius: inherit; }"),
+      "the state layer rounds itself, now that `overflow: visible` no longer clips it to the card",
+    )
+    assertTrue(
+      assetText("serve.css")
+        .contains(
+          ".cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) .cp-sys-title"
+        ),
+      "keyboard focus on the tile link gets the full card treatment, not just the outline",
+    )
+    assertTrue(
+      assetText("serve.css")
+        .contains(
+          ".cp-card.cp-sys:focus-within:not(:has(.cp-action-chip:focus-visible)) " +
+            "{ transform: none; }"
+        ),
+      "…and reduced motion still cancels the lift for it — the blanket reset is keyed on " +
+        ":focus-visible, which the card div can never match",
+    )
     assertTrue(
       landing.contains("class=\"cp-site-header\"") && landing.contains("id=\"cp-status-link\""),
       "all pages carry the shared site navigation",
