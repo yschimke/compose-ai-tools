@@ -4334,6 +4334,18 @@ class ServeHttpServer(
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
     val renderCache: CatalogRenderCacheSnapshot?,
+    /**
+     * The design tool this catalog's references name ("Figma", …), or null when it publishes none —
+     * which is also what tells the front door whether to offer that catalog a "compare to <tool>"
+     * action ([ServeWeb.HomeSystem.designToolLabel]).
+     *
+     * Remembered here, rather than looked up when the home page renders, for the same reason the
+     * hero and the trust badge are: `peekHost` never resumes a suspended catalog, so a live lookup
+     * would drop the action off every card whose daemon happened to be idle — the usual state on a
+     * quiet server, not an edge case. Design references come from the delivery branch, so a
+     * suspension cannot invalidate the answer.
+     */
+    val designToolLabel: String?,
   )
 
   init {
@@ -4423,6 +4435,17 @@ class ServeHttpServer(
         provenance = bundle?.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
         renderCache = host.catalogRenderCacheSnapshot(),
+        // The same read the catalog landing names its own compare chip from, so the front door's
+        // action and the landing's cannot disagree about what this catalog compares against. The
+        // parity feed's Figma lane is deliberately NOT a fallback here (it is on the landing, for
+        // the "design parity" label): the front-door action deep-links `compare?format=reference`,
+        // which only published references put anything behind.
+        designToolLabel =
+          host.previews.firstNotNullOfOrNull { preview ->
+            host.designReferencesFor(preview.id).firstNotNullOfOrNull {
+              ServeWeb.designToolLabel(it.source.provider)
+            }
+          },
       )
   }
 
@@ -5031,6 +5054,9 @@ class ServeHttpServer(
             )
           },
         darkStage = meta.darkStage,
+        // Non-null ⇒ this catalog publishes design references, so its card offers the compare
+        // action and names the tool it compares against.
+        designToolLabel = meta.designToolLabel,
       )
     }
   }

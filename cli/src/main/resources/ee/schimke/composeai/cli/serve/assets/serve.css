@@ -1338,6 +1338,19 @@ cp-parity-scores { display: contents; }
    BOTH classes deliberately: `.cp-card { display: block }` is declared later in this sheet and
    at equal specificity it won, which silently made the row template inert. */
 .cp-card.cp-sys { display: grid; grid-template-rows: 220px 1fr; }
+/* The front door's grid item is the CELL, not the tile: a card is one big link, so a per-catalog
+   action (`compare to Figma`) cannot live inside it — a link inside a link is not a thing HTML
+   has. The cell carries the tile plus that action row, and `1fr auto` keeps the tile stretching to
+   the row's shared height so a card WITH an action and one without still line their artwork and
+   their footers up. `[hidden]` needs restating because `display: grid` here outranks the UA
+   sheet's `[hidden] { display: none }`, and the catalog search filters by hiding cells. */
+.cp-sys-cell { display: grid; grid-template-rows: 1fr auto; gap: 10px; }
+.cp-sys-cell[hidden] { display: none; }
+/* Left-aligned under the tile it belongs to, so the chip reads as that card's action rather than
+   as a caption centred beneath it. `min-height` is the chip's own height: the row is emitted EMPTY
+   for a catalog with no action on a page where another card has one, and it has to occupy the same
+   space either way or the tiles above them go ragged again. */
+.cp-sys-actions { margin: 0; min-height: 32px; display: flex; flex-wrap: wrap; gap: 8px; }
 .cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: hidden; }
 .cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
 /* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
