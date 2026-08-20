@@ -704,8 +704,16 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * Kotlin here; opting into it is a typed decision.
    */
   private val agentGrantMaxScope: ServeAgentGrantScope =
-    ServeAgentGrantScope.parseHighest(args.flagValue("--agent-grant-scopes"))
-      ?: ServeAgentGrantScope.DEFAULT_MAX
+    args.flagValue("--agent-grant-scopes")?.let {
+      // The worst of this family to default silently: `--agent-grant-scopes preivew` is an operator
+      // narrowing the box to read-only, and the default it would fall back to is `preview,live`. A
+      // typo would have *widened* what every grant on the host may do, which is the opposite of the
+      // intent that made them type the flag.
+      ServeAgentGrantScope.parseHighest(it)
+        ?: throw IllegalArgumentException(
+          "--agent-grant-scopes '$it' is not a scope list — use preview, live, or playground"
+        )
+    } ?: ServeAgentGrantScope.DEFAULT_MAX
 
   /**
    * Longest grant this box will mint (`--agent-grant-max-ttl`, e.g. `2h`/`90m`/`3600`). Clamped to
@@ -730,8 +738,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
 
   /** How many grants may be live at once (`--agent-grant-max-active`). */
   private val agentGrantMaxActive: Int =
-    args.flagValue("--agent-grant-max-active")?.toIntOrNull()?.takeIf { it > 0 }
-      ?: ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS
+    args.flagValue("--agent-grant-max-active")?.let {
+      it.toIntOrNull()?.takeIf { n -> n > 0 }
+        ?: throw IllegalArgumentException(
+          "--agent-grant-max-active '$it' is not a positive whole number"
+        )
+    } ?: ServeAgentGrantStore.DEFAULT_MAX_ACTIVE_GRANTS
 
   /**
    * Per-address budget on the two ungated grant routes (`--agent-grant-rate-limit`, requests per
@@ -740,8 +752,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
    * map.
    */
   private val agentGrantRateLimit: Int =
-    args.flagValue("--agent-grant-rate-limit")?.toIntOrNull()?.takeIf { it >= 0 }
-      ?: DEFAULT_AGENT_GRANT_RATE_LIMIT
+    args.flagValue("--agent-grant-rate-limit")?.let {
+      it.toIntOrNull()?.takeIf { n -> n >= 0 }
+        ?: throw IllegalArgumentException(
+          "--agent-grant-rate-limit '$it' is not a whole number of requests per minute (0 disables)"
+        )
+    } ?: DEFAULT_AGENT_GRANT_RATE_LIMIT
 
   /**
    * Image ingestion (`--accept-images`): enable `POST /images` so an **agent preparing a pull

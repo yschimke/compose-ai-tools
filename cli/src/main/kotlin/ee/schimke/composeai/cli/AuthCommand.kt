@@ -35,8 +35,22 @@ internal class AuthCommand(
    * behaviour against a real server without reaching for the caller's actual credential file —
    * production always gets the default.
    */
-  private val store: AgentAccessStore = AgentAccessStore(),
+  injectedStore: AgentAccessStore? = null,
 ) {
+
+  /**
+   * Opened lazily so a machine with nowhere safe to keep credentials fails with one clear sentence
+   * instead of a stack trace out of a constructor default — and only when a subcommand actually
+   * needs the store, so `auth --help` still works there.
+   */
+  private val store: AgentAccessStore by lazy {
+    injectedStore
+      ?: try {
+        AgentAccessStore()
+      } catch (e: NoCredentialHomeException) {
+        fail(e.message ?: "no user config directory could be determined")
+      }
+  }
 
   private val json: Boolean = "--json" in args
 
