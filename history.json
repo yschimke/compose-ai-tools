@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
+    "generatedFrom": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay-30b93fa8_FOCUS_0.png",
@@ -5708,6 +5708,13 @@
             "path": "renders/samples:design-catalog-remote-m3/CircularProgressRemote_width_200dp_height_200dp_dpi_320-357c38a0.png",
             "versions": [
                 {
+                    "blob": "c9ade3028543c52169fe63d70223227f7e72388c",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
+                {
                     "blob": "d8ec2fedb7a804c0c45e0677910440ca5d7507d9",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -5715,7 +5722,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6115,6 +6122,13 @@
             "path": "renders/samples:design-catalog-remote-m3/DisabledCircularProgressRemote_width_200dp_height_200dp_dpi_320-4d8e778c.png",
             "versions": [
                 {
+                    "blob": "887123b5ec22f09e8ec0b96d4890b3f77b6edab5",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
+                {
                     "blob": "90eaf3f5de2c594421146f36ca0f024bc8cec809",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
                     "date": "2026-08-16T23:07:27Z",
@@ -6122,7 +6136,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6277,6 +6291,13 @@
             "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressMotionRemote_width_200dp_height_200dp_dpi_320-276f344c.gif",
             "versions": [
                 {
+                    "blob": "3db08d0025ebc3ec831c614ce2511d5ef86eb140",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
+                {
                     "blob": "0df55c7e00a7e8a6188a58f3728d46f16a5767fe",
                     "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
                     "date": "2026-08-20T15:03:15Z",
@@ -6291,13 +6312,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width=200dp,height=200dp,dpi=320": {
             "path": "renders/samples:design-catalog-remote-m3/IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
             "versions": [
+                {
+                    "blob": "0e23081b7c6e3653b9fe7a2063ae269fe4db5ab7",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
                 {
                     "blob": "c840dd59c8c364633e9c23152209c3c86539cceb",
                     "commit": "1763a8cc0dcaf1c0f1c869850d1bcd8e4856e656",
@@ -6306,7 +6334,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7640,20 +7668,12 @@
             "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
             "versions": [
                 {
-                    "blob": "e1449c245f109114c87e7963ae2e4300ca25a58a",
-                    "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
-                    "date": "2026-08-17T07:56:53Z",
-                    "sourceSha": "02b540ff",
+                    "blob": "4fb79c67f2d8e0f47ac583b17aa9f3dcce04e1da",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
                     "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview": {
-            "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png",
-            "versions": [
+                },
                 {
                     "blob": "e1449c245f109114c87e7963ae2e4300ca25a58a",
                     "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
@@ -7662,7 +7682,29 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview": {
+            "path": "renders/samples:remotecompose/RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png",
+            "versions": [
+                {
+                    "blob": "4fb79c67f2d8e0f47ac583b17aa9f3dcce04e1da",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
+                {
+                    "blob": "e1449c245f109114c87e7963ae2e4300ca25a58a",
+                    "commit": "c2ff9e8ae5f62a3d6f85da688e0c1eb8f88fd6a2",
+                    "date": "2026-08-17T07:56:53Z",
+                    "sourceSha": "02b540ff",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7758,6 +7800,13 @@
             "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview-53123345.gif",
             "versions": [
                 {
+                    "blob": "248ae61cd50d0c99efc82be0c5fd96e9091b24e7",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
+                {
                     "blob": "ffeab2a25ee8c1b3346721565ee220d5cbd464c7",
                     "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
                     "date": "2026-08-20T15:03:15Z",
@@ -7772,13 +7821,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
         "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
             "path": "renders/samples:remotecompose/RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif",
             "versions": [
+                {
+                    "blob": "f99f6104e552e2b9f86d9062412e216d0de29e06",
+                    "commit": "9fd86efaf1b0bc5665f7fe64a3285c333e13f9f5",
+                    "date": "2026-08-20T17:51:17Z",
+                    "sourceSha": "2a83e7eb",
+                    "commits": 1
+                },
                 {
                     "blob": "14290eb9a07be32173affa31e517fca6d6db218a",
                     "commit": "202816e3c14fe04ed50aee258ccf4c86ebdf1abd",
@@ -7794,7 +7850,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
