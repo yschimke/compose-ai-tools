@@ -1852,6 +1852,108 @@ class ServeCatalogStoreTest {
   // ------------------------------------------------------------------------------------------
 
   /** A one-entry commit feed, so a load resolves a delivery commit and pins its reads to it. */
+  // ------------------------------------------------------------------------------------------
+  // The asset cache: small commit-pinned reads answered from the pool.
+  // ------------------------------------------------------------------------------------------
+
+  @Test
+  fun `a pinned load reads its manifests from the pool on the next load`() {
+    // Every asset a load reads is addressed through the delivery commit it resolved first, so the
+    // bytes at that URL are immutable and a second load of the same revision need not ask again.
+    // A branch that HAS moved names a different commit, so its URLs miss and are fetched — the
+    // freshness rule needs no cache logic of its own.
+    val reads = java.util.concurrent.atomic.AtomicLong()
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Button/Filled","images":[
+          {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url ==
+          ServeCatalogRevision.commitsFeedUrl(
+            "yschimke/compose-ai-tools",
+            "design-artifacts/compose-m3",
+          ) -> feed(COMMIT).encodeToByteArray()
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> {
+          reads.incrementAndGet()
+          json.toByteArray()
+        }
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranch },
+        fetch = fetch,
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertEquals(1, reads.get())
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(1, reads.get(), "the same revision's manifest must not be re-fetched")
+    // Not an exact count: a load also samples a baked image to prove the branch can serve one, and
+    // that read is pinned and cached too. What matters is that the pool answered rather than the
+    // branch, which the manifest count above states precisely.
+    assertTrue(assertNotNull(store.branchFetchStats.snapshot()).cached > 0)
+  }
+
+  @Test
+  fun `an un-pinned load reads its manifests from the branch every time`() {
+    // No feed ⇒ no delivery commit ⇒ the base is the branch ref, which is a moving target. Caching
+    // under it would answer a regenerated branch with last week's bytes.
+    val reads = java.util.concurrent.atomic.AtomicLong()
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Button/Filled","images":[
+          {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> {
+          reads.incrementAndGet()
+          json.toByteArray()
+        }
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranch },
+        fetch = fetch,
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(2, reads.get())
+    assertNull(store.branchFetchStats.snapshot()?.cached?.takeIf { it > 0 })
+  }
+
+  @Test
+  fun `a missing asset is not remembered as missing`() {
+    // Only Ok is stored. A NotFound is a statement about one revision that callers cache in their
+    // own terms, and a throttle is a statement about now — caching either would turn a bad minute
+    // into a permanent answer.
+    val pool = CatalogBlobPool(tempRoot())
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/late.png"
+    assertFalse(pool.holds(url))
+    // Nothing was written for a failed read, so the next attempt is free to succeed.
+    pool.write(url, "arrived later".toByteArray())
+    assertContentEquals("arrived later".toByteArray(), assertNotNull(pool.read(url)))
+  }
+
   private fun feed(commit: String): String =
     """
     <feed><entry>

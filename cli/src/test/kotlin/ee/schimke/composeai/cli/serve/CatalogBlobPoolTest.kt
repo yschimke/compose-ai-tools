@@ -209,6 +209,65 @@ class CatalogBlobPoolTest {
   }
 
   @Test
+  fun `written bytes are read back by key and a stranger key is a miss`() {
+    val pool = CatalogBlobPool(root())
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/button/ideal.png"
+    val bytes = "a baked png".toByteArray()
+
+    assertNull(pool.read(url), "nothing was written yet")
+    pool.write(url, bytes)
+
+    assertContentEquals(bytes, assertNotNull(pool.read(url)))
+    assertNull(pool.read("https://raw.githubusercontent.com/o/r/$COMMIT/images/other.png"))
+  }
+
+  @Test
+  fun `a read whose blob was corrupted on disk is a miss, not wrong bytes`() {
+    // Same guarantee the produce-once lane gets, on the lane that answers request-path reads: the
+    // blob's name is its digest, so bytes that no longer hash to it are dropped rather than served.
+    val pool = CatalogBlobPool(root())
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/button/ideal.png"
+    val bytes = "a baked png".toByteArray()
+    pool.write(url, bytes)
+    pool.contentFile(sha(bytes)).writeBytes("tampered".toByteArray())
+
+    assertNull(pool.read(url))
+    assertEquals(1, pool.snapshot().corrupt)
+  }
+
+  @Test
+  fun `a written blob survives into a pool reopened over the same root`() {
+    val root = root()
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/button/ideal.png"
+    val bytes = "carried over".toByteArray()
+    CatalogBlobPool(root).write(url, bytes)
+
+    assertContentEquals(bytes, assertNotNull(CatalogBlobPool(root).read(url)))
+  }
+
+  @Test
+  fun `a hit does not re-stamp a blob that was already touched recently`() {
+    // Once the small-asset lane reads through this pool, a touch per hit is a metadata write on the
+    // request path. Re-stamping is throttled to a resolution the sweeper's hour-wide grace window
+    // cannot tell the difference at.
+    val now = AtomicLong(1_000_000L)
+    val pool = CatalogBlobPool(root(), clock = { now.get() })
+    val url = "https://raw.githubusercontent.com/o/r/$COMMIT/images/button/ideal.png"
+    val bytes = "a baked png".toByteArray()
+    pool.write(url, bytes)
+    val blob = pool.contentFile(sha(bytes))
+    val stamped = blob.lastModified()
+
+    now.addAndGet(CatalogBlobPool.TOUCH_INTERVAL_MILLIS / 2)
+    assertNotNull(pool.read(url))
+    assertEquals(stamped, blob.lastModified(), "a recent blob is not re-stamped")
+
+    now.addAndGet(CatalogBlobPool.TOUCH_INTERVAL_MILLIS)
+    assertNotNull(pool.read(url))
+    assertEquals(now.get(), blob.lastModified(), "once it is stale enough, the hit refreshes it")
+  }
+
+  @Test
   fun `sweep reclaims oldest-first down to the cap`() {
     val now = AtomicLong(1_000_000L)
     val pool = CatalogBlobPool(root(), maxBytes = 200, graceMillis = 0, clock = { now.get() })
