@@ -2537,9 +2537,13 @@ Two rules carry it:
   than handed to a classloader. The externalised resources were already checked this way against
   the digest their manifest declares; the pool extends the same rule to everything it holds.
 
-The pool is swept after the startup pass and after each later catalog publication — oldest-touched
-first, down to `--catalog-cache-max-bytes` (8 GB by default), sparing anything written in the last
-hour so the two replicas that overlap during a rolling update cannot reclaim each other's bytes.
+The pool is swept after the startup pass, after each later catalog publication, and on a periodic
+daemon tick — oldest-touched first, down to `--catalog-cache-max-bytes` (8 GB by default), sparing
+anything written in the last hour so the two replicas that overlap during a rolling update cannot
+reclaim each other's bytes. The tick is what keeps the ceiling true once **request-path** reads
+populate the pool: publication-time sweeps covered every writer only while every writer sat on the
+load path, and a lazily-fetched preview or an `?at=<sha>` history read admits a blob with no
+publication anywhere near it. Enforcement is a directory census, so it stays off the request path.
 Sweeping on every publication and not only at boot is what stops a box that regenerates several
 times a day accumulating each superseded revision's bundles for the life of the process; a rate
 limit keeps a burst of publications to one census. Eviction is always safe: the worst a reclaimed

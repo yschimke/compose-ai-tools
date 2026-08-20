@@ -821,6 +821,35 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
   }
 
   /**
+   * Periodic enforcement of the catalog blob cache's ceiling.
+   *
+   * The publication-time sweeps below were sufficient while **every** writer sat on the load path:
+   * a blob only ever arrived as part of a load, and a load is a publication. Caching request-path
+   * reads ends that invariant — a lazily-fetched baked PNG or an `?at=<sha>` history read admits a
+   * blob with no publication anywhere near it — so a box whose catalogs are not currently being
+   * republished could admit indefinitely, with nothing enforcing `--catalog-cache-max-bytes` until
+   * its next restart. On a public server holding a couple of dozen catalogs across twenty
+   * addressable revisions each, that is a volume filling quietly.
+   *
+   * A plain daemon ticker rather than a check on the write path: enforcement is a directory census,
+   * and the request path is exactly where that must not happen. [sweepCatalogBlobs]'s own rate
+   * limit then makes a tick that lands soon after a publication's sweep free.
+   */
+  private fun startCatalogBlobSweeper(): AutoCloseable {
+    val exec =
+      java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "serve-catalog-blob-sweep").apply { isDaemon = true }
+      }
+    exec.scheduleWithFixedDelay(
+      { runCatching { sweepCatalogBlobs() } },
+      CATALOG_BLOB_SWEEP_INTERVAL_MILLIS,
+      CATALOG_BLOB_SWEEP_INTERVAL_MILLIS,
+      java.util.concurrent.TimeUnit.MILLISECONDS,
+    )
+    return AutoCloseable { exec.shutdownNow() }
+  }
+
+  /**
    * Rate limiter for [sweepCatalogBlobs] — see there for why it is not a per-call-site decision.
    */
   private val lastCatalogBlobSweep = java.util.concurrent.atomic.AtomicLong()
@@ -1375,6 +1404,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
           worktrees,
           catalogWorktrees.takeIf { it !== worktrees },
           catalogPerPreviewPoolsCloseable,
+          catalogReg?.let { startCatalogBlobSweeper() },
         ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
@@ -1573,7 +1603,12 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
       mdnsModuleLabel = null,
       mdnsPreviewIds = null,
       closeables =
-        listOfNotNull(catalogReg?.loader, catalogRefresher, catalogPerPreviewPoolsCloseable),
+        listOfNotNull(
+          catalogReg?.loader,
+          catalogRefresher,
+          catalogPerPreviewPoolsCloseable,
+          catalogReg?.let { startCatalogBlobSweeper() },
+        ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
       catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
