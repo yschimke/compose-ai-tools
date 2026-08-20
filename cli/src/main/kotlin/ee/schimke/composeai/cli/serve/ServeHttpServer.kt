@@ -2800,6 +2800,11 @@ class ServeHttpServer(
   /** Join this page to its catalog's short-lived themed-thumbnail burst allocation. */
   private suspend fun RoutingContext.handleThemeRenderLease(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // This route mints nothing but permission to run a *burst of live theme renders*. A `preview`
+    // grant would be handed the lease and then refused every render it authorises, which is a
+    // confusing way to say no; refuse the ticket instead. (The release counterpart is deliberately
+    // ungated — handing capacity back is always welcome.)
+    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api = true)) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val grant =

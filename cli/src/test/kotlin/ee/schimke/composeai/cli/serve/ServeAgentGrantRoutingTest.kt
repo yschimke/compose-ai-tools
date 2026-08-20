@@ -432,9 +432,24 @@ class ServeAgentGrantRoutingTest {
   @Test
   fun `a preview grant is refused every route that puts the daemon to work`() {
     val preview = grantedToken(scope = "preview")
-    // Presence pings keep a daemon warm; the storybook frame has no baked lane at all.
+    // Presence pings keep a daemon warm; the storybook frame has no baked lane at all; the theme
+    // lease is permission to run a burst of live renders.
     assertEquals(403, post("/api/presence", "{}", token = preview).first)
     assertEquals(403, get("/iframe.html?id=Anything", token = preview).first)
+    assertEquals(403, post("/api/theme-render-lease", "{}", token = preview).first)
+  }
+
+  @Test
+  fun `a preview grant keeps every route that only replays what exists`() {
+    // The other half of the rule, and the one that keeps `preview` worth granting: reading the
+    // catalog, its pages and its already-rendered bytes must not require `live`.
+    val preview = grantedToken(scope = "preview")
+    for (path in listOf("/", "/api/previews", "/status", "/p/Anything", "/index.json")) {
+      assertTrue(
+        get(path, token = preview).first != 403,
+        "$path should be readable with a preview grant",
+      )
+    }
   }
 
   @Test
