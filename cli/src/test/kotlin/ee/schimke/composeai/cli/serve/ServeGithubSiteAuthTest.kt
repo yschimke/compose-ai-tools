@@ -248,6 +248,37 @@ class ServeGithubSiteAuthTest {
   }
 
   @Test
+  fun `a catalog with nothing behind a login does not invite one`() {
+    // A plain static bundle: no live stream to unlock, and no playground compiling against it. The
+    // sign-in would change nothing on this page, which is the dead affordance the viewer's own chip
+    // refuses to be — so the landing withholds the control even though the sign-in round-trips
+    // here perfectly well, as its own /status proves two lines down.
+    val dir = java.nio.file.Files.createTempDirectory("static-catalog").toFile()
+    dir.deleteOnExit()
+    java.io.File(dir, "index.html").writeText("<html></html>")
+    java.io.File(dir, "previews").mkdirs()
+    registry.register(
+      "m3-catalog",
+      host = ServeBundleHost(dir, label = "m3-catalog", title = "M3"),
+      pinned = true,
+    )
+
+    get("/", "m3.preview.coo.ee").use {
+      assertEquals(200, it.code)
+      assertFalse(
+        it.body!!.string().contains("cp-gh-auth"),
+        "a static catalog has no gated lane, so its landing must not offer a sign-in",
+      )
+    }
+    get("/status", "m3.preview.coo.ee").use {
+      assertTrue(
+        it.body!!.string().contains("cp-gh-auth"),
+        "…and the withholding is about the catalog's lanes, not about this host's round-trip",
+      )
+    }
+  }
+
+  @Test
   fun `a site host only shows the sign-in control when the sign-in can come back`() {
     // The header control follows the same predicate the card and viewer affordances always did:
     // a login that cannot return leaves the visitor signed out, so offering it is a dead end.
