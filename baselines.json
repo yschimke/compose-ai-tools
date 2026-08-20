@@ -2820,7 +2820,7 @@
     "functionName": "CircularProgressRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320-357c38a0.png",
-    "sha256": "ffa3021e3b7b4f6918c7f63550cdabb3f5969581e89cb77a04504ce0e3f7c0ed",
+    "sha256": "6dee71029e31222b853cdc25a0b657e4ca5545a8a3a79a9a8846b432d7183138",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote_width=320dp,height=240dp,dpi=320": {
@@ -2996,7 +2996,7 @@
     "functionName": "DisabledCircularProgressRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "DisabledCircularProgressRemote_width_200dp_height_200dp_dpi_320-4d8e778c.png",
-    "sha256": "0fa52b5c5437bce218663efc00983207223e6e437e5aee31ee8e7638eb98d244",
+    "sha256": "917ca6a56b88ded2364d5efc7e1fc696f0085b37f271298a85003c1acaaa568a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.DisabledRemoteButton_width=200dp,height=200dp,dpi=320": {
@@ -3060,7 +3060,7 @@
     "functionName": "IndeterminateCircularProgressMotionRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "IndeterminateCircularProgressMotionRemote_width_200dp_height_200dp_dpi_320-276f344c.gif",
-    "sha256": "066bcde58cfbd0d8dfc57680cb2132838b8f6a0c6c34fa8b934eda6ab0b6374b",
+    "sha256": "ce8748671ce7b62051690ff2554b55e9a1c82f606c621dd6fb2479c8e92fa57e",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.IndeterminateCircularProgressRemote_width=200dp,height=200dp,dpi=320": {
@@ -3068,7 +3068,7 @@
     "functionName": "IndeterminateCircularProgressRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "IndeterminateCircularProgressRemote_width_200dp_height_200dp_dpi_320-b60fdef2.png",
-    "sha256": "03e076c9f40748a19b5a191eb1546a66250a4777f797a26943db2c60921adf5d",
+    "sha256": "51e3202edc33b537ac6221f3fedf6615eaa359de23aec5a437e8e3db84ec0b8d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/ComponentVariantPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.ComponentVariantPreviewsKt.InteractivePageIndicatorRemote_width=200dp,height=200dp,dpi=320": {
@@ -3716,7 +3716,7 @@
     "functionName": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview-b1500f26.png",
-    "sha256": "0eb2e5114e58245efb0352101ed27a12758e15b13549c80bc3cc9ca79ecdcc2e",
+    "sha256": "fcce3b6841fa7a1ade3eb9064d2b154f07241e93bfa90087ec2710a9e4ecca6b",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview": {
@@ -3724,7 +3724,7 @@
     "functionName": "RemoteAnimatedCircularProgressIndicatorStandardPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview-012dea9c.png",
-    "sha256": "0eb2e5114e58245efb0352101ed27a12758e15b13549c80bc3cc9ca79ecdcc2e",
+    "sha256": "fcce3b6841fa7a1ade3eb9064d2b154f07241e93bfa90087ec2710a9e4ecca6b",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview": {
@@ -3764,7 +3764,7 @@
     "functionName": "RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview-53123345.gif",
-    "sha256": "fd0891797da6895623c69f86b38127aaf90ab154da59de1ae2e1dcc316f5fa70",
+    "sha256": "f319de6387bec38108f96715744a3eb95866207dcb515367327204a74d77fb0d",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
@@ -3772,7 +3772,7 @@
     "functionName": "RemoteIndeterminateCircularProgressIndicatorStandardPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteIndeterminateCircularProgressIndicatorStandardPreview-ce0e723c.gif",
-    "sha256": "4d03e72cc787baa37a45cdd2a67e9d4cfbedb40703e59b0b4aa789a95652c912",
+    "sha256": "52716f549bb7868213ce6358db7e47be21d1edde457b5f1b3384dcdf0840da3b",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview": {
