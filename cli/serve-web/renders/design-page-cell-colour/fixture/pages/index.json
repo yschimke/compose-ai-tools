@@ -1,0 +1,108 @@
+{
+  "version": 2,
+  "source": "figma",
+  "fileKey": "demoFileKey000",
+  "pages": [
+    {
+      "id": "shape",
+      "name": "Buttons",
+      "nodeId": "0:1",
+      "frame": {
+        "width": 900,
+        "height": 420
+      },
+      "image": {
+        "uri": "shape.svg",
+        "format": "svg"
+      },
+      "nodes": [
+        {
+          "nodeId": "1:1",
+          "name": "Style=Filled, Selected=Yes",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:1",
+          "link": "manifest",
+          "code": "ui/Buttons.kt#FilledButton",
+          "previewId": "com.example.Filled",
+          "confidence": "high"
+        },
+        {
+          "nodeId": "1:2",
+          "name": "Style=Filled, Selected=No",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:2",
+          "link": "manifest",
+          "code": "ui/Buttons.kt#FilledButton",
+          "previewId": "com.example.Filled_VARIANT_off",
+          "confidence": "high",
+          "cell": true
+        },
+        {
+          "nodeId": "1:3",
+          "name": "Style=Filled, Split=Yes",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:3",
+          "link": "manifest",
+          "code": "ui/Buttons.kt#FilledButton",
+          "previewId": "com.example.Filled_VARIANT_split",
+          "confidence": "high",
+          "cell": true
+        },
+        {
+          "nodeId": "1:4",
+          "name": "Style=Custom - Task",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:4",
+          "link": "unlinked"
+        },
+        {
+          "nodeId": "1:5",
+          "name": "Style=Outlined, Selected=Yes",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:5",
+          "link": "manifest",
+          "code": "ui/Buttons.kt#FilledButton",
+          "previewId": "com.example.Outlined",
+          "confidence": "high"
+        },
+        {
+          "nodeId": "1:6",
+          "name": "Style=Outlined, Selected=No",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:6",
+          "link": "manifest",
+          "code": "ui/Buttons.kt#FilledButton",
+          "previewId": "com.example.Outlined_VARIANT_off",
+          "confidence": "high",
+          "cell": true
+        },
+        {
+          "nodeId": "1:7",
+          "name": "Style=Outlined, Split=Yes",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:7",
+          "link": "manifest",
+          "code": "ui/Buttons.kt#FilledButton",
+          "previewId": "com.example.Outlined_VARIANT_split",
+          "confidence": "high",
+          "cell": true
+        },
+        {
+          "nodeId": "1:8",
+          "name": "Style=Custom - Task",
+          "depth": 2,
+          "type": "COMPONENT",
+          "ref": "figma:demoFileKey000/1:8",
+          "link": "unlinked"
+        }
+      ]
+    }
+  ]
+}
