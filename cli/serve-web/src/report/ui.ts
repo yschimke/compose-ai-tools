@@ -47,7 +47,129 @@ export function installCapture(): void {
                 ),
             );
     }
+    wireHandOff();
     render();
+}
+
+/** The two forms that open a prefilled issue: `/report-bug`'s, and a preview's own. */
+const REPORT_FORMS = ".cp-report-bug-form, .cp-report-form";
+
+/**
+ * Hand the capture back to the clipboard at the moment the issue form is submitted.
+ *
+ * **Why this is the fix for "images don't make it to the bug" (issue #4334).** They cannot. GitHub's
+ * new-issue form prefills from a URL and a URL carries a *body*; there is no query parameter for an
+ * attachment, and an image only becomes one by being pasted into GitHub's own editor, which uploads
+ * it to GitHub's storage. So the last few centimetres of the journey are always the reporter's
+ * clipboard, and the only thing this end can do is make sure the right thing is on it at the right
+ * moment — and say so.
+ *
+ * It was already copied ONCE, in [run], at the instant of capture. That is the wrong moment on its
+ * own and the report page is the proof: between the shutter and this button the reporter navigates
+ * to `/report-bug`, reads the report, and types a summary — a stretch of ordinary computer use in
+ * which copying something else is entirely normal, and every one of those overwrites the picture.
+ * Then the issue opens, the Screenshot section says paste, and what pastes is whatever they copied
+ * last. The capture is not lost — it is still in the list with a Copy button on it — but nothing
+ * ever told them that the paste they were about to do would produce the wrong thing.
+ *
+ * Copying inside the `submit` handler is what makes it work: it is a real user gesture, so the
+ * clipboard write is authorised (Safari's rule, which is why [copyPng] takes the blob as a promise
+ * rather than awaiting it first), and it is the last instant this tab controls before GitHub has
+ * focus.
+ *
+ * The NEWEST capture, because a clipboard holds one image and the newest is the one the pile's own
+ * eviction rule already treats as the most wanted. When there are others the note says so, since
+ * their Copy buttons are the only way to reach them and this page is where they still exist.
+ *
+ * Delegated from the document, for the same reason `chrome/reportLauncher.ts` delegates its own
+ * dismissal: [installCapture] runs once per page, and `.cp-report-form` is not necessarily the one
+ * that will be submitted. It is emitted by whichever surface bundle drew the preview, and the
+ * comparison wall replaces its own as the wall re-renders — so a snapshot taken at install time
+ * wires a form that is no longer in the document, and the failure is the silent one this whole
+ * change exists to remove: the issue opens, the paste produces whatever was last copied, and
+ * nothing anywhere says the hand-off did not happen.
+ */
+function wireHandOff(): void {
+    // Guarded on its OWN attribute rather than riding [installCapture]'s. Both bundles that reach
+    // this file can load it — the launcher fetches it when its panel opens, `/report-bug` on load —
+    // and a delegated listener cannot be de-duplicated by the element it is attached to the way a
+    // per-form one could. Two of these would copy twice and write the note twice for one submit.
+    const root = document.documentElement;
+    if (root.hasAttribute("data-cp-handoff-wired")) return;
+    root.setAttribute("data-cp-handoff-wired", "1");
+    document.addEventListener("submit", (event) => {
+        const form = event.target;
+        if (form instanceof HTMLElement && form.matches(REPORT_FORMS)) {
+            handOff();
+        }
+    });
+}
+
+/**
+ * Which page the report being submitted is ABOUT — not necessarily the one it is submitted from.
+ *
+ * On a preview's own form the two are the same page. On `/report-bug` they are not: that page is
+ * the report, and the page it reports is the `?from=` the footer form carried here. Reading it back
+ * is what lets [handOff] tell a capture taken for this report from one still lying in the pile.
+ *
+ * `from` is a path this server wrote and this page received; it is parsed for its pathname rather
+ * than string-compared, so a carried query cannot make it miss.
+ */
+function reportedPage(): string | null {
+    const from = new URLSearchParams(location.search).get("from");
+    if (!from) return location.pathname;
+    try {
+        return new URL(from, location.href).pathname;
+    } catch {
+        return null;
+    }
+}
+
+function handOff(): void {
+    const captures = readCaptures(sessionStore());
+    if (!captures.length) return;
+    // The newest capture OF THE PAGE BEING REPORTED. `sessionStorage` lasts as long as the tab, so
+    // a reporter who files one report with a screenshot and a second one later, from elsewhere,
+    // without taking another still has the first picture in the pile — and handing that one over
+    // while telling them to paste it attaches a screenshot of an unrelated page to the new issue.
+    // Silence is the right answer there: they did not take a picture for this report, the pile is
+    // still on screen with its Copy buttons, and the issue's own Screenshot section still asks.
+    const page = reportedPage();
+    const mine = captures.filter((c) => !!c.page && c.page === page);
+    const latest = mine[mine.length - 1];
+    if (!latest) return;
+    const rest =
+        mine.length > 1
+            ? ` The other ${mine.length - 1} are still here — press Copy on one to send it too.`
+            : "";
+    copyPng(blobFromDataUrl(latest.dataUrl)).then(
+        () =>
+            note(
+                `Your capture is on the clipboard — paste it into the issue's Screenshot section.${rest}`,
+            ),
+        () => {
+            note(
+                "The clipboard refused the capture. Press Copy on it here, then paste it into the issue's Screenshot section.",
+            );
+            // …and make sure that sentence is somewhere it can be read. On a preview page the note's
+            // only home is the capture block inside the launcher panel, which the capture flow
+            // closed to take the shot and the submit just closed again — so the one message that
+            // needs attention was being written into a drawer. A success needs no such rescue: the
+            // clipboard holds what it should and there is nothing to act on.
+            reveal();
+        },
+    );
+}
+
+/** Open every disclosure standing between a status note and the reporter. */
+function reveal(): void {
+    document.querySelectorAll<HTMLElement>(".cp-shot-note").forEach((el) => {
+        let box = el.closest("details");
+        while (box) {
+            box.open = true;
+            box = box.parentElement?.closest("details") ?? null;
+        }
+    });
 }
 
 /** Every list on the page, refreshed from the store. */
@@ -258,6 +380,10 @@ async function run(mode: Mode): Promise<void> {
         width: canvas.width,
         height: canvas.height,
         markdown,
+        // Stamped here, on the page it is a picture of, because nowhere later can recover it — and
+        // it is what lets the hand-off on `/report-bug` tell this report's screenshot from one the
+        // tab has simply been carrying around. See [Capture.page].
+        page: location.pathname,
     };
     const kept = addCapture(store, capture);
     render();
