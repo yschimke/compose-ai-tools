@@ -333,16 +333,18 @@ export function typographyDetail(annotation: Annotation): string {
  * rest of `detail` was parsed and then thrown away: a render whose capture resolved a shadow, an
  * effective alpha, a gradient's stops or a per-edge padding showed none of them anywhere in the
  * viewer. Values are already formatted server-side (`"16.0dp"`, `"#FF6750A4"`), so this only has to
- * order and join them; `box` is skipped because the row's own wording already says which rectangle
- * is being described.
+ * order and join them.
+ *
+ * Nothing is filtered out, `box` included — the compact label lists fill / radius / border and never
+ * says which rectangle they were measured on, so on a padded paint chain (where the theme box is the
+ * node's paint box and the Layout layer's box is its placement box) the tooltip is the only place
+ * that distinction exists. The server omits the key entirely for the ordinary case, so it appears
+ * exactly where it means something.
  */
 export function annotationTooltip(annotation: Annotation): string {
     const detail = annotation.detail ?? {};
     return Object.entries(detail)
-        .filter(
-            ([key, value]) =>
-                key !== "box" && value !== undefined && value !== null,
-        )
+        .filter(([, value]) => value !== undefined && value !== null)
         .map(([key, value]) => `${key} ${String(value)}`)
         .join(" · ");
 }

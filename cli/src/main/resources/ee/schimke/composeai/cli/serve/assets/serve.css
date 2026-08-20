@@ -2494,9 +2494,17 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   --cp-inspect-color: rgba(37, 99, 235, 0.9); }
 .cp-inspect-box[data-cp-kind="theme"] { --cp-inspect-color: rgba(214, 51, 108, 0.9); }
 /* The layout layer draws every slot box, so it nests far more densely than the others: a dotted,
-   fill-less rectangle reads as structure behind the styled boxes instead of covering them. */
+   fill-less rectangle reads as structure behind the styled boxes instead of covering them.
+   `pointer-events: none` on the rectangle is load-bearing, not tidiness — layout is the LAST layer
+   in the declared order, so its boxes are appended last and win hit testing, and its outermost box
+   covers the whole frame. A transparent interior still captures the pointer, so without this every
+   other layer's hover-to-highlight would die the moment Layout was ticked. The badge keeps its own
+   pointer events, so a layout box is still hoverable by its numbered marker (and from its legend
+   row, which drives the highlight from the other side). */
 .cp-inspect-box[data-cp-kind="layout"] { border-style: dotted; background: none;
-  --cp-inspect-color: rgba(13, 148, 136, 0.9); }
+  pointer-events: none; --cp-inspect-color: rgba(13, 148, 136, 0.9); }
+.cp-viewer[data-inspect="on"] .cp-inspect-box[data-cp-kind="layout"] .cp-inspect-badge {
+  pointer-events: auto; }
 .cp-inspect-box[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
 .cp-inspect-box[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
 .cp-inspect-box-active { border-width: 2px;

@@ -537,8 +537,8 @@ describe("annotationEntries", () => {
         assert.equal(
             entries[0].tooltip,
             "background #FF6750A4 · cornerRadius 20.0dp · elevation 6.0dp · " +
-                "padding top 8.0dp, end 16.0dp",
-            "`box` is the row's own wording, not a token",
+                "padding top 8.0dp, end 16.0dp · box paint",
+            "the label never says which rectangle it measured; only this does",
         );
     });
 

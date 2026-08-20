@@ -7,31 +7,41 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorGradient
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import ee.schimke.composeai.data.layoutinspector.SlotBounds
 import ee.schimke.composeai.data.theme.ThemePayload
 
 /**
  * Derive the viewer's **typography**, **theme** and **layout** inspection layers from a render's
- * own `compose/semantics` tree.
+ * own capture.
  *
  * The compare page reads [DesignAnnotation]s a producer authored into a bundle
  * ([ServeAnnotationStore]) — the spec side of a design ↔ code comparison. The viewer needs the same
  * shape for the *code* side, and the daemon already captures it: every semantics node carries its
  * resolved typographic identity ([ComposeSemanticsNode.typography] — the size, face, weight, line
  * height, and variation axes the render actually resolved), while [ThemePayload.consumers]
- * attributes that resolved style back to its Material typography role. Each semantics node also
- * carries its resolved container tokens ([ComposeSemanticsNode.tokens] — fill / border colour,
- * corner radius, shape). Projecting those onto [DesignAnnotation] means the viewer draws them with
- * exactly the numbered-box + legend idiom the compare page already uses, with no second overlay
- * model to maintain.
+ * attributes that resolved style back to its Material typography role. Projecting those onto
+ * [DesignAnnotation] means the viewer draws them with exactly the numbered-box + legend idiom the
+ * compare page already uses, with no second overlay model to maintain.
+ *
+ * **Two trees, deliberately.** Typography exists only on `compose/semantics`, so that layer is
+ * walked there. The container layers read `layout/inspector` instead, because that is the tree the
+ * facts actually live in: `LayoutInspectorProduct` is the canonical home for
+ * [ComposeSemanticsTokens] (they are modifier-derived, and that product models the modifier chain;
+ * `compose/semantics` merely mirrors them), and it walks every `LayoutNode` rather than only the
+ * nodes that carry semantics. A `Column(Modifier.padding(16.dp), Arrangement.spacedBy(8.dp))`
+ * declares no semantics at all, so on the semantics tree the very padding and gap these layers
+ * advertise are invisible. A capture without the layout product falls back to the semantics tree's
+ * mirrored tokens — fewer boxes, same projection — rather than dropping the layers.
  *
  * The **layout** layer is the code-side counterpart of the producer-authored
  * [AnnotationKind.LAYOUT] the compare page has always drawn on the reference side (issue #4328).
  * Until it existed the viewer could only inspect *paint* — fill, radius, type — and the redline
  * values a layout diff is actually argued in (the box's own size, its padding per edge, the
  * arrangement gap, a `defaultMinSize` floor) had no surface at all. Those are the same tokens the
- * published layout wireframe (`render-layout-wireframe-svg.mjs`) draws, read off the same
- * [ComposeSemanticsTokens], so the two agree by construction.
+ * published layout wireframe (`render-layout-wireframe-svg.mjs`) draws off the same tree, so the
+ * two agree by construction.
  *
  * No typography metrics are re-measured here, and no geometry is inferred: every number is one the
  * capture already resolved. Material roles use the theme producer's resolved-value attribution and
@@ -41,14 +51,14 @@ import ee.schimke.composeai.data.theme.ThemePayload
 object ServeDesignAnnotations {
 
   /**
-   * The typography, theme and layout annotations for [payload]'s tree, in depth-first order (the
-   * order the legend numbers them in).
+   * The typography, theme and layout annotations for one render, in depth-first order (the order
+   * the legend numbers them in).
    *
-   * Bounds are the nodes' `boundsInRoot` — absolute-to-root **render pixels**, the same space the
-   * served PNG is in, so the viewer scales one layer to the on-screen image and is done. (The theme
-   * layer prefers the node's captured paint box, which is in that same space.) A node with
-   * malformed or zero-area bounds is skipped; it can't be drawn and would only produce a legend row
-   * pointing at nothing.
+   * Bounds are absolute-to-root **render pixels** — `boundsInRoot` on the semantics tree,
+   * [LayoutInspectorNode.bounds] on the layout tree, and the node's captured paint box where the
+   * theme layer has one. All are the space the served PNG is in, so the viewer scales one layer to
+   * the on-screen image and is done. A node with malformed or zero-area bounds is skipped; it can't
+   * be drawn and would only produce a legend row pointing at nothing.
    *
    * `enclosing` threads the nearest **annotated** layout box down the walk rather than the literal
    * parent, so a chain of wrappers that all reproduce one box collapses to one rectangle instead of
@@ -57,24 +67,51 @@ object ServeDesignAnnotations {
   fun annotations(
     payload: ComposeSemanticsPayload,
     theme: ThemePayload? = null,
+    layout: LayoutInspectorPayload? = null,
   ): List<DesignAnnotation> {
     val out = mutableListOf<DesignAnnotation>()
     val typographyTokensByNode = theme.typographyTokensByNode()
-    fun walk(node: ComposeSemanticsNode, enclosing: SlotBounds?) {
+    // The semantics walk always carries typography; it carries the container layers too only when
+    // there is no layout tree to take them from, so the two trees can never both describe one node.
+    val containersFromSemantics = layout == null
+    fun walkSemantics(node: ComposeSemanticsNode, enclosing: AnnotationBounds?) {
       val bounds = SlotBounds.parse(node.boundsInRoot)?.takeIf { it.hasArea() }
       var nextEnclosing = enclosing
       if (bounds != null) {
         typographyAnnotation(node, bounds, typographyTokensByNode[node.nodeId].orEmpty())
           ?.let(out::add)
-        themeAnnotation(node, bounds)?.let(out::add)
-        layoutAnnotation(node, bounds, enclosing)?.let {
-          out.add(it)
-          nextEnclosing = bounds
+        if (containersFromSemantics) {
+          val box = bounds.toAnnotationBounds()
+          val role = node.role ?: node.testTag ?: node.textSnippet()
+          themeAnnotation(node.tokens, box, role)?.let(out::add)
+          layoutAnnotation(node.tokens, box, enclosing, role)?.let {
+            out.add(it)
+            nextEnclosing = box
+          }
         }
       }
-      node.children.forEach { walk(it, nextEnclosing) }
+      node.children.forEach { walkSemantics(it, nextEnclosing) }
     }
-    walk(payload.root, null)
+    walkSemantics(payload.root, null)
+
+    if (layout != null) {
+      fun walkLayout(node: LayoutInspectorNode, enclosing: AnnotationBounds?) {
+        // An unplaced node was measured but never positioned, so its bounds describe nowhere on
+        // the frame.
+        val box = node.bounds.toAnnotationBounds()?.takeIf { node.placed }
+        var nextEnclosing = enclosing
+        if (box != null) {
+          val role = node.displayName ?: node.component
+          themeAnnotation(node.tokens, box, role)?.let(out::add)
+          layoutAnnotation(node.tokens, box, enclosing, role)?.let {
+            out.add(it)
+            nextEnclosing = box
+          }
+        }
+        node.children.forEach { walkLayout(it, nextEnclosing) }
+      }
+      walkLayout(layout.root, null)
+    }
     return out
   }
 
@@ -176,8 +213,12 @@ object ServeDesignAnnotations {
    * one the fill and ring were actually drawn into — outlining the placement box instead reports a
    * radius against geometry that was never painted.
    */
-  private fun themeAnnotation(node: ComposeSemanticsNode, bounds: SlotBounds): DesignAnnotation? {
-    val tokens = node.tokens ?: return null
+  private fun themeAnnotation(
+    tokens: ComposeSemanticsTokens?,
+    bounds: AnnotationBounds,
+    role: String?,
+  ): DesignAnnotation? {
+    if (tokens == null) return null
     val parts =
       listOfNotNull(
         tokens.backgroundColor?.let { "fill $it" },
@@ -190,12 +231,12 @@ object ServeDesignAnnotations {
         "clip".takeIf { tokens.clipsContent == true },
       )
     if (parts.isEmpty()) return null
-    val paintBox = tokens.paintBox?.toAnnotationBounds()
+    val paintBox = tokens.paintBox?.toAnnotationBounds()?.takeIf { it != bounds }
     return DesignAnnotation(
       kind = AnnotationKind.THEME,
-      bounds = paintBox ?: bounds.toAnnotationBounds(),
+      bounds = paintBox ?: bounds,
       label = parts.joinToString(" · "),
-      role = node.role ?: node.testTag ?: node.textSnippet(),
+      role = role,
       detail = themeDetail(tokens, paintBox != null),
     )
   }
@@ -210,11 +251,11 @@ object ServeDesignAnnotations {
    * second rectangle on the same pixels and a legend row pointing at the row above it.
    */
   private fun layoutAnnotation(
-    node: ComposeSemanticsNode,
-    bounds: SlotBounds,
-    enclosing: SlotBounds?,
+    tokens: ComposeSemanticsTokens?,
+    bounds: AnnotationBounds,
+    enclosing: AnnotationBounds?,
+    role: String?,
   ): DesignAnnotation? {
-    val tokens = node.tokens
     val shapesLayout =
       tokens != null &&
         (tokens.padding != null ||
@@ -223,11 +264,9 @@ object ServeDesignAnnotations {
           tokens.minWidth != null ||
           tokens.minHeight != null)
     if (bounds == enclosing && !shapesLayout) return null
-    val width = bounds.right - bounds.left
-    val height = bounds.bottom - bounds.top
     val parts =
       listOfNotNull(
-        "${width}×${height}px",
+        "${bounds.width}×${bounds.height}px",
         tokens?.padding?.let { insetsText("pad", it) },
         tokens?.paintInset?.let { insetsText("paint inset", it) },
         tokens?.gap?.let { "gap $it" },
@@ -235,9 +274,9 @@ object ServeDesignAnnotations {
       )
     return DesignAnnotation(
       kind = AnnotationKind.LAYOUT,
-      bounds = bounds.toAnnotationBounds(),
+      bounds = bounds,
       label = parts.joinToString(" · "),
-      role = node.role ?: node.testTag ?: node.textSnippet(),
+      role = role,
       detail = layoutDetail(bounds, tokens),
     )
   }
@@ -337,20 +376,22 @@ object ServeDesignAnnotations {
     tokens.padding?.let { insets -> insetsDetail(insets)?.let { put("padding", it) } }
     tokens.paintInset?.let { insets -> insetsDetail(insets)?.let { put("paintInset", it) } }
     tokens.gap?.let { put("gap", it) }
-    // Which box the numbered rectangle is on. Without it a radius quoted against the paint box and
-    // a size quoted against the placement box read as one measurement of one rectangle.
-    put("box", if (paintBoxAnchored) "paint" else "placement")
+    // Which rectangle the numbered box is on, present only when it is NOT the node's placement box
+    // — otherwise every ordinary container would carry a `box placement` row saying nothing. The
+    // padded paint chain this exists for is exactly the case where the label's radius and the
+    // Layout layer's size describe two different rectangles, and nothing else says so.
+    if (paintBoxAnchored) put("box", "paint")
   }
 
   /** Geometry first — the layout layer's whole point — then the tokens that shaped it. */
   private fun layoutDetail(
-    bounds: SlotBounds,
+    bounds: AnnotationBounds,
     tokens: ComposeSemanticsTokens?,
   ): Map<String, String> = buildMap {
-    put("width", "${bounds.right - bounds.left}px")
-    put("height", "${bounds.bottom - bounds.top}px")
-    put("x", "${bounds.left}px")
-    put("y", "${bounds.top}px")
+    put("width", "${bounds.width}px")
+    put("height", "${bounds.height}px")
+    put("x", "${bounds.x}px")
+    put("y", "${bounds.y}px")
     tokens?.padding?.let { insets -> insetsDetail(insets)?.let { put("padding", it) } }
     tokens?.paintInset?.let { insets -> insetsDetail(insets)?.let { put("paintInset", it) } }
     tokens?.gap?.let { put("gap", it) }
@@ -371,7 +412,15 @@ object ServeDesignAnnotations {
     return parts.takeIf { it.isNotEmpty() }?.joinToString(", ")
   }
 
-  /** All the gradient's stops, since the label only had room for its endpoints. */
+  /**
+   * All the gradient's stops (the label only had room for its endpoints) **and its direction**.
+   *
+   * The direction is not decoration: two brushes with identical colours and stops paint visibly
+   * differently when one runs left-to-right and the other top-to-bottom, so a detail map that
+   * serialised only the colours could not tell them apart — and this map is what a machine consumer
+   * diffs. Named where the axis is one of the three obvious ones, and given as its unit-space
+   * endpoints otherwise.
+   */
   private fun gradientDetail(gradient: LayoutInspectorGradient): String {
     val stops = gradient.stops
     val colours =
@@ -379,7 +428,20 @@ object ServeDesignAnnotations {
         val at = stops?.getOrNull(index)
         if (at == null) colour else "$colour@${trimDouble(at.toDouble())}"
       }
-    return colours.joinToString(" → ")
+    return "${colours.joinToString(" → ")} (${gradientDirection(gradient)})"
+  }
+
+  private fun gradientDirection(gradient: LayoutInspectorGradient): String {
+    val dx = gradient.endX - gradient.startX
+    val dy = gradient.endY - gradient.startY
+    val endpoints =
+      "${trimDouble(gradient.startX.toDouble())},${trimDouble(gradient.startY.toDouble())}" +
+        " → ${trimDouble(gradient.endX.toDouble())},${trimDouble(gradient.endY.toDouble())}"
+    return when {
+      dx != 0f && dy == 0f -> if (dx > 0) "horizontal" else "horizontal, reversed"
+      dy != 0f && dx == 0f -> if (dy > 0) "vertical" else "vertical, reversed"
+      else -> endpoints
+    }
   }
 
   /** `1.0` → `"1"`, `0.5` → `"0.5"` — a token value, not a float dump. */

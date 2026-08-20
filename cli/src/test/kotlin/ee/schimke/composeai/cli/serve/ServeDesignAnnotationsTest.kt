@@ -6,6 +6,9 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorGradient
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -38,6 +41,34 @@ class ServeDesignAnnotationsTest {
 
   private fun annotationsOf(root: ComposeSemanticsNode) =
     ServeDesignAnnotations.annotations(ComposeSemanticsPayload(root))
+
+  /** A `LayoutNode` as `layout/inspector` reports it: no semantics needed, and none implied. */
+  private fun layoutNode(
+    nodeId: String = "1",
+    component: String = "Box",
+    displayName: String? = null,
+    bounds: LayoutInspectorBounds = LayoutInspectorBounds(0, 0, 100, 50),
+    tokens: ComposeSemanticsTokens? = null,
+    placed: Boolean = true,
+    children: List<LayoutInspectorNode> = emptyList(),
+  ) =
+    LayoutInspectorNode(
+      nodeId = nodeId,
+      component = component,
+      displayName = displayName,
+      bounds = bounds,
+      size = LayoutInspectorSize(bounds.right - bounds.left, bounds.bottom - bounds.top),
+      placed = placed,
+      tokens = tokens,
+      children = children,
+    )
+
+  /** The projection as the render host drives it: a semantics tree AND a layout tree. */
+  private fun annotationsOf(semantics: ComposeSemanticsNode, layout: LayoutInspectorNode) =
+    ServeDesignAnnotations.annotations(
+      ComposeSemanticsPayload(semantics),
+      layout = LayoutInspectorPayload(layout),
+    )
 
   private fun themeOf(root: ComposeSemanticsNode) =
     annotationsOf(root).single { it.kind == AnnotationKind.THEME }
@@ -99,7 +130,10 @@ class ServeDesignAnnotationsTest {
       )
 
     assertEquals("fill gradient #FF6750A4→#FF625B71", annotation.label)
-    assertEquals("#FF6750A4@0 → #FF625B71@1", annotation.detail["backgroundGradient"])
+    assertEquals(
+      "#FF6750A4@0 → #FF625B71@1 (horizontal)",
+      annotation.detail["backgroundGradient"],
+    )
   }
 
   @Test
@@ -124,10 +158,30 @@ class ServeDesignAnnotationsTest {
 
   @Test
   fun `theme falls back to the placement box when no paint box was captured`() {
+    // And says nothing about which box: `box placement` on every ordinary container is a row that
+    // carries no information. The key marks the exception, not the rule.
     val annotation = themeOf(node(tokens = ComposeSemanticsTokens(backgroundColor = "#FF000000")))
 
     assertEquals(AnnotationBounds(x = 0, y = 0, width = 100, height = 50), annotation.bounds)
-    assertEquals("placement", annotation.detail["box"])
+    assertNull(annotation.detail["box"])
+  }
+
+  @Test
+  fun `a paint box identical to the placement box is not called out either`() {
+    val annotation =
+      themeOf(
+        node(
+          bounds = "0,0,100,50",
+          tokens =
+            ComposeSemanticsTokens(
+              backgroundColor = "#FF000000",
+              paintBox = LayoutInspectorBounds(left = 0, top = 0, right = 100, bottom = 50),
+            ),
+        )
+      )
+
+    assertEquals(AnnotationBounds(x = 0, y = 0, width = 100, height = 50), annotation.bounds)
+    assertNull(annotation.detail["box"])
   }
 
   @Test
@@ -250,5 +304,113 @@ class ServeDesignAnnotationsTest {
     assertTrue(annotation.label.contains("radius 20.0px"))
     assertEquals("20.0px", annotation.detail["cornerRadiusPx"])
     assertNull(annotation.detail["cornerRadius"])
+  }
+
+  @Test
+  fun `the layout tree supplies containers the semantics tree cannot see`() {
+    // The case the layer exists for: `Column(Modifier.padding(16.dp), Arrangement.spacedBy(8.dp))`
+    // declares no semantics at all, so walking the semantics tree finds only the text inside it and
+    // the very padding and gap this layer advertises are silently absent.
+    val semantics = node(bounds = "16,16,184,64")
+    val layout =
+      layoutNode(
+        component = "Column",
+        bounds = LayoutInspectorBounds(0, 0, 200, 100),
+        tokens =
+          ComposeSemanticsTokens(
+            padding = ComposeSemanticsInsets("16.0dp", "16.0dp", "16.0dp", "16.0dp"),
+            gap = "8.0dp",
+          ),
+        children =
+          listOf(layoutNode(nodeId = "2", bounds = LayoutInspectorBounds(16, 16, 184, 64))),
+      )
+
+    val boxes = annotationsOf(semantics, layout).filter { it.kind == AnnotationKind.LAYOUT }
+
+    assertEquals(listOf("200×100px · pad 16.0dp · gap 8.0dp", "168×48px"), boxes.map { it.label })
+    assertEquals("Column", boxes[0].role)
+  }
+
+  @Test
+  fun `container layers come from ONE tree, never both`() {
+    // Both trees carry the same mirrored tokens, so projecting both would draw every container
+    // twice — two boxes and two legend rows for one rectangle.
+    val tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4")
+    val all =
+      annotationsOf(
+        node(bounds = "0,0,100,50", tokens = tokens),
+        layoutNode(bounds = LayoutInspectorBounds(0, 0, 100, 50), tokens = tokens),
+      )
+
+    assertEquals(1, all.count { it.kind == AnnotationKind.THEME })
+    assertEquals(1, all.count { it.kind == AnnotationKind.LAYOUT })
+  }
+
+  @Test
+  fun `a capture with no layout tree still gets both container layers`() {
+    // A daemon too old to know `layout/inspector` must not lose the layers entirely: the semantics
+    // tree mirrors the same tokens, so it falls back to fewer boxes rather than none.
+    val all = annotationsOf(node(tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4")))
+
+    assertEquals(1, all.count { it.kind == AnnotationKind.THEME })
+    assertEquals(1, all.count { it.kind == AnnotationKind.LAYOUT })
+  }
+
+  @Test
+  fun `an unplaced layout node describes nowhere on the frame`() {
+    // Measured but never positioned: its bounds point at a rectangle the render does not contain.
+    val boxes =
+      annotationsOf(
+          node(),
+          layoutNode(
+            bounds = LayoutInspectorBounds(0, 0, 200, 100),
+            children =
+              listOf(
+                layoutNode(
+                  nodeId = "2",
+                  bounds = LayoutInspectorBounds(0, 0, 40, 40),
+                  placed = false,
+                )
+              ),
+          ),
+        )
+        .filter { it.kind == AnnotationKind.LAYOUT }
+
+    assertEquals(listOf("200×100px"), boxes.map { it.label })
+  }
+
+  @Test
+  fun `a layout node is named by its friendly label before its own class`() {
+    val boxes =
+      annotationsOf(
+          node(),
+          layoutNode(component = "Box", displayName = "IconButton"),
+        )
+        .filter { it.kind == AnnotationKind.LAYOUT }
+
+    assertEquals("IconButton", boxes.single().role)
+  }
+
+  @Test
+  fun `two gradients that differ only in direction do not project identically`() {
+    fun detailFor(endX: Float, endY: Float) =
+      themeOf(
+          node(
+            tokens =
+              ComposeSemanticsTokens(
+                backgroundGradient =
+                  LayoutInspectorGradient(
+                    colors = listOf("#FF000000", "#FFFFFFFF"),
+                    endX = endX,
+                    endY = endY,
+                  )
+              )
+          )
+        )
+        .detail["backgroundGradient"]
+
+    assertEquals("#FF000000 → #FFFFFFFF (horizontal)", detailFor(endX = 1f, endY = 0f))
+    assertEquals("#FF000000 → #FFFFFFFF (vertical)", detailFor(endX = 0f, endY = 1f))
+    assertEquals("#FF000000 → #FFFFFFFF (0,0 → 1,1)", detailFor(endX = 1f, endY = 1f))
   }
 }
