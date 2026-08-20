@@ -1423,7 +1423,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
             it.seedInitialHeads(loaded)
-            it.start()
+            // The poller is what the interval switches off; the manual route stays either way.
+            if (catalogRefreshSeconds > 0) it.start()
           }
         }
       },
@@ -1622,7 +1623,8 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
             it.seedInitialHeads(loaded)
-            it.start()
+            // The poller is what the interval switches off; the manual route stays either way.
+            if (catalogRefreshSeconds > 0) it.start()
           }
         }
       },
@@ -3410,7 +3412,13 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     // Also built for an admin-enabled server with no configured catalogs: the entries are read from
     // the tracker per pass, so a catalog published at runtime starts being polled without a
     // restart.
-    if (catalogRefreshSeconds <= 0 || !needsCatalogMachinery) return null
+    // Deliberately NOT gated on the poll interval. `--catalog-refresh-interval 0` turns the
+    // background poller off, which is a statement about cadence, not about whether an operator may
+    // ask. Returning null here also took away `POST /<system>/refresh` — so a box that had opted
+    // out of polling could clear its blob cache and then have no way to force the re-read the
+    // clear was the first half of. The interval decides only whether [start] is called; see the
+    // `onStarted` hooks.
+    if (!needsCatalogMachinery) return null
     // Read from the tracker per pass, not from the startup refs: a catalog published through the
     // admin API must start being polled without a restart (and a retired one must stop).
     val entries = {

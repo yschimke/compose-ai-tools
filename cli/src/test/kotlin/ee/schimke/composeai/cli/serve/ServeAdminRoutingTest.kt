@@ -32,6 +32,8 @@ class ServeAdminRoutingTest {
 
   private val adminToken = "admin-secret"
 
+  private val refreshes = mutableListOf<String>()
+
   /** A real pool, so the cache-clearing route is exercised against actual blobs on disk. */
   private val blobPool =
     CatalogBlobPool(Files.createTempDirectory("admin-blobs").toFile().also { it.deleteOnExit() })
@@ -140,6 +142,10 @@ class ServeAdminRoutingTest {
         themeOptimizerAdmin = optimizerWork,
         catalogCacheStats = { blobPool.snapshot() },
         catalogCacheClear = { blobPool.clear() },
+        catalogRefresh = { system, force ->
+          refreshes += if (force) "$system!force" else system
+          CatalogRefreshResult.CURRENT
+        },
         adminToken = adminToken,
         wasmCatalogs = wasmCatalogs,
       )
@@ -192,6 +198,23 @@ class ServeAdminRoutingTest {
     assertEquals(404, send("/admin/catalogs", token = "wrong").first)
     assertEquals(404, send("/admin/catalogs", method = "POST", body = "{}", token = null).first)
     assertEquals(200, send("/admin/catalogs").first)
+  }
+
+  @Test
+  fun `forcing a refresh needs the admin token, and without it does no work`() {
+    // The counterpart to the public-server refusal: with the credential the operator configured,
+    // `?force=1` reaches the refresher; without it the request is refused the way every other
+    // admin action is, and nothing is reloaded.
+    assertEquals(404, send("/compose-m3/refresh?force=1", method = "POST", token = null).first)
+    assertEquals(404, send("/compose-m3/refresh?force=1", method = "POST", token = "wrong").first)
+    assertTrue(refreshes.isEmpty(), "a refused force must do no remote work: $refreshes")
+
+    assertEquals(200, send("/compose-m3/refresh?force=1", method = "POST").first)
+    assertEquals(listOf("compose-m3!force"), refreshes)
+
+    // An ordinary refresh stays open to any browser on this public box.
+    assertEquals(200, send("/compose-m3/refresh", method = "POST", token = null).first)
+    assertEquals(listOf("compose-m3!force", "compose-m3"), refreshes)
   }
 
   @Test

@@ -2600,9 +2600,16 @@ hits into them would make a warming cache look like a quietening branch. `cached
 Two operator affordances, deliberately separate because they answer different questions:
 
 ```
-DELETE /admin/catalog-cache          # discard every cached byte (admin token)
+DELETE /admin/catalog-cache          # discard every cached byte
 POST   /<system>/refresh?force=1     # re-read this catalog even if its branch has not moved
 ```
+
+**Both need the admin token**, including `?force=1` on a box that is otherwise open for browsing. An
+ordinary refresh is safe to hand to any visitor because it short-circuits on an unchanged head — a
+repeated call costs one `git ls-remote` — but forcing removes that short-circuit, so an anonymous
+caller could drive a full re-stage (and, with a cold pool, a bundle re-download) in a loop. A server
+with no `--admin-token` configured therefore has neither affordance at all, rather than having them
+open to everyone.
 
 `DELETE /admin/catalog-cache` is **whole-pool, not per catalog**, and that is not a shortcut. Blobs
 are named by their own digest and shared between systems on purpose — a font fetched for one catalog
@@ -2614,18 +2621,27 @@ bandwidth. It responds with the pool's state afterwards, in the same shape `/sta
 `?force=1` exists because the ordinary refresh short-circuits on an unchanged branch head — the
 thing that makes polling cheap, and right almost always, but it leaves no way to say *read it again
 anyway*. Together the two are the full "prove it from the branch" sequence: clear the pool, then
-force a refresh.
+force a refresh. The manual route is available even with `--catalog-refresh-interval 0`: that flag
+turns the background *poller* off, which is a statement about cadence rather than about whether an
+operator may ask.
 
 #### Reading whether it is working
 
 `/status.json` gains a whole-box **`catalogCache`** row: `blobs`, `bytes` against `maxBytes`, `hits`,
 `misses`, `writes`, `evicted`, `corrupt`.
 
-The pair to watch is `branchFetch.cached` against `catalogCache.hits` — they count the same event
-from the two ends — and both against `branchFetch.attempted`. Hits climbing while `attempted`
-flattens across a restart is the feature working. `corrupt` above zero says a volume is losing
-bytes, since every blob is named by its own digest and re-verified on read. `blobs`/`bytes` against
-`maxBytes` says whether the sweeper is keeping up.
+`hits` is the **aggregate** across all three lanes the pool serves — small assets, the executable
+bundles, and the content-addressed resource pool — while `branchFetch.cached` counts only the
+small-asset subset. So `hits` is normally the larger, and the gap between them is the executable
+tier; they are not two views of one number, and reading them as one would make a healthy warm start
+look inconsistent. What says the feature is working is either of them climbing while
+`branchFetch.attempted` flattens across a restart.
+
+`corrupt` above zero says a volume is losing bytes, since every blob is named by its own digest and
+re-verified on read. `blobs`/`bytes` against `maxBytes` says whether the sweeper is keeping up —
+both are published by the last sweep rather than censused per request, so they lag a write by at
+most one sweep interval; `/status.json` is polled, and an occupancy walk there would grow with
+exactly the thing the cache exists to grow.
 
 What this does **not** yet do is let a restart serve a catalog before it has talked to the branch.
 The manifests are read from the pool now rather than the network, but the per-system directory is

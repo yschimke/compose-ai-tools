@@ -291,6 +291,79 @@ class CatalogBlobPoolTest {
   }
 
   @Test
+  fun `occupancy is published by the last census, not measured per read`() {
+    // /status.json is polled, so a snapshot must not walk the pool. Proven by changing the
+    // filesystem behind the pool's back: a reported count that did not move is a reported count
+    // that was not measured, and the next sweep is what corrects it.
+    val pool = CatalogBlobPool(root(), graceMillis = 0)
+    val bytes = "a baked png".toByteArray()
+    pool.write("https://raw.githubusercontent.com/o/r/$COMMIT/images/a.png", bytes)
+    assertEquals(1, pool.snapshot().blobs, "a write advances the published census")
+
+    assertTrue(pool.contentFile(sha(bytes)).delete())
+
+    assertEquals(1, pool.snapshot().blobs, "still reporting what it last measured")
+    assertEquals(0, pool.sweep().blobs, "the sweep is what re-measures")
+    assertEquals(0, pool.snapshot().blobs)
+  }
+
+  @Test
+  fun `clearing counts blobs as evicted and not the pointers naming them`() {
+    // Deduplication means many keys can name one blob. Counting pointers too would let a clear
+    // report more reclaimed than ever existed, in the metric an operator reads to check it worked.
+    val pool = CatalogBlobPool(root())
+    val bytes = "one shared asset".toByteArray()
+    pool.write("https://raw.githubusercontent.com/o/r/${"a".repeat(40)}/images/a.png", bytes)
+    pool.write("https://raw.githubusercontent.com/o/r/${"b".repeat(40)}/images/a.png", bytes)
+    pool.write("https://raw.githubusercontent.com/o/r/${"c".repeat(40)}/images/a.png", bytes)
+    assertEquals(1, pool.snapshot().blobs, "three keys, one deduplicated blob")
+
+    val after = pool.clear()
+
+    assertEquals(0, after.blobs)
+    assertEquals(0, after.bytes)
+    assertEquals(1, after.evicted, "one blob went, not three")
+  }
+
+  @Test
+  fun `clearing reclaims abandoned scratch files too`() {
+    // A process killed mid-produce leaves a bundle-sized file under tmp/ that no census counts and
+    // no read will ever want. Without this an operator could clear the cache, be told it holds
+    // nothing, and still find the volume full.
+    val root = root()
+    val pool = CatalogBlobPool(root)
+    pool.write("https://raw.githubusercontent.com/o/r/$COMMIT/images/a.png", "real".toByteArray())
+    val scratch =
+      File(root, CatalogBlobPool.TEMP_DIR).let {
+        it.mkdirs()
+        File(it, "produce-deadproc-1").apply { writeBytes(ByteArray(4096)) }
+      }
+
+    pool.clear()
+
+    assertFalse(scratch.exists(), "an abandoned scratch file is not left behind by a clear")
+  }
+
+  @Test
+  fun `sweeping reclaims scratch older than the grace window and spares the rest`() {
+    // Same reasoning as the clear, but bounded: this runs on a timer while writers are live, so a
+    // scratch file younger than the grace window may be one of theirs.
+    val now = AtomicLong(1_000_000L)
+    val root = root()
+    val pool = CatalogBlobPool(root, graceMillis = 60_000, clock = { now.get() })
+    val tmp = File(root, CatalogBlobPool.TEMP_DIR).apply { mkdirs() }
+    val stale = File(tmp, "produce-old-1").apply { writeBytes(ByteArray(16)) }
+    val live = File(tmp, "produce-new-1").apply { writeBytes(ByteArray(16)) }
+    assertTrue(stale.setLastModified(now.get() - 120_000))
+    assertTrue(live.setLastModified(now.get()))
+
+    pool.sweep()
+
+    assertFalse(stale.exists(), "scratch from a process that is gone")
+    assertTrue(live.exists(), "scratch a live writer may still be filling")
+  }
+
+  @Test
   fun `sweep reclaims oldest-first down to the cap`() {
     val now = AtomicLong(1_000_000L)
     val pool = CatalogBlobPool(root(), maxBytes = 200, graceMillis = 0, clock = { now.get() })
