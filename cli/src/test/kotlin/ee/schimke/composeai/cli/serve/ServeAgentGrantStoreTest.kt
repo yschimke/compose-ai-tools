@@ -287,15 +287,19 @@ class ServeAgentGrantStoreTest {
 
   @Test
   fun `overflow never strands a token the agent has not collected yet`() {
+    // This used to assert the *mechanism* — that a new ask was refused rather than evicting the
+    // uncollected approval. The mechanism changed (an approval no longer spends the pending budget
+    // at all, so there is nothing to refuse), but the guarantee it was protecting has not, so the
+    // test now states that instead: fill the pending budget and the uncollected token still
+    // arrives.
     val store = store(maxPendingRequests = 2)
     val approved = store.ask()
     store.approve(approved.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
-    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
-    // The map is full and the only resolved entry is an approval nobody has polled for yet, so the
-    // new ask is refused rather than deleting a live credential its owner can never fetch again.
-    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    // Saturate the pending budget, then keep asking — every one of these is refused or admitted on
+    // its own merits, and none of them may cost the approval above its credential.
+    repeat(6) { store.openRequest("filler-$it", "10.9.9.9", ServeAgentGrantScope.PREVIEW, 600) }
     val polled = store.poll(approved.id, approved.deviceSecret)
-    assertTrue(polled is ServeAgentGrantStore.Poll.Approved)
+    assertTrue(polled is ServeAgentGrantStore.Poll.Approved, "got $polled")
   }
 
   @Test
@@ -429,6 +433,45 @@ class ServeAgentGrantStoreTest {
     now += (store.requestTtlSeconds + 5) * 1000
     // The grant expired too, so the record owes nobody anything and goes.
     assertNull(store.request(request.id))
+  }
+
+  @Test
+  fun `retained approvals do not consume the pending-request budget`() {
+    // Two populations, two reasons to be bounded. Pending requests are what an anonymous caller can
+    // create at will; a retained approval exists only while its grant does, and grants have their
+    // own cap. Counting both against one number made the caps fight: an operator asking for more
+    // concurrent grants than the request cap could never get them, with nothing to explain why.
+    val store = store(maxPendingRequests = 2, maxActiveGrants = 8)
+    // Fill the map with approvals whose grants are all live.
+    val approved =
+      (1..5).map { i ->
+        val r = store.ask(ttl = 3600)
+        store.approve(r.id, "@yuri", ServeAgentGrantScope.LIVE, 3600)
+        r
+      }
+    // …and a fresh request still gets in, because none of those is pending.
+    assertNotNull(
+      store.openRequest("new", "ip", ServeAgentGrantScope.PREVIEW, 600),
+      "retained approvals must not spend the pending budget",
+    )
+    // Every one of those grants is still collectable.
+    for (r in approved) {
+      assertTrue(
+        store.poll(r.id, r.deviceSecret) is ServeAgentGrantStore.Poll.Approved,
+        "a live grant was shed to admit a new request",
+      )
+    }
+  }
+
+  @Test
+  fun `the pending cap still bounds what an anonymous caller can create`() {
+    val store = store(maxPendingRequests = 2)
+    assertNotNull(store.openRequest("a", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNotNull(store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    assertNull(
+      store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600),
+      "a third pending request must be refused",
+    )
   }
 
   @Test
