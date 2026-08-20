@@ -2235,6 +2235,27 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   line-height: 1.5; }
 .cp-source-note--warn { color: light-dark(#573100, #ffd8a3); }
 
+/* The API reference list under the snippet: the KDoc page for every platform symbol the code
+   above names. A wrapping row of chips rather than a bulleted list — a component page's snippet
+   routinely names a dozen, and a column of that many single-word rows reads as a menu of pages
+   rather than as a footnote to the code it belongs to. */
+.cp-api-docs { margin-top: 20px; border-top: 1px solid var(--cp-border); padding-top: 12px; }
+.cp-api-docs-heading { margin: 0 0 8px; font-size: 0.75rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--cp-fg-muted); }
+.cp-api-docs-list { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 0; padding: 0;
+  list-style: none; }
+.cp-api-doc-link { display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.78rem; line-height: 1.4; padding: 4px 10px;
+  border-radius: var(--md-sys-shape-corner-full); text-decoration: none;
+  color: var(--cp-fg); background: var(--cp-surface-2, transparent);
+  border: 1px solid var(--cp-border); }
+.cp-api-doc-link:hover, .cp-api-doc-link:focus-visible { text-decoration: underline; }
+/* Composables carry the accent: the component this card is about is the first of them, and it is
+   what a reader opening the list is looking for. */
+.cp-api-doc-link--composable { color: var(--cp-accent, currentcolor);
+  border-color: currentcolor; }
+
 /* `.cp-spec-chip` shares this shape on purpose: the design-spec lane is now a top-level toggle on
    the viewer bar (not an <option> buried in the renderer combo), and it is the same *kind* of
    control as the SVG format toggle — "swap what is on the stage" — so it reads as one family with

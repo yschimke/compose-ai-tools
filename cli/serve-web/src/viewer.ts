@@ -21,6 +21,7 @@ import {
     type ServeFrame,
 } from "./live/framePainter.js";
 import * as rules from "./viewer/rules.js";
+import { type ApiDocLink, usableApiDocs } from "./viewer/apiDocs.js";
 
 // Typed handles onto the server-rendered markup this file drives.
 //
@@ -104,6 +105,8 @@ interface UsageSnippet {
     residue?: string[];
     blobUrl?: string | null;
     playgroundHref?: string | null;
+    /** Reference pages for the platform APIs the snippet uses; absent on an older server. */
+    apiDocs?: ApiDocLink[];
 }
 
 /** The small CodeMirror surface the read-only Source lane uses. */
@@ -2571,6 +2574,46 @@ function renderSource(data: UsageSnippet | null) {
         actions.appendChild(whole);
     }
     sourcePanel.appendChild(actions);
+    renderApiDocs(data);
+}
+/**
+ * The **API reference** list under the snippet: every platform symbol the code above uses, linked
+ * to its KDoc page on `developer.android.com` (issue #4331).
+ *
+ * It lives here rather than in a lane of its own because the reference pages cannot be shown in
+ * one: `developer.android.com` refuses to be framed, so a tab could only ever hold links \u2014 and
+ * links belong beside the code that names them, where the reader has just met the symbol.
+ *
+ * The server sends only the pages it resolved and nothing else, so an empty (or absent, on an
+ * older server) list renders no heading at all rather than an empty section.
+ */
+function renderApiDocs(data: UsageSnippet | null) {
+    if (!sourcePanel) return;
+    var usable = usableApiDocs(data && data.apiDocs);
+    if (!usable.length) return;
+    var section = document.createElement("div");
+    section.className = "cp-api-docs";
+    var heading = document.createElement("h2");
+    heading.className = "cp-api-docs-heading";
+    heading.textContent = "API reference";
+    section.appendChild(heading);
+    var list = document.createElement("ul");
+    list.className = "cp-api-docs-list";
+    usable.forEach(function (d) {
+        var item = document.createElement("li");
+        var link = document.createElement("a");
+        link.className = "cp-api-doc-link";
+        if (d.composable) link.className += " cp-api-doc-link--composable";
+        link.href = d.url!;
+        link.rel = "noopener noreferrer";
+        link.target = "_blank";
+        link.textContent = d.name!;
+        if (d.fqn) link.title = d.fqn;
+        item.appendChild(link);
+        list.appendChild(item);
+    });
+    section.appendChild(list);
+    sourcePanel.appendChild(section);
 }
 /**
  * The render the spec is compared against: the exact bytes that were on the stage when we can

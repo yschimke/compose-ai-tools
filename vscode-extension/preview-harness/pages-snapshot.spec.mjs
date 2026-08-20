@@ -1666,6 +1666,44 @@ const FIXTURE_STATES = [
             blobUrl: "https://github.com/example/catalog/blob/main/Buttons.kt",
             playgroundHref:
               "/playground?from=compose-m3/com.example.ProfileCardPreview",
+            // The API reference list under the snippet. Spelled out here rather than derived,
+            // because the harness serves pages and not a catalog — but spelled out as
+            // `ApiDocLinks` really resolves THIS snippet, both page shapes included: the two
+            // composables the code calls take `.composable`, the annotation and the theme object
+            // it qualifies take the declaration page. A stub of one shape would leave the half of
+            // the feature that 404s uncaptured.
+            apiDocs: [
+              {
+                name: "Button",
+                fqn: "androidx.compose.material3.Button",
+                composable: true,
+                url: "https://developer.android.com/reference/kotlin/androidx/compose/material3/Button.composable",
+              },
+              {
+                name: "Text",
+                fqn: "androidx.compose.material3.Text",
+                composable: true,
+                url: "https://developer.android.com/reference/kotlin/androidx/compose/material3/Text.composable",
+              },
+              {
+                name: "Composable",
+                fqn: "androidx.compose.runtime.Composable",
+                composable: false,
+                url: "https://developer.android.com/reference/kotlin/androidx/compose/runtime/Composable",
+              },
+              {
+                name: "Preview",
+                fqn: "androidx.compose.ui.tooling.preview.Preview",
+                composable: false,
+                url: "https://developer.android.com/reference/kotlin/androidx/compose/ui/tooling/preview/Preview",
+              },
+              {
+                name: "MaterialTheme",
+                fqn: "androidx.compose.material3.MaterialTheme",
+                composable: false,
+                url: "https://developer.android.com/reference/kotlin/androidx/compose/material3/MaterialTheme",
+              },
+            ],
           }),
         }),
       );

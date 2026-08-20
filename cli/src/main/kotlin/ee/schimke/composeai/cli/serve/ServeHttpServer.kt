@@ -5550,6 +5550,18 @@ class ServeHttpServer(
           residue = seed.residue,
           blobUrl = seed.blobUrl,
           playgroundHref = host?.let { playgroundLinkFor(it, sessionId, previewId, sourceFile) },
+          // Derived here rather than in the cleaner: the links are a projection OF the snippet the
+          // cleaner produced, and every other consumer of a seed (the playground handoff, the theme
+          // replay) wants the code without them.
+          apiDocs =
+            ApiDocLinks.of(seed.text).map {
+              ApiDocLink(
+                name = it.name,
+                fqn = it.fqn,
+                composable = it.composable,
+                url = it.url,
+              )
+            },
         ),
       ),
       ContentType.Application.Json,

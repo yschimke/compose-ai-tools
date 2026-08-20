@@ -259,4 +259,33 @@ data class UsageSnippetResponse(
   val blobUrl: String? = null,
   /** Where "open in playground" goes, so the panel and the provenance row cannot disagree. */
   val playgroundHref: String? = null,
+  /**
+   * The KDoc pages for the platform APIs [text] uses, derived from its own imports by [ApiDocLinks]
+   * — composables first, in the order the code names them, so the component this card is about
+   * leads the list.
+   *
+   * Rides the snippet rather than the viewer page for the same reason the snippet does: it is
+   * derived FROM the snippet, so there is nothing to serve until that read has happened, and a
+   * visitor who never opens Source pays for neither.
+   */
+  val apiDocs: List<ApiDocLink> = emptyList(),
+)
+
+/**
+ * One entry of [UsageSnippetResponse.apiDocs]: a symbol the usage code uses, and its reference
+ * page.
+ *
+ * The wire shape of [ApiDocLinks.Link], kept as its own serializable type so the internal resolver
+ * stays free to carry things the viewer has no use for.
+ */
+@Serializable
+data class ApiDocLink(
+  /** The name as the snippet writes it — an `as` alias where the code renamed one. */
+  val name: String,
+  /** The imported fully-qualified name, shown as the link's tooltip. */
+  val fqn: String,
+  /** True when this resolved to a top-level `@Composable`, which the panel groups separately. */
+  val composable: Boolean = false,
+  /** The `developer.android.com` reference page. */
+  val url: String,
 )
