@@ -184,14 +184,14 @@
     "serve-component-browser-catalog.dark.png": {
       "fixture": "serve-component-browser-catalog",
       "theme": "dark",
-      "sha256": "f5d97543b96d88d42b313ec788aa77480612d5c32c4468904ab72747dec40183",
-      "size": 59429
+      "sha256": "e1d333f68f052fde34b85e334c3177868c8ce0f915cca30a70cfe6097ecc3828",
+      "size": 73191
     },
     "serve-component-browser-catalog.light.png": {
       "fixture": "serve-component-browser-catalog",
       "theme": "light",
-      "sha256": "df04d0248c91e868236fa243c2356ffa5de3dfef401b290e60127c5d954a685e",
-      "size": 58732
+      "sha256": "cf2a2029e8de15801e38fc1d26af4106594d0cb37ec182e38ca3bbe52a16e19d",
+      "size": 72202
     },
     "serve-component-browser-component-daemon-connected.dark.png": {
       "fixture": "serve-component-browser-component-daemon-connected",
@@ -484,14 +484,14 @@
     "serve-landing-breakpoints.dark.png": {
       "fixture": "serve-landing-breakpoints",
       "theme": "dark",
-      "sha256": "a541a83fdeadefc3eb46c9ec659b21dee1063e2070f6cecb3fff64300b02dbea",
-      "size": 50540
+      "sha256": "b32c27921d3e440cd4f122ef99ce00fad06fb9cab95ee0fdff2862da07c6f41c",
+      "size": 64265
     },
     "serve-landing-breakpoints.light.png": {
       "fixture": "serve-landing-breakpoints",
       "theme": "light",
-      "sha256": "06ecf3d30642f868b62bd80202405b293cd33be4b6d9501209ee0477c6c30f05",
-      "size": 49459
+      "sha256": "c9a2d6e20c722302b5e2e76b1943e4c7a12a873219facb0903d6deb207250660",
+      "size": 63162
     },
     "serve-landing-catalog-palette-theme-sync-menu.dark.png": {
       "fixture": "serve-landing-catalog-palette-theme-sync-menu",
@@ -820,62 +820,62 @@
     "serve-landing-sections-filter-focus.dark.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "dark",
-      "sha256": "97728162abb6c7f3c344dc946f243fe96b014765462bde80145d47368d2c73ae",
-      "size": 61564
+      "sha256": "270dc49d6c6dea206e50f36d589ce46175b0f43a1229421f4563a9e3e2b5e94c",
+      "size": 127812
     },
     "serve-landing-sections-filter-focus.light.png": {
       "fixture": "serve-landing-sections-filter-focus",
       "theme": "light",
-      "sha256": "4dad3f35102bd11de531e0dcbadb5eb5ac661d46649230e3be290512191ce1ef",
-      "size": 60469
+      "sha256": "9548adcacb2f4a957fcfa9c2a0348d0e7245298fbddfce7d700c96f346e4f0e3",
+      "size": 126169
     },
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "dark",
-      "sha256": "56337ec8db48c53039ed4424c5e89bfb67ce2075dafedc6901baf85df824e060",
-      "size": 64728
+      "sha256": "c71a0e8deb65d582b63d3296828a160cf2fa3c84dfece583b6fa7421bf4d714e",
+      "size": 69121
     },
     "serve-landing-sections-filtered.light.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "light",
-      "sha256": "5c6f9f43d5f0b06b20168ca2b9c1bc2319dea5abc14fbd9fe6f7bf2f95740e42",
-      "size": 63693
+      "sha256": "ba5cabc3671b4863679da6e57d08195e50293be728a265d6afb3bb32ab241784",
+      "size": 67815
     },
     "serve-landing-sections-mobile.dark.png": {
       "fixture": "serve-landing-sections-mobile",
       "theme": "dark",
-      "sha256": "4ec6f9cd6060ff873e5ff62c7302725ae33e2d0efa6d8519c04646a6d3d52ac7",
-      "size": 41574
+      "sha256": "fd70b2a3d430201962f028e1f69d043d74a5a42dede030bdac3bf3450ccac5df",
+      "size": 92681
     },
     "serve-landing-sections-mobile.light.png": {
       "fixture": "serve-landing-sections-mobile",
       "theme": "light",
-      "sha256": "ab1699e049e4980273ebe8ef9cf10e8282f0f1a4f11a68e99699abbc1b029710",
-      "size": 40235
+      "sha256": "845f3ecf0f587301bde250de1de7a8bb437760972ca2abb03da509749930f062",
+      "size": 90740
     },
     "serve-landing-sections-section-open.dark.png": {
       "fixture": "serve-landing-sections-section-open",
       "theme": "dark",
-      "sha256": "55b2ab77aa5e18cfe06db610a5e1f174ff701493e13c0e797056dd01d2fc6c1b",
-      "size": 70624
+      "sha256": "8d2580d21a99a93cce4837694bd79f765cb12bf57677c359fc6c43eeda9a5a37",
+      "size": 71349
     },
     "serve-landing-sections-section-open.light.png": {
       "fixture": "serve-landing-sections-section-open",
       "theme": "light",
-      "sha256": "a5cfa7c395817577e731bc86b762090da518d1a4ab887f0d78f205a1b0ac360e",
-      "size": 69520
+      "sha256": "31bf8247e12a53752a4bb83a046121068362cb225e4329ba62d57c85621a4191",
+      "size": 70202
     },
     "serve-landing-sections.dark.png": {
       "fixture": "serve-landing-sections",
       "theme": "dark",
-      "sha256": "a3d802d9eee744d90e13141c3cbd58e4323f3deb49eedf2a65930cb2abc67fd2",
-      "size": 59775
+      "sha256": "7e57a22f4a7ded384897cd42884d48407203330195b1942b3339396a33041776",
+      "size": 125844
     },
     "serve-landing-sections.light.png": {
       "fixture": "serve-landing-sections",
       "theme": "light",
-      "sha256": "a4cfe8360fa4777b58ff9e1bf045828b4dbc8108b4deab80ab1f7323c7f6f89e",
-      "size": 58739
+      "sha256": "7ce27d65ae53e27de663bb37a26176d1f8d4bfeefb84749c109d5d5be78dba56",
+      "size": 124346
     },
     "serve-landing-site.dark.png": {
       "fixture": "serve-landing-site",
@@ -916,14 +916,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "3522e332a2d5e86d57ebba3d3ec08c15762fb1d5a00b0fe2aaf97af9dfbf3a68",
-      "size": 83077
+      "sha256": "30785446df8fa71a21658277e75a49076e770e979b5d39471b78ee24fda7a3c8",
+      "size": 76175
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "93dd603a5ded36c9393940ff10e62125db7913fd751dc6e4c3693fb9677c6558",
-      "size": 82014
+      "sha256": "6a832a1d1093e457e347b7e92ec885f205083b1ffd3391ed674e578deb4a7b73",
+      "size": 78680
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
