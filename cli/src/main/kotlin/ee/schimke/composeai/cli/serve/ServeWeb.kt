@@ -8371,11 +8371,17 @@ $rows
         // sheet: a private component and a variant-set container are furniture, and counting them
         // reports a complete family as one short. See `DesignPage.coverageGaps`.
         val linked = page.linked.size
+        // A sheet that is not a component inventory — the kit's icon page — has no fraction to
+        // state, and stating `0 of 499` was the loudest wrong number on this index. Say what the
+        // sheet is instead; the card still opens it.
+        val count =
+          if (!page.inventory) "${page.nodes.size} nodes · not a component inventory"
+          else "$linked of ${page.coverageTotal} components implemented"
         """
         <a class="cp-page-card" href="$basePath/pages/$id$q">
           <img loading="lazy" alt="" src="$basePath/pages/$id.svg$q">
           <strong>${WebEscaping.htmlEscape(page.name)}</strong>
-          <span class="cp-page-count">$linked of ${page.coverageTotal} components implemented</span>
+          <span class="cp-page-count">${WebEscaping.htmlEscape(count)}</span>
         </a>
         """
           .trimIndent()
@@ -9016,6 +9022,10 @@ $cards
     // a private component and a variant-set container are furniture, and counting them reports a
     // complete family as one short. See `DesignPage.coverageGaps`.
     val total = page.coverageTotal
+    // See the pages index: a non-inventory sheet says what it is rather than scoring itself.
+    val coverageText =
+      if (!page.inventory) "${page.nodes.size} nodes · not a component inventory"
+      else "$linked of $total components implemented"
     val figmaLink =
       ServeFigmaSpec.url(fileKey, page.nodeId)
         ?.let {
@@ -9035,7 +9045,9 @@ $cards
     return document(
       title = "${page.name} — page",
       unfurlTitle = "$heading — ${page.name}",
-      unfurlDescription = "$linked of $total components on this page are implemented",
+      unfurlDescription =
+        if (!page.inventory) "${page.nodes.size} nodes on this page; not a component inventory"
+        else "$linked of $total components on this page are implemented",
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
@@ -9047,7 +9059,7 @@ $cards
         """
         <div id="cp-design-page">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
-          <p class="cp-sub">$linked of $total components implemented$figmaLink</p>
+          <p class="cp-sub">${WebEscaping.htmlEscape(coverageText)}$figmaLink</p>
           <div class="cp-page-controls">
             <div class="cp-page-lane" role="radiogroup" aria-label="What the sheet shows">
               <label><input type="radio" name="cp-page-lane" value="code" data-cp-page-lane checked>

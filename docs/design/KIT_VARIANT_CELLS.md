@@ -31,7 +31,7 @@ states are out of scope:
 | `Base / …` sets (`Base / SelectionControl / Switch`, `Base / Loading Icon`, …) | 24, all on Buttons | The kit's own internals — the parts each published set is assembled from. `kit-sets.json` excludes them alongside the `.`-prefixed privates that `PageNode.isPrivate` already drops. |
 
 Correcting for both moves the whole-kit figure from a demoralising **185 / 1554 (12%)** to
-**185 / 1031 (18%)**, and the Buttons sheet from 75 / 303 to **75 / 273**. That is not the
+**185 / 1031 (18%)**, and the Buttons sheet from 75 / 303 to **75 / 279**. That is not the
 interesting change — the interesting change is that the remaining red is now *all* real.
 
 **Fix:** teach `design-pages.mjs` the same two exclusions `kit-sets.json` states, so one repo does
