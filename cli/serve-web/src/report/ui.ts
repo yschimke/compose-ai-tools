@@ -47,7 +47,64 @@ export function installCapture(): void {
                 ),
             );
     }
+    wireHandOff();
     render();
+}
+
+/** The two forms that open a prefilled issue: `/report-bug`'s, and a preview's own. */
+const REPORT_FORMS = ".cp-report-bug-form, .cp-report-form";
+
+/**
+ * Hand the capture back to the clipboard at the moment the issue form is submitted.
+ *
+ * **Why this is the fix for "images don't make it to the bug" (issue #4334).** They cannot. GitHub's
+ * new-issue form prefills from a URL and a URL carries a *body*; there is no query parameter for an
+ * attachment, and an image only becomes one by being pasted into GitHub's own editor, which uploads
+ * it to GitHub's storage. So the last few centimetres of the journey are always the reporter's
+ * clipboard, and the only thing this end can do is make sure the right thing is on it at the right
+ * moment — and say so.
+ *
+ * It was already copied ONCE, in [run], at the instant of capture. That is the wrong moment on its
+ * own and the report page is the proof: between the shutter and this button the reporter navigates
+ * to `/report-bug`, reads the report, and types a summary — a stretch of ordinary computer use in
+ * which copying something else is entirely normal, and every one of those overwrites the picture.
+ * Then the issue opens, the Screenshot section says paste, and what pastes is whatever they copied
+ * last. The capture is not lost — it is still in the list with a Copy button on it — but nothing
+ * ever told them that the paste they were about to do would produce the wrong thing.
+ *
+ * Copying inside the `submit` handler is what makes it work: it is a real user gesture, so the
+ * clipboard write is authorised (Safari's rule, which is why [copyPng] takes the blob as a promise
+ * rather than awaiting it first), and it is the last instant this tab controls before GitHub has
+ * focus.
+ *
+ * The NEWEST capture, because a clipboard holds one image and the newest is the one the pile's own
+ * eviction rule already treats as the most wanted. When there are others the note says so, since
+ * their Copy buttons are the only way to reach them and this page is where they still exist.
+ */
+function wireHandOff(): void {
+    document
+        .querySelectorAll<HTMLFormElement>(REPORT_FORMS)
+        .forEach((form) => form.addEventListener("submit", handOff));
+}
+
+function handOff(): void {
+    const captures = readCaptures(sessionStore());
+    const latest = captures[captures.length - 1];
+    if (!latest) return;
+    const rest =
+        captures.length > 1
+            ? ` The other ${captures.length - 1} are still here — press Copy on one to send it too.`
+            : "";
+    copyPng(blobFromDataUrl(latest.dataUrl)).then(
+        () =>
+            note(
+                `Your capture is on the clipboard — paste it into the issue's Screenshot section.${rest}`,
+            ),
+        () =>
+            note(
+                "The clipboard refused the capture. Press Copy on it here, then paste it into the issue's Screenshot section.",
+            ),
+    );
 }
 
 /** Every list on the page, refreshed from the store. */

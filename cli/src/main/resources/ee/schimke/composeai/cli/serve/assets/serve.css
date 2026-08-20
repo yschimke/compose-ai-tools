@@ -532,6 +532,11 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-shots { display: grid; gap: 10px; margin: 0 0 20px; }
 .cp-shots .cp-shot-list { max-width: 640px; }
 .cp-shots-empty { margin: 0; }
+/* On the report page the note is a RESULT, not a reserved slot. In the launcher panel it keeps a
+   line free so status text does not shove the mode buttons about mid-capture; here nothing moves,
+   and an empty one is a gap under the list for the whole time there is nothing to say. */
+.cp-shots .cp-shot-note { min-height: 0; }
+.cp-shots .cp-shot-note:empty { display: none; }
 /* ── The selection overlay ───────────────────────────────────────────────────────────────────
    Built by `report/select.ts` for the few seconds a selection takes, and never present in a
    capture: the frame is already in memory before any of this is added to the document.

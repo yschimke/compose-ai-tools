@@ -87,6 +87,38 @@ function wireCatalogChoice(): void {
     });
 }
 
+/**
+ * Put the report panels away once a report has actually been filed.
+ *
+ * Both reporting forms open GitHub in a NEW TAB (`target="_blank"`), which is deliberate — it keeps
+ * the page the bug is about alive behind the issue you are writing about it — but it also means
+ * nothing ever navigates the page that raised the panel, so the panel simply stays. Come back to
+ * the tab and the per-preview box is still hanging over the render, covering the thing you just
+ * reported (issue #4333). A `<details>` has no idea its form went anywhere; something has to tell
+ * it, and submit is the moment.
+ *
+ * Delegated from the document rather than bound per form, because the affordances are not all in
+ * the page at load: the launcher panel is, but the per-preview `#cp-report` is emitted by whichever
+ * surface bundle drew the preview, and the comparison wall rebuilds its own as the wall re-renders.
+ * One listener covers every copy, present and future.
+ *
+ * Only `<details>` closes — no field is cleared and no state is reset. Submitting is not
+ * necessarily the end of the gesture: a refused GitHub sign-in, a popup blocker, or a second
+ * thought about the summary all land the reporter back on this tab wanting the words they typed,
+ * and reopening the panel has to still show them.
+ *
+ * A blocked submit never reaches here: the Summary is `required`, so a browser that rejects an
+ * empty one fires no `submit` event and the panel correctly stays open with the error on it.
+ */
+function wireDismissOnSubmit(): void {
+    document.addEventListener("submit", (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLElement)) return;
+        if (!form.matches(".cp-report-form, .cp-report-bug")) return;
+        form.closest("details")?.removeAttribute("open");
+    });
+}
+
 export function installReportLauncher(): void {
     // Deferred until the document is parsed. This bundle is the first element in `<body>`, so at
     // evaluation time the launcher — which `ServeWeb.document` emits after `<main>` — does not
@@ -95,6 +127,7 @@ export function installReportLauncher(): void {
 }
 
 function install(): void {
+    wireDismissOnSubmit();
     const fab = document.querySelector<HTMLElement>(".cp-fab");
     if (fab) {
         wireCatalogChoice();
