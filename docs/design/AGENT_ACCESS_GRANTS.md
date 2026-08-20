@@ -93,6 +93,22 @@ Three, ordered, each implying the ones below:
 | `live`       | live daemon streaming, the viewer WebSocket         | `rejectMissingGithubAuth`        |
 | `playground` | compile and run a snippet on the box                | `rejectMissingGithubRepoAccess`  |
 
+Two details of *how* those gates read a grant are load-bearing rather than incidental.
+
+**Scope is checked before, and independently of, whether GitHub auth exists.** Written the other way
+round — `githubAuth ?: return false` first — a private box with no OAuth configured let every grant
+through the live and playground gates unread, because those gates had nothing else to say. A
+presented grant is now judged on its own scope on every deployment shape, and a grant that falls
+short gets a 403 naming the scope it lacks rather than a sign-in redirect it has no browser for.
+
+**The ingest lanes are outside the scope system entirely.** `POST /bundles/{name}` and `POST /docs`
+run through the same `rejectBadToken` as everything else, so a `preview` grant would have satisfied
+them — letting an agent granted "browse this server's catalogs" publish a document or replace a
+named runtime bundle. They take [`rejectBadTokenForIngest`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeHttpServer.kt)
+instead, which no grant satisfies. Contributing content to someone else's box is the operator's
+business, not a capability this flow should be able to hand out; the image lane already worked this
+way for its own reasons.
+
 Two ceilings apply, and both are enforced at approval rather than at request:
 
 1. **The operator's ceiling** — `--agent-grant-scopes`, default `preview,live`. `playground` runs
@@ -108,16 +124,24 @@ case is one click.
 
 ## Who may approve
 
-An approver must be a **human operator of this box**, which means passing the server's own front
-door:
+An approver must be a **human operator of this box**, and that is checked in two parts, both of
+which have to pass:
 
-- GitHub auth configured ⇒ a signed-in visitor, subject to `--github-auth-users` as usual. The grant
-  records their login, so `/status` and the server log say *who* let the agent in.
-- No GitHub auth ⇒ the holder of `--token` (the URL the operator already has in their browser).
-  Recorded as `operator (token)`.
+1. **The server's own front door.** On a non-`--public` box the approver must present `--token`. A
+   GitHub session is *not* a substitute for it: on a private box that also configures OAuth, any
+   account the (by default empty) `--github-auth-users` allowlist accepts could otherwise open an
+   ungated request, sign in at its own approval URL, and mint itself a grant into a server whose
+   browse token it never had.
+2. **An identity, where there is one to have.** GitHub auth configured ⇒ a signed-in visitor,
+   recorded by login, so `/status` and the server log say *who* let the agent in. No GitHub auth ⇒
+   the `--token` holder from step 1, recorded as `operator (token)`.
 
-A `--public` server with **no** GitHub auth has no approver identity at all — everyone is anonymous
-and equal — so `--agent-grants` is refused at startup there rather than silently letting the
+Neither part can be satisfied by an agent grant — a GitHub session lives in a cookie no agent holds,
+and the token compare is against `--token` specifically, which no minted bearer can equal. So a
+grant can never approve or revoke another.
+
+A `--public` server with **no** GitHub auth has neither part: everyone is anonymous, and there is no
+front door to pass. `--agent-grants` is refused at startup there rather than silently letting the
 internet mint itself credentials.
 
 ## Lifetime, revocation, blast radius
@@ -163,5 +187,24 @@ origin. Every other CLI lane that talks to a serve host resolves its host token 
 `--token` → `$COMPOSE_PREVIEW_TOKEN` → that store, so once a grant lands the rest of the CLI simply
 starts working.
 
-`--no-wait` prints the link and exits, for an agent that would rather not hold a process open; a
-later `auth request --resume` (or just `auth status`) collects the token.
+The store is written through a temp file and an atomic rename, under an advisory lock on a sibling
+`.lock`. Both halves matter with more than one agent on a machine: without the lock two runs
+finishing together each read the old list and the later writer drops the other's freshly approved
+grant; without the atomic replace a concurrent reader can see a half-written file, report it as
+empty, and then overwrite it.
+
+**`--no-wait` persists the request** — the id, the device secret, the link and the code — so a later
+`auth status` (or `auth token`) polls it and promotes the approval into a grant. Without that the
+printed "re-run auth status when they approve" was an instruction nobody could follow: the device
+secret is the only thing that can redeem an approval, and it had been thrown away. It is saved
+before anything is printed, so an interrupted wait is recoverable too.
+
+**`auth status` asks the server rather than trusting the file.** It collects any remembered request,
+and verifies each stored grant with `whoami`: one the operator revoked, or one that died with a
+server restart, is reported as gone and dropped instead of being listed as live until its local
+expiry and then failing somewhere else with an unexplained 404. A server it cannot reach yields
+`unverified`, never a deletion — an unreachable host is not evidence that a grant is dead.
+
+**`--json` is JSON Lines**, one compact document per line. A waiting `auth request --json` emits two
+— the request, so the link can be relayed immediately, and the grant once it lands — and two
+pretty-printed objects concatenated would not parse as anything.

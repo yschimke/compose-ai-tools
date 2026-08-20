@@ -12,6 +12,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -47,6 +49,17 @@ class AgentAccessClientIntegrationTest {
   }
 
   private fun client() = AgentAccessClient("http://127.0.0.1:${server.port}")
+
+  /** A credential store on a throwaway path, so a test never touches the caller's real one. */
+  private fun tempStore(): AgentAccessStore =
+    AgentAccessStore(
+      file =
+        File(
+          Files.createTempDirectory("auth-store").toFile().also { it.deleteOnExit() },
+          "agent-access.json",
+        ),
+      warn = {},
+    )
 
   private fun <T> ok(result: AgentAccessClient.Result<T>): T =
     when (result) {
@@ -117,6 +130,62 @@ class AgentAccessClientIntegrationTest {
     val polled = ok(c.poll(opened.requestId, "not-the-secret"))
     assertEquals("unknown", polled.status)
     assertEquals(null, polled.token)
+  }
+
+  @Test
+  fun `auth status collects a request left behind by --no-wait`() {
+    // The whole promise of `--no-wait`: print the link, exit, and let a later command finish the
+    // job. It only holds if the request was persisted and something actually polls it.
+    val c = client()
+    val opened = ok(c.open(label = "left behind", scope = "live", ttlSeconds = 900))
+    val store = tempStore()
+    store.savePending(
+      AgentAccessStore.Pending(
+        origin = c.origin,
+        requestId = opened.requestId,
+        deviceSecret = opened.deviceSecret,
+        userCode = opened.userCode,
+        approveUrl = opened.approveUrl,
+        label = "left behind",
+        expiresAtMillis = System.currentTimeMillis() + opened.expiresInSeconds * 1000,
+      )
+    )
+    // Nothing to show yet — and, importantly, nothing lost.
+    AuthCommand(listOf("status", "--server", c.origin), store).run()
+    assertNull(store.tokenFor(c.origin))
+    assertNotNull(store.pendingFor(c.origin))
+
+    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+
+    AuthCommand(listOf("status", "--server", c.origin), store).run()
+    assertNotNull(store.tokenFor(c.origin), "the approved token should have been collected")
+    assertNull(store.pendingFor(c.origin), "the collected request should not still be pending")
+    assertEquals("left behind", store.entryFor(c.origin)?.label)
+  }
+
+  @Test
+  fun `auth status drops a grant the server no longer honours`() {
+    val c = client()
+    val opened = ok(c.open(label = "revoked soon", scope = "live", ttlSeconds = 900))
+    grants.approve(opened.requestId, "@yuri", ServeAgentGrantScope.LIVE, 900)
+    val token = ok(c.poll(opened.requestId, opened.deviceSecret)).token!!
+    val store = tempStore()
+    store.save(
+      AgentAccessStore.Entry(
+        origin = c.origin,
+        token = token,
+        scopes = listOf("preview", "live"),
+        expiresAtMillis = System.currentTimeMillis() + 900_000,
+      )
+    )
+    // Still live: status leaves it alone.
+    AuthCommand(listOf("status", "--server", c.origin), store).run()
+    assertNotNull(store.tokenFor(c.origin))
+
+    // The operator revokes. Local expiry has not moved, so only asking the server can tell.
+    grants.revokeToken(token, "@yuri")
+    AuthCommand(listOf("status", "--server", c.origin), store).run()
+    assertNull(store.tokenFor(c.origin), "a revoked grant should not still be reported as held")
   }
 
   @Test

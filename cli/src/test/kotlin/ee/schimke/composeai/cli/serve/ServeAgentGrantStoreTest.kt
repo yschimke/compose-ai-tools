@@ -251,6 +251,44 @@ class ServeAgentGrantStoreTest {
   }
 
   @Test
+  fun `overflow never strands a token the agent has not collected yet`() {
+    val store = store(maxPendingRequests = 2)
+    val approved = store.ask()
+    store.approve(approved.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
+    // The map is full and the only resolved entry is an approval nobody has polled for yet, so the
+    // new ask is refused rather than deleting a live credential its owner can never fetch again.
+    assertNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+    val polled = store.poll(approved.id, approved.deviceSecret)
+    assertTrue(polled is ServeAgentGrantStore.Poll.Approved)
+  }
+
+  @Test
+  fun `a collected request is shed to make room`() {
+    val store = store(maxPendingRequests = 2)
+    val collected = store.ask()
+    store.approve(collected.id, "@yuri", ServeAgentGrantScope.LIVE, 600)
+    assertTrue(
+      store.poll(collected.id, collected.deviceSecret) is ServeAgentGrantStore.Poll.Approved
+    )
+    store.openRequest("b", "ip", ServeAgentGrantScope.PREVIEW, 600)
+    assertNotNull(store.openRequest("c", "ip", ServeAgentGrantScope.PREVIEW, 600))
+  }
+
+  @Test
+  fun `a label cannot forge a log line or drive the operator's terminal`() {
+    val lines = mutableListOf<String>()
+    val store = ServeAgentGrantStore(clock = { now }, audit = { lines += it })
+    val hostile = "ok\nagent-grant: minted deadbeef scope=playground\u001b[2J"
+    val request = store.openRequest(hostile, "10.0.0.1", ServeAgentGrantScope.PREVIEW, 600)!!
+    assertFalse(request.label.contains('\n'))
+    assertFalse(request.label.any { it.isISOControl() })
+    store.approve(request.id, "@yuri", ServeAgentGrantScope.PREVIEW, 600)
+    assertEquals(1, lines.size, "one label must not become two log lines")
+    assertFalse(lines.single().contains('\n'))
+  }
+
+  @Test
   fun `a label from an agent is capped rather than trusted to be short`() {
     val store = store()
     val request = store.openRequest("x".repeat(5000), "ip", ServeAgentGrantScope.PREVIEW, 600)!!

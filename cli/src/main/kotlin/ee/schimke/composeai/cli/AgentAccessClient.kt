@@ -196,13 +196,19 @@ internal class AgentAccessClient(
     private val JSON = Json { ignoreUnknownKeys = true }
     private val JSON_MEDIA = "application/json".toMediaType()
 
-    private val LOOPBACK = setOf("localhost", "127.0.0.1", "::1", "[::1]")
+    private val LOOPBACK = setOf("localhost", "127.0.0.1", "::1")
 
-    /** HTTPS anywhere, or plain HTTP only to this machine. */
+    /**
+     * HTTPS anywhere, or plain HTTP only to this machine.
+     *
+     * The host is taken from [java.net.URI], not by splitting on `:`. An IPv6 literal is written
+     * `http://[::1]:8723`, so the naive split yields `"["` — which matches no loopback entry, and
+     * refused a local server as if it were on the open internet.
+     */
     fun isSecureEnough(origin: String): Boolean {
-      if (origin.startsWith("https://")) return true
-      val host = origin.removePrefix("http://").substringBefore(':').substringBefore('/')
-      return host in LOOPBACK
+      if (origin.startsWith("https://", ignoreCase = true)) return true
+      val host = runCatching { java.net.URI(origin).host }.getOrNull()?.lowercase() ?: return false
+      return host.removePrefix("[").removeSuffix("]") in LOOPBACK
     }
   }
 }

@@ -1,7 +1,9 @@
 package ee.schimke.composeai.cli
 
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -45,10 +47,33 @@ internal class AgentAccessStore(
       ((expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
   }
 
+  /**
+   * A request that has been opened but not yet collected — what `auth request --no-wait` leaves
+   * behind so a later invocation can finish the job.
+   *
+   * Holds the device secret, which is a credential, and is why this file is `0600`: without it a
+   * `--no-wait` run would print "re-run auth status when they approve" and then have thrown away
+   * the one thing that can redeem the approval.
+   */
+  @Serializable
+  data class Pending(
+    val origin: String,
+    val requestId: String,
+    val deviceSecret: String,
+    val userCode: String = "",
+    val approveUrl: String = "",
+    val label: String = "",
+    val expiresAtMillis: Long = 0,
+  ) {
+    fun secondsUntilExpiry(nowMillis: Long): Long =
+      ((expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
+  }
+
   @Serializable
   private data class Wire(
     val schema: String = SCHEMA_V1,
     val grants: List<Entry> = emptyList(),
+    val pending: List<Pending> = emptyList(),
   )
 
   /** Every live grant, expired ones already dropped. */
@@ -65,28 +90,70 @@ internal class AgentAccessStore(
 
   fun tokenFor(origin: String): String? = entryFor(origin)?.token
 
+  /** Every un-collected request whose own deadline hasn't passed. */
+  fun allPending(): List<Pending> {
+    val now = clock()
+    return read().pending.filter { it.expiresAtMillis > now }
+  }
+
+  /** The un-collected request for [origin], or null. */
+  fun pendingFor(origin: String): Pending? {
+    val key = normalizeOrigin(origin) ?: return null
+    return allPending().firstOrNull { it.origin == key }
+  }
+
+  /** Remember an opened request so a later invocation can collect its token. */
+  fun savePending(pending: Pending): Boolean {
+    val key = normalizeOrigin(pending.origin) ?: return false
+    return withLock {
+      val now = clock()
+      val kept =
+        read().let { w -> w.pending.filter { it.origin != key && it.expiresAtMillis > now } }
+      write(read().copy(pending = kept + pending.copy(origin = key)))
+    }
+  }
+
+  /** Drop the remembered request for [origin] — collected, denied, or expired. */
+  fun forgetPending(origin: String): Boolean {
+    val key = normalizeOrigin(origin) ?: return false
+    return withLock {
+      val current = read()
+      val kept = current.pending.filter { it.origin != key }
+      if (kept.size == current.pending.size) false else write(current.copy(pending = kept))
+    }
+  }
+
   /**
    * Save (replacing any existing entry for the same origin). Returns false when the write failed.
    */
   fun save(entry: Entry): Boolean {
     val key = normalizeOrigin(entry.origin) ?: return false
-    val now = clock()
-    val kept = read().grants.filter { it.origin != key && it.expiresAtMillis > now }
-    return write(Wire(grants = kept + entry.copy(origin = key)))
+    // Read-modify-write under the cross-process lock: two agents finishing `auth request` at the
+    // same moment would otherwise both read the old list, and the later writer would silently drop
+    // the other's freshly approved grant — a credential lost for no visible reason.
+    return withLock {
+      val now = clock()
+      val current = read()
+      val kept = current.grants.filter { it.origin != key && it.expiresAtMillis > now }
+      write(current.copy(grants = kept + entry.copy(origin = key)))
+    }
   }
 
   /** Forget the grant for [origin]. Returns true when one was there. */
   fun forget(origin: String): Boolean {
     val key = normalizeOrigin(origin) ?: return false
-    val current = read().grants
-    val kept = current.filter { it.origin != key }
-    if (kept.size == current.size) return false
-    write(Wire(grants = kept))
-    return true
+    return withLock {
+      val current = read()
+      val kept = current.grants.filter { it.origin != key }
+      // A failed write is reported as a failure: "forgotten" is a claim about what the *next*
+      // process will read, and confirming it while the credential is still on disk is the one
+      // answer that must not be given.
+      if (kept.size == current.grants.size) false else write(current.copy(grants = kept))
+    }
   }
 
   /** Forget everything. */
-  fun clear(): Boolean = write(Wire())
+  fun clear(): Boolean = withLock { write(Wire()) }
 
   private fun read(): Wire {
     if (!file.isFile) return Wire()
@@ -101,11 +168,47 @@ internal class AgentAccessStore(
     }
   }
 
+  /**
+   * Serialise a read-modify-write against other `compose-preview` processes.
+   *
+   * An advisory `FileLock` on a sibling `.lock` file — not on the store itself, which is replaced
+   * rather than written in place. Best-effort: a filesystem that cannot lock (some network mounts)
+   * runs the block anyway, because refusing to save a grant a human just approved is worse than the
+   * race it would avoid.
+   */
+  private fun <T> withLock(block: () -> T): T {
+    val lockFile = File(file.parentFile, file.name + ".lock")
+    return try {
+      file.parentFile?.mkdirs()
+      RandomAccessFile(lockFile, "rw").use { raf -> raf.channel.lock().use { block() } }
+    } catch (e: Exception) {
+      block()
+    }
+  }
+
+  /**
+   * Write via a temp file and an atomic rename, so a concurrent reader sees either the old store or
+   * the new one — never a half-written file it would report as empty and then overwrite.
+   * Permissions are applied to the temp file *before* the rename, so the credential is never even
+   * briefly world-readable.
+   */
   private fun write(wire: Wire): Boolean {
     return try {
       file.parentFile?.mkdirs()
-      file.writeText(JSON.encodeToString(Wire.serializer(), wire))
-      restrictPermissions()
+      val temp = File.createTempFile(file.name, ".tmp", file.parentFile)
+      try {
+        temp.writeText(JSON.encodeToString(Wire.serializer(), wire))
+        restrictPermissions(temp)
+        Files.move(
+          temp.toPath(),
+          file.toPath(),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE,
+        )
+      } catch (e: Exception) {
+        temp.delete()
+        throw e
+      }
       true
     } catch (e: Exception) {
       warn("could not write ${file.path} (${e.message})")
@@ -113,10 +216,10 @@ internal class AgentAccessStore(
     }
   }
 
-  /** `0600`, re-applied on every write. Best effort, and loud when it can't be done. */
-  private fun restrictPermissions() {
+  /** `0600`, applied before the file is moved into place. Best effort, and loud when it can't. */
+  private fun restrictPermissions(target: File = file) {
     try {
-      val path = file.toPath()
+      val path = target.toPath()
       val view =
         Files.getFileAttributeView(path, java.nio.file.attribute.PosixFileAttributeView::class.java)
       if (view == null) {

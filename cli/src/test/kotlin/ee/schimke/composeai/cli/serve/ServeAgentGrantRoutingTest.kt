@@ -352,6 +352,82 @@ class ServeAgentGrantRoutingTest {
   }
 
   @Test
+  fun `a preview grant cannot open the ingest lanes it was never shown`() {
+    // This server wires no ingest lanes, so the unit under test is the gate itself: a `preview`
+    // grant that satisfies every ordinary route must NOT satisfy the one an operator opted into
+    // for clients contributing content. The consent page says "browse", and it has to mean it.
+    val token = grantedToken(scope = "preview")
+    assertEquals(200, get("/status.json", token = token).first)
+    assertEquals(404, post("/docs", "{}", token = token).first)
+    assertEquals(404, post("/bundles/anything", "{}", token = token).first)
+  }
+
+  @Test
+  fun `a preview grant is refused the live socket even with no github auth configured`() {
+    // The bug this pins: the live gate used to read `githubAuth ?: return false` BEFORE looking at
+    // the grant, so on a box with no OAuth — like this one — every grant sailed through it
+    // regardless of what a human had actually approved. The socket is the live lane, so it is
+    // where the rule is checked.
+    val refusal = socketCloseReason(grantedToken(scope = "preview"))
+    assertTrue(
+      refusal.contains("live not approved"),
+      "a preview grant should be refused the live lane, got: $refusal",
+    )
+    // A `live` grant gets past the scope check; whatever happens next is not about the scope.
+    val allowed = socketCloseReason(grantedToken(scope = "live"))
+    assertFalse(allowed.contains("live not approved"), "a live grant was refused: $allowed")
+  }
+
+  /** Open the viewer socket with [token] and return the reason it was closed with (or "open"). */
+  private fun socketCloseReason(token: String): String {
+    val latch = java.util.concurrent.CountDownLatch(1)
+    val reason = java.util.concurrent.atomic.AtomicReference("open")
+    val request =
+      Request.Builder()
+        .url("ws://127.0.0.1:${server.port}/ws/AnyPreview?session=demo")
+        .header(ServeHttpServer.TOKEN_HEADER, token)
+        .build()
+    val socket =
+      client.newWebSocket(
+        request,
+        object : okhttp3.WebSocketListener() {
+          override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, text: String) {
+            reason.set(text)
+            latch.countDown()
+          }
+
+          override fun onClosing(webSocket: okhttp3.WebSocket, code: Int, text: String) {
+            reason.set(text)
+            latch.countDown()
+          }
+
+          override fun onFailure(
+            webSocket: okhttp3.WebSocket,
+            t: Throwable,
+            response: okhttp3.Response?,
+          ) {
+            reason.set("failure: ${t.message}")
+            latch.countDown()
+          }
+        },
+      )
+    latch.await(15, java.util.concurrent.TimeUnit.SECONDS)
+    socket.cancel()
+    return reason.get()
+  }
+
+  @Test
+  fun `an approver on a private server must hold the browse token, not merely a session`() {
+    // No GitHub auth here, so the operator branch is what runs — and it compares against `--token`
+    // specifically. A caller with a grant, or with nothing, is not an approver.
+    val (_, opened) = post("/agent-access/request", "{}")
+    val requestId = str(opened, "requestId")
+    assertEquals(401, get("/agent-access/$requestId").first)
+    assertEquals(401, get("/agent-access/$requestId?token=wrong-token").first)
+    assertEquals(200, get("/agent-access/$requestId?token=$operatorToken").first)
+  }
+
+  @Test
   fun `status json reports the lane by fingerprint`() {
     val token = grantedToken()
     val (code, body) = get("/status.json?token=$operatorToken")

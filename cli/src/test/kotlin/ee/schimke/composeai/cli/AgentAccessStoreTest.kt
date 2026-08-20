@@ -158,6 +158,91 @@ class AgentAccessStoreTest {
   }
 
   @Test
+  fun `a remembered request survives to a later invocation`() {
+    // The `--no-wait` promise: a later command can finish what this one started, which it can only
+    // do if the device secret was kept.
+    val pending =
+      AgentAccessStore.Pending(
+        origin = "https://preview.coo.ee",
+        requestId = "req-1",
+        deviceSecret = "secret-1",
+        userCode = "KX7M-9QD4",
+        approveUrl = "https://preview.coo.ee/agent-access/req-1",
+        expiresAtMillis = now + 600_000,
+      )
+    assertTrue(store().savePending(pending))
+    assertEquals("secret-1", store().pendingFor("https://preview.coo.ee")?.deviceSecret)
+    assertTrue(store().forgetPending("https://preview.coo.ee"))
+    assertNull(store().pendingFor("https://preview.coo.ee"))
+  }
+
+  @Test
+  fun `saving a grant does not discard a pending request, and vice versa`() {
+    store()
+      .savePending(
+        AgentAccessStore.Pending(
+          origin = "https://a.example",
+          requestId = "r",
+          deviceSecret = "s",
+          expiresAtMillis = now + 600_000,
+        )
+      )
+    store().save(entry(origin = "https://b.example", token = "cpat_b"))
+    assertEquals(1, store().allPending().size)
+    assertEquals("cpat_b", store().tokenFor("https://b.example"))
+  }
+
+  @Test
+  fun `a remembered request expires with its own deadline`() {
+    store()
+      .savePending(
+        AgentAccessStore.Pending(
+          origin = "https://a.example",
+          requestId = "r",
+          deviceSecret = "s",
+          expiresAtMillis = now + 60_000,
+        )
+      )
+    now += 61_000
+    assertTrue(store().allPending().isEmpty())
+  }
+
+  @Test
+  fun `forget reports failure rather than claiming a credential is gone`() {
+    store().save(entry())
+    // Make the write fail: replace the parent directory's writability by pointing the store at a
+    // path whose parent is a file. "Forgotten" is a claim about what the next process reads, so a
+    // failed rewrite must not come back true.
+    val wedged = File(dir, "not-a-dir/agent-access.json")
+    File(dir, "not-a-dir").writeText("i am a file")
+    val store = AgentAccessStore(file = wedged, clock = { now }, warn = { warnings += it })
+    assertFalse(store.save(entry()))
+  }
+
+  @Test
+  fun `a partial write never replaces the store`() {
+    // The write is a temp file plus an atomic rename, so a reader either sees the whole old store
+    // or the whole new one. Asserted through its observable consequence: after a save, the file
+    // parses, and no `.tmp` sibling is left behind.
+    store().save(entry())
+    store().save(entry(token = "cpat_second"))
+    assertEquals("cpat_second", store().tokenFor("https://preview.coo.ee"))
+    assertTrue(
+      dir.listFiles()!!.none { it.name.endsWith(".tmp") },
+      "a temp file was left behind: ${dir.listFiles()!!.map { it.name }}",
+    )
+  }
+
+  @Test
+  fun `IPv6 loopback is recognised as local`() {
+    // `[::1]` is the documented loopback form and used to be refused: splitting the origin on ':'
+    // yielded "[", which matched nothing.
+    assertTrue(AgentAccessClient.isSecureEnough("http://[::1]:8723"))
+    assertTrue(AgentAccessClient.isSecureEnough("http://[::1]"))
+    assertFalse(AgentAccessClient.isSecureEnough("http://[2001:db8::1]:8723"))
+  }
+
+  @Test
   fun `plaintext is refused off-loopback and allowed on it`() {
     assertTrue(AgentAccessClient.isSecureEnough("https://preview.coo.ee"))
     assertTrue(AgentAccessClient.isSecureEnough("http://localhost:8080"))

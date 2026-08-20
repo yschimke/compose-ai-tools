@@ -2742,6 +2742,12 @@ caller-supplied code, so opting into it is a typed decision. The second cap is t
 rights: on a GitHub-gated box, granting `playground` requires access to `--github-auth-repo`
 yourself, so nobody can delegate a capability they don't hold.
 
+**The ingest lanes are outside all of this.** `POST /bundles/{name}` and `POST /docs` — the opt-in
+routes where a *client* contributes content to your box — accept the operator token and nothing
+else. A grant labelled "browse this server's catalogs" must not also be able to publish a document
+or replace a named runtime bundle, and no wording on the consent page would have made that
+agreeable.
+
 **Everything expires, and you can end it sooner.** A request dies in 10 minutes; a grant lives for
 what you chose, up to `--agent-grant-max-ttl` (default 8h, hard ceiling 24h). `/status` lists live
 grants by fingerprint with a Revoke button beside each, plus any requests still waiting for you —
@@ -2755,16 +2761,31 @@ scopes, the lifetime and that fingerprint, on mint and on revoke.
 The other `auth` verbs:
 
 ```bash
-compose-preview auth status                      # live grants and what's left of them
+compose-preview auth status                      # grants, each checked against its server
 compose-preview auth token                       # just the bearer, for scripting
 compose-preview auth revoke                      # end it now, server-side and locally
-compose-preview auth request --no-wait --json    # print the link and exit; poll it yourself
+compose-preview auth request --no-wait           # print the link and exit; status collects it later
 ```
+
+`--no-wait` remembers the request, so once the human approves, the next `auth status` (or
+`auth token`) picks the token up — the agent never has to hold a process open or ask twice.
+`auth status` also *verifies*: it asks each server whether the grant it has on file is still live,
+so one you revoked from `/status` is reported as gone rather than confidently listed until its local
+expiry. A server it can't reach reads `unverified` rather than being thrown away.
+
+`--json` emits JSON Lines, one compact document per line — a waiting `auth request --json` gives you
+the request (with the device secret, if you'd rather drive the poll yourself) and then the grant.
 
 Once a grant is stored, `share-preview --mechanism serve` against the same host picks it up without
 `--serve-token`. A `--public` server with no GitHub auth cannot enable this at all: everyone there is
 anonymous, so nobody could be said to have approved anything, and the flag is refused at startup
 rather than becoming a button the internet can press.
+
+On a **private** box that also runs GitHub auth, approving needs both: the server's `--token` *and*
+a signed-in account. A session alone is not enough — otherwise any account your (by default empty)
+`--github-auth-users` allowlist accepts could open a request and approve it themselves, minting a
+grant into a server whose browse token they never had. In practice this is the `/status` route: the
+page you already have open carries the token, and each waiting request has a **Review →** link.
 
 On the deployed image set `SERVE_AGENT_GRANTS=1` (optional `SERVE_AGENT_GRANT_SCOPES`,
 `SERVE_AGENT_GRANT_MAX_TTL`, `SERVE_AGENT_GRANT_MAX_ACTIVE`, `SERVE_AGENT_GRANT_RATE_LIMIT`); it's

@@ -28,7 +28,15 @@ import kotlinx.serialization.json.Json
  * only as "granted, expires in …". `auth token` exists for the case where a script genuinely needs
  * the string, and prints nothing else, so redirecting it to a file is unambiguous.
  */
-internal class AuthCommand(private val args: List<String>) {
+internal class AuthCommand(
+  private val args: List<String>,
+  /**
+   * Where grants and un-collected requests live. Injected so a test can drive the collect/verify
+   * behaviour against a real server without reaching for the caller's actual credential file —
+   * production always gets the default.
+   */
+  private val store: AgentAccessStore = AgentAccessStore(),
+) {
 
   private val json: Boolean = "--json" in args
 
@@ -105,24 +113,39 @@ internal class AuthCommand(private val args: List<String>) {
         is AgentAccessClient.Result.Err -> fail(r.reason)
       }
 
+    // Remembered before anything is printed, and whether or not this run intends to wait. The
+    // device secret is the only thing that can redeem the approval, so a `--no-wait` that printed
+    // "re-run auth status" without persisting it was telling the user to do something impossible —
+    // and a wait interrupted by Ctrl-C would have thrown the request away just as completely.
+    val remembered =
+      store.savePending(
+        AgentAccessStore.Pending(
+          origin = client.origin,
+          requestId = opened.requestId,
+          deviceSecret = opened.deviceSecret,
+          userCode = opened.userCode,
+          approveUrl = opened.approveUrl,
+          label = label,
+          expiresAtMillis = System.currentTimeMillis() + opened.expiresInSeconds * 1000,
+        )
+      )
+
     if (json) {
       // The device secret is deliberately included: `--json` exists for an agent that wants to
       // drive the poll itself, and without it the response is a link it can never redeem. It is
       // not printed in the human form for the same reason it is not in the link.
-      println(
-        JSON.encodeToString(
-          RequestJson.serializer(),
-          RequestJson(
-            server = client.origin,
-            approveUrl = opened.approveUrl,
-            userCode = opened.userCode,
-            requestId = opened.requestId,
-            deviceSecret = opened.deviceSecret,
-            expiresInSeconds = opened.expiresInSeconds,
-            requestedScope = opened.requestedScope,
-            requestedTtlSeconds = opened.requestedTtlSeconds,
-          ),
-        )
+      printJson(
+        RequestJson.serializer(),
+        RequestJson(
+          server = client.origin,
+          approveUrl = opened.approveUrl,
+          userCode = opened.userCode,
+          requestId = opened.requestId,
+          deviceSecret = opened.deviceSecret,
+          expiresInSeconds = opened.expiresInSeconds,
+          requestedScope = opened.requestedScope,
+          requestedTtlSeconds = opened.requestedTtlSeconds,
+        ),
       )
       if ("--no-wait" in args) return
     } else {
@@ -141,8 +164,13 @@ internal class AuthCommand(private val args: List<String>) {
       println()
       if ("--no-wait" in args) {
         println(
-          "Not waiting. Re-run `compose-preview auth status --server ${client.origin}` after they " +
-            "approve — or run this without --no-wait to block until they do."
+          if (remembered)
+            "Not waiting. Run `compose-preview auth status --server ${client.origin}` after they " +
+              "approve and it will collect the token — or run this without --no-wait to block " +
+              "until they do."
+          else
+            "Not waiting — but the request could NOT be saved locally (see the warning above), so " +
+              "no later command can collect its token. Re-run without --no-wait."
         )
         return
       }
@@ -153,7 +181,7 @@ internal class AuthCommand(private val args: List<String>) {
     }
 
     val outcome = awaitApproval(client, opened)
-    val store = AgentAccessStore()
+    store.forgetPending(client.origin)
     val saved =
       store.save(
         AgentAccessStore.Entry(
@@ -166,17 +194,15 @@ internal class AuthCommand(private val args: List<String>) {
         )
       )
     if (json) {
-      println(
-        JSON.encodeToString(
-          GrantedJson.serializer(),
-          GrantedJson(
-            server = client.origin,
-            scopes = outcome.scopes,
-            approvedBy = outcome.approvedBy.orEmpty(),
-            expiresInSeconds = outcome.expiresInSeconds ?: 0,
-            stored = saved,
-          ),
-        )
+      printJson(
+        GrantedJson.serializer(),
+        GrantedJson(
+          server = client.origin,
+          scopes = outcome.scopes,
+          approvedBy = outcome.approvedBy.orEmpty(),
+          expiresInSeconds = outcome.expiresInSeconds ?: 0,
+          stored = saved,
+        ),
       )
       return
     }
@@ -253,45 +279,149 @@ internal class AuthCommand(private val args: List<String>) {
 
   // --------------------------------------------------------------- status
 
+  /**
+   * What this machine holds for each server, **checked against that server** rather than reported
+   * from local bookkeeping alone.
+   *
+   * Two things happen here, and both exist because the local file is a cache of someone else's
+   * state. A remembered-but-uncollected request is polled, so the token an approval produced is
+   * picked up by the first `status` after it (this is what makes `--no-wait` work). A stored grant
+   * is verified with `whoami`, so a grant the operator revoked, or one that died with a server
+   * restart, is reported as gone instead of being confidently listed as live until its local expiry
+   * — which would send the next command into an unexplained 404.
+   *
+   * A server that cannot be reached yields `unverified` rather than a deletion: an unreachable host
+   * is not evidence that the grant is dead, and throwing a live credential away on a flaky network
+   * is the more expensive mistake.
+   */
   private fun status() {
-    val store = AgentAccessStore()
     val explicit = namedServer()
-    val entries = store.all().filter { explicit == null || it.origin == explicit }
+    collectPending(store, explicit)
     val now = System.currentTimeMillis()
+    val rows =
+      store
+        .all()
+        .filter { explicit == null || it.origin == explicit }
+        .map { entry ->
+          val state =
+            when (val verdict = verify(entry)) {
+              null -> "unverified"
+              true -> "live"
+              false -> "gone"
+            }
+          if (state == "gone") store.forget(entry.origin)
+          Triple(entry, state, entry.secondsUntilExpiry(now))
+        }
+    val waiting = store.allPending().filter { explicit == null || it.origin == explicit }
+
     if (json) {
-      println(
-        JSON.encodeToString(
-          StatusJson.serializer(),
-          StatusJson(
-            grants =
-              entries.map {
-                StatusEntryJson(
-                  server = it.origin,
-                  scopes = it.scopes,
-                  approvedBy = it.approvedBy,
-                  label = it.label,
-                  expiresInSeconds = it.secondsUntilExpiry(now),
-                )
-              }
-          ),
-        )
+      printJson(
+        StatusJson.serializer(),
+        StatusJson(
+          grants =
+            rows.map { (entry, state, left) ->
+              StatusEntryJson(
+                server = entry.origin,
+                scopes = entry.scopes,
+                approvedBy = entry.approvedBy,
+                label = entry.label,
+                expiresInSeconds = left,
+                state = state,
+              )
+            },
+          pending =
+            waiting.map {
+              PendingJson(
+                server = it.origin,
+                approveUrl = it.approveUrl,
+                userCode = it.userCode,
+                expiresInSeconds = it.secondsUntilExpiry(now),
+              )
+            },
+        ),
       )
       return
     }
-    if (entries.isEmpty()) {
+
+    if (rows.isEmpty() && waiting.isEmpty()) {
       println(
         if (explicit == null) "No access grants. Run `compose-preview auth request --server <url>`."
         else "No access grant for $explicit. Run `compose-preview auth request --server $explicit`."
       )
       return
     }
-    for (entry in entries) {
+    for ((entry, state, left) in rows) {
+      val suffix =
+        when (state) {
+          "gone" -> " · REVOKED on the server (forgotten locally)"
+          "unverified" -> " · could not reach the server to confirm"
+          else -> ""
+        }
       println(
         "${entry.origin} — ${entry.scopes.joinToString(", ").ifEmpty { "preview" }} · " +
-          "expires in ${ServeAgentGrants.formatDuration(entry.secondsUntilExpiry(now))}" +
+          "expires in ${ServeAgentGrants.formatDuration(left)}" +
           (if (entry.approvedBy.isNotEmpty()) " · approved by ${entry.approvedBy}" else "") +
-          (if (entry.label.isNotEmpty()) " · \"${entry.label}\"" else "")
+          (if (entry.label.isNotEmpty()) " · \"${entry.label}\"" else "") +
+          suffix
       )
+    }
+    for (p in waiting) {
+      println(
+        "${p.origin} — waiting for approval (${ServeAgentGrants.formatDuration(
+          p.secondsUntilExpiry(now)
+        )} left)"
+      )
+      println("  ${p.approveUrl}")
+      println("  verification code: ${p.userCode}")
+    }
+  }
+
+  /**
+   * Poll every remembered request once and promote the approved ones into grants. Silent about a
+   * request still pending — [status] prints those itself, with the link, so the human can still be
+   * pointed at it.
+   */
+  private fun collectPending(store: AgentAccessStore, only: String?) {
+    for (pending in store.allPending()) {
+      if (only != null && pending.origin != only) continue
+      val client = runCatching { AgentAccessClient(pending.origin) }.getOrNull() ?: continue
+      val polled =
+        when (val r = client.poll(pending.requestId, pending.deviceSecret)) {
+          is AgentAccessClient.Result.Ok -> r.value
+          // Unreachable: keep the request, it may still be approvable when the network is back.
+          is AgentAccessClient.Result.Err -> continue
+        }
+      when (polled.status) {
+        "approved" -> {
+          val token = polled.token
+          if (token.isNullOrEmpty()) continue
+          store.save(
+            AgentAccessStore.Entry(
+              origin = pending.origin,
+              token = token,
+              scopes = polled.scopes,
+              approvedBy = polled.approvedBy.orEmpty(),
+              label = pending.label,
+              expiresAtMillis = System.currentTimeMillis() + (polled.expiresInSeconds ?: 0) * 1000,
+            )
+          )
+          store.forgetPending(pending.origin)
+        }
+        // Terminal and not coming back — stop carrying it.
+        "denied",
+        "expired",
+        "unknown" -> store.forgetPending(pending.origin)
+        else -> Unit // still pending
+      }
+    }
+  }
+
+  /** True/false from the server, or null when it could not be asked. */
+  private fun verify(entry: AgentAccessStore.Entry): Boolean? {
+    val client = runCatching { AgentAccessClient(entry.origin) }.getOrNull() ?: return null
+    return when (val r = client.whoami(entry.token)) {
+      is AgentAccessClient.Result.Ok -> r.value.active
+      is AgentAccessClient.Result.Err -> null
     }
   }
 
@@ -303,9 +433,13 @@ internal class AuthCommand(private val args: List<String>) {
    * that a script then sends as a token.
    */
   private fun token() {
+    // Collect first: the common shape is `auth request --no-wait`, a human approving, and then a
+    // script reaching straight for the token. Making that work is the whole point of remembering
+    // the request.
+    collectPending(store, namedServer())
     val server = namedServer() ?: soleServer() ?: fail(NO_SERVER_MESSAGE)
     val entry =
-      AgentAccessStore().entryFor(server)
+      store.entryFor(server)
         ?: fail(
           "no live access grant for $server. Run `compose-preview auth request --server $server`."
         )
@@ -316,10 +450,15 @@ internal class AuthCommand(private val args: List<String>) {
 
   private fun revoke() {
     val server = namedServer() ?: soleServer() ?: fail(NO_SERVER_MESSAGE)
-    val store = AgentAccessStore()
+    // A remembered-but-uncollected request is also access this machine asked for; revoking should
+    // leave nothing behind, including the thing that could still turn into a credential.
+    val hadPending = store.forgetPending(server)
     val entry = store.entryFor(server)
     if (entry == null) {
-      println("No access grant for $server — nothing to revoke.")
+      println(
+        if (hadPending) "Dropped the pending request for $server; there was no grant to revoke."
+        else "No access grant for $server — nothing to revoke."
+      )
       return
     }
     val client =
@@ -348,7 +487,6 @@ internal class AuthCommand(private val args: List<String>) {
   }
 
   private fun forget() {
-    val store = AgentAccessStore()
     val server = namedServer()
     if (server == null) {
       store.clear()
@@ -385,11 +523,16 @@ internal class AuthCommand(private val args: List<String>) {
   /**
    * The one server we hold a grant for, when there is exactly one — so `auth token` needs no flag.
    */
-  private fun soleServer(): String? = AgentAccessStore().all().singleOrNull()?.origin
+  private fun soleServer(): String? = store.all().singleOrNull()?.origin
 
   private fun defaultLabel(): String =
     System.getenv("COMPOSE_PREVIEW_AGENT_LABEL")?.takeIf { it.isNotBlank() }
       ?: "compose-preview CLI on ${runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrNull() ?: "an agent host"}"
+
+  /** One compact JSON document, on its own line. See [JSON]. */
+  private fun <T> printJson(serializer: kotlinx.serialization.SerializationStrategy<T>, value: T) {
+    println(JSON.encodeToString(serializer, value))
+  }
 
   private fun fail(message: String, code: Int = 1): Nothing {
     System.err.println("compose-preview auth: $message")
@@ -408,11 +551,15 @@ internal class AuthCommand(private val args: List<String>) {
           --ttl <duration>   How long to ask for, e.g. 45m / 2h (default 1h). The approver
                              chooses the actual lifetime, up to the server's ceiling.
           --label <text>     What the access is for; shown on the approval page.
-          --no-wait          Print the link and exit instead of waiting.
-          --json             Machine-readable, including the device secret so you can poll
-                             the server yourself.
+          --no-wait          Print the link and exit instead of waiting. The request is
+                             remembered, so a later `auth status` (or `auth token`)
+                             collects the token once the human approves.
+          --json             Machine-readable JSON Lines — one compact document per line:
+                             the request (including the device secret, so you can poll the
+                             server yourself) and then, unless --no-wait, the grant.
 
-        status    List live grants (--server to filter, --json for machine form).
+        status    List grants, each checked against its server, and collect any request a
+                  --no-wait run left waiting (--server to filter, --json for machine form).
         token     Print the bearer token for a server and nothing else.
         revoke    End the grant now, on the server and locally.
         forget    Drop the local copy only (--server, or all of them).
@@ -442,7 +589,12 @@ internal class AuthCommand(private val args: List<String>) {
     val stored: Boolean,
   )
 
-  @Serializable private data class StatusJson(val grants: List<StatusEntryJson>)
+  @Serializable
+  private data class StatusJson(
+    val grants: List<StatusEntryJson>,
+    /** Requests opened but not yet approved — the `--no-wait` half. */
+    val pending: List<PendingJson> = emptyList(),
+  )
 
   @Serializable
   private data class StatusEntryJson(
@@ -450,6 +602,16 @@ internal class AuthCommand(private val args: List<String>) {
     val scopes: List<String>,
     val approvedBy: String,
     val label: String,
+    val expiresInSeconds: Long,
+    /** `live` / `gone` / `unverified` — what the server said, not what the local file assumed. */
+    val state: String = "unverified",
+  )
+
+  @Serializable
+  private data class PendingJson(
+    val server: String,
+    val approveUrl: String,
+    val userCode: String,
     val expiresInSeconds: Long,
   )
 
@@ -466,6 +628,12 @@ internal class AuthCommand(private val args: List<String>) {
     const val NO_SERVER_MESSAGE =
       "which server? Pass --server https://… or set \$COMPOSE_PREVIEW_SERVER."
 
-    val JSON = Json { prettyPrint = true }
+    /**
+     * Compact, one document per line. `--json` on a *waiting* `auth request` emits two documents —
+     * the request (so the agent can relay the link now) and the grant (once it lands) — and two
+     * pretty-printed objects concatenated are not parseable as anything. One object per line is
+     * JSON Lines, which every consumer already knows how to read incrementally.
+     */
+    val JSON = Json { prettyPrint = false }
   }
 }

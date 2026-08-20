@@ -78,6 +78,16 @@ class ServeAgentGrantStore(
     @Volatile var grantId: String? = null,
     /** Who resolved it, for the poll response and the audit line. */
     @Volatile var resolvedBy: String? = null,
+    /**
+     * True once the agent has actually fetched its token ([poll] answering [Poll.Approved]).
+     *
+     * The distinction matters only in one place, and it is a place that used to lose credentials:
+     * overflow. `APPROVED` is not the same as "the agent has it" — approval happens in a browser
+     * and the poll arrives up to an interval later — so shedding every non-pending entry to make
+     * room let an anonymous caller fill the map, wait for a human to approve, and open one more
+     * request inside that window, stranding a live token its owner could never collect.
+     */
+    @Volatile var collected: Boolean = false,
   ) {
     enum class State {
       PENDING,
@@ -153,9 +163,13 @@ class ServeAgentGrantStore(
     val now = clock()
     purge(now)
     if (requests.size >= maxPendingRequests) {
-      // Only PENDING entries are worth keeping around; a resolved one has already been collected or
-      // abandoned, so shed those first and refuse only if the box really is full of live asks.
-      requests.entries.removeIf { it.value.state != Request.State.PENDING }
+      // Shed only what is genuinely finished with: a denial, or an approval whose token has been
+      // collected. An approved-but-uncollected request still owes its owner a credential, and a
+      // pending one still owes a human a decision — dropping either loses work someone is waiting
+      // on, which is worse than refusing this new ask.
+      requests.entries.removeIf { (_, r) ->
+        r.state == Request.State.DENIED || (r.state == Request.State.APPROVED && r.collected)
+      }
       if (requests.size >= maxPendingRequests) return null
     }
     val request =
@@ -163,8 +177,8 @@ class ServeAgentGrantStore(
         id = mintId(),
         deviceSecret = mintSecret(),
         userCode = mintUserCode(),
-        label = label.trim().take(MAX_LABEL_CHARS),
-        client = client.take(MAX_LABEL_CHARS),
+        label = sanitizeLabel(label),
+        client = sanitizeLabel(client),
         requestedScope = minOf(requestedScope, maxScope),
         requestedTtlSeconds = requestedTtlSeconds.coerceIn(1, maxGrantTtlSeconds),
         createdAtMillis = now,
@@ -260,6 +274,7 @@ class ServeAgentGrantStore(
         // and an operator with a fast revoke button. Say so plainly rather than handing back a
         // token that is already dead.
         val grant = request.grantId?.let { grant(it) } ?: return Poll.Expired
+        request.collected = true
         Poll.Approved(grant)
       }
     }
@@ -394,6 +409,28 @@ class ServeAgentGrantStore(
 
     /** Label/client text is display-only; a cap keeps a hostile agent out of the page's layout. */
     const val MAX_LABEL_CHARS = 120
+
+    /**
+     * Flatten an anonymous caller's free text to printable characters, then cap it.
+     *
+     * The label is written by whoever POSTed the request — nobody has authenticated at that point —
+     * and it is later interpolated into a line this server prints to its own **audit log**. Left
+     * raw it can carry newlines, which forge additional log lines, and terminal escape sequences,
+     * which rewrite what the operator sees at the moment they are deciding whether to trust the
+     * request. Neither is theoretical: the log line is emitted at approval time, on the operator's
+     * console, from text the requester chose.
+     *
+     * Every C0/C1 control (and DEL) becomes a space, runs collapse, and the result is trimmed and
+     * capped. The HTML page escapes this same value again on its own account — this is not a
+     * substitute for that, it is the half that protects the terminal rather than the browser.
+     */
+    fun sanitizeLabel(raw: String): String =
+      raw
+        .map { if (it.isISOControl() || it == '\u007f') ' ' else it }
+        .joinToString("")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(MAX_LABEL_CHARS)
 
     /** The bearer's prefix — greppable, and unmistakable for the operator's `--token`. */
     const val TOKEN_PREFIX = "cpat_"

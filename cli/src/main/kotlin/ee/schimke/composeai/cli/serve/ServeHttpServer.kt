@@ -920,7 +920,7 @@ class ServeHttpServer(
         // Only registered when the operator opts in (a bundle store is supplied).
         bundleStore?.let { store ->
           post("/bundles/{name}") {
-            if (rejectBadToken()) return@post
+            if (rejectBadTokenForIngest()) return@post
             val name = call.parameters["name"]
             if (name.isNullOrBlank()) {
               call.respondText("missing bundle name", status = HttpStatusCode.BadRequest)
@@ -1769,7 +1769,7 @@ class ServeHttpServer(
    * decision (the store content-sniffs).
    */
   private suspend fun RoutingContext.handleDocUpload(store: ServeDocStore) {
-    if (rejectBadToken()) return
+    if (rejectBadTokenForIngest()) return
     val name = call.request.queryParameters["name"]
     val url = call.request.queryParameters["url"]
     // Cap the body as it streams in — receiving it whole first would let a client OOM the server
@@ -5096,27 +5096,31 @@ class ServeHttpServer(
             // has actually rendered so a quiet server doesn't advertise a block of zeros.
             running.mapNotNull { it.renderStats }.filter { it.renders + it.cacheHits + it.busy > 0 }
           ),
+        // Omitted entirely on a site-scoped snapshot, like `branchFetch` above and for the same
+        // reason: a site host answers for one app, and grants belong to the box.
         agentAccess =
-          agentGrants?.let { store ->
-            val now = System.currentTimeMillis()
-            val live = store.activeGrants()
-            AgentAccessDto(
-              activeGrants = live.size,
-              pendingRequests = store.pendingRequests().size,
-              maxScope = store.maxScope.wire,
-              maxTtlSeconds = store.maxGrantTtlSeconds,
-              grants =
-                live.map { grant ->
-                  AgentGrantDto(
-                    fingerprint = grant.fingerprint,
-                    scopes = grant.scopes.map { it.wire },
-                    approvedBy = grant.approvedBy,
-                    expiresInSeconds = grant.secondsUntilExpiry(now),
-                    label = grant.label,
-                  )
-                },
-            )
-          },
+          agentGrants
+            ?.takeIf { onlySystem == null }
+            ?.let { store ->
+              val now = System.currentTimeMillis()
+              val live = store.activeGrants()
+              AgentAccessDto(
+                activeGrants = live.size,
+                pendingRequests = store.pendingRequests().size,
+                maxScope = store.maxScope.wire,
+                maxTtlSeconds = store.maxGrantTtlSeconds,
+                grants =
+                  live.map { grant ->
+                    AgentGrantDto(
+                      fingerprint = grant.fingerprint,
+                      scopes = grant.scopes.map { it.wire },
+                      approvedBy = grant.approvedBy,
+                      expiresInSeconds = grant.secondsUntilExpiry(now),
+                      label = grant.label,
+                    )
+                  },
+              )
+            },
         playground =
           playgroundHealth?.invoke()?.let { h ->
             PlaygroundDto(
@@ -7660,12 +7664,16 @@ class ServeHttpServer(
       close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
       return
     }
-    // Same rule as [rejectMissingGithubAuth], stated here because a socket can't be redirected to a
-    // sign-in: a signed-in visitor, or an agent grant that reaches `live`.
-    if (
-      githubAuth?.isAuthenticated(call) == false &&
-        agentGrantFor(call)?.allows(ServeAgentGrantScope.LIVE) != true
-    ) {
+    // Same rule as [rejectMissingGithubAuth], restated because a socket can't be redirected to a
+    // sign-in — and in the same order, for the same reason: a presented grant is judged on its own
+    // scope whether or not this box configures GitHub auth.
+    val socketGrant = agentGrantFor(call)
+    if (socketGrant != null) {
+      if (!socketGrant.allows(ServeAgentGrantScope.LIVE)) {
+        close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "live not approved for this grant"))
+        return
+      }
+    } else if (githubAuth?.isAuthenticated(call) == false) {
       close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "github auth required"))
       return
     }
@@ -7895,6 +7903,28 @@ class ServeHttpServer(
     return store.grantForToken(presented)
   }
 
+  /**
+   * The token gate for the **ingest** lanes — `POST /bundles/{name}`, `POST /docs`. Identical to
+   * [rejectBadToken] except that an agent grant never satisfies it.
+   *
+   * The consent page tells a human that `preview` means "browse this server's catalogs and their
+   * rendered previews". On a box that also opted into the ingest lanes, a `preview` grant would
+   * have satisfied every `rejectBadToken()` on the server — including these — so an agent granted
+   * read access could publish a document or replace a named runtime bundle. That is a mutation
+   * nobody agreed to, and no wording on the page would have made it agreeable.
+   *
+   * Rather than growing a fourth scope for it, these lanes simply stay outside the grant system:
+   * they are for a client contributing content to someone else's box, which is the operator's
+   * business and not a capability an agent should be able to be *given* by this flow at all. The
+   * image lane already works this way for its own reasons — it wants a real GitHub credential.
+   */
+  private suspend fun RoutingContext.rejectBadTokenForIngest(): Boolean {
+    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
+    if (isAuthorized(serverToken, provided, isPublic) && agentGrantFor(call) == null) return false
+    call.respondText("not found", status = HttpStatusCode.NotFound)
+    return true
+  }
+
   private suspend fun RoutingContext.handleWasmAsset(privateRoute: Boolean) {
     val system = call.parameters["system"]
     val privateSystem = system in privateWasmCatalogs
@@ -7946,6 +7976,10 @@ class ServeHttpServer(
    * only form of one this page knows.
    */
   private fun RoutingContext.agentGrantStatusRows(): List<ServeWeb.StatusAgentGrant> {
+    // A top-level site's `/status` reports on THAT app only — every other box-wide field is already
+    // filtered out of it. Grants belong to the box, not to a catalog, so on a site host they are
+    // omitted rather than filtered: there is no per-site subset of them to show.
+    if (siteSystem() != null) return emptyList()
     val store = agentGrants ?: return emptyList()
     val approver = agentGrantApprover(store)
     val now = System.currentTimeMillis()
@@ -7974,6 +8008,7 @@ class ServeHttpServer(
    * token in the URL, verification code and all.
    */
   private fun RoutingContext.agentGrantRequestRows(): List<ServeWeb.StatusAgentRequest> {
+    if (siteSystem() != null) return emptyList()
     val store = agentGrants ?: return emptyList()
     agentGrantApprover(store) ?: return emptyList()
     val now = System.currentTimeMillis()
@@ -8345,13 +8380,22 @@ class ServeHttpServer(
   private fun RoutingContext.agentGrantApprover(
     store: ServeAgentGrantStore
   ): ServeAgentGrants.Approver? {
+    // The server's own front door comes FIRST, and a GitHub session is not a substitute for it.
+    // On a **private** box that also configures OAuth, checking only the session would have let any
+    // GitHub account the (by default empty) `--github-auth-users` allowlist accepts open a request
+    // and approve it themselves — minting a grant into a server whose browse token they never had.
+    // A private box's approver must hold that token; a `--public` box has no such door to pass.
+    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
+    if (!isPublic && !ServeUrls.tokensMatch(serverToken, provided)) return null
+    // …and then the identity, when there is one to have. Note neither branch can be satisfied by an
+    // agent grant: a GitHub session lives in a cookie no agent holds, and the token compare above
+    // is against `--token` specifically, which no minted bearer can equal. So a grant can never
+    // approve or revoke another.
     val auth = githubAuth
     if (auth != null) {
       val login = auth.currentLogin(call) ?: return null
       return ServeAgentGrants.Approver.github(login, auth.hasRepositoryAccess(call), store.maxScope)
     }
-    val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
-    if (!ServeUrls.tokensMatch(serverToken, provided)) return null
     return ServeAgentGrants.Approver.operator(store.maxScope)
   }
 
@@ -8448,11 +8492,16 @@ class ServeHttpServer(
   }
 
   private suspend fun RoutingContext.rejectMissingGithubAuth(api: Boolean = false): Boolean {
+    // A presented grant is judged on its own scope FIRST, and independently of whether GitHub auth
+    // exists. That order is the whole point. Written the other way round — `githubAuth ?: return
+    // false` first — a private box with no OAuth configured let every grant through this gate
+    // unread, so a `preview` grant opened live daemon sessions the human never agreed to. The gate
+    // is "is this caller allowed to run this lane", and for a grant holder the answer comes from
+    // the grant, on every deployment shape.
+    if (rejectGrantBelowScope(ServeAgentGrantScope.LIVE, api)) return true
+    if (agentGrantFor(call) != null) return false
     val auth = githubAuth ?: return false
     if (auth.isAuthenticated(call)) return false
-    // A `live` grant is the agent's equivalent of being signed in: a human with a GitHub session
-    // approved it, by name, minutes ago. See [ServeAgentGrantScope.LIVE].
-    if (agentGrantFor(call)?.allows(ServeAgentGrantScope.LIVE) == true) return false
     if (api) {
       call.respondText("GitHub sign-in required.", status = HttpStatusCode.Unauthorized)
     } else {
@@ -8461,12 +8510,41 @@ class ServeHttpServer(
     return true
   }
 
+  /**
+   * Refuse a presented grant that does not reach [required], whatever else the request carries.
+   *
+   * Returns false — "nothing to say" — both when no grant was presented (the caller falls through
+   * to its ordinary human gate) and when the grant is good enough. Only a grant that is *present
+   * and too small* answers here, and it answers 403 rather than a sign-in redirect: an agent has no
+   * browser to be redirected in, and its remedy is to ask for a wider grant, not to sign in.
+   */
+  private suspend fun RoutingContext.rejectGrantBelowScope(
+    required: ServeAgentGrantScope,
+    api: Boolean,
+  ): Boolean {
+    val grant = agentGrantFor(call) ?: return false
+    if (grant.allows(required)) return false
+    val message =
+      "This agent grant covers ${grant.scopes.joinToString(", ") { it.wire }}; " +
+        "'${required.wire}' was not approved for it. Ask for a wider grant " +
+        "(compose-preview auth request --scope ${required.wire})."
+    if (api) {
+      call.respondText(message, status = HttpStatusCode.Forbidden)
+    } else {
+      call.respondText(message, ContentType.Text.Plain, HttpStatusCode.Forbidden)
+    }
+    return true
+  }
+
   private suspend fun RoutingContext.rejectMissingGithubRepoAccess(api: Boolean = false): Boolean {
+    // Scope first, and independently of GitHub auth — see [rejectMissingGithubAuth] for why the
+    // other order was a hole. `playground` is never in a default grant and can only be approved by
+    // someone holding repository access themselves, so a grant that reaches it means a human with
+    // this exact right said yes.
+    if (rejectGrantBelowScope(ServeAgentGrantScope.PLAYGROUND, api)) return true
+    if (agentGrantFor(call) != null) return false
     val auth = githubAuth ?: return false
     if (auth.hasRepositoryAccess(call)) return false
-    // `playground` is never in a default grant and can only be approved by someone who holds
-    // repository access themselves — so reaching here means a human with this exact right said yes.
-    if (agentGrantFor(call)?.allows(ServeAgentGrantScope.PLAYGROUND) == true) return false
     val message =
       "Playground requires access to ${auth.accessRepository()}. Live preview is available to any " +
         "signed-in GitHub user."
