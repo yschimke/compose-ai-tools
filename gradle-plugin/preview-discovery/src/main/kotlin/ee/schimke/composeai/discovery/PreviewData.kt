@@ -212,8 +212,8 @@ data class AnimationCapture(
 /**
  * Container format for a motion capture — mirrors `ee.schimke.composeai.preview.MotionFormat` from
  * the `preview-annotations` artifact, duplicated here for the same reason as [FocusDirection]: the
- * Gradle plugin can't put the annotation artifact (and Compose) on its own compile classpath, so the
- * value travels into `previews.json` as this enum and the renderer translates at render time.
+ * Gradle plugin can't put the annotation artifact (and Compose) on its own compile classpath, so
+ * the value travels into `previews.json` as this enum and the renderer translates at render time.
  */
 @Serializable
 enum class MotionFormat {
@@ -451,7 +451,8 @@ const val FOCUS_SETUP_FRAMES_MS: Int = 32
 
 /**
  * Tool-owned environment selected by `@GlimmerEnvironmentPreview`. The renderer captures normal
- * opaque RGB-on-black Glimmer UI first, then delegates ADD compositing to the environment connector.
+ * opaque RGB-on-black Glimmer UI first, then delegates ADD compositing to the environment
+ * connector.
  */
 @Serializable
 enum class GlimmerEnvironmentCapture {
@@ -690,14 +691,16 @@ const val INTERACTION_COST: Float = 60.0f
  *
  * A settle is not a one-pass capture: both backends walk the window a frame at a time, so a default
  * 1000ms settle is ~62 rendered frames. Sized so that default lands at 6.0 — just above
- * [HEAVY_COST_THRESHOLD], which keeps it out of the on-every-save fast tier and lets shard balancing
- * see the work — while a short explicit window (say `afterMs = 300`, ~19 frames) stays cheap.
+ * [HEAVY_COST_THRESHOLD], which keeps it out of the on-every-save fast tier and lets shard
+ * balancing see the work — while a short explicit window (say `afterMs = 300`, ~19 frames) stays
+ * cheap.
  */
 const val SETTLE_COST_PER_SECOND: Float = 5.0f
 
 /** Per-capture cost of a still carrying a settle of [windowMs]. See [SETTLE_COST_PER_SECOND]. */
 fun settleCaptureCost(windowMs: Int): Float =
   STATIC_COST + (windowMs.coerceAtLeast(0) / 1000f) * SETTLE_COST_PER_SECOND
+
 const val ACCESSIBILITY_COST_PER_CAPTURE: Float = 4.0f
 const val HEAVY_COST_THRESHOLD: Float = 5.0f
 
@@ -850,8 +853,8 @@ data class Capture(
    */
   val settle: SettleCapture? = null,
   /**
-   * `null` → keep the raw additive Glimmer capture. Non-null → preserve that capture beside
-   * the output and ADD-composite the selected environment as a post-render step.
+   * `null` → keep the raw additive Glimmer capture. Non-null → preserve that capture beside the
+   * output and ADD-composite the selected environment as a post-render step.
    */
   val glimmerEnvironment: GlimmerEnvironmentCapture? = null,
   /**
@@ -1048,6 +1051,14 @@ data class CatalogEntry(
    * behaviour.
    */
   val perBreakpoint: Boolean = false,
+  /**
+   * COMPONENT only: `@CatalogComponent.motionPreview` — the exact `@Preview` function name whose
+   * animated/interaction captures publish on this component, when the recording lives on a function
+   * of its own (an `@OverrideVariant` fan-out that would duplicate it, or a pinned motion canvas
+   * the wrapped sticker cannot use). `null` — the default — keeps motion read off the component's
+   * own `@Preview`.
+   */
+  val motionPreview: String? = null,
   /**
    * The design-kit variant property this entry's knobs turn, when the kit's name for it differs
    * from the code's. Both roles use it, for the same reason at different scopes: on a COMPONENT it

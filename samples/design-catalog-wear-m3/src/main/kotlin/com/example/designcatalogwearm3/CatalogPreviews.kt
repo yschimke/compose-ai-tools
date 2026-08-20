@@ -456,6 +456,15 @@ fun CircularProgressSticker() =
   caption =
     "Indeterminate (animated) progress ring — the no-progress overload sweeps continuously; " +
       "animates in the live preview.",
+  // Claims [IndeterminateCircularProgressGif]'s recording for this component's Motion lane. The
+  // annotation cannot ride this function: `@CatalogWearModes` fans it out and the sticker is the
+  // determinate-shaped, cropped capture, while a GIF needs one pinned canvas for every frame. It is
+  // also this repo's standing end-to-end net for `motionPreview` itself — a recording that no
+  // component claims publishes NOWHERE (it renders, the join has nothing to fold it onto, and the
+  // catalog ships with no Motion section), which is what silently cost wear-m3-catalog all five of
+  // its captures. If the field stops being carried, `motion/` empties here and the export's
+  // unclaimed-motion warning names this function.
+  motionPreview = "IndeterminateCircularProgressGif",
 )
 @CatalogWearModes
 @Composable
@@ -471,7 +480,10 @@ fun IndeterminateCircularProgressSticker() = WearSticker {
 // auto-detects from the indeterminate `InfiniteTransition`'s iteration so the loop is seamless.
 // Standalone, not a `catalog.spec` component: the sticker-sheet join represents each component as a
 // static PNG, so a GIF-primary preview travels in the bundle as `previews/<id>.gif` (same treatment
-// as `CardScalingScrollGif`) rather than becoming a grid sticker.
+// as `CardScalingScrollGif`) rather than becoming a grid sticker. Standalone does NOT mean
+// unpublished, though — that was the trap. Motion is collected per component, so a recording no
+// component names is dropped at the join in silence; [IndeterminateCircularProgressSticker] claims
+// this one with `motionPreview`, which is what puts it under `motion/` on the delivery branch.
 @Preview(showBackground = false)
 @AnimatedPreview(showCurves = false)
 @Composable
