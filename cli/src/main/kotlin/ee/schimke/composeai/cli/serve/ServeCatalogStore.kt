@@ -285,6 +285,8 @@ class ServeCatalogStore(
     val componentSourceFile: String?,
     val componentSourceModule: String?,
     val componentBodyLine: Int?,
+    /** The owning component's authored one-line description, tagged onto each of its renders. */
+    val componentCaption: String?,
     /**
      * The owning component's published captures, paired to this image by theme in the load loop.
      */
@@ -414,6 +416,18 @@ class ServeCatalogStore(
     // original loop applied runs here (so nothing extra is ever requested); an image whose
     // destination escapes the staged previews dir is planned with a null target so it still counts
     // toward `declaredImages` and is then skipped, exactly as before.
+    // Captions are authored per COMPONENT, while live-only records and render failures are listed
+    // per render — so they name a componentId and nothing else. This lets those rows borrow the
+    // caption of the component they belong to instead of being the only cards that can't say what
+    // they are.
+    val captionByComponentId: Map<String?, String?> =
+      catalog.components
+        .mapNotNull { c ->
+          val id = c.componentId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+          val caption = c.caption?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+          id to caption
+        }
+        .toMap()
     val plannedImages =
       catalog.components.flatMap { component ->
         // The component's section/group tag every one of its previews (a component maps to one
@@ -424,6 +438,7 @@ class ServeCatalogStore(
         val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
         val componentSourceModule = component.sourceModule?.takeIf { it.isNotBlank() }
         val componentBodyLine = component.bodyLine?.takeIf { it > 0 }
+        val componentCaption = component.caption?.takeIf { it.isNotBlank() }
         component.images.mapNotNull { image ->
           val path = image.path
           // Only image-directory PNGs; reject traversal. The path is from a trusted branch, but a
@@ -447,6 +462,7 @@ class ServeCatalogStore(
             componentSourceFile,
             componentSourceModule,
             componentBodyLine,
+            componentCaption,
             component.motion,
           )
         }
@@ -548,6 +564,7 @@ class ServeCatalogStore(
               sourceFile = planned.componentSourceFile,
               sourceModule = planned.componentSourceModule,
               bodyLine = planned.componentBodyLine,
+              caption = planned.componentCaption,
             )
         }
         count++
@@ -582,6 +599,10 @@ class ServeCatalogStore(
           section = section,
           group = group,
           order = if (section != null || group != null) count + deferredIds.size - 1 else null,
+          // A live-only record carries no caption of its own — the export writes one per COMPONENT
+          // — so take the caption of the component it belongs to. Without this a component whose
+          // only render is live is the one card on the sheet that cannot say what it is.
+          caption = captionByComponentId[record.componentId?.takeIf { it.isNotBlank() }],
         )
     }
 
@@ -614,6 +635,7 @@ class ServeCatalogStore(
           group = failure.group,
           order = count + deferredIds.size + failedIds.size - 1,
           sourceFile = failure.sourceFile,
+          caption = captionByComponentId[failure.componentId?.takeIf { it.isNotBlank() }],
           renderFailure = failure,
         )
     }
@@ -2230,6 +2252,14 @@ class ServeCatalogStore(
     val componentId: String? = null,
     val images: List<Image> = emptyList(),
     /**
+     * The one-line description the catalog authored for this component (`@CatalogComponent(caption
+     * = …)`, or the spec entry that overrides it) — what the component is FOR, in the design
+     * system's own words. The export has always written it into `catalog.json`; the serve layer
+     * simply never read it, so a browse surface could name a component but never say what it was.
+     * Null for a catalog that authors none, and for a plain uploaded bundle.
+     */
+    val caption: String? = null,
+    /**
      * Top-level **section** (the tab a preview host buckets this component under — `"Themes"`,
      * `"Components"`, `"Screens"`, `"Animations"`, …). Sits one level above [group]. Null ⇒ the
      * component is untabbed (a flat catalog).
@@ -2383,6 +2413,12 @@ class ServeCatalogStore(
   data class VariantMeta(
     val state: String? = null,
     val theme: String? = null,
+    /**
+     * The owning component's authored one-line description, carried through
+     * `previews/variants.json` so a browse surface can say what a component is rather than only
+     * naming it. Null for a catalog that authors none.
+     */
+    val caption: String? = null,
     /**
      * The i18n / content / a11y variant axis this render varies (`{"locale":"ar-XB"}`,
      * `{"direction":"rtl"}`, `{"fontScale":"2.0"}`, `{"content":"icon+label"}`), or absent/empty

@@ -363,6 +363,10 @@ class ServeWebFixtureTest {
           section = "Containment",
           group = "Dialogs",
           catalogOrder = index * 2,
+          // The authored one-liner every design catalog publishes and the browse surface now
+          // prints under the component's name. Captured here so the visual-diff bot covers the
+          // caption line on every future PR.
+          caption = "A decision the app needs before it can go on.",
         ),
         ServePreview(
           "alertdialog__ideal__no-buttons__$size",

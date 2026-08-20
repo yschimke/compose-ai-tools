@@ -486,6 +486,7 @@ class ServeBundleHost(
           size = meta?.size,
           section = meta?.section,
           group = meta?.group,
+          caption = meta?.caption,
           catalogOrder = meta?.order,
           sourceFile = sourceFilesById[id],
           sourceModule = meta?.sourceModule,

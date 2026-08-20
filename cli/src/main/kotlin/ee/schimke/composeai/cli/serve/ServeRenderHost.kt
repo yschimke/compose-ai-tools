@@ -223,6 +223,14 @@ data class ServePreview(
    * route-safe slug. Null for ordinary uploaded bundles and live discovery previews.
    */
   val componentId: String? = null,
+  /**
+   * The one-line description the catalog authored for this preview's component — what it is FOR, in
+   * the design system's own words (`@CatalogComponent(caption = …)`). Surfaced by the viewer under
+   * the component's name and as the component drawer's tooltip, so a reader who does not already
+   * know what "Button Loading" means can find out without opening the source. Null for a catalog
+   * that authors none, and for a plain uploaded bundle.
+   */
+  val caption: String? = null,
   /** Published render failure for a catalog card that has no PNG. */
   val renderFailure: CatalogRenderFailure? = null,
   /**
