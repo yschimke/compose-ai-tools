@@ -260,7 +260,7 @@ Each ships independently and is provable on its own.
 | # | Change | Wins | Risk |
 | --- | --- | --- | --- |
 | **1 — landed** | `--catalog-cache-dir` + `--catalog-cache-max-bytes`; `.res-cache` and the executable bundles + splits moved into a content-addressed [`CatalogBlobPool`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/CatalogBlobPool.kt) | The largest byte win (100 MB-class bundles), and it survives *reloads* as well as restarts | Low — the sha verification already existed; only the path changed |
-| **2** | Asset cache for commit-pinned reads, behind `fetchCatalogAsset`; `cached` counter | Lazy PNGs, motion, references, and the `?at=` lane stop re-fetching | Low — one funnel, one admission rule |
+| **2 — landed** | Asset cache for commit-pinned reads, behind `fetchCatalogAsset`; `cached` counter on `branchFetch` | Manifests, lazy PNGs, motion, references, and the `?at=` lane stop re-fetching | Low — one funnel, one admission rule |
 | **3** | Generation snapshots + `current` pointer; adopt-then-converge boot; seed the refresher's head | The restart win: catalogs serve before any network | Medium — the adoption checks are where the care goes |
 | **4** | `?flush=1`, `DELETE /admin/catalog-cache[/<system>]`, `catalogCache` status block | Operability, and the ability to tell a working cache from write amplification | Low |
 | **5** | Background audit: adopted-commit reachability from the Atom feed, plus a sampled byte comparison | Catches disk corruption and rewritten history | Low — reports, never gates |
@@ -289,6 +289,24 @@ Also worth recording, because it is the number phase 3 has to beat: with the poo
 still pays is the *manifests* — one Atom feed, one `catalog.json`, one preview index and the
 reference/page indexes per catalog — plus re-assembling each per-system staging directory. The
 executable tier, which was the bulk, is now read locally.
+
+### What phase 2 shipped, and what it leaves for phase 3
+
+Phase 2 took the manifests off that list too: every commit-pinned read now goes through the pool, so
+a boot on an unchanged revision reads `catalog.json`, the preview and reference indexes, and every
+baked asset a visitor touches from disk. One departure from the sketch above, in the same
+ship-less-surface direction: the admission rule is decided **from the URL**
+(`ServeCatalogRevision.isCommitPinned`) rather than threaded from the load as a flag. That looked
+like re-deriving a fact we already had, and for the executable lane it would have been — but these
+reads do not all come from the load's own base. A `?at=<sha>` request addresses a commit the load
+never resolved and is exactly as immutable, so the URL genuinely is where the answer lives, and the
+rule sits beside the regex that already validates a visitor's pin.
+
+What is left for phase 3 is therefore **narrower than when this plan was written**, which sharpens
+the open question rather than settling it: the remaining boot cost is resolving each branch head
+(one `git ls-remote` per catalog) and re-assembling each per-system staging directory from bytes
+that are already local. Generation snapshots would remove the second; nothing removes the first,
+because that is the freshness check itself. Measure before building.
 
 ## What this deliberately does not do
 

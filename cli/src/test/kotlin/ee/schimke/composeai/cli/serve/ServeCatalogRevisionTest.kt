@@ -2,9 +2,55 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ServeCatalogRevisionTest {
+
+  @Test
+  fun `a full-sha raw URL is commit-pinned`() {
+    assertTrue(
+      ServeCatalogRevision.isCommitPinned(
+        "https://raw.githubusercontent.com/o/r/${"a".repeat(40)}/images/button/ideal.png"
+      )
+    )
+  }
+
+  @Test
+  fun `a branch ref is not commit-pinned`() {
+    // The admission rule the asset cache depends on. `design-artifacts/<system>` is a branch whose
+    // name contains a slash, so the ref position reads as `design-artifacts` — not a sha, and not
+    // cacheable, which is the whole point: a branch ref moves.
+    assertFalse(
+      ServeCatalogRevision.isCommitPinned(
+        "https://raw.githubusercontent.com/o/r/design-artifacts/compose-m3/catalog.json"
+      )
+    )
+    assertFalse(
+      ServeCatalogRevision.isCommitPinned("https://raw.githubusercontent.com/o/r/main/x.png")
+    )
+  }
+
+  @Test
+  fun `an abbreviated sha is not commit-pinned`() {
+    // A visitor may type a 7-character pin and `normalize` accepts it, but every URL this server
+    // builds for itself carries a resolved head. Admitting both spellings would file one commit's
+    // bytes under two cache keys.
+    assertFalse(
+      ServeCatalogRevision.isCommitPinned("https://raw.githubusercontent.com/o/r/abc1234/x.png")
+    )
+  }
+
+  @Test
+  fun `only the delivery-branch host and a real asset path are commit-pinned`() {
+    val sha = "b".repeat(40)
+    // Another host that happens to carry a sha-shaped segment is not this cache's business.
+    assertFalse(ServeCatalogRevision.isCommitPinned("https://example.com/o/r/$sha/x.png"))
+    // A URL naming no asset under the ref addresses nothing worth caching.
+    assertFalse(ServeCatalogRevision.isCommitPinned("https://raw.githubusercontent.com/o/r/$sha"))
+    assertFalse(ServeCatalogRevision.isCommitPinned("https://raw.githubusercontent.com/o/r/$sha/"))
+  }
 
   @Test
   fun `a pin must be a sha, never a ref`() {

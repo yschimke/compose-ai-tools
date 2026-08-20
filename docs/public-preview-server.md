@@ -2527,10 +2527,33 @@ times a day accumulating each superseded revision's bundles for the life of the 
 limit keeps a burst of publications to one census. Eviction is always safe: the worst a reclaimed
 blob costs is the fetch that produces it again.
 
-What this does **not** yet do is let a restart serve a catalog before it has talked to the branch —
-the manifests are still fetched and the per-system directory still re-assembled on the boot path.
-That is the next step, and whether it is worth the complexity is a question for what this one
-measures; see [the plan](design/CATALOG_CONTENT_CACHE.md).
+#### The small assets ride the same pool
+
+The same rule extends past the executable tier to everything else a load reads by URL: the
+`catalog.json` itself, the preview and reference indexes, the lazily-fetched baked PNGs, motion
+captures, figma vectors and design pages — and, for free, the `?at=<sha>` permalink lane, which is
+the same shape of read against an older commit.
+
+Admission is decided by the URL rather than by a flag carried from the load, because these reads do
+not all come from the current load's base: a pinned request addresses a commit the load never
+resolved, and it is exactly as immutable. `ServeCatalogRevision.isCommitPinned` is what decides, so
+the rule lives beside the regex a visitor-supplied `?at=` pin is validated against rather than in a
+second spelling that could drift.
+
+Only a successful read is stored. A `404` is a statement about one revision that callers already
+cache in their own terms, and a throttle or a timeout is a statement about *now* — caching either
+would turn a bad minute into a permanent answer.
+
+`/status.json`'s `branchFetch` row gains a **`cached`** counter beside `attempted`, deliberately
+outside it: the other fields describe what is happening between this server and GitHub, and folding
+hits into them would make a warming cache look like a quietening branch. `cached` climbing while
+`attempted` flattens across restarts is what working looks like.
+
+What this does **not** yet do is let a restart serve a catalog before it has talked to the branch.
+The manifests are read from the pool now rather than the network, but the per-system directory is
+still re-assembled on the boot path and the branch head is still resolved before anything serves.
+That is the next step, and whether it is worth the complexity is a question for what these two
+measure; see [the plan](design/CATALOG_CONTENT_CACHE.md).
 
 ### The catalog set is config, not image content
 

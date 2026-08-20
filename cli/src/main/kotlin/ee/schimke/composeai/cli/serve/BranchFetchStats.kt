@@ -39,6 +39,7 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
   private val lock = Any()
 
   private var attempted = 0L
+  private var cached = 0L
   private var ok = 0L
   private var notFound = 0L
   private var throttled = 0L
@@ -47,6 +48,18 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
   private var lastThrottleAtEpochMillis: Long? = null
   private var lastFailureAtEpochMillis: Long? = null
   private var lastFailureReason: String? = null
+
+  /**
+   * One read the [CatalogBlobPool] answered, so no request was made.
+   *
+   * Deliberately **not** an [BranchFetch.Ok] and not counted in [attempted]: those describe what
+   * happened between this server and the branch host, and folding a cache hit into them would make
+   * the cache invisible in exactly the numbers that exist to show what the branch is doing to us —
+   * a throttle rate computed over hits plus reads understates itself as the cache warms. Kept
+   * beside them because the interesting comparison is `cached` against `attempted`: that ratio is
+   * the requests this box stopped making.
+   */
+  fun recordCached(): Unit = synchronized(lock) { cached++ }
 
   /** One completed read, however it ended. */
   fun record(outcome: BranchFetch): Unit =
@@ -71,9 +84,10 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
   /** A snapshot for `/status.json`, or null when nothing has been read yet. */
   fun snapshot(): BranchFetchSnapshot? =
     synchronized(lock) {
-      if (attempted == 0L) return null
+      if (attempted == 0L && cached == 0L) return null
       BranchFetchSnapshot(
         attempted = attempted,
+        cached = cached,
         ok = ok,
         notFound = notFound,
         throttled = throttled,
@@ -102,6 +116,14 @@ class BranchFetchStats(private val clock: () -> Long = System::currentTimeMillis
 @Serializable
 data class BranchFetchSnapshot(
   val attempted: Long,
+  /**
+   * Reads the catalog blob cache answered — requests this server did **not** make.
+   *
+   * Excluded from [attempted] on purpose (see `BranchFetchStats.recordCached`), so every other
+   * field here keeps describing the branch host alone. Climbing while [attempted] flattens across
+   * restarts is what a working cache looks like.
+   */
+  val cached: Long = 0,
   val ok: Long,
   /** Reads the branch answered as genuinely absent. Expected, not a fault. */
   val notFound: Long,

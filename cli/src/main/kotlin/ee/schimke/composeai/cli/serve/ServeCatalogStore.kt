@@ -2734,8 +2734,41 @@ class ServeCatalogStore(
     networkProbe(url).also(branchFetchStats::record) is BranchFetch.Ok
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
-  private fun fetchCatalogAsset(url: String): ByteArray? =
-    if (fetch != null) fetch.invoke(url) else branchRead(url, MAX_FETCH_BYTES).bytesOrNull
+  private fun fetchCatalogAsset(url: String): ByteArray? = cachedBranchRead(url).bytesOrNull
+
+  /**
+   * Every small-asset read, with the [blobs] pool in front of the transport: baked PNGs, motion
+   * captures, figma vectors, design references and pages, and the `?at=<sha>` permalink reads that
+   * resolve out of an older commit.
+   *
+   * Admission is decided by the URL, through [ServeCatalogRevision.isCommitPinned] — the one place
+   * that owns what a commit is. That is the right seam here rather than a flag threaded from the
+   * load, because these reads do **not** all come from the current load's `base`: a pinned request
+   * addresses a commit the load never resolved, and it is exactly as immutable. What the rule
+   * refuses is the un-pinned fallback, where `base` is the branch ref.
+   *
+   * Only [BranchFetch.Ok] is stored. A `NotFound` is a statement about one revision that a caller
+   * may already cache permanently in its own terms ([ServeBundleHost.fetchPinnedAssetOutcome]), and
+   * a throttle or a transport failure is a statement about *now* — caching either would turn a bad
+   * minute into a permanent answer.
+   *
+   * The pool sits **outside** the injected [fetch] seam, exactly as the executable-bundle lane's
+   * does, so a stubbed transport exercises the same caching a real one gets. Putting it on the
+   * network side instead would leave the whole behaviour untested by the 48 tests that inject a
+   * fetcher, which is how the two paths would drift.
+   */
+  private fun cachedBranchRead(url: String): BranchFetch {
+    val read = {
+      if (fetch != null) fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
+      else branchRead(url, MAX_FETCH_BYTES)
+    }
+    if (!ServeCatalogRevision.isCommitPinned(url)) return read()
+    blobs.read(url)?.let {
+      branchFetchStats.recordCached()
+      return BranchFetch.Ok(it)
+    }
+    return read().also { if (it is BranchFetch.Ok) blobs.write(url, it.bytes) }
+  }
 
   /**
    * [fetchCatalogAsset], keeping the reason a failure failed.
@@ -2745,12 +2778,7 @@ class ServeCatalogStore(
    * [BranchFetch.NotFound], which is what those tests mean by it; only the real network path
    * distinguishes a throttle, and only the real network path can.
    */
-  private fun fetchCatalogAssetOutcome(url: String): BranchFetch =
-    if (fetch != null) {
-      fetch.invoke(url)?.let { BranchFetch.Ok(it) } ?: BranchFetch.NotFound
-    } else {
-      branchRead(url, MAX_FETCH_BYTES)
-    }
+  private fun fetchCatalogAssetOutcome(url: String): BranchFetch = cachedBranchRead(url)
 
   /**
    * Fetch [urls] **concurrently**, returning `url → bytes` for the ones that came back. A URL that

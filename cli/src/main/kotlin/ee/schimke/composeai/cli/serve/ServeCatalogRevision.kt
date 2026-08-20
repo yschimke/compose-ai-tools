@@ -88,6 +88,43 @@ object ServeCatalogRevision {
     return "https://raw.githubusercontent.com/$r/$c/$encoded"
   }
 
+  /**
+   * Whether [url] addresses **one immutable commit** on the delivery-branch host, rather than a
+   * moving branch ref.
+   *
+   * This is the admission rule for caching a fetched asset ([CatalogBlobPool]), and it lives here
+   * because this object already owns the question of what counts as a commit — [COMMIT] is the same
+   * regex a request-supplied `?at=` pin is validated against. A second spelling of "is this a sha"
+   * elsewhere is how the two would eventually disagree, and a disagreement in the permissive
+   * direction caches a branch ref, which is precisely the moving target the cache must never key
+   * on.
+   *
+   * Deliberately shaped as "recognise the exact URL form we build" rather than "parse any URL":
+   * everything cacheable is assembled by [assetUrl] or by the store's `base + path`, both of which
+   * are `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path…>`. Anything that does not
+   * match that shape — a different host, a short ref, a missing path — is simply not cached, which
+   * costs a re-fetch and never a wrong answer.
+   */
+  fun isCommitPinned(url: String): Boolean {
+    val rest = url.removePrefix(RAW_HOST_PREFIX)
+    if (rest.length == url.length) return false
+    val segments = rest.split('/')
+    // owner, repo, ref, and at least one NON-EMPTY path segment — a URL with nothing after the ref
+    // (with or without a trailing slash) addresses no asset, so there is nothing to cache under it
+    // either.
+    if (segments.size < 4 || segments.drop(3).all { it.isEmpty() }) return false
+    // The full 40 hex characters, not the 7–40 a visitor may type: every URL this server builds
+    // for itself carries a resolved head, and accepting an abbreviation here would let two
+    // spellings of one commit occupy two cache entries.
+    return segments[2].length == FULL_COMMIT_LENGTH && COMMIT.matches(segments[2])
+  }
+
+  /** The host and scheme every delivery-branch read goes through. */
+  private const val RAW_HOST_PREFIX = "https://raw.githubusercontent.com/"
+
+  /** A resolved commit sha, in full. */
+  private const val FULL_COMMIT_LENGTH = 40
+
   /** A branch path is pinnable when it is a relative, traversal-free path to a PNG. */
   fun normalizePath(path: String?): String? {
     val p = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null

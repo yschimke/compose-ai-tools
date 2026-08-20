@@ -202,6 +202,35 @@ class CatalogBlobPool(
     resolve(File(keysDir, sha256Hex(key.toByteArray())), verify = false) != null
 
   /**
+   * The bytes cached under [key], or null when there is no verified entry.
+   *
+   * The read half of the small-asset lane, split from [keyed] because that one is built around
+   * *producing* the blob under a lock — right for a 100 MB bundle a grid of daemons would otherwise
+   * fetch twenty times over, wrong for a baked PNG on the request path, where a miss should return
+   * immediately so the caller can go to the branch and report **why** it failed rather than have
+   * that answer collapsed into a null.
+   */
+  fun read(key: String): ByteArray? {
+    val blob = resolve(File(keysDir, sha256Hex(key.toByteArray()))) ?: return null
+    hits.increment()
+    return runCatching { blob.readBytes() }.getOrNull()
+  }
+
+  /**
+   * Cache [bytes] under [key]. Best-effort — a full or read-only disk simply leaves the next read a
+   * miss.
+   *
+   * [key] must be an immutable address; see **The rule callers must keep**.
+   */
+  fun write(key: String, bytes: ByteArray) {
+    misses.increment()
+    val sha = sha256Hex(bytes)
+    val blob = File(contentDir, sha)
+    if (!blob.isFile && store(bytes, sha) == null) return
+    writeAtomically(File(keysDir, sha256Hex(key.toByteArray())), sha.toByteArray())
+  }
+
+  /**
    * Reclaim blobs until the pool is under [maxBytes], oldest-touched first, sparing anything
    * younger than [graceMillis]; then drop pointers whose blob is gone.
    *
@@ -279,9 +308,32 @@ class CatalogBlobPool(
     runCatching { blob.delete() }
   }
 
-  /** Keeps a blob that is still being read out of the sweeper's reach. Best-effort. */
-  private fun touch(blob: File) {
+  /**
+   * Put a newly published blob on this pool's clock. Best-effort.
+   *
+   * Unconditional, unlike [touch]: a blob arrives carrying whatever mtime the filesystem gave the
+   * scratch file it was moved from, which is wall-clock time and therefore says nothing about when
+   * *this* pool saw it. Stamping on write is what makes every subsequent comparison — the sweeper's
+   * ordering, [touch]'s staleness check — read one clock instead of two.
+   */
+  private fun stamp(blob: File) {
     runCatching { blob.setLastModified(clock()) }
+  }
+
+  /**
+   * Keeps a blob that is still being read out of the sweeper's reach. Best-effort.
+   *
+   * Skipped when the recorded time is already recent. Once the small-asset lane reads through this
+   * pool, a touch on every hit is a filesystem metadata write on the **request path** — one per
+   * baked PNG a visitor's grid paints — bought to refine an ordering the sweeper only consults
+   * against an hour-wide grace window. Re-stamping at most once per [TOUCH_INTERVAL_MILLIS] keeps
+   * "least recently used" meaningful at the resolution anything actually uses it.
+   */
+  private fun touch(blob: File) {
+    val now = clock()
+    val recorded = runCatching { blob.lastModified() }.getOrDefault(0L)
+    if (now - recorded in 0 until TOUCH_INTERVAL_MILLIS) return
+    runCatching { blob.setLastModified(now) }
   }
 
   private fun store(bytes: ByteArray, sha: String): File? {
@@ -308,7 +360,7 @@ class CatalogBlobPool(
     // has no loser worth reporting: drop the duplicate and read what is already published.
     if (blob.isFile) {
       scratch.delete()
-      touch(blob)
+      stamp(blob)
       return blob
     }
     val moved = runCatching {
@@ -329,9 +381,9 @@ class CatalogBlobPool(
       return null
     }
     writes.increment()
-    // Stamped from the same clock every hit stamps, so "least recently used" is one notion rather
+    // Stamped from the same clock every hit reads, so "least recently used" is one notion rather
     // than a mix of the pool's clock and whatever mtime the move happened to preserve.
-    touch(blob)
+    stamp(blob)
     return blob
   }
 
@@ -391,6 +443,12 @@ class CatalogBlobPool(
 
     /** Long enough to cover a rollout's readiness window, short enough to reclaim the same day. */
     const val DEFAULT_SWEEP_GRACE_MILLIS: Long = 60L * 60 * 1000
+
+    /**
+     * How stale a blob's recorded time must be before a hit re-stamps it — see [touch]. Well under
+     * the sweep grace window, so a blob being read regularly can never age into eviction.
+     */
+    const val TOUCH_INTERVAL_MILLIS: Long = 5L * 60 * 1000
 
     const val MAX_REASON_CHARS: Int = 200
 
