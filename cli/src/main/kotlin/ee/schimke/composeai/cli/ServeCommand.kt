@@ -1408,7 +1408,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
-      catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
+      catalogRefresh =
+        catalogRefresher?.let { refresher ->
+          { system: String, force: Boolean -> refresher.refresh(system, force) }
+        },
       localSourceRoots =
         if (componentBrowser) mapOf(module.gradlePath to module.projectDir) else emptyMap(),
       // Project mode has the repository, so the viewer's history strip is computed from local git
@@ -1611,7 +1614,10 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
-      catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
+      catalogRefresh =
+        catalogRefresher?.let { refresher ->
+          { system: String, force: Boolean -> refresher.refresh(system, force) }
+        },
       onStarted = {
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
@@ -2675,7 +2681,7 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
     /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
     catalogStore: ServeCatalogStore? = null,
     /** Immediate branch-head check used by the Refresh control on catalog landing pages. */
-    catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
+    catalogRefresh: ((system: String, force: Boolean) -> CatalogRefreshResult)? = null,
     /** Project mode's local-git render history; null on a box with no checkout to read. */
     projectHistory: ServeProjectHistory? = null,
     /** Called immediately after the HTTP listener binds, before the long blocking wait. */
@@ -2815,6 +2821,17 @@ class ServeCommand(args: List<String>, private val browseProject: Boolean = fals
         branchFetchStats = catalogStore?.let { store -> { store.branchFetchStats.snapshot() } },
         themeOptimizerStats = { backgroundWork.optimizerAdmissionSnapshot() },
         themeCacheStats = { themeCacheStore?.snapshot() },
+        // Null on a server publishing no catalogs: its pool is not merely empty, nothing will ever
+        // read or write it, and a row of zeroes reads as a cache that is failing rather than one
+        // that was never asked for.
+        catalogCacheStats =
+          if (needsCatalogMachinery) {
+            { runCatching { catalogBlobPool.snapshot() }.getOrNull() }
+          } else null,
+        catalogCacheClear =
+          if (needsCatalogMachinery) {
+            { catalogBlobPool.clear() }
+          } else null,
         themeOptimizerAdmin = backgroundWork,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,

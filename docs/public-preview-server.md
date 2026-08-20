@@ -2571,6 +2571,38 @@ outside it: the other fields describe what is happening between this server and 
 hits into them would make a warming cache look like a quietening branch. `cached` climbing while
 `attempted` flattens across restarts is what working looks like.
 
+#### Clearing it, and forcing a re-read
+
+Two operator affordances, deliberately separate because they answer different questions:
+
+```
+DELETE /admin/catalog-cache          # discard every cached byte (admin token)
+POST   /<system>/refresh?force=1     # re-read this catalog even if its branch has not moved
+```
+
+`DELETE /admin/catalog-cache` is **whole-pool, not per catalog**, and that is not a shortcut. Blobs
+are named by their own digest and shared between systems on purpose — a font fetched for one catalog
+is the same file the next one reads — so no blob has an owning catalog to delete it by. Partitioning
+by system to make a narrower button possible would give up the deduplication, which is worth more
+than the button. Everything dropped is re-fetchable, so the cost of using it unnecessarily is
+bandwidth. It responds with the pool's state afterwards, in the same shape `/status.json` reports.
+
+`?force=1` exists because the ordinary refresh short-circuits on an unchanged branch head — the
+thing that makes polling cheap, and right almost always, but it leaves no way to say *read it again
+anyway*. Together the two are the full "prove it from the branch" sequence: clear the pool, then
+force a refresh.
+
+#### Reading whether it is working
+
+`/status.json` gains a whole-box **`catalogCache`** row: `blobs`, `bytes` against `maxBytes`, `hits`,
+`misses`, `writes`, `evicted`, `corrupt`.
+
+The pair to watch is `branchFetch.cached` against `catalogCache.hits` — they count the same event
+from the two ends — and both against `branchFetch.attempted`. Hits climbing while `attempted`
+flattens across a restart is the feature working. `corrupt` above zero says a volume is losing
+bytes, since every blob is named by its own digest and re-verified on read. `blobs`/`bytes` against
+`maxBytes` says whether the sweeper is keeping up.
+
 What this does **not** yet do is let a restart serve a catalog before it has talked to the branch.
 The manifests are read from the pool now rather than the network, but the per-system directory is
 still re-assembled on the boot path and the branch head is still resolved before anything serves.

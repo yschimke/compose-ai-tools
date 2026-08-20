@@ -454,8 +454,8 @@ class ServeHttpRoutingTest {
         isPublic = true,
         rcPlayerWasmDir = rcWasmDir,
         catalogSessions = listOf("compose-m3"),
-        catalogRefresh = { system ->
-          refreshes += system
+        catalogRefresh = { system, force ->
+          refreshes += if (force) "$system!force" else system
           if (blockRefresh) {
             refreshStarted.countDown()
             releaseRefresh.await(5, TimeUnit.SECONDS)
@@ -616,6 +616,21 @@ class ServeHttpRoutingTest {
     assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh"))
     assertEquals(200 to "{\"status\":\"current\"}", post("/refresh?session=compose-m3"))
     assertEquals(listOf("compose-m3", "compose-m3"), refreshes)
+  }
+
+  @Test
+  fun `catalog refresh carries the force flag through to the refresher`() {
+    // The ordinary check short-circuits on an unchanged branch head, which is what makes polling
+    // cheap. `?force=1` is the only way to say "read it again anyway" — what an operator wants
+    // after discarding the blob cache.
+    assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh?force=1"))
+    assertEquals(200 to "{\"status\":\"current\"}", post("/refresh?session=compose-m3&force=1"))
+    // Anything other than an explicit 1 is an ordinary refresh, so a stray query cannot force one.
+    assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh?force=0"))
+    assertEquals(
+      listOf("compose-m3!force", "compose-m3!force", "compose-m3"),
+      refreshes,
+    )
   }
 
   @Test

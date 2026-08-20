@@ -107,11 +107,20 @@ internal class ServeCatalogRefresher(
     for (e in entries()) checkOne(e)
   }
 
-  /** Check one catalog immediately, using the same branch-head + reload path as the poller. */
+  /**
+   * Check one catalog immediately, using the same branch-head + reload path as the poller.
+   *
+   * [force] re-fetches even when the head has not moved, by dropping the recorded head exactly as
+   * [forgetHeads] does for a trust revocation. The short-circuit in [checkOne] is what makes
+   * polling cheap and is right almost always, but it also leaves no way to say "read it again
+   * anyway" — which is what an operator wants after discarding the blob cache, or when they would
+   * rather see the published bytes re-read than reason about whether they need to be.
+   */
   @Synchronized
-  fun refresh(system: String): CatalogRefreshResult {
+  fun refresh(system: String, force: Boolean = false): CatalogRefreshResult {
     val entry =
       entries().firstOrNull { it.system == system } ?: return CatalogRefreshResult.NOT_FOUND
+    if (force) lastHead.remove(system)
     return checkOne(entry)
   }
 
