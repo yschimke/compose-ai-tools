@@ -171,6 +171,24 @@ This is not a regression: before the knobs were rewritten at all, the variant's 
 compile. It is now honest about the default render and still wrong about the variant, which is
 strictly better and still worth fixing.
 
+## The snippet's second job: the API reference links
+
+The imports the cleaner leaves behind are exactly the platform APIs the render uses, which is the one
+place anything on this server knows that a Wear catalog's `ImageBackgroundButton` is really
+`androidx.wear.compose.material3.Button`. `ApiDocLinks` reads them back off the snippet and the
+Source panel lists each as its KDoc page on `developer.android.com` ([issue
+#4331](https://github.com/yschimke/compose-ai-tools/issues/4331)).
+
+Two things make this more than a string join. `developer.android.com` publishes a top-level
+`@Composable` at `<pkg>/<Name>.composable` and a class at `<pkg>/<Name>`, and the *other* one 404s —
+so the resolver infers the kind from how the snippet uses the name, and drops what it cannot place
+rather than guessing. And the pages are **not** framable, so this is a list of links rather than the
+docs tab the issue asked about; the links sit under the code that names them.
+
+The measurement is the same shape as this document's: run against 244 live snippets from every
+catalog on the public host, it produced 220 distinct pages and no 404s. `ApiDocLinksTest` pins the
+call-site shapes that got it there — each one a page shape that was wrong before it was added.
+
 ## Running it in CI
 
 Not wired to CI yet, deliberately: it needs checkouts of the catalog repositories, and the failure
