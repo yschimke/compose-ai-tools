@@ -800,17 +800,34 @@ When enabled, it yields twice over — both learned from `preview.coo.ee`:
 **When it isn't running, `/status` says which gate is holding it.** A pass must clear a quiet gate
 before it starts: the whole server has to have been untouched for
 `-Dcomposeai.serve.themeOptimizationIdleMillis` (60s by default). That gate reads
-`ServeSessionRegistry.idleMillis()`, which answers *busy* — not a number — while any session holds
-an open lease, so one long-lived WebSocket, or one lease leaked by a request cancelled mid-flight,
-stands the optimizer down for as long as it is held. The per-catalog `themeOptimization` rows cannot
+`ServeSessionRegistry.idleMillis()`, which answers *busy* — not a number — while a session holds an
+open lease **and its holder is still doing something**.
+
+That last qualifier is the fix for #4312. A viewer WebSocket holds a lease for the socket's whole
+life, and the clock used to read any held lease as busy, so a single browser tab left open on a
+catalog pinned it at *busy* indefinitely whether or not anyone was looking — measured on the public
+box, eight consecutive minutes with a lease held, one active stream and zero renders. A lease now
+stops suppressing the clock once its holder has been quiet for 30s
+(`ServeSessionRegistry.DEFAULT_LEASE_BUSY_MILLIS`, deliberately below the gate's own 60s window),
+while still keeping the session resident so the reaper cannot close a live socket's host
+mid-connection. Activity means the lease being taken, a client message arriving on its socket, or
+any request for that session. Interrupting a pass costs a returning visitor at most one render
+(`OPTIMIZER_YIELD_MILLIS`), which is why the trade is one-sided.
+
+`--exit-when-idle` deliberately keeps the strict rule (`connectionIdleMillis()`): standing a
+background pass down under an idle tab costs that tab one render, while shutting the process down
+under it drops a live connection. A *leaked* lease therefore still holds the watchdog open and keeps
+its session resident, even though it no longer stands the optimizer down for the life of the
+process. The per-catalog `themeOptimization` rows cannot
 show this: they say `paused` whether the box is being politely quiet or the gate will never open
 again. Read `themeOptimizer` on `/status.json` instead:
 
 - `serverIdleMillis` — the gate's input, or `null` for busy — against `idleThresholdMillis`, the
   quiet it must reach. The `/status` page prints the same comparison as **Theme optimiser gate**.
-- `idleBlockedBy` — why it reads busy: `session-lease` (a lease is held; `daemons.leasedSessions`
-  names the holders) or `catalog-load` (catalogs are still being fetched, which is the gate working
-  as designed).
+- `idleBlockedBy` — why it reads busy: `session-lease` (a lease is held *and active*;
+  `daemons.busyLeasedSessions` names those holders, against `daemons.leasedSessions` for every
+  session held resident — leases listed with none of them busy is an idle tab, not a stuck gate) or
+  `catalog-load` (catalogs are still being fetched, which is the gate working as designed).
 - Per catalog, `gateWaitMillis` accrues *while* a pass waits, not only once it is let through — so a
   gate that has never opened shows a climbing wait beside `turnsGranted: 0`, rather than the zeros
   that also describe a catalog with nothing left to do.

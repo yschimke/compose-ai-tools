@@ -523,7 +523,8 @@ data class ThemeOptimizerAdmissionSnapshot(
   val serverIdleMillis: Long? = null,
   /**
    * Why [serverIdleMillis] is null, when it is: [IDLE_BLOCKED_BY_SESSION_LEASE] (a session holds an
-   * open lease — `daemons.leasedSessions` names it) or [IDLE_BLOCKED_BY_CATALOG_LOAD] (catalogs are
+   * open lease *and is actively using it* — `daemons.busyLeasedSessions` names it, against
+   * `daemons.leasedSessions` for every holder) or [IDLE_BLOCKED_BY_CATALOG_LOAD] (catalogs are
    * still being fetched). Null when the clock is running, or before any catalog host has asked for
    * one.
    *
