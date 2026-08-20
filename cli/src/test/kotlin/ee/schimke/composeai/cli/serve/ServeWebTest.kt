@@ -664,68 +664,11 @@ class ServeWebTest {
     // A catalog that publishes no design references has nothing behind `format=reference`, so it
     // gets no action rather than a chip that deep-links a format the comparison page won't offer.
     assertFalse(html.contains("/plain/compare"), html)
-    // It does still get the (empty) row, because a neighbour in its section has one: the cell's
-    // second row is what the tile is sized against, so a card without it grows taller than the
-    // ones beside it.
-    assertEquals(4, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
-    assertTrue(html.contains("<p class=\"cp-sys-actions\"></p>"), html)
-  }
-
-  /**
-   * …and the reservation is per SECTION, because that is the scope the raggedness lives in — each
-   * section is its own grid. A publisher whose catalogs all lack references otherwise carried a
-   * strip of empty rows reserved for a chip nothing in that grid can show.
-   */
-  @Test
-  fun `a section where nothing compares reserves no action row`() {
-    fun system(id: String, repo: String, compares: Boolean) =
-      ServeWeb.HomeSystem(
-        system = id,
-        title = id,
-        subtitle = null,
-        previewCount = 1,
-        trust = null,
-        sourceRepo = repo,
-        heroPreviewId = null,
-        hasReferenceComparison = compares,
-        designToolLabel = "Figma".takeIf { compares },
-      )
-
-    val html =
-      ServeWeb.homeIndexPage(
-        listOf(
-          system("compose-m3", "yschimke/compose-ai-tools", compares = true),
-          system("confetti-wear", "joreilly/confetti", compares = false),
-        ),
-        token = "unused",
-        isPublic = true,
-      )
-
-    // One row, in the section that has the chip — not one per card across both sections.
-    assertEquals(1, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
+    // …and no EMPTY row stands in for it. The chip lives inside the card now, so the grid's own
+    // stretch is what makes a card with an action and one without the same size — the reserved
+    // placeholder row the outside-the-card layout needed is gone.
+    assertEquals(3, Regex("<p class=\"cp-sys-actions\">").findAll(html).count(), html)
     assertFalse(html.contains("<p class=\"cp-sys-actions\"></p>"), html)
-  }
-
-  /** …and a front door where nothing compares carries no empty rows at all. */
-  @Test
-  fun `the front door reserves no action row when no catalog compares`() {
-    val html =
-      ServeWeb.homeIndexPage(
-        listOf(
-          ServeWeb.HomeSystem(
-            system = "plain",
-            title = "Plain",
-            subtitle = null,
-            previewCount = 1,
-            trust = null,
-            heroPreviewId = null,
-          )
-        ),
-        token = "unused",
-        isPublic = true,
-      )
-
-    assertFalse(html.contains("cp-sys-actions"), html)
   }
 
   /**
@@ -824,11 +767,12 @@ class ServeWebTest {
   }
 
   /**
-   * The tile stays ONE link and the action is its sibling: a link inside a link is not a thing HTML
-   * has, and the browser would reparent it out of the card if we tried.
+   * The chip lives INSIDE the card, so the card cannot be one big `<a>` — a link inside a link is
+   * not a thing HTML has, and the browser would reparent the inner one out of the card. The tile is
+   * still one click target, via the title link's stretched overlay.
    */
   @Test
-  fun `the front door's comparison link is a sibling of the card, not nested inside it`() {
+  fun `the front door's card is a div whose title links, with the chip outside that link`() {
     val html =
       ServeWeb.homeIndexPage(
         listOf(
@@ -847,12 +791,20 @@ class ServeWebTest {
         isPublic = true,
       )
 
-    val card = html.substringAfter("<a class=\"cp-card cp-sys\"").substringBefore("</a>")
-    assertFalse(card.contains("cp-action-chip"), card)
-    // The search filter hides the CELL, so the chip goes with the card it belongs to rather than
-    // being left behind by a search that filtered its catalog out.
-    assertTrue(html.contains("<div class=\"cp-sys-cell\" data-browser-search="), html)
-    assertTrue(html.contains("document.querySelectorAll(\".cp-sys-cell\")"), html)
+    // The card is a div, and it holds BOTH links.
+    assertTrue(html.contains("<div class=\"cp-card cp-sys\" data-browser-search="), html)
+    assertFalse(html.contains("<a class=\"cp-card cp-sys\""), html)
+    val card =
+      html.substringAfter("<div class=\"cp-card cp-sys\"").substringBefore("\n      </div>")
+    assertTrue(card.contains("cp-sys-open"), card)
+    assertTrue(card.contains("cp-action-chip"), card)
+    // …but the chip is NOT inside the tile link.
+    val openLink = card.substringAfter("<a class=\"cp-sys-open\"").substringBefore("</a>")
+    assertFalse(openLink.contains("cp-action-chip"), openLink)
+    // The search filter is back on the card itself: hiding it takes the chip with it, because the
+    // chip is part of the card rather than a sibling that a filter could leave behind.
+    assertTrue(html.contains("document.querySelectorAll(\".cp-sys\")"), html)
+    assertFalse(html.contains("cp-sys-cell"), html)
   }
 
   @Test

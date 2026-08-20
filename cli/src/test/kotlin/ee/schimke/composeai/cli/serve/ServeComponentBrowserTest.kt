@@ -44,7 +44,13 @@ class ServeComponentBrowserTest {
       html.indexOf("</main>") < html.indexOf("querySelectorAll(\"[data-cp-interface-mode]\")")
     )
     assertTrue(html.contains("androidx/androidx"))
-    assertTrue(html.contains("aria-label=\"Material 3\""))
+    // The card names itself through the title link's own TEXT rather than an `aria-label` on a
+    // whole-tile anchor: the card is a div now (it has to be able to hold the compare chip), and
+    // the link's text is both the visible title and its accessible name.
+    assertTrue(
+      html.contains("<a class=\"cp-sys-open\" href=\"/compose-m3/?token=$token\">Material 3</a>"),
+      html,
+    )
     assertTrue(html.contains("No catalogs match your search."))
     assertTrue(html.contains("h.hidden=!!g&&!Array.prototype.some.call(g.children"))
     assertTrue(html.contains("class=\"cp-component-browser\""))

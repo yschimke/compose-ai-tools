@@ -259,22 +259,26 @@ class KeyboardNavigation {
     }
 
     private catalogCommands(): Command[] {
+        // The front-door card is a `<div>` whose title carries the link, not one big `<a>` — it
+        // has to hold the "compare to <tool>" chip, and a link inside a link is not a thing HTML
+        // has. So the anchor is `.cp-sys-open` and the card is its `.cp-sys` ancestor; the label
+        // and detail still come off the card, because that is where the title and the id live.
         return Array.from(
-            document.querySelectorAll<HTMLAnchorElement>(
-                ".cp-card.cp-sys[href]",
-            ),
-        ).map((element) => ({
-            section: "catalogs",
-            label:
-                text(element.querySelector(".cp-sys-title")) || text(element),
-            detail: text(element.querySelector(".cp-id")) || "Open catalog",
-            keywords: text(element),
-            href: element.href,
-            run: () => {
-                this.closeOverlay();
-                element.click();
-            },
-        }));
+            document.querySelectorAll<HTMLAnchorElement>(".cp-sys-open[href]"),
+        ).map((link) => {
+            const card = link.closest(".cp-sys") || link;
+            return {
+                section: "catalogs",
+                label: text(card.querySelector(".cp-sys-title")) || text(link),
+                detail: text(card.querySelector(".cp-id")) || "Open catalog",
+                keywords: text(card),
+                href: link.href,
+                run: () => {
+                    this.closeOverlay();
+                    link.click();
+                },
+            };
+        });
     }
 
     private componentCommands(): Command[] {
