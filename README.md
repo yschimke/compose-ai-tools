@@ -109,6 +109,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## serve-agent-access
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-agent-access/dark](renders/serve-agent-access.dark.png) |
+| `light` | ![serve-agent-access/light](renders/serve-agent-access.light.png) |
+
+## serve-agent-access-granted
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-agent-access-granted/dark](renders/serve-agent-access-granted.dark.png) |
+| `light` | ![serve-agent-access-granted/light](renders/serve-agent-access-granted.light.png) |
+
 ## serve-component-browser-catalog
 
 | Theme | Capture |

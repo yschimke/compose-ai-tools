@@ -181,6 +181,30 @@
       "sha256": "1cf2657abcf8754ff9d820546459efaffaca4e1ebc7e8ec89e9150b79f1639d6",
       "size": 92183
     },
+    "serve-agent-access-granted.dark.png": {
+      "fixture": "serve-agent-access-granted",
+      "theme": "dark",
+      "sha256": "abc4d36ba480d6e8007856cf6ba50cd6aad64ee1a10c921e7e23fca85188050b",
+      "size": 37266
+    },
+    "serve-agent-access-granted.light.png": {
+      "fixture": "serve-agent-access-granted",
+      "theme": "light",
+      "sha256": "288bb980d1048da01d4104cd4614ef0f760a412bded74be5121224021d7bbcc0",
+      "size": 36319
+    },
+    "serve-agent-access.dark.png": {
+      "fixture": "serve-agent-access",
+      "theme": "dark",
+      "sha256": "c890e98aae393e98c6701fda868908fcbf6f362da9be0bc991e7a6ec65ad44d7",
+      "size": 109060
+    },
+    "serve-agent-access.light.png": {
+      "fixture": "serve-agent-access",
+      "theme": "light",
+      "sha256": "b63f49ad21ecefb46723574dfbe00ddc44b7cb49dfdb8aec8f704a253fee94f3",
+      "size": 106527
+    },
     "serve-component-browser-catalog.dark.png": {
       "fixture": "serve-component-browser-catalog",
       "theme": "dark",
@@ -916,14 +940,14 @@
     "serve-landing-tree-depth-component-open.dark.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "dark",
-      "sha256": "a4d4a29b8c9e79b7bc8acfb97f5da4cf8c5a00090f803f81b4341895dfa2a7b3",
-      "size": 83079
+      "sha256": "3522e332a2d5e86d57ebba3d3ec08c15762fb1d5a00b0fe2aaf97af9dfbf3a68",
+      "size": 83077
     },
     "serve-landing-tree-depth-component-open.light.png": {
       "fixture": "serve-landing-tree-depth-component-open",
       "theme": "light",
-      "sha256": "925721bfa121bdcfe19dff4e6e8d903f3a26c1241d9cbe800e86203c8ce9534e",
-      "size": 81953
+      "sha256": "6a832a1d1093e457e347b7e92ec885f205083b1ffd3391ed674e578deb4a7b73",
+      "size": 78680
     },
     "serve-landing-tree-depth.dark.png": {
       "fixture": "serve-landing-tree-depth",
@@ -1576,8 +1600,8 @@
     "serve-viewer-path-spec-typography.dark.png": {
       "fixture": "serve-viewer-path-spec-typography",
       "theme": "dark",
-      "sha256": "29c72b0b7e4159aca0b65cce5a43445447c19652f6d75756e4f9b652e6f9867e",
-      "size": 86803
+      "sha256": "7220cccf968fcfd5688da05ae436005e035869238a33ffbb14e32a91a8387834",
+      "size": 87541
     },
     "serve-viewer-path-spec-typography.light.png": {
       "fixture": "serve-viewer-path-spec-typography",
